@@ -63,3 +63,8 @@ export function renderFilledDotIcon(): TemplateResult {
 export const uiIconStyle = `
   .ui-icon { flex: 0 0 auto; width: 14px; height: 14px; vertical-align: -0.15em; pointer-events: none; }
 `;
+
+/** The Go to control: four tiles, the destinations a phone can reach by name. */
+export function renderGridIcon(): TemplateResult {
+  return html`<svg class="ui-icon" viewBox=${ATTRIBUTES.viewBox} aria-hidden="true" focusable="false" fill=${ATTRIBUTES.fill} stroke=${ATTRIBUTES.stroke} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg>`;
+}

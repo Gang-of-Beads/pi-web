@@ -103,12 +103,20 @@ describe("compact panel scope and tools", () => {
     expect(chip?.getAttribute("aria-label")).toBe("Change machine, project or workspace");
   });
 
-  it("shows the tools grid on the sessions section and hides it on the projects picker", async () => {
-    const withSessions = await mountPanelWithOptions({}, machine("local"), { sessionsVisible: true });
-    expect(withSessions.shadowRoot?.querySelector(".tools-section")).not.toBeNull();
+  it("lists no tool tiles on the phone: the Go to control in the header is the way to a view", async () => {
+    const onOpenGoTo = vi.fn();
+    const withSessions = await mountPanelWithOptions({}, machine("local"), { sessionsVisible: true, onOpenGoTo });
+    expect(withSessions.shadowRoot?.querySelector(".tools-section")).toBeNull();
 
-    const withProjects = await mountPanelWithOptions({}, machine("local"), { projectsVisible: true });
-    expect(withProjects.shadowRoot?.querySelector(".tools-section")).toBeNull();
+    const goTo = withSessions.shadowRoot?.querySelector<HTMLButtonElement>("button.compact-go-to");
+    expect(goTo?.getAttribute("aria-label")).toBe("Go to a view");
+    goTo?.click();
+    expect(onOpenGoTo).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws no Go to control when the shell offers none", async () => {
+    const panel = await mountPanelWithOptions({}, machine("local"), { sessionsVisible: true });
+    expect(panel.shadowRoot?.querySelector("button.compact-go-to")).toBeNull();
   });
 
   it("sends the desktop context switcher's section request to the shell", async () => {
@@ -127,6 +135,7 @@ async function mountPanelWithOptions(
   options: {
     onOpenContextSheet?: () => void;
     onRequestSection?: (section: NavigationSection) => void;
+    onOpenGoTo?: () => void;
     sessionsVisible?: boolean;
     projectsVisible?: boolean;
   } = {},
@@ -138,6 +147,7 @@ async function mountPanelWithOptions(
   wireContributedSections(panel, machineStatusSnapshots, selectedMachine);
   if (options.onOpenContextSheet !== undefined) panel.onOpenContextSheet = options.onOpenContextSheet;
   if (options.onRequestSection !== undefined) panel.onRequestSection = options.onRequestSection;
+  if (options.onOpenGoTo !== undefined) panel.onOpenGoTo = options.onOpenGoTo;
   panel.toolTabs = [{ id: "core:workspace.files", label: "Files", selected: options.sessionsVisible === true }];
   if (options.sessionsVisible === true) {
     panel.machinesCollapsed = true;

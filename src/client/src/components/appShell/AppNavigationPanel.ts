@@ -3,6 +3,7 @@ import { focusedContextName } from "../../contextName";
 import { customElement, property, query, state } from "lit/decorators.js";
 import type { Machine, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
 import { sessionLabel } from "../../sessionLabels";
+import { renderGridIcon } from "../uiIcons";
 import type { DrawerSectionContext, QualifiedDrawerSectionContribution, MachineSectionContext, QualifiedMachineSectionContribution, NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
 import type { NavigationSection } from "../../appShell/navigationState";
 import { NAVIGATION_SECTION_ORDER } from "../../appShell/navigationState";
@@ -110,6 +111,8 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onArchivedCollapsed?: () => void | Promise<void>;
   /** Workspace views as named rows; the one entry, retired the sheet and the second strip. */
   @property({ attribute: false }) toolTabs: readonly ShellToolTab[] = [];
+  /** Opens the Go to sheet on the phone, where the views are not listed in the panel. */
+  @property({ attribute: false }) onOpenGoTo?: () => void;
   @property({ attribute: false }) onSelectTool?: (id: string) => void;
   @property({ attribute: false }) onFocusNavigationTarget?: (target: NavigationFocusTarget) => void | Promise<void>;
   @property({ attribute: false }) onCancelKeyboardNavigation?: () => void | Promise<void>;
@@ -189,6 +192,7 @@ export class AppNavigationPanel extends LitElement {
           </button>
           <span class="compact-working" role="status" aria-label="Session is working" ?hidden=${!this.isWorking}><span class="compact-working-dot"></span><span class="compact-working-dot"></span><span class="compact-working-dot"></span></span>
           ${this.refreshControl}
+          ${this.onOpenGoTo === undefined ? null : html`<button class="compact-header-action compact-go-to" title="Go to a view" aria-label="Go to a view" aria-haspopup="dialog" @click=${() => { this.onOpenGoTo?.(); }}>${renderGridIcon()}</button>`}
           <button class="compact-header-action compact-fold" title=${this.compactActionsOpen ? "Fewer actions" : "More actions"} aria-label=${this.compactActionsOpen ? "Fewer actions" : "More actions"} aria-expanded=${this.compactActionsOpen ? "true" : "false"} @click=${() => { this.compactActionsOpen = !this.compactActionsOpen; }}>
             <svg class="compact-fold-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d=${this.compactActionsOpen ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"}></path></svg>
           </button>
@@ -206,7 +210,6 @@ export class AppNavigationPanel extends LitElement {
              switched to instead of vanishing whenever no session could be
              started. -->
         ${this.renderCompactPrimaryList()}
-        ${this.compactVisibleSection() === "sessions" ? this.renderToolsSection() : null}
       </div>
     `;
   }
@@ -466,7 +469,8 @@ export class AppNavigationPanel extends LitElement {
     .compact-working-dot:nth-child(3) { animation-delay: .4s; }
     @keyframes compact-working-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .55; } 30% { transform: translateY(-3px); opacity: 1; } }
     @media (prefers-reduced-motion: reduce) { .compact-working-dot { animation: none; opacity: .8; } }
-    .compact-fold { box-sizing: border-box; width: var(--pi-panel-header-control-height); }
+    .compact-fold, .compact-go-to { box-sizing: border-box; width: var(--pi-panel-header-control-height); }
+    .compact-go-to .ui-icon { width: 18px; height: 18px; pointer-events: none; }
     .compact-fold-icon { width: var(--pi-dot-md); height: var(--pi-dot-md); pointer-events: none; }
     .compact-actions-row { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-panel-header-control-height); padding: var(--pi-space-2) var(--pi-reading-edge); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
     @media (pointer: coarse) { .compact-scope:active, .compact-session:active, .compact-header-action:active { background: var(--pi-surface-hover); } }
@@ -475,7 +479,7 @@ export class AppNavigationPanel extends LitElement {
     /* Squared, glyph-only: the shared action rule above pads both sides, and
        without this higher-specificity override the fold button rendered as an
        8px glyph in a 24px pill. */
-    .compact-header-action.compact-fold { padding: 0; }
+    .compact-header-action.compact-fold, .compact-header-action.compact-go-to { padding: 0; }
     .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     /* Coarse pointers get the comfort floor: the glyph is small but the hit
        box carries the row's tap weight in the phone header. */

@@ -2,6 +2,7 @@ import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { SessionInfo } from "../../api";
 import { sessionLabel } from "../../sessionLabels";
+import { renderGridIcon } from "../uiIcons";
 
 /**
  * The single resident row of the shell: the panel toggle, the session name,
@@ -23,6 +24,8 @@ export class AppContextBar extends LitElement {
   @property({ attribute: false }) onTogglePanel?: () => void;
   /** Opens the quick switcher: the one pointer path to switching sessions. */
   @property({ attribute: false }) onQuickSwitch?: () => void;
+  /** Opens the Go to sheet; absent on layouts where the navigation panel lists the views itself. */
+  @property({ attribute: false }) onOpenGoTo?: () => void;
 
   override render() {
     return html`
@@ -62,6 +65,16 @@ export class AppContextBar extends LitElement {
           title=${this.isWorking ? "Session is working" : ""}
           ?hidden=${!this.isWorking}
         ><span class="working-dot"></span><span class="working-dot"></span><span class="working-dot"></span></span>
+        ${this.onOpenGoTo === undefined ? null : html`
+        <button
+          type="button"
+          class="panel-toggle go-to"
+          title="Go to a view"
+          aria-label="Go to a view"
+          aria-haspopup="dialog"
+          @click=${() => { this.onOpenGoTo?.(); }}
+        >${renderGridIcon()}</button>
+        `}
       </nav>
     `;
   }
@@ -81,6 +94,7 @@ export class AppContextBar extends LitElement {
     .panel-toggle:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     @media (hover: hover) { .panel-toggle:hover { background: var(--pi-surface-hover); } }
     .toggle-icon { width: 16px; height: 16px; pointer-events: none; }
+    .go-to .ui-icon { width: 18px; height: 18px; pointer-events: none; }
     .session-title { flex: 1 1 auto; min-width: 0; min-height: var(--pi-panel-header-control-height); display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; border: 0; background: none; color: var(--pi-text-bright, var(--pi-text)); padding: var(--pi-space-2) 0; font: inherit; font-weight: var(--pi-weight-strong); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
     .session-title.empty { color: var(--pi-muted); font-weight: var(--pi-weight-medium); }
     /* text-overflow needs a block box with the text in it: on the flex button

@@ -60,6 +60,8 @@ import { AppShellController } from "../appShell/appShellController";
 import { BrowserResumeController } from "../appShell/browserResumeController";
 import { NavigationSectionsController, type NavigationSection } from "../appShell/navigationState";
 import "./appShell/ContextSwitcherSheet";
+import "./appShell/AppGoToSheet";
+import type { GoToDestination } from "./appShell/AppGoToSheet";
 import { PanelCollapseController, mainViewClass, panelToggleHiddenState } from "../appShell/panelCollapseController";
 import { PanelResizeController, type PanelResizeConstraints, type ResizablePanelSide } from "../appShell/panelResizeController";
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
@@ -419,6 +421,7 @@ export class PiWebApp extends LitElement {
   private bannerContextKey = "";
   @state() private quickSwitcherOpen = false;
   @state() private contextSheetOpen = false;
+  @state() private goToSheetOpen = false;
   /** True while a question form or dialog field has focus (see composerCollapse). */
   @state() private composerCollapsed = false;
   @state() private quickSwitcherLoading = false;
@@ -513,6 +516,10 @@ export class PiWebApp extends LitElement {
     }
     if (this.contextSheetOpen) {
       this.contextSheetOpen = false;
+      return;
+    }
+    if (this.goToSheetOpen) {
+      this.goToSheetOpen = false;
       return;
     }
     const state = this.state;
@@ -2334,6 +2341,7 @@ export class PiWebApp extends LitElement {
         .onToggleSessions=${() => { this.navigationSections.toggle("sessions"); }}
         .onRequestSection=${(section: NavigationSection) => { this.navigationSections.expand(section); }}
         .onOpenContextSheet=${() => { this.openContextSheet(); }}
+        .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? () => { this.openGoToSheet(); } : undefined}
         .onArchivedCollapsed=${() => { this.sessions.clearSelectionAfterArchivedCollapse(); }}
         .onStartSession=${() => this.startSessionFromNavigation()}
         .onSelectSession=${(session: SessionInfo) => this.selectNavigationItem("sessions", "chat", () => this.sessions.selectSession(session).finally(() => { void this.refreshSubagents(); }))}
@@ -2462,6 +2470,7 @@ export class PiWebApp extends LitElement {
   private modalLayerOpen(): boolean {
     return this.quickSwitcherOpen
       || this.contextSheetOpen
+      || this.goToSheetOpen
       || this.state.actionPaletteOpen
       || this.state.commandDialog !== undefined
       || this.state.modelDialog !== undefined
@@ -2509,6 +2518,33 @@ export class PiWebApp extends LitElement {
     dismissKeyboardIfRaised();
     this.contextSheetOpen = true;
     this.pushModalLayerFrame();
+  }
+
+  private openGoToSheet(): void {
+    dismissKeyboardIfRaised();
+    this.goToSheetOpen = true;
+    this.pushModalLayerFrame();
+  }
+
+  /**
+   * The phone's destinations by name: the list, the conversation, then every
+   * workspace tool, each marked when it is the view on screen.
+   */
+  private goToDestinations(): GoToDestination[] {
+    const view = this.displayMainView();
+    return [
+      { id: "navigation", label: "Sessions", selected: view === "navigation" },
+      { id: "chat", label: "Chat", selected: view === "chat" },
+      ...this.shellToolTabs().map((tab) => ({ id: tab.id, label: tab.label, icon: tab.icon, badge: tab.badge, badgeLabel: tab.badgeLabel, selected: tab.selected })),
+    ];
+  }
+
+  private goTo(id: string): void {
+    if (id === "navigation" || id === "chat") {
+      this.selectMainView(id);
+      return;
+    }
+    this.openShellToolTab(id);
   }
 
   /**
@@ -3964,6 +4000,7 @@ export class PiWebApp extends LitElement {
       <app-context-bar
         .session=${this.state.selectedSession}
         .activeSurface=${this.activeSurfaceLabel()}
+        .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? () => { this.openGoToSheet(); } : undefined}
         ?isWorking=${this.state.selectedSession !== undefined && isActive(this.state)}
         ?panelOpen=${this.shellPanelOpen()}
         ?panelToggleHidden=${panelToggleHiddenState({ mobileLayout: this.appShell.isMobileNavigationLayout, displayView: this.displayMainView() })}
@@ -4105,6 +4142,11 @@ export class PiWebApp extends LitElement {
         .navSectionContext=${this.buildNavSectionContext("sheet")}
         .onClose=${() => { this.contextSheetOpen = false; }}
       ></context-switcher-sheet>` : null}
+      ${this.goToSheetOpen ? html`<app-go-to-sheet
+        .destinations=${this.goToDestinations()}
+        .onSelect=${(id: string) => { this.goTo(id); }}
+        .onClose=${() => { this.goToSheetOpen = false; }}
+      ></app-go-to-sheet>` : null}
     `;
   }
 
