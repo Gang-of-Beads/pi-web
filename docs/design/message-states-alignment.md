@@ -34,21 +34,31 @@ sending ──HTTP 200──> received ──服务器事件──> queued ─�
   可重试）/ 暂无回执（No answer yet）**——与 pi agent 的
   发送/排队/采纳三段对齐，网络中间态只保留有意义的三种。
 
-## 3. 待机主裁定：slash 命令的呈现路线
+## 3. slash 命令：机主已选方案 B（slash 即消息）
 
-**方案 A（现状）**：slash 不进 transcript，走 ledger 收条（可关闭）。
-- 优点：transcript 干净；命令不是"对话内容"，重放/分支不含命令气泡。
-- 代价：收条仍是"另一种东西"（机主已点名不满的根源）。
+**修正一处事实**：web 端没有任何命令会清空当前会话历史（服务端支持集
+`/session /name /compact /reload /clone /fork /tree` + 扩展命令；`/new`
+`/clear` 返回 unsupported；`/clone` `/fork` 新建会话并跳转，原会话不动）。
+先前"气泡会随新会话消失"的代价不存在，撤回。
 
-**方案 B（机主倾向）**：slash 当普通消息——发出即在 transcript 产生
-用户气泡（`/new` 原文），套同一套 delivery 状态机（Queued→Read/Not sent），
-命令的**效果**（如 model 切换提示）进系统通知，不进气泡。
-- 优点：一种消息一种呈现，状态机单轨；与 pi agent TUI 的
-  "输入即历史"一致。
-- 代价：重放/分支的 transcript 里混入命令文本；`/new` 这类清空型命令
-  会自己把自己刷掉（气泡随新会话消失，收条需要短暂 toast 兜底）。
+**为什么不能只在浏览器端画气泡**：今天命令不进 transcript 的真正原因写在
+`deliverCommandToSession` 里——服务端历史不记录内置命令，浏览器端插入的
+行**刷新即消失、别的客户端看不到**，违反"不会自动离开"的裁定。
 
-推荐 **B + 收条 toast 兜底**：状态机单轨的价值大于 transcript 纯度。
+**方案 B 的正确实现（需动 daemon）**：
+1. daemon 的 `sessionCommandService` 在执行内置命令时，用
+   `sessionManager.appendCustomEntry`（子会话链接已有先例）写入一条
+   `web-command` 自定义条目：`{ text, result: { type, message } }`——
+   命令与结果成为 pi 会话文件的**规范历史**，刷新/多端/分支全部收敛。
+2. 浏览器端 transcript 把该条目渲染为 **用户气泡（命令原文）+ 回复行
+   （结果文本）**，用户气泡套同一套 delivery 状态机
+   （sending → Queued → Read；失败 Not sent 可重试）。
+3. 转发给 agent 的运行时/skill 命令：agent 自己会流回展开后的规范消息，
+   保持现状（不重复写条目）。
+4. `commandLedger` 与其收条 UI 整体退役（含 dialogRows/dismissable 测试）。
+
+**影响面**：daemon 代码路径变更 ⇒ 8504 正式实例需机主手动重启 session
+daemon（AGENTS.md 规定）；8505 由我重启。
 
 ## 4. 加载策略盘点（已有 vs 缺口）
 
@@ -64,5 +74,5 @@ sending ──HTTP 200──> received ──服务器事件──> queued ─�
 
 ## 5. 落地顺序（机主点头后）
 
-1. slash 路线 B：commandLedger 的收条改为消息气泡 + toast 兜底（一次提交）。
+1. slash 路线 B：daemon 写 `web-command` 规范条目 + transcript 渲染 + ledger 退役（daemon 与 web 各一次提交，先 daemon）。
 2. 会话列表虚拟化：先写 500 会话的帧率基线探针，超标再上（独立提交）。
