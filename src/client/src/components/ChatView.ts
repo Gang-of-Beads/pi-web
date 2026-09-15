@@ -390,12 +390,15 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      element guess the card's inner curve, and the guess broke at the phone's
      fractional device pixel ratio - five reports of the same corners. */
   .msg > .msg-header { position: sticky; top: var(--pi-chat-sticky-top); z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface-card); box-shadow: var(--pi-elevation-2); }
-  .msg.user > .msg-header { border-bottom-color: var(--pi-border-muted); background: var(--pi-selection-bg); }
+  /* Role colour, on the strip the reader scans: warm amber = you, cool
+     purple = pi. The graphite palette left the assistant strip identical to
+     the card, so the roles read as one (owner, phone round). */
+  .msg.user > .msg-header { border-bottom-color: var(--pi-border-muted); background: var(--pi-selection-bg); box-shadow: inset var(--pi-rail-width) 0 0 var(--pi-accent); }
   /* The sticky header rides above the card's border while the message scrolls
      under it; without an opaque fill the scrolled text shows through the gap
      (the clipped "…dden." line the owner screenshotted). Same fill as the
      card so the header reads as the card's own top strip. */
-  .msg.assistant > .msg-header, .msg.tool-image-output > .msg-header { background: var(--pi-surface); }
+  .msg.assistant > .msg-header, .msg.tool-image-output > .msg-header { background: color-mix(in srgb, var(--pi-purple) 22%, var(--pi-surface)); box-shadow: inset var(--pi-rail-width) 0 0 var(--pi-purple-border); }
   .msg.assistant > .msg-header .label, .msg.tool-image-output > .msg-header .label { color: var(--pi-text-secondary); }
   /* The role label sits on the selection fill; accent-on-selection measured
      3.93:1, the weakest of the three roles, on the one that says "you". */
