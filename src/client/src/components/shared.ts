@@ -521,8 +521,12 @@ export const formattedTextStyles = css`
   li + li { margin-top: var(--pi-space-2); }
   code { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); font: var(--pi-text-sm) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: inherit; direction: ltr; text-align: left; unicode-bidi: isolate; }
   .code-block-wrapper { position: relative; }
-  .code-fence-render { margin: 0 0 var(--pi-space-3); overflow-x: auto; }
+  /* A drawn fence shows the drawing; the source stays in the DOM for the
+     copy button and comes back the moment the claim is released or fails,
+     so the reader never sees a diagram and its text twice. */
+  .code-fence-render { margin: 0; overflow-x: auto; }
   .code-fence-render > svg { display: block; max-width: 100%; height: auto; }
+  .code-block-wrapper.code-fence-claimed > pre { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .code-block-wrapper pre { margin: 0; padding-right: calc(var(--pi-space-3) * 2 + var(--pi-control-height-touch) / 2 + var(--pi-space-4)); }
   pre { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: var(--pi-space-5); overflow-x: auto; overflow-y: hidden; direction: ltr; text-align: left; unicode-bidi: isolate; }
   pre code { border: 0; padding: 0; background: transparent; }

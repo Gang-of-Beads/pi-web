@@ -87,6 +87,7 @@ const SESSION_A = { id: "01a05000-5eed-7a00-8000-0000000000a1", stem: "2026-08-2
 const SESSION_B = { id: "01a05000-5eed-7b00-8000-0000000000b1", stem: "2026-08-28T09-05-00-000Z_01a05000-5eed-7b00-8000-0000000000b1" };
 const SESSION_LONG = { id: "01a05000-5eed-7c00-8000-0000000000c1", stem: "2026-08-28T09-10-00-000Z_01a05000-5eed-7c00-8000-0000000000c1" };
 const SESSION_SHOTS = { id: "01a05000-5eed-7c00-8000-0000000000d1", stem: "2026-08-28T09-20-00-000Z_01a05000-5eed-7c00-8000-0000000000d1" };
+const SESSION_DIAGRAM = { id: "01a05000-5eed-7c00-8000-0000000000e1", stem: "2026-08-28T09-25-00-000Z_01a05000-5eed-7c00-8000-0000000000e1" };
 const SCREENSHOT_TOOL_RESULTS = 6;
 const SCREENSHOT_BYTES = 200 * 1024;
 const RUN_A_DONE = "a11d0000-5eed-4a01-9000-000000000001";
@@ -116,6 +117,7 @@ await writeSessionA();
 await writeSessionB();
 await writeLongSession();
 await writeScreenshotSession();
+await writeDiagramSession();
 
 await writeDirectoryLinkedRun(SESSION_A.stem, RUN_A_DONE, "worker", 180);
 await writeDirectoryLinkedRun(SESSION_B.stem, RUN_B_DONE, "worker", 175);
@@ -158,6 +160,11 @@ const manifest = {
       toolResults: SCREENSHOT_TOOL_RESULTS,
       bytesPerImage: SCREENSHOT_BYTES,
       proves: "tool results carrying screenshots travel as references, not inline base64, and the session still caches",
+    },
+    diagram: {
+      id: SESSION_DIAGRAM.id,
+      file: join(SESSION_DIR, `${SESSION_DIAGRAM.stem}.jsonl`),
+      proves: "a mermaid fence in an assistant reply is claimed by the mermaid plugin and drawn as a diagram; a broken fence stays a code block",
     },
   },
   unattributableRun: {
@@ -269,6 +276,20 @@ async function writeScreenshotSession() {
   }
   lines.push(chain.message(assistantText("All six surfaces captured above.")));
   await writeSessionFile(SESSION_SHOTS.stem, lines);
+}
+
+async function writeDiagramSession() {
+  const start = minutesAgo(240);
+  const chain = entryChain(start);
+  const good = "```mermaid\ngraph TD\n  Browser-->|HTTP| Web\n  Web-->|socket| Daemon\n  Daemon-->Pi[pi agent]\n```";
+  const broken = "```mermaid\nthis is not a diagram\n```";
+  const lines = [
+    sessionHeader(SESSION_DIAGRAM.id, start),
+    chain.next("model_change", { provider: "anthropic-work", modelId: "claude-opus-5" }),
+    chain.message(userMessage("Draw the request path as a diagram.")),
+    chain.message(assistantText(`Here is the path:\n\n${good}\n\nAnd one that will not parse, for contrast:\n\n${broken}`)),
+  ];
+  await writeSessionFile(SESSION_DIAGRAM.stem, lines);
 }
 
 /**

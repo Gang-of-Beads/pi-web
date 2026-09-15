@@ -1,0 +1,19 @@
+{
+  "name": "@pi-web/mermaid-plugin",
+  "private": true,
+  "piWeb": {
+    "plugins": [
+      {
+        "id": "mermaid",
+        "browserRoot": ".",
+        "module": "pi-web-plugin.js"
+      }
+    ],
+    "vendorBundles": [
+      {
+        "entry": "mermaid/dist/mermaid.core.mjs",
+        "outDir": "vendor/mermaid"
+      }
+    ]
+  }
+}

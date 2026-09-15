@@ -21,6 +21,8 @@ async function buildAll() {
   const result = await buildDirectory(rootDir, outDir);
   const bundled = await bundleBrowserEntries();
   if (bundled > 0) console.log(`[plugins] bundled ${String(bundled)} browser entry ${bundled === 1 ? "module" : "modules"}`);
+  const vendored = await bundleVendorLibraries();
+  if (vendored > 0) console.log(`[plugins] vendored ${String(vendored)} browser ${vendored === 1 ? "library" : "libraries"}`);
   const suffix = result.transpiled === 1 ? "file" : "files";
   console.log(`[plugins] built ${String(result.transpiled)} TypeScript plugin ${suffix} into ${relative(cwd, outDir)}`);
 }
@@ -51,6 +53,43 @@ async function bundleBrowserEntries() {
     bundled += 1;
   }
   return bundled;
+}
+
+/**
+ * A plugin that needs a package in the browser but must not pay for it at
+ * boot declares it under piWeb.vendorBundles: the package entry is bundled
+ * with code splitting into the plugin's own directory, and the plugin
+ * dynamic-imports the result relative to its module. The chunks stay lazy,
+ * so a 5MB diagram engine costs nothing until the first diagram.
+ */
+async function bundleVendorLibraries() {
+  let vendored = 0;
+  for (const dir of await findPluginDirs(outDir)) {
+    let metadata;
+    try {
+      metadata = JSON.parse(await readFile(resolve(dir, "package.json"), "utf8"));
+    } catch {
+      continue;
+    }
+    const declared = metadata?.piWeb?.vendorBundles;
+    if (!Array.isArray(declared)) continue;
+    for (const bundle of declared) {
+      if (typeof bundle?.entry !== "string" || typeof bundle?.outDir !== "string") continue;
+      await esbuild.build({
+        entryPoints: [resolve("node_modules", bundle.entry)],
+        outdir: resolve(dir, bundle.outDir),
+        bundle: true,
+        splitting: true,
+        format: "esm",
+        platform: "browser",
+        minify: true,
+        target: "es2022",
+        logLevel: "silent",
+      });
+      vendored += 1;
+    }
+  }
+  return vendored;
 }
 
 async function browserEntryManifests() {

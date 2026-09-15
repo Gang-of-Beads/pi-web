@@ -21,6 +21,7 @@
   ],
   "ignoreDependencies": [
     "playwright",
-    "@earendil-works/pi-server"
+    "@earendil-works/pi-server",
+    "mermaid"
   ]
 }
