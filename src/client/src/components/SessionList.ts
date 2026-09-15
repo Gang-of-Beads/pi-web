@@ -841,13 +841,13 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     @media (pointer: coarse) {
       .session-search-input { height: var(--pi-control-height-touch, 44px); }
       .session-search-clear { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
-      .bulk-select-entry { width: var(--pi-control-height-touch, 44px); min-width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
+      .bulk-select-entry { width: var(--pi-panel-header-control-height); min-width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }
       /* The phone toolbar row reads as a banner, not a form: one token
          height keeps it level with the drawer and sheet headers. */
       h2 { min-height: var(--pi-panel-header-height); }
       .start-session-button { min-width: 0; height: var(--pi-panel-header-control-height); }
       .cleanup-entry { box-sizing: border-box; min-height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); }
-      .action-menu-toggle { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); }
+      .action-menu-toggle { min-width: var(--pi-panel-header-control-height); min-height: var(--pi-panel-header-control-height); }
       /* Touch has no hover: the borderless controls answer a press with the
          shared surface step, the only pressed state a flat theme can show. */
       .action-menu-toggle:active, .action-menu-panel button:active, .cleanup-entry:active, .bulk-select-entry:active, .action-main:active { background: var(--pi-surface-hover); }

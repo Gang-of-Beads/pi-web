@@ -21,12 +21,12 @@ describe("the reading edge", () => {
     expect(definitions.every((definition) => definition.includes("var(--pi-space-"))).toBe(true);
   });
 
-  it("keeps the phone's reading edge at the production build's breathing room", () => {
+  it("keeps the phone's reading edge small - the owner's ruling: about a quarter of a control", () => {
     const desktop = read("--pi-reading-edge") ?? "";
     const phoneBlock = indexHtml.slice(indexHtml.indexOf("(max-width: 640px)"));
     const phone = /--pi-reading-edge:\s*([^;]+)/u.exec(phoneBlock)?.[1]?.trim() ?? "";
     expect(desktop).toBe("var(--pi-space-7)");
-    expect(phone).toBe("var(--pi-space-7)");
+    expect(phone).toBe("var(--pi-space-4)");
   });
 
   it("is the edge the shared list row actually uses", () => {

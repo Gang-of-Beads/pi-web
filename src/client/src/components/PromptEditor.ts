@@ -179,8 +179,9 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   button:not(:disabled):active { background: var(--pi-surface-hover); }
   button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
   @media (max-width: 760px) {
-    footer { gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-chat-gutter); }
-    .actions { gap: var(--pi-space-3); }
+    footer { gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-bar-inset); }
+    /* The action row is a bar: one bar tall, its 36px controls centred. */
+    .actions { min-height: var(--pi-panel-header-height); gap: var(--pi-space-3); }
     .compact-status { flex: 1 1 220px; gap: var(--pi-space-3); }
     .select-model { max-width: min(58vw, 260px); }
     button { padding: var(--pi-space-3) var(--pi-space-4); }

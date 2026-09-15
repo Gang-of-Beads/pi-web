@@ -74,14 +74,14 @@ export class AppContextBar extends LitElement {
     /* The rail header and this bar sit either side of one vertical divider, so
        they share a height: 44px of control plus the 1px rule, measured 45 on
        the rail and 53 here before the padding was taken out of the equation. */
-    .context-bar { position: relative; flex: 0 0 auto; min-width: 0; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; gap: var(--pi-space-2); padding: var(--pi-space-1) var(--pi-chrome-inset); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
+    .context-bar { position: relative; flex: 0 0 auto; min-width: 0; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; gap: var(--pi-space-2); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
     button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     @media (pointer: coarse) { button:active { background: var(--pi-surface-hover); } }
-    .panel-toggle { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; border: 0; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-text); }
+    .panel-toggle { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 0; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-text); }
     .panel-toggle:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     @media (hover: hover) { .panel-toggle:hover { background: var(--pi-surface-hover); } }
     .toggle-icon { width: 16px; height: 16px; pointer-events: none; }
-    .session-title { flex: 1 1 auto; min-width: 0; min-height: var(--pi-control-height-touch); display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; border: 0; background: none; color: var(--pi-text-bright, var(--pi-text)); padding: var(--pi-space-2) 0; font: inherit; font-weight: var(--pi-weight-strong); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+    .session-title { flex: 1 1 auto; min-width: 0; min-height: var(--pi-panel-header-control-height); display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; border: 0; background: none; color: var(--pi-text-bright, var(--pi-text)); padding: var(--pi-space-2) 0; font: inherit; font-weight: var(--pi-weight-strong); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
     .session-title.empty { color: var(--pi-muted); font-weight: var(--pi-weight-medium); }
     /* text-overflow needs a block box with the text in it: on the flex button
        itself the name was clipped mid-glyph with no ellipsis, while the phone
@@ -93,7 +93,7 @@ export class AppContextBar extends LitElement {
        rule beats the UA sheet's [hidden] rule, so the hidden state must be
        restated or an idle session wears three bouncing dots forever. */
     .working[hidden] { display: none; }
-    .working { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-1); max-height: 100%; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-3); }
+    .working { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-1); max-height: 100%; min-height: var(--pi-panel-header-control-height); padding: var(--pi-space-2) var(--pi-space-3); }
     .working-dot { width: var(--pi-dot-xs); height: var(--pi-dot-xs); border-radius: 50%; background: var(--pi-accent, var(--pi-text-bright)); animation: working-bounce 1.2s ease-in-out infinite; }
     .working-dot:nth-child(2) { animation-delay: .2s; }
     .working-dot:nth-child(3) { animation-delay: .4s; }

@@ -55,10 +55,10 @@ export class ContextSwitcherSheet extends LitElement {
        page visible around the sheet on every edge, which read as a broken
        layer stack. The sheet IS the screen while open. */
     modal-surface { --modal-surface-place-items: stretch; --modal-surface-padding: 0px; --modal-surface-width: 100%; --modal-surface-height: 100%; --modal-surface-radius: 0px; --modal-surface-border: none; --modal-surface-shadow: none; }
-    .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; height: 100%; box-sizing: border-box; padding: 0 var(--pi-space-3) var(--pi-space-3); overflow-y: auto; background: var(--pi-bg); border: none; box-shadow: none; }
+    .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; height: 100%; box-sizing: border-box; padding: 0 var(--pi-reading-edge) var(--pi-space-3); overflow-y: auto; background: var(--pi-bg); border: none; box-shadow: none; }
     /* The sheet is one scroll container: its title and close stay put while the
        stacked lists scroll under them, as the drawer header does. */
-    .sheet-header { position: sticky; top: 0; z-index: 4; margin-inline: calc(-1 * var(--pi-space-3)); padding-inline: calc(var(--pi-space-3) + var(--pi-reading-edge)); padding-top: max(0px, env(safe-area-inset-top)); }
+    .sheet-header { position: sticky; top: 0; z-index: 4; margin-inline: calc(-1 * var(--pi-reading-edge)); padding-inline: var(--pi-bar-inset); padding-top: max(0px, env(safe-area-inset-top)); }
     /* Three lists stacked with nothing above naming them: keep their headings,
        which the phone panel drops because its context row says the same word. */
     .sheet-body { --pi-list-word-heading-display: inline; --pi-list-word-heading-margin: 0 0 var(--pi-space-2); display: flex; flex-direction: column; gap: var(--pi-space-4); min-height: 0; }

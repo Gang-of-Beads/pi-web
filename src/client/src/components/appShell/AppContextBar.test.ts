@@ -54,11 +54,11 @@ describe("the resident row stays minimal and tappable", () => {
     expect(sheet).not.toContain("context-items");
   });
 
-  it("keeps every control at the project touch floor", () => {
+  it("keeps every control on the bar template's control height", () => {
     const sheet = String(AppContextBar.styles);
 
-    expect(sheet).toMatch(/\.panel-toggle\s*\{[^}]*width:\s*var\(--pi-control-height-touch\)/u);
-    expect(sheet).toMatch(/\.session-title\s*\{[^}]*min-height:\s*var\(--pi-control-height-touch\)/u);
-    expect(sheet).toMatch(/\.working\s*\{[^}]*min-height:\s*var\(--pi-control-height-touch\)/u);
+    expect(sheet).toMatch(/\.panel-toggle\s*\{[^}]*width:\s*var\(--pi-panel-header-control-height\)/u);
+    expect(sheet).toMatch(/\.session-title\s*\{[^}]*min-height:\s*var\(--pi-panel-header-control-height\)/u);
+    expect(sheet).toMatch(/\.working\s*\{[^}]*min-height:\s*var\(--pi-panel-header-control-height\)/u);
   });
 });

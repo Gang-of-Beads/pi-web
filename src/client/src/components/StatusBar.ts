@@ -9,7 +9,7 @@ const statusBarStyles = css`${unsafeCSS(uiIconStyle)}
     /* Control chrome, not content: buttons and labels here are not copy targets. (T1/T3) */
     :host, :host * { -webkit-user-select: none; user-select: none; }
     :host textarea, :host input, :host [contenteditable] { -webkit-user-select: text; user-select: text; }
-  .bar { display: flex; justify-content: flex-end; gap: var(--pi-space-6); align-items: center; min-width: 0; padding: var(--pi-space-4) var(--pi-chat-gutter); border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
+  .bar { box-sizing: border-box; display: flex; justify-content: flex-end; gap: var(--pi-space-6); align-items: center; min-width: 0; min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
   span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .muted { color: var(--pi-muted); }
 `;

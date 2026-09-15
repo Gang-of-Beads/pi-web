@@ -167,11 +167,11 @@ export const workspacePanelStyles = css`
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   :host { display: flex; flex-direction: column; min-height: 0; color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-sm) var(--pi-font-ui); line-height: inherit; container-type: inline-size; }
-  header.panel-header { flex: 0 0 auto; padding: 0 var(--pi-space-4); }
+  header.panel-header { flex: 0 0 auto; padding: 0 var(--pi-bar-inset); }
   .workspace-tool-summary { color: var(--pi-muted); font-weight: var(--pi-weight-regular); }
   .workspace-header-actions { display: flex; align-items: center; gap: var(--pi-space-3); flex: 0 0 auto; }
   .workspace-tool-fold { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 0; cursor: pointer; }
-  .workspace-tool-toolbar { flex: 0 0 auto; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
+  .workspace-tool-toolbar { flex: 0 0 auto; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-4); min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border-muted); }
   .workspace-fullscreen-toggle { flex: 0 0 auto; max-width: none; white-space: nowrap; }
   button { box-sizing: border-box; min-height: var(--pi-control-height); font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
@@ -187,8 +187,8 @@ export const workspacePanelStyles = css`
   .workspace-label-link { color: var(--pi-accent); text-decoration: none; }
   .workspace-label-link:focus { text-decoration: underline; }
   @media (hover: hover) { .workspace-label-link:hover { text-decoration: underline; } }
-  .toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
-  .toolbar button { margin-left: auto; }
+  .toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border-muted); }
+  .toolbar button { margin-left: auto; box-sizing: border-box; min-height: var(--pi-panel-header-control-height); }
   .stale { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font-size: var(--pi-text-xs); }
   .split { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: minmax(160px, 34%) minmax(0, 1fr); }
   /* With nothing selected there is no second pane to show, so the list takes

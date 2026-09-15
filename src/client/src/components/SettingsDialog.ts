@@ -781,7 +781,7 @@ export class SettingsDialog extends LitElement {
     @media (pointer: coarse) { .close-button { width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); } }
     @media (pointer: coarse), (max-width: 760px) {
       modal-surface { --modal-surface-backdrop-padding: 0; --modal-surface-place-items: stretch; --modal-surface-width: 100%; --modal-surface-max-height: none; --modal-surface-min-height: 0; --modal-surface-border: 0; --modal-surface-radius: 0; }
-      .settings-header { min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-space-6), env(safe-area-inset-right)) 0 max(var(--pi-space-6), env(safe-area-inset-left)); padding-top: max(0px, env(safe-area-inset-top)); }
+      .settings-header { min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left)); padding-top: max(0px, env(safe-area-inset-top)); }
       .settings-header h1 { font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); }
       .settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
       .settings-list { display: flex; flex-direction: column; overflow-y: auto; padding: var(--pi-space-3) 0 calc(var(--pi-space-6) + env(safe-area-inset-bottom)); }
