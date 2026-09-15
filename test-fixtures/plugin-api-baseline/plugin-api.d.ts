@@ -2,6 +2,7 @@ import type { CSSResultGroup, TemplateResult } from "lit";
 import type { FileSuggestion, ForegroundToken, LegacyThemeToken, MachineStatus, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 export type { FileSuggestion, LegacyThemeToken, SemanticSurfaceToken, TerminalInfo, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineKind, PiWebComponentStatus, PiWebDockerMode, PiWebInstallationInfo, PiWebInstallationKind, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceFileUploadProgress, WorkspaceUploadBatchFileProgress, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, DeleteWorkspaceFileResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, } from "./shared/pluginApiTypes.js";
+export { CORE_STATUS_FLAGS } from "./shared/machineStatus.js";
 export type PluginId = string;
 export type LocalContributionId = string;
 export type QualifiedContributionId = `${PluginId}:${LocalContributionId}`;
@@ -534,6 +535,9 @@ export interface Workspace {
     readonly isMain: boolean;
     readonly provider?: WorkspaceProviderMetadata;
     readonly removal?: WorkspaceRemovalPresentation;
+    /** True when the workspace's folder is gone: sessions and terminals can
+     * never start inside it, so the row renders inert with its badge. */
+    readonly cwdMissing?: boolean;
 }
 export interface WorkspaceFiles {
     /** Read a file from the workspace. Works for local and federated machines. */
