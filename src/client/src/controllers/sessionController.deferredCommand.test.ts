@@ -34,8 +34,8 @@ describe("a command accepted while a reply streams", () => {
 
     const row = state().commandLedger[state().commandLedger.length - 1];
     expect(row?.source).toBe("goal-panel");
-    expect(row?.state).toBe("ok");
-    expect(row?.resultText).toBe("accepted — waits for the running reply to finish");
+    expect(row?.state).toBe("accepted");
+    expect(row?.resultText).toBe("Runs after the current reply finishes.");
   });
 
   it("keeps the plain done for a command that finished without a stream", async () => {

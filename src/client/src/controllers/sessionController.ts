@@ -559,13 +559,13 @@ export class SessionController {
     this.setState({ commandLedger: issued.entries });
     if (isClientPendingStartSessionInfo(session)) {
       this.enqueuePendingSessionSend(session, { type: "command", text });
-      this.settleLedgerRow(issued.id, { state: "ok", resultText: "Queued until the session starts." });
+      this.settleLedgerRow(issued.id, { state: "accepted", resultText: "Runs once the session starts." });
       return;
     }
     await this.deliverCommandToSession(session, text, machineId, { applyResult: true, ledgerId: issued.id });
   }
 
-  private settleLedgerRow(id: string, outcome: { state: "ok" | "failed"; resultText?: string }): void {
+  private settleLedgerRow(id: string, outcome: { state: "accepted" | "ok" | "failed"; resultText?: string }): void {
     const now = Date.now();
     this.setState({ commandLedger: settleCommand(this.getState().commandLedger, id, { ...outcome, now }) });
     // The settled row is the user's receipt of what they sent and what ran
@@ -718,7 +718,7 @@ export class SessionController {
           this.setState({ commandLedger: withdrawCommand(this.getState().commandLedger, options.ledgerId) });
         } else {
           this.settleLedgerRow(options.ledgerId, deferred
-            ? { state: "ok", resultText: "accepted — waits for the running reply to finish" }
+            ? { state: "accepted", resultText: "Runs after the current reply finishes." }
             : outcome);
         }
       }

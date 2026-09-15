@@ -18,7 +18,13 @@ import type { CommandResult } from "../../shared/apiTypes";
 
 export type CommandLedgerSource = "typed" | "goal-panel";
 
-export type CommandLedgerState = "pending" | "ok" | "failed";
+/**
+ * `accepted` is a command the daemon took but has not run: a runtime command
+ * forwarded as a prompt behind the reply in flight, or one parked until its
+ * session starts. It reads as Queued, never as Read - acceptance dressed as
+ * completion is what the archived action-acknowledgment spec forbids.
+ */
+export type CommandLedgerState = "pending" | "accepted" | "ok" | "failed";
 
 /**
  * What a command's own result means for its receipt.
@@ -83,7 +89,7 @@ export function issueCommand(
 export function settleCommand(
   entries: readonly CommandLedgerEntry[],
   id: string,
-  outcome: { state: "ok" | "failed"; resultText?: string; now: number },
+  outcome: { state: "accepted" | "ok" | "failed"; resultText?: string; now: number },
 ): CommandLedgerEntry[] {
   return entries.map((row) => row.id === id
     ? { ...row, state: outcome.state, settledAt: outcome.now, ...(outcome.resultText === undefined ? {} : { resultText: outcome.resultText }) }
@@ -124,12 +130,12 @@ export interface CommandDeliveryPresentation {
  * was read by the daemon, or was not taken at all. The result text, when the
  * command produced one, is shown beneath the bubble rather than in the mark.
  */
+const QUEUED: CommandDeliveryPresentation = { glyph: "single", text: "Queued", label: "Queued - the daemon has this command and runs it after the current reply", tone: "received" };
+
 export function commandDeliveryPresentation(entry: Pick<CommandLedgerEntry, "state">, streaming: boolean): CommandDeliveryPresentation {
-  if (entry.state === "pending") {
-    return streaming
-      ? { glyph: "single", text: "Queued", label: "Queued - the daemon runs this command after the current reply", tone: "received" }
-      : { glyph: "pending", text: "Running", label: "Running - the daemon is executing this command", tone: "pending" };
-  }
+  if (entry.state === "pending" && streaming) return QUEUED;
+  if (entry.state === "pending") return { glyph: "pending", text: "Running", label: "Running - the daemon is executing this command", tone: "pending" };
+  if (entry.state === "accepted") return QUEUED;
   if (entry.state === "ok") return { glyph: "double", text: "Read", label: "Read - the daemon ran this command", tone: "delivered" };
   return { glyph: "failed", text: "Not sent", label: "Not sent - the daemon did not take this command", tone: "failed" };
 }
@@ -137,6 +143,7 @@ export function commandDeliveryPresentation(entry: Pick<CommandLedgerEntry, "sta
 /** The line under a settled command bubble; a failure with no text still says it failed. */
 export function commandResultLine(entry: Pick<CommandLedgerEntry, "state" | "resultText">): string | undefined {
   if (entry.state === "pending") return undefined;
+  if (entry.state === "accepted") return entry.resultText;
   if (entry.resultText !== undefined && entry.resultText !== "") return entry.resultText;
   return entry.state === "failed" ? "The command failed; see the error above." : undefined;
 }

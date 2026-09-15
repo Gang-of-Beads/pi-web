@@ -64,6 +64,7 @@ describe("the browser's record of an issued command", () => {
   it("reads every state with the message delivery vocabulary", () => {
     expect(commandDeliveryPresentation({ state: "pending" }, true)).toMatchObject({ text: "Queued", tone: "received", glyph: "single" });
     expect(commandDeliveryPresentation({ state: "pending" }, false)).toMatchObject({ text: "Running", tone: "pending", glyph: "pending" });
+    expect(commandDeliveryPresentation({ state: "accepted" }, false)).toMatchObject({ text: "Queued", tone: "received", glyph: "single" });
     expect(commandDeliveryPresentation({ state: "ok" }, false)).toMatchObject({ text: "Read", tone: "delivered", glyph: "double" });
     expect(commandDeliveryPresentation({ state: "failed" }, false)).toMatchObject({ text: "Not sent", tone: "failed", glyph: "failed" });
   });
@@ -71,6 +72,7 @@ describe("the browser's record of an issued command", () => {
   it("shows the result beneath a settled bubble and names a silent failure", () => {
     expect(commandResultLine({ state: "pending" })).toBeUndefined();
     expect(commandResultLine({ state: "ok" })).toBeUndefined();
+    expect(commandResultLine({ state: "accepted", resultText: "Runs after the current reply finishes." })).toBe("Runs after the current reply finishes.");
     expect(commandResultLine({ state: "ok", resultText: "Session name: opus-b" })).toBe("Session name: opus-b");
     expect(commandResultLine({ state: "failed", resultText: "/new is not implemented in the web UI yet" })).toBe("/new is not implemented in the web UI yet");
     expect(commandResultLine({ state: "failed" })).toBe("The command failed; see the error above.");
