@@ -1,4 +1,6 @@
-import type { SessionTranscriptPage, SessionTranscriptPort, SessionTranscriptRef, SessionTranscriptSummary } from "../../../server-plugin-api.js";
+import { SESSION_TRANSCRIPTS_NOT_READY, type SessionTranscriptPage, type SessionTranscriptPort, type SessionTranscriptRef, type SessionTranscriptSummary } from "../../../server-plugin-api.js";
+import { projectBrowserMessageResponse } from "../browserMessageProjection.js";
+import { normalizeRequestCwd } from "../workingDirectory.js";
 import type { ClientMessagePage, ClientSession } from "../../shared/types.js";
 
 /**
@@ -11,16 +13,21 @@ import type { ClientMessagePage, ClientSession } from "../../shared/types.js";
  * page - absence is not negation, and a plugin must not conclude "no
  * sessions" from "not ready yet".
  *
- * Every read goes through the same projection the browser gets: bounded
- * tool results, images by reference. There is deliberately no method that
- * writes, so the daemon stays the only producer of session files.
+ * Every read is passive - no session is opened, nothing is reconciled - and
+ * goes through the same projection the browser gets: bounded tool results,
+ * images by reference, provider-only thinking data stripped. A page a plugin
+ * did not size is still a page. There is deliberately no method that writes,
+ * so the daemon stays the only producer of session files.
  */
 export interface TranscriptReader {
   list(cwd: string): Promise<readonly ClientSession[]>;
-  messages(ref: SessionTranscriptRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage>;
+  messages(ref: SessionTranscriptRef, page: { before?: number; limit?: number }): Promise<ClientMessagePage | undefined>;
 }
 
-export const TRANSCRIPT_PORT_NOT_READY = "Session transcripts are not readable yet: the session service is still starting";
+export const TRANSCRIPT_PORT_NOT_READY = SESSION_TRANSCRIPTS_NOT_READY;
+
+/** A page a plugin did not size is still a page, never the whole transcript. */
+export const DEFAULT_PORT_PAGE_LIMIT = 100;
 
 export function createSessionTranscriptPort(resolveReader: () => TranscriptReader | undefined): SessionTranscriptPort {
   const reader = (): TranscriptReader => {
@@ -30,12 +37,15 @@ export function createSessionTranscriptPort(resolveReader: () => TranscriptReade
   };
   return Object.freeze({
     async listSessions(cwd: string): Promise<readonly SessionTranscriptSummary[]> {
-      const sessions = await reader().list(cwd);
+      const sessions = await reader().list(normalizeRequestCwd(cwd));
       return sessions.map(summaryOf);
     },
-    async readMessages(ref: SessionTranscriptRef, page?: { before?: number; limit?: number }): Promise<SessionTranscriptPage> {
-      const result = await reader().messages({ id: ref.id, cwd: ref.cwd }, page);
-      return { messages: result.messages, start: result.start, total: result.total };
+    async readMessages(ref: SessionTranscriptRef, page?: { before?: number; limit?: number }): Promise<SessionTranscriptPage | undefined> {
+      const sized = { ...(page?.before === undefined ? {} : { before: page.before }), limit: page?.limit ?? DEFAULT_PORT_PAGE_LIMIT };
+      const result = await reader().messages({ id: ref.id, cwd: normalizeRequestCwd(ref.cwd) }, sized);
+      if (result === undefined) return undefined;
+      const projected = projectBrowserMessageResponse(result);
+      return { messages: projected.messages, start: projected.start, total: projected.total };
     },
   });
 }

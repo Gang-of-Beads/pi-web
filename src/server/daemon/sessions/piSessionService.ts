@@ -2415,6 +2415,39 @@ export class PiSessionService implements SessionRouteService {
     return this.statusFromSession(await this.sessionForStatusOrDialogClose(ref));
   }
 
+  /**
+   * The passive listing a plugin reads through the transcript port: the same
+   * scanner rows the browser listing starts from, with none of its
+   * reconciliation. Listing for a browser is an attended act and may retire
+   * stale unread and activity rows; a plugin scanning on a timer must not.
+   */
+  async listPassive(cwd: string): Promise<ClientSession[]> {
+    const [sessions, archivedRecords] = await Promise.all([this.sessionManager.list(cwd), this.archiveStore.list()]);
+    const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+    const archivedForCwd = archivedRecords.filter((record) => record.cwd === cwd);
+    const archivedById = new Map(archivedForCwd.map((record) => [record.sessionId, record]));
+    const unarchived = sessions.filter((session) => !archivedById.has(session.id)).map(clientSessionFromListEntry);
+    const archived = archivedForCwd.sort(compareArchivedRecords).map((record) => clientSessionFromArchivedRecord(record, sessionsById.get(record.sessionId)));
+    return [...unarchived, ...archived.filter((session): session is ClientSession => session !== undefined)];
+  }
+
+  /**
+   * A transcript page read from the session file without opening the
+   * session: no runtime, no extensions, no activity. An open session answers
+   * from its live entries so a plugin sees what the browser sees; a closed
+   * one is read from disk. Undefined means the file is unreadable or gone -
+   * not an empty session.
+   */
+  async messagesPassive(ref: PiSessionRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage | undefined> {
+    const active = this.active.get(ref.id);
+    if (active !== undefined) return pageMessagesAtSafeBoundary(historyMessages(active.runtime.session), page);
+    const listed = (await this.sessionManager.list(ref.cwd)).find((session) => session.id === ref.id);
+    if (listed === undefined) return undefined;
+    const entries = await readSessionEntries(listed.path);
+    if (entries === undefined) return undefined;
+    return pageMessagesAtSafeBoundary(historyMessagesFromEntries(entries), page);
+  }
+
   /** The bytes behind a deferred tool-result image, read from the session file on demand. */
   async toolResultImage(ref: PiSessionRef, toolCallId: string, index: number): Promise<{ mimeType: string; data: string } | undefined> {
     const session = await this.getOrOpen(ref);

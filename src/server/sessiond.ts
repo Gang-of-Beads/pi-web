@@ -305,7 +305,7 @@ async function createSessionDaemonRuntime() {
         env: daemonEnvironment,
       }),
     }));
-    transcriptReader = { list: (cwd) => sessions.list(cwd), messages: (ref, page) => sessions.messages(ref, page) };
+    transcriptReader = { list: (cwd) => sessions.listPassive(cwd), messages: (ref, page) => sessions.messagesPassive(ref, page) };
     auth.subscribe((change) => { sessions.applyAuthChange(change); });
     const terminals = new TerminalService(eventHub, workspaceActivity);
     const workspaceRemovals = new WorkspaceRemovalService(workspaceProviders, terminals);
@@ -324,7 +324,7 @@ async function createSessionDaemonRuntime() {
       await runSessionDaemonShutdown({
         logger: app.log,
         dependencies: {
-          quiesceServer: () => { serverQuiescing = true; },
+          quiesceServer: () => { serverQuiescing = true; transcriptReader = undefined; },
           // Give agent turns already in flight a bounded chance to finish, so
           // updating or restarting does not cut work off mid-run. Disable with
           // PI_WEB_SHUTDOWN_DRAIN_MS=0.
