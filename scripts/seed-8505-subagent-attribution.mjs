@@ -70,6 +70,7 @@
 import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { deflateSync } from "node:zlib";
 
 const HOME = homedir();
 const DATA_DIR = process.env["PI_WEB_8505_DATA_DIR"] ?? join(HOME, ".pi-web-8505");
@@ -270,11 +271,57 @@ async function writeScreenshotSession() {
   await writeSessionFile(SESSION_SHOTS.stem, lines);
 }
 
-/** A PNG-shaped payload of the requested size: a real signature, then filler the seed can tell apart per image. */
+/**
+ * A real, decodable PNG of the requested size: a 64x64 solid colour that
+ * differs per image, padded to the byte budget with a tEXt chunk so the
+ * deferral threshold is exercised. A signature-plus-filler payload served
+ * with 200 image/png once read "Image did not load" on the owner's phone
+ * while every byte-level check passed.
+ */
 function fakePngBase64(bytes, salt) {
-  const buffer = Buffer.alloc(bytes, (salt + 1) & 0xff);
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buffer, 0);
-  return buffer.toString("base64");
+  const size = 64;
+  const raw = Buffer.alloc((size * 3 + 1) * size);
+  for (let y = 0; y < size; y += 1) {
+    const row = y * (size * 3 + 1);
+    raw[row] = 0;
+    for (let x = 0; x < size; x += 1) {
+      raw[row + 1 + x * 3] = (salt * 53) & 0xff;
+      raw[row + 2 + x * 3] = (salt * 97 + 80) & 0xff;
+      raw[row + 3 + x * 3] = (salt * 31 + 160) & 0xff;
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0);
+  ihdr.writeUInt32BE(size, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const head = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", deflateSync(raw)),
+  ]);
+  const tail = pngChunk("IEND", Buffer.alloc(0));
+  const padding = Math.max(0, bytes - head.length - tail.length - 12 - 8);
+  const text = Buffer.concat([Buffer.from("Comment\0", "latin1"), Buffer.alloc(padding, 0x20)]);
+  return Buffer.concat([head, pngChunk("tEXt", text), tail]).toString("base64");
+}
+
+function pngChunk(type, data) {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const typed = Buffer.concat([Buffer.from(type, "latin1"), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(typed), 0);
+  return Buffer.concat([length, typed, crc]);
+}
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 async function writeSessionFile(stem, lines) {
