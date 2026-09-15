@@ -222,6 +222,8 @@ function wireContributedSections(
   panel.navSectionContext = {
     projects: [project("project-1")],
     projectsLoad: "loaded",
+    workspacesLoad: "loaded",
+    retryWorkspacesLoad: () => undefined,
     workspaces: [workspace("ws-1", "project-1")],
     selectedProjectId: "project-1",
     selectedWorkspaceId: "ws-1",

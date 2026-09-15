@@ -80,7 +80,6 @@
         --pi-chat-gutter: var(--pi-space-7);
         /* Where stacked chrome rows start their text. One value, so the bar, the
            compact header and the conversation below them share a reading edge. */
-        --pi-chrome-inset: var(--pi-space-3);
         /* The distance from the screen edge to text a person reads in lists,
            sheets and panels. One value per breakpoint, so five lists cannot
            carry five private answers to the same question. */
@@ -224,7 +223,6 @@
            each - through tokens only, so every surface tightens together. */
         :root {
           --pi-chat-gutter: var(--pi-space-3);
-          --pi-chrome-inset: var(--pi-space-3);
           --pi-reading-edge: var(--pi-space-4);
           --pi-row-min-height: 44px;
           /* Type drops one step too: the owner read the phone sizes as
@@ -274,6 +272,9 @@
           --pi-bg-overlay: #f6f5f2e6;
           --pi-success-bg-overlay: #e9f4eaee;
           --pi-terminal-selection: #3a404b;
+          --pi-shadow-soft: #0000;
+          --pi-shadow: #0000;
+          --pi-shadow-strong: #0000;
         }
       }
       html, body { margin: 0; height: 100%; overflow: hidden; background: var(--pi-bg); color: var(--pi-text); }

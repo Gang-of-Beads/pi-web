@@ -110,6 +110,9 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
     font-size: var(--pi-text-lg); line-height: 1; cursor: pointer;
     box-shadow: var(--pi-elevation-2);
   }
+  /* The drawn box stays 36 like every floating control; the coarse floor is
+     met by an invisible reach, the same pattern the message actions use. */
+  @media (pointer: coarse) { .jump-to-bottom::after { content: ""; position: absolute; inset: -4px; } }
   .jump-to-bottom:focus-visible { border-color: var(--pi-accent); }
   @media (hover: hover) { .jump-to-bottom:hover { border-color: var(--pi-accent); } }
   .top-notices { box-sizing: border-box; flex: 0 0 auto; max-height: 40%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--pi-bg-overlay); }
@@ -172,9 +175,9 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .drawer-control { padding: 0 var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; white-space: nowrap; }
   .drawer-collapse { display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; }
   @media (pointer: coarse) {
-    .drawer-header { min-height: var(--pi-control-height-touch); }
-    .drawer-tab { min-height: var(--pi-control-height-touch); }
-    .drawer-collapse { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
+    .drawer-header { min-height: var(--pi-panel-header-height); }
+    .drawer-tab { min-height: var(--pi-panel-header-control-height); }
+    .drawer-collapse { width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }
   }
   .drawer-control:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
   @media (pointer: coarse) { .drawer-control:active { background: var(--pi-surface-hover); } }
@@ -389,7 +392,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      arc the border uses, in one rasterization. Every previous fix had this
      element guess the card's inner curve, and the guess broke at the phone's
      fractional device pixel ratio - five reports of the same corners. */
-  .msg > .msg-header { position: sticky; top: var(--pi-chat-sticky-top); z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: 1px var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface-card); box-shadow: var(--pi-elevation-2); }
+  .msg > .msg-header { position: sticky; top: calc(var(--pi-chat-sticky-top) + 6px); z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: 1px var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface-card); box-shadow: var(--pi-elevation-2); }
   /* Role colour, on the strip the reader scans: warm amber = you, cool
      purple = pi. The graphite palette left the assistant strip identical to
      the card, so the roles read as one (owner, phone round). */

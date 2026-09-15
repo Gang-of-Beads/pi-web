@@ -786,8 +786,8 @@ export class SettingsDialog extends LitElement {
       .settings-list { display: grid; gap: var(--pi-space-3); align-content: start; overflow-y: auto; padding: var(--pi-space-4) var(--pi-reading-edge) calc(var(--pi-space-6) + env(safe-area-inset-bottom)); }
       .settings-list button { font: inherit; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); width: 100%; min-height: var(--pi-row-min-height); margin: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: var(--pi-space-3) var(--pi-space-5); text-align: start; }
       .settings-list-label { display: flex; flex-direction: column; gap: var(--pi-space-1); min-width: 0; }
-      .settings-list-label strong { font-size: var(--pi-text-base); font-weight: var(--pi-weight-medium); color: var(--pi-text); }
-      .settings-list-label small { font-size: var(--pi-text-xs); color: var(--pi-muted); }
+      .settings-list-label strong { font-size: var(--pi-text-base); font-weight: var(--pi-weight-medium); color: var(--pi-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .settings-list-label small { font-size: var(--pi-text-xs); color: var(--pi-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .settings-list-chevron { display: inline-flex; color: var(--pi-muted); }
     }
   `];

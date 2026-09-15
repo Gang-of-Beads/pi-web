@@ -38,6 +38,8 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   }
 
   @property({ attribute: false }) workspaces: Workspace[] = [];
+  @property({ attribute: false }) workspacesLoad: "unloaded" | "loading" | "loaded" | "failed" = "unloaded";
+  @property({ attribute: false }) onRetryWorkspacesLoad?: () => void;
   @property({ attribute: false }) selected?: Workspace;
   /**
    * The panel hides sections with the `hidden` attribute rather than removing
@@ -190,6 +192,20 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
     if (this.searchQuery.trim() !== "") {
       return html`<div class="empty-claim" role="status">No workspaces match “${this.searchQuery.trim()}”.</div>`;
     }
+    // The empty claim may only speak after a completed listing: a fetch in
+    // flight or a failed one is not "no workspaces" (S6; same gate as the
+    // projects list).
+    if (this.workspacesLoad === "loading") {
+      return html`<div class="empty-claim" role="status">Loading workspaces…</div>`;
+    }
+    if (this.workspacesLoad === "failed") {
+      return html`
+        <div class="load-failed" role="alert">
+          <span>Could not load workspaces.</span>
+          <button class="load-retry" @click=${() => { this.onRetryWorkspacesLoad?.(); }}>Retry</button>
+        </div>
+      `;
+    }
     return html`<div class="empty-claim" role="status">No workspaces here yet.</div>`;
   }
 
@@ -271,6 +287,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
               id=${inputId}
               type="checkbox"
               .checked=${trust?.trusted === true}
+              .indeterminate=${trust?.trusted === undefined}
               ?disabled=${busy || trust?.trusted === undefined}
               @change=${(event: Event) => { if (event.target instanceof HTMLInputElement) void this.setTrust(workspace, event.target.checked); }}
             />
@@ -409,6 +426,10 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   }
 
   static override styles = [css`
+    /* The copy/path marks are viewBox-only svgs; without a size they resolve
+     * to the 300x150 default object and paint stray strokes across the menu
+     * (the owner's 'empty bordered boxes' screenshot). */
+    .row-mark { width: 12px; height: 12px; }
     .empty-claim { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
     .workspace-menu-trust { display: flex; flex-direction: column; gap: var(--pi-space-2); padding: var(--pi-space-2) var(--pi-space-1); }
     .workspace-menu-trust-row { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }

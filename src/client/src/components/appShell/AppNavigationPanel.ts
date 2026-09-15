@@ -483,7 +483,7 @@ export class AppNavigationPanel extends LitElement {
     /* The compact row speaks the header radius token; a control that renders itself follows the
        row it is in rather than carrying the rail's corner into it. */
     .compact-header { --pi-header-control-radius: var(--pi-radius-md); flex: 0 0 auto; box-sizing: border-box; height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: flex-start; gap: var(--pi-space-3); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
-    .compact-session { flex: 1 1 auto; min-width: 0; min-height: var(--pi-panel-header-control-height); display: inline-flex; align-items: center; box-sizing: border-box; border: 0; background: none; color: var(--pi-text); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .compact-session { flex: 1 1 auto; min-width: 0; min-height: var(--pi-panel-header-control-height); padding: 0; display: inline-flex; align-items: center; box-sizing: border-box; border: 0; background: none; color: var(--pi-text); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .compact-session-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .compact-session.empty { color: var(--pi-muted); font-weight: var(--pi-weight-medium); }
     .compact-session:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
@@ -501,6 +501,7 @@ export class AppNavigationPanel extends LitElement {
     .compact-go-to .ui-icon { width: 18px; height: 18px; pointer-events: none; }
     .compact-fold-icon { width: var(--pi-dot-md); height: var(--pi-dot-md); pointer-events: none; }
     .compact-actions-row { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-panel-header-control-height); padding: var(--pi-space-2) var(--pi-reading-edge); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
+    .compact-actions-row .compact-header-action { line-height: var(--pi-panel-header-control-height); }
     @media (pointer: coarse) { .compact-scope:active, .compact-session:active, .compact-header-action:active { background: var(--pi-surface-hover); } }
     .compact-actions-row .compact-header-action { flex: 1 1 auto; }
     .compact-header-action { font-size: var(--pi-text-xs); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-header-control-radius, var(--pi-radius-md)); background: var(--pi-surface); color: var(--pi-text); }

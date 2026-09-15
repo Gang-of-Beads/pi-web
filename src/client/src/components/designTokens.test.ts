@@ -145,6 +145,15 @@ describe("panel headers share one height", () => {
     expect(indexHtml).toContain("--pi-panel-header-control-height:");
   });
 
+  it("publishes the same colour token set in dark and light, so a mode never silently misses one", () => {
+    const dark = indexHtml.slice(indexHtml.indexOf(":root {"), indexHtml.indexOf("@media (max-width: 640px)"));
+    const light = indexHtml.slice(indexHtml.indexOf("@media (prefers-color-scheme: light)"));
+    const skip = (name: string): boolean => /^(--pi-(space|text|weight|radius|leading|dot|layer|control|motion|ease|focus|checkbox|disabled|rail|row|panel|bar|chat|reading|chrome|info|font)-?)/u.test(name) || name.startsWith("--pi-surface-");
+    const names = (block: string): string[] => [...new Set((block.match(/--pi-[a-z-]+(?=:)/gu) ?? []))].filter((name) => !skip(name));
+    const missing = names(dark).filter((name) => !names(light).includes(name));
+    expect(missing).toEqual([]);
+  });
+
   it("sizes the navigation header and the drawer header from that token", () => {
     expect(navigationPanel).toContain("min-height: var(--pi-panel-header-height)");
     expect(String(chatStyles)).toContain("min-height: var(--pi-panel-header-height)");

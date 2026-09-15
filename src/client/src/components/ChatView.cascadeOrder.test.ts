@@ -13,7 +13,7 @@ const sheet = String(chatStyles);
  * rule for the same selectors may set the properties the block raises.
  */
 describe("the drawer cascade order", () => {
-  const drawerCoarseStart = sheet.indexOf(".drawer-collapse { width: var(--pi-control-height-touch)");
+  const drawerCoarseStart = sheet.indexOf(".drawer-collapse { width: var(--pi-panel-header-control-height)");
   const coarseBlockStart = drawerCoarseStart === -1 ? -1 : sheet.lastIndexOf("@media (pointer: coarse)", drawerCoarseStart);
   let coarseBlockEnd = coarseBlockStart;
   if (coarseBlockStart !== -1) {
@@ -49,7 +49,7 @@ describe("the drawer cascade order", () => {
 
   it("sizes the coarse drawer targets from the touch token", () => {
     const coarse = sheet.slice(coarseBlockStart, sheet.indexOf("}", drawerCoarseStart));
-    expect(coarse).toMatch(/\.drawer-tab \{ min-height: var\(--pi-control-height-touch\)/u);
-    expect(coarse).toMatch(/\.drawer-collapse \{ width: var\(--pi-control-height-touch\); height: var\(--pi-control-height-touch\)/u);
+    expect(coarse).toMatch(/\.drawer-tab \{ min-height: var\(--pi-panel-header-control-height\)/u);
+    expect(coarse).toMatch(/\.drawer-collapse \{ width: var\(--pi-panel-header-control-height\); height: var\(--pi-panel-header-control-height\)/u);
   });
 });

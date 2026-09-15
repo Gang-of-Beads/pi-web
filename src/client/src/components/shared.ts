@@ -172,6 +172,8 @@ export const workspacePanelStyles = css`
   .workspace-header-actions { display: flex; align-items: center; gap: var(--pi-space-3); flex: 0 0 auto; }
   .workspace-tool-fold { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 0; cursor: pointer; }
   .workspace-tool-toolbar { flex: 0 0 auto; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-4); min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border-muted); }
+  .workspace-tool-toolbar button { box-sizing: border-box; min-height: var(--pi-panel-header-control-height); }
+  .workspace-tool-toolbar button:disabled { opacity: var(--pi-disabled-opacity); cursor: wait; }
   .workspace-fullscreen-toggle { flex: 0 0 auto; max-width: none; white-space: nowrap; }
   button { box-sizing: border-box; min-height: var(--pi-control-height); font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
@@ -181,8 +183,6 @@ export const workspacePanelStyles = css`
   .empty-state p { margin: 0; line-height: 1.45; }
   small, .muted { color: var(--pi-muted); font-size: var(--pi-text-2xs); }
   @media (max-width: 1180px) { .workspace-fullscreen-toggle { display: none; } }
-  .workspace-label { min-width: 0; display: inline-flex; align-items: center; gap: var(--pi-space-3); max-width: 100%; overflow: hidden; white-space: nowrap; }
-  .workspace-label-item, .workspace-label-render { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .workspace-label-item { box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-surface); color: var(--pi-muted); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; }
   .workspace-label-item, .workspace-label-render, .workspace-label-separator { color: var(--pi-muted); }
   .workspace-label-link { color: var(--pi-accent); text-decoration: none; }
@@ -399,7 +399,7 @@ export const listStyles = css`
   .workspace-detail-row { display: grid; grid-template-columns: minmax(58px, max-content) minmax(0, 1fr); gap: var(--pi-space-4); align-items: baseline; }
   .workspace-detail-row dt { color: var(--pi-muted); font-size: var(--pi-text-xs); white-space: normal; }
   .workspace-detail-row dd { min-width: 0; margin: 0; overflow-wrap: anywhere; white-space: normal; }
-  .action-menu-panel .detail-copy { box-sizing: border-box; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: var(--pi-space-3); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; cursor: pointer; vertical-align: middle; }
+  .action-menu-panel .detail-copy { box-sizing: border-box; display: inline-grid; place-items: center; width: 24px; height: 24px; margin-left: var(--pi-space-3); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; cursor: pointer; vertical-align: middle; }
   @media (pointer: coarse) { .action-menu-panel .detail-copy { width: 24px; height: 24px; } }
   .action-menu-panel .detail-copy:focus { color: var(--pi-text); border-color: var(--pi-accent); background: var(--pi-surface-hover); }
   @media (hover: hover) { .action-menu-panel .detail-copy:hover { color: var(--pi-text); border-color: var(--pi-accent); background: var(--pi-surface-hover); } }
@@ -503,7 +503,7 @@ export const listStyles = css`
      so it carries the same floor: a 32px column in a sheet whose other
      controls measured 44px was the widest touch-floor split left. */
   @media (pointer: coarse) { .action-menu-toggle { min-width: var(--pi-control-height-touch); } }
-  .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(240px, calc(100vw - 2 * var(--pi-reading-edge))); max-width: calc(100vw - 2 * var(--pi-reading-edge)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
+  .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(240px, calc(100vw - 2 * var(--pi-bar-inset))); max-width: calc(100vw - 2 * var(--pi-bar-inset)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
   .action-menu-panel button { box-sizing: border-box; display: block; min-height: var(--pi-control-height-comfort); width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 0; background: transparent; color: var(--pi-text); }
   .action-menu-panel button + button { border-top: 1px solid var(--pi-border-muted); }
   @media (hover: hover) { .action-menu-panel button:hover { background: var(--pi-selection-bg); } }
@@ -513,7 +513,7 @@ export const listStyles = css`
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
   small { display: block; white-space: normal; color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; }
-  .workspace-label { min-width: 0; display: inline-flex; align-items: baseline; gap: var(--pi-space-3); max-width: 100%; overflow: hidden; white-space: nowrap; }
+  .workspace-label { min-width: 0; display: inline-flex; align-items: center; gap: var(--pi-space-3); max-width: 100%; overflow: hidden; white-space: nowrap; }
   .workspace-label-item, .workspace-label-render { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .workspace-label-item, .workspace-label-render, .workspace-label-separator { color: var(--pi-muted); }
   .workspace-label-link { color: var(--pi-accent); text-decoration: none; }

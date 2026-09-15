@@ -413,7 +413,7 @@ export class QuickSwitcher extends LitElement {
       --modal-surface-width: min(560px, 100vw);
       --modal-surface-max-height: min(88dvh, 760px);
     }
-    header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-4); align-items: center; padding: var(--pi-space-5); border-bottom: 1px solid var(--pi-border); }
+    header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-4); align-items: center; box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
     input { box-sizing: border-box; min-width: 0; height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-control-font-size, var(--pi-text-base)) var(--pi-font-ui); line-height: inherit; }
     input::-webkit-search-cancel-button { display: none; }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
@@ -511,12 +511,12 @@ export class QuickSwitcher extends LitElement {
        coarse rule loses to a later base rule (the drawer collapse shipped
        exactly that bug once). */
     @media (pointer: coarse) {
-      .close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
+      .close { width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }
       .machine-tab { min-height: var(--pi-control-height-touch); }
       .chip { min-height: var(--pi-control-height-touch); min-width: var(--pi-control-height-touch); }
       .row-menu-toggle { width: var(--qs-menu-size); min-height: var(--qs-menu-size); }
       .row-menu button { min-height: var(--pi-control-height-touch); }
-      input { height: var(--pi-control-height-touch); }
+      input { height: var(--pi-panel-header-control-height); }
     }
     .row-menu button:focus-visible:not(:disabled) { background: var(--pi-selection-bg); }
     @media (hover: hover) { .row-menu button:hover:not(:disabled) { background: var(--pi-selection-bg); } }
@@ -536,7 +536,7 @@ export class QuickSwitcher extends LitElement {
     .rename-actions button { box-sizing: border-box; font: inherit; width: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     @media (pointer: coarse) { .rename-actions button { width: var(--pi-control-height-touch); min-height: var(--pi-control-height-touch); } }
     .empty { margin: var(--pi-space-7) var(--pi-space-2); color: var(--pi-muted); }
-    footer { flex: 0 0 auto; padding: var(--pi-space-5); padding-bottom: max(var(--pi-space-5), env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); }
+    footer { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-bar-inset) max(var(--pi-space-2), env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); }
     footer button { box-sizing: border-box; font: inherit; width: 100%; min-height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
   `];
 }

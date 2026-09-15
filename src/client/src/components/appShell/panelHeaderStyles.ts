@@ -18,6 +18,7 @@ export const panelHeaderStyles = css`
     align-items: center;
     justify-content: space-between;
     gap: var(--pi-space-4);
+    padding-inline: var(--pi-bar-inset);
     background: var(--pi-bg);
     border-bottom: 1px solid var(--pi-border);
   }

@@ -484,7 +484,7 @@ export class ExtensionDialogCard extends LitElement {
     .primary-action:active:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }
     .answered-row {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: var(--pi-space-4);
       min-width: 0;
       padding: var(--pi-space-3) var(--pi-space-6);

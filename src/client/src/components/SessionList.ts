@@ -457,7 +457,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
               ${session.archived === true
                 ? html`
                   <button title="Restore session" @click=${() => { this.openMenuSessionId = undefined; this.onRestore?.(session); }}>Restore</button>
-                  <button class="danger" title="Delete permanently" @click=${() => { this.openMenuSessionId = undefined; this.confirmDeleteArchived(session); }}>Delete permanently</button>n</button>
+                  <button class="danger" title="Delete permanently" @click=${() => { this.openMenuSessionId = undefined; this.confirmDeleteArchived(session); }}>Delete permanently</button>
                 `
                 : canDeleteTransient
                   ? html`<button title="Delete transient new session" @click=${() => { this.openMenuSessionId = undefined; this.onDelete?.(session); }}>Delete</button>`
@@ -795,11 +795,11 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .pending-session-row.starting-session .activity-indicator { flex: 0 0 auto; margin: 0; }
     .action-main.selecting { padding-left: calc(var(--pi-space-3) + var(--pi-checkbox-size) + var(--pi-space-3) + var(--depth, 0) * var(--pi-space-7)); }
     @media (pointer: coarse) { .action-main.selecting { padding-left: calc(var(--pi-space-3) + (var(--pi-control-height-touch) - var(--pi-checkbox-size)) / 2 + var(--pi-checkbox-size) + var(--pi-space-3) + var(--depth, 0) * var(--pi-space-7)); } }
-.session-checkbox { accent-color: var(--pi-accent); position: absolute; top: var(--pi-space-4); left: calc(var(--pi-row-gutter-start) + var(--depth, 0) * var(--pi-space-7)); z-index: 3; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; }
+.session-checkbox { accent-color: var(--pi-accent); position: absolute; top: 50%; transform: translateY(-50%); left: calc(var(--pi-row-gutter-start) + var(--depth, 0) * var(--pi-space-7)); z-index: 3; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; }
     /* One formula for the leading gutter: the slot starts at --pi-row-gutter-start,
        is --pi-row-gutter-size wide, and the text clears it by one breathing step.
        Spelled out, the mouse row breathed 8px here and the touch row 2px. */
-    .subtree-toggle, .subtree-toggle.inert { position: absolute; top: var(--pi-space-4); left: calc(var(--pi-row-gutter-start) + var(--depth, 0) * var(--pi-space-7)); z-index: 2; box-sizing: border-box; width: var(--pi-row-gutter-size); height: var(--pi-row-gutter-size); padding: 0; display: inline-grid; place-items: center; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: color-mix(in srgb, var(--pi-muted) 14%, transparent); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; }
+    .subtree-toggle, .subtree-toggle.inert { position: absolute; top: 50%; transform: translateY(-50%); left: calc(var(--pi-row-gutter-start) + var(--depth, 0) * var(--pi-space-7)); z-index: 2; box-sizing: border-box; width: var(--pi-row-gutter-size); height: var(--pi-row-gutter-size); padding: 0; display: inline-grid; place-items: center; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: color-mix(in srgb, var(--pi-muted) 14%, transparent); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; }
     /* Formerly the toggle floated over the row's leading text and swallowed
        taps aimed at the session name. Reserve the gutter in the padding so
        the toggle sits over empty space. */

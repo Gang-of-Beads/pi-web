@@ -246,6 +246,7 @@ export interface NavSectionContext {
   readonly projects: readonly NavProjectSnapshot[];
   readonly projectsLoad: NavProjectsLoad;
   readonly workspaces: readonly Workspace[];
+  readonly workspacesLoad: NavProjectsLoad;
   readonly selectedProjectId?: string | undefined;
   readonly selectedWorkspaceId?: string | undefined;
   readonly machineId: string;
@@ -267,6 +268,7 @@ export interface NavSectionContext {
   /** Host-provided trust reads and writes; absent means the rows omit trust. */
   readonly workspaceTrust?: NavWorkspaceTrustActions | undefined;
   readonly retryProjectsLoad: () => void;
+  readonly retryWorkspacesLoad: () => void;
   readonly toggleCollapsed: () => void;
   readonly focusPreviousSection: () => void | Promise<void>;
   readonly focusNextSection: () => void | Promise<void>;

@@ -2952,6 +2952,9 @@ export class PiWebApp extends LitElement {
       projects: state.projects.map((project) => ({ id: project.id, name: project.name, path: project.path })),
       projectsLoad: state.projectsLoad,
       workspaces: state.workspaces,
+      // A failed banner leaves the listing empty; naming it keeps the section
+      // from reading "no workspaces" for a project that has them (S6).
+      workspacesLoad: state.isLoadingWorkspaces ? "loading" : state.error !== "" ? "failed" : "loaded",
       selectedProjectId: state.selectedProject?.id,
       selectedWorkspaceId: state.selectedWorkspace?.id,
       machineId,
@@ -3000,6 +3003,7 @@ export class PiWebApp extends LitElement {
         },
       },
       retryProjectsLoad: () => { void this.projects.loadProjects(); },
+      retryWorkspacesLoad: () => { const project = state.selectedProject; if (project !== undefined) void this.workspaces.refreshProjectWorkspaces(project.id); },
       toggleCollapsed: () => undefined,
       focusPreviousSection: () => undefined,
       focusNextSection: () => undefined,

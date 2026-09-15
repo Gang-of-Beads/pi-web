@@ -86,6 +86,8 @@ function navContext(options: {
   return {
     projects: [project("project-1"), project("project-2")],
     projectsLoad: "loaded",
+    workspacesLoad: "loaded",
+    retryWorkspacesLoad: () => undefined,
     workspaces: [workspace("ws-1", "project-1"), workspace("ws-2", "project-1")],
     selectedProjectId: "project-1",
     selectedWorkspaceId: "ws-1",

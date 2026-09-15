@@ -34,7 +34,7 @@ export class ConversationMeter extends LitElement {
        bar crossed the whole chat, could not be dragged and read as a broken
        scrollbar. This one only answers "where am I in the session", so it
        lives where a scrollbar would and stays out of the text's way. */
-    :host { position: absolute; top: var(--pi-space-4); bottom: var(--pi-space-4); right: 2px; z-index: 3; display: block; width: 4px; }
+    :host { position: absolute; top: var(--pi-space-4); bottom: var(--pi-space-4); right: calc(2px + var(--pi-chat-scrollbar, 0px)); z-index: 3; display: block; width: 4px; }
     .meter { height: 100%; opacity: .6; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
     :host(:focus-within) .meter { opacity: .95; }
     @media (hover: hover) { :host(:hover) .meter { opacity: .95; } }
