@@ -37,12 +37,16 @@ describe("the patch that puts a failure on screen", () => {
   });
 
   /**
-   * The reason the banner outlived the failure: a transport complaint has to
-   * carry the fact that a reply disproves it, or the code that withdraws it
-   * returns early forever.
+   * An undescribed 5xx is the hop being down, not an answer about the
+   * reader's action (owner's ruling): it heals, so a reply may retire it -
+   * and the banner holds it back through the grace window first.
    */
-  it("leaves an HTTP status to the reader: the link answered, the operation failed", () => {
-    expect(errorNoticePatch(new HttpError("", 502)).errorRetiredBy).toBe(RetiredBy.reader);
+  it("hands an undescribed 5xx to the transport lifetime", () => {
+    expect(errorNoticePatch(new HttpError("", 502)).errorRetiredBy).toBe(RetiredBy.reply);
+  });
+
+  it("leaves a described refusal to the reader", () => {
+    expect(errorNoticePatch(new HttpError("Workspace is locked", 409)).errorRetiredBy).toBe(RetiredBy.reader);
   });
 
   it("lets a reply withdraw a link failure", () => {

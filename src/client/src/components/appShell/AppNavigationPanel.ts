@@ -495,6 +495,9 @@ export class AppNavigationPanel extends LitElement {
     @keyframes compact-working-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .55; } 30% { transform: translateY(-3px); opacity: 1; } }
     @media (prefers-reduced-motion: reduce) { .compact-working-dot { animation: none; opacity: .8; } }
     .compact-fold, .compact-go-to { box-sizing: border-box; width: var(--pi-panel-header-control-height); }
+    /* Bar labels sit on the control's own line box: a fractional line in the
+       36px control read 1px high (owner: the title looks tilted). */
+    .compact-header button { line-height: var(--pi-panel-header-control-height); }
     .compact-go-to .ui-icon { width: 18px; height: 18px; pointer-events: none; }
     .compact-fold-icon { width: var(--pi-dot-md); height: var(--pi-dot-md); pointer-events: none; }
     .compact-actions-row { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-panel-header-control-height); padding: var(--pi-space-2) var(--pi-reading-edge); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }

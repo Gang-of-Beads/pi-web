@@ -64,8 +64,8 @@ describe("every bar producer", () => {
 
   it("the sessions list header and the settings and sheet headers ride the same tokens", () => {
     expect(rule(read("./SessionList.ts"), "h2 { min-height: var(--pi-panel-header-height)")).toBeTruthy();
-    expect(read("./SessionList.ts")).toContain(".start-session-button { min-width: 0; height: var(--pi-panel-header-control-height); }");
-    expect(read("./SettingsDialog.ts")).toContain(".settings-header { min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left));");
+    expect(read("./SessionList.ts")).toContain(".start-session-button { min-width: 0; height: var(--pi-panel-header-control-height); line-height: var(--pi-panel-header-control-height); }");
+    expect(read("./SettingsDialog.ts")).toContain(".settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left));");
     expect(read("./appShell/ContextSwitcherSheet.ts")).toContain("margin-inline: calc(-1 * var(--pi-reading-edge)); padding-inline: var(--pi-bar-inset);");
   });
 });

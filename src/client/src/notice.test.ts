@@ -112,13 +112,18 @@ describe("a failure that never said what went wrong", () => {
   });
 
   /**
-   * The empty-text guard in retiresOnReply meant a notice with no words could
-   * never retire itself. Now that a notice always carries words, a transport
-   * failure retires on the next reply whatever the server said.
+   * An undescribed 5xx is the hop being down (a proxy answering while the
+   * daemon restarts), not an answer about the reader's action: the owner's
+   * ruling is that it heals on its own, so it retires on the next reply and
+   * reads as a reconnecting claim rather than a permanent failure.
    */
-  it("still hands the undescribed failure to the reader, described by its status", () => {
-    expect(retiresOnReply(noticeFromError(new HttpError("", 502)))).toBe(false);
+  it("reads an undescribed 5xx as a transport claim that heals", () => {
+    expect(retiresOnReply(noticeFromError(new HttpError("", 502)))).toBe(true);
     expect(noticeFromError(new HttpError("", 502)).text).toBe("The request failed (502)");
+  });
+
+  it("keeps a described 4xx refusal with the reader", () => {
+    expect(retiresOnReply(noticeFromError(new HttpError("Workspace is locked", 409)))).toBe(false);
   });
 });
 

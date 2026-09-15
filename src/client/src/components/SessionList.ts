@@ -457,7 +457,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
               ${session.archived === true
                 ? html`
                   <button title="Restore session" @click=${() => { this.openMenuSessionId = undefined; this.onRestore?.(session); }}>Restore</button>
-                  <button class="danger" title="Permanently delete archived session" @click=${() => { this.openMenuSessionId = undefined; this.confirmDeleteArchived(session); }}>Delete archived session</button>
+                  <button class="danger" title="Delete permanently" @click=${() => { this.openMenuSessionId = undefined; this.confirmDeleteArchived(session); }}>Delete permanently</button>n</button>
                 `
                 : canDeleteTransient
                   ? html`<button title="Delete transient new session" @click=${() => { this.openMenuSessionId = undefined; this.onDelete?.(session); }}>Delete</button>`
@@ -465,9 +465,9 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
                     ${this.unreadSessionIds.has(session.id) ? html`<button title="Mark session as read" @click=${() => { this.openMenuSessionId = undefined; this.onMarkRead?.(session); }}>Mark as read</button>` : null}
                     ${canArchive ? html`
                       <button title="Archive session" @click=${() => { this.openMenuSessionId = undefined; this.onArchive?.(session); }}>Archive</button>
-                      ${descendantCount > 0 ? html`<button title="Archive this session and its descendants" @click=${() => { this.openMenuSessionId = undefined; this.confirmArchiveWithDescendants(session, descendantCount); }}>Archive with descendants (${descendantCount})</button>` : null}
+                      ${descendantCount > 0 ? html`<button title="Archive with its descendants" @click=${() => { this.openMenuSessionId = undefined; this.confirmArchiveWithDescendants(session, descendantCount); }}>Archive with descendants (${descendantCount})</button>` : null}
                     ` : null}
-                    <button title="Give this session a name you will recognise" @click=${() => { this.openMenuSessionId = undefined; this.beginRename(session); }}>Rename</button>
+                    <button title="Rename" @click=${() => { this.openMenuSessionId = undefined; this.beginRename(session); }}>Rename</button>
                     /* Browsing runs /tree against the selected session, and a dead
                        session can never be selected: offering it would trade the
                        inert row for the banner again. */
@@ -718,7 +718,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        at the touch height, so the slot it sits in is the touch height too -
        at comfort the text met the toggle's right edge with zero breath. */
     @media (pointer: coarse) { :host { --pi-row-gutter-size: var(--pi-control-height-touch); } }
-    h2 { min-height: var(--pi-control-height); gap: var(--pi-space-2); }
+    h2 { min-height: var(--pi-control-height); line-height: var(--pi-control-height); gap: var(--pi-space-2); }
     @media (pointer: coarse) { h2 { gap: var(--pi-space-6); } }
     /* The shared heading spreads its children across the full width, which
        floats the checkbox, the unread count, Clean up and the start button
@@ -732,7 +732,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     h2 > .section-unread-count { flex: 0 0 auto; display: inline-block; min-width: 14px; border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; text-transform: none; }
     .selection-mark { width: 16px; height: 16px; }
   .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; font-size: var(--pi-text-sm); line-height: 1; text-transform: none; }
-    .start-session-button { position: relative; box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: var(--pi-control-height); height: var(--pi-control-height); padding: 0 calc(var(--pi-space-4) + 1em); }
+    .start-session-button { position: relative; box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: var(--pi-control-height); height: var(--pi-control-height); padding: 0 calc(var(--pi-space-4) + 1em); line-height: var(--pi-control-height); }
     .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
     /* Quiet by default. Three outlined buttons of equal weight said nothing
        about which one starts work and which one deletes it; a secondary action
@@ -752,6 +752,10 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .bulk-row button { box-sizing: border-box; min-height: var(--pi-control-height); padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); white-space: nowrap; }
     .bulk-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); margin-left: auto; }
     .action-name, .section-selected { text-align: start; unicode-bidi: plaintext; }
+    /* The row is one line (owner's ruling): the name truncates first, the
+       status text sits beside it on the same line and truncates too, so
+       every row is the same height. */
+    .action-main > small { display: inline-block; flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: end; }
     .action-row.unread .action-name { color: var(--pi-text-bright); font-weight: var(--pi-weight-strong); }
     .plain-heading { min-width: 0; }
     .action-name-line { min-width: 0; display: flex; align-items: flex-start; gap: var(--pi-space-3); }
@@ -844,8 +848,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
       .bulk-select-entry { width: var(--pi-panel-header-control-height); min-width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }
       /* The phone toolbar row reads as a banner, not a form: one token
          height keeps it level with the drawer and sheet headers. */
-      h2 { min-height: var(--pi-panel-header-height); }
-      .start-session-button { min-width: 0; height: var(--pi-panel-header-control-height); }
+      h2 { min-height: var(--pi-panel-header-height); line-height: var(--pi-panel-header-control-height); }
+      .start-session-button { min-width: 0; height: var(--pi-panel-header-control-height); line-height: var(--pi-panel-header-control-height); }
       .cleanup-entry { box-sizing: border-box; min-height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); }
       .action-menu-toggle { min-width: var(--pi-panel-header-control-height); min-height: var(--pi-panel-header-control-height); }
       /* Touch has no hover: the borderless controls answer a press with the

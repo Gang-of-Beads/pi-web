@@ -103,7 +103,7 @@ describe("the session list hosts the rename dialog", () => {
     const menuToggle = required([...list.renderRoot.querySelectorAll("button")].find((candidate) => candidate.getAttribute("title") === "Session actions"), "no session actions menu toggle rendered".slice(1, -1));
     menuToggle.click();
     await list.updateComplete;
-    const menuButton = required([...list.renderRoot.querySelectorAll("button")].find((candidate) => candidate.getAttribute("title") === "Give this session a name you will recognise"), "no Rename menu button rendered".slice(1, -1));
+    const menuButton = required([...list.renderRoot.querySelectorAll("button")].find((candidate) => candidate.getAttribute("title") === "Rename"), "no Rename menu button rendered".slice(1, -1));
     menuButton.click();
     await list.updateComplete;
     const dialog = required(list.renderRoot.querySelector("session-rename-dialog"), "the rename dialog did not open".slice(1, -1));
@@ -120,7 +120,7 @@ describe("the session list hosts the rename dialog", () => {
     const menuToggle = required([...list.renderRoot.querySelectorAll("button")].find((candidate) => candidate.getAttribute("title") === "Session actions"), "no session actions menu toggle rendered".slice(1, -1));
     menuToggle.click();
     await list.updateComplete;
-    const menuButton = required([...list.renderRoot.querySelectorAll("button")].find((candidate) => candidate.getAttribute("title") === "Give this session a name you will recognise"), "no Rename menu button rendered".slice(1, -1));
+    const menuButton = required([...list.renderRoot.querySelectorAll("button")].find((candidate) => candidate.getAttribute("title") === "Rename"), "no Rename menu button rendered".slice(1, -1));
     menuButton.click();
     await list.updateComplete;
     const dialog = required(list.renderRoot.querySelector<SessionRenameDialog>("session-rename-dialog"), "the rename dialog did not open".slice(1, -1));

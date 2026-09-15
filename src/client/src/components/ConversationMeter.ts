@@ -30,19 +30,17 @@ export class ConversationMeter extends LitElement {
   }
 
   static override styles = css`
-    /* The meter floats over the transcript's first visible line; at a bare
-       58% opacity the scrolled text bled through and read as clipped stray
-       lines (the owner's fifth-banner screenshot). The host now carries an
-       opaque chat-background band, and only the indicator itself is
-       translucent. */
-    :host { position: absolute; top: 0; left: var(--pi-chat-gutter, var(--pi-space-7)); right: var(--pi-chat-gutter, var(--pi-space-7)); z-index: 3; display: block; height: 14px; background: var(--pi-bg); border-radius: var(--pi-radius-pill); }
-    .meter { height: 100%; opacity: .58; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
-    :host(:focus-within) .meter { opacity: .92; }
-    @media (hover: hover) { :host(:hover) .meter { opacity: .92; } }
-    .meter { height: 100%; }
-    .track { position: relative; height: var(--pi-dot-xs); margin-top: var(--pi-space-2); border-radius: var(--pi-radius-pill); background: color-mix(in srgb, var(--pi-border-muted) 34%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pi-bg) 55%, transparent); }
-    .progress { position: absolute; left: 0; width: var(--position); top: 0; bottom: 0; border-radius: var(--pi-radius-pill); background: color-mix(in srgb, var(--pi-accent) 42%, var(--pi-border-muted)); }
-    .marker { position: absolute; left: var(--position); top: 50%; width: var(--pi-dot-md); height: var(--pi-dot-md);  border-radius: 50%; background: var(--pi-accent); box-shadow: 0 0 0 2px var(--pi-bg), var(--pi-elevation-1); transform: translate(-50%, -50%); }
+    /* A thin rail on the transcript's right edge (owner's ruling): the top
+       bar crossed the whole chat, could not be dragged and read as a broken
+       scrollbar. This one only answers "where am I in the session", so it
+       lives where a scrollbar would and stays out of the text's way. */
+    :host { position: absolute; top: var(--pi-space-4); bottom: var(--pi-space-4); right: 2px; z-index: 3; display: block; width: 4px; }
+    .meter { height: 100%; opacity: .6; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
+    :host(:focus-within) .meter { opacity: .95; }
+    @media (hover: hover) { :host(:hover) .meter { opacity: .95; } }
+    .track { position: relative; height: 100%; border-radius: var(--pi-radius-pill); background: color-mix(in srgb, var(--pi-border-muted) 40%, transparent); }
+    .progress { position: absolute; left: 0; right: 0; top: 0; height: var(--position); border-radius: var(--pi-radius-pill); background: color-mix(in srgb, var(--pi-accent) 45%, var(--pi-border-muted)); }
+    .marker { position: absolute; left: 50%; top: var(--position); width: var(--pi-dot-xs); height: var(--pi-dot-xs); transform: translate(-50%, -50%); border-radius: 50%; background: var(--pi-accent); box-shadow: 0 0 0 2px var(--pi-bg); }
   `;
 }
 

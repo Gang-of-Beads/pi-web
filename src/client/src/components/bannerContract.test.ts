@@ -38,7 +38,7 @@ describe("the panel-header banner contract", () => {
 
   it("the settings phone header rides the same token row", () => {
     const css = read("./SettingsDialog.ts");
-    expect(css).toContain(".settings-header { min-height: var(--pi-panel-header-height);");
+    expect(css).toContain(".settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left));");
     expect(css).toContain("width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); } }");
   });
 

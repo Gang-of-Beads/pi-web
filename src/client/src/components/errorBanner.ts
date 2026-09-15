@@ -104,5 +104,12 @@ export function normalizeTransientError(error: string): string | undefined {
   if (/^remote machine (unavailable|timeout)/i.test(error)) {
     return "Reconnecting to the machine…";
   }
+  // An HTTP 5xx from the web process (a proxy answering while the daemon or
+  // upstream is mid-restart) heals like a dropped socket: the polls re-issue
+  // and a later answer withdraws the claim. Whole-message, so "The request
+  // failed (409)" - a real refusal - keeps its own words.
+  if (/^the request failed \(5\d\d\)$/i.test(error)) {
+    return "Connection problem. Retrying in the background…";
+  }
   return undefined;
 }

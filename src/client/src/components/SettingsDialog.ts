@@ -167,11 +167,8 @@ export class SettingsDialog extends LitElement {
   private renderPhoneList(): TemplateResult {
     return html`
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"PI WEB settings"}>
-        <header class="settings-header">
-          <div>
-            <span class="eyebrow">Settings</span>
-            <h1>PI WEB</h1>
-          </div>
+        <header class="settings-header settings-header-phone">
+          <h1 class="panel-header-title">Settings</h1>
           <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
         <nav class="settings-list" aria-label="Settings sections">
@@ -203,11 +200,8 @@ export class SettingsDialog extends LitElement {
   private renderPhoneDetail(): TemplateResult {
     return html`
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"PI WEB settings"}>
-        <header class="settings-header">
-          <div class="settings-detail-heading">
-            <button class="settings-back" @click=${() => this.onBackToList?.()}><span class="settings-back-icon">${renderDisclosureIcon(false)}</span> Settings</button>
-            <h1>${this.detailTitle()}</h1>
-          </div>
+        <header class="settings-header settings-header-phone">
+          <button class="settings-back" @click=${() => this.onBackToList?.()}><span class="settings-back-icon">${renderDisclosureIcon(false)}</span> Settings</button>
           <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
         <main class="settings-content">
@@ -781,24 +775,20 @@ export class SettingsDialog extends LitElement {
     @media (pointer: coarse) { .close-button { width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); } }
     @media (pointer: coarse), (max-width: 760px) {
       modal-surface { --modal-surface-backdrop-padding: 0; --modal-surface-place-items: stretch; --modal-surface-width: 100%; --modal-surface-max-height: none; --modal-surface-min-height: 0; --modal-surface-border: 0; --modal-surface-radius: 0; }
-      .settings-header { min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left)); padding-top: max(0px, env(safe-area-inset-top)); }
-      .settings-header h1 { font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); }
-      .settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-      .settings-list { display: flex; flex-direction: column; overflow-y: auto; padding: var(--pi-space-3) 0 calc(var(--pi-space-6) + env(safe-area-inset-bottom)); }
-      .settings-list button { font: inherit; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); width: 100%; min-height: var(--pi-row-min-height); margin: 0; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; padding: var(--pi-space-5) var(--pi-space-7); text-align: left; }
-      .settings-list-label { display: flex; flex-direction: column; gap: var(--pi-space-1); min-width: 0; }
-      .settings-list-label strong { font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); color: var(--pi-text); }
-      .settings-list-label small { font-size: var(--pi-text-sm); color: var(--pi-muted); }
-      .settings-list-chevron { display: inline-flex; color: var(--pi-muted); }
-      .settings-detail-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
-      /* A two-line heading has no middle for a centred control to share: the
-         close sat 12px below the back row and 21px above the title. It aligns
-         with the row a reader arrives on. */
-      .settings-header { align-items: flex-start; }
-      .close-button { margin-top: 0; }
+      .settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left)); padding-top: max(0px, env(safe-area-inset-top)); }
+      .settings-header-phone .panel-header-title { font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); }
+      .settings-back { box-sizing: border-box; display: inline-flex; align-items: center; gap: var(--pi-space-2); min-height: var(--pi-panel-header-control-height); border: 0; background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-3) 0 0; font-size: var(--pi-text-sm); }
+      .settings-back:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
       .settings-back-icon { display: inline-flex; transform: rotate(180deg); }
-      .settings-back { box-sizing: border-box; display: inline-flex; align-items: center; min-height: var(--pi-control-height-touch); margin-left: calc(-1 * var(--pi-space-4)); border: 0; background: transparent; padding: 0 var(--pi-space-4) 0 0; font-size: var(--pi-text-base); font-weight: var(--pi-weight-semibold); color: var(--pi-accent); }
-      .settings-content { padding: var(--pi-space-6) var(--pi-space-6) calc(var(--pi-space-7) + env(safe-area-inset-bottom)); }
+      .settings-header-phone .close-button { margin-left: auto; }
+      .settings-content { padding: var(--pi-space-5) var(--pi-reading-edge) calc(var(--pi-space-6) + env(safe-area-inset-bottom)); }
+      .settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+      .settings-list { display: grid; gap: var(--pi-space-3); align-content: start; overflow-y: auto; padding: var(--pi-space-4) var(--pi-reading-edge) calc(var(--pi-space-6) + env(safe-area-inset-bottom)); }
+      .settings-list button { font: inherit; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); width: 100%; min-height: var(--pi-row-min-height); margin: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: var(--pi-space-3) var(--pi-space-5); text-align: start; }
+      .settings-list-label { display: flex; flex-direction: column; gap: var(--pi-space-1); min-width: 0; }
+      .settings-list-label strong { font-size: var(--pi-text-base); font-weight: var(--pi-weight-medium); color: var(--pi-text); }
+      .settings-list-label small { font-size: var(--pi-text-xs); color: var(--pi-muted); }
+      .settings-list-chevron { display: inline-flex; color: var(--pi-muted); }
     }
   `];
 }

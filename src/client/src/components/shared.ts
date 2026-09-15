@@ -375,9 +375,11 @@ export const listStyles = css`
   /* Written to work whether the primary region is a div or a real <button>:
      the font and cursor resets are inert on a div and stop a button from
      inheriting the UA's centred, small-font control styling. */
-  .action-main { position: relative; box-sizing: border-box; min-height: var(--pi-row-min-height); min-width: 0; width: 100%; display: block; border: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-9) var(--pi-space-4) calc(var(--pi-space-5) + var(--depth, 0) * var(--pi-space-7)); font: inherit; text-align: left; cursor: pointer; }
+  .action-main { position: relative; box-sizing: border-box; min-height: var(--pi-row-min-height); min-width: 0; width: 100%; display: flex; align-items: center; border: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-9) var(--pi-space-2) calc(var(--pi-space-5) + var(--depth, 0) * var(--pi-space-7)); font: inherit; text-align: left; cursor: pointer; }
   button.action-main:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: calc(var(--pi-focus-ring-offset) * -1); }
-  .action-name { display: -webkit-box; max-height: 2.5em; overflow: hidden; overflow-wrap: anywhere; line-height: 1.25; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  /* One line, then the ellipsis (owner: rows of equal height read calmer
+     than clamped two-line rows of different heights). */
+  .action-name { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.4; }
   @media (hover: hover) { .action-row:not(.selected):hover { background: var(--pi-surface-hover); } }
   .workspace-row .action-main { border-radius: var(--pi-radius-md) 0 0 var(--pi-radius-md); }
   .workspace-primary { min-width: 0; display: flex; align-items: baseline; gap: var(--pi-space-3); }
@@ -497,8 +499,9 @@ export const listStyles = css`
      so it carries the same floor: a 32px column in a sheet whose other
      controls measured 44px was the widest touch-floor split left. */
   @media (pointer: coarse) { .action-menu-toggle { min-width: var(--pi-control-height-touch); } }
-  .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); overflow-wrap: anywhere; }
-  .action-menu-panel button { box-sizing: border-box; display: block; min-height: var(--pi-control-height-comfort); width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; border: 0; background: transparent; color: var(--pi-text); }
+  .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(240px, calc(100vw - 2 * var(--pi-reading-edge))); max-width: calc(100vw - 2 * var(--pi-reading-edge)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
+  .action-menu-panel button { box-sizing: border-box; display: block; min-height: var(--pi-control-height-comfort); width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 0; background: transparent; color: var(--pi-text); }
+  .action-menu-panel button + button { border-top: 1px solid var(--pi-border-muted); }
   @media (hover: hover) { .action-menu-panel button:hover { background: var(--pi-selection-bg); } }
   /* After the base rule it raises: a media query carries no extra specificity,
      so a coarse floor written earlier loses to a later base declaration. */

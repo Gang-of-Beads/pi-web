@@ -136,7 +136,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
     .top-drawer:not(.collapsed) .drawer-header { position: sticky; top: 0; z-index: 1; background: color-mix(in srgb, var(--pi-purple) 7%, var(--pi-bg)); }
     .top-drawer:not(.collapsed) .drawer-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
   }
-  .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); }
+  .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); line-height: var(--pi-panel-header-control-height); }
   /* The two sections are told apart by colour, not only by label: activity is
      violet (work this chat started), notifications keep the app's warning
      palette (something happened to you). */
@@ -384,7 +384,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .empty-session button:focus-visible { border-color: var(--pi-accent); }
   @media (hover: hover) { .empty-session button:hover { border-color: var(--pi-accent); } }
   @media (pointer: coarse) { .empty-session button { min-height: var(--pi-control-height-touch); } }
-  .msg-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-5); min-height: 18px; margin-bottom: var(--pi-space-3); }
+  .msg-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-5); min-height: 26px; margin-bottom: var(--pi-space-3); }
   /* Square by design: the card's overflow: clip rounds this against the same
      arc the border uses, in one rasterization. Every previous fix had this
      element guess the card's inner curve, and the guess broke at the phone's
@@ -406,7 +406,11 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .group-msg > .msg-header { position: sticky; top: var(--pi-chat-sticky-top); z-index: 4; margin: calc(-1 * var(--pi-space-5)) 0 var(--pi-space-4); padding: var(--pi-space-4) 0 var(--pi-space-3); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
   .msg-header-trailing { min-width: 0; flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-4); }
   .msg-actions { flex: 0 0 auto; display: inline-flex; gap: var(--pi-space-3); opacity: 0; transition: opacity var(--pi-motion-fast) var(--pi-ease); }  .msg.user .msg-action, .msg.user .msg-meta { color: var(--pi-text-secondary, var(--pi-text)); }
-  .msg-action { position: relative; display: inline-grid; place-items: center; width: 24px; height: 24px; box-sizing: border-box; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; line-height: 1; cursor: pointer; }
+  /* One bordered box per control, every control the same box: the ghost
+     glyphs read as stray marks and sat at different heights between the
+     role headers (owner). */
+  .msg-action { position: relative; display: inline-grid; place-items: center; width: 22px; height: 22px; box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 0; line-height: 1; cursor: pointer; }
+  .msg-action .ui-icon { width: 14px; height: 14px; }
   /* A fingertip is wider than the drawn button, so the reach grows, not the
      icon - but only as far as the gap allows: a symmetric 10px expansion over
      a 6px gap made each button's right edge belong to its neighbour. */

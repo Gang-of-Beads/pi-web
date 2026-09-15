@@ -33,7 +33,7 @@ const HAIRLINE = 1;
  * hit box off its neighbour, and the terminal's own cell padding. They are
  * named here so a new one has to be argued for rather than typed.
  */
-const OFF_SCALE_TRIMS = new Set([3, 5]);
+const OFF_SCALE_TRIMS = new Set([2, 3, 5]);
 
 function styleSources(root: string): string[] {
   const found: string[] = [];

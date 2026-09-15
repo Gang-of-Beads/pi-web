@@ -9,7 +9,7 @@ import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions"
 import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
 import { describeError, noticeForReader, noticeFromTransport, RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame, placeholderFrameOutstanding } from "../historyWrites";
-import { bannerHoldDecision } from "./bannerHold";
+import { bannerHoldDecision, TRANSIENT_GRACE_MS } from "./bannerHold";
 import { routeMatchesUrl } from "../routeMatch";
 import { autoFocusesComposer } from "../appShell/appShellController";
 import { touchPrimaryPointer } from "../keyboardDismissal";
@@ -414,6 +414,9 @@ export class PiWebApp extends LitElement {
   private transientErrorTimer: number | undefined;
   private bannerShownAt: number | undefined;
   private bannerHoldTimer: number | undefined;
+  /** When a transport claim first appeared and was held back (grace before show). */
+  private transientPendingSince: number | undefined;
+  private transientGraceTimer: number | undefined;
   private heldErrorBanner: TemplateResult | null = null;
   /** Set when the reader dismisses the banner: the hold window must not resurrect what the reader has already acted on. */
   private bannerDismissedByReader = false;
@@ -1138,6 +1141,7 @@ export class PiWebApp extends LitElement {
     observeTransportRecovery(undefined);
     if (this.transientErrorTimer !== undefined) window.clearTimeout(this.transientErrorTimer);
     if (this.bannerHoldTimer !== undefined) window.clearTimeout(this.bannerHoldTimer);
+    if (this.transientGraceTimer !== undefined) window.clearTimeout(this.transientGraceTimer);
     window.removeEventListener("resize", this.onVisualViewportChange);
     window.removeEventListener("orientationchange", this.onVisualViewportChange);
     window.visualViewport?.removeEventListener("resize", this.onVisualViewportChange);
@@ -3957,6 +3961,42 @@ export class PiWebApp extends LitElement {
       }
     }
     const decision = bannerHoldDecision({ shownAt: this.bannerShownAt, now: Date.now(), next: error });
+    // A transport claim earns its banner (owner's ruling): a single blip -
+    // one poll answering 502 mid-restart - must not flash across the top of
+    // the screen. The first sighting waits out a grace window; a claim still
+    // standing when it elapses shows as "retrying", and the recovery path
+    // withdraws it. Reader-visible claims keep the immediate path below.
+    if (error !== "" && normalizeTransientError(error) !== undefined) {
+      const isNew = error !== this.lastScheduledError || this.state.errorMachineId !== this.lastScheduledMachineId;
+      if (isNew) {
+        this.lastScheduledError = error;
+        this.lastScheduledMachineId = this.state.errorMachineId;
+        this.transientPendingSince = Date.now();
+        this.bannerShownAt = undefined;
+        if (this.transientGraceTimer !== undefined) window.clearTimeout(this.transientGraceTimer);
+        this.transientGraceTimer = window.setTimeout(() => { this.transientGraceTimer = undefined; this.requestUpdate(); }, TRANSIENT_GRACE_MS);
+        this.heldErrorBanner = null;
+        return null;
+      }
+      const pendingFor = this.transientPendingSince === undefined ? TRANSIENT_GRACE_MS : Date.now() - this.transientPendingSince;
+      if (pendingFor < TRANSIENT_GRACE_MS) return null;
+      this.transientPendingSince = undefined;
+      if (this.transientGraceTimer !== undefined) { window.clearTimeout(this.transientGraceTimer); this.transientGraceTimer = undefined; }
+      if (this.bannerShownAt === undefined) {
+        this.bannerShownAt = Date.now();
+        this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
+      }
+      this.heldErrorBanner = errorBanner(error, () => {
+        this.bannerDismissedByReader = true;
+        this.bannerShownAt = undefined;
+        if (this.transientErrorTimer !== undefined) { window.clearTimeout(this.transientErrorTimer); this.transientErrorTimer = undefined; }
+        this.heldErrorBanner = null;
+        this.setState(clearErrorPatch());
+      }, "reply");
+      return this.heldErrorBanner;
+    }
+    this.transientPendingSince = undefined;
+    if (this.transientGraceTimer !== undefined) { window.clearTimeout(this.transientGraceTimer); this.transientGraceTimer = undefined; }
     if (decision.kind === "hold") {
       // The claim was cleared under us (a controller's clearErrorPatch cannot
       // reach these privates); the schedule marker pair resets with it, so a
@@ -4008,7 +4048,7 @@ export class PiWebApp extends LitElement {
         ?isWorking=${this.state.selectedSession !== undefined && isActive(this.state)}
         ?panelOpen=${this.shellPanelOpen()}
         ?panelToggleHidden=${panelToggleHiddenState({ mobileLayout: this.appShell.isMobileNavigationLayout, displayView: this.displayMainView() })}
-        .onTogglePanel=${() => { this.toggleShellPanel(); }}
+        .onTogglePanel=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? () => { this.openContextSheet(); } : () => { this.toggleShellPanel(); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
       ></app-context-bar>
     `;

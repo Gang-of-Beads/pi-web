@@ -22,6 +22,10 @@ export const panelHeaderStyles = css`
     border-bottom: 1px solid var(--pi-border);
   }
   .panel-header-title {
+    /* A single-line label centred by the bar's flex needs an even line box:
+     a 15px line in a 36px control rounds to 10/11 and the title reads 1px
+     high. The line box is the control height, so centre is exact. */
+    line-height: var(--pi-panel-header-control-height);
     font-size: var(--pi-text-sm);
     font-weight: var(--pi-weight-semibold);
     color: var(--pi-text);
