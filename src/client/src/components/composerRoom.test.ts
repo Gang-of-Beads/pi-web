@@ -28,13 +28,14 @@ describe("what floats over the composer", () => {
   });
 
   /**
-   * The coarse floor grows the attach button to 44px; the plain-text path
-   * must pay for the wider overlay just like the CodeMirror path does, or
-   * the caret and wrapped tails sit under the button on a phone.
+   * On a touch screen the attach button keeps its drawn 36px box (the owner
+   * measured 44px squares as too big) and reaches 44px through a pseudo
+   * element, so the text needs no extra room beyond the fine-pointer path.
    */
-  it("pays for the wider coarse attach button on the plain-text path", () => {
-    expect(sheets).toContain("textarea { padding-right: calc(var(--pi-space-4) + 44px); }");
-    expect(sheets).toContain(".markdown-editor .cm-content { padding-right: 58px; }");
+  it("keeps the drawn attach box at the comfort height on a touch screen and reaches the floor invisibly", () => {
+    expect(sheets).toContain(".editor-attach { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); }");
+    expect(sheets).toContain(".icon-button::after { content: \"\"; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch, 44px)) / 2); }");
+    expect(sheets).not.toContain("padding-right: calc(var(--pi-space-4) + 44px)");
   });
 });
 

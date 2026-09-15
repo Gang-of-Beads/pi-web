@@ -85,7 +85,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   /* Separate boxes so the provider gives way first and the model id survives. */
   .select-model-provider { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .select-model-id { flex: 0 0 auto; white-space: nowrap; }
-  .icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); box-sizing: border-box; padding: 0; }
+  .icon-button { position: relative; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); box-sizing: border-box; padding: 0; }
   .icon-button .prompt-action-icon, .icon-button .prompt-thinking-gauge { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .icon-button .prompt-action-icon-filled { fill: currentColor; stroke: none; }
   .send-button:not(:disabled) { color: var(--pi-accent, var(--pi-text)); }
@@ -169,17 +169,13 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
      chip grows with it rather than swallowing its own control. */
   @media (pointer: coarse) {
     .attachment-chip { width: 72px; height: 72px; }
-    .editor-attach { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
-    .markdown-editor .cm-content { padding-right: 58px; }
-    .markdown-editor .cm-placeholder { right: 58px; }
-    textarea { padding-right: calc(var(--pi-space-4) + 44px); }
+    .editor-attach { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); }
   }
   .attachment-error { flex-basis: 100%; color: var(--pi-danger); font-size: var(--pi-text-xs); }
-  /* Ghost by default: the composer reads as text plus a few quiet controls,
-     with the send action carrying the only accent. Borders said chip on every
-     control and the row read busier than the content it serves; hover, focus,
-     and the press states still signal interactivity (C2/C4). */
-  button { font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+  /* Bordered controls, the owner's ruling against the ghosted round: on a
+     phone an outline is what tells a glyph apart from decoration. The send
+     action alone carries the accent. */
+  button { font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   button:not(:disabled):active { background: var(--pi-surface-hover); }
   button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
   @media (max-width: 760px) {
@@ -201,18 +197,16 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
     .markdown-editor .cm-cursor { height: 1.4em !important; }
   }
 
-  /* Coarse pointers get the comfort floor. This block sits after the
-     max-width block above because on a 393px phone both match and the later
-     same-specificity rule would otherwise pin the icons at 40px. */
+  /* Coarse pointers keep the drawn 36px box the whole phone chrome shares
+     (the owner measured the 44px squares as too big) and grow only what a
+     finger can hit: a reach pseudo-element brings the target to the 44px
+     floor without redrawing the control, as the message actions do. */
   @media (pointer: coarse) {
-    .icon-button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
+    .icon-button::after { content: ""; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch, 44px)) / 2); }
     .attachment-remove { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); line-height: calc(var(--pi-control-height-touch, 44px) - 2px); top: 0; right: 0; }
-    .select-model { min-height: var(--pi-control-height-touch, 44px); }
-    .select-thinking { min-width: var(--pi-control-height-touch, 44px); }
-    /* The compact status row compresses its buttons (min-width: 0, flex
-       shrink) at higher specificity than the icon rules above, so the comfort
-       floor needs the same selector to win the cascade. */
-    .compact-status > button { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); }
+    .select-model { min-height: var(--pi-control-height-comfort); }
+    .select-thinking { min-width: var(--pi-control-height-comfort); }
+    .compact-status > button { min-width: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); }
   }
 
   `;
