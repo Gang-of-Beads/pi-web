@@ -45,6 +45,7 @@ import { dockerEnvironmentPromptSections } from "./daemon/sessions/dockerEnviron
 import { PI_WEB_SESSION_ENV, sessionEnvironmentPromptSections } from "./daemon/sessions/sessionEnvironmentFacts.js";
 import { createServerPluginExecFile } from "./shared/plugins/serverPluginExec.js";
 import { createServerPluginRuntime } from "./shared/plugins/serverPluginRuntime.js";
+import { createSessionTranscriptPort, type TranscriptReader } from "./daemon/plugins/sessionTranscriptPort.js";
 import { runSessionDaemonShutdown } from "./daemon/sessionDaemonShutdown.js";
 import { sessionServiceDependencies } from "./daemon/sessionServiceDependencies.js";
 import { registerWorkspaceCatalogRoutes } from "./daemon/workspaces/workspaceCatalogRoutes.js";
@@ -184,11 +185,13 @@ async function createSessionDaemonRuntime() {
   } else {
     app.log.info({ httpIdleTimeoutMs: appliedHttpIdleTimeout.timeoutMs }, "applied agent profile HTTP idle timeout to the session daemon HTTP stack");
   }
+  let transcriptReader: TranscriptReader | undefined;
   const serverPlugins = await createServerPluginRuntime({
     catalog: serverPluginCatalog,
     ...(serverPluginRecovery.safeStart === undefined ? {} : { safeStart: serverPluginRecovery.safeStart }),
     logger: app.log,
     execFile: createServerPluginExecFile({ env: daemonEnvironment }),
+    hostPorts: { sessionTranscripts: createSessionTranscriptPort(() => transcriptReader) },
   });
   recordDeclaredAgentFacts(serverPlugins.declaredAgentFacts());
   try {
@@ -302,6 +305,7 @@ async function createSessionDaemonRuntime() {
         env: daemonEnvironment,
       }),
     }));
+    transcriptReader = { list: (cwd) => sessions.list(cwd), messages: (ref, page) => sessions.messages(ref, page) };
     auth.subscribe((change) => { sessions.applyAuthChange(change); });
     const terminals = new TerminalService(eventHub, workspaceActivity);
     const workspaceRemovals = new WorkspaceRemovalService(workspaceProviders, terminals);

@@ -203,6 +203,37 @@ export interface ServerPluginHostPorts {
    * its own, so a host-side registry and the HTTP surface stay one source.
    */
   machineRegistry?: MachineRegistryContribution;
+  /**
+   * Read-only access to this machine's session transcripts, scoped by the
+   * session's own identity (id + cwd). Only the session daemon offers it; a
+   * plugin running in the web process sees no port. There is no write path:
+   * the daemon stays the single producer of session files.
+   */
+  sessionTranscripts?: SessionTranscriptPort;
+}
+
+export interface SessionTranscriptRef {
+  readonly id: string;
+  readonly cwd: string;
+}
+
+export interface SessionTranscriptSummary extends SessionTranscriptRef {
+  readonly name?: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly archived?: boolean;
+}
+
+/** One page of a transcript, in the browser projection (bounded, images by reference). */
+export interface SessionTranscriptPage {
+  readonly messages: readonly unknown[];
+  readonly start: number;
+  readonly total: number;
+}
+
+export interface SessionTranscriptPort {
+  listSessions(cwd: string): Promise<readonly SessionTranscriptSummary[]>;
+  readMessages(ref: SessionTranscriptRef, page?: { before?: number; limit?: number }): Promise<SessionTranscriptPage>;
 }
 
 export interface WorkspacePathResolution {

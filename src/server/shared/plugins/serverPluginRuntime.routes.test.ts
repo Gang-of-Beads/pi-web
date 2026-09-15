@@ -128,6 +128,33 @@ describe("host ports", () => {
     await runtime.stop();
   });
 
+  it("let a daemon plugin read session transcripts through the port the daemon hands over", async () => {
+    let observed: unknown;
+    const importer: ServerPluginModuleImporter = () => Promise.resolve({
+      default: {
+        apiVersion: 1,
+        name: "Search",
+        activate: (context) => {
+          observed = context.ports?.sessionTranscripts;
+          return {};
+        },
+      } satisfies PiWebServerPlugin,
+    });
+    const sessionTranscripts = {
+      listSessions: () => Promise.resolve([{ id: "s1", cwd: "/repo", createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z" }]),
+      readMessages: () => Promise.resolve({ messages: [{ role: "user", content: "hi" }], start: 0, total: 1 }),
+    };
+    const runtime = await createServerPluginRuntime({
+      catalog: { snapshot: () => Promise.resolve(snapshot([entry("search")])) },
+      importer,
+      logger: logger(),
+      hostPorts: { sessionTranscripts },
+    });
+
+    expect(observed).toBe(sessionTranscripts);
+    await runtime.stop();
+  });
+
   it("stay absent when the host supplies none", async () => {
     let observed: unknown = "unset";
     const importer: ServerPluginModuleImporter = () => Promise.resolve({
