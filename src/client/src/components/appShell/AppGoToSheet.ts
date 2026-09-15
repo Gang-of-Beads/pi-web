@@ -15,8 +15,8 @@ export interface GoToDestination {
 }
 
 /**
- * The extension page on the phone: every destination by name, opened from
- * one control in the bar. The owner ruled it back in from the 8504 build:
+ * The extension page on the phone: every destination by name in two columns
+ * of tiles (the owner's shape), opened from one control in the bar. The owner ruled it back in from the 8504 build:
  * the tool tiles stacked under the session list made the list page carry
  * two things, and a tool page had no way to another tool but back through
  * the list. Being a modal layer, the system back gesture closes it.
@@ -66,8 +66,9 @@ export class AppGoToSheet extends LitElement {
     }
     .panel-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
     .panel-header-title { margin: 0; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-text); }
-    .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-reading-edge); padding-bottom: max(var(--pi-space-4), env(safe-area-inset-bottom)); overscroll-behavior: contain; }
-    .destination { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; align-items: center; gap: var(--pi-space-5); box-sizing: border-box; min-height: var(--pi-row-min-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: start; cursor: pointer; }
+    .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-reading-edge); padding-bottom: max(var(--pi-space-4), env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+    .destination:last-child:nth-child(odd) { grid-column: 1 / -1; }
+    .destination { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-row-min-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: start; cursor: pointer; }
     .destination.current { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .destination:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     @media (pointer: coarse) { .destination:active { background: var(--pi-surface-hover); } }
