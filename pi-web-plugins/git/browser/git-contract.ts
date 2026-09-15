@@ -2,6 +2,23 @@ export const GIT_STATUS_OPERATION = "status";
 export const GIT_DIFF_OPERATION = "diff";
 export const GIT_HISTORY_OPERATION = "history";
 export const GIT_COMMIT_DIFF_OPERATION = "commit-diff";
+export const GIT_WORKTREE_ADD_OPERATION = "worktree-add";
+
+/**
+ * A new linked worktree. `createBranch` true runs `git worktree add -b`;
+ * false checks out an existing branch. `path` is absolute on the machine,
+ * chosen by the reader in the dialog (default: beside the repository).
+ */
+export interface GitWorktreeAddRequest {
+  branch: string;
+  path: string;
+  createBranch: boolean;
+}
+
+export interface GitWorktreeAddResponse {
+  path: string;
+  branch: string;
+}
 
 export interface GitCommitSummary {
   id: string;

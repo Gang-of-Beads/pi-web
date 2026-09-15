@@ -13,7 +13,10 @@ import {
   GIT_DIFF_OPERATION,
   GIT_HISTORY_OPERATION,
   GIT_STATUS_OPERATION,
+  GIT_WORKTREE_ADD_OPERATION,
   type GitCommitDiffRequest,
+  type GitWorktreeAddRequest,
+  type GitWorktreeAddResponse,
   type GitCommitDiffResponse,
   type GitCommitSummary,
   type GitDiffResponse,
@@ -29,6 +32,7 @@ export {
   GIT_DIFF_OPERATION,
   GIT_HISTORY_OPERATION,
   GIT_STATUS_OPERATION,
+  GIT_WORKTREE_ADD_OPERATION,
 } from "./browser/git-contract.js";
 export type {
   GitCommitDiffRequest,
@@ -91,7 +95,41 @@ export async function requestGitBackend(
   if (request.operation === GIT_COMMIT_DIFF_OPERATION) {
     return commitDiffProviderResponse(await gitCommitDiffWithRunner(runGit, request.workspace.path, parseCommitDiffInput(request.input)));
   }
+  if (request.operation === GIT_WORKTREE_ADD_OPERATION) {
+    const added = await gitWorktreeAddWithRunner(runGit, request.workspace.path, parseWorktreeAddInput(request.input));
+    return { path: added.path, branch: added.branch };
+  }
   throw new Error(`Unsupported Git workspace backend operation: ${request.operation}`);
+}
+
+/**
+ * `git worktree add` from the current worktree: git resolves the shared
+ * repository itself, so a worktree can be added from any linked checkout.
+ * The failure text is git's own - a taken branch, an existing directory, a
+ * bad name - because the reader can act on it and nothing here can say it
+ * better.
+ */
+export async function gitWorktreeAddWithRunner(runGit: RunGit, cwd: string, input: GitWorktreeAddRequest): Promise<GitWorktreeAddResponse> {
+  const args = input.createBranch
+    ? ["worktree", "add", "-b", input.branch, "--", input.path]
+    : ["worktree", "add", "--", input.path, input.branch];
+  const result = await runGit(cwd, args);
+  if (result.code !== 0) throw new Error(result.stderr.trim() === "" ? `git worktree add failed with exit code ${String(result.code)}` : result.stderr.trim());
+  return { path: input.path, branch: input.branch };
+}
+
+function parseWorktreeAddInput(input: JsonValue): GitWorktreeAddRequest {
+  if (!isRecord(input)) throw new Error("Git worktree add input must be an object");
+  const unsupported = Object.keys(input).find((key) => key !== "branch" && key !== "path" && key !== "createBranch");
+  if (unsupported !== undefined) throw new Error(`Git worktree add input contains an unsupported field: ${unsupported}`);
+  const branch = input["branch"];
+  const path = input["path"];
+  const createBranch = input["createBranch"];
+  if (typeof branch !== "string" || branch.trim() === "") throw new Error("Git worktree add input branch must be a non-empty string");
+  if (branch.startsWith("-")) throw new Error("Git worktree add input branch must not start with a dash");
+  if (typeof path !== "string" || !isAbsolute(path)) throw new Error("Git worktree add input path must be an absolute path");
+  if (typeof createBranch !== "boolean") throw new Error("Git worktree add input createBranch must be a boolean");
+  return { branch: branch.trim(), path, createBranch };
 }
 
 /**

@@ -1,5 +1,6 @@
 import { gitSplitClass } from "./gitSplitLayout.js";
-import { renderGitDisclosureIcon } from "./hostUi.js";
+import { gitHostUi, renderGitDisclosureIcon } from "./hostUi.js";
+import { openWorktreeDialog } from "./worktreeDialog.js";
 import type {
   QualifiedContributionId,
   HtmlTemplateTag,
@@ -17,6 +18,7 @@ import {
   GIT_DIFF_OPERATION,
   GIT_HISTORY_OPERATION,
   GIT_STATUS_OPERATION,
+  GIT_WORKTREE_ADD_OPERATION,
   parseGitCommitDiffResponse,
   parseGitDiffResponse,
   parseGitHistoryResponse,
@@ -795,6 +797,25 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
   `;
 }
 
+/**
+ * "New worktree" runs through the provider's request seam and then asks
+ * the host to re-read its catalog: the checkout appears in the workspace
+ * list and the git panel, and nothing switches to it (the owner's ruling -
+ * create only). Git's own refusal stays in the dialog for correction.
+ */
+function openNewWorktreeDialog(html: HtmlTemplateTag, context: WorkspacePanelContext): void {
+  const ui = gitHostUi();
+  if (ui === undefined) return;
+  openWorktreeDialog(ui, html, {
+    repositoryPath: context.workspace.path,
+    submit: async (input) => {
+      await requestGitBackend(context, GIT_WORKTREE_ADD_OPERATION, { branch: input.branch, path: input.path, createBranch: input.createBranch });
+      await context.host.refreshAppData?.();
+    },
+    cancel: () => undefined,
+  });
+}
+
 function renderModeToggle(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext, mode: GitPanelMode) {
   return html`
     <div class="git-view-toggle git-mode-toggle" role="group" aria-label="Git panel view">
@@ -844,7 +865,7 @@ function renderFileList(
   const status = state.status;
   if (status === undefined) return html`<p class="git-muted">${state.error === undefined ? "Loading status…" : "Status unavailable."}</p>`;
   if (!status.isGitRepo) return html`<p class="git-muted">Not a git repository.</p>`;
-  const summary = html`<p class="git-summary">${gitSummary(status)}</p>`;
+  const summary = html`<p class="git-summary"><span>${gitSummary(status)}</span>${context.backend === undefined ? null : html`<button type="button" class="git-new-worktree" @click=${() => { openNewWorktreeDialog(html, context); }}>New worktree</button>`}</p>`;
   if (status.files.length === 0) return html`${summary}<p class="git-muted">No changes.</p>`;
   const body = controller.currentView() === "tree"
     ? viewState.nodes.map((node) => renderTreeNode(html, controller, context, state, node, 0))
@@ -1347,7 +1368,9 @@ const gitPanelStyles = `
   .git-panel .git-commit-row strong, .git-panel .git-commit-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .git-panel .git-load-more { margin: var(--pi-space-4); }
   .git-panel .git-twisty { color: var(--pi-dim, var(--pi-muted)); }
-  .git-panel .git-summary { margin: var(--pi-space-2) var(--pi-space-3) var(--pi-space-4); color: var(--pi-muted); }
+  .git-panel .git-summary { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); margin: var(--pi-space-2) var(--pi-space-3) var(--pi-space-4); color: var(--pi-muted); }
+  .git-panel .git-summary > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .git-panel .git-new-worktree { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-control-height-comfort); font-size: var(--pi-text-xs); }
   .git-panel .submodule-badge { display: inline-block; margin-left: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); color: var(--pi-muted); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-regular); vertical-align: baseline; }
   .git-panel .git-viewer { min-height: 0; overflow: auto; display: flex; flex-direction: column; }
   .git-panel .git-review-diffs { min-width: 0; }

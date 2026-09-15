@@ -4,14 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { memoryPluginStorage } from "../../src/server/shared/plugins/pluginStorageTestSupport.js";
-import type { ServerPluginActivationContext, ServerPluginExecFileResult } from "@gang-of-beads/pi-web/server-plugin-api";
+import type { JsonValue, ServerPluginActivationContext, ServerPluginExecFileResult } from "@gang-of-beads/pi-web/server-plugin-api";
 import { createServerPluginExecFile } from "../../src/server/shared/plugins/serverPluginExec.js";
 import {
+  GIT_WORKTREE_ADD_OPERATION,
   gitCommitDiff as requestGitCommitDiff,
   gitDiff as requestGitDiff,
   gitHistory as requestGitHistory,
   gitStatus as requestGitStatus,
   parseHistoryLog,
+  requestGitBackend,
 } from "./git-backend.js";
 
 // Isolate from any global/system git config and force a deterministic identity;
@@ -243,6 +245,42 @@ describe("Git changes backend", () => {
 
     await expect(gitDiff(dir, { path: "/outside" })).rejects.toThrow("Absolute paths are not allowed");
     await expect(gitDiff(dir, { path: "../outside" })).rejects.toThrow("Path traversal is not allowed");
+  });
+});
+
+describe("Git worktree add backend", () => {
+  function worktreeAdd(cwd: string, input: JsonValue) {
+    return requestGitBackend(backendContext, {
+      operation: GIT_WORKTREE_ADD_OPERATION,
+      input,
+      workspace: { key: "main", path: cwd, label: "repo", isMain: true },
+      project: { id: "p", path: cwd, name: "repo" },
+      signal: new AbortController().signal,
+    });
+  }
+
+  it("adds a linked worktree on a new branch beside the repository, and again on an existing branch", async () => {
+    const { dir } = createFixture();
+    const feature = join(dir, "..", "repo-feature");
+    const again = join(dir, "..", "repo-feature-2");
+
+    await expect(worktreeAdd(dir, { branch: "feature", path: feature, createBranch: true })).resolves.toEqual({ path: feature, branch: "feature" });
+    expect(git(feature, ["rev-parse", "--abbrev-ref", "HEAD"]).trim()).toBe("feature");
+    expect(git(dir, ["worktree", "list", "--porcelain"])).toContain("branch refs/heads/feature");
+
+    await expect(worktreeAdd(dir, { branch: "feature", path: again, createBranch: false })).rejects.toThrow(/already (checked out|used by worktree)/u);
+  });
+
+  it("hands git's own refusal back and validates the input shape before running anything", async () => {
+    const { dir } = createFixture();
+    const taken = join(dir, "..", "repo-main");
+
+    await expect(worktreeAdd(dir, { branch: "main", path: taken, createBranch: true })).rejects.toThrow(/already exists/u);
+    await expect(worktreeAdd(dir, { branch: "", path: taken, createBranch: true })).rejects.toThrow("branch must be a non-empty string");
+    await expect(worktreeAdd(dir, { branch: "-x", path: taken, createBranch: true })).rejects.toThrow("must not start with a dash");
+    await expect(worktreeAdd(dir, { branch: "ok", path: "relative/dir", createBranch: true })).rejects.toThrow("absolute path");
+    await expect(worktreeAdd(dir, { branch: "ok", path: taken, createBranch: "yes" })).rejects.toThrow("createBranch must be a boolean");
+    await expect(worktreeAdd(dir, { branch: "ok", path: taken, createBranch: true, extra: 1 })).rejects.toThrow("unsupported field: extra");
   });
 });
 

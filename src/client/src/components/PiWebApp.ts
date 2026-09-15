@@ -3075,6 +3075,7 @@ export class PiWebApp extends LitElement {
           this.rememberCurrentMachineNavigation();
         }
       },
+      refreshAppData: () => this.refreshAppData(),
     };
   }
 

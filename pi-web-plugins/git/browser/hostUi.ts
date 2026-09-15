@@ -17,3 +17,7 @@ export function rememberGitHostUi(ui: PluginHostUi | undefined): void {
 export function renderGitDisclosureIcon(collapsed: boolean): unknown {
   return hostUi?.renderDisclosureIcon?.(collapsed);
 }
+
+export function gitHostUi(): PluginHostUi | undefined {
+  return hostUi;
+}

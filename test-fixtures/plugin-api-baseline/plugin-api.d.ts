@@ -607,6 +607,10 @@ export interface WorkspaceHost {
     workspacePanelFullscreen(): boolean;
     /** Move the active workspace panel into or out of the main content area. */
     setWorkspacePanelFullscreen(fullscreen: boolean): void;
+    /** Re-read what the app shows about this machine, project and workspaces
+     *  after the panel changed it on disk (a worktree added, a checkout gone):
+     *  the host owns the catalog, so the panel reports and never edits it. */
+    refreshAppData?(): void | Promise<void>;
 }
 export type WorkspacePanelHost = WorkspaceHost;
 export interface WorkspaceContext {
