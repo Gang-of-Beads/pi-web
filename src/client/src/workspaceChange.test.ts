@@ -6,7 +6,9 @@ describe("workspaceChangeVerdict", () => {
     expect(workspaceChangeVerdict({ eventMachineId: "remote", eventCwd: "/repo", selectedMachineId: "local", selectedWorkspacePath: "/repo" })).toEqual({ kind: "ignore", reason: "other-machine" });
     expect(workspaceChangeVerdict({ eventMachineId: "local", eventCwd: "/repo", selectedMachineId: undefined, selectedWorkspacePath: "/repo" })).toEqual({ kind: "ignore", reason: "other-machine" });
     expect(workspaceChangeVerdict({ eventMachineId: "local", eventCwd: "/repo", selectedMachineId: "local", selectedWorkspacePath: undefined })).toEqual({ kind: "ignore", reason: "no-workspace" });
-    expect(workspaceChangeVerdict({ eventMachineId: "local", eventCwd: "/repo/other", selectedMachineId: "local", selectedWorkspacePath: "/repo" })).toEqual({ kind: "ignore", reason: "other-directory" });
-    expect(workspaceChangeVerdict({ eventMachineId: "local", eventCwd: "/repo", selectedMachineId: "local", selectedWorkspacePath: "/repo" })).toEqual({ kind: "refresh" });
+    expect(workspaceChangeVerdict({ eventMachineId: "local", eventCwd: "/elsewhere", selectedMachineId: "local", selectedWorkspacePath: "/repo" })).toEqual({ kind: "ignore", reason: "other-directory" });
+    expect(workspaceChangeVerdict({ eventMachineId: "local", eventCwd: "/repo-two", selectedMachineId: "local", selectedWorkspacePath: "/repo" })).toEqual({ kind: "ignore", reason: "other-directory" });
+    expect(workspaceChangeVerdict({ eventMachineId: "local", eventCwd: "/repo", selectedMachineId: "local", selectedWorkspacePath: "/repo" })).toEqual({ kind: "refresh", reason: "same-directory" });
+    expect(workspaceChangeVerdict({ eventMachineId: "local", eventCwd: "/repo/packages/app", selectedMachineId: "local", selectedWorkspacePath: "/repo" })).toEqual({ kind: "refresh", reason: "inside-workspace" });
   });
 });

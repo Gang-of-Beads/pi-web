@@ -88,6 +88,22 @@ describe("FilesExplorer", () => {
     expect(h.explorer.state.selectedFileContent?.path).not.toBe("slow.md");
   });
 
+  it("an older refresh answer never settles over a newer one", async () => {
+    const h = harness();
+    h.explorer.adopt(identity);
+    await vi.waitFor(() => { expect(h.explorer.state.tree).toHaveLength(1); });
+    let releaseOld: ((value: FileTreeResponse) => void) | undefined;
+    h.setListFiles(() => new Promise<FileTreeResponse>((resolve) => { releaseOld = resolve; }));
+    const older = h.explorer.refresh();
+    h.setListFiles(() => Promise.resolve(tree("", ["src", "new.md"])));
+    await h.explorer.refresh();
+    expect(h.explorer.state.tree).toHaveLength(2);
+    releaseOld?.(tree("", ["src"]));
+    await older;
+    expect(h.explorer.state.tree).toHaveLength(2);
+    expect(h.explorer.state.stale).toBe(false);
+  });
+
   it("expanding a directory loads its entries and collapsing drops them", async () => {
     const h = harness();
     h.explorer.adopt(identity);

@@ -1512,12 +1512,12 @@ export class PiSessionService implements SessionRouteService {
     clearInterval(this.heartbeat);
     this.clearCompactionDrainTimers();
     this.backgroundWorkWatcher.dispose();
-    this.workspaceWatcher.dispose();
     // Same startup-park hazard as closeActive(): settle `session_start` dialogs
     // of sessions still binding extensions before awaiting their pending opens.
     for (const sessionId of this.startupSessions.keys()) this.endSessionExtensionDialogs(sessionId);
     const pendingOpens = this.pendingSessionOpenPromises();
     if (pendingOpens.length > 0) await Promise.allSettled(pendingOpens);
+    this.workspaceWatcher.dispose();
     const activeSessions = Array.from(new Set(this.active.values()));
     for (const active of activeSessions) {
       this.forgetUnreadActivity(active.runtime.session);
@@ -3858,7 +3858,7 @@ export class PiSessionService implements SessionRouteService {
     this.endSessionExtensionDialogs(sessionId);
     this.active.delete(sessionId);
     this.backgroundWorkWatcher.forget(sessionId);
-    this.workspaceWatcher.release(sessionId, active.runtime.session.sessionManager.getCwd());
+    this.releaseWorkspaceWatch(active.runtime.session);
     this.activities.delete(sessionId);
     this.workspaceActivity?.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
     this.clearAuthLossWarningsForSession(sessionId);
@@ -4122,7 +4122,9 @@ export class PiSessionService implements SessionRouteService {
             candidateGeneration = this.notificationStore.beginReplacement(priorGeneration, notificationIdentityForSession(session));
             this.notificationGenerationBySession.set(session, candidateGeneration);
           }
+          this.releaseWorkspaceWatch(boundSession);
           await this.bindRuntime(active, session);
+          this.holdWorkspaceWatch(session);
           // The runtime being replaced parked every dialog the store still
           // holds for this session; settle those waits before the new
           // runtime's extensions can open fresh dialogs under the same id.
@@ -4144,7 +4146,7 @@ export class PiSessionService implements SessionRouteService {
       });
       this.active.set(runtime.session.sessionId, active);
       this.watchBackgroundWork(runtime.session);
-      this.workspaceWatcher.hold(runtime.session.sessionId, runtime.session.sessionManager.getCwd());
+      this.holdWorkspaceWatch(runtime.session);
       this.backgroundRunRefreshRequested = true;
       void this.refreshBackgroundRunCounts();
       if (notificationOwnership === "replacement" && notificationGeneration !== undefined) {
@@ -4179,6 +4181,7 @@ export class PiSessionService implements SessionRouteService {
       }
       if (removedActive) {
         this.workspaceActivity?.removeSession(runtime.session.sessionId, runtime.session.sessionManager.getCwd());
+        this.releaseWorkspaceWatch(runtime.session);
       }
       try {
         await runtime.session.abort();
@@ -5029,6 +5032,20 @@ export class PiSessionService implements SessionRouteService {
     } finally {
       this.backgroundRunScanInFlight = false;
     }
+  }
+
+  /**
+   * The watch is keyed by the canonical working directory, the form every
+   * listing row carries and the browser compares against: a session header
+   * can record `~/repo` or an unresolved form, and a raw key would either
+   * fail to watch or publish a directory no client recognizes.
+   */
+  private holdWorkspaceWatch(session: PiAgentSession): void {
+    this.workspaceWatcher.hold(session.sessionId, canonicalizeStoredCwd(session.sessionManager.getCwd()));
+  }
+
+  private releaseWorkspaceWatch(session: PiAgentSession): void {
+    this.workspaceWatcher.release(session.sessionId, canonicalizeStoredCwd(session.sessionManager.getCwd()));
   }
 
   private watchBackgroundWork(session: PiAgentSession): void {

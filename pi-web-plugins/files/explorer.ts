@@ -37,6 +37,7 @@ export function explorerIdentityKey(identity: FilesExplorerIdentity): string {
 
 export class FilesExplorer {
   private snapshot: FilesExplorerSnapshot = emptySnapshot();
+  private refreshGeneration = 0;
   private identity: FilesExplorerIdentity = { machineId: "", projectId: "", workspaceId: "" };
   private fileRequestGeneration = 0;
 
@@ -68,15 +69,23 @@ export class FilesExplorer {
     this.deps.onChange();
   }
 
+  /**
+   * Refreshes overlap when change bursts straddle the daemon's coalescing
+   * window; only the newest one may land, or an older listing would settle
+   * over a newer one and read as fresh.
+   */
   async refresh(): Promise<void> {
+    const generation = ++this.refreshGeneration;
     try {
       const root = await this.deps.listFiles("");
       const expanded: Record<string, FileTreeEntry[]> = {};
       for (const path of Object.keys(this.snapshot.expandedDirs)) {
         expanded[path] = (await this.deps.listFiles(path)).entries;
       }
+      if (generation !== this.refreshGeneration) return;
       this.snapshot = { ...this.snapshot, tree: root.entries, expandedDirs: expanded, stale: false, treeFailed: undefined };
     } catch (error) {
+      if (generation !== this.refreshGeneration) return;
       this.snapshot = { ...this.snapshot, treeFailed: this.deps.describeError(error) };
     }
     this.deps.onChange();
