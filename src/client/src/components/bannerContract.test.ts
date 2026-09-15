@@ -31,8 +31,11 @@ describe("the panel-header banner contract", () => {
     const css = read("./appShell/ContextSwitcherSheet.ts");
     const start = css.indexOf(".sheet {");
     const rule = css.slice(start, css.indexOf("}", start));
-    expect(rule).toContain("padding: 0 var(");
+    // The sheet carries no horizontal padding of its own: the list sections
+    // keep their single 8px inset, so rows hug the edge once, not twice.
+    expect(rule).toContain("padding: 0 0 var(");
     expect(css).toContain(".sheet-header { position: sticky; top: 0;");
+    expect(css).toContain("margin-inline: 0; padding-inline: var(--pi-bar-inset);");
     expect(css).not.toContain(".sheet-title {");
   });
 

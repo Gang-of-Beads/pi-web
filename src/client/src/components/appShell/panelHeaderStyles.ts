@@ -42,7 +42,8 @@ export const panelHeaderStyles = css`
     width: var(--pi-panel-header-control-height);
     height: var(--pi-panel-header-control-height);
     flex: 0 0 auto;
-    border: none;
+    border: 1px solid var(--pi-border);
+    background: var(--pi-surface);
     border-radius: var(--pi-radius-md);
     background: transparent;
     color: var(--pi-muted);

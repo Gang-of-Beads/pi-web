@@ -66,7 +66,8 @@ describe("every bar producer", () => {
     expect(rule(read("./SessionList.ts"), "h2 { min-height: var(--pi-panel-header-height)")).toBeTruthy();
     expect(read("./SessionList.ts")).toContain(".start-session-button { min-width: 0; height: var(--pi-panel-header-control-height); line-height: var(--pi-panel-header-control-height); }");
     expect(read("./SettingsDialog.ts")).toContain(".settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left));");
-    expect(read("./appShell/ContextSwitcherSheet.ts")).toContain("margin-inline: calc(-1 * var(--pi-reading-edge)); padding-inline: var(--pi-bar-inset);");
+    expect(read("./SettingsDialog.ts")).toContain(".close-button { box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); display: grid; place-items: center; border: 1px solid var(--pi-border); background: var(--pi-surface);");
+    expect(read("./appShell/ContextSwitcherSheet.ts")).toContain("margin-inline: 0; padding-inline: var(--pi-bar-inset);");
   });
 });
 

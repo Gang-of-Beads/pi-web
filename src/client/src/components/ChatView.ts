@@ -384,16 +384,16 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .empty-session button:focus-visible { border-color: var(--pi-accent); }
   @media (hover: hover) { .empty-session button:hover { border-color: var(--pi-accent); } }
   @media (pointer: coarse) { .empty-session button { min-height: var(--pi-control-height-touch); } }
-  .msg-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-5); min-height: 26px; margin-bottom: var(--pi-space-3); }
+  .msg-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-5); min-height: 22px; margin-bottom: var(--pi-space-3); }
   /* Square by design: the card's overflow: clip rounds this against the same
      arc the border uses, in one rasterization. Every previous fix had this
      element guess the card's inner curve, and the guess broke at the phone's
      fractional device pixel ratio - five reports of the same corners. */
-  .msg > .msg-header { position: sticky; top: var(--pi-chat-sticky-top); z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface-card); box-shadow: var(--pi-elevation-2); }
+  .msg > .msg-header { position: sticky; top: var(--pi-chat-sticky-top); z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: 1px var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface-card); box-shadow: var(--pi-elevation-2); }
   /* Role colour, on the strip the reader scans: warm amber = you, cool
      purple = pi. The graphite palette left the assistant strip identical to
      the card, so the roles read as one (owner, phone round). */
-  .msg.user > .msg-header { border-bottom-color: var(--pi-border-muted); background: var(--pi-selection-bg); box-shadow: inset var(--pi-rail-width) 0 0 var(--pi-accent); }
+  .msg.user > .msg-header { border-bottom-color: var(--pi-border-muted); background: color-mix(in srgb, var(--pi-accent) 26%, var(--pi-surface)); box-shadow: inset var(--pi-rail-width) 0 0 var(--pi-accent); }
   /* The sticky header rides above the card's border while the message scrolls
      under it; without an opaque fill the scrolled text shows through the gap
      (the clipped "…dden." line the owner screenshotted). Same fill as the
@@ -783,6 +783,11 @@ export class ChatView extends LitElement {
    * cannot answer from.
    */
   @state() private deferredImageAttempts = new Map<string, { errored: boolean; retries: number }>();
+  /** Failed deferred images retry themselves when scrolled back into view (the
+   *  owner's ruling: a load that failed while off-screen is not the reader's
+   *  errand). The observer only exists where the browser provides one. */
+  private imageRetryObserver: IntersectionObserver | undefined;
+  private readonly observedImageRetries = new WeakSet<Element>();
 
   private markDeferredImageErrored(key: string): void {
     const current = this.deferredImageAttempts.get(key);
@@ -854,6 +859,7 @@ export class ChatView extends LitElement {
 
 
   override disconnectedCallback(): void {
+    this.imageRetryObserver?.disconnect();
     this.stopTurnClock();
     this.saveScrollPosition();
     this.scrollController.dispose();
@@ -959,6 +965,7 @@ export class ChatView extends LitElement {
   }
 
   protected override updated(changed: Map<string, unknown>): void {
+    this.armImageRetries();
     this.holdBottomEdge();
     if (changed.has("loadingMore") && !this.loadingMore) this.loadMoreRequested = false;
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
@@ -1689,6 +1696,32 @@ export class ChatView extends LitElement {
     return activity.detail !== undefined && activity.detail !== "" ? `${activity.label}: ${activity.detail}` : activity.label;
   }
 
+  /**
+   * A failed deferred image retries the moment its row re-enters the
+   * viewport: the fetch failed once, and scrolling back is the reader saying
+   * "try again now". The tap keeps working; it is just no longer the only
+   * path.
+   */
+  private armImageRetries(): void {
+    if (this.imageRetryObserver === undefined) {
+      if (typeof IntersectionObserver === "undefined") return;
+      this.imageRetryObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const target = entry.target;
+          const key = target instanceof HTMLElement ? target.dataset["retryKey"] : undefined;
+          this.imageRetryObserver?.unobserve(entry.target);
+          if (key !== undefined && key !== "") this.retryDeferredImage(key);
+        }
+      });
+    }
+    for (const button of this.renderRoot.querySelectorAll<HTMLElement>(".chat-image-retry[data-retry-key]")) {
+      if (this.observedImageRetries.has(button)) continue;
+      this.observedImageRetries.add(button);
+      this.imageRetryObserver.observe(button);
+    }
+  }
+
   private renderConversationRail() {
     if (!this.messages.length || this.messageTotal <= 0) return null;
     const total = this.conversationDisplayTotal();
@@ -2060,7 +2093,7 @@ export class ChatView extends LitElement {
       const retryKey = "ref" in part ? deferredImageKey(part.ref) : undefined;
       const attempt = retryKey === undefined ? undefined : this.deferredImageAttempts.get(retryKey);
       if (attempt?.errored === true && retryKey !== undefined) {
-        return html`<button type="button" class="part chat-image-retry" @click=${() => { this.retryDeferredImage(retryKey); }}>Image did not load · tap to retry</button>`;
+        return html`<button type="button" class="part chat-image-retry" data-retry-key=${retryKey} @click=${() => { this.retryDeferredImage(retryKey); }}>Image did not load · retrying…</button>`;
       }
       const src = source.appPath ? withRetryNonce(resolveAppUrl(source.src), attempt?.retries ?? 0) : source.src;
       const alt = source.alt;

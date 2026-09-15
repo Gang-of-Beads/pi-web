@@ -124,7 +124,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
                   @pointerup=${() => { this.gestures.cancel(); }}
                   @pointercancel=${() => { this.gestures.cancel(); }}
                 >
-                  <span class="workspace-primary"><span class="workspace-primary-label">${project.name}</span></span><small>${project.path}</small>
+                  <span class="workspace-primary"><span class="workspace-primary-label">${project.name}</span></span><small class="row-path" dir="ltr">${project.path}</small>
                   ${this.renderActivity(project)}
                 </button>
                 <div class="action-menu">

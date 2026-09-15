@@ -103,7 +103,7 @@ export class AppContextBar extends LitElement {
     .context-bar { position: relative; flex: 0 0 auto; min-width: 0; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; gap: var(--pi-space-2); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
     button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     @media (pointer: coarse) { button:active { background: var(--pi-surface-hover); } }
-    .panel-toggle { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 0; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-text); }
+    .panel-toggle { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); }
     .panel-toggle:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     @media (hover: hover) { .panel-toggle:hover { background: var(--pi-surface-hover); } }
     .toggle-icon { width: 16px; height: 16px; pointer-events: none; }

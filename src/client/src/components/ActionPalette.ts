@@ -101,17 +101,17 @@ export class ActionPalette extends LitElement {
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
     modal-surface { --palette-top: min(12dvh, 90px); --palette-bottom: max(20px, env(safe-area-inset-bottom)); --modal-surface-place-items: start center; --modal-surface-backdrop-padding: var(--palette-top) var(--pi-space-8) var(--palette-bottom); --modal-surface-max-height: min(640px, calc(100dvh - var(--palette-top) - var(--palette-bottom))); }
-    header { display: grid; grid-template-columns: 1fr auto; gap: var(--pi-space-4); padding: var(--pi-space-5); border-bottom: 1px solid var(--pi-border); }
-    input { min-width: 0; border: 0; outline: none; background: transparent; color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; padding: var(--pi-space-4); }
+    header { display: grid; grid-template-columns: 1fr auto; gap: var(--pi-space-4); align-items: center; box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
+    input { min-width: 0; border: 0; outline: none; background: transparent; color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); line-height: var(--pi-panel-header-control-height); padding: 0; }
     /* The border is removed for the flush look, so focus needs its own ring. */
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); border-radius: var(--pi-radius-sm); }
     input::placeholder { color: var(--pi-dim); }
     button { font: inherit; border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     @media (pointer: coarse) { button:active { background: var(--pi-surface-hover); } }
     header button { box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); line-height: 1; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: var(--pi-space-1) var(--pi-space-4); }
-    @media (pointer: coarse) { header button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); } }
+    @media (pointer: coarse) { header button { width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); } }
     .options { flex: 1 1 auto; min-height: 0; overflow: auto; }
-    .options button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-2) var(--pi-space-6); box-sizing: border-box; width: 100%; padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
+    .options button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-1) var(--pi-space-6); box-sizing: border-box; width: 100%; min-height: var(--pi-row-min-height); align-content: center; padding: var(--pi-space-2) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options button small { font-size: var(--pi-text-2xs); }
     .options button.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .options button:hover:not(:disabled) { background: var(--pi-selection-bg); } }

@@ -15,6 +15,9 @@ import "../ModalSurface";
  */
 @customElement("context-switcher-sheet")
 export class ContextSwitcherSheet extends LitElement {
+  /** The context this sheet edits, named beside the close: machine and project.
+   *  A bare "Projects" duplicated the section heading right under it. */
+  @property({ type: String }) override title = "Projects";
   /** Contributed context-navigation section bodies, slotted by reserved id. */
   @property({ attribute: false }) navSections: readonly QualifiedNavSectionContribution[] = [];
   /** The host-built snapshot and actions the contributed sections render. */
@@ -25,10 +28,10 @@ export class ContextSwitcherSheet extends LitElement {
 
   override render() {
     return html`
-      <modal-surface .onClose=${() => { this.onClose?.(); }} .label=${"Projects"}>
+      <modal-surface .onClose=${() => { this.onClose?.(); }} .label=${"Context"}>
         <div class="sheet">
           <div class="sheet-header panel-header">
-            <span class="panel-header-title">Projects</span>
+            <span class="panel-header-title">${this.title}</span>
             <button type="button" class="panel-header-action sheet-close" title="Close" aria-label="Close context sheet" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
           </div>
           <div class="sheet-body">
@@ -55,10 +58,10 @@ export class ContextSwitcherSheet extends LitElement {
        page visible around the sheet on every edge, which read as a broken
        layer stack. The sheet IS the screen while open. */
     modal-surface { --modal-surface-place-items: stretch; --modal-surface-padding: 0px; --modal-surface-width: 100%; --modal-surface-height: 100%; --modal-surface-radius: 0px; --modal-surface-border: none; --modal-surface-shadow: none; }
-    .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; height: 100%; box-sizing: border-box; padding: 0 var(--pi-reading-edge) var(--pi-space-3); overflow-y: auto; background: var(--pi-bg); border: none; box-shadow: none; }
+    .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; height: 100%; box-sizing: border-box; padding: 0 0 var(--pi-space-3); overflow-y: auto; background: var(--pi-bg); border: none; box-shadow: none; }
     /* The sheet is one scroll container: its title and close stay put while the
        stacked lists scroll under them, as the drawer header does. */
-    .sheet-header { position: sticky; top: 0; z-index: 4; margin-inline: calc(-1 * var(--pi-reading-edge)); padding-inline: var(--pi-bar-inset); padding-top: max(0px, env(safe-area-inset-top)); }
+    .sheet-header { position: sticky; top: 0; z-index: 4; margin-inline: 0; padding-inline: var(--pi-bar-inset); padding-top: max(0px, env(safe-area-inset-top)); }
     /* Three lists stacked with nothing above naming them: keep their headings,
        which the phone panel drops because its context row says the same word. */
     .sheet-body { --pi-list-word-heading-display: inline; --pi-list-word-heading-margin: 0 0 var(--pi-space-2); display: flex; flex-direction: column; gap: var(--pi-space-4); min-height: 0; }

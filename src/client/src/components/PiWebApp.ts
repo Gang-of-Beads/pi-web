@@ -1,5 +1,5 @@
 import { css, LitElement, html, type TemplateResult, unsafeCSS } from "lit";
-import { uiIconStyle } from "./uiIcons.js";
+import { uiIconStyle, renderChatIcon, renderListIcon } from "./uiIcons.js";
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
@@ -2540,8 +2540,8 @@ export class PiWebApp extends LitElement {
   private goToDestinations(): GoToDestination[] {
     const view = this.displayMainView();
     return [
-      { id: "navigation", label: "Sessions", selected: view === "navigation" },
-      { id: "chat", label: "Chat", selected: view === "chat" },
+      { id: "navigation", label: "Sessions", icon: renderListIcon(), selected: view === "navigation" },
+      { id: "chat", label: "Chat", icon: renderChatIcon(), selected: view === "chat" },
       ...this.shellToolTabs().map((tab) => ({ id: tab.id, label: tab.label, icon: tab.icon, badge: tab.badge, badgeLabel: tab.badgeLabel, selected: tab.selected })),
     ];
   }
@@ -4182,6 +4182,7 @@ export class PiWebApp extends LitElement {
         ${this.pluginDialogs.map((entry) => html`<div class="plugin-dialog${entry.dialog.presentation === "fullscreen" ? " plugin-dialog-fullscreen" : ""}"><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
       ${this.contextSheetOpen ? html`<context-switcher-sheet
+        .title=${[state.selectedMachine?.name, state.selectedProject?.name].filter((part) => part !== undefined && part !== "").join(" · ") || "Projects"}
         .navSections=${this.plugins.getNavSections(selectedMachineId(state))}
         .navSectionContext=${this.buildNavSectionContext("sheet")}
         .onClose=${() => { this.contextSheetOpen = false; }}

@@ -181,8 +181,9 @@ export const workspacePanelStyles = css`
   .empty-state p { margin: 0; line-height: 1.45; }
   small, .muted { color: var(--pi-muted); font-size: var(--pi-text-2xs); }
   @media (max-width: 1180px) { .workspace-fullscreen-toggle { display: none; } }
-  .workspace-label { min-width: 0; display: inline-flex; align-items: baseline; gap: var(--pi-space-3); max-width: 100%; overflow: hidden; white-space: nowrap; }
+  .workspace-label { min-width: 0; display: inline-flex; align-items: center; gap: var(--pi-space-3); max-width: 100%; overflow: hidden; white-space: nowrap; }
   .workspace-label-item, .workspace-label-render { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .workspace-label-item { box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-surface); color: var(--pi-muted); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; }
   .workspace-label-item, .workspace-label-render, .workspace-label-separator { color: var(--pi-muted); }
   .workspace-label-link { color: var(--pi-accent); text-decoration: none; }
   .workspace-label-link:focus { text-decoration: underline; }
@@ -275,14 +276,14 @@ export const listStyles = css`
   .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
   /* The glyph decorates the label without moving it: absolutely placed, so
      the text alone is centred and the button's weight is where it reads. */
-  .section-add-glyph { position: absolute; left: var(--pi-space-4); top: 50%; transform: translateY(-50%); font-size: var(--pi-text-lg); line-height: 1; }
-  .section-add { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: var(--pi-control-height); min-height: var(--pi-control-height); padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .section-add-glyph { font-size: var(--pi-text-lg); line-height: 1; }
+  .section-add { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: var(--pi-control-height); min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .section-add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
   @media (hover: hover) { .section-add:hover { border-color: var(--pi-accent); } }
   /* Coarse pointers get the comfort floor. Declared after every base rule it
      raises - a media query carries no extra specificity. */
   @media (pointer: coarse) {
-    .section-add { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); }
+    .section-add { min-width: 0; min-height: var(--pi-panel-header-control-height); }
   }
   /* On a phone the context row above already names the step being chosen, so a
      heading repeating that word only costs the list its first rows. The row's
@@ -375,7 +376,7 @@ export const listStyles = css`
   /* Written to work whether the primary region is a div or a real <button>:
      the font and cursor resets are inert on a div and stop a button from
      inheriting the UA's centred, small-font control styling. */
-  .action-main { position: relative; box-sizing: border-box; min-height: var(--pi-row-min-height); min-width: 0; width: 100%; display: flex; align-items: center; border: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-9) var(--pi-space-2) calc(var(--pi-space-5) + var(--depth, 0) * var(--pi-space-7)); font: inherit; text-align: left; cursor: pointer; }
+  .action-main { position: relative; box-sizing: border-box; min-height: var(--pi-row-min-height); min-width: 0; width: 100%; display: flex; flex-wrap: wrap; align-items: center; border: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-9) var(--pi-space-2) calc(var(--pi-space-5) + var(--depth, 0) * var(--pi-space-7)); font: inherit; text-align: left; cursor: pointer; }
   button.action-main:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: calc(var(--pi-focus-ring-offset) * -1); }
   /* One line, then the ellipsis (owner: rows of equal height read calmer
      than clamped two-line rows of different heights). */
@@ -385,7 +386,10 @@ export const listStyles = css`
   .workspace-primary { min-width: 0; display: flex; align-items: baseline; gap: var(--pi-space-3); }
   .workspace-primary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .workspace-status { flex: 0 0 auto; color: var(--pi-warning); font-size: var(--pi-text-xs); }
-  .workspace-secondary { margin-top: var(--pi-space-2); }
+  /* The provider chip is a second line under the name, not a subscript
+   * squeezed beside it (owner: the git tag sat off the baseline and cramped). */
+  .workspace-secondary { display: block; flex: 1 1 100%; min-width: 0; margin-top: var(--pi-space-1); }
+  .action-main > .row-path { display: block; flex: 1 1 100%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: start; }
   .workspace-menu-panel { width: max-content; min-width: min(120px, calc(100vw - 16px)); padding: var(--pi-space-4); }
   .workspace-menu-actions { margin: 0 0 var(--pi-space-4); padding-bottom: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
   .workspace-menu-actions button.danger { color: var(--pi-danger); }
