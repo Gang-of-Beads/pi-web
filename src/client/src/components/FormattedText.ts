@@ -3,7 +3,12 @@ import { customElement, property } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { writeClipboardText } from "../clipboard";
 import { toSafeMarkdownHtml } from "../formatting/markdown";
+import { codeFenceVerdict } from "../formatting/codeFence";
 import { formattedTextStyles } from "./shared";
+
+export interface CodeFenceRenderer {
+  render: (source: string) => Node | Promise<Node>;
+}
 
 /**
  * The code-block copy control is built through the DOM API rather than lit, so
@@ -25,6 +30,11 @@ export const STREAM_SETTLE_MS = 350;
 @customElement("formatted-text")
 export class FormattedText extends LitElement {
   @property() text = "";
+  /**
+   * The host's lookup for a plugin that claims a fence language. Absent (the
+   * default, and every non-transcript use) means every block stays plain.
+   */
+  @property({ attribute: false }) findCodeFenceRenderer?: (language: string) => CodeFenceRenderer | undefined;
 
   /** Text that has a full markdown render committed to `parsedHtml`. */
   private parsedText = "";
@@ -90,7 +100,38 @@ export class FormattedText extends LitElement {
       button.append(icon);
       element.before(wrapper);
       wrapper.append(element, button);
+      this.renderClaimedFence(wrapper, code);
     });
+  }
+
+  /**
+   * A claimed fence draws the plugin's node above the source block, which
+   * stays for copy and as the fallback: a renderer that throws or rejects
+   * leaves a readable code block, never a hole. The parse that produced this
+   * DOM is checked after the await so a re-parse in flight cannot receive a
+   * stale drawing.
+   */
+  private renderClaimedFence(wrapper: HTMLElement, code: HTMLElement): void {
+    const lookup = this.findCodeFenceRenderer;
+    if (lookup === undefined) return;
+    const verdict = codeFenceVerdict(code.className, (language) => lookup(language) !== undefined);
+    if (verdict.kind === "plain") return;
+    const renderer = lookup(verdict.language);
+    if (renderer === undefined) return;
+    const parsedHtml = this.parsedHtml;
+    const source = code.textContent;
+    void Promise.resolve()
+      .then(() => renderer.render(source))
+      .then((node) => {
+        if (this.parsedHtml !== parsedHtml || !wrapper.isConnected) return;
+        const drawing = document.createElement("div");
+        drawing.className = "code-fence-render";
+        drawing.dataset["language"] = verdict.language;
+        drawing.append(node);
+        wrapper.classList.add("code-fence-claimed");
+        wrapper.prepend(drawing);
+      })
+      .catch(() => undefined);
   }  private readonly onFormattedClick = (event: MouseEvent): void => {
     if (!(event.target instanceof Element)) return;
     const button = event.target.closest(".code-copy-button");

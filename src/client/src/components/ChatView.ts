@@ -22,7 +22,7 @@ import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from ".
 import { isWaitingForUser } from "../sessionWaiting";
 import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
-import type { DrawerSectionContext, QualifiedDrawerSectionContribution, QualifiedMessageRendererContribution } from "../plugins/types";
+import type { DrawerSectionContext, QualifiedDrawerSectionContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";
 import { selectedDrawerTab, type DrawerTab } from "../drawerTabSelection";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
@@ -659,6 +659,7 @@ export class ChatView extends LitElement {
   @property({ type: Boolean }) transcriptLoading = false;
   @property({ attribute: false }) transcriptFailed?: string;
   @property({ attribute: false }) findMessageRenderer?: (tag: string) => QualifiedMessageRendererContribution | undefined;
+  @property({ attribute: false }) findCodeFenceRenderer?: (language: string) => QualifiedCodeFenceRendererContribution | undefined;
   @property({ type: Boolean }) isSendingPrompt = false;
   @property({ type: Boolean }) isCompacting = false;
   @property({ type: Number }) pendingMessageCount = 0;
@@ -2029,7 +2030,7 @@ export class ChatView extends LitElement {
 
   private renderPart(part: ChatPart, message?: ChatLine) {
     if (part.type === "text" && message?.role === "bash") return html`<pre class="part shell-output">${part.text}</pre>`;
-    if (part.type === "text") return html`<formatted-text class="part" .text=${part.text}></formatted-text>`;
+    if (part.type === "text") return html`<formatted-text class="part" .text=${part.text} .findCodeFenceRenderer=${this.findCodeFenceRenderer}></formatted-text>`;
     if (part.type === "thinking") return html`<details class="part"><summary>thinking</summary><formatted-text .text=${part.text}></formatted-text></details>`;
     if (part.type === "skillInvocation") return html`
       <details class="part skill-invocation">

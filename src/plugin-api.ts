@@ -361,6 +361,7 @@ export interface PluginContributions {
   composer?: ComposerContribution[];
   settingsSections?: SettingsSectionContribution[];
   messageRenderers?: MessageRendererContribution[];
+  codeFenceRenderers?: CodeFenceRendererContribution[];
   drawerSections?: DrawerSectionContribution[];
 }
 
@@ -419,6 +420,23 @@ export interface MessageRendererContribution {
   id: LocalContributionId;
   tag: string;
   render: (view: MessageRendererViewModel) => TemplateResult;
+}
+
+/**
+ * Claims one fenced code language in the transcript. The host parses and
+ * sanitizes the markdown as before; once a code block has settled, the
+ * claimant is handed the fence's source text and returns a DOM node the
+ * transcript shows in the block's place, keeping the source block underneath
+ * for copy. A thrown error or rejected promise leaves the plain code block
+ * standing - a diagram that fails to draw is still readable text, never an
+ * empty hole. One plugin per language per machine; a second claim is a
+ * registration error, not a silent override.
+ */
+export interface CodeFenceRendererContribution {
+  id: LocalContributionId;
+  /** The info-string language this renderer claims, lowercase (e.g. "mermaid"). */
+  language: string;
+  render: (source: string) => Node | Promise<Node>;
 }
 
 export type ComposerSlot = "leading" | "trailing";

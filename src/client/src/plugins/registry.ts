@@ -1,6 +1,6 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
-import type { ComposerContribution, DrawerSectionContribution, QualifiedDrawerSectionContribution, NavSectionContribution, QualifiedNavSectionContribution, MachineSectionContribution, QualifiedMachineSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ComposerContribution, DrawerSectionContribution, QualifiedDrawerSectionContribution, NavSectionContribution, QualifiedNavSectionContribution, MachineSectionContribution, QualifiedMachineSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -31,6 +31,7 @@ export class PluginRegistry {
   private composerContributions: QualifiedComposerContribution[] = [];
   private settingsSections: QualifiedSettingsSectionContribution[] = [];
   private messageRenderers: QualifiedMessageRendererContribution[] = [];
+  private codeFenceRenderers: QualifiedCodeFenceRendererContribution[] = [];
   private drawerSections: QualifiedDrawerSectionContribution[] = [];
   private navSections: QualifiedNavSectionContribution[] = [];
   private machineSections: QualifiedMachineSectionContribution[] = [];
@@ -98,6 +99,8 @@ export class PluginRegistry {
       const navSections = (contributions.navSections ?? []).map((section) => this.qualifyNavSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const machineSections = (contributions.machineSections ?? []).map((section) => this.qualifyMachineSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const messageRenderers = (contributions.messageRenderers ?? []).map((renderer) => this.qualifyMessageRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds, claimedTags));
+      const claimedLanguages = new Set<string>();
+      const codeFenceRenderers = (contributions.codeFenceRenderers ?? []).map((renderer) => this.qualifyCodeFenceRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds, claimedLanguages));
       const themePairs = registration.machineId === undefined
         ? (contributions.themePairs ?? []).map((pair) => this.qualifyThemePair(runtimePluginId, pair, contributionIds))
         : [];
@@ -112,6 +115,7 @@ export class PluginRegistry {
       this.composerContributions.push(...composer);
       this.settingsSections.push(...settingsSections);
       this.messageRenderers.push(...messageRenderers);
+      this.codeFenceRenderers.push(...codeFenceRenderers);
       this.drawerSections.push(...drawerSections);
     this.navSections.push(...navSections);
     this.machineSections.push(...machineSections);
@@ -235,6 +239,14 @@ export class PluginRegistry {
       && this.isContributionActive(renderer.pluginId, renderer.machineId, selectedMachineId, renderer.sourcePluginId));
   }
 
+  /** The renderer that claims a fence language, or undefined - the plain code block stays. */
+  findCodeFenceRenderer(language: string, selectedMachineId: string | undefined): QualifiedCodeFenceRendererContribution | undefined {
+    const wanted = language.toLowerCase();
+    return this.codeFenceRenderers.find((renderer) => renderer.language === wanted
+      && selectedMachineId !== undefined
+      && this.isContributionActive(renderer.pluginId, renderer.machineId, selectedMachineId, renderer.sourcePluginId));
+  }
+
   /**
    * Announce a host fact. One plugin throwing must not silence its
    * siblings or the host, so listeners are isolated per call.
@@ -286,6 +298,7 @@ export class PluginRegistry {
     this.composerContributions = this.composerContributions.filter((entry) => entry.pluginId !== runtimePluginId);
     this.settingsSections = this.settingsSections.filter((entry) => entry.pluginId !== runtimePluginId);
     this.messageRenderers = this.messageRenderers.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.codeFenceRenderers = this.codeFenceRenderers.filter((entry) => entry.pluginId !== runtimePluginId);
     this.drawerSections = this.drawerSections.filter((entry) => entry.pluginId !== runtimePluginId);
     this.navSections = this.navSections.filter((entry) => entry.pluginId !== runtimePluginId);
     this.machineSections = this.machineSections.filter((entry) => entry.pluginId !== runtimePluginId);
@@ -330,6 +343,31 @@ export class PluginRegistry {
 
   private addDisposer(runtimePluginId: string, dispose: () => void): void {
     this.disposers.set(runtimePluginId, [...(this.disposers.get(runtimePluginId) ?? []), dispose]);
+  }
+
+  private qualifyCodeFenceRenderer(
+    pluginId: string,
+    renderer: CodeFenceRendererContribution,
+    machineId: string | undefined,
+    sourcePluginId: string | undefined,
+    contributionIds: Set<QualifiedContributionId>,
+    claimedLanguages: Set<string>,
+  ): QualifiedCodeFenceRendererContribution {
+    const language = renderer.language.trim().toLowerCase();
+    if (language === "") throw new Error(`Code fence renderer ${renderer.id} of ${pluginId} names no language`);
+    const claimed = this.codeFenceRenderers.find((candidate) => candidate.language === language && candidate.machineId === machineId);
+    if (claimed !== undefined) throw new Error(`Code fence language ${language} is already rendered by ${claimed.id}`);
+    if (claimedLanguages.has(language)) throw new Error(`Code fence language ${language} is claimed twice by ${pluginId}`);
+    claimedLanguages.add(language);
+    return {
+      ...renderer,
+      language,
+      id: this.qualify(pluginId, renderer.id, contributionIds),
+      pluginId,
+      localId: renderer.id,
+      ...(machineId === undefined ? {} : { machineId }),
+      ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
+    };
   }
 
   private qualifyMessageRenderer(
