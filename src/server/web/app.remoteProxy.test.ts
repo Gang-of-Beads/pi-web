@@ -255,6 +255,26 @@ describe("buildApp remote machine proxy routes", () => {
     expect(request).toHaveBeenCalledWith("GET", "/api/projects/p1/workspaces", undefined);
   });
 
+  it("relays a remote machine's decoded tool-result image with its type and cache headers", async () => {
+    const addResponse = await appTestContext.app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
+    const remote = addResponse.json<{ id: string }>();
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+    const request = vi.fn<MachineClient["request"]>(() => Promise.resolve({
+      statusCode: 200,
+      headers: { "content-type": "image/png", "content-length": String(png.byteLength), "cache-control": "private, max-age=31536000, immutable" },
+      body: Readable.from([png]),
+    }));
+    appTestContext.remoteClient = fakeRemoteClient({ request });
+
+    const response = await appTestContext.app.inject({ method: "GET", url: `/api/machines/${remote.id}/sessions/s1/tool-results/call%201/images/2?cwd=%2Frepo` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toBe("image/png");
+    expect(response.headers["cache-control"]).toBe("private, max-age=31536000, immutable");
+    expect(response.rawPayload.equals(png)).toBe(true);
+    expect(proxiedCall(request, 0).arguments).toEqual(["GET", "/api/sessions/s1/tool-results/call%201/images/2?cwd=%2Frepo", undefined]);
+  });
+
   it("overrides missing or weaker remote HTML preview security headers while preserving safe metadata", async () => {
     const addResponse = await appTestContext.app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
     const remote = addResponse.json<{ id: string }>();

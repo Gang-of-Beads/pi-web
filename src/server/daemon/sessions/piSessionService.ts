@@ -2622,7 +2622,7 @@ export class PiSessionService implements SessionRouteService {
     if (entries === undefined) return undefined;
     // Two kinds of child write two different files under names that look alike;
     // the records say which this is. See subagentRunTranscript.ts.
-    return pageMessagesAtSafeBoundary(runTranscriptMessages(entries, branchMessages), page);
+    return pageMessagesAtSafeBoundary(runTranscriptMessages(entries, historyMessagesFromEntries), page);
   }
 
   /**
@@ -5755,7 +5755,7 @@ function toClientEvent(event: unknown, thinkingLevel?: string): SessionUiEvent {
   }
   if (eventType === "tool_execution_update") {
     const partialResult = getProperty(event, "partialResult");
-    return { type: "tool.update", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: boundToolResultText(stringifyToolResult(partialResult)).text, content: toolResultContent(partialResult), details: toolResultDetails(partialResult) };
+    return { type: "tool.update", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: boundToolResultText(stringifyToolResult(partialResult)).text, content: deferToolResultImages(toolResultContent(partialResult), getString(event, "toolCallId")), details: toolResultDetails(partialResult) };
   }
   if (eventType === "tool_execution_end") {
     const result = getProperty(event, "result");

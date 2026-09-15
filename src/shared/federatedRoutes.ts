@@ -99,6 +99,15 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "POST", path: "/sessions/bulk/archive" },
   { method: "POST", path: "/sessions/bulk/delete-archived" },
   { method: "GET", path: "/sessions/:sessionId/messages" },
+  // The remote machine's own web edge decodes the session-file image block
+  // into bytes; this side relays them with their content-type and cache
+  // headers, bounded like a file preview.
+  {
+    method: "GET",
+    path: "/sessions/:sessionId/tool-results/:toolCallId/images/:index",
+    responseBodyLimit: MAX_INLINE_PREVIEW_BYTES,
+    propagateCancellation: true,
+  },
   { method: "GET", path: "/sessions/:sessionId/notifications" },
   { method: "POST", path: "/sessions/:sessionId/notifications/dismiss" },
   { method: "POST", path: "/sessions/:sessionId/notifications/dismiss-all" },

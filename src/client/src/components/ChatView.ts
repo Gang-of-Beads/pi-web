@@ -320,6 +320,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      scrolling into view. The placeholder box breaks that deadlock and holds
      the transcript's layout while the bytes arrive. */
   .chat-image.deferred { min-width: 120px; min-height: 90px; background: var(--pi-surface); }
+  .chat-image-retry { display: inline-flex; align-items: center; min-height: var(--pi-control-height); margin: var(--pi-space-4) 0 0; padding: 0 var(--pi-space-4); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
   .chat-image:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent, var(--pi-success-border)); outline-offset: var(--pi-focus-ring-offset); }
   dialog.image-zoom { box-sizing: border-box; position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
   dialog.image-zoom[open] { display: flex; }
@@ -563,6 +564,16 @@ export function chatDeliveryPresentation(delivery: MessageDelivery, queuePositio
 
 export type ChatImagePart = Extract<ChatPart, { type: "image" }>;
 
+export function deferredImageKey(ref: { toolCallId: string; index: number }): string {
+  return `${ref.toolCallId}\u0000${String(ref.index)}`;
+}
+
+/** The same address, made distinct from the cached failure when a retry is asked for. */
+export function withRetryNonce(url: string, retries: number): string {
+  if (retries === 0) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}retry=${String(retries)}`;
+}
+
 /** Derive the `<img>` source URL and alt text for a rendered image part. */
 /**
  * The image source as an app reference: a data URI for inline bytes, or the
@@ -761,6 +772,30 @@ export class ChatView extends LitElement {
    * The correction is the height the document gained, not a re-measurement:
    * by the time a load is reported the shift has already happened.
    */
+  /**
+   * A deferred image is a network fetch, and a fetch can fail: the daemon
+   * restarted mid-scroll, the PWA opened offline, cleanup archived the
+   * session. An <img> never re-requests after an error, so the failed image
+   * becomes a tap-to-retry row instead of a permanent broken glyph; the
+   * retry re-addresses the same block with a nonce the immutable cache
+   * cannot answer from.
+   */
+  @state() private deferredImageAttempts = new Map<string, { errored: boolean; retries: number }>();
+
+  private markDeferredImageErrored(key: string): void {
+    const current = this.deferredImageAttempts.get(key);
+    const next = new Map(this.deferredImageAttempts);
+    next.set(key, { errored: true, retries: current?.retries ?? 0 });
+    this.deferredImageAttempts = next;
+  }
+
+  private retryDeferredImage(key: string): void {
+    const current = this.deferredImageAttempts.get(key);
+    const next = new Map(this.deferredImageAttempts);
+    next.set(key, { errored: false, retries: (current?.retries ?? 0) + 1 });
+    this.deferredImageAttempts = next;
+  }
+
   private readonly onImageLoad = (event: Event): void => {
     // Following the bottom needs no measurement, so it must not be reached
     // through one: an unrendered scroller would otherwise swallow the pin.
@@ -2018,9 +2053,14 @@ export class ChatView extends LitElement {
     `;
     if (part.type === "image") {
       const source = chatImagePartSource(part, this.imageScope());
-      const src = source.appPath ? resolveAppUrl(source.src) : source.src;
+      const retryKey = "ref" in part ? deferredImageKey(part.ref) : undefined;
+      const attempt = retryKey === undefined ? undefined : this.deferredImageAttempts.get(retryKey);
+      if (attempt?.errored === true && retryKey !== undefined) {
+        return html`<button type="button" class="part chat-image-retry" @click=${() => { this.retryDeferredImage(retryKey); }}>Image did not load · tap to retry</button>`;
+      }
+      const src = source.appPath ? withRetryNonce(resolveAppUrl(source.src), attempt?.retries ?? 0) : source.src;
       const alt = source.alt;
-      return html`<img class=${source.appPath ? "part chat-image deferred" : "part chat-image"} src=${src} alt=${alt} loading="lazy" decoding="async" role="button" tabindex="0" title="Click to enlarge" @load=${this.onImageLoad} @click=${() => { this.openImageZoom(src, alt); }} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.openImageZoom(src, alt); } }} />`;
+      return html`<img class=${source.appPath ? "part chat-image deferred" : "part chat-image"} src=${src} alt=${alt} loading="lazy" decoding="async" role="button" tabindex="0" title="Click to enlarge" @load=${this.onImageLoad} @error=${() => { if (retryKey !== undefined) this.markDeferredImageErrored(retryKey); }} @click=${() => { this.openImageZoom(src, alt); }} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.openImageZoom(src, alt); } }} />`;
     }
     if (part.type === "custom") return this.renderCustomPart(part);
     if (part.type === "toolCall") return html`<div class="part tool-line">${renderRunIcon()} ${part.toolName}<span class="summary">${part.summary}</span></div>`;

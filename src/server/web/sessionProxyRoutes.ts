@@ -60,7 +60,7 @@ export function registerSessionProxyRoutes(app: FastifyInstance, daemon: Session
         reply.code(502);
         return { error: "Session daemon answered with an unreadable image block" };
       }
-      return await reply.header("cache-control", "private, max-age=31536000, immutable").type(image.mimeType).send(Buffer.from(image.data, "base64"));
+      return await reply.header("cache-control", "private, max-age=31536000, immutable").header("x-content-type-options", "nosniff").type(servableImageType(image.mimeType)).send(Buffer.from(image.data, "base64"));
     } catch (error) {
       requestFailed(reply, error);
       return undefined;
@@ -105,4 +105,9 @@ function toolResultImageBlock(value: unknown): { mimeType: string; data: string 
   const mimeType: unknown = Reflect.get(value, "mimeType");
   const data: unknown = Reflect.get(value, "data");
   return typeof mimeType === "string" && mimeType !== "" && typeof data === "string" ? { mimeType, data } : undefined;
+}
+
+/** Tool-controlled session data never dictates an active content type on the app origin. */
+function servableImageType(mimeType: string): string {
+  return /^image\/[a-z0-9.+-]+$/iu.test(mimeType) && !/svg/iu.test(mimeType) ? mimeType : "application/octet-stream";
 }

@@ -1,13 +1,14 @@
 import type { TemplateResult } from "lit";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatLine } from "./shared";
 import {
   ChatView,
   chatImagePartSource,
   chatMessageAnchorKey,
   chatToolOutputLabel,
+  withRetryNonce,
 } from "./ChatView";
-import { templateEventHandlerAfterMarker } from "../templateInspection.testSupport";
+import { templateEventHandlerAfterMarker, templateStrings, templateValuesAfterMarker } from "../templateInspection.testSupport";
 
 describe("ChatView image content derivation", () => {
   // Content/attribute derivation (image src/alt, the tool-output header label,
@@ -97,3 +98,48 @@ function renderPart(view: ChatView, part: ChatLine["parts"][number], message?: C
 function isRenderPart(value: unknown): value is RenderPart {
   return typeof value === "function";
 }
+
+describe("deferred image failure and retry", () => {
+  const ref = { type: "image" as const, mimeType: "image/png", ref: { toolCallId: "call-1", index: 1 } };
+  beforeEach(() => { vi.stubGlobal("document", { baseURI: "https://pi.example.test/" }); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  function scopedView(): ChatView {
+    const view = new ChatView();
+    view.sessionId = "s1";
+    view.sessionCwd = "/repo";
+    view.drawerMachineId = "local";
+    return view;
+  }
+
+  it("turns a failed fetch into a tap-to-retry row instead of a broken glyph", () => {
+    const view = scopedView();
+    const first = renderPart(view, ref);
+    expect(templateStrings(first).join("")).toContain("<img");
+    const onError = templateEventHandlerAfterMarker(first, "@error=");
+    onError(new Event("error"));
+
+    const errored = renderPart(view, ref);
+    expect(templateStrings(errored).join("")).toContain("chat-image-retry");
+    expect(templateStrings(errored).join("")).not.toContain("<img");
+  });
+
+  it("re-addresses the same block with a nonce on retry so the cached failure is not replayed", () => {
+    const view = scopedView();
+    templateEventHandlerAfterMarker(renderPart(view, ref), "@error=")(new Event("error"));
+    const onRetry = templateEventHandlerAfterMarker(renderPart(view, ref), "@click=");
+    onRetry(new Event("click"));
+
+    const retried = renderPart(view, ref);
+    expect(templateStrings(retried).join("")).toContain("<img");
+    const src = String(templateValuesAfterMarker(retried, "src=")[0]);
+    expect(src).toContain("/tool-results/call-1/images/1");
+    expect(src).toContain("retry=1");
+  });
+
+  it("appends the retry nonce after existing query parameters", () => {
+    expect(withRetryNonce("x/images/1?cwd=%2Frepo", 0)).toBe("x/images/1?cwd=%2Frepo");
+    expect(withRetryNonce("x/images/1?cwd=%2Frepo", 2)).toBe("x/images/1?cwd=%2Frepo&retry=2");
+    expect(withRetryNonce("x/images/1", 1)).toBe("x/images/1?retry=1");
+  });
+});

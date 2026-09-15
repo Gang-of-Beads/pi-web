@@ -337,6 +337,19 @@ describe("applyTranscriptEvent", () => {
 
     expect(messages[0]?.parts.filter((part) => part.type === "image")).toEqual([provisionalImage]);
 
+    const deferred = { type: "image" as const, mimeType: "image/png", ref: { toolCallId: "read-image-1", index: 1 } };
+    let deferredMessages = applyTranscriptEvent([], { type: "tool.start", toolName: "read", toolCallId: "read-image-1", summary: "big.png", args: { path: "big.png" } }) ?? [];
+    deferredMessages = applyTranscriptEvent(deferredMessages, {
+      type: "tool.end",
+      toolName: "read",
+      toolCallId: "read-image-1",
+      text: "Read image file [image/png]\n[image]",
+      isError: false,
+      content: [{ type: "text", text: "Read image file [image/png]" }, deferred],
+      details: { source: "tool.end" },
+    }) ?? deferredMessages;
+    expect(deferredMessages[0]?.parts.filter((part) => part.type === "image")).toEqual([deferred]);
+
     messages = applyTranscriptEvent(messages, {
       type: "message.end",
       message: {

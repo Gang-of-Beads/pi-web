@@ -24,6 +24,12 @@ const seed = manifest.sessions?.screenshots;
 if (seed === undefined) fail("seed manifest has no screenshots session; run scripts/seed-8505-subagent-attribution.mjs");
 const cwd = manifest.workspace;
 
+const projects = await (await fetch(`${BASE}/api/machines/local/projects`)).json();
+if (!projects.some((project) => project.path === cwd)) {
+  const added = await fetch(`${BASE}/api/machines/local/projects`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: cwd }) });
+  if (!added.ok) fail(`could not register the seed workspace as a project (${String(added.status)})`);
+}
+
 const pageUrl = `${BASE}/api/machines/local/sessions/${seed.id}/messages?cwd=${encodeURIComponent(cwd)}`;
 const pageResponse = await fetch(pageUrl);
 if (!pageResponse.ok) fail(`transcript page answered ${String(pageResponse.status)}`);
@@ -39,7 +45,7 @@ const context = await browser.newContext({ viewport: { width: 393, height: 850 }
 const page = await context.newPage();
 const imageResponses = [];
 page.on("response", (response) => {
-  if (response.url().includes("/tool-results/") && response.url().includes("/images/")) imageResponses.push({ url: response.url(), status: response.status(), type: response.headers()["content-type"] });
+  if (response.url().includes("/tool-results/") && response.url().includes("/images/")) imageResponses.push({ url: response.url(), status: response.status(), type: response.headers()["content-type"], cacheControl: response.headers()["cache-control"] });
 });
 await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
 await page.waitForSelector("pi-web-app");
@@ -69,6 +75,7 @@ const rendered = await page.evaluate(`(function(){
 })()`);
 if (rendered.error !== undefined) fail(rendered.error);
 if (rendered.count === 0) fail("no chat images rendered; is the seeded session selected?");
+if (rendered.count > seed.toolResults) fail(`rendered ${String(rendered.count)} images for ${String(seed.toolResults)} seeded results`);
 const dataSrcs = rendered.srcs.filter((src) => src.startsWith("data:"));
 if (dataSrcs.length !== 0) fail(`${String(dataSrcs.length)} rendered images still use data: URIs`);
 const routeSrcs = rendered.srcs.filter((src) => src.includes("/tool-results/") && src.includes("/images/"));
@@ -86,6 +93,7 @@ const loaded = await page.evaluate(`(async function(){
 const decoded = loaded.filter((img) => img.complete);
 if (decoded.length === 0) fail("no rendered image finished loading from the image route");
 const okImages = imageResponses.filter((r) => r.status === 200 && String(r.type).startsWith("image/"));
+if (!imageResponses.every((r) => r.status !== 200 || String(r.cacheControl).includes("immutable"))) fail("an image-route response lacks the immutable cache-control the by-reference design relies on");
 console.log(`fetched: ${String(decoded.length)}/${String(loaded.length)} images complete; ${String(okImages.length)} image-route responses observed (${okImages[0]?.type ?? "n/a"})`);
 
 const cache = await page.evaluate(`(function(){

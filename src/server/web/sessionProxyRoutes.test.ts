@@ -31,6 +31,15 @@ describe("machine-scoped session proxy routes", () => {
     expect(daemon.requests).toEqual([{ method: "GET", path: "/sessions/s1/tool-results/call-1/images/1?cwd=/repo", body: undefined }]);
   });
 
+  it("never serves a tool-controlled active content type from the image route", async () => {
+    daemon.respondWith({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify({ mimeType: "text/html", data: Buffer.from("<script>1</script>").toString("base64") }) });
+    const response = await app.inject({ method: "GET", url: "/api/machines/local/sessions/s1/tool-results/call-1/images/0?cwd=/repo" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("application/octet-stream");
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+  });
+
   it("passes a daemon miss through as its own status", async () => {
     daemon.respondWith({ statusCode: 404, headers: { "content-type": "application/json" }, body: JSON.stringify({ error: "No such tool-result image" }) });
     const response = await app.inject({ method: "GET", url: "/api/machines/local/sessions/s1/tool-results/call-1/images/9?cwd=/repo" });
