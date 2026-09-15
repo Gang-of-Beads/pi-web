@@ -47,7 +47,8 @@ sending ──HTTP 200──> received ──服务器事件──> queued ─�
 
 **方案 B 的正确实现（需动 daemon）**：
 1. daemon 的 `sessionCommandService` 在执行内置命令时，用
-   `sessionManager.appendCustomEntry`（子会话链接已有先例）写入一条
+   `sendCustomMessage`（写 `custom_message` 条目**并**实时推送在线客户端；
+   `appendCustomEntry` 写的是 transcript 忽略的 opaque `custom` 类型，仅子会话链接用）写入一条
    `web-command` 自定义条目：`{ text, result: { type, message } }`——
    命令与结果成为 pi 会话文件的**规范历史**，刷新/多端/分支全部收敛。
 2. 浏览器端 transcript 把该条目渲染为 **用户气泡（命令原文）+ 回复行
@@ -57,8 +58,7 @@ sending ──HTTP 200──> received ──服务器事件──> queued ─�
    保持现状（不重复写条目）。
 4. `commandLedger` 与其收条 UI 整体退役（含 dialogRows/dismissable 测试）。
 
-**影响面**：daemon 代码路径变更 ⇒ 8504 正式实例需机主手动重启 session
-daemon（AGENTS.md 规定）；8505 由我重启。
+**影响面**：daemon 代码路径变更；只动 refactor（8505），8505 daemon 由我重启。8504 不碰。
 
 ## 4. 加载策略盘点（已有 vs 缺口）
 
