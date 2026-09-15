@@ -15,7 +15,7 @@
     <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
     <style>
       :root {
-        color-scheme: dark;
+        color-scheme: dark light;
         /*
          * Scale tokens: the parts of the look that do not change with the
          * palette. Themes decide colour; these decide density, rhythm and
@@ -149,44 +149,48 @@
         --pi-control-font-size: 16px;
         --pi-control-font-family: var(--pi-font-ui);
         --pi-control-monospace-font-family: var(--pi-font-mono);
-        --pi-bg: #0b0d10;
-        --pi-surface: #13161b;
-        --pi-surface-hover: #1b2027;
-        --pi-terminal-bg: #080a0d;
-        --pi-terminal-text: #e6edf3;
-        --pi-border: #3a424e;
-        --pi-border-muted: #262c35;
-        --pi-text: #e6e8ec;
-        --pi-text-secondary: #b6bcc4;
-        --pi-text-bright: #f2f4f7;
-        --pi-muted: #8b919b;
-        --pi-dim: #676d78;
-        --pi-accent: #58a6ff;
+        /* Graphite + amber (owner's pick): a neutral, slightly warm graphite
+           with one amber accent, replacing the stock blue-on-black. The same
+           hue ships a light side under the media query below, so the core
+           theme answers the system light/dark preference without a plugin. */
+        --pi-bg: #131519;
+        --pi-surface: #1a1d23;
+        --pi-surface-hover: #23272f;
+        --pi-terminal-bg: #0e1013;
+        --pi-terminal-text: #dfe3ea;
+        --pi-border: #383e48;
+        --pi-border-muted: #262b33;
+        --pi-text: #d5dae2;
+        --pi-text-secondary: #a7aeb9;
+        --pi-text-bright: #eef1f5;
+        --pi-muted: #8b929d;
+        --pi-dim: #6b7280;
+        --pi-accent: #d9a24a;
         /* The label on an accent fill; a theme that omits it falls back to the
            background colour, which is what shipped a 3.74:1 primary button. */
-        --pi-on-accent: #0d1117;
-        --pi-accent-border: #2f81f7;
-        --pi-selection-bg: #0d2847;
-        --pi-success: #3fb950;
-        --pi-success-border: #238636;
-        --pi-success-bg: #0f1b12;
-        --pi-success-surface: #0f2a16;
-        --pi-success-ring: #3fb95055;
-        --pi-warning: #d29922;
-        --pi-warning-border: #6e5200;
-        --pi-warning-surface: #1f1a10;
-        --pi-danger: #ff7b72;
-        --pi-purple: #d2a8ff;
-        --pi-purple-border: #a371f7;
-        --pi-purple-surface: #21132f;
+        --pi-on-accent: #201a0c;
+        --pi-accent-border: #8a6a2a;
+        --pi-selection-bg: #332c1a;
+        --pi-success: #56b463;
+        --pi-success-border: #2f6e3c;
+        --pi-success-bg: #12211a;
+        --pi-success-surface: #142a1d;
+        --pi-success-ring: #56b46355;
+        --pi-warning: #d7b256;
+        --pi-warning-border: #6e5a1a;
+        --pi-warning-surface: #242110;
+        --pi-danger: #e5695f;
+        --pi-purple: #c7a5f5;
+        --pi-purple-border: #9a6ff0;
+        --pi-purple-surface: #221636;
         --pi-overlay: #000c;
         --pi-shadow-soft: #0000;
         --pi-shadow: #0000;
         --pi-shadow-strong: #0000;
-        --pi-bg-overlay-soft: #0b0d10dd;
-        --pi-bg-overlay: #0b0d10e6;
-        --pi-success-bg-overlay: #0f1b12ee;
-        --pi-terminal-selection: #264f78;
+        --pi-bg-overlay-soft: #131519dd;
+        --pi-bg-overlay: #131519e6;
+        --pi-success-bg-overlay: #12211aee;
+        --pi-terminal-selection: #4a3d1e;
 
         /* Semantic surface ladder: canvas < panel < card < raised. Themes set
            the stops explicitly; these fallbacks derive them from the legacy
@@ -199,6 +203,10 @@
         --pi-surface-raised: color-mix(in srgb, var(--pi-surface) 84%, var(--pi-text));
         --pi-surface-active: color-mix(in srgb, var(--pi-surface-hover) 82%, var(--pi-text));
 
+        /* The light side of the same hue, following the system preference.
+           applyNativeProTheme() clears every inline override, so this media
+           block governs whenever no plugin theme is active. */
+
         /* Elevation composes full box-shadows from the theme's shadow colors,
            so a layer never invents its own blur and spread again. */
         --pi-elevation-1: 0 1px 2px var(--pi-shadow-soft);
@@ -210,7 +218,8 @@
          The conversation and the composer share this gutter, so narrowing it
          widens both together and keeps them lined up. */
       @media (max-width: 640px) {
-        /* Compact tier (owner: content first): rows sit on the 44px touch
+  
+      /* Compact tier (owner: content first): rows sit on the 44px touch
            floor instead of 56px, and message/section rhythm drops one token
            each - through tokens only, so every surface tightens together. */
         :root {
@@ -227,6 +236,44 @@
           --pi-text-xl: 17px;
           --pi-panel-header-height: 44px;
           --pi-panel-header-control-height: 36px;
+        }
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          color-scheme: light;
+          --pi-bg: #f6f5f2;
+          --pi-surface: #ffffff;
+          --pi-surface-hover: #eceae4;
+          --pi-terminal-bg: #14161a;
+          --pi-terminal-text: #e2e5ea;
+          --pi-border: #c6c1b6;
+          --pi-border-muted: #ddd9d0;
+          --pi-text: #33373d;
+          --pi-text-secondary: #5c626b;
+          --pi-text-bright: #1b1e23;
+          --pi-muted: #6f757e;
+          --pi-dim: #8f959d;
+          --pi-accent: #8a6510;
+          --pi-on-accent: #ffffff;
+          --pi-accent-border: #b07f1c;
+          --pi-selection-bg: #f2e7cd;
+          --pi-success: #1f7a33;
+          --pi-success-border: #2f8f45;
+          --pi-success-bg: #e9f4ea;
+          --pi-success-surface: #ddefe0;
+          --pi-success-ring: #1f7a3355;
+          --pi-warning: #8a6d10;
+          --pi-warning-border: #a3851a;
+          --pi-warning-surface: #f7f0da;
+          --pi-danger: #c93c31;
+          --pi-purple: #6d4fc4;
+          --pi-purple-border: #7d5ed6;
+          --pi-purple-surface: #efeafb;
+          --pi-overlay: #14161acc;
+          --pi-bg-overlay-soft: #f6f5f2dd;
+          --pi-bg-overlay: #f6f5f2e6;
+          --pi-success-bg-overlay: #e9f4eaee;
+          --pi-terminal-selection: #3a404b;
         }
       }
       html, body { margin: 0; height: 100%; overflow: hidden; background: var(--pi-bg); color: var(--pi-text); }
