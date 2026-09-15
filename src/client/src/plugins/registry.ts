@@ -515,6 +515,8 @@ export class PluginRegistry {
       visible: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) && (visible?.(workspacePanelContextFor(context, binding)) ?? true),
       ...(badge === undefined ? {} : { badge: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? badge(workspacePanelContextFor(context, binding)) : undefined }),
       ...(onInvalidate === undefined ? {} : { onInvalidate: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? onInvalidate(workspacePanelContextFor(context, binding)) : undefined }),
+      ...(panel.summary === undefined ? {} : { summary: (context: WorkspacePanelContext) => panel.summary?.(workspacePanelContextFor(context, binding)) }),
+      ...(panel.toolbar === undefined ? {} : { toolbar: (context: WorkspacePanelContext) => panel.toolbar?.(workspacePanelContextFor(context, binding)) ?? html`` }),
       render: (context: WorkspacePanelContext) => panel.render(workspacePanelContextFor(context, binding)),
     };
   }

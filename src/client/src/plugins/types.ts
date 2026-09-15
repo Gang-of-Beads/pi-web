@@ -752,6 +752,10 @@ export interface WorkspacePanelContribution {
   visible?: (context: WorkspacePanelContext) => boolean;
   badge?: (context: WorkspacePanelContext) => string | number | TemplateResult | undefined;
   onInvalidate?: (context: WorkspacePanelContext) => void | Promise<void>;
+  /** A short status shown beside the title in the host's panel header. */
+  summary?: (context: WorkspacePanelContext) => string | undefined;
+  /** The panel's controls, placed by the host in its fold under the header. */
+  toolbar?: (context: WorkspacePanelContext) => TemplateResult;
   render: (context: WorkspacePanelContext) => TemplateResult;
 }
 

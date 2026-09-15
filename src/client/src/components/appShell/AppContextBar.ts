@@ -47,7 +47,7 @@ export class AppContextBar extends LitElement {
               class="session-title empty"
               aria-label="No session selected. Open session selection."
               @click=${() => { this.onQuickSwitch?.(); }}
-            ><span class="session-title-text">Sessions</span></button>`
+            ><span class="session-title-text">${this.activeSurface === "" ? "Sessions" : this.activeSurface}</span></button>`
           : html`<button
               type="button"
               class="session-title"

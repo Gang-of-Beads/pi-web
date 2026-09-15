@@ -52,8 +52,9 @@ describe("WorkspacePanel fullscreen control", () => {
     expect(fullscreenButton(panel, "Expand panel").getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("keeps the shared control out of the mobile workspace header", () => {
-    expect(String(WorkspacePanel.styles)).toContain("@media (max-width: 1180px) { header { display: none; } }");
+  it("keeps the expand control out of the narrow header while the title row stays", () => {
+    expect(String(WorkspacePanel.styles)).toContain("@media (max-width: 1180px) { .workspace-fullscreen-toggle { display: none; } }");
+    expect(String(WorkspacePanel.styles)).not.toContain("header { display: none; }");
   });
 });
 

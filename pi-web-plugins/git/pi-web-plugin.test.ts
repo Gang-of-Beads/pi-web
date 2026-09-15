@@ -4,7 +4,7 @@ import { html, render, svg } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { noPanelTerminal } from "../terminalSessionsTestSupport.js";
 import { stubWorkspaceFiles } from "../../src/client/src/plugins/workspaceFilesTestSupport.js";
-import type { JsonValue, PluginRuntimeContext, Workspace, WorkspaceBackend, WorkspaceHost, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
+import type { JsonValue, PluginRuntimeContext, Workspace, WorkspaceBackend, WorkspaceHost, WorkspacePanelContext, WorkspacePanelContribution } from "@gang-of-beads/pi-web/plugin-api";
 import { GIT_FILE_VIEW_STORAGE_KEY } from "./browser/gitFileViewPreference.js";
 import plugin from "./browser/pi-web-plugin.js";
 
@@ -106,7 +106,7 @@ describe("bundled Git browser plugin", () => {
 
     await panel.onInvalidate?.(context);
     const container = document.createElement("div");
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
       "Git workspace backend is unavailable. Update and restart PI WEB on this machine, then reload the browser.",
@@ -129,23 +129,23 @@ describe("bundled Git browser plugin", () => {
 
     const container = document.createElement("div");
     document.body.append(container);
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     await settleBackend();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
 
     expect(container.textContent).toContain("main");
     expect(button(container, "src/main.ts")).toBeDefined();
     expect(button(container, "harl").textContent).toContain("submodule");
 
     button(container, "harl").click();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     expect(button(container, "abc1234 → def5678")).toBeDefined();
     expect(button(container, "lib.ts")).toBeDefined();
 
     button(container, "src/main.ts").click();
     expect(new URL(window.location.href).searchParams.get("git.workspace.git--diff")).toBe("src/main.ts");
     await settleBackend();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
 
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "src/main.ts" });
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "src/main.ts", staged: true });
@@ -153,7 +153,7 @@ describe("bundled Git browser plugin", () => {
     expect(container.textContent).toContain("Unstaged changes");
     expect(container.querySelector(".git-panel")).not.toBeNull();
     expect(container.querySelector(".split")).toBeNull();
-    const styleRules = (container.querySelector("style")?.textContent ?? "")
+    const styleRules = (container.querySelector(".git-panel style")?.textContent ?? "")
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.includes("{"));
@@ -163,11 +163,11 @@ describe("bundled Git browser plugin", () => {
     expect([...container.querySelectorAll(".inline-change")].map((entry) => entry.textContent)).toContain("new");
 
     button(container, "Tree").click();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     expect(window.localStorage.getItem(GIT_FILE_VIEW_STORAGE_KEY)).toBe("tree");
     expect(findButton(container, "src/main.ts")).toBeUndefined();
     button(container, "src").click();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     expect(button(container, "main.ts")).toBeDefined();
 
     render(null, container);
@@ -182,12 +182,12 @@ describe("bundled Git browser plugin", () => {
     const container = document.createElement("div");
     document.body.append(container);
 
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     await settleBackend();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     await settleBackend();
     await settleBackend();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
 
     expect(container.querySelectorAll(".git-review-section")).toHaveLength(3);
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "first.ts" });
@@ -196,7 +196,7 @@ describe("bundled Git browser plugin", () => {
     expect([...container.querySelectorAll(".git-review-section .git-diff-section > .git-viewer-header strong")].map((element) => element.textContent)).toContain("Unstaged changes");
     expect([...container.querySelectorAll(".git-review-section .git-diff-section > .git-viewer-header")].some((element) => element.textContent.includes("first.ts"))).toBe(false);
     button(container, "Collapse all diffs").click();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     expect(container.querySelectorAll('.git-review-toggle[aria-expanded="false"]')).toHaveLength(3);
     expect(button(container, "Expand all diffs")).toBeDefined();
   });
@@ -233,19 +233,19 @@ describe("bundled Git browser plugin", () => {
     const container = document.createElement("div");
     document.body.append(container);
 
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     await settleBackend();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     button(container, "History").click();
     await settleBackend();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
 
     expect(backend.request).toHaveBeenCalledWith("history", null);
     expect(new URL(window.location.href).searchParams.get("git.workspace.git--mode")).toBe("history");
     expect(container.textContent).toContain("Add history");
     button(container, "Add history").click();
     await settleBackend();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
 
     expect(backend.request).toHaveBeenCalledWith("commit-diff", { id: historyCommit.id });
     expect(new URL(window.location.href).searchParams.get("git.workspace.git--commit")).toBe(historyCommit.id);
@@ -254,19 +254,19 @@ describe("bundled Git browser plugin", () => {
     expect(container.querySelectorAll('[role="table"][aria-label^="Commit diff for "]')).toHaveLength(2);
 
     button(container, "src/first.ts").click();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     expect(button(container, "src/first.ts").getAttribute("aria-expanded")).toBe("false");
     expect(container.querySelectorAll('[role="table"][aria-label^="Commit diff for "]')).toHaveLength(1);
 
     button(container, "Collapse all file diffs").click();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     expect(container.querySelectorAll('.git-commit-file-toggle[aria-expanded="false"]')).toHaveLength(2);
     button(container, "Expand all file diffs").click();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     expect(container.querySelectorAll('[role="table"][aria-label^="Commit diff for "]')).toHaveLength(2);
 
     button(container, "Changes").click();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     expect(new URL(window.location.href).searchParams.get("git.workspace.git--mode")).toBeNull();
     expect(new URL(window.location.href).searchParams.get("git.workspace.git--commit")).toBeNull();
     expect(container.textContent).toContain("src/main.ts");
@@ -289,10 +289,10 @@ describe("bundled Git browser plugin", () => {
     const container = document.createElement("div");
     document.body.append(container);
 
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     await settleBackend();
     await settleBackend();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
 
     expect(backend.request).toHaveBeenCalledWith("history", null);
     expect(backend.request).toHaveBeenCalledWith("commit-diff", { id: historyCommit.id });
@@ -308,7 +308,7 @@ describe("bundled Git browser plugin", () => {
     const firstContext = panelContext(firstBackend.request);
     const container = document.createElement("div");
     document.body.append(container);
-    render(panel.render(firstContext), container);
+    renderAsHost(panel, firstContext, container);
     await settleBackend();
     render(null, container);
 
@@ -316,7 +316,7 @@ describe("bundled Git browser plugin", () => {
     const secondBackend = backendFixture({ files: [changedFile("README.md")] });
     const secondContext = panelContext(secondBackend.request, secondWorkspace);
     window.history.replaceState({}, "", `/?project=${projectId}&workspace=${secondWorkspace.id}&git.workspace.git--diff=README.md`);
-    render(panel.render(secondContext), container);
+    renderAsHost(panel, secondContext, container);
     await settleBackend();
 
     expect(secondBackend.request).toHaveBeenCalledWith("diff", { path: "README.md" });
@@ -335,9 +335,9 @@ describe("bundled Git browser plugin", () => {
     await panel.onInvalidate?.(remoteContext);
     const container = document.createElement("div");
     document.body.append(container);
-    render(panel.render(localContext), container);
+    renderAsHost(panel, localContext, container);
     expect(container.textContent).toContain("local-main");
-    render(panel.render(remoteContext), container);
+    renderAsHost(panel, remoteContext, container);
     expect(container.textContent).toContain("remote-main");
 
     const oldestBackend = backendFixture({ branch: "oldest" });
@@ -349,7 +349,7 @@ describe("bundled Git browser plugin", () => {
       await panel.onInvalidate?.(panelContext(backend.request, { ...gitWorkspace, id: `bounded-${String(index)}` }));
     }
 
-    render(panel.render(oldestContext), container);
+    renderAsHost(panel, oldestContext, container);
     await settleBackend();
     expect(oldestBackend.request.mock.calls.filter(([operation]) => operation === "status")).toHaveLength(2);
     render(null, container);
@@ -364,9 +364,9 @@ describe("bundled Git browser plugin", () => {
     panel.visible?.(context);
     const container = document.createElement("div");
     document.body.append(container);
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
     await settleBackend();
-    render(panel.render(context), container);
+    renderAsHost(panel, context, container);
 
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "README.md" });
     expect(new URL(window.location.href).searchParams.get("git.workspace.git--diff")).toBe("README.md");
@@ -390,6 +390,11 @@ describe("bundled Git browser plugin", () => {
 
 function activate(pluginId: string, runtimePluginId = pluginId) {
   return plugin.activate({ apiVersion: 2, pluginId, runtimePluginId, html, svg }).contributions;
+}
+
+/** What the host mounts for a tool: the summary, the folded toolbar (open here), and the page. */
+function renderAsHost(panel: WorkspacePanelContribution, context: WorkspacePanelContext, container: HTMLElement): void {
+  render(html`<span class="host-summary">${panel.summary?.(context) ?? ""}</span>${panel.toolbar?.(context) ?? null}${panel.render(context)}`, container);
 }
 
 function requiredPanel(contributions: ReturnType<typeof activate>) {

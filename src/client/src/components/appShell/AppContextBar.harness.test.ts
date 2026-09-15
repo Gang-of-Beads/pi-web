@@ -64,6 +64,12 @@ describe("the resident row hands off to the panel and the quick switcher", () =>
     expect(switches).toHaveLength(1);
   });
 
+  it("names the tool page on screen when no session is selected", async () => {
+    const bar = await mount({ activeSurface: "Git" });
+
+    expect(required(bar.renderRoot, ".session-title").textContent).toBe("Git");
+  });
+
   it("shows the working indicator only while the session works", async () => {
     const bar = await mount({ session: session({ name: "Ship the release" }), isWorking: true });
     expect(bar.renderRoot.querySelectorAll(".working-dot").length).toBe(3);

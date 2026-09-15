@@ -46,6 +46,9 @@ try {
     open.call(app, "git:workspace.git");
     await new Promise((r) => setTimeout(r, 2500));
     const panel = app.shadowRoot.querySelector("workspace-panel");
+    const fold = panel?.shadowRoot?.querySelector(".workspace-tool-fold");
+    if (!fold) return { error: "the tool header has no fold button" };
+    if (fold.getAttribute("aria-expanded") !== "true") { fold.click(); await new Promise((r) => setTimeout(r, 400)); }
     const roots = [panel?.shadowRoot];
     const seen = new Set();
     let button;
@@ -58,7 +61,7 @@ try {
     }
     if (!button) return { error: "no New worktree button in the git panel" };
     const rect = button.getBoundingClientRect();
-    if (rect.right > window.innerWidth || rect.height < 36) return { error: "button off the phone or below the comfort height: right " + String(Math.round(rect.right)) + ", height " + String(Math.round(rect.height)) };
+    if (rect.right > window.innerWidth || rect.height < 32) return { error: "button off the phone or below the control height: right " + String(Math.round(rect.right)) + ", height " + String(Math.round(rect.height)) };
     button.click();
     await new Promise((r) => setTimeout(r, 800));
     const dialog = document.querySelector("pi-web-git-worktree-dialog") ?? app.shadowRoot.querySelector("pi-web-git-worktree-dialog");

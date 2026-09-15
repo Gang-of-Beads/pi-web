@@ -704,6 +704,14 @@ export interface WorkspacePanelContribution {
   badge?: (context: WorkspacePanelContext) => string | number | TemplateResult | undefined;
   /** Called when the host invalidates workspace-panel data. */
   onInvalidate?: (context: WorkspacePanelContext) => void | Promise<void>;
+  /** A short status shown beside the title in the host's panel header
+   *  (a branch name, a count); undefined shows the title alone. */
+  summary?: (context: WorkspacePanelContext) => string | undefined;
+  /** The panel's controls. The host places them in a fold under its header
+   *  - one fold for every tool, remembered per tool - so a panel never
+   *  stacks a second bar of its own under the app's. Contents that belong
+   *  to the page (lists, viewers) stay in `render`. */
+  toolbar?: (context: WorkspacePanelContext) => TemplateResult;
   render: (context: WorkspacePanelContext) => TemplateResult;
 }
 

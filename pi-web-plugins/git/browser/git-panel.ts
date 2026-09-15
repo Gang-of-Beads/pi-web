@@ -759,6 +759,8 @@ function createGitPanel(
     order: 20,
     visible: (context) => controller.isOwnedWorkspace(context.workspace),
     onInvalidate: (context) => controller.invalidate(context),
+    summary: (context) => gitPanelSummary(controller, context),
+    toolbar: (context) => renderGitToolbar(html, controller, context),
     render: (context) => renderGitPanel(html, controller, context),
   };
 }
@@ -777,17 +779,6 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
     <section class="git-panel">
       <style .textContent=${gitPanelStyles}></style>
       <pi-web-git-panel-activity .controller=${controller} .context=${context}></pi-web-git-panel-activity>
-      <section class="git-toolbar">
-        <strong>Git</strong>
-        ${state.mode === "changes" && state.stale ? html`<span class="git-stale">stale</span>` : null}
-        ${renderModeToggle(html, controller, context, state.mode)}
-        <div class="git-toolbar-actions">
-          ${state.mode === "changes" && state.workspacePanelFullscreen && (state.status?.files.length ?? 0) > 0 ? renderReviewExpandCollapseAll(html, controller, context, state) : null}
-          ${state.mode !== "changes" || state.workspacePanelFullscreen || viewState.expandablePaths.length === 0 ? null : renderExpandCollapseAll(html, controller, context, state, viewState.expandablePaths)}
-          ${state.mode === "changes" ? renderViewToggle(html, controller, context) : null}
-          <button type="button" ?disabled=${state.mode === "changes" ? state.statusLoading : state.historyLoading} @click=${() => { void (state.mode === "changes" ? controller.refresh(context) : controller.refreshHistory(context)); }}>Refresh</button>
-        </div>
-      </section>
       ${state.mode !== "changes" || state.error === undefined ? null : html`<div class="git-error" role="alert">${state.error}</div>`}
       <section class=${gitSplitClass(state.mode === "changes" ? state.selectedDiffPath : state.selectedCommitId, state.workspacePanelFullscreen)}>
         <div class="git-file-list">${state.mode === "changes" ? renderFileList(html, controller, context, state, viewState) : renderHistoryList(html, controller, context, state)}</div>
@@ -795,6 +786,33 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
       </section>
     </section>
   `;
+}
+
+/**
+ * The controls the host folds under its header: mode, view, expand/collapse,
+ * refresh, new worktree. The git panel draws no bar of its own.
+ */
+function renderGitToolbar(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext) {
+  const state = controller.state(context);
+  const viewState = controller.viewState(state);
+  return html`
+    <style .textContent=${gitToolbarStyles}></style>
+    ${renderModeToggle(html, controller, context, state.mode)}
+    ${state.mode === "changes" ? renderViewToggle(html, controller, context) : null}
+    ${state.mode === "changes" && state.workspacePanelFullscreen && (state.status?.files.length ?? 0) > 0 ? renderReviewExpandCollapseAll(html, controller, context, state) : null}
+    ${state.mode !== "changes" || state.workspacePanelFullscreen || viewState.expandablePaths.length === 0 ? null : renderExpandCollapseAll(html, controller, context, state, viewState.expandablePaths)}
+    <button type="button" ?disabled=${state.mode === "changes" ? state.statusLoading : state.historyLoading} @click=${() => { void (state.mode === "changes" ? controller.refresh(context) : controller.refreshHistory(context)); }}>Refresh</button>
+    ${context.backend === undefined ? null : html`<button type="button" class="git-new-worktree" @click=${() => { openNewWorktreeDialog(html, context); }}>New worktree</button>`}
+  `;
+}
+
+/** The branch beside the title, with the stale mark when the listing is behind the disk. */
+function gitPanelSummary(controller: GitUiController, context: WorkspacePanelContext): string | undefined {
+  const state = controller.state(context);
+  const status = state.status;
+  if (status?.isGitRepo !== true) return undefined;
+  const summary = gitSummary(status);
+  return state.mode === "changes" && state.stale ? `${summary} (stale)` : summary;
 }
 
 /**
@@ -865,12 +883,10 @@ function renderFileList(
   const status = state.status;
   if (status === undefined) return html`<p class="git-muted">${state.error === undefined ? "Loading status…" : "Status unavailable."}</p>`;
   if (!status.isGitRepo) return html`<p class="git-muted">Not a git repository.</p>`;
-  const summary = html`<p class="git-summary"><span>${gitSummary(status)}</span>${context.backend === undefined ? null : html`<button type="button" class="git-new-worktree" @click=${() => { openNewWorktreeDialog(html, context); }}>New worktree</button>`}</p>`;
-  if (status.files.length === 0) return html`${summary}<p class="git-muted">No changes.</p>`;
-  const body = controller.currentView() === "tree"
+  if (status.files.length === 0) return html`<p class="git-muted">No changes.</p>`;
+  return controller.currentView() === "tree"
     ? viewState.nodes.map((node) => renderTreeNode(html, controller, context, state, node, 0))
     : renderListBody(html, controller, context, state, viewState.listModel);
-  return html`${summary}${body}`;
 }
 
 function renderHistoryList(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext, state: GitWorkspaceUiState) {
@@ -1330,6 +1346,14 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+const gitToolbarStyles = `
+  .git-view-toggle { display: inline-flex; }
+  .git-view-toggle button { border-radius: 0; }
+  .git-view-toggle button:first-child { border-top-left-radius: var(--pi-radius-md); border-bottom-left-radius: var(--pi-radius-md); }
+  .git-view-toggle button:last-child { margin-left: calc(-1 * var(--pi-space-1)); border-top-right-radius: var(--pi-radius-md); border-bottom-right-radius: var(--pi-radius-md); }
+  .git-view-toggle button.is-selected { position: relative; z-index: 1; border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+`;
+
 const gitPanelStyles = `
   .git-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-sm) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
   .git-panel ${activityElementTag} { display: none; }
@@ -1338,15 +1362,6 @@ const gitPanelStyles = `
   .git-panel button:disabled { cursor: wait; opacity: var(--pi-disabled-opacity); }
   .git-panel small, .git-panel .git-muted { color: var(--pi-muted); }
   .git-panel p { margin: var(--pi-space-5); }
-  .git-panel .git-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
-  .git-panel .git-toolbar-actions { display: flex; align-items: center; gap: var(--pi-space-4); margin-left: auto; }
-  .git-panel .git-view-toggle { display: inline-flex; }
-  .git-panel .git-view-toggle button { border-radius: 0; }
-  .git-panel .git-view-toggle button:first-child { border-top-left-radius: var(--pi-radius-md); border-bottom-left-radius: var(--pi-radius-md); }
-  .git-panel .git-view-toggle button:last-child { margin-left: calc(-1 * var(--pi-space-1)); border-top-right-radius: var(--pi-radius-md); border-bottom-right-radius: var(--pi-radius-md); }
-  .git-panel .git-view-toggle button.is-selected { position: relative; z-index: 1; border-color: var(--pi-accent); background: var(--pi-selection-bg); }
-  .git-panel .git-mode-toggle { margin-left: var(--pi-space-2); }
-  .git-panel .git-stale { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font-size: var(--pi-text-xs); }
   .git-panel .git-error { flex: 0 0 auto; margin: var(--pi-space-4); border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); color: var(--pi-danger); padding: var(--pi-space-4); }
   .git-panel .git-split { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: minmax(160px, 34%) minmax(0, 1fr); }
   /* With nothing selected there is no diff to show, so the list takes the
@@ -1368,9 +1383,6 @@ const gitPanelStyles = `
   .git-panel .git-commit-row strong, .git-panel .git-commit-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .git-panel .git-load-more { margin: var(--pi-space-4); }
   .git-panel .git-twisty { color: var(--pi-dim, var(--pi-muted)); }
-  .git-panel .git-summary { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); margin: var(--pi-space-2) var(--pi-space-3) var(--pi-space-4); color: var(--pi-muted); }
-  .git-panel .git-summary > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .git-panel .git-new-worktree { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-control-height-comfort); font-size: var(--pi-text-xs); }
   .git-panel .submodule-badge { display: inline-block; margin-left: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); color: var(--pi-muted); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-regular); vertical-align: baseline; }
   .git-panel .git-viewer { min-height: 0; overflow: auto; display: flex; flex-direction: column; }
   .git-panel .git-review-diffs { min-width: 0; }

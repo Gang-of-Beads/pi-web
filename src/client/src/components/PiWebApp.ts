@@ -2316,6 +2316,7 @@ export class PiWebApp extends LitElement {
         .collapsible=${true}
         .compact=${this.appShell.isMobileNavigationLayout}
         .session=${this.state.selectedSession}
+        .activeSurface=${this.activeSurfaceLabel()}
         .isWorking=${this.state.selectedSession !== undefined && isActive(this.state)}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
         .toolTabs=${this.shellToolTabs()}
@@ -3962,7 +3963,7 @@ export class PiWebApp extends LitElement {
     return html`
       <app-context-bar
         .session=${this.state.selectedSession}
-        .activeSurface=${this.displayMainView() !== "chat" && this.displayMainView() !== "navigation" ? this.shellToolTabs().find((tab) => tab.id === this.displayMainView())?.label ?? "" : ""}
+        .activeSurface=${this.activeSurfaceLabel()}
         ?isWorking=${this.state.selectedSession !== undefined && isActive(this.state)}
         ?panelOpen=${this.shellPanelOpen()}
         ?panelToggleHidden=${panelToggleHiddenState({ mobileLayout: this.appShell.isMobileNavigationLayout, displayView: this.displayMainView() })}
@@ -3997,6 +3998,12 @@ export class PiWebApp extends LitElement {
   }
 
   /** Workspace views as panel rows: one entry, no sheet, no second strip. */
+  private activeSurfaceLabel(): string {
+    const view = this.displayMainView();
+    if (view === "chat" || view === "navigation") return "";
+    return this.shellToolTabs().find((tab) => tab.id === view)?.label ?? "";
+  }
+
   private shellToolTabs(): ShellToolTab[] {
     return this.visibleWorkspacePanels().map((panel) => {
       const badge = this.mobilePanelBadge(panel);

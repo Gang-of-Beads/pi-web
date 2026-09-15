@@ -75,6 +75,8 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onStartSession?: () => void | Promise<void>;
   @property({ attribute: false }) onPrefetchSession?: (session: SessionInfo) => void;
   @property({ attribute: false }) session?: SessionInfo;
+  /** The tool page on screen, if any; the compact title names it instead of the session. */
+  @property() activeSurface = "";
   /** Whether that session has work in progress. */
   @property({ type: Boolean }) isWorking = false;
   /** Opens the quick switcher: the one-tap path to another session. */
@@ -183,7 +185,7 @@ export class AppNavigationPanel extends LitElement {
             <span class="compact-scope-name" dir="auto">${this.compactScopeLabel()}</span>
           </button>
           <button class="compact-session${this.selectedSession === undefined ? " empty" : ""}" @click=${() => { this.onQuickSwitch?.(); }} aria-label="Open session selection">
-            <span class="compact-session-name" dir="auto">${this.selectedSession === undefined ? "Sessions" : sessionLabel(this.selectedSession)}</span>
+            <span class="compact-session-name" dir="auto">${compactTitle(this.activeSurface, this.selectedSession)}</span>
           </button>
           <span class="compact-working" role="status" aria-label="Session is working" ?hidden=${!this.isWorking}><span class="compact-working-dot"></span><span class="compact-working-dot"></span><span class="compact-working-dot"></span></span>
           ${this.refreshControl}
@@ -532,4 +534,14 @@ function nextVisibleNavigationTarget(section: NavigationSection, machinesVisible
 
 function visibleNavigationSections(machinesVisible: boolean): NavigationSection[] {
   return NAVIGATION_SECTION_ORDER.filter((section) => section !== "machines" || machinesVisible);
+}
+
+/**
+ * What the compact header names: the tool page on screen when there is
+ * one (the owner's ruling - a Git page titled "Sessions" told the reader
+ * nothing), else the session, else the list the button opens.
+ */
+export function compactTitle(activeSurface: string, session: SessionInfo | undefined): string {
+  if (activeSurface !== "") return activeSurface;
+  return session === undefined ? "Sessions" : sessionLabel(session);
 }
