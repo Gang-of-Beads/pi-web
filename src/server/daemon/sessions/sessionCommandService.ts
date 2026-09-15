@@ -117,8 +117,9 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
         // ending without anything visible at all - a command that silently
         // vanished reads as a command that never ran.
         this.silentCommandWatches.set(session.sessionId, `/${name}`);
+        const deferred = this.hasActiveWork(session);
         await this.prompt(sessionId, text);
-        return { type: "done" };
+        return deferred ? { type: "done", deferred: true } : { type: "done" };
       }
       return { type: "unsupported", message: `Unknown command: /${name}` };
     }
@@ -207,6 +208,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
       this.pendingReloads.add(session.sessionId);
       return {
         type: "done",
+        deferred: true,
         message: alreadyQueued
           ? "Reload is already queued and will run when the session goes idle."
           : "Session is busy - reload queued. It will run automatically once the session goes idle.",

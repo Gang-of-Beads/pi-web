@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandDeliveryPresentation, commandResultLine, commandsForSession, issueCommand, settleCommand } from "./commandLedger";
+import { commandDeliveryPresentation, commandFinished, commandResultLine, commandsForSession, issueCommand, settleAcceptedCommands, settleCommand } from "./commandLedger";
 
 const KEY = "local:session-1";
 
@@ -76,5 +76,31 @@ describe("the browser's record of an issued command", () => {
     expect(commandResultLine({ state: "ok", resultText: "Session name: opus-b" })).toBe("Session name: opus-b");
     expect(commandResultLine({ state: "failed", resultText: "/new is not implemented in the web UI yet" })).toBe("/new is not implemented in the web UI yet");
     expect(commandResultLine({ state: "failed" })).toBe("The command failed; see the error above.");
+  });
+});
+
+describe("accepted rows are live work", () => {
+  it("are not finished and so never evicted by the cap", () => {
+    expect(commandFinished({ state: "accepted" })).toBe(false);
+    expect(commandFinished({ state: "pending" })).toBe(false);
+    expect(commandFinished({ state: "ok" })).toBe(true);
+    expect(commandFinished({ state: "failed" })).toBe(true);
+  });
+
+  it("settle to ok for their own session when its runtime is idle, leaving other sessions alone", () => {
+    const mine = issueCommand([], { sessionKey: KEY, text: "/goal-resume", source: "goal-panel", now: 1 });
+    const theirs = issueCommand(mine.entries, { sessionKey: "m::other", text: "/reload", source: "typed", now: 2 });
+    let entries = settleCommand(theirs.entries, mine.id, { state: "accepted", now: 3 });
+    entries = settleCommand(entries, theirs.id, { state: "accepted", now: 3 });
+
+    const settled = settleAcceptedCommands(entries, KEY, 9);
+
+    expect(settled.find((row) => row.id === mine.id)).toMatchObject({ state: "ok", settledAt: 9 });
+    expect(settled.find((row) => row.id === theirs.id)).toMatchObject({ state: "accepted" });
+  });
+
+  it("returns an equal list untouched when nothing is accepted", () => {
+    const issued = issueCommand([], { sessionKey: KEY, text: "/session", source: "typed", now: 1 });
+    expect(settleAcceptedCommands(issued.entries, KEY, 9)).toEqual(issued.entries);
   });
 });

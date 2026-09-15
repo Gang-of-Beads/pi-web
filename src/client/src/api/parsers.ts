@@ -2083,7 +2083,7 @@ export function parseCommandResult(value: unknown): CommandResult {
   if (type === "unsupported") return { type, message: requireString(record, "message") };
   if (type === "select") return { type, requestId: requireString(record, "requestId"), title: requireString(record, "title"), options: arrayOf(parseCommandOption)(record["options"]) };
   if (type === "tree") return { type, tree: parseSessionTreeSnapshot(record["tree"]) };
-  if (type === "done") return { type, ...optionalField("message", optionalString(record, "message")), ...optionalSession(record["session"]), ...optionalField("promptDraft", optionalString(record, "promptDraft")) };
+  if (type === "done") return { type, ...optionalField("message", optionalString(record, "message")), ...optionalSession(record["session"]), ...optionalField("promptDraft", optionalString(record, "promptDraft")), ...(record["deferred"] === true ? { deferred: true as const } : {}) };
   throw new Error("Invalid command result type");
 }
 

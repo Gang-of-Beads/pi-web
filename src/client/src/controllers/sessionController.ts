@@ -1,7 +1,7 @@
 import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
-import { commandOutcomeFor, issueCommand, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
+import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair } from "../sessionGapRepair";
 import { describeError, noticeForReader } from "../notice";
@@ -126,7 +126,7 @@ type ClientPendingStartSessionInfo = SessionInfo & { clientPendingStart: true; m
 type QueuedPendingSessionSendInput =
   | { type: "prompt"; text: string; streamingBehavior?: "steer" | "followUp" | undefined; attachments?: PromptAttachment[] | undefined; delivery: PromptAttachmentDelivery }
   | { type: "shell"; text: string }
-  | { type: "command"; text: string };
+  | { type: "command"; text: string; ledgerId: string };
 
 type QueuedPendingSessionSend = QueuedPendingSessionSendInput & { id: string };
 
@@ -210,6 +210,7 @@ export class SessionController {
   private pendingSessionStartSeq = 0;
   private pendingQueuedSendSeq = 0;
   private readonly pendingSessionStarts = new Map<string, PendingSessionStart>();
+  private readonly commandDialogRows = new Map<string, string>();
   private readonly suppressedCreatedSessions = new Map<string, SuppressedCreatedSession>();
   private readonly selectedSessionRefreshes = new TrailingRefreshCoordinator<string>();
   // The daemon instance each machine's last status catalog came from. Session
@@ -509,8 +510,8 @@ export class SessionController {
     const trimmed = text.trim();
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     if (isClientPendingStartSessionInfo(session)) {
-      if (!hasAttachments && trimmed.startsWith("/")) this.enqueuePendingSessionSend(session, { type: "command", text });
-      else if (!hasAttachments && isShellInput(text)) this.enqueuePendingSessionSend(session, { type: "shell", text });
+      if (!hasAttachments && trimmed.startsWith("/")) { await this.runCommand(text); return true; }
+      if (!hasAttachments && isShellInput(text)) this.enqueuePendingSessionSend(session, { type: "shell", text });
       else this.enqueuePendingSessionSend(session, { type: "prompt", text, streamingBehavior, attachments, delivery });
       // Queued against a session that is still starting: it will be delivered,
       // so the composer is right to have cleared.
@@ -558,7 +559,7 @@ export class SessionController {
     });
     this.setState({ commandLedger: issued.entries });
     if (isClientPendingStartSessionInfo(session)) {
-      this.enqueuePendingSessionSend(session, { type: "command", text });
+      this.enqueuePendingSessionSend(session, { type: "command", text, ledgerId: issued.id });
       this.settleLedgerRow(issued.id, { state: "accepted", resultText: "Runs once the session starts." });
       return;
     }
@@ -568,12 +569,7 @@ export class SessionController {
   private settleLedgerRow(id: string, outcome: { state: "accepted" | "ok" | "failed"; resultText?: string }): void {
     const now = Date.now();
     this.setState({ commandLedger: settleCommand(this.getState().commandLedger, id, { ...outcome, now }) });
-    // The settled row is the user's receipt of what they sent and what ran
-    // (the owner's no-auto-leave ruling): it stays in the session's record.
-    // Only the ledger's capacity cap evicts, settled rows first.
   }
-
-  /** The reader closed a settled receipt; pending rows are live work and stay. */
 
   private enqueuePendingSessionSend(session: ClientPendingStartSessionInfo, input: QueuedPendingSessionSendInput): void {
     const pending = this.pendingSessionStarts.get(session.id);
@@ -605,7 +601,7 @@ export class SessionController {
   private async deliverQueuedPendingSend(session: SessionInfo, machineId: string, queued: QueuedPendingSessionSend): Promise<boolean> {
     if (queued.type === "prompt") return this.deliverPromptToSession(session, queued.text, queued.streamingBehavior, queued.attachments, queued.delivery, machineId, { markSending: true });
     if (queued.type === "shell") return this.deliverShellToSession(session, queued.text, machineId, { optimisticLine: true });
-    return this.deliverCommandToSession(session, queued.text, machineId, { applyResult: true });
+    return this.deliverCommandToSession(session, queued.text, machineId, { applyResult: true, ledgerId: queued.ledgerId });
   }
 
   private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean; replayClientMessageId?: string }): Promise<boolean> {
@@ -700,27 +696,13 @@ export class SessionController {
     try {
       const result = await this.api.runCommand(session, text, machineId);
       if (options.applyResult && this.isSelectedSessionIdentity(session.id, machineId)) this.applyCommandResult(result);
-      else if (result.type === "select" || result.type === "tree") this.setState(noticePatch(noticeForReader(`Queued command “${text}” needs input; open the session and run it again.`)));
+      else if (result.type === "select" || result.type === "tree") this.setState(noticePatch(noticeForReader(`Command “${text}” is asking a question; open the session and run it again.`)));
       this.markCachedNewSessionPersisted(session);
       if (options.ledgerId !== undefined) {
-        // A runtime command accepted while a reply streams is FORWARDED as a
-        // prompt and queued behind it: the {type:"done"} with no message means
-        // accepted, not executed. The row must say so — the archived
-        // action-acknowledgment spec forbids dressing acceptance as completion.
-        const deferred = result.type === "done" && result.message === undefined && this.getState().status?.isStreaming === true;
-        // The same rule applies to refusal, which travels as a perfectly
-        // successful response: the row reports what the command did, not
-        // whether the request reached the server.
         const outcome = commandOutcomeFor(result);
-        if (outcome === undefined) {
-          // select and tree answer with a dialog, which is the acknowledgment.
-          // Left pending the row could never be dismissed nor evicted.
-          this.setState({ commandLedger: withdrawCommand(this.getState().commandLedger, options.ledgerId) });
-        } else {
-          this.settleLedgerRow(options.ledgerId, deferred
-            ? { state: "accepted", resultText: "Runs after the current reply finishes." }
-            : outcome);
-        }
+        if (outcome !== undefined) this.settleLedgerRow(options.ledgerId, outcome);
+        else if (result.type === "select") this.commandDialogRows.set(result.requestId, options.ledgerId);
+        else this.setState({ commandLedger: withdrawCommand(this.getState().commandLedger, options.ledgerId) });
       }
       return true;
     } catch (error) {
@@ -744,15 +726,28 @@ export class SessionController {
     const session = this.getState().selectedSession;
     if (!session) return;
     this.setState({ commandDialog: undefined });
+    const ledgerId = this.commandDialogRows.get(requestId);
+    this.commandDialogRows.delete(requestId);
     try {
-      this.applyCommandResult(await this.api.respondToCommand(session, requestId, value, selectedMachineId(this.getState())));
+      const result = await this.api.respondToCommand(session, requestId, value, selectedMachineId(this.getState()));
+      this.applyCommandResult(result);
+      const outcome = commandOutcomeFor(result);
+      if (ledgerId !== undefined && outcome !== undefined) this.settleLedgerRow(ledgerId, outcome);
+      else if (ledgerId !== undefined && result.type === "select") this.commandDialogRows.set(result.requestId, ledgerId);
     } catch (error) {
+      if (ledgerId !== undefined) this.settleLedgerRow(ledgerId, { state: "failed", resultText: describeError(error) });
       this.setState(errorNoticePatch(error));
     }
   }
 
+  /** Closing the dialog unanswered ends the command: its row says so instead of waiting forever. */
   cancelCommand() {
+    const requestId = this.getState().commandDialog?.requestId;
     this.setState({ commandDialog: undefined });
+    if (requestId === undefined) return;
+    const ledgerId = this.commandDialogRows.get(requestId);
+    this.commandDialogRows.delete(requestId);
+    if (ledgerId !== undefined) this.settleLedgerRow(ledgerId, { state: "failed", resultText: "Cancelled without an answer." });
   }
 
   async navigateTree(targetId: string, summary: SessionTreeSummaryChoice): Promise<SessionTreeNavigateResult> {
@@ -2018,6 +2013,7 @@ export class SessionController {
     // the bubbles the sender is looking at.
     const runtimeIdle = !status.isStreaming && !status.isCompacting && status.pendingMessageCount === 0;
     const messages = isSelected ? applyQueueToDelivery(state.messages, status.queuedMessages, runtimeIdle) : state.messages;
+    const commandLedger = runtimeIdle ? settleAcceptedCommands(state.commandLedger, machineSessionKey(selectedMachineId(state), status.sessionId), Date.now()) : state.commandLedger;
     const clearsStaleActivity = state.sessionActivities[status.sessionId]?.phase === "active" && !isSessionActive(status);
     // Falling edge only: a turn that just ended is the one moment worth
     // re-reading the goal directory for, and every other status update would
@@ -2053,6 +2049,7 @@ export class SessionController {
       // tap, so those ids are held back.
       ...(isSelected ? { pendingDialogs: openDialogsAfterDismissals(status.pendingDialogs, state.dismissedDialogIds) } : {}),
       ...(messages === state.messages ? {} : { messages }),
+      ...(commandLedger === state.commandLedger ? {} : { commandLedger }),
     });
     // A status that carries the dialog surface's revision is a full read of
     // that surface: frames up to it are reflected here, so the gate may trust

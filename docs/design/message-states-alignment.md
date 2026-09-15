@@ -70,8 +70,10 @@ sending ──HTTP 200──> received ──服务器事件──> queued ─�
 保留为本地投影，但改用消息的呈现语法：
 
 - 命令行 = `.msg.user.command` 用户气泡（等宽命令原文）+ 下方结果行；
-- 交付标记走同一套词汇：流式中 **Queued**、空闲 **Running**、成功 **Read**、
-  拒绝/失败 **Not sent**；
+- 交付标记走同一套词汇：daemon 标记 `deferred`（转发给 agent 的运行时命令、
+  忙时排队的 /reload）或会话尚未启动 → **Queued**（accepted 态，空闲沿
+  结算为 Read）、请求已发未答 **Running**、成功 **Read**、拒绝/失败/对话框
+  未答关闭 **Not sent**；每个态在 `commandLedger.test.ts` 枚举；
 - 结果只出现一次：原先 `applyCommandResult` 另外注入 transcript 的
   system/tool 行删除（刷新即消失、与气泡重复）；
 - 收条的 Dismiss 按钮退役（pi 原生也不可关闭，页面生命期内留存，容量上限

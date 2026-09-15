@@ -527,7 +527,7 @@ describe("SessionController session tree navigation", () => {
     await run;
 
     expect(state.treeDialog).toBeUndefined();
-    expect(state.error).toContain("needs input; open the session and run it again");
+    expect(state.error).toContain("is asking a question; open the session and run it again");
   });
 
   it("requires a delayed interactive tree command to be rerun after its session is no longer selected", async () => {
@@ -555,7 +555,7 @@ describe("SessionController session tree navigation", () => {
     await run;
 
     expect(state.treeDialog).toBeUndefined();
-    expect(state.error).toContain("needs input; open the session and run it again");
+    expect(state.error).toContain("is asking a question; open the session and run it again");
   });
 });
 

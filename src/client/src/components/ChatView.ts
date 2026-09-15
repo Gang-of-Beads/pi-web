@@ -346,8 +346,8 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   /* Queued messages are drawn in the transcript, gold; this slim strip carries
      only the count and the clear action the queue as a whole needs. */
   .queued-strip { display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-4); padding: var(--pi-space-2) var(--pi-space-3); color: var(--pi-warning); font-size: var(--pi-text-xs); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-md); background: var(--pi-warning-surface); }
-  /* The command receipts wear the queued-message gold: provisional, the
-     browser's own record, not server history. */
+  /* A command bubble is a user bubble in the browser's own record, not
+     server history; only its result line and mark tell it apart. */
   .msg.command { font-family: var(--pi-font-mono); }
   .msg.command .command-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg.command .command-result { margin: var(--pi-space-3) 0 0; font-family: var(--pi-font-ui); font-size: var(--pi-text-sm); color: var(--pi-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -683,7 +683,6 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) subagentRuns?: readonly SessionSubagentRunInfo[];
   @property({ attribute: false }) backgroundTasks?: readonly SessionBackgroundTaskInfo[];
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
-  /** Close one settled receipt; a pending row is live work and refuses. */
   /** Take one queued message back into the composer, leaving the rest queued. */
   @property({ attribute: false }) onRecallQueuedMessage?: (message: QueuedSessionMessage) => void;
   @property({ attribute: false }) onLoadMore?: () => void;
@@ -1085,9 +1084,9 @@ export class ChatView extends LitElement {
           )}
           ${this.renderNewerBoundary()}
           ${this.renderSessionActivity()}
+          ${this.renderCommandLedger()}
           ${this.renderPendingMessages()}
           ${this.renderQueuedMessages()}
-          ${this.renderCommandLedger()}
           ${this.renderClosedDialogs()}
           ${this.renderWaitingForYou()}
         </div>
@@ -1596,13 +1595,10 @@ export class ChatView extends LitElement {
   }
 
   /**
-   * The receipts for commands this browser issued. A slash command's route
-   * produces no message and no pending row; until these rows existed, a
-   * pressed goal button held no evidence anywhere that the press happened,
-   * and the owner pressed Resume four times against a command that had been
-   * accepted every time. Queued-versus-running is derived from the live
-   * status: the daemon runs a command after the current reply, and the row
-   * says which side of that wait it is on.
+   * The browser's own record of the commands it issued this page-life: a
+   * user bubble per command, its result beneath, and the delivery mark a
+   * sent message wears. Rows come before the queued messages because the
+   * daemon takes a command before whatever the reader queued after it.
    */
   private renderCommandLedger() {
     if (this.commandLedger.length === 0) return null;

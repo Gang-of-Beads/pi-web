@@ -71,6 +71,15 @@ describe("SessionCommandService", () => {
     expect(prompt).toHaveBeenNthCalledWith(3, "s1", "/skill:skill-a arg");
   });
 
+  it("marks a forwarded runtime command deferred while the session has active work", async () => {
+    const active = activeSession();
+    const prompt = vi.fn(promptAccepted);
+    const service = new SessionCommandService(() => getActive(active), prompt, eventPublisher(), { hasActiveWork: () => true });
+
+    await expect(service.run("s1", "/ext arg")).resolves.toEqual({ type: "done", deferred: true });
+    expect(prompt).toHaveBeenCalledWith("s1", "/ext arg");
+  });
+
   it("renames sessions, publishes the name update, and returns updated client session metadata", async () => {
     const active = activeSession();
     const events = eventPublisher();
@@ -142,6 +151,7 @@ describe("SessionCommandService", () => {
 
     await expect(service.run("s1", "/reload")).resolves.toEqual({
       type: "done",
+      deferred: true,
       message: "Session is busy - reload queued. It will run automatically once the session goes idle.",
     });
     expect(reloadSession).not.toHaveBeenCalled();
@@ -170,6 +180,7 @@ describe("SessionCommandService", () => {
     await service.run("s1", "/reload");
     await expect(service.run("s1", "/reload")).resolves.toEqual({
       type: "done",
+      deferred: true,
       message: "Reload is already queued and will run when the session goes idle.",
     });
 
