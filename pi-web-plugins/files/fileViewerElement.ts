@@ -4,8 +4,10 @@ import { ifDefined } from "lit/directives/if-defined.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import type { FileContentResponse } from "@gang-of-beads/pi-web/plugin-api";
 import { adoptFilesHostStyles, filesRenderMarkdownHtml } from "./hostUi";
+import { CodeViewer as PiCodeViewerElement } from "./codeViewerElement";
 import type { WorkspaceFileViewMode, WorkspaceFileViewModeStore } from "./viewMode";
 import { formatFileSize, workspaceFileName } from "./format";
+import { mentionRef } from "./selectionMention";
 
 export type WorkspaceFilePreviewKind = "image" | "html" | "pdf" | "markdown" | "audio" | "video" | "download" | "code";
 
@@ -52,13 +54,31 @@ export class WorkspaceFileViewer extends LitElement {
     this.requestUpdate();
   };
 
+  @property({ attribute: false }) onMentionLines?: (ref: string) => void;
+
+  /** A selection in the raw view, as a mention ref the composer understands. */
+  private mention: { ref: string; top: number; left: number } | undefined;
+  private readonly onDocumentSelectionChange = (): void => {
+    if (this.mode !== "raw") { this.mention = undefined; return; }
+    const viewer = this.renderRoot.querySelector("pi-code-viewer");
+    if (!(viewer instanceof PiCodeViewerElement) || this.file === undefined) { this.mention = undefined; return; }
+    const range = viewer.selectionLines();
+    if (range === undefined) { this.mention = undefined; return; }
+    const ref = mentionRef(this.file.path, range.start, range.end);
+    const anchor = range.endCoords;
+    this.mention = { ref, top: anchor === undefined ? 0 : Math.round(anchor.top) + 24, left: anchor === undefined ? 0 : Math.round(anchor.left) };
+    this.requestUpdate();
+  };
+
   override connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("popstate", this.restoreModeFromHistory);
+    document.addEventListener("selectionchange", this.onDocumentSelectionChange);
   }
 
   override disconnectedCallback(): void {
     window.removeEventListener("popstate", this.restoreModeFromHistory);
+    document.removeEventListener("selectionchange", this.onDocumentSelectionChange);
     super.disconnectedCallback();
   }
 
@@ -165,12 +185,26 @@ export class WorkspaceFileViewer extends LitElement {
     `;
   }
 
+  private renderMentionChip(): TemplateResult | null {
+    const mention = this.mention;
+    if (mention === undefined || this.onMentionLines === undefined) return null;
+    return html`
+      <button
+        type="button"
+        class="mention-chip"
+        style=${`top: ${String(mention.top)}px; left: ${String(mention.left)}px;`}
+        @click=${() => { this.onMentionLines?.(mention.ref); this.mention = undefined; this.requestUpdate(); }}
+      >${mention.ref}</button>
+    `;
+  }
+
   private renderRawSource(file: FileContentResponse): TemplateResult {
     if (file.size === 0) return this.renderStatus("This file is empty.");
     loadCodeViewer();
     return html`
       ${file.truncated ? html`<p class="preview-note" role="status">Raw source is truncated. Use Download for the complete file.</p>` : null}
       <pi-code-viewer .content=${file.content} .language=${file.language}></pi-code-viewer>
+      ${this.renderMentionChip()}
     `;
   }
 
@@ -351,6 +385,7 @@ export class WorkspaceFileViewer extends LitElement {
     .viewer-mode button[aria-pressed="true"] { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .viewer-mode button:focus-visible, .preview-state button:focus-visible, a:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     pi-code-viewer { flex: 1 1 auto; min-height: 0; }
+    .mention-chip { position: fixed; z-index: var(--pi-layer-popover, 30); box-sizing: border-box; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface-raised, var(--pi-surface)); color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-mono, monospace); cursor: pointer; box-shadow: var(--pi-elevation-2); }
     .markdown-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; overflow: auto; padding: var(--pi-space-7); }
     .preview-note { flex: 0 0 auto; margin: 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-5); font-size: var(--pi-text-xs); }
     .image-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: auto; padding: var(--pi-space-7); }

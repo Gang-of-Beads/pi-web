@@ -39,6 +39,21 @@ export class CodeViewer extends LitElement {
     return html`<div class="host"></div>`;
   }
 
+  /**
+   * The reader's selection as 1-based line numbers, undefined while collapsed
+   * or before the editor exists: what a line-range mention needs.
+   */
+  selectionLines(): { start: number; end: number; endCoords: { top: number; left: number } | undefined } | undefined {
+    const view = this.view;
+    if (view === undefined) return undefined;
+    const range = view.state.selection.main;
+    if (range.from === range.to) return undefined;
+    const start = view.state.doc.lineAt(range.from).number;
+    const end = view.state.doc.lineAt(range.to).number;
+    const coords = view.coordsAtPos(range.to);
+    return { start, end, endCoords: coords === null ? undefined : { top: coords.top, left: coords.left } };
+  }
+
   private recreateEditor(): void {
     if (!this.editorHost) return;
     this.view?.destroy();

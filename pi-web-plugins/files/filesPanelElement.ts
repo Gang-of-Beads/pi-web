@@ -125,6 +125,7 @@ export class PiFilesPanel extends LitElement {
               .previewUrlBuilder=${(path: string, options?: { modifiedAt?: string; download?: boolean }) => context.files.previewUrl(path, options)}
               .modeStore=${this.modeStore()}
               .limits=${context.files.limits}
+              .onMentionLines=${(ref: string) => { context.prompt.insertText(ref); }}
             ></pi-files-viewer>
           </div>
         </section>
