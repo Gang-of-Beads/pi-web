@@ -37,6 +37,7 @@ import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
 import { imageLoadScrollCorrection } from "../imageLoadScroll";
+import { quotedPrompt } from "../selectionComposer";
 import { bottomAnchorAction } from "../bottomAnchor";
 
 export const chatStyles = css`${unsafeCSS(uiIconStyle)}
@@ -115,6 +116,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   @media (pointer: coarse) { .jump-to-bottom::after { content: ""; position: absolute; inset: -4px; } }
   .jump-to-bottom:focus-visible { border-color: var(--pi-accent); }
   @media (hover: hover) { .jump-to-bottom:hover { border-color: var(--pi-accent); } }
+  .quote-chip { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface-raised); color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; box-shadow: var(--pi-elevation-2); }
   .top-notices { box-sizing: border-box; flex: 0 0 auto; max-height: 40%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--pi-bg-overlay); }
   /* Subagents strip: child sessions spawned by the parent conversation. The
      strip must read at one glance -- who is still working, who finished --
@@ -544,6 +546,20 @@ function renderDeliveryGlyph(kind: DeliveryGlyph): TemplateResult {
   return renderCheckIcon();
 }
 
+/** contains() stops at shadow boundaries; the transcript's text parts live in one. */
+function composedContains(host: Element, node: Node | null): boolean {
+  let current: Node | null = node;
+  while (current !== null) {
+    if (current === host) return true;
+    if (current.parentNode !== null) current = current.parentNode;
+    else {
+      const root = current.getRootNode();
+      current = root instanceof ShadowRoot ? root.host : null;
+    }
+  }
+  return false;
+}
+
 export function chatDeliveryPresentation(delivery: MessageDelivery, queuePosition?: number): DeliveryPresentation {
   if (delivery.state === "sending") return { glyph: "pending", text: "Sending", label: "Sending", tone: "pending" };
   if (delivery.state === "failed") return { glyph: "failed", text: "Not sent", label: "Not sent - the server never received this message", tone: "failed" };
@@ -700,6 +716,8 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onLoadNewer?: () => void;
   /** Puts the cursor in the composer, for the empty session's way forward. */
   @property({ attribute: false }) onFocusComposer?: () => void;
+  /** The reader selected transcript text and asked to continue from it. */
+  @property({ attribute: false }) onQuoteSelection?: (quoted: string) => void;
   @query(".chat") private chat?: HTMLDivElement;
   @query(".drawer-tabs") private drawerTabs?: HTMLElement | null;
   @query("dialog.image-zoom") private imageZoomDialog?: HTMLDialogElement;
@@ -790,6 +808,24 @@ export class ChatView extends LitElement {
    *  owner's ruling: a load that failed while off-screen is not the reader's
    *  errand). The observer only exists where the browser provides one. */
   private imageRetryObserver: IntersectionObserver | undefined;
+  /** A transcript selection, anchored near its end; undefined while collapsed. */
+  private quoteChip: { quoted: string; top: number; left: number } | undefined;
+  private readonly onDocumentSelectionChange = (): void => {
+    const selection = document.getSelection();
+    const chat = this.chat;
+    if (selection === null || selection.isCollapsed || selection.rangeCount === 0 || chat === undefined || !composedContains(chat, selection.anchorNode)) {
+      if (this.quoteChip !== undefined) { this.quoteChip = undefined; this.requestUpdate(); }
+      return;
+    }
+    const text = selection.toString();
+    if (text.trim() === "") {
+      if (this.quoteChip !== undefined) { this.quoteChip = undefined; this.requestUpdate(); }
+      return;
+    }
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    this.quoteChip = { quoted: quotedPrompt(text), top: Math.min(Math.round(rect.bottom) + 8, window.innerHeight - 60), left: Math.max(8, Math.round(rect.left)) };
+    this.requestUpdate();
+  };
   private readonly observedImageRetries = new WeakSet<Element>();
 
   private markDeferredImageErrored(key: string): void {
@@ -851,6 +887,7 @@ export class ChatView extends LitElement {
   };
   override connectedCallback(): void {
     super.connectedCallback();
+    document.addEventListener("selectionchange", this.onDocumentSelectionChange);
     window.addEventListener("resize", this.onViewportResize);
     window.addEventListener("pagehide", this.onPageHide);
     window.visualViewport?.addEventListener("resize", this.onViewportResize);
@@ -862,6 +899,7 @@ export class ChatView extends LitElement {
 
 
   override disconnectedCallback(): void {
+    document.removeEventListener("selectionchange", this.onDocumentSelectionChange);
     this.imageRetryObserver?.disconnect();
     this.stopTurnClock();
     this.saveScrollPosition();
@@ -1086,6 +1124,7 @@ export class ChatView extends LitElement {
     const groups = this.groupedMessages();
     return html`
       ${this.renderTopNotices()}
+      ${this.renderQuoteChip()}
       <div class="chat-wrap">
         ${this.renderConversationRail()}
         <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${() => { this.notePressStart(); }} @pointerup=${() => { this.releasePointer(); }} @pointercancel=${() => { this.releasePointer(); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
@@ -1723,6 +1762,24 @@ export class ChatView extends LitElement {
       this.observedImageRetries.add(button);
       this.imageRetryObserver.observe(button);
     }
+  }
+
+  /**
+   * "Ask here": the reader selected transcript text and wants to continue
+   * from exactly that line. The chip carries the quoted prompt ready-made;
+   * one tap drops it into the composer at the cursor.
+   */
+  private renderQuoteChip() {
+    const chip = this.quoteChip;
+    if (chip === undefined || this.onQuoteSelection === undefined) return null;
+    return html`
+      <button
+        type="button"
+        class="quote-chip"
+        style=${`top: ${String(chip.top)}px; left: ${String(chip.left)}px;`}
+        @click=${() => { this.onQuoteSelection?.(chip.quoted); this.quoteChip = undefined; this.requestUpdate(); }}
+      >Ask here</button>
+    `;
   }
 
   private renderConversationRail() {
