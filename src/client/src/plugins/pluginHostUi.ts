@@ -33,6 +33,7 @@ export function createPluginHostUi(dialogHost?: PluginDialogHost): PluginHostUi 
     copyText: (text) => writeClipboardText(text),
     describeError,
     adoptSharedControls: (root) => { adoptSheets(root, sharedControlGroups({ surfaceStyles: interactiveSurfaceStyles, listStyles, workspacePanelStyles })); },
+    adoptSheets: (root, groups) => { adoptSheets(root, groups); },
     surfaceStyles: interactiveSurfaceStyles,
     listStyles,
     renderDisclosureIcon,
