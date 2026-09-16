@@ -7,8 +7,8 @@ import { panelHeaderStyles } from "./panelHeaderStyles.js";
 import "../ModalSurface";
 
 /**
- * The phone's replacement for the desktop context breadcrumb: one sheet
- * listing every machine, project and workspace, the current one marked, so
+ * The phone's replacement for the desktop context breadcrumb: the project
+ * and workspace pickers on one sheet, the current one marked, so
  * changing scope is one gesture from the scope chip. Picking a row hands the
  * decision to the shell's selection ladder and closes the sheet; the lists
  * themselves stay the pickers, so the sheet claims no scope of its own.
@@ -68,7 +68,7 @@ export class ContextSwitcherSheet extends LitElement {
     /* The sheet itself scrolls. Letting each contributed list shrink turned one
        scrollable surface into three squeezed ones - a second machine rendered
        as an 8.9px sliver that read as a rendering artefact, not a row. */
-    .sheet-body machine-list, .sheet-body project-list, .sheet-body workspace-list { flex: 0 0 auto; min-height: auto; }
+    .sheet-body project-list, .sheet-body workspace-list { flex: 0 0 auto; min-height: auto; }
   `];
 }
 

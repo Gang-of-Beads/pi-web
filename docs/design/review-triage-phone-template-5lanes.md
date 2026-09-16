@@ -73,3 +73,32 @@ built and restarted on 8505; `verify-message-header.mjs`,
 | Lanes' FALSE adjudications (CM selection with readOnly, double-insert, stale A→B→A chip, listener leaks) | FALSE | verified from source incl. the installed CodeMirror dist |
 
 Live: rebuilt 8505; `scripts/probe-selection-composers.mjs` PASS (both flows).
+
+## Addendum: task-8/9 lanes (fold migration, uiShared, adoption regression)
+
+Regression first: 96a0eaea added adoptSheets to the PluginHostUi contract
+without implementing it on the runtime object — every plugin wrapper
+routing adoption through the host silently no-opped, and the context
+sheet rendered unstyled (the owner's "不能要了" screenshot). Fixed in
+3a159233; the three lanes below then reviewed the whole seam.
+
+| Finding | Adj. | Fix |
+| --- | --- | --- |
+| fold P1-1: files "stale" summary false after every settle (invalidate clears, then the emit re-marks; the landed refetch never clears) and across machine switches | TRUE | flag clears when the refetch lands and on context reset |
+| fold P1-2: relays summary never appears after a scan and can show the previous mount's relay | TRUE | disconnectedCallback releases the active slot; scan/refresh land → host render |
+| uishared 1 / sheet F1 P1: no test at the adoption seam (the one adoption assertion ran against a fake host) | TRUE | pluginHostUi.test asserts both hand-outs and that adoptSheets lands rules in a real shadow root, replacing on re-adoption |
+| uishared 2 / sheet F2 P2: machines hostUi kept a private cssResultSheets copy | TRUE | routes through the host's adoptSheets |
+| uishared 3 / sheet F3 P2: adoptSheets' replace was dead code | TRUE | per-root WeakMap replacement |
+| uishared 4 P2: adoptSharedControls had zero consumers | TRUE | retired from the contract; the mechanism (adoptSheets) is the seam |
+| uishared 5 P2: files' textStyles drag dead-ened the panel host shape | TRUE | text styles move to the viewer, which renders markdown |
+| fold P2-D: dead chrome (files .toolbar-actions, relays data-refresh branch) | TRUE | removed |
+| fold P2-E: blank picker row with zero relays | TRUE | toolbar hidden when the picker is empty |
+| fold P2-F: workspace-tasks still stacked its own bar | TRUE | migrated: Refresh + Open Terminal in the fold |
+| sheet F4 P2: doc/CSS described a machines section the sheet cannot render | TRUE | doc and dead rule fixed |
+| sheet F5 P2: barTemplate enumeration misses relays' picker row | report-only | the picker row is not a bar post-migration |
+| sheet F6 P2: stale narration in ProjectDialog | report-only | comment-only |
+| fold P2-C: changeset said Updates count as summary but a badge exists | FALSE | the summary is implemented; the badge is the pre-existing tool-row chip |
+
+Live: rebuilt 8505; probe-tool-fold, probe-selection-composers,
+probe-workspace-watch, probe-git-worktree-add, verify-message-header all
+PASS.

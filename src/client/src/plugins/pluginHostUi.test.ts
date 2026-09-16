@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+import { css } from "lit";
 import { describe, expect, it, vi } from "vitest";
 import { html } from "lit";
 import { createPluginHostUi } from "./pluginHostUi";
@@ -6,6 +8,22 @@ import { interactiveSurfaceStyles } from "../components/shared";
 import { describeError } from "../notice";
 import { PluginRegistry } from "./registry";
 import type { PiWebPlugin, PluginHostUi } from "./types";
+
+describe("the host's style-adoption hand-outs", () => {
+  it("hands plugins the mechanism and the standard set, the regression 3a159233 fixed", () => {
+    const ui = createPluginHostUi();
+    if (typeof ui.adoptSheets !== "function") throw new Error("adoptSheets missing from the runtime host");
+
+    const root = document.createElement("div").attachShadow({ mode: "open" });
+    ui.adoptSheets(root, [css`:host { --probe: 1; }`]);
+    const rules = root.adoptedStyleSheets.flatMap((sheet) => Array.from(sheet.cssRules).map((rule) => rule.cssText));
+    expect(rules.some((text) => text.includes("--probe: 1"))).toBe(true);
+
+    ui.adoptSheets(root, [css`:host { --probe: 2; }`]);
+    const after = root.adoptedStyleSheets.flatMap((sheet) => Array.from(sheet.cssRules).map((rule) => rule.cssText));
+    expect(after.filter((text) => text.includes("--probe")).length).toBe(1);
+  });
+});
 
 describe("the host utilities handed to plugins", () => {
   it("hands out the host's own breakpoints, not copies of the numbers", () => {

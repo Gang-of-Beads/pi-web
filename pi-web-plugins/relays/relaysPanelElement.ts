@@ -88,10 +88,6 @@ class PiWebRelaysPanel extends HTMLElement {
 
     // Listeners bind once against the persistent regions and delegate to
     // whichever controls the latest region render produced.
-    this.toolbar.addEventListener("click", (event) => {
-      const button = event.target instanceof Element ? event.target.closest("button[data-refresh]") : null;
-      if (button !== null) this.refresh();
-    });
     this.toolbar.addEventListener("change", (event) => {
       const picker = event.target;
       if (!(picker instanceof HTMLSelectElement) || !picker.matches("select[data-relay-picker]")) return;
@@ -112,6 +108,10 @@ class PiWebRelaysPanel extends HTMLElement {
       const context = this.contextValue;
       if (context !== undefined && documentPath !== null) void this.openDocument(context, documentPath);
     });
+  }
+
+  disconnectedCallback(): void {
+    if (PiWebRelaysPanel.active === this) PiWebRelaysPanel.active = undefined;
   }
 
   set context(value: WorkspacePanelContext | undefined) {
@@ -148,6 +148,7 @@ class PiWebRelaysPanel extends HTMLElement {
       ? listing.relays.find((candidate) => candidate.path === selection.relayPath) ?? listing.relays[0]
       : undefined;
     this.selectedRelayPath = relay?.path;
+    context.host.requestRender();
     this.renderToolbar();
     if (relay === undefined) {
       this.renderViewer();
@@ -281,7 +282,7 @@ class PiWebRelaysPanel extends HTMLElement {
   refresh(): void {
     const context = this.contextValue;
     if (context === undefined) return;
-    void this.scan(context, { relayPath: this.selectedRelayPath, documentPath: this.selectedDocumentPath });
+    void this.scan(context, { relayPath: this.selectedRelayPath, documentPath: this.selectedDocumentPath }).then(() => { context.host.requestRender(); });
   }
 
   private resetScanState(): void {
@@ -308,12 +309,11 @@ class PiWebRelaysPanel extends HTMLElement {
       this.toolbar.replaceChildren();
       return;
     }
-    this.toolbar.hidden = false;
-    this.toolbar.innerHTML = `
-      <span class="toolbar-actions">
-        ${this.renderRelayPicker()}
-      </span>
-    `;
+    const picker = this.renderRelayPicker();
+    // A workspace with zero relays has no picker to show; an empty padded
+    // strip above the empty state would read as a rendering bug.
+    this.toolbar.hidden = picker === "";
+    this.toolbar.innerHTML = picker;
   }
 
   private renderRelayPicker(): string {

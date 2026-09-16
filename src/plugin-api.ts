@@ -115,10 +115,6 @@ export interface WorkspaceTerminalSessions {
 export interface PluginHostUi {
   readonly copyText: (text: string) => Promise<boolean>;
   readonly describeError: (error: unknown) => string;
-  /** Adopt the host's standard control sheets into a plugin shadow root:
-   *  the interactive-surface contract, the shared list, the tool-header bar.
-   *  Absent on hosts older than this contract. */
-  readonly adoptSharedControls?: (root: ShadowRoot) => void;
   /** Adopt literal css groups into a plugin shadow root through the host's own mechanism. */
   readonly adoptSheets?: (root: ShadowRoot, groups: CSSResultGroup[]) => void;
   readonly surfaceStyles: CSSResultGroup;

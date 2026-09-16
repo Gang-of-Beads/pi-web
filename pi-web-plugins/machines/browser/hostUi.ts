@@ -1,5 +1,4 @@
 import type { PluginHostUi } from "@gang-of-beads/pi-web/plugin-api";
-import type { CSSResultArray, CSSResultGroup } from "lit";
 
 /**
  * What this plugin actually consumes from the host: the shell-owned styles
@@ -7,7 +6,7 @@ import type { CSSResultArray, CSSResultGroup } from "lit";
  * the plugin's real dependencies visible and lets tests stand a host in with
  * just these faces.
  */
-type MachinesHostUi = Pick<PluginHostUi, "surfaceStyles" | "renderDisclosureIcon" | "renderCloseIcon" | "listStyles" | "showDialog">;
+type MachinesHostUi = Pick<PluginHostUi, "surfaceStyles" | "renderDisclosureIcon" | "renderCloseIcon" | "listStyles" | "showDialog" | "adoptSheets">;
 
 /**
  * The host utilities and context actions this plugin was activated with.
@@ -35,28 +34,7 @@ export function rememberMachinesHost(ui: MachinesHostUi | undefined): void {
 export function adoptMachinesHostStyles(root: ShadowRoot): void {
   const host = machinesHostUi();
   if (host === undefined) return;
-  const sheets = cssResultSheets([host.surfaceStyles, host.listStyles]);
-  if (sheets.length === 0) return;
-  root.adoptedStyleSheets = [...root.adoptedStyleSheets, ...sheets];
-}
-
-function isCssResultGroupArray(group: CSSResultGroup): group is CSSResultArray {
-  return Array.isArray(group);
-}
-
-function cssResultSheets(groups: CSSResultGroup[]): CSSStyleSheet[] {
-  const sheets: CSSStyleSheet[] = [];
-  const collect = (group: CSSResultGroup): void => {
-    if (!isCssResultGroupArray(group) && "cssText" in group) {
-      const sheet = new CSSStyleSheet();
-      sheet.replaceSync(group.cssText);
-      sheets.push(sheet);
-      return;
-    }
-    if (isCssResultGroupArray(group)) group.forEach(collect);
-  };
-  groups.forEach(collect);
-  return sheets;
+  host.adoptSheets?.(root, [host.surfaceStyles, host.listStyles]);
 }
 
 export function machinesHostUi(): MachinesHostUi | undefined {

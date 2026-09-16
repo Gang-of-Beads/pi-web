@@ -28,8 +28,19 @@ export function tasksPanelBadge(context: WorkspacePanelContext): string | undefi
   return state?.kind === "unavailable" ? "!" : undefined;
 }
 
+/** The fold's controls; no-ops when no panel is mounted. */
+export function requestTasksRefresh(): void {
+  const context = PiWebTasksPanel.active?.contextValue;
+  if (context !== undefined) void PiWebTasksPanel.active?.refreshConfig(context);
+}
+
+export function openTasksTerminal(): void {
+  PiWebTasksPanel.active?.openWorkspaceTerminal();
+}
+
 class PiWebTasksPanel extends HTMLElement {
-  private contextValue: WorkspacePanelContext | undefined;
+  static active: PiWebTasksPanel | undefined;
+  contextValue: WorkspacePanelContext | undefined;
   private runningTaskId: string | undefined;
   private status: TaskStatus | undefined;
   private readonly root: ShadowRoot;
@@ -55,11 +66,13 @@ class PiWebTasksPanel extends HTMLElement {
   }
 
   connectedCallback(): void {
+    PiWebTasksPanel.active = this;
     window.addEventListener(configChangedEvent, this.onConfigChanged);
     this.render();
   }
 
   disconnectedCallback(): void {
+    PiWebTasksPanel.active = undefined;
     window.removeEventListener(configChangedEvent, this.onConfigChanged);
   }
 
@@ -73,13 +86,6 @@ class PiWebTasksPanel extends HTMLElement {
     const state = getOrLoadWorkspaceConfig(context);
     this.root.innerHTML = `
       ${taskStyles()}
-      <section class="toolbar">
-        <strong>Tasks</strong>
-        <span class="toolbar-tasks">
-          <button class="secondary" data-refresh-config ${state.kind === "loading" ? "disabled" : ""}>Refresh</button>
-          <button class="secondary" data-open-terminal>Open Terminal</button>
-        </span>
-      </section>
       ${this.renderStatus()}
       <section class="viewer tasks-viewer">
         ${this.renderConfigState(state)}
@@ -134,7 +140,7 @@ class PiWebTasksPanel extends HTMLElement {
     return `<div class="status panel-status ${escapeAttr(this.status.kind)}">${escapeHtml(this.status.message)}${detail}</div>`;
   }
 
-  private async refreshConfig(context: WorkspacePanelContext): Promise<void> {
+  async refreshConfig(context: WorkspacePanelContext): Promise<void> {
     this.status = { kind: "info", message: `Refreshing ${TASKS_CONFIG_PATH}…` };
     configCache.set(cacheKeyForContext(context), { kind: "loading" });
     this.render();
@@ -181,7 +187,7 @@ class PiWebTasksPanel extends HTMLElement {
     }
   }
 
-  private openWorkspaceTerminal(terminalId?: string): void {
+  openWorkspaceTerminal(terminalId?: string): void {
     const context = this.contextValue;
     if (context === undefined) {
       this.status = { kind: "error", message: "Select a workspace before opening a terminal." };

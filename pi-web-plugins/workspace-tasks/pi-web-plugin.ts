@@ -1,6 +1,6 @@
 import type { PiWebPlugin } from "@gang-of-beads/pi-web/plugin-api";
 import { TASKS_CONFIG_PATH } from "./config.js";
-import { defineTasksPanelElement, tasksPanelBadge } from "./tasksPanelElement.js";
+import { defineTasksPanelElement, openTasksTerminal, requestTasksRefresh, tasksPanelBadge } from "./tasksPanelElement.js";
 
 const plugin: PiWebPlugin = {
   apiVersion: 2,
@@ -39,6 +39,10 @@ const plugin: PiWebPlugin = {
             `,
             order: 40,
             badge: (context) => tasksPanelBadge(context),
+            toolbar: () => html`
+              <button type="button" @click=${() => { requestTasksRefresh(); }}>Refresh</button>
+              <button type="button" @click=${() => { openTasksTerminal(); }}>Open Terminal</button>
+            `,
             render: (context) => html`<pi-web-workspace-tasks-panel .context=${context}></pi-web-workspace-tasks-panel>`,
           },
         ],

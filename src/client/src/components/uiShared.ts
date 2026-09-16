@@ -1,5 +1,4 @@
 import type { CSSResultGroup } from "lit";
-import { panelHeaderStyles } from "./appShell/panelHeaderStyles";
 
 /**
  * The one mechanism behind every shadow-root style adoption: the shell
@@ -24,14 +23,18 @@ export function cssResultSheets(groups: CSSResultGroup[]): CSSStyleSheet[] {
   return sheets;
 }
 
-/** Adopt sheets into a shadow root, replacing sheets this helper produced before. */
-export function adoptSheets(root: ShadowRoot, groups: CSSResultGroup[]): void {
-  const sheets = cssResultSheets(groups);
-  if (sheets.length === 0) return;
-  root.adoptedStyleSheets = [...root.adoptedStyleSheets.filter((sheet) => !sheets.includes(sheet)), ...sheets];
-}
+/** Sheets this root received from adoptSheets, so a re-adoption replaces
+ *  them instead of stacking duplicates. */
+const adoptedByRoot = new WeakMap<ShadowRoot, CSSStyleSheet[]>();
 
-/** The host's standard set: everything a tool surface needs in one call. */
-export function sharedControlGroups(host: { surfaceStyles: CSSResultGroup; listStyles?: CSSResultGroup; workspacePanelStyles?: CSSResultGroup }): CSSResultGroup[] {
-  return [host.surfaceStyles, ...(host.workspacePanelStyles === undefined ? [] : [host.workspacePanelStyles]), ...(host.listStyles === undefined ? [] : [host.listStyles]), panelHeaderStyles];
+/**
+ * Adopt groups into a shadow root, replacing what a previous adoptSheets
+ * call put there (foreign sheets, e.g. an element's own static styles, are
+ * left alone).
+ */
+export function adoptSheets(root: ShadowRoot, groups: CSSResultGroup[]): void {
+  const previous = adoptedByRoot.get(root) ?? [];
+  const sheets = cssResultSheets(groups);
+  root.adoptedStyleSheets = [...root.adoptedStyleSheets.filter((sheet) => !previous.includes(sheet) && !sheets.includes(sheet)), ...sheets];
+  adoptedByRoot.set(root, sheets);
 }

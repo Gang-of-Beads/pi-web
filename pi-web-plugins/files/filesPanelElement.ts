@@ -31,7 +31,6 @@ export function filesPanelShowsStale(): boolean {
 export function markFilesPanelStale(): void {
   filesPanelStale = true;
   PiFilesPanel.active?.markStale();
-  PiFilesPanel.active?.requestContextRender();
 }
 
 /** The fold's Upload control; a no-op when no panel is mounted. */
@@ -103,9 +102,13 @@ export class PiFilesPanel extends LitElement {
   }
 
   refresh(): void {
-    filesPanelStale = false;
     this.context?.host.requestRender();
-    void this.explorer?.refresh();
+    void this.explorer?.refresh().then(() => {
+      // The stale mark is only honest while the tree is still the aged one:
+      // a refetch that landed clears it, wherever the request came from.
+      filesPanelStale = false;
+      this.context?.host.requestRender();
+    });
   }
 
   override render(): TemplateResult {
@@ -477,6 +480,7 @@ export class PiFilesPanel extends LitElement {
   }
 
   private resetForContext(context: WorkspacePanelContext): void {
+    filesPanelStale = false;
     const query = filesQuery();
     const explorer = new FilesExplorer({
       listFiles: (path) => context.files.listFiles(path),
@@ -515,9 +519,6 @@ export class PiFilesPanel extends LitElement {
       :host { flex: 1 1 auto; }
       pi-files-viewer { flex: 1 1 auto; min-height: 0; }
       .files-panel { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-      .toolbar-actions { display: flex; align-items: center; gap: var(--pi-space-4); margin-left: auto; }
-      .toolbar .toolbar-actions button { margin-left: 0; }
-      .toolbar .toolbar-actions button:active { background: var(--pi-surface-hover); }
       .visually-hidden { box-sizing: border-box; position: absolute; width: 1px; height: 1px; padding: 0; margin: calc(-1 * var(--pi-space-1)); overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
       .drop-overlay { position: absolute; inset: 52px var(--pi-space-5) var(--pi-space-5); z-index: var(--pi-layer-raised); display: grid; place-items: center; border: 2px dashed var(--pi-accent); border-radius: var(--pi-radius-lg); background: color-mix(in srgb, var(--pi-bg-overlay) 90%, var(--pi-accent) 10%); color: var(--pi-text); opacity: 0; pointer-events: none; transition: opacity .12s ease; }
       .files-panel.dragging .drop-overlay { opacity: 1; }

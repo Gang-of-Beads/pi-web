@@ -19,7 +19,12 @@ export function rememberFilesHostUi(ui: PluginHostUi | undefined): void {
 
 export function adoptFilesHostStyles(root: ShadowRoot): void {
   if (hostUi === undefined) return;
-  hostUi.adoptSheets?.(root, [hostUi.surfaceStyles, hostUi.workspacePanelStyles, hostUi.textStyles]);
+  hostUi.adoptSheets?.(root, [hostUi.surfaceStyles, hostUi.workspacePanelStyles]);
+}
+
+export function adoptFilesTextStyles(root: ShadowRoot): void {
+  if (hostUi === undefined) return;
+  hostUi.adoptSheets?.(root, [hostUi.textStyles]);
 }
 
 export function describeFilesError(error: unknown): string {

@@ -3,7 +3,7 @@ import { customElement, property } from "lit/decorators.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import type { FileContentResponse } from "@gang-of-beads/pi-web/plugin-api";
-import { adoptFilesHostStyles, filesRenderMarkdownHtml } from "./hostUi";
+import { adoptFilesTextStyles, filesRenderMarkdownHtml } from "./hostUi";
 import { CodeViewer as PiCodeViewerElement } from "./codeViewerElement";
 import type { WorkspaceFileViewMode, WorkspaceFileViewModeStore } from "./viewMode";
 import { formatFileSize, workspaceFileName } from "./format";
@@ -369,7 +369,7 @@ export class WorkspaceFileViewer extends LitElement {
 
   protected override createRenderRoot(): HTMLElement | DocumentFragment {
     const root = super.createRenderRoot();
-    if (root instanceof ShadowRoot) adoptFilesHostStyles(root);
+    if (root instanceof ShadowRoot) adoptFilesTextStyles(root);
     return root;
   }
 
