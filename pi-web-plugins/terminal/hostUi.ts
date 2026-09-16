@@ -1,4 +1,3 @@
-import type { CSSResultArray, CSSResultGroup } from "lit";
 import type { PluginHostUi } from "@gang-of-beads/pi-web/plugin-api";
 
 /**
@@ -19,30 +18,9 @@ export function rememberTerminalHostUi(ui: PluginHostUi | undefined): void {
   hostUi = ui;
 }
 
-function isCssResultGroupArray(group: CSSResultGroup): group is CSSResultArray {
-  return Array.isArray(group);
-}
-
-function cssResultSheets(groups: CSSResultGroup[]): CSSStyleSheet[] {
-  const sheets: CSSStyleSheet[] = [];
-  const collect = (group: CSSResultGroup): void => {
-    if (!isCssResultGroupArray(group) && "cssText" in group) {
-      const sheet = new CSSStyleSheet();
-      sheet.replaceSync(group.cssText);
-      sheets.push(sheet);
-      return;
-    }
-    if (isCssResultGroupArray(group)) group.forEach(collect);
-  };
-  groups.forEach(collect);
-  return sheets;
-}
-
 export function adoptTerminalHostStyles(root: ShadowRoot): void {
   if (hostUi === undefined) return;
-  const sheets = cssResultSheets([hostUi.surfaceStyles, hostUi.workspacePanelStyles]);
-  if (sheets.length === 0) return;
-  root.adoptedStyleSheets = [...root.adoptedStyleSheets, ...sheets];
+  hostUi.adoptSheets?.(root, [hostUi.surfaceStyles, hostUi.workspacePanelStyles]);
 }
 
 export function copyTerminalText(text: string): Promise<boolean> {

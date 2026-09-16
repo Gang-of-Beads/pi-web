@@ -3,6 +3,7 @@ import { COARSE_OR_MOBILE_MEDIA_QUERY, DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_
 import { renderDisclosureIcon } from "../components/disclosureIcon.js";
 import { renderCrossIcon } from "../components/uiIcons.js";
 import { formattedTextStyles, interactiveSurfaceStyles, listStyles, workspacePanelStyles } from "../components/shared";
+import { adoptSheets, sharedControlGroups } from "../components/uiShared";
 import { registerRenderedModal } from "../components/modalLayerRegistry";
 import { readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
 import { renderWorkspaceMarkdownHtml } from "../formatting/workspaceMarkdown";
@@ -31,6 +32,7 @@ export function createPluginHostUi(dialogHost?: PluginDialogHost): PluginHostUi 
   return {
     copyText: (text) => writeClipboardText(text),
     describeError,
+    adoptSharedControls: (root) => { adoptSheets(root, sharedControlGroups({ surfaceStyles: interactiveSurfaceStyles, listStyles, workspacePanelStyles })); },
     surfaceStyles: interactiveSurfaceStyles,
     listStyles,
     renderDisclosureIcon,

@@ -99,7 +99,7 @@ function hostWithDialog(): HostHarness {
   const container = document.createElement("div");
   document.body.append(container);
   const harness: HostHarness = {
-    ui: { surfaceStyles: css``, listStyles: css``, showDialog: () => ({ close: () => undefined }) },
+    ui: { surfaceStyles: css``, listStyles: css``, adoptSheets: () => undefined, showDialog: () => ({ close: () => undefined }) },
     projectDialog: () => { throw new Error("dialog not opened"); },
     projectDialogReady: () => Promise.reject(new Error("dialog not opened")),
     closed: false,

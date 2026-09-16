@@ -3,6 +3,8 @@
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { Workspace } from "@gang-of-beads/pi-web/plugin-api";
 import { css } from "lit";
+import type { WorkspacesHostUi } from "./hostUi";
+
 import { machineStatusSnapshot } from "../../../src/client/src/machineStatus.testSupport";
 import type { MachineStatusSnapshot } from "../../../src/shared/machineStatus";
 import { WorkspaceList } from "./WorkspaceList";
@@ -248,6 +250,7 @@ describe("what a tile shows of a long branch name", () => {
     rememberWorkspacesHost({
       surfaceStyles: css``,
       listStyles: hostListStyles,
+      adoptSheets: fakeAdoptSheets,
       showDialog: () => { throw new Error("no dialogs in this test"); },
     });
     const element = new WorkspaceList();
@@ -292,3 +295,15 @@ describe("workspace-list empty claims", () => {
     expect(claim?.textContent).not.toContain("No workspaces here yet.");
   });
 });
+
+
+/** Stand-in for the host's adoption mechanism: literal, order-preserving. */
+function fakeAdoptSheets(root: ShadowRoot, groups: Parameters<NonNullable<WorkspacesHostUi["adoptSheets"]>>[1]): void {
+  const sheets = groups.map((group) => {
+    const sheet = new CSSStyleSheet();
+    const cssText = "cssText" in group ? group.cssText : "";
+    sheet.replaceSync(cssText);
+    return sheet;
+  });
+  root.adoptedStyleSheets = [...root.adoptedStyleSheets, ...sheets];
+}
