@@ -21,10 +21,6 @@ export class CodeViewer extends LitElement {
 
   private view: EditorView | undefined;
 
-  override firstUpdated(): void {
-    this.recreateEditor();
-  }
-
   override updated(changed: Map<string, unknown>): void {
     if (changed.has("content") || changed.has("language")) this.recreateEditor();
   }
@@ -51,7 +47,8 @@ export class CodeViewer extends LitElement {
     const start = view.state.doc.lineAt(range.from).number;
     const end = view.state.doc.lineAt(range.to).number;
     const coords = view.coordsAtPos(range.to);
-    return { start, end, endCoords: coords === null ? undefined : { top: coords.top, left: coords.left } };
+    if (coords === null) return undefined;
+    return { start, end, endCoords: { top: coords.top, left: coords.left } };
   }
 
   private recreateEditor(): void {

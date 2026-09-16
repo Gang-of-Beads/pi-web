@@ -12,6 +12,7 @@ import {
 } from "./relaysPanelElement";
 
 interface RelaysPanelTestElement extends HTMLElement {
+  refresh(): void;
   context: WorkspacePanelContext | undefined;
 }
 
@@ -496,7 +497,7 @@ describe("nested documents", () => {
     directoryChip(panel, "notes").click();
     await flushAsync();
 
-    refreshButton(panel).click();
+    panel.refresh();
     await flushAsync();
 
     expect(directoryChip(panel, "notes").getAttribute("aria-expanded")).toBe("true");
@@ -505,7 +506,7 @@ describe("nested documents", () => {
     // The notes folder vanishes between scans: the stale expansion is pruned
     // and the selection falls back to the default document.
     fake.addDirectory(`${RELAYS_ROOT}/relay`, [relayDocument("relay", "status.md")]);
-    refreshButton(panel).click();
+    panel.refresh();
     await flushAsync();
 
     expect(stripEntryNames(panel)).toEqual(["status.md"]);
@@ -631,24 +632,14 @@ describe("collapsed-ancestor highlight", () => {
 });
 
 describe("refresh and context changes", () => {
-  it("renders Refresh as an icon-only button with an accessible name", async () => {
+  it("keeps no titled bar of its own: the fold owns Refresh, the row holds the picker", async () => {
     const fake = workspaceFilesFake();
     fake.addDirectory(RELAYS_ROOT, []);
 
     const panel = await mountPanel(panelContext(fake));
 
-    const button = refreshButton(panel);
-    expect(button.getAttribute("aria-label")).toBe("Refresh");
-    expect(button.getAttribute("title")).toBe("Refresh");
-    expect(button.textContent.trim()).toBe("");
-    const icon = button.querySelector("svg");
-    expect(icon).not.toBeNull();
-    expect(icon?.getAttribute("aria-hidden")).toBe("true");
-
-    fake.listFiles.mockClear();
-    button.click();
-    await flushAsync();
-    expect(fake.listFiles).toHaveBeenCalledWith(RELAYS_ROOT);
+    expect(shadow(panel).querySelector(".toolbar strong")).toBeNull();
+    expect(shadow(panel).querySelector("button[data-refresh]")).toBeNull();
   });
 
   it("re-scans on Refresh while keeping the open relay and document", async () => {
@@ -675,7 +666,7 @@ describe("refresh and context changes", () => {
 
     fake.listFiles.mockClear();
     fake.readFile.mockClear();
-    refreshButton(panel).click();
+    panel.refresh();
     await flushAsync();
 
     expect(fake.listFiles).toHaveBeenCalledWith(RELAYS_ROOT);
@@ -836,12 +827,6 @@ function documentText(panel: RelaysPanelTestElement): string | null {
 function picker(panel: RelaysPanelTestElement): HTMLSelectElement | null {
   const select = shadow(panel).querySelector("select[data-relay-picker]");
   return select instanceof HTMLSelectElement ? select : null;
-}
-
-function refreshButton(panel: RelaysPanelTestElement): HTMLElement {
-  const button = shadow(panel).querySelector("button[data-refresh]");
-  if (!(button instanceof HTMLElement)) throw new Error("refresh button missing");
-  return button;
 }
 
 function tabStrip(panel: RelaysPanelTestElement): HTMLElement {

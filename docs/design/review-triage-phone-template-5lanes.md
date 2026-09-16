@@ -54,3 +54,22 @@ edge, uniform rows, body-is-protagonist, even line boxes, S6/S7.
 Verification: typecheck 0; vitest 2485 client + 634 plugin tests green;
 built and restarted on 8505; `verify-message-header.mjs`,
 `probe-go-to-sheet.mjs`, `probe-git-worktree-add.mjs` PASS.
+
+## Addendum: task-6 consumer lanes (glm-mention, glm-askhere over 98d18e5f/4d0a0c13)
+
+| Finding | Adj. | Fix |
+| --- | --- | --- |
+| M-F1 P1: the mention chip guarded on the remembered mode while code files render raw regardless — after any Preview preference every code file lost the chip | TRUE | the guard now asks what is on screen (`showsRawSource`: code kind always, dual-mode only in raw) |
+| M-F2 P1: `@my file.ts:3-5` unquoted, breaking the whitespace-delimited @ grammar | TRUE | paths with a space quote like the composer's own `fileCompletionInsertText`: `@"my file.ts":3-5` |
+| A-F1 P1: the quote chip survived a session switch — tapping it wrote session A's words into session B's composer | TRUE | `quoteChip` cleared in `prepareSessionUiState` beside `heldWaiting` |
+| A-F2 P1: Ask-here inserted at doc end; the confirmed wording and the sibling feature say cursor | TRUE | routes through `createPromptEditor().insertText` (cursor, focus, replaces selection) |
+| A-F3 P1 (applied to mention side): chip position unclamped; an unrendered selection end pinned it top-left | TRUE | `selectionLines` returns undefined when CM cannot produce coords; the viewport clamp sits with the reviewer's target next pass |
+| M-F4/A-F8 P2: `mentionLineRange` dead production code | TRUE | deleted with its test (CM's `doc.lineAt` is the producer) |
+| M-F5 P2: CodeViewer built the editor twice per mount | TRUE | dropped the duplicate `firstUpdated` build |
+| A-F4 P2: the mention chip read CM's state one `selectionchange` early | TRUE | the read defers one microtask, after CM's own listener |
+| A-F5 P2: the transcript chip kept a stale fixed anchor while scrolling | TRUE | scrolling clears the chip honestly (reselect to re-ask) |
+| A-F6 P2: tap silently lost the quote before the composer view mounted | deferred | the composer mounts with the chat surface; a real gap only if the editor is unmounted mid-session |
+| A-F7 P2 multi-range selections anchor to range 0 | report-only | Firefox Ctrl-drag shape |
+| Lanes' FALSE adjudications (CM selection with readOnly, double-insert, stale A→B→A chip, listener leaks) | FALSE | verified from source incl. the installed CodeMirror dist |
+
+Live: rebuilt 8505; `scripts/probe-selection-composers.mjs` PASS (both flows).

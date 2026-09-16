@@ -194,9 +194,10 @@ async function openUploadReview(app: PiWebApp): Promise<HTMLElement> {
   const panel = requiredElement(panelHost.shadowRoot?.querySelector<PiFilesPanel>("pi-files-panel"), "workspace files panel");
   await panel.updateComplete;
   await panel.updateComplete;
-  const uploadButton = buttonWithText(panel.shadowRoot, "Upload");
-  uploadButton.focus();
+  // Upload lives in the host's fold now; the review flow enters through the
+  // panel's hidden input either way.
   const input = requiredElement(panel.shadowRoot?.querySelector<HTMLInputElement>("#workspace-upload-input"), "workspace upload input");
+  input.focus();
   Object.defineProperty(input, "files", { configurable: true, value: [new File(["hello"], "hello.txt")] });
   input.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
   await panel.updateComplete;
@@ -257,11 +258,6 @@ function appendKeyTarget(): HTMLButtonElement {
   button.textContent = "Modal action";
   document.body.append(button);
   return button;
-}
-
-function buttonWithText(root: ParentNode | null | undefined, text: string): HTMLButtonElement {
-  const button = [...(root?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find((candidate) => candidate.textContent.trim() === text);
-  return requiredElement(button, `${text} button`);
 }
 
 function requiredElement<T>(value: T | null | undefined, label: string): T {

@@ -1,6 +1,6 @@
 import type { PiWebPlugin } from "@gang-of-beads/pi-web/plugin-api";
 import { RELAYS_ROOT } from "./relayDiscovery.js";
-import { defineRelaysPanelElement } from "./relaysPanelElement.js";
+import { defineRelaysPanelElement, refreshRelaysPanel, relaysSummary } from "./relaysPanelElement.js";
 
 const plugin: PiWebPlugin = {
   apiVersion: 2,
@@ -35,6 +35,8 @@ const plugin: PiWebPlugin = {
               </svg>
             `,
             order: 50,
+            summary: () => relaysSummary(),
+            toolbar: () => html`<button type="button" @click=${() => { refreshRelaysPanel(); }}>Refresh</button>`,
             render: (context) => html`<pi-web-relays-panel .context=${context}></pi-web-relays-panel>`,
           },
         ],

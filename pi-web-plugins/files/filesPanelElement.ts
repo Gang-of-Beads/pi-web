@@ -20,12 +20,28 @@ interface WorkspaceUploadBatchErrorShape {
 }
 
 /** Mark the live panel's tree stale after a session turn settled. */
+let filesPanelStale = false;
+
+/** Whether the shown tree has aged past a settled session activity; the host
+ *  header reads this for its summary. */
+export function filesPanelShowsStale(): boolean {
+  return filesPanelStale;
+}
+
 export function markFilesPanelStale(): void {
+  filesPanelStale = true;
   PiFilesPanel.active?.markStale();
+  PiFilesPanel.active?.requestContextRender();
+}
+
+/** The fold's Upload control; a no-op when no panel is mounted. */
+export function requestFilesUpload(): void {
+  PiFilesPanel.active?.openFilePicker();
 }
 
 /** Ask the live panel to refetch; the host calls this on panel invalidation. */
 export function invalidateFilesPanel(): void {
+  filesPanelStale = false;
   const panel = PiFilesPanel.active;
   if (panel !== undefined) panel.refresh();
 }
@@ -77,9 +93,18 @@ export class PiFilesPanel extends LitElement {
 
   markStale(): void {
     this.explorer?.markStale();
+    this.context?.host.requestRender();
+  }
+
+  /** The fold's stale summary and this panel share one flag; the host owns
+   *  the render, so the flag's flips ask it to redraw the header. */
+  requestContextRender(): void {
+    this.context?.host.requestRender();
   }
 
   refresh(): void {
+    filesPanelStale = false;
+    this.context?.host.requestRender();
     void this.explorer?.refresh();
   }
 
@@ -96,15 +121,7 @@ export class PiFilesPanel extends LitElement {
         @dragleave=${this.handleDragLeave}
         @drop=${this.handleDrop}
       >
-        <section class="toolbar">
-          <strong>Files</strong>
-          ${state.stale ? html`<span class="stale">stale</span>` : null}
-          <div class="toolbar-actions">
-            <button @click=${this.openFilePicker}>Upload</button>
-            <button @click=${() => { void explorer.refresh(); }}>Refresh</button>
-          </div>
-          <input id="workspace-upload-input" class="visually-hidden" type="file" multiple @change=${this.handleFileInputChange} />
-        </section>
+        <input id="workspace-upload-input" class="visually-hidden" type="file" multiple @change=${this.handleFileInputChange} />
         ${this.renderUploadProgress()}
         <section class=${filesSplitClass(state.selectedFilePath)}>
           <div class="list tree">
@@ -254,7 +271,7 @@ export class PiFilesPanel extends LitElement {
     `;
   }
 
-  private readonly openFilePicker = (): void => {
+  readonly openFilePicker = (): void => {
     this.uploadInput?.click();
   };
 

@@ -59,7 +59,7 @@ export class WorkspaceFileViewer extends LitElement {
   /** A selection in the raw view, as a mention ref the composer understands. */
   private mention: { ref: string; top: number; left: number } | undefined;
   private readonly onDocumentSelectionChange = (): void => {
-    if (this.mode !== "raw") { this.mention = undefined; return; }
+    if (!this.showsRawSource()) { this.mention = undefined; return; }
     const viewer = this.renderRoot.querySelector("pi-code-viewer");
     if (!(viewer instanceof PiCodeViewerElement) || this.file === undefined) { this.mention = undefined; return; }
     const range = viewer.selectionLines();
@@ -352,6 +352,11 @@ export class WorkspaceFileViewer extends LitElement {
   }
 
   private showsRawSource(): boolean {
+    // The chip follows what is on screen: code files render raw always;
+    // dual-mode files only in raw mode.
+    const file = this.file;
+    if (file === undefined) return false;
+    if (workspaceFilePreviewKind(file) === "code") return true;
     return this.mode === "raw" && this.selectionHasRawAndPreviewModes();
   }
 

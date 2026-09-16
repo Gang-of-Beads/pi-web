@@ -47,7 +47,18 @@ interface RelaySelection {
  * active marker in place and re-renders the viewer — so the strip's
  * horizontal scroll position and keyboard focus survive document switches.
  */
+/** The fold's Refresh control; a no-op when no panel is mounted. */
+export function refreshRelaysPanel(): void {
+  PiWebRelaysPanel.active?.refresh();
+}
+
+/** The host header's summary: which relay is on show. */
+export function relaysSummary(): string | undefined {
+  return PiWebRelaysPanel.active?.summaryText();
+}
+
 class PiWebRelaysPanel extends HTMLElement {
+  static active: PiWebRelaysPanel | undefined;
   private contextValue: WorkspacePanelContext | undefined;
   private listing: RelaysListing | undefined;
   private selectedRelayPath: string | undefined;
@@ -107,6 +118,7 @@ class PiWebRelaysPanel extends HTMLElement {
     const previousKey = this.contextValue === undefined ? undefined : contextKey(this.contextValue);
     const nextKey = value === undefined ? undefined : contextKey(value);
     this.contextValue = value;
+    PiWebRelaysPanel.active = value === undefined ? undefined : this;
     // Parent app updates should not rescan or re-render this panel for the
     // same workspace (mirrors the workspace-tasks panel).
     if (previousKey === nextKey) return;
@@ -147,6 +159,7 @@ class PiWebRelaysPanel extends HTMLElement {
   private async openRelay(context: WorkspacePanelContext, relayPath: string): Promise<void> {
     const token = ++this.scanToken;
     this.selectedRelayPath = relayPath;
+    context.host.requestRender();
     this.expandedDirs = new Set();
     await this.loadDocuments(context, token, relayPath, undefined);
   }
@@ -257,7 +270,15 @@ class PiWebRelaysPanel extends HTMLElement {
     this.renderViewer();
   }
 
-  private refresh(): void {
+  /** The host header's summary: which relay is on show. */
+  summaryText(): string | undefined {
+    const listing = this.listing;
+    if (listing?.kind !== "loaded") return undefined;
+    const relay = listing.relays.find((candidate) => candidate.path === this.selectedRelayPath);
+    return relay === undefined ? undefined : relay.name;
+  }
+
+  refresh(): void {
     const context = this.contextValue;
     if (context === undefined) return;
     void this.scan(context, { relayPath: this.selectedRelayPath, documentPath: this.selectedDocumentPath });
@@ -289,10 +310,8 @@ class PiWebRelaysPanel extends HTMLElement {
     }
     this.toolbar.hidden = false;
     this.toolbar.innerHTML = `
-      <strong>Relays</strong>
       <span class="toolbar-actions">
         ${this.renderRelayPicker()}
-        <button class="icon-button" data-refresh aria-label="Refresh" title="Refresh">${refreshIconSvg()}</button>
       </span>
     `;
   }
@@ -434,17 +453,6 @@ function requiredRegion(root: ShadowRoot, selector: string): HTMLElement {
   return element;
 }
 
-/** Reload glyph matching the app's own refresh control (AppRefreshControl). */
-function refreshIconSvg(): string {
-  return `
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M20 6v5h-5"></path>
-      <path d="M4 18v-5h5"></path>
-      <path d="M18.2 9A7 7 0 0 0 6.1 6.8L4 9"></path>
-      <path d="M5.8 15a7 7 0 0 0 12.1 2.2L20 15"></path>
-    </svg>
-  `;
-}
 
 /**
  * The folder chip to highlight when the selected document is hidden: the first
@@ -505,7 +513,7 @@ function relaysStyles(): string {
          (the app container is a fixed-height flex column; with shrink enabled
          the viewer's huge content basis starves them down to a sliver once a
          tall document renders). The viewer absorbs all shrinking instead. */
-      .toolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
+      .toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-3) var(--pi-reading-edge); }
       .toolbar[hidden], .document-tabs[hidden] { display: none; }
       .toolbar-actions { display: inline-flex; align-items: center; flex-wrap: nowrap; justify-content: flex-end; gap: var(--pi-space-4); min-width: 0; }
       .relay-name { min-width: 0; color: var(--pi-text-secondary); overflow-wrap: anywhere; }

@@ -222,7 +222,6 @@ export function renderInfoPanel(html: HtmlTemplateTag, context: WorkspacePanelCo
       .info-health-ok { color: var(--pi-success); }
       .info-health-attention { color: var(--pi-warning); }
     </style>
-    <section class="toolbar"><strong>Info</strong></section>
     <section class="viewer info-status">
       ${renderStatusSection(html, context.state?.piWebStatus)}
       ${renderMachineSection(html, context.machine)}

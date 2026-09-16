@@ -811,6 +811,10 @@ export class ChatView extends LitElement {
   /** A transcript selection, anchored near its end; undefined while collapsed. */
   private quoteChip: { quoted: string; top: number; left: number } | undefined;
   private readonly onDocumentSelectionChange = (): void => {
+    queueMicrotask(() => { this.readSelectionForQuote(); });
+  };
+
+  private readSelectionForQuote(): void {
     const selection = document.getSelection();
     const chat = this.chat;
     if (selection === null || selection.isCollapsed || selection.rangeCount === 0 || chat === undefined || !composedContains(chat, selection.anchorNode)) {
@@ -940,7 +944,10 @@ export class ChatView extends LitElement {
     this.pendingScrollRestoreSessionId = undefined;
     this.pendingScrollRestorePosition = undefined;
     this.heldWaiting = undefined;
-    if (this.heldWaitingClearTimer !== undefined) {
+    // A held quote is session-scoped like every other projection: tapping it
+    // after a switch would write session A's words into session B's composer.
+    this.quoteChip = undefined;
+if (this.heldWaitingClearTimer !== undefined) {
       clearTimeout(this.heldWaitingClearTimer);
       this.heldWaitingClearTimer = undefined;
     }
@@ -2178,6 +2185,7 @@ export class ChatView extends LitElement {
   }
 
   private onScroll() {
+    if (this.quoteChip !== undefined) { this.quoteChip = undefined; this.requestUpdate(); }
     this.requestLoadMoreIfNeeded();
     this.updatePinnedToBottomFromScroll();
     this.scheduleConversationRailUpdate();

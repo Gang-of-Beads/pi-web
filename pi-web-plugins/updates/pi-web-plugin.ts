@@ -84,10 +84,7 @@ function renderCommands(html: HtmlTemplateTag, terminal: WorkspacePanelTerminal 
 function renderUpdatesPanel(html: HtmlTemplateTag, terminal: WorkspacePanelTerminal | undefined, state: PluginRuntimeState | undefined): TemplateResult {
   const status = statusFor(state) ?? fallbackDockerStatus(runtimeHint);
   if (status === undefined) {
-    return html`
-      <section class="toolbar"><strong>Updates</strong></section>
-      <section class="viewer"><p class="muted">Checking PI WEB update status…</p></section>
-    `;
+    return html`<section class="viewer"><p class="muted">Checking PI WEB update status…</p></section>`;
   }
 
   const messages = status.messages;
@@ -120,7 +117,6 @@ function renderUpdatesPanel(html: HtmlTemplateTag, terminal: WorkspacePanelTermi
         .updates-command > span { grid-column: 1 / -1; }
       }
     </style>
-    <section class="toolbar"><strong>Updates</strong>${messages.length > 0 ? html`<span class="stale">${String(messages.length)}</span>` : null}</section>
     <section class="viewer updates-status updates-panel">
       <section>
         ${messages.length === 0 ? html`<p class="muted">No PI WEB update or restart messages.</p>` : messages.map((message) => html`
