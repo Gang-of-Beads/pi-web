@@ -451,7 +451,10 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   @media (hover: none) {
     .msg-actions { opacity: 1; }
     .msg-meta { opacity: 1; color: var(--pi-muted); max-width: var(--pi-space-9); }
-    .msg-meta:not(.expanded) { position: relative; display: inline-grid; width: 24px; height: 24px; place-items: center; font-size: 0; text-overflow: clip; }
+    /* The same box its siblings wear: a borderless glyph beside two bordered
+       ones read as a stray mark, and the inherited line-height plus the
+       right-aligned text nudged the ink off centre (owner). */
+    .msg-meta:not(.expanded) { position: relative; display: inline-grid; box-sizing: border-box; width: 22px; height: 22px; place-items: center; padding: 0; line-height: 0; font-size: 0; text-align: center; text-overflow: clip; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-surface); }
     /* The same reach its siblings get: without it the info control was a 24px
        target beside 44px ones, and a thumb aiming at it landed on copy. */
     .msg-meta:not(.expanded)::after { content: ""; position: absolute; inset: calc(-1 * var(--pi-space-5)) calc(-1 * var(--pi-space-4)); }
