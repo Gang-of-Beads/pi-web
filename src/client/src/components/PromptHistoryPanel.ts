@@ -124,7 +124,7 @@ export class PromptHistoryPanel extends LitElement {
     .history-search::placeholder { color: var(--pi-dim); }
     .history-search::-webkit-search-cancel-button { display: none; }
     .history-search:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
-    .close { display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); box-sizing: border-box; padding: 0; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; cursor: pointer; }
+    .close { display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); box-sizing: border-box; padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; cursor: pointer; }
     .close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
     @media (hover: hover) { .close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }

@@ -536,7 +536,7 @@ export class SessionTreeNavigator extends LitElement {
     h1 { font-size: var(--pi-text-xl); line-height: 1.25; }
     h2 { margin-top: var(--pi-space-1); font-size: var(--pi-text-lg); }
     .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-bold); letter-spacing: normal; text-transform: uppercase; }
-    .close-button { box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); margin-inline-start: auto; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
+    .close-button { box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); margin-inline-start: auto; display: grid; place-items: center; border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
     .close-button:not(:disabled):focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:not(:disabled):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; }
