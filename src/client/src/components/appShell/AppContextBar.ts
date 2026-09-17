@@ -20,10 +20,15 @@ export class AppContextBar extends LitElement {
   @property({ type: Boolean }) isWorking = false;
   /** Whether the collapsible panel is currently presented. */
   @property({ type: Boolean }) panelOpen = false;
+  /** What the leading control opens: the side panel, or the session menu the
+   *  phone reaches from this bar. The icon is a menu glyph either way, so the
+   *  words have to say which surface answers it. */
+  @property({ type: String }) toggleTarget: "panel" | "menu" = "panel";
   /** Hidden when the panel is the whole view (phone with no session): a toggle would advertise closing the only surface. */
   @property({ type: Boolean }) panelToggleHidden = false;
   @property({ attribute: false }) onTogglePanel?: () => void;
-  /** Opens the quick switcher: the one pointer path to switching sessions. */
+  /** Opens the quick switcher. Absent where another control in this bar owns
+   *  that menu, in which case the name is a label and not a target. */
   @property({ attribute: false }) onQuickSwitch?: () => void;
   /** Opens the Go to sheet; absent on layouts where the navigation panel lists the views itself. */
   @property({ attribute: false }) onOpenGoTo?: () => void;
@@ -42,9 +47,10 @@ export class AppContextBar extends LitElement {
         <button
           type="button"
           class="panel-toggle"
-          title=${this.panelOpen ? "Close panel" : "Open panel"}
-          aria-label=${this.panelOpen ? "Close panel" : "Open panel"}
-          aria-expanded=${this.panelOpen ? "true" : "false"}
+          title=${panelToggleLabel(this.toggleTarget, this.panelOpen)}
+          aria-label=${panelToggleLabel(this.toggleTarget, this.panelOpen)}
+          aria-haspopup=${this.toggleTarget === "menu" ? "dialog" : "false"}
+          aria-expanded=${this.toggleTarget === "menu" ? "false" : this.panelOpen ? "true" : "false"}
           @click=${() => { this.onTogglePanel?.(); }}
         >
           <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -53,12 +59,25 @@ export class AppContextBar extends LitElement {
         </button>
         `}
         ${this.session === undefined
-          ? html`<button
+          ? this.onQuickSwitch === undefined
+            ? html`<span class="session-title empty"><span class="session-title-text">${this.activeSurface === "" ? "Sessions" : this.activeSurface}</span></span>`
+            : html`<button
               type="button"
               class="session-title empty"
               aria-label="No session selected. Open session selection."
               @click=${() => { this.onQuickSwitch?.(); }}
             ><span class="session-title-text">${this.activeSurface === "" ? "Sessions" : this.activeSurface}</span></button>`
+          : this.onQuickSwitch === undefined
+          ? html`<span
+              class="session-title static"
+              title=${this.session.path}
+              aria-label=${`Session: ${sessionContextLabel(this.session)}.${this.onRenameRequest === undefined ? "" : " Hold to rename."}`}
+              @pointerdown=${(event: PointerEvent) => { if (event.pointerType !== "mouse" && this.onRenameRequest !== undefined) this.titleHold.start(event); }}
+              @pointermove=${(event: PointerEvent) => { this.titleHold.move(event); }}
+              @pointerup=${() => { this.titleHold.cancel(); }}
+              @pointercancel=${() => { this.titleHold.cancel(); }}
+              @contextmenu=${(event: Event) => { if (this.onRenameRequest !== undefined) event.preventDefault(); }}
+            ><span class="session-title-text">${this.activeSurface === "" ? sessionContextLabel(this.session) : `${this.activeSurface} · ${sessionContextLabel(this.session)}`}</span></span>`
           : html`<button
               type="button"
               class="session-title"
@@ -110,6 +129,7 @@ export class AppContextBar extends LitElement {
     .go-to .ui-icon { width: 18px; height: 18px; pointer-events: none; }
     .session-title { flex: 1 1 auto; min-width: 0; min-height: var(--pi-panel-header-control-height); display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; border: 0; background: none; color: var(--pi-text-bright, var(--pi-text)); padding: 0; font: inherit; line-height: var(--pi-panel-header-control-height); font-weight: var(--pi-weight-strong); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
     .session-title.empty { color: var(--pi-muted); font-weight: var(--pi-weight-medium); }
+    .session-title.static { cursor: default; }
     /* text-overflow needs a block box with the text in it: on the flex button
        itself the name was clipped mid-glyph with no ellipsis, while the phone
        scope chip beside it truncated properly. */
@@ -138,6 +158,16 @@ export class AppContextBar extends LitElement {
  * list cannot disagree about the name of the same session. This adds only the
  * case the shared helper has no opinion about: no session selected at all.
  */
+/**
+ * What the leading control promises. A menu key that says "Open panel" and
+ * then covers the screen with another surface is the mismatch the owner
+ * reported; the words follow the surface the tap actually opens.
+ */
+export function panelToggleLabel(target: "panel" | "menu", panelOpen: boolean): string {
+  if (target === "menu") return "Open session menu";
+  return panelOpen ? "Close panel" : "Open panel";
+}
+
 export function sessionContextLabel(session: SessionInfo | undefined): string {
   return session === undefined ? "No session" : sessionLabel(session);
 }

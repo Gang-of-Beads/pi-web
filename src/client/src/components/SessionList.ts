@@ -9,6 +9,7 @@ import { sessionLabel, sessionLabelDetail } from "../sessionLabels";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { normalizeSessionPath } from "../sessionPaths";
 import { filterSessionRows, hideCollapsedSubtreeRows, shouldShowSessionSearch } from "../sessionSearch";
+import { splitPinnedSessionRows } from "../sessionListPins";
 import { isSessionActive } from "../../../shared/activity";
 import "./SessionRenameDialog";
 import { actionMenuPanelStyle } from "./actionMenu";
@@ -85,6 +86,9 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   /** Open the session tree; previously reachable only by typing /tree. */
   @property({ attribute: false }) onOpenTree?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onCleanup?: () => void;
+  /** Sessions pinned on this device, shared with the quick-access menu. */
+  @property({ attribute: false }) pinnedSessionIds: ReadonlySet<string> = new Set();
+  @property({ attribute: false }) onTogglePin?: (session: SessionInfo) => void;
 
   @state() private openMenuSessionId: string | undefined;
   @state() private menuStyle = "";
@@ -197,7 +201,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
             ${this.renderSearch(allCurrentRows.length + allArchivedRows.length)}
             ${this.renderCurrentSelectionToolbar(selectableVisibleCurrent)}
             ${this.startingCount > 0 ? this.renderStartingSession() : null}
-            ${visibleCurrentRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "current"))}
+            ${this.renderPinnedRows(visibleCurrentRows, descendantCounts, searching)}
+            ${splitPinnedSessionRows(visibleCurrentRows, this.pinnedSessionIds, { searching }).rest.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "current"))}
             ${archivedRows.length > 0 ? html`
               ${this.renderArchivedHeading(archivedRows.map((row) => row.session), archivedOpen)}
               ${archivedOpen ? html`
@@ -467,6 +472,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
                       <button title="Archive session" @click=${() => { this.openMenuSessionId = undefined; this.onArchive?.(session); }}>Archive</button>
                       ${descendantCount > 0 ? html`<button title="Archive with its descendants" @click=${() => { this.openMenuSessionId = undefined; this.confirmArchiveWithDescendants(session, descendantCount); }}>Archive with descendants (${descendantCount})</button>` : null}
                     ` : null}
+                    ${this.onTogglePin === undefined ? null : html`<button title=${this.pinnedSessionIds.has(session.id) ? "Unpin session" : "Pin session to the top of this list"} @click=${() => { this.openMenuSessionId = undefined; this.onTogglePin?.(session); }}>${this.pinnedSessionIds.has(session.id) ? "Unpin" : "Pin"}</button>`}
                     <button title="Rename" @click=${() => { this.openMenuSessionId = undefined; this.beginRename(session); }}>Rename</button>
                     /* Browsing runs /tree against the selected session, and a dead
                        session can never be selected: offering it would trade the
@@ -518,6 +524,15 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
    * would otherwise look like roots, so they keep the same child glyph, dimmed
    * to signal that the parent itself is not shown here.
    */
+  private renderPinnedRows(rows: SessionRow[], descendantCounts: ReadonlyMap<string, number>, searching: boolean) {
+    const pinned = splitPinnedSessionRows(rows, this.pinnedSessionIds, { searching }).pinned;
+    if (pinned.length === 0) return null;
+    return html`
+      <h3 class="row-group-heading">Pinned</h3>
+      ${pinned.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "current"))}
+    `;
+  }
+
   private renderRowMarker(row: SessionRow) {
     if (row.hasMissingParent) {
       return html`<span class="tree-marker orphan-marker" title=${ORPHAN_PARENT_TITLE} aria-label=${ORPHAN_PARENT_LABEL}>↳</span>`;
@@ -784,6 +799,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     /* Same glyph as a normal child marker, dimmed: the row is a child whose parent is not displayed here. */
     .orphan-marker { color: var(--pi-muted); }
     .bulk-row.selecting { padding: var(--pi-space-3); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-surface) 65%, transparent); }
+    .row-group-heading { margin: var(--pi-space-3) 0 var(--pi-space-2); padding: 0 var(--pi-space-2); color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
     button.danger, .action-menu-panel button.danger { color: var(--pi-danger); }
     @media (hover: hover) { button.danger:hover, .action-menu-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
     /* On the row, like every other state: .action-main has no border, so the

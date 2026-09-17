@@ -61,6 +61,8 @@ export class QuickSwitcher extends LitElement {
   @property({ attribute: false }) onOpenSession?: (session: SessionInfo) => void;
   @property({ attribute: false }) onSelectWorkspace?: (workspace: Workspace) => void;
   @property({ attribute: false }) onBrowse?: () => void;
+  /** Opens settings from the menu, so the phone's one menu key reaches it. */
+  @property({ attribute: false }) onOpenSettings?: () => void;
   @property({ attribute: false }) onClose?: () => void;
   @property({ attribute: false }) onTogglePin?: (session: SessionInfo) => void;
   @property({ attribute: false }) onRenameSession?: (session: SessionInfo, name: string) => void | Promise<void>;
@@ -131,6 +133,7 @@ export class QuickSwitcher extends LitElement {
         </div>
         <footer>
           <button @click=${() => { this.browse(); }}>Browse machines and projects</button>
+          ${this.onOpenSettings === undefined ? nothing : html`<button @click=${() => { this.openSettings(); }}>Settings</button>`}
         </footer>
       </modal-surface>
     `;
@@ -397,6 +400,11 @@ export class QuickSwitcher extends LitElement {
     // The sheet stays open so the workspace's own sessions can be picked
     // immediately; only choosing a session or creating one dismisses it.
     this.query = "";
+  }
+
+  private openSettings(): void {
+    this.onClose?.();
+    this.onOpenSettings?.();
   }
 
   private browse(): void {

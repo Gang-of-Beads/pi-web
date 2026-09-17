@@ -2377,6 +2377,8 @@ export class PiWebApp extends LitElement {
         .onReloadSession=${(session: SessionInfo) => this.sessions.reloadSession(session)}
         .onOpenSessionTree=${(session: SessionInfo) => this.openSessionTree(session)}
         .onCleanupSessions=${() => { this.openSessionCleanupDialog(); }}
+        .pinnedSessionIds=${this.pinnedSessionIds}
+        .onToggleSessionPin=${(session: SessionInfo) => { this.togglePinnedSession(session); }}
         .onFocusNavigationTarget=${(target: NavigationFocusTarget) => { void this.focusNavigationTarget(target); }}
         .onCancelKeyboardNavigation=${() => { void this.focusChatComposer(); }}
       ></app-navigation-panel>
@@ -4051,9 +4053,10 @@ export class PiWebApp extends LitElement {
         .onRenameRequest=${(session: SessionInfo) => { this.renameFromBar = session; }}
         ?isWorking=${this.state.selectedSession !== undefined && isActive(this.state)}
         ?panelOpen=${this.shellPanelOpen()}
+        .toggleTarget=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? "menu" : "panel"}
         ?panelToggleHidden=${panelToggleHiddenState({ mobileLayout: this.appShell.isMobileNavigationLayout, displayView: this.displayMainView() })}
-        .onTogglePanel=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? () => { this.openContextSheet(); } : () => { this.toggleShellPanel(); }}
-        .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
+        .onTogglePanel=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? () => { this.openQuickSwitcher(); } : () => { this.toggleShellPanel(); }}
+        .onQuickSwitch=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? undefined : () => { this.openQuickSwitcher(); }}
       ></app-context-bar>
     `;
   }
@@ -4170,6 +4173,7 @@ export class PiWebApp extends LitElement {
           .onOpenSession=${(session: SessionInfo) => { void this.openSessionFromQuickSwitcher(session); }}
           .onSelectWorkspace=${(workspace: Workspace) => { void this.openWorkspaceFromQuickSwitcher(workspace); }}
           .onBrowse=${() => { this.openNavigationSection("projects"); }}
+          .onOpenSettings=${() => { this.openSettings(); }}
           .onTogglePin=${(session: SessionInfo) => { void this.moveToBrowsedMachine().then((moved) => { if (moved) this.togglePinnedSession(session); }); }}
           .onRenameSession=${async (session: SessionInfo, name: string) => {
             if (!await this.moveToBrowsedMachine()) return;

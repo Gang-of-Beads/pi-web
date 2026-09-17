@@ -119,6 +119,9 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onMarkSessionsRead?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onReloadSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onCleanupSessions?: () => void | Promise<void>;
+  /** Sessions pinned on this device; the list groups them at the top. */
+  @property({ attribute: false }) pinnedSessionIds: ReadonlySet<string> = new Set();
+  @property({ attribute: false }) onToggleSessionPin?: (session: SessionInfo) => void;
   @property({ attribute: false }) onArchivedCollapsed?: () => void | Promise<void>;
   /** Workspace views as named rows; the one entry, retired the sheet and the second strip. */
   @property({ attribute: false }) toolTabs: readonly ShellToolTab[] = [];
@@ -426,6 +429,8 @@ export class AppNavigationPanel extends LitElement {
         .onReload=${(session: SessionInfo) => this.onReloadSession?.(session)}
         .onOpenTree=${(session: SessionInfo) => this.onOpenSessionTree?.(session)}
         .onCleanup=${() => this.onCleanupSessions?.()}
+        .pinnedSessionIds=${this.pinnedSessionIds}
+        .onTogglePin=${(session: SessionInfo) => this.onToggleSessionPin?.(session)}
         .onFocusPreviousSection=${() => { this.focusPreviousFrom("sessions"); }}
         .onFocusNextSection=${() => { this.focusNextFrom("sessions"); }}
         .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
