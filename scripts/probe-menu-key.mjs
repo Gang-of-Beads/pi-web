@@ -61,6 +61,9 @@ const opened = await page.evaluate(`(function(){
     contextSheet: app.shadowRoot.querySelector("context-switcher-sheet") !== null,
     footer,
     createsSession: create !== null && create !== undefined && !create.disabled,
+    crumbs: [...(switcher?.shadowRoot?.querySelectorAll(".crumb") ?? [])].map((node) => node.textContent?.trim()),
+    chips: (switcher?.shadowRoot?.querySelectorAll(".chip") ?? []).length,
+    tabs: (switcher?.shadowRoot?.querySelectorAll(".machine-tab") ?? []).length,
   };
 })()`);
 
@@ -70,6 +73,27 @@ if (opened.view !== "chat" || opened.session !== before.session) fail("the menu 
 if (!opened.footer.includes("Browse machines and projects")) fail(`the menu footer lost its machines-and-projects entry: ${JSON.stringify(opened.footer)}`);
 if (!opened.footer.includes("Settings")) fail(`the menu footer has no settings entry: ${JSON.stringify(opened.footer)}`);
 if (!opened.createsSession) fail("the menu offers no enabled new-session control");
+if (opened.chips > 0 || opened.tabs > 0) fail("the menu still renders the mixed chip row or machine tabs");
+if (opened.crumbs.length === 0) fail("the menu renders no context path");
+else if (!opened.crumbs.includes("All projects")) fail(`the context path does not name the project level: ${JSON.stringify(opened.crumbs)}`);
+
+await page.evaluate(`(function(){
+  const app = document.querySelector("pi-web-app");
+  app.shadowRoot.querySelector("quick-switcher").shadowRoot.querySelector(".crumb").click();
+})()`);
+await page.waitForTimeout(600);
+const levelOptions = await page.evaluate(`(function(){
+  const app = document.querySelector("pi-web-app");
+  const switcher = app.shadowRoot.querySelector("quick-switcher");
+  return [...(switcher?.shadowRoot?.querySelectorAll(".crumb-option") ?? [])].map((node) => node.querySelector(".crumb-option-label")?.textContent?.trim() ?? node.textContent?.trim());
+})()`);
+if (levelOptions.length === 0) fail("opening a path level offered no options");
+else if (levelOptions[0] !== "All projects") fail(`the project level does not offer the widening option first: ${JSON.stringify(levelOptions)}`);
+await page.evaluate(`(function(){
+  const app = document.querySelector("pi-web-app");
+  app.shadowRoot.querySelector("quick-switcher").shadowRoot.querySelector(".crumb").click();
+})()`);
+await page.waitForTimeout(400);
 
 await page.keyboard.press("Escape");
 await page.waitForTimeout(900);
@@ -121,4 +145,4 @@ await page.screenshot({ path: "/tmp/journeys/menu-key.png" });
 await browser.close();
 
 if (process.exitCode === 1) process.exit(1);
-console.log("PASS: the menu key opens and dismisses the quick-access menu in place; the list groups pinned sessions");
+console.log("PASS: the context path replaces the chips; the menu key opens and dismisses the quick-access menu in place; the list groups pinned sessions");
