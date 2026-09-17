@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { renderCheckIcon, renderChevronRightIcon, renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { quickSwitcherFilterProjects } from "../quickSwitcher";
 import { reconcileBreadcrumbFilter, switcherBreadcrumb, type BreadcrumbLevel } from "../switcherBreadcrumb";
-import { switcherEmptyMeaning } from "../switcherEmptyMeaning";
+import { switcherEmptyMeaning, switcherScopeNotice } from "../switcherEmptyMeaning";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, Project, SessionInfo, Workspace } from "../api";
@@ -115,6 +115,7 @@ export class QuickSwitcher extends LitElement {
         <div class="body">
           ${this.renderCreateRow()}
           ${model.groups.map((group) => this.renderGroup(group))}
+          ${this.renderScopeNotice()}
           ${this.renderEmptyMeaning(model.matchCount)}
           ${otherWorkspaces.length === 0 ? null : html`
             <h3>Workspaces</h3>
@@ -211,6 +212,15 @@ export class QuickSwitcher extends LitElement {
       `}
       </nav>
     `;
+  }
+
+  /** Says when the list is wider than the path; see `switcherScopeNotice`. */
+  private renderScopeNotice() {
+    const notice = switcherScopeNotice({
+      projectId: this.filter.projectId,
+      knownFolderCount: this.workspaces.filter((workspace) => workspace.projectId === this.filter.projectId).length,
+    });
+    return notice === undefined ? nothing : html`<p class="scope-notice" role="status">${notice}</p>`;
   }
 
   /** The empty state, named rather than asserted; see `switcherEmptyMeaning`. */
@@ -502,6 +512,7 @@ export class QuickSwitcher extends LitElement {
     /* The drawn box stays on the bar template; a thumb gets the 44px floor
        through reach, as the message actions do. */
     @media (pointer: coarse) { .crumb { position: relative; } .crumb::after { content: ""; position: absolute; inset: calc((var(--pi-control-height) - var(--pi-control-height-touch, 44px)) / 2) 0; } }
+    .scope-notice { margin: 0 var(--pi-space-5) var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .empty-widen { box-sizing: border-box; min-height: var(--pi-control-height-comfort); margin-top: var(--pi-space-3); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; cursor: pointer; }
     .crumb-sep { flex: 0 0 auto; display: inline-grid; place-items: center; color: var(--pi-muted); }
     .crumb-sep .ui-icon { width: 14px; height: 14px; }

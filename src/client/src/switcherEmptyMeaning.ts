@@ -35,3 +35,17 @@ export function switcherEmptyMeaning(input: EmptyInput): SwitcherEmptyMeaning {
   if (input.scoped) return { kind: "scope", message: "No sessions in this part of the path.", widen: true };
   return { kind: "empty", message: "No sessions yet." };
 }
+
+/**
+ * Why the list can be wider than the path says.
+ *
+ * Workspaces load per project, so a project chosen before its response lands
+ * has no known folders, and filtering against nothing would hide every
+ * session including the open one. The list therefore stays unfiltered - and
+ * then the path claims a scope the list is not keeping. Rather than pick
+ * between a wrong list and a wrong path, the menu says which one is provisional.
+ */
+export function switcherScopeNotice(input: { projectId: string | undefined; knownFolderCount: number }): string | undefined {
+  if (input.projectId === undefined || input.knownFolderCount > 0) return undefined;
+  return "Folders for this project are still loading, so every session is listed.";
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { switcherEmptyMeaning } from "./switcherEmptyMeaning";
+import { switcherEmptyMeaning, switcherScopeNotice } from "./switcherEmptyMeaning";
 
 const base = { loadError: undefined, loading: false, matchCount: 0, query: "", scoped: false };
 
@@ -30,5 +30,19 @@ describe("switcherEmptyMeaning", () => {
 
   it("claims emptiness only for a loaded, unscoped, unsearched machine", () => {
     expect(switcherEmptyMeaning(base)).toEqual({ kind: "empty", message: "No sessions yet." });
+  });
+});
+
+describe("switcherScopeNotice", () => {
+  it("says nothing when no project is chosen", () => {
+    expect(switcherScopeNotice({ projectId: undefined, knownFolderCount: 0 })).toBeUndefined();
+  });
+
+  it("says nothing once the project's folders are known", () => {
+    expect(switcherScopeNotice({ projectId: "p1", knownFolderCount: 2 })).toBeUndefined();
+  });
+
+  it("names the provisional listing while a chosen project has no known folders", () => {
+    expect(switcherScopeNotice({ projectId: "p1", knownFolderCount: 0 })).toBe("Folders for this project are still loading, so every session is listed.");
   });
 });
