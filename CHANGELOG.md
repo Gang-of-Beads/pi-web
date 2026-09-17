@@ -1,5 +1,1913 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.0
+
+### Major Changes
+
+- PI WEB is now a small core with everything else as plugins, and that is the
+  baseline this project builds on from here.
+
+  Files, workspaces, machines, goals, git, terminal, relays, updates, voice,
+  tasks, themes and Mermaid are plugins contributing panels, dialogs, routes and
+  settings through a published plugin API; the web process hosts server plugins
+  alongside the session daemon. The shell keeps only what every plugin needs:
+  sessions, transcripts, navigation, delivery and the surfaces they render into.
+
+  Because this changes contracts rather than adding to them, it is a major
+  release: plugin and theme authors target the published API, extension dialogs
+  and slash commands follow pi's own semantics, and panels that used to be built
+  into the shell are gone from it.
+
+### Patch Changes
+
+- ff100d6: Five-lane review round: the bars, rows and overlays line up.
+
+  The stuck message header keeps a visible sliver again; list rows and
+  chips stop painting outside their bars; the fold controls ride 36px with
+  a disabled state; failed images in the workspace trust menu stop painting
+  stray strokes; the workspace list no longer claims "no workspaces" while
+  loading or failed and offers a retry; the quick switcher, the settings
+  rows, the answered-dialog chip and the status bar join the same shape;
+  the light palette carries the full colour token set with a parity guard.
+  Triage: docs/design/review-triage-phone-template-5lanes.md.
+
+- 6f6e827: An accepted message reads as queued, not as a second Sent state.
+
+  The transport receipt (HTTP answer landed) used to show its own "Sent"
+  mark, so one message could sit between Sent and Queued and read as two
+  different things. The daemon owns a message the moment it answers, so
+  the receipt now wears the queue state it becomes: one Queued mark, then
+  Read when the agent takes it.
+
+- 4458fb4: The add-project dialog is now the workspaces plugin's too, opened through the host's dialog seam: the shell keeps the modal surface - focus, escape, backdrop, layer order - and the plugin hands in the form. The dialog's folder suggestions, the path's server-resolved trust read, and the create call ride new host context actions (`createProject`, `projectDirectories`, `projectTrust`), so the form never calls a PI WEB API or spells a URL. The core dialog and its app-state flag retire; the shell's add-project affordances (empty state, context switcher, action palette) run the plugin's reserved `add-project` action and hide when no plugin provides it.
+- f1aa46c: The assistant header wears its own colour.
+
+  In the graphite palette the assistant strip was identical to the card, so
+  user and assistant read as one (owner, phone round). The assistant and
+  tool-output headers take a purple wash with a purple rail, against the
+  user header's amber - warm is you, cool is pi, readable at a glance in
+  both light and dark.
+
+- cf7da32: Keep project, workspace, session, navigation catalogs, and workspace-scoped panels on one scope when the global session switcher crosses projects, including workspaces rooted at the filesystem root.
+- a899719: Drawer tab badges say what they count.
+
+  The goals tab's badge was a bare number - the owner asked "what is
+  this 1?". The badge now carries a title and aria-label naming the
+  section and the count ("Goals: 1 open"), so the number has its meaning
+  attached on hover and to screen readers.
+
+- b0bce2a: A banner's lifetime now follows the retirement model instead of the wording.
+
+  An HTTP status error used to be treated as a transport complaint, so the next
+  successful poll - any poll - erased it about 1.5s after it appeared: a red
+  flash with no explanation. An HTTP status is an answer (the link worked, the
+  operation failed), so it now stays until the reader dismisses it or another
+  message replaces it. Genuine link failures keep self-healing, and recovery is
+  now vouched for per machine: a success from machine A no longer erases
+  machine B's complaint. The six-second expiry checks the retirement mark
+  instead of guessing from the wording, and a failed interrupted-runs read says
+  "status unknown" instead of quietly adopting "none".
+
+  The state rail now wears the exact colour the row's own dot wears - running
+  blue, asking amber, unread purple - so a row reads as one state at any
+  distance. The machines plugin's compact switcher, mounted permanently hidden
+  and never displayed since the context row took over, is removed along with
+  the phantom it put under the UI audit's context trigger.
+
+  <!-- ERRATA (round 29): the six-second expiry gates on BOTH the retirement mark and the wording verdict (round 22); and "the rail wears the row's own colour" holds only for non-healthy rows - an online machine row wears success while its dot reads online, by design. -->
+
+- 5221afa: One bar template for every header, footer and toolbar.
+
+  The phone drawer header, the chat bar, the sessions toolbar, the tool page
+  header and its fold, the plugin toolbars, the composer action row, the
+  status footer, the context sheet and the settings header now share one
+  shape: 44px tall, 36px controls centred inside, and an 8px inset from the
+  screen edge so no control touches the boundary. Page content sits 8px from
+  the phone edge. A source-level contract enumerates every producer.
+
+- 8b1d3dc: Follow-up fixes from the three-lane bllm review of every element surface
+
+  The review converged on two settings-history bugs, both now fixed: closing
+  the sheet left its stacked URL frames below, and the back gesture died on
+  them because the route comparison could not see the settings parameter - a
+  settings frame is now a meaningful back target in both directions; and the
+  drill-down's "‹ Settings" control guessed at history depth, so a deep link
+  or a plugin's section entry exited the sheet - the list frame is now
+  tracked, settings writes always push their own frame, and the back control
+  pops only when it owns a frame. The landscape follow-ups land too: the
+  shell's paired CSS rules and the settings sheet's phone detection follow
+  the same coarse-or-mobile rule the layout predicate uses, so a landscape
+  phone no longer gets a hybrid shell or a desktop-sized settings modal.
+  Also in this wave: the composer's pending attachments clear on a session
+  or machine switch instead of delivering session A's image into session B;
+  the prompt editor regains the lost media-query opener around its compact
+  footer rules; the sessions heading stops claiming "0" while the listing is
+  in flight; settings controls get accessible names; small touch targets
+  meet the coarse-pointer floor; tool-card badges ellipsize instead of
+  crushing the label; and the context-bar panel toggle reports the state the
+  shell actually renders.
+
+- 262f978: A failed interrupted-runs read at cold boot stays quiet.
+
+  The unknown-state banner was raised on every failed read, including the
+  first one at boot - over a slow link the reader got a red "status is
+  unknown" banner over an otherwise empty screen, before anything was on
+  display to lose. The record is unread at that point, not lost: the next
+  successful read delivers it without a banner. The banner now appears only
+  when a machine that already read successfully fails again - that is when
+  markers the reader may be watching are genuinely in question.
+
+- 7ac7daf: The bordered-control guard reaches plugin components, and the upload dialog's
+  close key gets its box.
+
+  The guard only read `src/client/src/components`, so plugin chrome could keep
+  drawing bare glyphs; extending it immediately found the files plugin's upload
+  dialog closing with an unboxed character. The guard now also accepts a border
+  inherited from a file's shared `button` rule, so it names real offenders rather
+  than every component that styles its controls once.
+
+- b9e0a82: A guard for the box model. Three separate defects shipped in one shape — a
+  state ring drawn 12px from an 8px token, seven dialog close controls drawn 34px
+  from a 32px token, a rename action 2px larger than its neighbours — and every
+  scale guard passed each time, because the token in the declaration was correct
+  and only the box model was missing. A rule that states a width, a height and a
+  visible border now has to state its box model too; forty rules that did not
+  have been given one. The conversation meter's marker keeps its full dot size by
+  drawing its separating halo outside the dot rather than inside it.
+- 3ce059f: Selecting a session that lives in a subdirectory of the chosen workspace no longer hands the Project chip to a deeper project while the session list keeps answering for the chosen one - an explicit broad selection that already contains the session stays selected.
+- 75a57ed: The transcript's top edge fades instead of slicing text mid-glyph.
+
+  Assistant surfaces are border-less, so a scrolled-out message's text cut
+  at the scroller's top edge read as stray lines with no boundary. A short
+  gradient mask makes the same clip read as intentional depth on every
+  surface at once.
+
+- a5ddc8f: Control chrome no longer selects its own labels on press-and-hold.
+
+  Tapping and holding the navigation, context bar, status bar or composer
+  toolbar used to pop the text-selection callout over buttons and labels -
+  chrome nobody copies. Those four surfaces now disable text selection
+  within themselves (the composer's own text controls explicitly re-enable
+  it), while message content, notices and code stay selectable per the
+  text-selection guideline.
+
+- 54e0983: Clay becomes the default theme: a fresh browser follows the system light/dark preference through the clay pair (Clay in the dark, Clay Paper in the daylight) instead of the PI WEB pair, and a stored preference still wins. The settings dialog drops its desktop accent on phones: section tabs become single-line pills that meet the 44px touch floor, field labels lose their all-caps styling, and the close control meets the touch floor too.
+- 09a750e: Cleanup can archive every session whose folder is gone.
+
+  The cleanup dialog gains "Archive sessions whose folder no longer
+  exists": a checkbox beside the idle-day threshold, independent of it.
+  The daemon's planner probes each non-archived session's folder and
+  archives the missing ones (busy sessions still skipped), so the
+  dead-folder rows that can never open leave the live list in one
+  deliberate sweep instead of one row-menu archive at a time.
+
+- 7f94b08: Cleanup previews itself, badges lead the meta line, and the phone type
+  drops a step.
+
+  The cleanup dialog opened with a dead Run button and no explanation
+  that Preview had to run first - the reader checked boxes, Run stayed
+  disabled, and cleanup looked broken. The dialog now previews itself on
+  open and re-previews when the valid request changes; Run enables as
+  soon as the preview lands. Dead-folder rows carry the badge at the
+  start of the meta line so every row aligns. The phone type scale drops
+  one step (base 13px, 12px meta floor holds) - the owner read the old
+  sizes as elderly-phone large.
+
+- 6209dc1: Every close control wears a border.
+
+  The prompt-history sheet, the quick-access menu, the cleanup dialog and the
+  session tree each drew their close key as a bare glyph, which on a phone reads
+  as a stray mark rather than a control. They now draw the bordered box the rest
+  of the chrome uses, and a guard fails when any component in the directory
+  declares a borderless close control.
+
+- 39ea0b5: Plugins can claim a fenced code language in the transcript.
+
+  A new `codeFenceRenderers` contribution names a language (for example
+  `mermaid`) and returns a DOM node for a settled code block's source; the
+  transcript draws it above the block and keeps the source underneath for
+  copy. One claimant per language per machine; a renderer that throws or
+  rejects leaves the plain code block standing. Markdown parsing and
+  sanitizing are unchanged - the drawing is added after the safe parse, never
+  through it.
+
+- 319aee0: When answering a question needs the space, the composer steps aside - and what
+  it stepped aside to was a dashed, transparent pill labelled "Message pi…",
+  which is exactly what a text input looks like and nothing like what a button
+  looks like. The owner read it as a broken input box, and the reading was fair:
+  an affordance that mimics typing and refuses typing is a lie about itself.
+
+  The collapsed state is now visibly a control - solid surface, a squared corner
+  where the pill was, and a chevron that says there is more behind this line.
+  The collapse behaviour itself is unchanged; it exists so a question form gets
+  the keyboard space, and that reason still holds.
+
+- 6161ba5: Colour marks the rare message, not the constant one.
+
+  The assistant answers on nearly every turn, so tinting its header purple
+  coloured most of the transcript and made the roles compete. The assistant card
+  is the ordinary surface now with no hue; the reader's own messages keep the
+  accent tint that makes them the landmarks to scroll between; system lines get
+  their own quiet colour, because those are the exception worth spotting.
+
+- 45526bd: A compact density tier for phones: content first.
+
+  The phone breakpoint drops the row minimum to the 44px touch floor
+  (from 56px), tightens the message rhythm one token (16px gaps to 10,
+  card padding to 10), and management tiles lose the two-line path clamp -
+  paths ellipsize on one line and the tile grid tightens - so a screen
+  that showed twelve projects now shows fourteen with cleaner edges.
+  Everything moves through the spacing tokens, so the surfaces tighten
+  together instead of per-rule guesswork.
+
+- b0a277e: Composer buttons are bordered 36px controls again.
+
+  The ghosted, 44px-square composer controls read as too big and
+  indistinguishable from decoration on the phone. They return to the bordered
+  36px box the rest of the phone chrome shares; on touch screens the tap
+  reach still extends to the 44px floor invisibly, so nothing got harder to
+  hit.
+
+- 3c80d1e: The composer action row is one bar tall on phones again.
+
+  The ≤760px button padding stacked 6px vertical on the 36px line-height
+  and grew the row to 50px with a 50px model chip; the bar blocks now pad
+  horizontally only, so the row and every control sit at the template
+  heights.
+
+- 6a09654: Journey fixes from the UX audit: an unset context chip renders its own step word instead of a mid-word "Choo..." cut (the verb stays in the aria label), and the shell probe pins the remaining journey contracts - the collapsed drawer strip's geometry, the chip picker opening in the panel, and the phone's panel path to a session.
+- 67d64a6: Context chips are one size per pointer, not one size per container.
+
+  The chips' value text stepped down by container width: the projects nav
+  renders them ~103px wide, the sessions drawer ~150px, so the same control
+  changed size when the reader moved between the two surfaces - the growing
+  and shrinking the owner reported. Coarse pointers now get the compact size
+  everywhere (the fallback words still fit the narrowest step), and fine
+  pointers keep the container step for genuinely narrow windows.
+
+- ab8b6ce: The quick-access menu shows a context path instead of mixed chips.
+
+  Machines were a tab strip and projects were chips, and choosing a project made
+  a folder chip appear beside the project chips with nothing saying which kind
+  each one was — tapping "repo" produced a "main" that could have been anything.
+  The menu now shows one path, Machine › Project › Folder, where each level says
+  what is chosen there and opens only its own options. The third level is named
+  for what it is, a folder on disk; whether that folder is a git worktree is the
+  git plugin's business, not the shell's.
+
+- 21edc42: The context path says only what it can act on.
+
+  Review lanes found the new path able to lie: a stored project or folder that no
+  level offered still narrowed the session list while the path read "All
+  projects", leaving an empty room with no control to widen it, and browsing
+  another machine — where the host passes no projects — lost every level at once.
+  The path now reconciles its filter against what it offers, falls back to
+  listing folders when there are no projects to group by, reaches the 44px touch
+  floor, and owns the option list it announces.
+
+- 34c6f7b: The context sheet asks "Where am I working?" instead of "Change context".
+
+  "Change context" was implementation vocabulary - the sheet switches the
+  machine, project and workspace triple. The new title states the user's
+  task: seeing and changing where they are working.
+
+- e47ce34: The context sheet covers the true viewport on phones.
+
+  The app shell is `position: fixed` with its top pinned to the visual
+  viewport's offset, which is non-zero on real phones once the page scrolls
+  under a collapsed URL bar. The sheet's `inset: 0` resolved against that
+  shifted shell, so its top edge sat tens of pixels below the real viewport
+  top and the page behind peeked out above the sheet. The sheet now renders
+  at the app template root and anchors itself to the dynamic viewport with
+  the shell offset compensated out, so it covers the whole screen wherever
+  the browser reports its viewports.
+
+- d7c79a2: The context sheet is a Projects page, and the phone sessions toolbar
+  rides the banner token.
+
+  The sheet was titled Projects while opening with a Machines section and
+  a second Projects heading; the machines plugin keeps its own drawer
+  section, so the sheet reads as what it is - projects, then workspaces.
+  The sessions toolbar's Clean up and New session actions size on the
+  panel-header control token like every other banner row instead of 44px
+  form buttons.
+
+- 3fc05b8: The context sheet reads like a page: name first, controls quiet.
+
+  Project rows put the folder name on its own line with the path as a muted
+  second line; the provider chip drops under the workspace name and centres;
+  Add project loses the touch-floor square for the 36px control the rest of
+  the chrome uses, its glyph off the text flow. The title of the context
+  sheet names the context it edits instead of repeating the first section's
+  heading, and the action palette row is a bar with two-line entries.
+  Sessions and Chat get icons in the Go to sheet, where every tool row
+  already had one. Failed deferred images retry on their own when scrolled
+  back into view; the tap remains.
+
+- 675986f: Control heights follow one scale. The step between the mouse height (32px) and
+  the touch floor (44px) had no name, so 30, 34, 36, 38 and 40 all shipped as the
+  same intention — a search field 6px shorter than the one in the next dialog, a
+  model chip taller than the icon buttons beside it. `--pi-control-height-comfort`
+  names it, every control-sized declaration reads the scale, and a contract test
+  fails the suite on the next control-sized pixel literal (text metrics carry a
+  recorded exemption).
+- 695e5c1: The conversation meter no longer lets scrolled text bleed through.
+
+  The meter floated over the transcript's first visible line at 58%
+  opacity with no background, so the message text scrolling beneath it
+  showed through as clipped stray lines - read as broken rendering
+  mid-scroll. The meter now carries an opaque chat-background band and
+  only the indicator itself is translucent, giving the transcript's top
+  edge a clean boundary.
+
+- 4531acc: The cwdMissing stamp actually reaches the wire, and the heading wrap ships.
+
+  Erratum to the earlier changeset: the daemon stamped list entries, but the
+  mapper that rebuilds each row for the client dropped the field, so the
+  "folder gone" gate never fired and dead sessions still opened into the
+  daemon's load error. The stamp now crosses to the client (regression test
+  pins the wire), and the sessions heading wrap - recorded as fixed in the
+  pro-phone triage but never written - is actually in.
+
+- 2d70813: A dead session's menu no longer offers History and branches.
+
+  Browsing the tree runs /tree against the selected session, and a dead
+  session can never be selected - offering the entry traded the inert row
+  for the red banner again through the row's own menu. The menu on a dead
+  row keeps only actions that never select: mark read, archive, rename,
+  detach, stop. Delivering this also confirmed the phone cache story:
+  index.html is no-store, so a pull-to-refresh always picks up the current
+  build.
+
+- 875ccc9: A session whose folder is gone is no longer offered as if it could open.
+
+  The preferred-session choice (restore, deep link, latest-memory) could
+  still land on a dead session, which selected a row that can never load
+  and raised the same "folder no longer exists" notice on every boot - the
+  fourth occurrence. The preference now skips dead sessions on every
+  branch and falls through to the next live one, and a dead row renders as
+  a resting fact - a plain row with its "folder gone" badge - instead of a
+  button whose click does nothing.
+
+- 5722eec: A dead workspace disables its start button and tells the truth.
+
+  The workspace listing's cwdMissing stamp now reaches the sessions
+  panel: the "+ New session" button renders disabled with the reason on
+  hover, and the empty state says the workspace's folder no longer
+  exists instead of inviting the reader to start a session that can
+  never work.
+
+- 9e5fc31: A dead workspace says so before offering a new session, and says it once.
+
+  The workspace listing now stamps cwdMissing the way the session listing
+  does: a workspace whose folder is gone renders its row inert with a
+  "folder gone" badge, and "+ New session" inside it fails fast with one
+  sentence instead of creating a phantom "New session" that sits selected
+  on an empty chat while the daemon's folder error repeats in two
+  different places.
+
+- 25a5989: Opening a terminal in a workspace whose folder is gone fails fast with one
+  sentence.
+
+  The daemon validated the session start path but not the terminal spawn: a
+  pty spawned in a missing directory started a shell that chdir-failed and
+  exited code 1 instantly, leaving a dead "Shell · exited" tab and no
+  explanation. The terminal create now stats the workspace folder first and
+  answers "Workspace folder does not exist: <path>" before any process is
+  spawned.
+
+- 6b88d7a: A machine deep link survives a failed machines roster: on boot the shell no longer rewrites the URL to the local machine when the roster listing fails - it retries the listing on the same ladder the remote-restore loop uses and re-enters the boot restore once it recovers, leaving the machine, project and session in the address bar the whole time. Exhaustion leaves the failed-roster panel speaking and the link intact.
+- 6274cc4: Drawer tabs now honor the availability contract they document: a section
+  answering `false` loses its tab instead of keeping a dead one, and the drawer
+  disappears entirely when every contributed section is unavailable - so the
+  goals section on a workspace without goal records no longer shows a "Goals"
+  tab wrapping an empty body. The goals section's unread window says "Reading
+  goal records…" in the section's muted micro style instead of rendering a bare
+  "No goal records found." paragraph once the empty read lands.
+- e14f605: The daemon remembers what it accepted across a restart. Its ledger of accepted
+  prompts was in memory and said so — "a daemon restart forgets the ledger" — so a
+  browser retrying after a lost answer, which is the correct thing for it to do,
+  made the daemon run the same prompt a second time. Operations are durable rows
+  now, with four outcomes, the payload's fingerprint, and capacity that refuses
+  rather than evicting, because dropping a row to make space turns a later replay
+  back into a second execution. A restart downgrades anything that was in flight
+  to `unknown` instead of guessing, a repeat with a different payload is refused
+  as a conflict rather than answered with the first result, and a reconnecting
+  client can ask which of its operations are still open.
+- 0febd3a: An empty quick-access menu says which kind of empty it is.
+
+  "No sessions yet." was printed for four different situations: sessions still
+  loading, a failed read, a search that matched nothing, and a context path
+  narrowed to a scope that holds nothing. Only the last is about the chosen
+  scope, and it now says so and offers to widen back to every project; loading
+  and failure are named as themselves, so the menu never claims a machine is
+  empty when it merely has not been read.
+
+- f1f5e76: Review round on the workspaces extraction: the add-project dialog closes when a create succeeds and stays open on a failure reason; unknown project or workspace identities answer the 400 not-found contract instead of leaking a 500; the desktop context-switcher slots dropped a collapse toggle the core pickers never had; the plugin adopts the shell's list and surface styles through the host seam instead of stale copies; and a workspace search left running is retired when its section is hidden, matching the projects picker.
+- 39ddf71: A phone that regains signal reconnects in seconds instead of a minute. A
+  connection the network kills without a FIN stays OPEN and silent in the
+  browser, and the only thing that retired it was a 50s silence budget sampled
+  every 15s — up to 65s of stale screen after the network was already back. The
+  budget is now two daemon keepalives plus a margin (42s), sampled every 5s, the
+  handshake budget drops from 15s to 10s, and a tap probes the sockets
+  immediately: somebody touching the screen is somebody waiting.
+- 98d18e5: The files viewer turns a selection into a line-range mention.
+
+  Selecting text in a file's raw view offers a chip carrying @path:start-end
+
+  - the format the @-completion already understands; one tap inserts it at
+    the composer cursor. The chip anchors where the selection ends.
+
+- 156b47b: Final review wave for the phone shell: one tap always reaches the settings
+  list even after a machine dialog was cancelled above the sheet, the machine
+  dialog paints above the settings sheet it was opened from, edge controls
+  disappear on the same coarse-or-mobile query the shell uses (no stray strip
+  in landscape), the context bar hides its panel toggle when the panel is the
+  whole view, composer attachments and failed-send restores stay in the session
+  they belong to, "Select visible" selects only the rows on screen, selection
+  mode shows collapsed subtrees flat, and the coarse subtree toggle no longer
+  overlaps the first characters of a session name.
+- 3f67410: Require the Pi 0.85 runtime suite together, and publish releases only after the native ARM Linux and Darwin Nix builds succeed.
+- a9af31f: The git panel can add a worktree.
+
+  A "New worktree" button beside the branch name opens a dialog for the
+  branch (new or existing) and the directory, suggested beside the repository
+  as <repo>-<branch>. The plugin runs git worktree add through its own
+  provider seam, keeps git's refusal in the dialog for correction, and the
+  new checkout appears in the workspace list and the git panel without the
+  app switching to it. Workspace panels gain host.refreshAppData for exactly
+  this: report a catalog change, never edit the catalog.
+
+- 622d8ac: The phone reaches every view through a Go to sheet.
+
+  The tool tiles stacked under the session list are gone from the phone. A
+  Go to control in the bar - on the sessions page and on every chat and tool
+  page - opens the extension page: Sessions, Chat and every workspace tool by
+  name, the one on screen marked, a tap to switch. The system back gesture
+  closes it like every other layer.
+
+- 3b131bc: The palette option rules stand as siblings again, and the action menu
+  answers presses.
+
+  The Round E small-family insert consumed the `.options button` rule's
+  closing brace, collapsing the palette's selected highlight, hover,
+  disabled dimming and empty-state padding into dead nesting - keyboard
+  users could not see which option was selected. The brace is restored
+  (CSSOM-proven siblings), and the action-menu-panel items join the coarse
+  pressed-state family that every prior sweep missed because the panel
+  renders on demand.
+
+- cad9135: Layout coordination wave: boundaries you can see, one edge per column,
+  breathing room where it was missing.
+
+  Three measured audits converged on the owner's four complaints. The
+  flat theme's hairline sat below perceptibility - borders lift a visible
+  step, and the borderless touch controls answer presses now. The phone
+  header's fold button hardcoded a circle tangent to the screen top; it
+  joins the header radius token and the header gained insets. The sessions
+  heading ran two competing distribution mechanisms - one remains, evenly.
+  The nav column's three left edges collapse onto one reading edge, the
+  quick switcher's title aligns with its lists, empty states center
+  everywhere, the Files toolbar takes the touch floor, and the tasks title
+  matches its tab.
+
+- 1dde944: The re-review wave: empty states that actually center, theme cards that
+  keep their height, boundaries for the buttons on raised cards.
+
+  Two Round A claims failed pixel verification and are fixed properly: the
+  new-session empty state's `margin: auto` resolved to zero in the block
+  scroller (the state never centered), and the settings-controls height pin
+  crushed the Appearance theme cards to 32px across three breakpoints - the
+  cards are buttons, so buttons keep min-height while inputs and selects
+  stay pinned. The tasks and relays viewers fill their panels so their
+  dashed empty states center for real. The re-review's own finds: five more
+  borderless touch controls get pressed states (the family is complete per
+  the stylesheet scan), the extension card's buttons gain a boundary on the
+  raised surface they sat darker than, the panel's fold-expanded actions row
+  joins the header's reading edge, and the message-header dividers lose
+  their sub-perceptible alpha mix.
+
+- 9fd3f92: Deliver the Round C fixes to readers, and complete the pressed-state
+  family on shared list rows.
+
+  The plugin bundle served to readers predated the Round C commit by five
+  minutes, so the tasks viewer's centering fix and the goals refresh rule
+  never shipped - dist is rebuilt with both. The project, workspace and
+  machine rows in the navigation panel and context sheet take the coarse
+  pressed state through the shared list styles (session rows already had
+  it in their own shadow). The desktop rail header takes the same vertical
+  breathing as the context bar, so the two header rows across the divider
+  are symmetric again, and the queued-message header joins the solid
+  divider rule.
+
+- 654fdc1: Restore the action palette's selection highlight, hover and disabled
+  dimming, and give the action-menu-panel items their coarse pressed state.
+
+  The Round E small-family insert consumed the `.options button` rule's
+  closing brace, so every following rule collapsed into dead nesting: the
+  palette's selected highlight, hover feedback, disabled dimming, coarse
+  single-column override and empty-state padding all measured dead at the
+  reader - keyboard users could not see which option was selected. The
+  brace is restored, and the action-menu-panel items join the coarse
+  pressed-state family.
+
+- 1878036: Goals returns as a native plugin on the plugin architecture: a new
+  `pi-web-plugins/goals` contributes one quiet drawer section - status dot,
+  objective clamped to two lines, muted task progress, and a ghost refresh
+  button sized by the host touch token - fed by a `goals.list` daemon operation
+  that reads the workspace's `.pi/goals` records (session-cwd overlays included)
+  and hides itself entirely when no goal exists. The section consumes host
+  surface styles and tokens instead of shipping its own chrome, and badges the
+  remaining task count on the drawer tab.
+- d474a69: Goals ships as a plugin: the panel, its progress rules and its reads now belong to it, and the drawer and navigation panel render it as a contributed section.
+- e532db0: The goals plugin no longer ships inside PI WEB: it lives in its own repository and installs as the `@gang-of-beads/pi-web-goals` package (npm or git), the same move the theme pack made. The drawer and navigation panel keep rendering any goals section a plugin contributes; a checkout that wants goals installs the package into the agent directory.
+- 2646735: The default theme is graphite and amber, with a native light side.
+
+  The stock blue-on-black reads like a default; the owner picked graphite
+  with a single amber accent. The core theme now ships both sides of that
+  hue - the dark palette and a warm-paper light one under the system
+  prefers-color-scheme media query, so it follows the device without a
+  plugin, and Appearance keeps overriding with any theme pack as before.
+
+- c36c496: The scale guards now see through the places literals were hiding: spacing
+  inside `calc()`/`max()` and negative offsets, sizes inside a `font:` shorthand,
+  and the focus ring's width. Seventy-five hidden spacing values, forty-six font
+  shorthands and eighteen ring widths read their tokens instead. The panel-header
+  token equals the control height it contains, so the navigation rail and the
+  chat drawer draw one horizontal rule instead of 44px beside 40px; the cleanup
+  entry keeps the mouse control height; and the multi-select checkbox is
+  concentric with the subtree toggle it shares a slot with.
+- 304537e: A reload or reconnect replays committed history from the watermark instead
+  of re-fetching the page.
+
+  The transcript refresh always re-fetched its full page over the wire, even
+  when this browser had just read one moments before. The refresh now cites
+  the stream seq its cached page is current through, and the daemon's replay
+  window answers with just the frames after it - applied to the cached view,
+  no history payload. A watermark older than the replay window, a trimmed
+  tail, or any replay failure falls back to the full fetch, which restamps a
+  fresh watermark; the fallback path reads status only after the replay
+  verdict so a resync costs nothing extra.
+
+  Together with the span cap this keeps long sessions cheap on flaky links:
+  the live tail rides the seq ring, and the pages behind it stay cached.
+
+- 3a15923: The host actually hands plugins the sheet-adoption mechanism.
+
+  The PluginHostUi gained adoptSheets as a type but the runtime object never
+  implemented it, so every plugin wrapper that routed adoption through the
+  host (workspaces, goals, terminal) silently stopped adopting: the context
+  sheet rendered unstyled headings, edge-to-edge rows, and stray buttons.
+  The member is now on the object the shell hands to plugins.
+
+- 6088415: Review-lane findings from the dead-session and chrome-selection wave.
+
+  The dead-session skip lived in one producer; the archive, delete,
+  cleanup, refresh and cached-new flows could still auto-pick a dead
+  session and re-raise the notice the wave removed - all five now share
+  one isOpenableSession predicate, and a workspace reduced to only dead
+  rows deselects honestly instead of raising a banner. A dead row keeps
+  its bulk-select gutter and unread indicator like every other row. The
+  attachment error line is copyable again, the session search input
+  re-enables selection against the panel's chrome no-select rule, and the
+  composer's selection test now asserts the contenteditable clause the
+  component actually renders.
+
+- 0c5beb1: Review-lane fixes for the cleanup criterion, the recreate path and the
+  fade rule.
+
+  The missing-folder cleanup criterion combined with the idle-day cutoff
+  in the wrong order: with only the missing-folder checkbox enabled, the
+  planner archived every non-busy session in scope instead of just the
+  dead-folder ones - the guards are now independent. The cached-new
+  session recreate path was the last producer of starts that bypassed the
+  dead-workspace fail-fast; it now answers with the same one sentence.
+  The workspace stamp probes statSync().isDirectory() like the session
+  listing does, and the fade rule loses a stray declaration fragment.
+
+- cd5d3ed: The dialogs you have not opened no longer ship with first paint. Settings, the
+  quick switcher and the session tree were part of the entry bundle every visit
+  paid for; they are now separate modules, fetched once the app is past boot and
+  awaited at the moment something opens them. The entry bundle went from
+  1,021,012 to 781,205 bytes. Opening waits for its own module rather than
+  rendering an empty frame, because a dialog that appears blank claims to have
+  nothing in it, while one that appears a moment later is merely slow.
+- 5abd21b: A dialog that cannot load says so. Now that settings, the quick switcher and
+  the session tree arrive as separate modules, a tab that has outlived a deploy
+  can ask for a module the server no longer has - and the control would simply do
+  nothing, forever. The failure is reported with the reason and the remedy, and
+  it is not remembered as an answer, so the next attempt is a real attempt rather
+  than a replayed rejection.
+- 4c36c86: Machines management routes move into the machines plugin.
+
+  The bundled machines plugin now serves the whole `/api/machines` management surface (list, add, get, patch, delete, health, runtime) over its own service, while the core keeps only the proxy and fleet consumers, fed by the plugin-registered machine registry. A host that already owns a machine registry can hand it to the plugin through the new `machineRegistry` port so both sides share one source; without it the plugin builds its own from the store-path and local-runtime ports, and a host with none of those sees the plugin report unhealthy instead of half-answering. Route contributions gain `PATCH`, mounted alongside the existing verbs, and the server plugin contract ships `localRuntime`, the runtime parser, and the remote request error class so plugins parse remote runtimes themselves. A host without the machines plugin keeps the fleet honest with a local-machine fallback registry.
+
+- e9f4552: The machine palette actions belong to the machines plugin: add, refresh, open and remove now come from the plugin's contribution set, and the four selected-machine callbacks leave the runtime context in favour of optional, id-addressed `removeMachine`/`refreshMachine`/`openMachine` capabilities the host offers over its core selection engine. The published plugin contract stops transitively depending on the host runtime - the thinking-level union is mirrored locally with two-direction drift guards instead of re-exporting pi's type - and `@types/ws` ships as a real dependency because the server face's declarations reference it. The installed-package smoke knows the full declaration graph the contract now carries.
+- 08d5c77: The plugin contract gains a `machineSections` contribution point: a plugin can bring the machines section of the context navigation the way workspaces brings the project and workspace pickers. The shell reserves the `machines` slot and keeps the order, keyboard machine, collapse state and tile display; the section renders from a host-fed snapshot (roster, selection, per-machine activity flags) and acts only through host callbacks. Nothing consumes the point yet - the machines plugin arrives in its own wave.
+- 5b9d21d: The machines roster carries the same four-state load discipline as projects: `machinesLoad` moves through loading to loaded, and a failed listing keeps the previous roster on screen, sticks until a load succeeds, and feeds the retry and deep-link retention work that follows. No surface reads it yet, so nothing user-visible changes.
+- ebfb2de: The machine fleet moves into the machines plugin's browser module: the navigation section, the compact switcher and the add-machine dialog are now contributed bodies rendering from the host-fed snapshot, with the list, switcher and dialog elements living in the plugin and acting only through host callbacks. The machines slot no longer falls back to a core-rendered list - with the plugin absent the slot is honestly empty while the proxy and fleet routes degrade to the local machine - and the add dialog opens through the same dialog seam the add-project dialog uses. The shell keeps the selection engine, the section order, the keyboard machine, the collapse state and the URL machine dimension.
+- 3d5175d: The context navigation's machines section becomes a slot: the machines plugin contributes the section body, rendered from a host-fed snapshot (roster, selection, per-machine activity flags) and acting only through host callbacks. With no contribution the machine step hides from the context switcher and the navigation panel instead of rendering a core list - the proxy and fleet routes keep degrading to the local machine, and the context bar still names the selected machine.
+- 9272a2e: Three review lanes and a live 393x850 probe over the machines wave. The phone context sheet actually receives the plugin's machines section now (its host binding still passed the pre-slot props, so machine switching from the sheet was silently dead), the machine step hides from the context switcher and the navigation panel when the machines plugin is absent instead of blanking the panel body, and removing a remote machine no longer erases the local machine's alias. Machine management routes classify client errors (400) from store failures (500) and reject wrong-typed request fields instead of silently dropping them; a second plugin claiming the machine registry logs a collision warning. The machines plugin opts out of machine-specific loading - its machine dimension UI belongs to the gateway and survives switching to a remote machine - which required the plugin catalog to accept an explicit host-level declaration for dual-module plugins. Boot's machine deep-link restore yields to navigation made while the retry ladder runs, says it refused when the ladder exhausts, and the host injects the machines store path and local runtime ports the plugin's registry resolves through.
+- f7cfd8a: A guard for the mark language. Typed glyphs were reported in six separate
+  rounds and each sweep fixed the producers it happened to read, because a
+  character carries no evidence of being a mark. A glyph that is the whole
+  visible content of an element now has to come from the icon modules; a glyph
+  inside a sentence is prose and is left alone, since that is a product question.
+  The guard immediately found the producer the last sweep missed — the dictation
+  control's state glyph, dead since its icon landed — which is now gone.
+- a568139: The drawn marks actually draw. Since round twelve the icons composed their
+  shapes through a nested template, which puts them in the XHTML namespace where
+  an `<svg>` paints nothing: the send and read receipts under user messages, the
+  copy, resend and recall controls, the tool status marks and the status-bar
+  arrows have been blank boxes, while every geometric check agreed they were 14px
+  and centred. Each icon is inlined in one template now, a unit test fails if a
+  shape leaves the SVG namespace, and a probe fails if any rendered shape does.
+  The close mark is one language too: thirty-two typed × characters across ten
+  dialogs, the pickers, the sheets and six plugin surfaces now draw the same mark,
+  with contributed surfaces borrowing it through the plugin host.
+- 5ba2a8c: The chat surface stops blinking while a turn runs. Row activity marks and the
+  working chip were created and destroyed whenever their state changed — a
+  different template shape per state, and nothing at all when idle — so every
+  list row's dot and the header chip were rebuilt repeatedly while an answer
+  streamed. Measured on a real turn at 393x850: seventeen node removals in twenty
+  seconds before, six after, with the row marks and the working chip down to
+  zero. Each mark is one element that stays mounted and changes state, which is
+  also why a hidden mark is now the honest way to say "nothing to show".
+- f2f91c2: The phone's ≡ key opens the quick-access menu instead of jumping to projects.
+
+  A hamburger promises a menu that can be dismissed back to where you were.
+  Tapping it covered the screen with a Projects/Workspaces page whose only exit
+  was its close button, and picking anything there left the open session behind,
+  so getting back was the reader's problem. The key now opens the quick-access
+  menu — search, session switching, pin, new session, machines and projects,
+  and now Settings — and closing it returns to the session untouched. The bar
+  title beside it is a label again, with hold-to-rename, since the key owns the
+  menu. Sessions pinned there are grouped at the top of the sessions list, which
+  can pin and unpin from its own row menu.
+
+- c10ad7e: The quick-access menu says when its list is wider than the chosen path.
+
+  Folders load per project, so a project chosen before its folders arrive cannot
+  be filtered against anything, and the list deliberately stays unfiltered rather
+  than hiding every session including the open one. Until then the path claimed a
+  scope the list was not keeping; the menu now says the listing is provisional
+  instead of leaving the reader to spot the mismatch.
+
+- 2465097: Mermaid fences render as diagrams.
+
+  A bundled Mermaid plugin claims ```mermaid fences through the code-fence
+  renderer seam: the diagram engine is vendored with the plugin and loaded on
+  the first diagram, never at boot; each fence is parsed before it is drawn
+  in strict mode, matches the page theme, and a fence that does not parse
+  stays a plain code block. The source stays available to the copy button
+  under a drawn diagram.
+
+- 15f1a43: The message info control wears the same box as its neighbours.
+
+  On touch it was a borderless glyph beside two bordered buttons, so it read as
+  a stray mark rather than a control, and the inherited line-height plus the
+  right-aligned text pushed the ink off centre. It now draws the same 22px
+  bordered square with the icon centred, measured identical to the retry and
+  copy buttons in the same header.
+
+- 38df617: The conversation meter stays below the session drawer's border.
+
+  The meter's opaque band poked 8px above the transcript into the open
+  drawer, covering the drawer's bottom border across its span - the lane
+  finding recorded for scheduling. The band now starts at the
+  transcript's own top edge, so the drawer's border line stays visible
+  and the two boundaries do not stack.
+
+- 3c951ab: The shell's resident row shrinks to three controls: the panel toggle, the session name, and the working indicator. Quick access, machine/project/workspace switching, workspace tool views, actions, settings, and the app refresh move into the single collapsible panel (side panel on desktop, full-page panel on mobile), and the mobile tool sheet is retired. Every row control meets the 44px touch floor, the bar no longer scrolls sideways, and the bottom status bar is unchanged.
+- 620d6f2: The projects and workspaces pickers are now the bundled workspaces plugin's browser half, contributed into both switcher surfaces through a new `navSections` seam: the desktop navigation panel and the phone context sheet reserve the slots and keep the section order, keyboard machine, and collapse state, while the plugin brings the picker bodies and focuses them on the shell's behalf. The host feeds one context - the app snapshot, the label items, and the select/add/close/delete/trust actions - so the pickers never call a PI WEB API or spell a URL, and when the plugin is absent the slots render nothing. The plugin contract gains the nav section face, and the workspace trust checkbox now rides host-provided reads and writes instead of the plugin reaching for the API.
+- b8072ba: Accent-filled primary buttons take their label colour from a theme's
+  `--pi-on-accent` instead of its background colour: a background is chosen to
+  sit behind content and promised nothing about carrying a label, and the shipped
+  dark theme measured 3.74:1 on its own primary buttons. Themes that do not name
+  it keep the previous fallback, so the token is additive. Picker option rows
+  inherit the app font instead of falling back to the browser's 13.3px Arial,
+  `small` reads the type scale instead of the UA's `smaller`, row menus meet the
+  touch floor in every list (not only tiles), and the message-meta control draws
+  the app's focus ring rather than a 1px border at 1.09:1.
+- f4e5b33: The phone's lists spent 90px of chrome - a fifth of what the keyboard leaves -
+  on two stacked bars before any content: the session bar and the panel header.
+  They are one bar now. The scope, the session, and a fold control share the
+  single 45px row; refresh, settings and the action palette live behind the fold
+  and come back with a tap. Measured on the 8505 stack: 90px to 45px folded, the
+  transient actions row 53px, the chat view's own single bar unchanged.
+
+  Nothing lost its one-tap path: the "Sessions" segment keeps the quick switcher
+  where the old bar's empty state had it, the scope chip still opens the context
+  sheet, and a working session still shows its dots - the indicator moved with
+  the bar it belongs to.
+
+- fa734b7: One toolbar rhythm for the workspace panels.
+
+  The Files, Tasks and Relays panels each tuned their own toolbar
+  padding: Files on the shared 8px, Tasks and Relays on a wider 10/12px
+  override, so switching panels shifted the header rhythm. All three now
+  share the same token padding and the panel-header height, matching the
+  diagnosis item "six tool panels, three rhythms".
+
+- f671e25: One word for the state between answered and refused. A request that goes
+  unanswered is `unverifiable` everywhere now — it was `unanswered` in the message
+  lifecycle, "did not answer within 30s" in a page-level banner, and `failed` on
+  the delivery row, three names for the state a flaky link produces most often. A
+  message whose answer was lost says "No answer yet" on its own row and stays open
+  for a later answer to close, instead of claiming it was never sent; the page
+  banner speaks only for the link and stays quiet while the socket is proven live;
+  and an ambiguous settlement now carries whether the bytes ever left this
+  process, which is the fact that decides whether resending is safe.
+- 4055bea: The panel fold survives reload.
+
+  Folding the navigation or workspace panel was memory-only, so every refresh
+  handed the screen back exactly the way it was before the reader folded it -
+  the reshuffle that made reloads feel wrong. The fold is now a stored layout
+  preference (a global key: it is about the reader's screen, not about any
+  machine's or workspace's data) and is restored before the first render.
+  Storage being unavailable costs nothing but the persistence.
+
+- e6767f8: The two side panels default to the same width.
+
+  The navigation panel was a fixed 340px while the workspace panel
+  defaulted to minmax(340px, 32vw) - on a common desktop the right panel
+  opened a hundred pixels wider than the left for no reason. Both now
+  default to 340px; resizing still works within the existing limits.
+
+- a2bd6d2: The context path announces a group of choices, not a listbox it does not implement.
+
+  Its options were buttons labelled `role="option"` inside a `role="listbox"`,
+  which promises roving focus and `aria-activedescendant` that were never there,
+  so the announced widget behaved unlike the one screen readers described. The
+  level is a labelled group of toggle buttons now, each saying whether it is the
+  current choice, which is what the markup actually does.
+
+- 76ac7bd: Opening a context-path level moves focus into it, and closing brings it back.
+
+  The options were reachable only by walking the DOM, and closing a level left
+  focus on the sheet rather than on the level that was just operated. Focus now
+  follows the level the reader opened and returns to it when the level closes.
+
+- 31eb8a9: The context path names an unknown machine and offers each folder once.
+
+  A machine id no machine answered for was labelled "Machine", which reads as a
+  chosen scope rather than an unknown one; it now says so, and the level still
+  lists every machine to move to. Folders are keyed by path because the path is
+  the filter, so two folders sharing one path appeared twice with both marked
+  current; the level offers each path once.
+
+- dbe4e10: The phone's fixed bars ride low.
+
+  The panel header height, its control height, the scope button and the
+  session chip ride a 36px strip on phones (down from 44/49) - fixed
+  single-line bars that never wrap were spending the transcript's space.
+  The bars' controls stay 36px, still above the 24px button minimum; the
+  context bar's session title keeps its 44px touch minimum and list rows
+  keep theirs.
+
+- 82d1409: Phone details: centred labels, Go to from the top, hold to rename.
+
+  The + on New session no longer takes space, so the label is centred where
+  the button reads. The Go to sheet drops from the top, under the control
+  that opened it. Holding the session name in either bar opens rename; a
+  tap still opens the switcher.
+
+- 2d47538: The phone keeps its own shell in landscape, and an empty chat never blocks it
+
+  Two phone reports landed in the same place. A camera return can leave the
+  page in landscape, where the width-only breakpoint handed the phone the
+  desktop shell squeezed into its height; the navigation layout now follows
+  the coarse-or-mobile rule the rest of the app already uses, so a
+  coarse-pointer device keeps the phone shell at any size. And the system
+  back gesture out of a tool panel could land on the empty "Select or start
+  a session." page - a dead end under touch; a phone with no session
+  selected now shows the navigation panel instead, matching what boot
+  already does. Desktop keeps the empty state, where the panel is always
+  on screen.
+
+- e491ab2: Phone navigation closes its loops: the scope chip opens a Change context sheet listing machines, projects and workspaces with the current one marked, so switching project is one gesture from anywhere; the tools grid renders only on the sessions section whose workspace its cards act on; a tool view without a session regains the labeled panel toggle as its exit; an empty workspaces list says so; the session tree navigator and the auth dialog own their back gesture; and the unreplayable-thinking warning names the fork that recovers the branch.
+- 98fd0aa: The phone's session panel names its scope and its tools look designed
+
+  The workspace tool list at the bottom of the phone panel rendered as bare
+  text rows, and the header row floated gear and Actions over dead space with
+  nothing naming which project or workspace the reader was in - so picking a
+  workspace from the cross-project switcher could look like every session
+  vanished. The panel header now names the scope (project · workspace) and
+  opens the matching picker when tapped, tools render as icon cards with a
+  clear selected state, section headings drop their uppercase styling, and a
+  workspace change that leaves the phone without a session returns to the
+  picker instead of an empty chat invite. Route writes no longer attach a
+  tool parameter when no workspace is selected.
+
+- 28abf79: The phone readability and loop-closure round.
+
+  Bar labels sit on an even line box, so a title no longer reads 1px high
+  and tilted. Session rows are one line with an ellipsis at a uniform
+  height; the row menu is a bordered single-line list with short labels.
+  Message headers are one aligned row of bordered 22px controls, slightly
+  shorter. The scroll meter is a thin rail on the right edge instead of a
+  bar across the top. A transport failure earns its banner: one blip shows
+  nothing, a claim still standing after four seconds reads "retrying in
+  the background" and withdraws when the connection answers; a 5xx is
+  classified as that transport claim. The phone settings open on a single
+  title bar and its rows match the list style, with the duplicate General
+  heading gone. The hamburger opens the menu as an overlay instead of
+  navigating away from the chat, so returning needs no re-selection.
+
+- 740891e: Phone margins breathe again.
+
+  The compact tier took the reading edge down to 10px, which pressed every
+  list, toolbar and transcript against the screen glass. The edge returns
+  to 16px, matching the production build's breathing room while keeping
+  the compact row heights.
+
+- e6656e1: A picker opened from the settings dialog is visible again. The layer tokens
+  rank kinds of surface — a popover sits below a dialog — so opening the theme or
+  model picker from settings dimmed the backdrop, painted the picker underneath
+  the panel, took Escape with it and left the dialog unclickable. A picker opened
+  over a dialog now says so and paints above it, while a picker opened on its own
+  keeps the popover layer.
+
+  Also: the rail header and the resident context bar share one height (45px, not
+  45 against 53), the message row's touch expansion clears the info control it
+  sits beside instead of claiming 2px of it, the context switcher's chip and add
+  control share one font, and the theme preview's nested corners are derived from
+  the corner and padding around them so the arcs stay parallel.
+
+- 00ef738: The Pinned rows are a named group, and the menu footer stops stacking flush.
+
+  Pinned sessions are lifted out of their position in the list, so the heading
+  now labels a real group rather than floating above unrelated rows. The
+  quick-access menu's footer lays its entries out with the shared gap instead
+  of pressing two full-width buttons against each other.
+
+- e532401: Pinned sessions belong to the machine they were pinned on.
+
+  Pins were stored as one flat list of session ids with no machine key, so a
+  recycled id from another machine could arrive already pinned, and the list
+  grew without bound. The store is keyed by machine now, the visible set is
+  re-read whenever the selected machine changes, and an existing flat list is
+  read as the local machine's pins and preserved on the next write.
+
+- 1f923ca: Plugin dialogs can request the `fullscreen` presentation: the host renders
+  them edge-to-edge with no card chrome, so content authored against a large
+  canvas survives direct load and refresh instead of being squeezed into the
+  centered overlay card. Default stays `overlay`.
+- 852989b: The plugin contract wave: a browser plugin can ask the host to present a dialog — the shell owns the shared modal surface, the focus trap, Escape and the back gesture, the plugin owns only its content — via `ui.showDialog`; the preview response policy, preview headers, workspace route errors, and the workspace context resolver move to the server-shared layer where the machines proxy and core routes already meet, so the workspace extraction cannot fork the protocol; and the published plugin API declarations ship the same shape.
+- f718dad: The bundled themes and terminal plugins load again, and dictation asks the right endpoint: a reserved id kept the theme pack from ever registering, browser plugin entries now bundle what they import, and voice calls its own daemon operation.
+- 4a7be0d: A custom message the app does not itself understand now renders as a card a plugin can draw, and as an honest "unrecognized message" card when no plugin claims it, instead of falling through to its raw model-facing text.
+- aa006ed: Third polish wave. A drawer tab's count is drawn as a badge instead of a bare
+  "(3)" wearing the label's own size and colour, the appearance panel marks the
+  theme actually on screen with a dot rather than an 11px "· in use" suffix on a
+  card drawn like every unrelated one, and the composer toolbar keeps one control
+  height instead of a 40px model chip beside 36px icon buttons.
+- 4f79d90: Second polish wave across the overlay family. Quick switcher tiles reserve the
+  menu button's width once instead of twice, so a session name keeps the room a
+  140px tile has and the title and subtitle end at the same edge; the menu button
+  is one rule rather than a dead 40x52 base under a 32px override, and the
+  session state mark moved out from under it, where tapping the state opened the
+  menu. Project and workspace tiles put the activity dot on the menu button's
+  centre line (it sat 10px above it). The machine dialog and the machine row menu
+  get the coarse-pointer floor their siblings already had, the add-project footer
+  keys its floor to pointer type rather than viewport width, and the model and
+  command pickers draw a focus ring on the search field and the option list
+  again. The refresh control matches the header controls it sits beside instead
+  of standing 8px shorter.
+- b22858f: A session opens from what was already read. Hovering or focusing a session row
+  is the earliest honest signal that it is about to be opened, so its first page
+  is read then and stored where opening looks for it. Measured on the 8505 stack:
+  after a hover, the click paints its first messages in 11ms. The prefetch costs
+  one read the click would have made anyway, failures are dropped rather than
+  raising an error for something nobody asked for yet, and on a touch screen
+  nothing changes because there is no hover to read.
+- 67955c3: The "Pro (native)" theme card actually selects the native look.
+
+  The appearance panel's click handler routed every card through the plugin
+  theme registry - but the native pro look is a sentinel, not a plugin
+  theme, so the lookup silently returned and the card did nothing. The
+  sentinel is now handled before the registry lookup: picking the card
+  switches to the core's own look (and persists), like every other card.
+
+- fc96aac: The app's own look is the flat mono TUI - themes become departures from it.
+
+  Without a theme extension the app now renders the pro shape: the
+  monospace stack as the UI face, square corners on the published radius
+  scale, and no elevation - the shadow colours go transparent so every
+  box-shadow collapses without touching the rules that consume them. The
+  44px coarse touch floor stands. The theme contract gains optional
+  shape/typography stops (fonts and the radius scale) so a soft theme can
+  pin the rounded sans look it was designed with; a theme that omits them
+  inherits the pro shape. The default preference is the native look - the
+  appearance panel lists "Pro (native)" first even when theme extensions
+  are installed, and selecting it clears every theme token back to the
+  core's own defaults.
+
+- fa0cde3: Overlays separate again, the sessions heading wraps instead of crushing,
+  and same-category controls stopped changing size between surfaces.
+
+  The pro redesign flattened the shadow colours and left the overlay at a
+  50% black that is invisible over the dark base - palettes, dialogs and row
+  menus read as text printed over text, which is the phone "pages piled up"
+  report. The overlay deepened; the sessions heading wraps on coarse
+  pointers instead of letting the unread badge crush the title under the
+  checkbox; the context chips are one size per pointer instead of one size
+  per container; the settings form controls are height-pinned (the select
+  out-grew the input beside it); the quick switcher search reads at the
+  control size; the compact header buttons and panel edge handle join the
+  pro radius scale; the conversation meter slides under the first card's
+  header instead of over it; the scope chip dedupes a workspace named after
+  its project; Escape closes the project row menu; and the Tasks panel title
+  matches its tab.
+
+- 2216843: Server-plugin lifecycle reconciliation is now process-role aware. The web
+  process reports its own runtime snapshot alongside the daemon's, so a plugin
+  addressed to the web (`runs: "web"` or `"both"`) is judged by the snapshot
+  of the process that actually runs it: a web-activated plugin no longer
+  shows as missing while the session daemon is unreachable, and a `both`
+  plugin's browser module only publishes when both processes hold the current
+  revision, with a restart required when either process has drifted. The
+  daemon-to-web handshake now forwards the `runs` field, browser-asset cache
+  freshness follows the web view, a web-only record of a since-removed plugin
+  renders as undiscovered instead of vanishing, and the route mount uses the
+  shared request-cancellation helper so a client that disconnects between
+  request acceptance and handler start aborts the plugin handler too.
+- 0d584c2: Quiet the phone surfaces: composer buttons, message action icons, tile menu
+  buttons, quick switcher chips, and extension dialog options lose their
+  outlines and carry state in tints instead - visible borders on the chat
+  surface drop from 136 to 12 and boot from 17 to 4 - while hover, focus, and
+  press states keep every affordance and the touch floors stay enforced.
+- e47485a: Every corner in the client now comes from the published radius scale. Literal
+  radii had beaten the tokens — 8px appeared 44 times and the off-scale values 5,
+  7, 10 and 14 together appeared more often than `var(--pi-radius-lg)` was
+  referenced at all, so four curvatures could stack inside one dialog and moving
+  a token moved only half the app's corners. A contract test keeps the line:
+  a client surface that declares a pixel radius fails the suite.
+- da1479a: One reading edge. Lists, sheets and panels answered "how far from the screen
+  does text start" five different ways - 6, 10, 12, 15 and 16px coexisted on one
+  phone screen - because the spacing scale names arithmetic steps and nothing
+  named the role. A role token now does: --pi-reading-edge, 16px on desktop and
+  10px on the phone, derived from the scale at each breakpoint, and the shared
+  list row and the tools grid use it. The phone measures unchanged; the desktop
+  lists sit at the same edge the settings panels already had. A contract test
+  keeps the token published at both breakpoints and catches the next list that
+  answers the question privately again.
+- f6b41d3: Reads for the same path share one round trip while it is unsettled. Several
+  surfaces ask for the same thing at the same moment — a session switch, the
+  panel behind it, a reconnect — and each ask was its own request, which costs
+  latency on exactly the interaction being watched. Writes are never shared: two
+  sends that look identical are two messages, and what makes a repeat safe lives
+  in the daemon's operation ledger, not in a client-side map. A caller that
+  brought its own abort signal keeps its own request, so one caller's cancellation
+  cannot settle another's read, and a shared entry is dropped the moment it
+  settles — it is a shared flight, not a cache.
+- 5fddd0e: A reconnect asks rather than resends. Messages whose answer the link lost stay
+  open on their own row; when the socket comes back the browser hands the daemon
+  the identities it is still holding and takes the answer, so a message that was
+  accepted settles and one the daemon has no row for stays honestly unknown
+  instead of being resent blind or being reported as gone. Identities the daemon
+  did not answer for are absent from the reply, and the client keeps them open —
+  "we have no row" and "it did not happen" are different facts, and only the
+  second would justify telling the reader the message failed.
+- 6f45aac: A remembered session whose folder is gone is deselected at the first
+  listing, not opened into a red banner.
+
+  Boot restore replays the last selection from stored state, and that stored
+  shape carries no folder stamp - so a session whose working directory was
+  deleted after the last visit sailed past the row gate and opened into the
+  full daemon error as a banner. The first workspace listing is where the
+  app learns the folder is gone; the selection now steps down to that fact
+  with a notice, and the transcript-failed state stays only for the race
+  where the folder disappears between listing and click.
+
+- 925ae00: Round eight, lane C. A dialog that names no first control takes focus on its
+  own shell, which wore the platform's blue ring beside the app's accent one;
+  measured blue 1px before, accent 2px now. The model picker's catalogue rows
+  state their own type and touch floor, so switching scope no longer resizes
+  every row, and the add-project suggestions take their touch floor from the
+  pointer rather than the viewport — the same accident its own footer comment
+  records. Row-list activity dots share a centre line with the row menu, as the
+  tile variant already did, and the quick switcher's state mark sits on its
+  subtitle's line. Offsets join the spacing guard: a badge placed with `top: 6px`
+  is spacing spelled as a position, and thirty-three such literals are now steps.
+- 273f82b: Round eight, lanes A and B. Stacked chrome rows share one reading edge on a
+  phone: the session name, the compact header and the conversation below them all
+  started at a different distance from the screen edge (10, 8 and 6px), and now
+  read from one `--pi-chrome-inset`. The context sheet keeps its title and close
+  in place while its three lists scroll, and drops a heading rule that could not
+  reach the headings it named. The quick switcher's close joins the two-step
+  sizing its sibling dialogs use, the panel edge control reads the touch height
+  instead of an unnamed 48px, and the compact row's corner language applies to the
+  control that renders itself into it. Search hints and child markers step off
+  `--pi-dim`, and the last two checkbox rows that positioned a 24px box with a
+  stale top margin centre it like the rest.
+- ed0cd40: The convergence lanes audited the previous round's fixes and caught two that
+  were never landed. The self-update banner's coarse 44px floor is now really
+  above the media block that raises it, and the pointer-query guard really
+  checks the first rule of every media block - proven by turning the broken
+  order red before turning it green.
+
+  The phone header no longer mounts a second, visible machine list next to the
+  panel's own; the state rail's unread row class no longer paints working rows
+  purple over a blue dot, and the background state plus the machine unread dot
+  joined the same purple vocabulary. Error reporting now always travels with
+  its retirement mark and machine scope - a stale scope could let one machine's
+  success erase another's complaint, and self-update failures could inherit a
+  stranger's expiry. The interrupted-runs "status unknown" banner only
+  announces onto a quiet screen and retracts itself when the read recovers.
+  The quick switcher's row menu is fixed and viewport-constrained like every
+  other row menu, and the session tree's disclosure and close buttons got
+  their coarse touch floors.
+
+- b3ae9c8: Round eleven, lane C. The context bar's title had a dead declaration, so the two
+  stacked chrome rows on a phone started their text 4px apart; the transcript's
+  "showing messages" line and two settings hints inherited sizes that are not on
+  the type scale; three picker close controls and a plugin refresh button had no
+  font at all and fell back to the browser's; the row menu's ellipsis drew a third
+  larger in one list than the other; and workspace-panel buttons and file-tree
+  rows sat below the control floor. The message info mark is drawn rather than
+  typed, so it matches the icons beside it instead of taking whatever font
+  resolved the character. The box-model guard also reads a floor and a padding
+  declared for the same selector in two separate rules, which is how the
+  add-project footer rendered 50px for a 32px token.
+- 964ada3: Round eleven, lanes A and B. The activity dock's working colours were written
+  for a class the renderer never emits, so a session that is working looked like
+  one that had just started; the rule now names the state it styles. The message
+  header shares the left edge of the body it titles, the empty screens keep the
+  rhythm they declare instead of the browser's paragraph margins, and the two
+  stacked chrome bars on a phone draw the same rule weight.
+
+  In the dialogs: the add-project footer floors on a content box and rendered 50px
+  for a 32px token, three picker search fields take one height instead of the
+  browser's, and the quick switcher reserves its menu column only on rows that
+  have a menu. Picking the theme you are already running keeps its selection
+  border, the `main` chip is out of the two-line clamp that was discarding it, and
+  the theme card's sentence has room to be read. Jump-to-bottom, the settings back
+  verb and the pinned mark are drawn rather than typed.
+
+- 5b63f49: Round 15 of the convergence review ran over the architecture wave and found
+  nine true findings; all are fixed.
+
+  The two that mattered most were lies the screen told. An idle session wore
+  three bouncing working dots forever, because the persistent mark's own display
+  rule beat the hidden attribute it was toggled with - the test asserted the
+  attribute, the screen showed the mark. And every idle row in the machine,
+  project and workspace lists carried an unread-class marker inside a hidden
+  wrapper, which the state rail's :has() selector could still see, lighting the
+  whole list's rail as if everything were unread. Idle now means idle in the
+  computed style, and the unread class belongs to rows that are actually unread.
+
+  The session tree dialog could freeze the page: the load call sat in the render
+  path, and once the module had settled every render scheduled another render
+  through a microtask, starving the macro task that paints. The load now fires
+  when the dialog first appears, outside render.
+
+  The rest: the fold button's dead padding override replaced with a real box,
+  the tile path line's assumed line height pinned, the collapsed composer
+  aligned to the conversation column instead of a private inset, the prefetch
+  write keyed to the machine it asked rather than the one selected at merge
+  time, a failed prefetch forgotten so the next intent retries, and a
+  load-failure banner that retires itself when a retry succeeds.
+
+- 0e40b77: Follow-ups from the round-15 verification lane. The load-failure banner now
+  really retires itself when a retry succeeds: the first version of that fix put
+  the retirement behind a branch that could never run, because a settled load
+  and an absent entry were indistinguishable at the call site - the verification
+  lane caught the dead branch behind a published claim. Also: the fold button's
+  padding override now wins instead of sitting dead in front of the rule it was
+  meant to beat, the module docstring says what the open path actually does,
+  and the companion [hidden] rules are pinned by tests so the attribute-only
+  blind spot cannot come back quietly.
+- d6f5972: Round five, lane C. The context sheet let each contributed list shrink inside a
+  surface that already scrolls, so a second machine rendered as an 8.9px sliver
+  that reads as a rendering artefact rather than a row; the lists keep their
+  height and the sheet does the scrolling. That sheet also printed "Machines"
+  twice, in two sizes, because it drew a heading above a section that renders its
+  own. The message meta control was dimmed to 1.37:1 at rest — the round-four
+  readability fix had only reached the touch branch — and the chat drawer's body
+  had no gutter, so a plugin's status dot sat against x=0 and its refresh button
+  against the screen edge. The model picker's catalog rows, the quick switcher's
+  row menu and the navigation panel's controls state their own type instead of
+  the browser's, and the settings close control and the follow-the-system
+  checkbox align with the rows they belong to.
+- c7fa10d: Round five was almost entirely "the previous sweep did not reach here", so the
+  sweeps are now guarded: font weights and the disabled-state opacity fail the
+  suite as literals, the way radii, sizes, spacing, dots and token references
+  already do. The action palette and auth dialog state their own type instead of
+  the browser's, the auth dialog gets the coarse floor every sibling dialog has,
+  settings checkboxes read `--pi-checkbox-size` rather than shipping 14, 16 and
+  18px targets, and close controls in the quick switcher, auth dialog and context
+  sheet follow the same two-step sizing as the rest of the family. The chat
+  drawer's collapse control reads the panel-header control height its left-rail
+  peer uses, message-card headers dock at the same offset as their siblings, the
+  workspace view rows derive their height, the tile menu derives its inset, and
+  the drawer no longer draws a second 1px rule under the first.
+- 8e131a1: Round four. The activity dock's asking and error states named three tokens that
+  do not exist, so a waiting dock lost its amber wash and an errored one its red;
+  they use the palette's real ones. A desktop panel header refused to shrink, so
+  an unnamed session — whose title falls back to its whole first message — pushed
+  the settings and Actions buttons out of the panel; the title truncates now.
+  Update and error banners meet the touch floor their column neighbours already
+  had, the multi-select checkbox no longer overlaps the name it sits beside, and
+  one count badge, one close glyph, one header icon size and one banner edge are
+  used where three each had appeared. Focus-ring offsets, mono font stacks and
+  checkbox sizes read tokens instead of literals.
+- d1c2e9b: The phone settings detail header aligns its close control with the row a
+  reader arrives on instead of floating between a two-line heading, and the quick
+  switcher marks a main workspace with a tag rather than the prose "· main",
+  which a two-line clamp cut off exactly when the name was long enough to need
+  it.
+- 6a5221a: Round fourteen, lanes A and B. The last typed marks in the app are drawn: the
+  rename confirm and cancel actions, the code-block copy control, the workspace
+  path copy, the goals refresh, the machine switcher's chevron and the git file
+  twisties all take a real icon instead of whichever glyph a font supplied. The
+  boot empty state gets a hairline dashed frame with breathing room rather than
+  the browser's 3px default drawn tight against its button, the "starting
+  session" row's frame is visible at all, the shared modal shell reads the named
+  elevation instead of inventing a fourth, the status bar shares the chat gutter,
+  and the compact header states one size for one verb. The 8505 stack script also
+  stops reporting failure when it is serving a healthy stack.
+- e67c05e: Round fourteen tail. The quick switcher's machine tabs draw the strip rule they
+  were shaped to merge into — the `border-bottom: 0` tab idiom needs a baseline,
+  and without one the tabs were three-sided boxes over nothing — and the pinned
+  mark joins the icon scale. The extension dialog card drops an empty media block
+  and a comment describing a rule that no longer exists. The audit and touch
+  probes now separate "the stack is not up yet" from "the UI is broken": six
+  bounded retries, then a named failure, verified by running them against a
+  stopped stack.
+- 3e45b97: Round nine, lane A. Control floors get a box model: `min-height` plus padding
+  on a content box added the padding on top of the token, so the boot screen's
+  only primary button declared 44px and drew 62. Eighteen rules are corrected and
+  the box-model guard now reads this second shape as well as the first. The
+  resident bar keeps its height while a session works, the context sheet's sticky
+  header spans the sheet instead of letting lists slide through 8px gaps beside
+  it and no longer names a token that was deleted, and the phone drawer's sticky
+  header keeps the drawer's own tint. Lists spell "this section opens" with the
+  same chevron the chrome uses rather than text arrows.
+- 0acbe36: Round nine, lane B. Hover and the keyboard cursor stop painting the same fill
+  in the model picker, the command picker and the auth dialog, so a click target
+  and the row Enter would take are told apart the way the quick switcher already
+  tells them apart. The Appearance and Machines settings panels use the frame's
+  heading instead of their own, which puts their titles at the same height and in
+  the same treatment as the other five. A rename row keeps the inset of the row it
+  replaces, so text does not shift under the caret; the ask-user divider is
+  centred in its gap and the custom answer lines up with the option copy above it;
+  the extension dialog's controls are touch targets wherever the card is shown,
+  and its input stretches with the card instead of guessing its own width. Two
+  state lines that were sized by the browser now read from the type scale.
+- d167533: Round nine, lane C. A `(pointer: coarse)` floor written before a base rule with
+  the same selector loses to it — a media query carries no extra specificity — so
+  row menu items and the rename controls shipped mouse sizes on a phone (36px
+  measured against a declared 44). Those three rules are reordered and a guard now
+  fails when a raised selector is redeclared afterwards. The conversation meter's
+  cursor keeps the halo a second shadow declaration had been erasing, settings
+  fields land on the control scale instead of on whatever their padding produced,
+  the theme preview draws the height it declares with its dots centred, and the
+  machine list states its status as the mark-and-word the switcher uses, with
+  offline no longer painted like online. Focus goes back to the app's ring in the
+  two settings panels that had replaced it with a 1px shadow.
+- 1c2013f: The banner retirement model's seams closed.
+
+  The session tree dialog's stylesheet was structurally broken - an unclosed
+  media block silenced every rule after it on desktop. The quick switcher's
+  row menu now actually receives its computed fixed placement (the previous
+  round shipped it as a literal attribute), including on long-press. The last
+  bare error producers go through the reporting seam, and every clear resets
+  the retirement mark and machine scope together, so no banner can inherit a
+  stranger's lifetime. A gateway 502 whose body is a transport claim heals
+  again instead of sitting as raw ECONNREFUSED; a timeout names the machine it
+  failed against; any server response - not only a 200 - counts as proof the
+  link is up. The reader's dismissal can no longer be outvoted by the banner's
+  minimum-visibility window, and the interrupted-runs banner retracts on
+  recovery by flag rather than by matching its own wording.
+
+- bb9f865: Round seven. Dialog and picker close controls are border-box, so the glyph is
+  centred in the box the token sizes rather than in an inner box the border pushed
+  off-centre. The chat drawer header keeps its padding inside the control it holds
+  (52px before, matching the 45px the rail and resident bar share), the resident
+  bar draws the same rule weight as the header beside it, and its toggle icon is
+  16px like every other header icon. The orphan marker carries information at a
+  readable strength instead of `--pi-dim` at 0.65 opacity (~2.3:1), the
+  bulk-selection toolbar meets the mouse control height its neighbours have, and
+  the settings list, the add-project suggestions and the quick switcher's rename
+  actions state their own type and height rather than the browser's.
+- 646a0d5: Round 17 of the convergence review: the mechanical findings fixed.
+
+  The self-update banner's coarse 44px floor was dead - its base rule sat after
+  the media block meant to raise it - and the pointer-query guard that should
+  have caught it never checked the first rule of any media block. Both fixed;
+  the guard's blind spot was the reason the dead floor reached CI.
+
+  The reconnect banner no longer pastes itself into itself once per retry: its
+  detail is what the health read reported, never the banner's own previous
+  text. The error producers in the machine and session controllers now travel
+  with their retired-by mark, so a banner's lifetime is decided by the error
+  that set it rather than by whatever was cleared before it. Stale docstrings
+  and a dangling triage pointer repaired.
+
+  The banner retirement model, the rail's colour vocabulary, and three smaller
+  product questions are the owner's; they are recorded with evidence in the
+  round-17 triage page.
+
+- a0c27fc: Round six, lane A. The phone panel header measured 53px where the desktop rail
+  and the resident bar measure 45; it reads the same panel-header height they do.
+  Informational text moves off `--pi-dim` (4.12:1 on the page) onto `--pi-muted`
+  (6.15:1): the status readout, the "showing messages X–Y of Z" boundary, the
+  delivery mark and the session search placeholder are things a reader needs, not
+  decoration. The load-earlier control and the empty-transcript button meet the
+  control heights their neighbours already have, the chat drawer's header shares
+  its body's gutter so the tab strip lines up with the cards below it, and the
+  message meta control is 24px square like the actions beside it.
+- cf36579: Round six, lane B. The quick switcher's interrupted ring drew at 12px because
+  it added a 2px border to an 8px content box, which also pulled its centre 2px
+  away from the corner every other state mark shares; it is border-box like the
+  house rings. The ask-user card's header starts on the same column as the
+  question, options and buttons beneath it instead of 6px to their left, and its
+  custom-answer block hangs from a derived indent rather than a 32px literal that
+  assumed a browser-sized radio. Native tick boxes in the ask-user card and the
+  model picker's catalog take the checkbox token instead of rendering at the user
+  agent's 13px, and the machine row menu is a published control size on a mouse
+  rather than 26px.
+- 14b42f7: Round six, lane C. The tile activity dot was derived with a hard-coded 5px
+  radius from when the dot was 10px, so it sat 1px above the menu button it is
+  supposed to share a centre line with; it derives from the dot token now
+  (measured 1px, now 0). The message info control gets the same touch reach its
+  siblings have instead of standing as a 24px target beside 44px ones, and the
+  error banner's dismiss is a square control rather than a ~19px strip. The
+  follow-the-system checkbox loses the 2px margin left behind by an alignment
+  change, the add-project dialog's footer buttons use the app font like every
+  sibling dialog, the child-row indent reads the gutter formula, and a block of
+  list rules that had been copied into the composer — where nothing matches them
+  — is gone.
+- 0e40b77: Round 16 of the convergence review: twelve true findings, ten fixed.
+
+  The state rail - the one place the design spends colour on identity - never
+  painted: its colour rules were written against a borderless element, its
+  :has() specificity silently outranked every row-state rule, and the session
+  list's state vocabulary was never named to it. The rail now colours the row,
+  holds class specificity so selected and archived win over work states, and
+  speaks both vocabularies.
+
+  Also: bulk-selected rows finally look selected (their one style was written
+  against the same borderless element); a failure banner can no longer be erased
+  by an unrelated successful request, because the retired-by half travels with
+  the text again; a settings route restored from the URL actually loads its
+  panel; the workspace menu's copy button meets the coarse floor; the machines
+  list retires its search query when hidden like its sibling lists; and the
+  box-model guard's second shape - which had been silently passing because it
+  pushed nothing - now reports, and caught two real offenders on its first
+  talkative run.
+
+- 24fe403: Round ten, lane A. One disclosure verb, one glyph: the machine, project,
+  workspace, file, git and session-tree lists all borrow the shell's chevron
+  through the plugin host instead of spelling "this section opens" with a text
+  arrow, and the chevron sits on the text baseline. The self-update banner can
+  draw its working mark again — the three dots had no size rule in that shadow
+  root at all. The rail header reads the shared chrome inset like every other
+  chrome row, the phone drawer's sticky header paints the drawer's own tint
+  rather than a near-match, and a bulk-selected row uses the one selection
+  channel instead of stacking a second 3px edge on it.
+- 2e5beb4: Round ten, lane B. List rows read one `--pi-row-min-height` instead of drifting
+  to 52, 56, 58 and 60px for the same shape, and dialog close controls are one
+  size rather than two families of five. A machine that is offline reads the same
+  way in all three surfaces that show it — mark and word, with offline distinct
+  from online — instead of grey in one place, red in another and colour-only text
+  in a third. The quick switcher's state mark actually sits on the centre line its
+  comment claims, the row-list comment now describes the geometry it really has,
+  the extension dialog's answer input takes the touch floor its buttons have, and
+  a settings textarea derives its height from the control scale.
+- 843e103: Round ten, lane C. Secondary copy on a selected row steps up to the secondary
+  text colour: the selection tint is lighter than the surface the muted colour was
+  toned against, and it measured 4.42:1 there — 7.27:1 now, without touching a
+  theme's palette, which is the owner's to change. Marks are drawn rather than
+  typed in the last places that typed them: the dictation control gets the icon
+  its plugin already exported, prompt history and bulk selection get real icons
+  instead of 8px text glyphs, and the settings drill-in reads the shared chevron.
+  The compact header's Actions pill no longer lets its label overflow the border
+  when a scope name is long, row overflow menus share one ground and one corner,
+  the context sheet's title outranks an inner list's sticky search, and the
+  extension dialog is one card colour instead of two.
+- 84038d6: Round thirteen, lane C. The dialog hint fix from the previous commit was a
+  no-op — the rule already ended in `white-space: nowrap`, which wins — so the
+  sentence that states a consequence is only now allowed to wrap. Add-machine
+  fields rendered at 12px in the UI face rather than the 16px monospace they
+  declare, because a bare `input` selector loses to the host stylesheet appended
+  after it. Tool cards and delivery receipts draw their marks instead of typing
+  them, so the double tick is a drawn glyph rather than two characters squeezed
+  with negative letter-spacing. The composer's trigger hint and collapsed draft
+  step off `--pi-dim`, the two row overflow menus paint alike, dead status-bar
+  rules are gone, and the chat gutter's base value reads from the spacing scale.
+- 62c3345: Round thirteen, lanes A and B. The activity dock's state mark is drawn at full
+  strength: an opacity layer left idle, asking and error between 2.18:1 and
+  2.42:1 — under the 3:1 floor for a graphic — while working and background were
+  exempt, so the two states that most need attention were the faintest. List rows
+  read the row-height token that was written for them, instead of only machines
+  and tiles reading it and neighbouring lists sitting 9px shorter in the same
+  sheet. The extension dialog's buttons are the height they declare rather than
+  16px taller, and its two no-op copies of that floor are gone. A dialog hint
+  keeps its sentence instead of losing the consequence to an ellipsis inherited
+  from list chrome, the cleanup dialog's day field rises with the buttons beside
+  it, the rail's two header icon buttons are the same width, and the phone
+  gutters read from the spacing scale.
+- 4569152: The restore ladders read their own signal, and machine-specific failures
+  retire with their machine.
+
+  Round 29 removed the load-start banner clear, which silently broke the
+  deep-link restore ladders: they read a leftover banner from any machine as
+  "the listing still fails", burned their retries, and announced "X is still
+  unavailable." over a machine that answered every probe. The ladders now
+  probe the load's own status, the local ladder's wording guard covers every
+  attempt, and a reader-retired failure keeps the machine it belongs to - so
+  deleting that machine retires the claim, as the model always said. The
+  interrupted-run marker set is stored per machine (adopting one machine's
+  read no longer evicts another's), the terminal soft keys and the machine
+  dialog keep their declared type and height against the adopted host sheet,
+  and the tree navigator's coarse disclosure track reserves what it draws.
+
+- c16a09d: The self-update strip can be dismissed by the world again, and machine
+  failures keep their name through composition.
+
+  Tapping "Update now" set an applying strip that nothing ever cleared - if
+  the restart landed on the same version, a blinking strip occupied the top
+  of the screen forever, the one banner in the app without an exit. The
+  socket reconnecting to the same page is now its end, and that reconnect
+  also re-runs the client-freshness probe - the highest-probability path to
+  a stale bundle was the one path that never checked, because the reader
+  never left the tab. Hand-composed failure notices (bulk archive, bulk
+  delete, failed session start, workspace removal) keep the machine stamp
+  round 30 gave transport failures, so deleting the machine retires them,
+  and a late session-start answer can no longer drag machine A's state into
+  machine B's view.
+
+- 86173ac: The last round-three drift: the resident bar's session name truncates with an
+  ellipsis instead of being cut mid-glyph, the idle activity dock is quiet
+  through colour rather than a 0.75 opacity layer that put its label at 3.96:1,
+  the clear-queue pill meets the mouse control height, the settings and cleanup
+  dialogs close with the same control, and weights and elevations read the
+  `--pi-weight-*` and `--pi-elevation-*` scales — including the emphatic 650 step
+  those surfaces had been spelling by hand.
+- 64045ac: Round-three lane C fixes. A failed command receipt referenced three tokens that
+  do not exist, so it lost the danger colour _and_ the fill its pending sibling
+  has; the add-project dialog's hints were clamped to one nowrap line by the host
+  sheet, which pushed the project-trust link past the dialog edge where it was
+  clipped away entirely; and the settings back control kept the button surface as
+  a white block above the heading. Picker close controls are sized on both
+  pointer types instead of inheriting the user agent's 24x25, option descriptions
+  read the type scale, the theme preview dot joins the dot scale, the tile
+  activity dot sits in the slot reserved for it, the multi-select checkbox is
+  concentric with the toggle on touch as well, and the global error banner's
+  dismiss meets the control height. Control sizes hidden inside custom properties
+  are now caught by the same guard as the controls themselves.
+- 2fc98ec: Round twelve. The transcript and the status bar draw their marks from one
+  module instead of typing ⧉ ↻ ↩ ✓ ✖ ▶ ↑ ↓, so a message header no longer carries
+  two graphic languages at once and each mark is the size it was given rather
+  than the size a font chose. The bulk-selection tick, which round eleven drew but
+  never sized, is 16px again instead of filling its whole control. Status words in
+  the two transcript cards carry their hue on a mark and their text in the body
+  colour — success, warning and accent all measure under 4.5:1 at 11px on the
+  raised card, and a palette is the owner's to change. The context sheet's sticky
+  header sits on the sheet's own ground, the cleanup dialog's coarse floor is no
+  longer shadowed by a more specific rule, the add-machine dialog's buttons use
+  the app font, single-line dialog fields converge on one height, and the rename
+  field is 16px so iOS stops zooming when it takes focus.
+- 6c32b43: The error scope model's two ends are wired together.
+
+  A web-owned success no longer vouches for any machine's link: the
+  "daemon unavailable" banner survives harmless requests like theme switches,
+  and a remote machine's timeout claim is retired only by that machine's own
+  answers. The controller seam carries the machine scope it computes instead of
+  stamping over it, retirement follows the evidence in an error's message
+  rather than its exception class, and the last bare error writes - including
+  a queued-send warning that could self-destruct before the reader obeyed it -
+  go through the seam. The quick switcher's row menu really receives its fixed
+  placement this time, re-proven against the quick switcher itself; the unread
+  ring's rail entry and a sending entry align the rail table with the dots it
+  follows; the status flag wire contract is exported from the plugin API so
+  renaming a flag breaks the build instead of blanking every work mark; and the
+  interrupted-runs unknown banner announces per machine and retracts by flag.
+
+- 2851f3f: Late failures stay where they belong, and two waves of touch floors
+  actually fire.
+
+  Five session-action catches (prompt, shell, command, both archive paths)
+  painted a late failure's banner onto whatever machine or workspace the
+  reader had since switched to - a 30-second timeout or a gateway 4xx
+  arriving after a switch replayed machine A's complaint over machine B, the
+  exact replay the banner design sentence forbids. They now carry the same
+  selection guard their transcript writes always had. Two stylesheet
+  repairs: the relays panel's coarse 44px floors from round 25 never fired -
+  their insertion swallowed a closing brace and nested the media block
+  inside the active-tab rule, matching no element - and the updates panel's
+  floors from round 27 lost the specificity tie against the adopted host
+  sheet, so both now stand alone and out-rank. Also: the interrupted-runs
+  retraction consumes the read plan's own decision, a successful upload
+  vouches for the machine it touched, and the box-model guard's border
+  exemption actually exempts.
+
+- 0ae86be: Scope switches keep reader-retired failures visible, and machine banners
+  carry the machine's name.
+
+  Leaving a workspace or machine no longer silently eats the banner recording
+  a failure the reader acted on - the claim survives the switch and is still
+  there on return, which is the notification. Gateway health and runtime
+  failures now compose the machine's name - "lab-mac is unavailable;
+  reconnecting… connect ECONNREFUSED…" - the same wording the deep-link path
+  already writes, instead of an anonymous "Reconnecting to the machine…" that
+  erased the one fact the reader could not see anywhere else.
+
+- 3ec25d8: The recovery the banner promised can now deliver, and the plugin panels get
+  the floors the shell always gave.
+
+  The "interrupted-run status is unknown" banner told the reader to reconnect
+  to resolve it, but the empty-record guard ran before the retraction - and
+  after the boot read, emptiness is the only answer a recovery can bring, so
+  the promise was undeliverable by construction. Any successful read now
+  clears the unknown state. The unread ring stops wearing the running colour
+  (a machine row that is unread and working used to be indistinguishable from
+  one that is just working), the terminals refresh checks the machine the
+  reader is on before painting a late failure, the plugin-backend failures
+  keep their machine scope, and the workspace-tasks and relays panels take
+  the 44px touch floor, the disabled-opacity token and the box-sizing their
+  siblings always had.
+
+  <!-- ERRATUM (round 28): the relays floors shipped nested inside .document-tab.active and matched no element; restored in 0ae86be1's successor. -->
+
+- a8cc045: The expiry schedule is a claim, and the boot read happens once.
+
+  Two machines down in a row produce identical banner text; the expiry timer
+  that was armed for the first machine's claim deleted the second machine's
+  banner that never answered once, because both the re-arm gate and the
+  timer's own guard compared wording only. The schedule now carries the
+  machine it was armed for. A machine switch re-enters the boot read path,
+  which re-read the already-spent interrupted-runs record with boot semantics
+  and erased markers the reader was on their way to act on; the boot read is
+  now once per page. The expiry timer resets the schedule marker it fires on,
+  the settings nav button and two touch floors draw at their declared
+  geometry, the dead deadline branch and the dead ReportedError helper are
+  gone, and the unknown banner promises only what a reconnect can deliver.
+
+- c4b2332: A load start is not a retirement event, and the failed-listing ladder
+  stops promising reconnects it never performs.
+
+  Machine switches and browser resume both pass through the projects load,
+  whose first act silently cleared any reader-retired failure banner -
+  exactly the eating the round-28 owner decision forbade - so the clear is
+  gone and a load beginning no longer counts as a retirement event. The
+  boot ladder for a local deep link no longer borrows the machine wording
+  ("reconnecting…" from a machine that was never probed) and no longer dies
+  at its first retry: it retries the projects listing itself, which is the
+  whole recovery, and its still-current guard accepts the local machine.
+  Also: the coarse session row reserves the gutter its toggle actually
+  draws, the hidden-attribute guard now sees the machine list and property
+  bindings, and the interrupted-runs retraction is scoped to the machine
+  whose read raised it.
+
+- 535fb94: The gateway's own failure labels join the retirement model.
+
+  A 502 from the machine proxy used to land as a permanent red alert reading
+  the raw internal label, with the evidence and the machine id dropped on the
+  floor: the banner stayed until dismissed even after the machine came back.
+  It now carries the detail and the machine it failed for, heals on that
+  machine's own answers, and reads "Reconnecting to the machine…". Background
+  health failures are sequenced so a late failure cannot paint machine B's
+  complaint onto machine A. The 1.5s minimum-visibility window works again for
+  poll-clears (the reader's own dismissal remains decisive), page-level claims
+  are retired by any response as every comment already promised, and composed
+  messages keep the machine's name where the wording table used to erase it.
+  The plugin API's status flags come from their one defining module through a
+  runtime export, the tile's activity dot no longer sits inside the text
+  column, and the last bare error clears go through the seam.
+
+- a5d3f39: A link failure keeps the browser's own words, and onopen stops retiring
+  claims it cannot prove.
+
+  The plugin-backend wrapper prefixed "Plugin backend request unavailable:"
+  onto the browser's "Failed to fetch", which the anchored transport rules
+  match whole-message - so a dropped connection became a permanent red banner
+  that survived every poll on every machine. The wrapper now throws the raw
+  text, keeping the failure's transport lifetime and machine scope, and the
+  two direct fetch legs stamp the machine they were talking to so the
+  commonest link failure is no longer page-scoped. The realtime socket's
+  onopen no longer retires claims: the proxies accept the upgrade before
+  bridging upstream, so onopen proved the web process alive while the daemon
+  was down, retracting the banner half a second after raising it. Also: the
+  dead live-link parameter is gone, a third-party manifest no longer vouches
+  for PI WEB's link, the hold window and expiry timer reset the whole
+  schedule marker pair, and the updates panel, the workspace trust row and
+  ProjectList's retry button take the 44px coarse floor.
+
+- 0022010: The interrupted-runs retraction is now actually reachable, and the plugin
+  layer joins the guards and the rail.
+
+  Round-25's fix moved a flag write above the emptiness check and left the
+  banner retraction behind the same early return - the promise shipped, the
+  behaviour did not. The read's outcome is now one tested plan module: a
+  failed read announces unknown on a quiet screen, a successful read always
+  resolves the unknown banner (after the boot read, emptiness is the only
+  answer a recovery can bring), and on-screen markers are erased only when
+  the record truly says so. The plugin-backend leg vouches for the machine it
+  holds instead of asking a URL that cannot answer, the reachability report
+  accepts an explicit scope, offline and error machine rows wear the danger
+  rail their dot always had, hoverGuard walks the plugin tree (two live bare
+  :hover offences in the git panel are wrapped), a machine or workspace switch
+  no longer replays the previous context's banner for 1.5s, and the coarse
+  checkbox centring formula names the slot it actually centres in.
+
+- a35c5b7: The fourth copy of the late-failure guard, and the spent record that read as
+  a retraction.
+
+  A background runtime refresh whose failure arrived after the reader switched
+  machines painted the new machine's screen - round-22 delivered the selection
+  guard for the health refresh but left its runtime twin unguarded; the guard
+  is now shared, with an opt-out for the settings path whose failure is the
+  answer to an explicit ask. Deleting a machine retires the claim about it: a
+  scope with no future replies can never be disproved. The interrupted-runs
+  record is read-and-clear, so a later empty read is no longer adopted as "the
+  runs have since continued" - only the boot read adopts emptiness, and the
+  live session state arbitrates continuance. The reader's dismissal cancels
+  the expiry timer, the last three width:100%-with-padding overflows draw
+  border-box, the rail table stops writing two colours for the running state,
+  the unread halo is one purple motif, and the fork/terminal/manifest/backend
+  fetch legs both report reachability and keep their machine scope on failure.
+
+- fb975a0: The machine scope a producer chose survives classification, and expiry stops
+  contradicting what messages render as.
+
+  A gateway 502 that names the machine it failed for was stamped page-scoped by
+  branch order: any other machine's success erased the banner, and the rewrites
+  deleted the machine's name from the text. The scope now follows the evidence
+  the error carries - the body's machineId, else the machine the URL speaks
+  about - and a message the wording layer declines to shorten (a composed
+  "X is unavailable; reconnecting… <detail>", the retry ladder's terminal
+  sentence) stays until its machine's answers or the reader retire it, instead
+  of being deleted six seconds in while styled as permanent. A late background
+  health failure can no longer paint machine A's complaint onto machine B, the
+  hold window re-arms an identical returning failure, and a sessiond restart's
+  banner survives other machines' polls. Also: three width:100%-with-padding
+  overflows are border-box, the spacing guard sees logical properties, the
+  session list clears its filter when hidden like the plugin lists, and the
+  dead machineStatuses property and 26 orphaned CSS rules are gone.
+
+- 9b08fa0: Round-two polish fixes. In multi-select the inert subtree toggle covered the
+  row's checkbox — on a coarse pointer it covered it entirely — so a tap aimed at
+  the checkbox hit a control that does nothing; inert now means inert. The
+  cleanup entry meets the mouse control height its neighbours already had, the
+  cleanup dialog and the ask-user card raise their controls by pointer type
+  rather than container width, and the add-project and add-machine confirms use
+  the app's accent fill (7.5:1) instead of a border token pressed into service as
+  a fill (4.1:1). The unread count in a section heading is a badge like every
+  other count, both image lightboxes close at the same size, and the "+" glyph is
+  the same size in every add control.
+- 14e9d13: More round-two polish. A session row's state mark had no position of its own,
+  so an 8px dot took a whole line under the subtitle and added 18px to every row
+  carrying one. Appearance cards clamp their description to two lines, so the
+  grid keeps one card height instead of three, and the "follow the system"
+  checkbox stays square on a phone instead of being squeezed to 15.8x24 by the
+  text beside it. Picker rows state their own type, which also retires the 1px
+  taller row the ✓ marker used to create, the quick switcher's group headings
+  align with the cards they label, and the thinking picker's last level carries a
+  description like every other level instead of collapsing a row.
+- c9ab1c6: The token-layer audit's five fixes: visible boundaries, one distribution,
+  one radius language.
+
+  The lane measured the flat theme's hairline at 1.35:1 against the surface -
+  below perceptibility, which is why buttons read as borderless - so the
+  border lifts one visible step. The phone heading's two distribution
+  mechanisms (space-between plus an auto margin) produced one uneven void
+  after the title; the auto margin is gone and the shared space-between
+  distributes evenly. The fold button joins the header's own radius
+  mechanism instead of hardcoding a full circle tangent to the screen top.
+  The control-shaped pills (activity dock, history load, queued strip,
+  quick-switcher chips, create tile) join the square language - badges keep
+  the pill as the written convention - and the quick switcher's create tile
+  centers its content like the empty states it sits among.
+
+- b26a4a7: The session row's leading gutter is one formula instead of five literals: the
+  slot starts where `--pi-row-gutter-start` says, is `--pi-row-gutter-size` wide,
+  and the row text clears it by one breathing step. Spelled out by hand, that
+  step was 8px under a mouse and 2px under a finger, and the depth indent used a
+  raw 16px beside neighbours reading the spacing scale.
+- a9c8689: A freshly started subagent run says Running instead of "No report yet" - the pill read as a problem when the run simply had not written anything yet. The tooltip still tells the two live states apart.
+- 3361ef8: Introduce the semantic surface ladder (canvas, panel, card, raised) with a state vocabulary and a composed elevation scale, re-base message cards, the ask card, and popover menus onto it, and ship the matching ladder stops in the themes pack so every theme renders coherent hierarchy. New tokens are optional for theme authors: packs written before the ladder keep working through derived fallbacks.
+- 2345fe3: Server plugins can now declare routes and receive host ports. The activation
+  contract gains `routes` (core-shaped paths the host mounts under both `/api`
+  and `/api/machines/local`, with streaming answers expressible as async
+  iterables) and an optional `ports` object (workspace-catalog and per-project
+  config lookups today). A route handler's signal is request cancellation and
+  is never bounded by the lifecycle timeout; a route whose path is named by
+  the federated route table inherits that entry's transport bounds. An
+  activation carrying unknown fields is warned about instead of silently
+  dropped, so an older host running a newer plugin says so out loud.
+- e12be01: The session drawer's built-in Activity and Notifications pages are removed
+  rather than converted. The drawer now renders exactly what plugins contribute:
+  with no contributed section it disappears entirely, and a background activity
+  dock is a silent pill instead of a drawer control. The notifications data layer
+  (socket inbox frames, inbox controller and state) went with the page; session
+  notifications are still filed server-side - warnings, dialog outcomes, command
+  receipts and runtime notices - and stay invisible until a plugin page returns
+  for them. Subagent run and background-task conversation viewers retired with the
+  activity panel; the dock pill still names live background work.
+- df8c1aa: Session listing refreshes that changed nothing cost a verdict, not a payload.
+
+  The workspace session list re-fetched its whole payload on every focus,
+  resume and socket event even when nothing had changed. The listing now
+  carries a stateless revision (a hash recomputed from the fresh payload):
+  the refresh echoes the revision it stored, and an unchanged backend
+  answers `{ unchanged: true }` so the rows already on screen are kept
+  without a byte of listing payload or a state churn.
+
+- 4f5a393: Daemon plugins can read session transcripts through a host port.
+
+  `ServerPluginHostPorts.sessionTranscripts` lets a plugin running in the
+  session daemon list a workspace's sessions and page one session's
+  transcript, in the same bounded browser projection the transcript UI gets.
+  There is no write path, so the daemon stays the only producer of session
+  files; the port refuses reads with a named error while the session service
+  is still starting rather than answering an empty list. Web-process plugins
+  see no port. This is the seam full-text search and export plugins build on.
+
+- d25f7b4: Sessions whose folder is gone no longer open into a red banner.
+
+  Opening a session whose stored working directory had been deleted navigated
+  first and failed after: a red banner over a dead transcript, the one shape
+  the owner rejected. The daemon now stats each listed session's folder - the
+  machine that owns the directory answers for it - and stamps the row, so the
+  list renders "folder gone" where the unread badge would sit, the row cannot
+  open, and the quick switcher stops offering it. Deep links and keyboard
+  paths that route through selectSession get the fact as a notice instead of
+  a navigation into failure; the transcript-failed state remains for the race
+  where the folder disappears between listing and click.
+
+- babad47: The settings gear in both navigation panel headers is drawn as a stroke SVG
+  icon instead of a raw ⚙ text glyph. The glyph rode font baselines and sat
+  8.8px off the button's center in the phone header; the icon centers exactly
+  in both the desktop header control and the 44px phone touch target.
+- cf5f0ce: Settings panels join the control scale. Sixteen panel files had grown their own
+  form styles with no control height and no coarse-pointer floor between them, so
+  one General screen shipped a 40px input above a 42px select above a 35px save
+  button — the control a finger has to hit, 9px shorter than the close beside it.
+  A shared `settingsControlStyles` sheet gives every panel the scale and the
+  touch floor, and a panel writes only what makes it different. The add-project
+  dialog sizes its checkbox, path field and footer buttons on a mouse as well as
+  on touch, row overflow menus and the model picker's scope control take the
+  comfort height their siblings use, and the context sheet keeps the "Machines"
+  and "Workspaces" headings the phone panel drops — that panel has a row above
+  naming the step, and the sheet does not.
+- 73845da: Settings on the phone now drill down instead of swiping through a tab strip
+
+  Research into mobile settings patterns (Chrome's stack drill-down guidance,
+  NN/G on tabs) pointed at the iOS Settings model: the phone opens on a section
+  list - rows with titles and descriptions, no horizontal strip to swipe - and
+  picking a row pushes a full-screen page with a "‹ Settings" back control. The
+  phone's own back gesture walks the same chain because every step lives in the
+  browser history: `?settings` is the list, `?settings=<section>` a page, and
+  back from the list closes settings. Desktop keeps the sidebar layout and can
+  still deep-link straight into a section.
+
+- fe4c113: The phone's context sheet renders the machines group from the plugin's contributed section through the same host-fed snapshot the desktop slot uses; picking a row closes the sheet and selects through the host. The group still hides itself below two machines <!-- ERRATUM (round 31): relaxed to one machine in dd95229c - a single-machine user could not find devices at all; the panel doc comment carries the reason. -->, and with no contribution it renders nothing rather than a core fallback. The `createMachine` contract action lands as optional, so hosts without machine creation keep working unchanged.
+- e19a84b: Restore the PWA refresh control to the mobile panel header (it was lost with the old context bar), pin the workspace tool views to a single entrance by hiding the panel's own tab strip on phones, raise the desktop panel header controls to the 44px touch floor, and retire the dead quick-switch wiring and breadcrumb helper.
+- baa7545: Publish the short-viewport breakpoint to plugins: `ui.breakpoints` now carries
+  `shortViewport` (max-height 620px) alongside the width and pointer axes, so a
+  contributed surface can respond to the keyboard-up, landscape-phone case the
+  width classes cannot see.
+- d5f527c: Slash commands read like messages.
+
+  A typed or button-issued command now shows as a user bubble carrying the
+  command text, its result beneath it, and the same delivery mark a sent
+  message wears: Queued while the daemon holds it for after the current
+  reply, Running while it executes, Read once it ran, Not sent when it
+  refused or the reader closed its question unanswered. The daemon now says
+  when a result is deferred, so a forwarded command or a parked reload is
+  never marked Read before it runs, and the mark settles once the session
+  goes idle. The warning-coloured receipt strip and its dismiss button are
+  gone, and the result is no longer injected into the transcript a second
+  time. This mirrors pi: a built-in command is not a message and writes no
+  transcript entry, so the model never sees it; a runtime command is
+  forwarded to the agent and streams back as its own message.
+
+- fda40e9: The pro palette moves to a space-gray ladder, and the chat header stops
+  scattering its buttons.
+
+  The research is the Linear/GitHub-dim school: depth by lightness steps on a
+  near-black canvas, hairline borders, no shadow theatre. The base drops to
+  #0b0d10 with a quieter four-step surface ladder, borders come down to
+  hairline contrast, and the text ramp cools to match. On touch, the message
+  header's copy/info actions are now always visible - a hidden-until-focus
+  cluster on a surface that re-renders every streamed chunk is the flicker
+  the owner reported - and the 24px coarse gap that scattered the buttons
+  into a cheap-looking row tightens to the control rhythm.
+
+- 19bcd23: Spacing follows the published scale: 582 declarations named their gaps in
+  pixels, including steps the scale does not have (3, 5, 7, 9, 14px), which is
+  how sibling rows ended up breathing differently for no stated reason. The
+  transcript's sticky headers now derive their offset from the same step as the
+  padding they hang off instead of repeating -26px in three places. A contract
+  test fails the suite on the next rhythm-sized literal; values that mix spacing
+  with layout maths or device insets, and reserves wider than the scale's top
+  step, carry recorded exemptions.
+- f2e4e0e: State dots follow one scale. The same "this is working" motif shipped at 4, 5,
+  6, 7 and 8px with 2px and 3px gaps, so one screen could bounce a 6px triplet in
+  the context bar above a 4px triplet in the activity dock beside a 7px mark in
+  the status bar. `--pi-dot-xs|sm|md` names the three sizes, every mark reads
+  them, and a contract test fails the suite on a sixth.
+- 1c0d663: Review fixes for the surface-ladder wave: regenerate the committed plugin-API declaration baseline for the LegacyThemeToken/SemanticSurfaceToken split, put the message card's sticky header, the extension dialog, and the jump-to-bottom control on the same ladder steps as their siblings, move pressed states onto the shared surface-active token, bring the machine switcher's popover geometry onto the radius and spacing scales, drop the remaining all-caps labels from the ask card and tool-execution cards, word the failed-projects empty state honestly, pin the ladder in the design-token contract test, and guard the theme-token list against silent drift.
+- ed5c4db: The task panels join the fold, and adoption replacement is real.
+
+  workspace-tasks moves Refresh and Open Terminal into the tool header'
+  fold like every other bundled tool. The files stale summary clears when
+  the refetch lands (and on workspace switches) instead of claiming stale
+  over a fresh tree; the relays summary follows the scan and the open
+  relay, and the picker row disappears when a workspace has none. Adopting
+  the shared sheets now replaces a previous adoption instead of stacking
+  copies, the machines wrapper drops its private copy of the mechanism,
+  and the adoption seam has a regression test at the host.
+
+- cfdc4df: The transcript reads like the log it is: role and group headers render as lowercase mono instead of all-caps, drawer tabs lose their caps treatment, the status bar labels its readouts in the log voice (sent and received tokens, context share of the window), an over-long extension dialog title is partitioned between heading and body instead of shown twice, and an empty chat surface offers the action that unblocks it - add a project or start a session - instead of a lone sentence.
+- 15062f0: The terminal panel is now a bundled plugin. Its behaviour is unchanged; the pty capability stays in the core daemon and the panel reaches it through the published plugin API.
+- e1c9d56: The theme pack no longer ships inside PI WEB: it lives in its own repository and installs as the `@gang-of-beads/pi-web-themes` package (npm or git), which also ends the id conflict between a bundled copy and an installed one. The appearance panel's contract is unchanged - any plugin may contribute themes - and a checkout that wants the packs installs the package.
+- e52dd05: The theme pack ships as a bundled plugin rather than app code. The themes and their light/dark pairs are unchanged.
+- 7f08d5c: Project and workspace tiles are one shape. A long name or a long path made its
+  tile taller than the one beside it — measured 82px against 95px in the same row
+  — and a path that did not fit was cut mid-word with up to 131px of text simply
+  gone. Titles clamp to two lines and paths to two, so every tile in a grid is the
+  same height (measured 85px) and an overlong path ends in an ellipsis instead of
+  a severed word.
+- 2a1a4bc: A request deadline is now an honest, self-withdrawing notice. When a request
+  crosses its 30s deadline, the banner said "The server did not answer within
+  30s." and then stayed forever - a plain Error landed on the reader lifetime,
+  and the self-healing word list had no rule for it. Measured live: a remote
+  machine answered /status at 30.007s against the browser's 30.000s deadline,
+  and the banner outlived a session that went on replying. A timeout notice
+  now retires on the next successful exchange and expires like the other
+  self-healing complaints.
+- 509bfcf: A reference to a token nothing defines now fails the suite. Three of them had
+  shipped — a failed command receipt, the activity dock's waiting and error
+  states, and a rename dialog field — each silently dropping the property it was
+  written for while every other guard passed. References that carry a fallback
+  stay legal, because a fallback is the contract an optional token needs.
+
+  Round-four fixes: the quick switcher routes its row mark through the same
+  arbiter the session list uses, so an unread finished session shows one mark
+  instead of a blue dot painted over a purple one; its rows and footer state
+  their own type instead of dropping to the browser's Arial; dialog close
+  controls are one size on a mouse; the message meta control and the disabled
+  row's remedy line are readable instead of dimmed to 2.55:1 and 2.14:1; the user
+  role label reads at full contrast on its own fill; theme cards clamp both
+  variable lines; and "disabled" is one opacity token rather than .5/.52/.55.
+
+- e381f1c: The remaining bundled tools fold under the host header.
+
+  Files, Relays, Updates and Info each stacked a titled bar of their own
+  under the tool header - the exact stacking the git fold retired. Files'
+  Upload and Refresh move into the fold (stale rides the summary); Relays'
+  toolbar becomes a plain picker row with Refresh in the fold and the open
+  relay named beside the title; Updates shows its message count as the
+  summary with no bar; Info simply loses its bar. The files stale flag is
+  shared module state so the host header can read it, and the panel asks
+  the host to re-render when it flips.
+
+- c20983f: Tool pages fold their controls under one host header.
+
+  Every workspace tool page now opens with a single header - the tool name,
+  its summary (the git branch), and a fold that holds the tool's controls,
+  remembered per tool and collapsed by default - instead of stacking a bar
+  of its own under the app's. The git panel moves its mode, view, refresh
+  and worktree controls behind that fold, and the phone title names the tool
+  page on screen instead of "Sessions".
+
+- b5cdbf4: Tool-result screenshots travel as references, not inline bytes.
+
+  A transcript page whose tool results carried screenshots still shipped every
+  image as inline base64 - a 200 KiB screenshot was 200 KiB of page, six of
+  them 1.2 MB - and the browser's per-session history cache skipped exactly
+  those sessions, so screenshot-heavy transcripts were the slowest to reopen.
+  Image blocks above 8 KiB now travel as a `{toolCallId, index}` reference and
+  the browser fetches the bytes through a per-image route when the image
+  scrolls into view; small images stay inline. The session file is untouched.
+
+- 5857014: Review fixes for the touch-density wave: the attachment chip grows with its
+  44px remove badge so the zoom target keeps an AA-sized corner, the quick
+  switcher pays the wider corner menu button from the title's reserved gutter,
+  session-list and extension-dialog comfort floors move from width gates to
+  pointer gates (tablets keep the floor), shared row action menus and the quick
+  switcher's search input get the coarse floor, the plain-text composer path
+  pays for the wider attach overlay, all new coarse blocks consume
+  `--pi-control-height-touch`, the session checkbox reaches the AA floor, the
+  probe enforces AA before exemptions and fails loudly when its emulation does
+  not report a coarse pointer, and the fullscreen dialog contract states that
+  content must provide its own close control.
+- fe71b6b: Touch density lands the two-token policy: 24px stays the AA floor everywhere and
+  coarse pointers now get the 44px comfort floor across the surfaces that were
+  still shipping mouse-sized targets on touch - the session list toolbar and
+  search row, the quick switcher (close, tabs, chips, row menus), the composer's
+  icon buttons, model picker and thinking gauge, the context switcher add button
+  and phone header actions, the shared list search row, section add buttons, and
+  extension dialog actions. Message timestamps collapse to 24px (AA met, inline
+  exception recorded) and the tile menu keeps its documented 36px exemption. A
+  new fail-loud probe (`scripts/probe-touch-targets.mjs`) walks every shadow root
+  at 393x850 coarse and asserts the floors with the recorded exemptions.
+- 4d0a0c1: The transcript offers Ask here on a text selection.
+
+  Selecting transcript text raises an Ask here chip anchored under the
+  selection; one tap drops a quoted prompt (> every line, then a blank
+  line) into the composer at the cursor and focuses it, so the reader
+  continues from exactly the line they selected. Selection containment
+  walks shadow boundaries, because the transcript's text parts render in
+  their own roots.
+
+- b2c5cbd: Big transcripts are cached again. The history cache wrote to sessionStorage and
+  swallowed the quota failure with no eviction, so any page too large for what was
+  left of the origin's shared budget was never cached at all — and those are
+  exactly the sessions where reopening is slow enough to feel. A page that does
+  not fit keeps its tail, which is the part a reader lands on, and a full store
+  gives up its oldest other session rather than giving up on caching. The cache
+  takes its storage as a parameter now, so this behaviour is tested against a
+  store with a real capacity instead of against whatever a test environment's
+  Storage stub happens to implement.
+- 0e08986: Long reading walks stop pinning every loaded row to the DOM.
+
+  The in-memory transcript span is capped at four pages: when a merge
+  pushes it past the cap, the far side from the reader's current focus is
+  dropped from memory while the full span persists in the history cache.
+  Scrolling back to an evicted side reloads it from the cache, not the
+  wire, and the existing "Load earlier messages" boundary stays honest.
+  When the reader is at the live tail, the newest side is kept - the
+  oldest side is the one to let go, and vice versa while walking history.
+
+  When the span is trimmed at the bottom, the transcript now says so: a
+  "Load N newer messages" boundary appears, transcript events that arrive
+  while the tail is trimmed park on it instead of silently appending
+  after an invisible gap, and tapping it reloads the live tail.
+
+- 75a57ed: The transcript's top edge fades instead of slicing text mid-glyph.
+
+  Assistant surfaces are border-less, so a message clipped by the chat's
+  top edge read as stray floating text with no boundary (the owner's
+  "this is a bug?" screenshot). A short mask fade at the scroller's top
+  makes the same clip read as intentional depth on every surface.
+
+- fb83cf2: Transient refresh failures retry themselves instead of sitting as a
+  dead banner.
+
+  A 5xx on the workspace sessions refresh painted "The request failed
+  (502)" and left it there until the next unrelated trigger - the reader
+  stuck with an error that explained nothing and fixed nothing. The
+  refresh now retries itself with backoff (up to four attempts), the
+  banner reads "… — retrying…" while it does, a success clears it, and
+  permanent 4xx errors keep their message without a loop.
+
+- 40ca364: Every font size in the client comes from the type scale. Ninety-seven
+  declarations named their size in pixels, including steps the scale does not
+  have — a 10px eyebrow no token move could follow, an 18px glyph beside a 17px
+  one, a 22px close control next to a 20px one. A contract test fails the suite
+  on the next pixel font size.
+- cfb9a21: The Updates fold says how many messages it holds.
+
+  The fold migration claimed Updates showed its message count as the collapsed
+  summary, but the panel only ever registered a badge, so the summary read empty
+  on a collapsed tool. It contributes the count as a summary now, and the menu
+  probe additionally asserts the context path it was blind to.
+
+- 4dc5e8d: Visual-polish wave: three undefined design tokens stopped silently disabling
+  their declarations. The phone settings list drew descriptions and chevrons in
+  `--pi-text-muted`, which is defined nowhere, so every row rendered at title
+  brightness; accent-filled confirm buttons fell back to `white` at 2.5:1 on the
+  accent fill, and the add-project confirm inherited body text at 3.3:1 on its
+  green fill. Keyboard focus no longer squares off rounded buttons (the focus
+  rule inherited the parent's radius), message-row actions no longer overlap
+  their neighbours' hit boxes, and the rename dialog draws real fields and
+  buttons instead of platform defaults.
+- 20c3b02: Dictation is now a plugin. Existing installs must move their `speechToText` and `azureSpeech` config blocks under `plugins.voice.settings`; the core config no longer names them, and an unconfigured install simply does not offer a microphone.
+- e0d422e: The web process now hosts the plugins addressed to it. A plugin package can
+  declare `runs` in its metadata (`daemon`, `web`, or `both`; absent means
+  `daemon`, so existing packages activate exactly where they always did), and
+  the web app assembles its own plugin runtime at startup: routes contributed
+  by web-addressed plugins are mounted under both `/api` and
+  `/api/machines/local`, the runtime shuts down with the app, and a runtime
+  that fails to activate (for example, while the daemon profile is briefly
+  unavailable) starts the web process with those routes honestly absent
+  instead of taking it down.
+- 34c6f7b: The context sheet and the strip speak the reader's language.
+
+  "Change context" was implementation vocabulary - the sheet switches
+  where you are working, and now says so: "Where am I working?". When a
+  tool surface is the main view (Files, Terminal, Tasks...), the context
+  bar names it beside the session instead of leaving the reader to guess
+  which page they are on.
+
+- 409ef71: Workspace panels refresh when files change on disk.
+
+  The files and git panels refreshed only on demand: an agent editing a file
+  next to the reader left the panel stale until a tap. The session daemon now
+  watches the working directory of every session it holds open and publishes
+  one `workspace.changed` per burst; the browser refreshes the panels of the
+  workspace it shows when the directory and machine match, and ignores every
+  other machine's or directory's news. Manual refresh stays; a directory that
+  cannot be watched is simply as fresh as before.
+
+- b00a070: The workspace file family is now served by the bundled workspaces plugin's server half instead of core routes: tree, read, write, delete, move, preview, and suggestions ride the route-contribution seam with the same core-shaped paths, status codes, and preview policies, resolving workspace identity through the injected catalog port and path access through the injected config port. Route contributions can read text and binary request bodies, and the suggestions and file-content types the plugin serves are part of the published server contract.
+- 299a8da: Workspace files become a bundled plugin. The tree, viewer, uploads, and file deep links move out of core into `pi-web-plugins/files`, driven by new plugin seams: `files.previewUrl`, `files.uploadFiles` with progress and cancel, `files.limits`, `files.uploadFolder`, `ui.renderMarkdownHtml`, `ui.textStyles`, `ui.registerModal`, `ui.query`, and the `session-activity-settled` lifecycle event. Every existing file URL, saved machine-navigation snapshot, and shared file link keeps working: the panel answers to the `files` and `core:workspace.files` route values and keeps the `core.workspace.files--file` and `--mode` deep-link namespaces.
+- abcea65: The bundled workspaces plugin declares `runs: web`, which its server half always was: without the declaration the catalog treated it as daemon-owned, so the web process neither activated its file routes nor published its browser module, and the pickers, dialog, and file endpoints went missing on any real deployment. Caught by the live 393x850 stack probe, which now covers the whole wave: pickers in the context sheet, the add-project dialog through the shell's dialog seam, project create, and file write/read through the plugin routes.
+
 ## 1.202609.18
 
 ### Patch Changes
