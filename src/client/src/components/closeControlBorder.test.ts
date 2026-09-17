@@ -15,10 +15,13 @@ import { describe, expect, it } from "vitest";
  */
 
 const componentsDir = dirname(fileURLToPath(import.meta.url));
+/** Plugin browser components draw the same chrome and were unchecked. */
+const pluginsDir = join(componentsDir, "..", "..", "..", "..", "pi-web-plugins");
 
 function componentFiles(dir: string): string[] {
   const found: string[] = [];
   for (const entry of readdirSync(dir)) {
+    if (entry === "node_modules" || entry === "dist") continue;
     const path = join(dir, entry);
     if (statSync(path).isDirectory()) {
       found.push(...componentFiles(path));
@@ -58,16 +61,24 @@ function drawsBorder(block: string): boolean {
   return /border(?:-top)?:\s*[^;]*\b(?:solid|dashed|dotted)\b/u.test(block) || /border-width:\s*[^;]*[1-9]/u.test(block);
 }
 
+/** Whether the file gives every button a border the close control inherits. */
+function inheritsButtonBorder(source: string): boolean {
+  const match = /(?:^|[\s,>{;])button\s*\{([^}]*)\}/u.exec(source);
+  return match !== null && drawsBorder(match[1] ?? "");
+}
+
 describe("close controls are bordered", () => {
   it("draws a border on every close control, rather than merely not disowning one", () => {
     const offenders: string[] = [];
     let inspected = 0;
-    for (const file of componentFiles(componentsDir)) {
-      const blocks = closeControlBlocks(readFileSync(file, "utf8"));
+    for (const file of [...componentFiles(componentsDir), ...componentFiles(pluginsDir)]) {
+      const source = readFileSync(file, "utf8");
+      const blocks = closeControlBlocks(source);
       if (blocks.all.length === 0) continue;
       inspected += 1;
       const disowned = blocks.all.some((block) => /border(?:-top)?(?:-width)?:\s*(?:0(?:px)?|none)\b/u.test(block));
-      if (disowned || !blocks.base.some((block) => drawsBorder(block))) offenders.push(file.slice(componentsDir.length + 1));
+      const drawn = blocks.base.some((block) => drawsBorder(block)) || inheritsButtonBorder(source);
+      if (disowned || !drawn) offenders.push(file);
     }
     expect(inspected).toBeGreaterThan(0);
     expect(offenders).toEqual([]);

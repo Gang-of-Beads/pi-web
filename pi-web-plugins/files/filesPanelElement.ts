@@ -547,7 +547,7 @@ export class PiFilesPanel extends LitElement {
       .upload-dialog header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); padding: var(--pi-space-7) var(--pi-space-7); border-bottom: 1px solid var(--pi-border-muted); }
       .upload-dialog h2 { margin: var(--pi-space-1) 0 0; font-size: var(--pi-text-lg); line-height: 1.2; }
       .eyebrow { color: var(--pi-muted); font-size: var(--pi-text-2xs); letter-spacing: .08em; text-transform: uppercase; }
-      .close-button { font-size: var(--pi-text-xl); line-height: 1; padding: var(--pi-space-2) var(--pi-space-5); }
+      .close-button { box-sizing: border-box; display: inline-grid; place-items: center; min-width: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-xl); line-height: 1; cursor: pointer; }
       form { min-height: 0; display: flex; flex-direction: column; gap: var(--pi-space-6); overflow: auto; padding: var(--pi-space-7); }
       form > label { display: grid; gap: var(--pi-space-3); }
       form > label > span, .review-files > strong { font-weight: var(--pi-weight-semibold); }
