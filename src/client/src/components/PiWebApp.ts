@@ -433,7 +433,21 @@ export class PiWebApp extends LitElement {
   @state() private quickSwitcherLoading = false;
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
   private quickSwitcherFetchedAt = 0;
-  @state() private pinnedSessionIds: ReadonlySet<string> = readPinnedSessionIds();
+  /**
+   * Pins for the machine on screen. A pin is keyed by machine because session
+   * ids are unique per machine; the cache is re-read whenever the selection
+   * moves, so machine A's pins can never mark or act on machine B's rows.
+   */
+  private pinCache: { machineId: string; ids: ReadonlySet<string> } | undefined;
+
+  private get pinnedSessionIds(): ReadonlySet<string> {
+    const machineId = selectedMachineId(this.state);
+    const cached = this.pinCache;
+    if (cached?.machineId === machineId) return cached.ids;
+    const ids = readPinnedSessionIds(machineId);
+    this.pinCache = { machineId, ids };
+    return ids;
+  }
   @state() private quickSwitcherWorkspaces: readonly Workspace[] = [];
   private quickSwitcherMachineId: string | undefined;
   /**
@@ -2458,8 +2472,11 @@ export class PiWebApp extends LitElement {
   }
 
   private togglePinnedSession(session: SessionInfo): void {
-    this.pinnedSessionIds = togglePinnedSessionId(this.pinnedSessionIds, session.id);
-    writePinnedSessionIds(this.pinnedSessionIds);
+    const machineId = selectedMachineId(this.state);
+    const ids = togglePinnedSessionId(this.pinnedSessionIds, session.id);
+    this.pinCache = { machineId, ids };
+    writePinnedSessionIds(machineId, ids);
+    this.requestUpdate();
   }
 
   /**
