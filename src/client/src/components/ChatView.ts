@@ -310,7 +310,9 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   /* A system line reports whatever the runtime has to say - a background task
      that finished with exit 0 as often as a failure - so it is not coloured as
      a fault. A genuine error arrives as an error line and keeps the red. */
-  .msg.system { color: var(--pi-muted); }
+  .msg.system { border-color: var(--pi-border); background: var(--pi-bg); color: var(--pi-text-secondary); }
+  .msg.system > .msg-header { background: var(--pi-bg); box-shadow: inset var(--pi-rail-width) 0 0 var(--pi-border); }
+  .msg.system > .msg-header .label { color: var(--pi-text-secondary); }
   .msg.bash { border-color: var(--pi-success); background: var(--pi-success-bg); }
   .msg.skill { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
   .msg.event-group { padding: 0; border-color: var(--pi-border); background: var(--pi-bg); color: var(--pi-muted); }
@@ -395,15 +397,17 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      element guess the card's inner curve, and the guess broke at the phone's
      fractional device pixel ratio - five reports of the same corners. */
   .msg > .msg-header { position: sticky; top: calc(var(--pi-chat-sticky-top) + 6px); z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: 1px var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface-card); box-shadow: var(--pi-elevation-2); }
-  /* Role colour, on the strip the reader scans: warm amber = you, cool
-     purple = pi. The graphite palette left the assistant strip identical to
-     the card, so the roles read as one (owner, phone round). */
+  /* Colour marks what is rare, not what is constant (owner). The reader's own
+     messages are the landmarks in a transcript, so they keep the accent tint;
+     the assistant answers on almost every turn, so its card is the ordinary
+     surface and carries no hue at all; system lines keep their own quiet
+     colour because they are the exception worth spotting. */
   .msg.user > .msg-header { border-bottom-color: var(--pi-border-muted); background: color-mix(in srgb, var(--pi-accent) 26%, var(--pi-surface)); box-shadow: inset var(--pi-rail-width) 0 0 var(--pi-accent); }
   /* The sticky header rides above the card's border while the message scrolls
      under it; without an opaque fill the scrolled text shows through the gap
      (the clipped "…dden." line the owner screenshotted). Same fill as the
      card so the header reads as the card's own top strip. */
-  .msg.assistant > .msg-header, .msg.tool-image-output > .msg-header { background: color-mix(in srgb, var(--pi-purple) 22%, var(--pi-surface)); box-shadow: inset var(--pi-rail-width) 0 0 var(--pi-purple-border); }
+  .msg.assistant > .msg-header, .msg.tool-image-output > .msg-header { background: var(--pi-surface); box-shadow: none; }
   .msg.assistant > .msg-header .label, .msg.tool-image-output > .msg-header .label { color: var(--pi-text-secondary); }
   /* The role label sits on the selection fill; accent-on-selection measured
      3.93:1, the weakest of the three roles, on the one that says "you". */
