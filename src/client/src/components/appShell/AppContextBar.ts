@@ -1,4 +1,4 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { SessionInfo } from "../../api";
 import { sessionLabel } from "../../sessionLabels";
@@ -49,8 +49,8 @@ export class AppContextBar extends LitElement {
           class="panel-toggle"
           title=${panelToggleLabel(this.toggleTarget, this.panelOpen)}
           aria-label=${panelToggleLabel(this.toggleTarget, this.panelOpen)}
-          aria-haspopup=${this.toggleTarget === "menu" ? "dialog" : "false"}
-          aria-expanded=${this.toggleTarget === "menu" ? "false" : this.panelOpen ? "true" : "false"}
+          aria-haspopup=${this.toggleTarget === "menu" ? "dialog" : nothing}
+          aria-expanded=${this.toggleTarget === "menu" ? nothing : this.panelOpen ? "true" : "false"}
           @click=${() => { this.onTogglePanel?.(); }}
         >
           <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -71,7 +71,6 @@ export class AppContextBar extends LitElement {
           ? html`<span
               class="session-title static"
               title=${this.session.path}
-              aria-label=${`Session: ${sessionContextLabel(this.session)}.${this.onRenameRequest === undefined ? "" : " Hold to rename."}`}
               @pointerdown=${(event: PointerEvent) => { if (event.pointerType !== "mouse" && this.onRenameRequest !== undefined) this.titleHold.start(event); }}
               @pointermove=${(event: PointerEvent) => { this.titleHold.move(event); }}
               @pointerup=${() => { this.titleHold.cancel(); }}

@@ -52,33 +52,49 @@ await page.waitForTimeout(1200);
 const opened = await page.evaluate(`(function(){
   const app = document.querySelector("pi-web-app");
   const switcher = app.shadowRoot.querySelector("quick-switcher");
-  const text = switcher?.shadowRoot?.textContent ?? "";
+  const footer = [...(switcher?.shadowRoot?.querySelectorAll("footer button") ?? [])].map((node) => node.textContent?.trim());
+  const create = switcher?.shadowRoot?.querySelector(".create-session, .new-session, button[title*='New session' i]");
   return {
     view: app.displayMainView(),
     session: Reflect.get(app, "state").selectedSession?.id,
     switcher: switcher !== null,
     contextSheet: app.shadowRoot.querySelector("context-switcher-sheet") !== null,
-    hasBrowse: text.includes("Browse machines and projects"),
-    hasSettings: text.includes("Settings"),
-    hasNewSession: text.includes("New session"),
+    footer,
+    createsSession: create !== null && create !== undefined && !create.disabled,
   };
 })()`);
 
 if (!opened.switcher) fail("the menu key did not open the quick-access menu");
 if (opened.contextSheet) fail("the menu key still opens the projects sheet");
 if (opened.view !== "chat" || opened.session !== before.session) fail("the menu key navigated away from the open session");
-if (!opened.hasBrowse) fail("the menu lost its machines-and-projects entry");
-if (!opened.hasSettings) fail("the menu has no settings entry");
-if (!opened.hasNewSession) fail("the menu has no new-session entry");
+if (!opened.footer.includes("Browse machines and projects")) fail(`the menu footer lost its machines-and-projects entry: ${JSON.stringify(opened.footer)}`);
+if (!opened.footer.includes("Settings")) fail(`the menu footer has no settings entry: ${JSON.stringify(opened.footer)}`);
+if (!opened.createsSession) fail("the menu offers no enabled new-session control");
 
-await page.evaluate(`(function(){
+await page.keyboard.press("Escape");
+await page.waitForTimeout(900);
+const dismissed = await page.evaluate(`(function(){
   const app = document.querySelector("pi-web-app");
-  const session = (Reflect.get(app, "state").sessions ?? [])[0];
-  app.togglePinnedSession(session);
+  return {
+    switcher: app.shadowRoot.querySelector("quick-switcher") !== null,
+    view: app.displayMainView(),
+    session: Reflect.get(app, "state").selectedSession?.id,
+  };
 })()`);
+if (dismissed.switcher) fail("the menu did not close on dismissal");
+if (dismissed.view !== before.view || dismissed.session !== before.session) fail(`dismissing the menu changed where the reader is: ${JSON.stringify(dismissed)}`);
+
+const pinTarget = await page.evaluate(`(function(){
+  const app = document.querySelector("pi-web-app");
+  const session = (Reflect.get(app, "state").sessions ?? []).find((entry) => entry.parentSessionPath === undefined && entry.archived !== true);
+  if (session === undefined) return { ok: false };
+  app.togglePinnedSession(session);
+  return { ok: true, id: session.id };
+})()`);
+if (!pinTarget.ok) fail("no root session available to pin");
+
 await page.evaluate(`(async function(){
   const app = document.querySelector("pi-web-app");
-  app.closeQuickSwitcher?.();
   await app.selectMainView("navigation");
   await new Promise((resolve) => setTimeout(resolve, 1200));
 })()`);
@@ -88,15 +104,19 @@ const pinned = await page.evaluate(`(function(){
   const app = document.querySelector("pi-web-app");
   const panel = app.shadowRoot.querySelector("app-navigation-panel");
   const list = panel?.shadowRoot?.querySelector("session-list");
-  const headings = [...(list?.shadowRoot?.querySelectorAll(".row-group-heading") ?? [])].map((node) => node.textContent?.trim());
-  return { headings, hasList: list !== null && list !== undefined };
+  const body = list?.shadowRoot?.querySelector(".list-body");
+  const nodes = [...(body?.children ?? [])];
+  const headingIndex = nodes.findIndex((node) => node.classList.contains("row-group-heading"));
+  const firstRowAfterHeading = headingIndex === -1 ? undefined : nodes[headingIndex + 1]?.getAttribute("title");
+  return { hasList: list !== null && list !== undefined, headingIndex, firstRowAfterHeading };
 })()`);
 
 if (!pinned.hasList) fail("the sessions list did not render for the pin check");
-else if (!pinned.headings.includes("Pinned")) fail(`the list has no Pinned group, headings: ${JSON.stringify(pinned.headings)}`);
+else if (pinned.headingIndex === -1) fail("the list has no Pinned group after pinning a root session");
+else if (pinned.firstRowAfterHeading === undefined) fail("the Pinned heading is not followed by a session row");
 
 await page.screenshot({ path: "/tmp/journeys/menu-key.png" });
 await browser.close();
 
 if (process.exitCode === 1) process.exit(1);
-console.log("PASS: the menu key opens the quick-access menu in place; the list groups pinned sessions");
+console.log("PASS: the menu key opens and dismisses the quick-access menu in place; the list groups pinned sessions");

@@ -25,6 +25,24 @@ describe("splitPinnedSessionRows", () => {
     expect(split.rest.map((entry) => entry.session.id)).toEqual(["a", "b"]);
   });
 
+  it("leaves a pinned root in place while its descendants are on screen", () => {
+    const rows = [row("root"), row("child", 1), row("other")];
+    const split = splitPinnedSessionRows(rows, new Set(["root"]), { searching: false });
+    expect(split.pinned).toEqual([]);
+    expect(split.rest.map((entry) => entry.session.id)).toEqual(["root", "child", "other"]);
+  });
+
+  it("ignores pinned ids that are not in the list", () => {
+    const rows = [row("a")];
+    const split = splitPinnedSessionRows(rows, new Set(["gone"]), { searching: false });
+    expect(split.pinned).toEqual([]);
+    expect(split.rest.map((entry) => entry.session.id)).toEqual(["a"]);
+  });
+
+  it("returns empty groups for an empty list", () => {
+    expect(splitPinnedSessionRows([], new Set(["a"]), { searching: false })).toEqual({ pinned: [], rest: [] });
+  });
+
   it("is a no-op when nothing is pinned", () => {
     const rows = [row("a")];
     expect(splitPinnedSessionRows(rows, new Set(), { searching: false })).toEqual({ pinned: [], rest: rows });
