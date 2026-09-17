@@ -167,23 +167,22 @@ export class QuickSwitcher extends LitElement {
             type="button"
             class=${segment.chosen ? "crumb chosen" : "crumb"}
             aria-expanded=${this.openLevel === segment.level ? "true" : "false"}
-            aria-haspopup="listbox"
+            aria-haspopup="true"
             aria-controls="crumb-options"
             @click=${() => { this.openLevel = this.openLevel === segment.level ? undefined : segment.level; }}
           >${segment.label}</button>
         `)}
       ${open === undefined ? nothing : html`
-        <div class="crumb-options" id="crumb-options" role="listbox" aria-label=${open.level === "machine" ? "Choose a machine" : open.level === "project" ? "Choose a project" : "Choose a folder"}>
+        <div class="crumb-options" id="crumb-options" role="group" aria-label=${open.level === "machine" ? "Choose a machine" : open.level === "project" ? "Choose a project" : "Choose a folder"}>
           ${open.level === "machine" ? nothing : html`
-            <button type="button" role="option" aria-selected=${open.chosen ? "false" : "true"} class="crumb-option" @click=${() => { this.clearLevel(open.level); }}>
+            <button type="button" aria-pressed=${open.chosen ? "false" : "true"} class="crumb-option" @click=${() => { this.clearLevel(open.level); }}>
               ${open.level === "project" ? "All projects" : "All folders"}
             </button>
           `}
           ${open.options.map((option) => html`
             <button
               type="button"
-              role="option"
-              aria-selected=${option.current ? "true" : "false"}
+              aria-pressed=${option.current ? "true" : "false"}
               class=${option.current ? "crumb-option current" : "crumb-option"}
               @click=${() => { this.chooseLevel(open.level, option.id); }}
             >

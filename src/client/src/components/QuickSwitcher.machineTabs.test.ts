@@ -45,7 +45,7 @@ describe("the switcher's machine tabs", () => {
     expect(machineCrumb(switcher)?.textContent.trim()).toBe("hxd-pi");
     const options = await machineOptions(switcher);
     expect(options.map((option) => (option.querySelector(".crumb-option-label") ?? option).textContent.trim())).toEqual(["Local", "hxd-pi"]);
-    expect(options.map((option) => option.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+    expect(options.map((option) => option.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
   });
 
   it("omits the machine level when there is only one machine", async () => {
