@@ -60,6 +60,21 @@ describe("switcherBreadcrumb", () => {
     expect(segments[1]?.options).toHaveLength(3);
   });
 
+  it("calls an unanswered machine id unknown rather than naming it a machine", () => {
+    const segments = switcherBreadcrumb({ machines, machineId: "", projects, projectId: undefined, folders, folderPath: undefined });
+    const machineSegment = segments.find((segment) => segment.level === "machine");
+    expect(machineSegment?.label).toBe("Unknown machine");
+    expect(machineSegment?.chosen).toBe(false);
+    expect(machineSegment?.options).toHaveLength(2);
+  });
+
+  it("offers one option per folder path", () => {
+    const duplicated = [...folders, { id: "w4", label: "main copy", path: "/repos/pi-web", projectId: "p1" }];
+    const segments = switcherBreadcrumb({ machines, machineId: "local", projects, projectId: "p1", folders: duplicated, folderPath: undefined });
+    const folderSegment = segments.find((segment) => segment.level === "folder");
+    expect(folderSegment?.options.map((option) => option.id)).toEqual(["/repos/pi-web", "/repos/pi-web-probe"]);
+  });
+
   it("marks the current option at every level", () => {
     const segments = switcherBreadcrumb({ machines, machineId: "pi", projects, projectId: "p1", folders, folderPath: "/repos/pi-web" });
     expect(segments.flatMap((segment) => segment.options.filter((option) => option.current).map((option) => option.label))).toEqual(["pi", "pi-web", "main"]);

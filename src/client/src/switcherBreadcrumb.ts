@@ -61,7 +61,9 @@ export function switcherBreadcrumb(input: BreadcrumbInput): BreadcrumbSegment[] 
     const current = input.machines.find((machine) => machine.id === input.machineId);
     segments.push({
       level: "machine",
-      label: current?.name ?? "Machine",
+      // An id no machine answers for is unknown, not a machine called
+      // "Machine": naming it as a choice would claim a scope nothing holds.
+      label: current?.name ?? "Unknown machine",
       chosen: current !== undefined,
       options: input.machines.map((machine) => ({ id: machine.id, label: machine.name, current: machine.id === input.machineId })),
     });
@@ -80,7 +82,7 @@ export function switcherBreadcrumb(input: BreadcrumbInput): BreadcrumbSegment[] 
     })),
   });
 
-  const folders = foldersInScope(input);
+  const folders = distinctByPath(foldersInScope(input));
   if (folders.length > 0) {
     const folder = folders.find((entry) => entry.path === input.folderPath);
     segments.push({
@@ -100,6 +102,19 @@ export function switcherBreadcrumb(input: BreadcrumbInput): BreadcrumbSegment[] 
  * projects to group by at all, as when browsing another machine, and the
  * folders are the only level the reader has.
  */
+/**
+ * One option per path. The path is the filter key, so two folders sharing it
+ * would both read as the current choice and neither could be told apart.
+ */
+function distinctByPath(folders: BreadcrumbInput["folders"]): BreadcrumbInput["folders"] {
+  const seen = new Set<string>();
+  return folders.filter((folder) => {
+    if (seen.has(folder.path)) return false;
+    seen.add(folder.path);
+    return true;
+  });
+}
+
 function foldersInScope(input: BreadcrumbInput): BreadcrumbInput["folders"] {
   if (input.projects.length === 0) return input.folders;
   if (input.projectId === undefined) return [];
