@@ -185,12 +185,14 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
     .actions { min-height: var(--pi-panel-header-height); gap: var(--pi-space-3); }
     .compact-status { flex: 1 1 220px; gap: var(--pi-space-3); }
     .select-model { max-width: min(58vw, 260px); }
-    button { padding: var(--pi-space-3) var(--pi-space-4); }
+    /* Vertical padding stacks on the 36px line-height and grew the row to 50;
+       the bar centres its own controls. */
+    button { padding: 0 var(--pi-space-4); }
   }
   @media (max-width: 430px) {
     .compact-status { flex-basis: 170px; font-size: var(--pi-text-2xs); }
     .select-model { max-width: 48vw; }
-    button { padding: var(--pi-space-3) var(--pi-space-4); }
+    button { padding: 0 var(--pi-space-4); }
     /* Narrow screens are phones: the touch targets get *bigger*, not smaller,
        and the caret keeps the line height it has on wide screens. The model
        chip rises with them so the toolbar stays one height. */
