@@ -2,6 +2,7 @@ import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { renderCheckIcon, renderChevronRightIcon, renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { quickSwitcherFilterProjects } from "../quickSwitcher";
 import { reconcileBreadcrumbFilter, switcherBreadcrumb, type BreadcrumbLevel } from "../switcherBreadcrumb";
+import { switcherEmptyMeaning } from "../switcherEmptyMeaning";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, Project, SessionInfo, Workspace } from "../api";
@@ -114,13 +115,7 @@ export class QuickSwitcher extends LitElement {
         <div class="body">
           ${this.renderCreateRow()}
           ${model.groups.map((group) => this.renderGroup(group))}
-          ${this.loadError !== undefined
-            ? html`<p class="empty" role="alert">${this.loadError}</p>`
-            : this.loading
-              ? html`<p class="empty">Loading sessions…</p>`
-              : model.matchCount === 0
-                ? html`<p class="empty">${this.query.trim() === "" ? "No sessions yet." : `No sessions match “${this.query.trim()}”.`}</p>`
-                : null}
+          ${this.renderEmptyMeaning(model.matchCount)}
           ${otherWorkspaces.length === 0 ? null : html`
             <h3>Workspaces</h3>
             <div class="rows">
@@ -200,6 +195,22 @@ export class QuickSwitcher extends LitElement {
       `}
       </nav>
     `;
+  }
+
+  /** The empty state, named rather than asserted; see `switcherEmptyMeaning`. */
+  private renderEmptyMeaning(matchCount: number) {
+    const meaning = switcherEmptyMeaning({
+      loadError: this.loadError,
+      loading: this.loading,
+      matchCount,
+      query: this.query,
+      scoped: this.filter.projectId !== undefined || this.filter.workspacePath !== undefined,
+    });
+    if (meaning.kind === "none") return nothing;
+    return html`<p class="empty" role=${meaning.kind === "failed" ? "alert" : "status"}>
+      <span>${meaning.message}</span>
+      ${meaning.kind === "scope" ? html`<button type="button" class="empty-widen" @click=${() => { this.filter = {}; this.openLevel = undefined; }}>Show every project</button>` : nothing}
+    </p>`;
   }
 
   private clearLevel(level: BreadcrumbLevel): void {
@@ -475,6 +486,7 @@ export class QuickSwitcher extends LitElement {
     /* The drawn box stays on the bar template; a thumb gets the 44px floor
        through reach, as the message actions do. */
     @media (pointer: coarse) { .crumb { position: relative; } .crumb::after { content: ""; position: absolute; inset: calc((var(--pi-control-height) - var(--pi-control-height-touch, 44px)) / 2) 0; } }
+    .empty-widen { box-sizing: border-box; min-height: var(--pi-control-height-comfort); margin-top: var(--pi-space-3); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; cursor: pointer; }
     .crumb-sep { flex: 0 0 auto; display: inline-grid; place-items: center; color: var(--pi-muted); }
     .crumb-sep .ui-icon { width: 14px; height: 14px; }
     .crumb-options { flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); max-height: 40vh; overflow-y: auto; }
