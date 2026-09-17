@@ -544,7 +544,7 @@ export class QuickSwitcher extends LitElement {
     .rename-actions button { box-sizing: border-box; font: inherit; width: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     @media (pointer: coarse) { .rename-actions button { width: var(--pi-control-height-touch); min-height: var(--pi-control-height-touch); } }
     .empty { margin: var(--pi-space-7) var(--pi-space-2); color: var(--pi-muted); }
-    footer { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-bar-inset) max(var(--pi-space-2), env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); }
+    footer { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-bar-inset) max(var(--pi-space-2), env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); display: flex; flex-direction: column; gap: var(--pi-space-2); }
     footer button { box-sizing: border-box; font: inherit; width: 100%; min-height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
   `];
 }

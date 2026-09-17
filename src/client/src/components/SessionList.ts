@@ -528,8 +528,10 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     const pinned = splitPinnedSessionRows(rows, this.pinnedSessionIds, { searching }).pinned;
     if (pinned.length === 0) return null;
     return html`
-      <h3 class="row-group-heading">Pinned</h3>
-      ${pinned.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "current"))}
+      <h3 class="row-group-heading" id="session-pinned-heading">Pinned</h3>
+      <div role="group" aria-labelledby="session-pinned-heading">
+        ${pinned.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "current"))}
+      </div>
     `;
   }
 

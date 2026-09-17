@@ -107,13 +107,15 @@ const pinned = await page.evaluate(`(function(){
   const body = list?.shadowRoot?.querySelector(".list-body");
   const nodes = [...(body?.children ?? [])];
   const headingIndex = nodes.findIndex((node) => node.classList.contains("row-group-heading"));
-  const firstRowAfterHeading = headingIndex === -1 ? undefined : nodes[headingIndex + 1]?.getAttribute("title");
-  return { hasList: list !== null && list !== undefined, headingIndex, firstRowAfterHeading };
+  const group = body?.querySelector("[role='group'][aria-labelledby='session-pinned-heading']");
+  const firstRowAfterHeading = group?.querySelector(".action-row")?.getAttribute("title") ?? undefined;
+  return { hasList: list !== null && list !== undefined, headingIndex, firstRowAfterHeading, hasGroup: group !== null && group !== undefined };
 })()`);
 
 if (!pinned.hasList) fail("the sessions list did not render for the pin check");
 else if (pinned.headingIndex === -1) fail("the list has no Pinned group after pinning a root session");
-else if (pinned.firstRowAfterHeading === undefined) fail("the Pinned heading is not followed by a session row");
+else if (!pinned.hasGroup) fail("the Pinned heading labels no group of rows");
+else if (pinned.firstRowAfterHeading === undefined) fail("the Pinned group holds no session row");
 
 await page.screenshot({ path: "/tmp/journeys/menu-key.png" });
 await browser.close();
