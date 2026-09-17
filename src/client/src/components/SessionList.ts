@@ -192,6 +192,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     // they are revealed without forcing a second tap on the section toggle.
     const archivedOpen = this.archivedExpanded || (searching && archivedRows.length > 0);
     const noMatches = searching && currentRows.length === 0 && archivedRows.length === 0;
+    const currentSplit = splitPinnedSessionRows(visibleCurrentRows, this.pinnedSessionIds, { searching });
 
     return html`
       <section>
@@ -201,8 +202,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
             ${this.renderSearch(allCurrentRows.length + allArchivedRows.length)}
             ${this.renderCurrentSelectionToolbar(selectableVisibleCurrent)}
             ${this.startingCount > 0 ? this.renderStartingSession() : null}
-            ${this.renderPinnedRows(visibleCurrentRows, descendantCounts, searching)}
-            ${splitPinnedSessionRows(visibleCurrentRows, this.pinnedSessionIds, { searching }).rest.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "current"))}
+            ${this.renderPinnedRows(currentSplit.pinned, descendantCounts)}
+            ${currentSplit.rest.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "current"))}
             ${archivedRows.length > 0 ? html`
               ${this.renderArchivedHeading(archivedRows.map((row) => row.session), archivedOpen)}
               ${archivedOpen ? html`
@@ -524,8 +525,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
    * would otherwise look like roots, so they keep the same child glyph, dimmed
    * to signal that the parent itself is not shown here.
    */
-  private renderPinnedRows(rows: SessionRow[], descendantCounts: ReadonlyMap<string, number>, searching: boolean) {
-    const pinned = splitPinnedSessionRows(rows, this.pinnedSessionIds, { searching }).pinned;
+  private renderPinnedRows(pinned: readonly SessionRow[], descendantCounts: ReadonlyMap<string, number>) {
     if (pinned.length === 0) return null;
     return html`
       <h3 class="row-group-heading" id="session-pinned-heading">Pinned</h3>
