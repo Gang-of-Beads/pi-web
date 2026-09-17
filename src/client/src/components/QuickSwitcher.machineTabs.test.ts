@@ -61,6 +61,18 @@ describe("the switcher's machine tabs", () => {
     expect(onSelectMachine).toHaveBeenCalledExactlyOnceWith("pi");
   });
 
+  it("moves focus into the level it opens and back when it closes", async () => {
+    const switcher = await mountWithMachines([machine("local", "Local"), machine("pi", "hxd-pi")], "local");
+    const crumb = machineCrumb(switcher);
+    crumb?.click();
+    await switcher.updateComplete;
+    expect(switcher.shadowRoot?.activeElement?.classList.contains("crumb-option")).toBe(true);
+
+    machineCrumb(switcher)?.click();
+    await switcher.updateComplete;
+    expect(switcher.shadowRoot?.activeElement?.classList.contains("crumb")).toBe(true);
+  });
+
   it("keeps every path control on the touch floor", () => {
     const sheet = String(QuickSwitcher.styles);
     expect(sheet).toMatch(/\.crumb-option\s*\{[^}]*min-height: var\(--pi-control-height-comfort\)/u);

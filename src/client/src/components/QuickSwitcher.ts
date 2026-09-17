@@ -146,6 +146,23 @@ export class QuickSwitcher extends LitElement {
    * the path says, so the reader never has to guess which kind of thing a
    * chip was.
    */
+  /**
+   * Keyboard focus follows the level the reader opened, and comes back to the
+   * level when it closes. Without this the options were reachable only by
+   * walking the DOM, and choosing one dropped focus to the sheet.
+   */
+  protected override updated(changed: Map<string, unknown>): void {
+    if (!changed.has("openLevel")) return;
+    const root = this.shadowRoot;
+    if (root === null) return;
+    if (this.openLevel !== undefined) {
+      root.querySelector<HTMLButtonElement>(".crumb-option")?.focus();
+      return;
+    }
+    if (changed.get("openLevel") === undefined) return;
+    root.querySelector<HTMLButtonElement>(".crumb")?.focus();
+  }
+
   private renderBreadcrumb() {
     const input = {
       machines: this.machines,
