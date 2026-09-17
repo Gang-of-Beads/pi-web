@@ -1,10 +1,11 @@
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
-import { renderCheckIcon, renderCrossIcon, uiIconStyle } from "./uiIcons.js";
+import { renderCheckIcon, renderChevronRightIcon, renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { quickSwitcherFilterProjects } from "../quickSwitcher";
+import { switcherBreadcrumb, type BreadcrumbLevel } from "../switcherBreadcrumb";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, Project, SessionInfo, Workspace } from "../api";
-import { quickSwitcherFilterActive, quickSwitcherFilterSessions, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, type QuickSwitcherFilter, type QuickSwitcherGroup } from "../quickSwitcher";
+import { quickSwitcherFilterSessions, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, type QuickSwitcherFilter, type QuickSwitcherGroup } from "../quickSwitcher";
 import { LongPressTracker } from "../longPress";
 import { renderSessionRowIndicator, sessionRowIndicator } from "./sessionRowIndicator";
 import type { SessionStateBadgeKind } from "./activityBadge";
@@ -71,6 +72,8 @@ export class QuickSwitcher extends LitElement {
   @state() private filter: QuickSwitcherFilter = {};
   @state() private openMenuSessionId: string | undefined;
   @state() private menuStyle = "";
+  /** Which breadcrumb level has its options open, if any. */
+  @state() private openLevel: BreadcrumbLevel | undefined;
   @state() private renamingSessionId: string | undefined;
   private renameDraft = "";
   private heldSession: SessionInfo | undefined;
@@ -107,8 +110,7 @@ export class QuickSwitcher extends LitElement {
           >
           <button class="close" title="Close" aria-label="Close" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
-        ${this.renderMachineTabs()}
-        ${this.renderFilters()}
+        ${this.renderBreadcrumb()}
         <div class="body">
           ${this.renderCreateRow()}
           ${model.groups.map((group) => this.renderGroup(group))}
@@ -143,20 +145,70 @@ export class QuickSwitcher extends LitElement {
    * One tab per machine, browsing that machine's sessions without leaving
    * the switcher. The tabs only exist when there is a choice to make.
    */
-  private renderMachineTabs() {
-    if (this.machines.length < 2) return null;
+  /**
+   * The context path: machine (only where there is a choice), project, folder.
+   * Tapping a level opens its own options; the list below narrows to whatever
+   * the path says, so the reader never has to guess which kind of thing a
+   * chip was.
+   */
+  private renderBreadcrumb() {
+    const segments = switcherBreadcrumb({
+      machines: this.machines,
+      machineId: this.browseMachineId,
+      projects: quickSwitcherFilterProjects(this.projects),
+      projectId: this.filter.projectId,
+      folders: this.workspaces.map((workspace) => ({ id: workspace.id, label: workspace.label, path: workspace.path, projectId: workspace.projectId })),
+      folderPath: this.filter.workspacePath,
+    });
+    if (segments.length === 0) return nothing;
+    const open = segments.find((segment) => segment.level === this.openLevel);
     return html`
-      <div class="machine-tabs" role="tablist" aria-label="Machines">
-        ${this.machines.map((machine) => html`
+      <nav class="crumbs" aria-label="Context">
+        ${segments.map((segment, index) => html`
+          ${index === 0 ? nothing : html`<span class="crumb-sep">${renderChevronRightIcon()}</span>`}
           <button
-            class="machine-tab"
-            role="tab"
-            aria-selected=${this.browseMachineId === machine.id ? "true" : "false"}
-            @click=${() => this.onSelectMachine?.(machine.id)}
-          >${machine.name}</button>
+            type="button"
+            class=${segment.chosen ? "crumb chosen" : "crumb"}
+            aria-expanded=${this.openLevel === segment.level ? "true" : "false"}
+            aria-haspopup="listbox"
+            @click=${() => { this.openLevel = this.openLevel === segment.level ? undefined : segment.level; }}
+          >${segment.label}</button>
         `)}
-      </div>
+      </nav>
+      ${open === undefined ? nothing : html`
+        <div class="crumb-options" role="listbox" aria-label=${`Choose ${open.level}`}>
+          ${open.level === "machine" ? nothing : html`
+            <button type="button" role="option" aria-selected=${open.chosen ? "false" : "true"} class="crumb-option" @click=${() => { this.clearLevel(open.level); }}>
+              ${open.level === "project" ? "All projects" : "All folders"}
+            </button>
+          `}
+          ${open.options.map((option) => html`
+            <button
+              type="button"
+              role="option"
+              aria-selected=${option.current ? "true" : "false"}
+              class=${option.current ? "crumb-option current" : "crumb-option"}
+              @click=${() => { this.chooseLevel(open.level, option.id); }}
+            >
+              <span class="crumb-option-label">${option.label}</span>
+              ${option.detail === undefined ? nothing : html`<span class="crumb-option-detail">${option.detail}</span>`}
+            </button>
+          `)}
+        </div>
+      `}
     `;
+  }
+
+  private clearLevel(level: BreadcrumbLevel): void {
+    this.filter = level === "project" ? {} : withoutFolder(this.filter);
+    this.openLevel = undefined;
+  }
+
+  private chooseLevel(level: BreadcrumbLevel, id: string): void {
+    if (level === "machine") this.onSelectMachine?.(id);
+    else if (level === "project") this.filter = { projectId: id };
+    else this.filter = { ...this.filter, workspacePath: id };
+    this.openLevel = undefined;
   }
 
   private renderCreateRow() {
@@ -325,60 +377,6 @@ export class QuickSwitcher extends LitElement {
    * browser loaded, across every workspace - so the default answers "what needs
    * me anywhere" and narrowing is a deliberate act.
    */
-  private renderFilters() {
-    const projects = quickSwitcherFilterProjects(this.projects);
-    if (projects.length === 0 && this.workspaces.length < 2) return nothing;
-    const active = quickSwitcherFilterActive(this.filter);
-    return html`
-      <div class="filters" role="group" aria-label="Filter sessions by context">
-        <button
-          type="button"
-          class=${active ? "chip" : "chip on"}
-          aria-pressed=${active ? "false" : "true"}
-          title="Show sessions from every project and workspace"
-          @click=${() => { this.filter = {}; }}
-        >All</button>
-        ${projects.map((project) => html`
-          <button
-            type="button"
-            class=${this.filter.projectId === project.id ? "chip on" : "chip"}
-            aria-pressed=${this.filter.projectId === project.id ? "true" : "false"}
-            @click=${() => { this.toggleFilter({ projectId: project.id }); }}
-          >${project.name}</button>
-        `)}
-        ${this.filterWorkspaces(projects).map((workspace) => html`
-          <button
-            type="button"
-            class=${this.filter.workspacePath === workspace.path ? "chip on nested" : "chip nested"}
-            aria-pressed=${this.filter.workspacePath === workspace.path ? "true" : "false"}
-            @click=${() => { this.toggleFilter({ workspacePath: workspace.path }); }}
-          >${workspace.label}</button>
-        `)}
-      </div>
-    `;
-  }
-
-  /**
-   * Workspace chips appear only where they say something a project chip does
-   * not: inside a chosen project with more than one workspace, or when there
-   * are no projects to group by. A project whose single workspace shares its
-   * name would otherwise print the same word twice.
-   */
-  private filterWorkspaces(projects: readonly Project[]): readonly Workspace[] {
-    if (this.filter.projectId !== undefined) {
-      const inProject = this.workspaces.filter((workspace) => workspace.projectId === this.filter.projectId);
-      return inProject.length > 1 ? inProject : [];
-    }
-    return projects.length === 0 ? this.workspaces : [];
-  }
-
-  /** Tapping the active filter clears it, so one control both narrows and widens. */
-  private toggleFilter(next: QuickSwitcherFilter): void {
-    const same = (next.projectId !== undefined && next.projectId === this.filter.projectId)
-      || (next.workspacePath !== undefined && next.workspacePath === this.filter.workspacePath);
-    this.filter = same ? {} : next;
-  }
-
   private onQueryInput(event: Event): void {
     if (!(event.target instanceof HTMLInputElement)) return;
     this.query = event.target.value;
@@ -474,6 +472,16 @@ export class QuickSwitcher extends LitElement {
        border-bottom: 0 idiom is for; without the strip drawing that line the
        tabs were three-sided boxes floating over nothing. */
     .machine-tab[aria-selected="true"] { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); margin-bottom: -1px; }
+    .crumbs { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
+    .crumbs::-webkit-scrollbar { display: none; }
+    .crumb { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); cursor: pointer; }
+    .crumb.chosen { background: var(--pi-selection-bg); color: var(--pi-text-bright); border-color: var(--pi-accent-border); }
+    .crumb-sep { flex: 0 0 auto; display: inline-grid; place-items: center; color: var(--pi-muted); }
+    .crumb-sep .ui-icon { width: 14px; height: 14px; }
+    .crumb-options { flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); max-height: 40vh; overflow-y: auto; }
+    .crumb-option { box-sizing: border-box; display: grid; gap: 2px; width: 100%; min-height: var(--pi-control-height-comfort); padding: var(--pi-space-2) var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); text-align: start; cursor: pointer; }
+    .crumb-option.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
+    .crumb-option-detail { color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .filters { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
     .filters::-webkit-scrollbar { display: none; }
     /* Chips ghost by default and carry their selected state in the tint, not
@@ -553,4 +561,13 @@ declare global {
   interface HTMLElementTagNameMap {
     "quick-switcher": QuickSwitcher;
   }
+}
+
+/** The same filter with its folder level cleared, kept out of the component so
+ *  the exact-optional shape is expressed once. */
+function withoutFolder(filter: QuickSwitcherFilter): QuickSwitcherFilter {
+  const next: QuickSwitcherFilter = {};
+  if (filter.machineId !== undefined) next.machineId = filter.machineId;
+  if (filter.projectId !== undefined) next.projectId = filter.projectId;
+  return next;
 }

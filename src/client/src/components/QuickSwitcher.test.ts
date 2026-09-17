@@ -244,8 +244,16 @@ function project(id: string, name = id): Project {
   return { id, name, path: `/repo/${id}`, createdAt: "2026-08-01T00:00:00.000Z" };
 }
 
-function chips(switcher: QuickSwitcher): HTMLButtonElement[] {
-  return [...switcher.renderRoot.querySelectorAll<HTMLButtonElement>(".chip")];
+function crumbs(switcher: QuickSwitcher): HTMLButtonElement[] {
+  return [...switcher.renderRoot.querySelectorAll<HTMLButtonElement>(".crumb")];
+}
+
+function crumbOptions(switcher: QuickSwitcher): HTMLButtonElement[] {
+  return [...switcher.renderRoot.querySelectorAll<HTMLButtonElement>(".crumb-option")];
+}
+
+function crumbOptionLabel(option: HTMLButtonElement): string {
+  return (option.querySelector(".crumb-option-label") ?? option).textContent.trim();
 }
 
 function menuToggle(switcher: QuickSwitcher, index = 0): HTMLButtonElement {
@@ -289,21 +297,24 @@ describe("quick-switcher context filters", () => {
   const ws = [workspace("main", "project-a"), workspace("feat", "project-b")];
   const sessions = [session("a", { cwd: "/repo/main", name: "in main" }), session("b", { cwd: "/repo/feat", name: "in feat" })];
 
-  it("shows every workspace's sessions until a filter is chosen", async () => {
+  it("shows every workspace's sessions until the path narrows", async () => {
     const switcher = await mount({ sessions, workspaces: ws, projects: [project("project-a"), project("project-b")] });
     expect(sessionRows(switcher)).toHaveLength(2);
-    expect(chips(switcher)[0]?.getAttribute("aria-pressed")).toBe("true");
+    expect(crumbs(switcher).map((crumb) => crumb.textContent.trim())).toEqual(["All projects"]);
   });
 
-  it("narrows to one project and widens again when the same chip is tapped", async () => {
+  it("narrows to one project from the path and widens again from All projects", async () => {
     const switcher = await mount({ sessions, workspaces: ws, projects: [project("project-a"), project("project-b")] });
-    const projectChip = chips(switcher).find((chip) => chip.textContent.trim() === "project-a");
-
-    projectChip?.click();
+    crumbs(switcher)[0]?.click();
+    await switcher.updateComplete;
+    crumbOptions(switcher).find((option) => crumbOptionLabel(option) === "project-a")?.click();
     await switcher.updateComplete;
     expect(sessionRows(switcher).map(rowTitle)).toEqual(["in main"]);
+    expect(crumbs(switcher).map((crumb) => crumb.textContent.trim())).toEqual(["project-a", "All folders"]);
 
-    projectChip?.click();
+    crumbs(switcher)[0]?.click();
+    await switcher.updateComplete;
+    crumbOptions(switcher).find((option) => crumbOptionLabel(option) === "All projects")?.click();
     await switcher.updateComplete;
     expect(sessionRows(switcher)).toHaveLength(2);
   });

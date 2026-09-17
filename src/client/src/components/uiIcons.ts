@@ -65,6 +65,11 @@ export const uiIconStyle = `
 `;
 
 /** The Go to control: four tiles, the destinations a phone can reach by name. */
+/** A path separator: drawn, so the crumb row never types a character. */
+export function renderChevronRightIcon(): TemplateResult {
+  return html`<svg class="ui-icon" viewBox=${ATTRIBUTES.viewBox} aria-hidden="true" focusable="false" fill=${ATTRIBUTES.fill} stroke=${ATTRIBUTES.stroke} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>`;
+}
+
 export function renderGridIcon(): TemplateResult {
   return html`<svg class="ui-icon" viewBox=${ATTRIBUTES.viewBox} aria-hidden="true" focusable="false" fill=${ATTRIBUTES.fill} stroke=${ATTRIBUTES.stroke} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg>`;
 }
