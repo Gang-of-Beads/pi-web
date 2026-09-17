@@ -40,6 +40,21 @@ interface BreadcrumbInput {
   folderPath: string | undefined;
 }
 
+/**
+ * The filter the path can actually speak for.
+ *
+ * A stored project or folder key that no level offers leaves the path saying
+ * "All projects" while the list stays narrowed to nothing, with no control
+ * left to widen: the reader is told everything is in scope and shown an empty
+ * room. Callers reconcile their filter through this before rendering.
+ */
+export function reconcileBreadcrumbFilter(input: BreadcrumbInput): { projectId: string | undefined; folderPath: string | undefined } {
+  const projectId = input.projects.some((entry) => entry.id === input.projectId) ? input.projectId : undefined;
+  const folders = foldersInScope({ ...input, projectId });
+  const folderPath = folders.some((folder) => folder.path === input.folderPath) ? input.folderPath : undefined;
+  return { projectId, folderPath };
+}
+
 export function switcherBreadcrumb(input: BreadcrumbInput): BreadcrumbSegment[] {
   const segments: BreadcrumbSegment[] = [];
   if (input.machines.length > 1) {
@@ -53,7 +68,7 @@ export function switcherBreadcrumb(input: BreadcrumbInput): BreadcrumbSegment[] 
   }
 
   const project = input.projects.find((entry) => entry.id === input.projectId);
-  segments.push({
+  if (input.projects.length > 0) segments.push({
     level: "project",
     label: project?.name ?? "All projects",
     chosen: project !== undefined,
@@ -81,9 +96,12 @@ export function switcherBreadcrumb(input: BreadcrumbInput): BreadcrumbSegment[] 
 /**
  * Folders offered under the chosen project. Without a chosen project the level
  * would list every folder on the machine, which is a flat list of unrelated
- * directories rather than a step in a path.
+ * directories rather than a step in a path - except where there are no
+ * projects to group by at all, as when browsing another machine, and the
+ * folders are the only level the reader has.
  */
 function foldersInScope(input: BreadcrumbInput): BreadcrumbInput["folders"] {
+  if (input.projects.length === 0) return input.folders;
   if (input.projectId === undefined) return [];
   return input.folders.filter((folder) => folder.projectId === input.projectId);
 }

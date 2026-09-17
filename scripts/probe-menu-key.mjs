@@ -77,23 +77,47 @@ if (opened.chips > 0 || opened.tabs > 0) fail("the menu still renders the mixed 
 if (opened.crumbs.length === 0) fail("the menu renders no context path");
 else if (!opened.crumbs.includes("All projects")) fail(`the context path does not name the project level: ${JSON.stringify(opened.crumbs)}`);
 
-await page.evaluate(`(function(){
+const projectLevel = await page.evaluate(`(function(){
   const app = document.querySelector("pi-web-app");
-  app.shadowRoot.querySelector("quick-switcher").shadowRoot.querySelector(".crumb").click();
+  const switcher = app.shadowRoot.querySelector("quick-switcher");
+  const crumbs = [...(switcher?.shadowRoot?.querySelectorAll(".crumb") ?? [])];
+  const crumb = crumbs.find((node) => node.textContent?.trim() === "All projects");
+  if (crumb === undefined) return { ok: false };
+  crumb.click();
+  return { ok: true, controls: crumb.getAttribute("aria-controls"), expandedBefore: crumb.getAttribute("aria-expanded") };
 })()`);
+if (!projectLevel.ok) fail("the project level is not on the path");
+else if (projectLevel.controls !== "crumb-options") fail("the path level announces expansion without owning its option list");
 await page.waitForTimeout(600);
+
 const levelOptions = await page.evaluate(`(function(){
   const app = document.querySelector("pi-web-app");
   const switcher = app.shadowRoot.querySelector("quick-switcher");
-  return [...(switcher?.shadowRoot?.querySelectorAll(".crumb-option") ?? [])].map((node) => node.querySelector(".crumb-option-label")?.textContent?.trim() ?? node.textContent?.trim());
+  const owned = switcher?.shadowRoot?.getElementById("crumb-options");
+  return {
+    owned: owned !== null && owned !== undefined,
+    labels: [...(switcher?.shadowRoot?.querySelectorAll(".crumb-option") ?? [])].map((node) => node.querySelector(".crumb-option-label")?.textContent?.trim() ?? node.textContent?.trim()),
+  };
 })()`);
-if (levelOptions.length === 0) fail("opening a path level offered no options");
-else if (levelOptions[0] !== "All projects") fail(`the project level does not offer the widening option first: ${JSON.stringify(levelOptions)}`);
-await page.evaluate(`(function(){
+if (!levelOptions.owned) fail("the announced option list does not exist in the DOM");
+if (levelOptions.labels[0] !== "All projects") fail(`the project level does not offer the widening option first: ${JSON.stringify(levelOptions.labels)}`);
+if (levelOptions.labels.length < 2) fail(`the project level offers no real project, only the widening row: ${JSON.stringify(levelOptions.labels)}`);
+
+const closedLevel = await page.evaluate(`(function(){
   const app = document.querySelector("pi-web-app");
-  app.shadowRoot.querySelector("quick-switcher").shadowRoot.querySelector(".crumb").click();
+  const switcher = app.shadowRoot.querySelector("quick-switcher");
+  const crumb = [...(switcher?.shadowRoot?.querySelectorAll(".crumb") ?? [])].find((node) => node.textContent?.trim() === "All projects");
+  crumb?.click();
+  return true;
 })()`);
-await page.waitForTimeout(400);
+if (!closedLevel) fail("the path level could not be closed again");
+await page.waitForTimeout(500);
+const afterClose = await page.evaluate(`(function(){
+  const app = document.querySelector("pi-web-app");
+  const switcher = app.shadowRoot.querySelector("quick-switcher");
+  return (switcher?.shadowRoot?.querySelectorAll(".crumb-option") ?? []).length;
+})()`);
+if (afterClose !== 0) fail("tapping the open level again left its options on screen");
 
 await page.keyboard.press("Escape");
 await page.waitForTimeout(900);

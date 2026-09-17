@@ -1,7 +1,7 @@
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { renderCheckIcon, renderChevronRightIcon, renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { quickSwitcherFilterProjects } from "../quickSwitcher";
-import { switcherBreadcrumb, type BreadcrumbLevel } from "../switcherBreadcrumb";
+import { reconcileBreadcrumbFilter, switcherBreadcrumb, type BreadcrumbLevel } from "../switcherBreadcrumb";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, Project, SessionInfo, Workspace } from "../api";
@@ -152,14 +152,16 @@ export class QuickSwitcher extends LitElement {
    * chip was.
    */
   private renderBreadcrumb() {
-    const segments = switcherBreadcrumb({
+    const input = {
       machines: this.machines,
       machineId: this.browseMachineId,
       projects: quickSwitcherFilterProjects(this.projects),
       projectId: this.filter.projectId,
       folders: this.workspaces.map((workspace) => ({ id: workspace.id, label: workspace.label, path: workspace.path, projectId: workspace.projectId })),
       folderPath: this.filter.workspacePath,
-    });
+    };
+    const reconciled = reconcileBreadcrumbFilter(input);
+    const segments = switcherBreadcrumb({ ...input, ...reconciled });
     if (segments.length === 0) return nothing;
     const open = segments.find((segment) => segment.level === this.openLevel);
     return html`
@@ -171,12 +173,12 @@ export class QuickSwitcher extends LitElement {
             class=${segment.chosen ? "crumb chosen" : "crumb"}
             aria-expanded=${this.openLevel === segment.level ? "true" : "false"}
             aria-haspopup="listbox"
+            aria-controls="crumb-options"
             @click=${() => { this.openLevel = this.openLevel === segment.level ? undefined : segment.level; }}
           >${segment.label}</button>
         `)}
-      </nav>
       ${open === undefined ? nothing : html`
-        <div class="crumb-options" role="listbox" aria-label=${`Choose ${open.level}`}>
+        <div class="crumb-options" id="crumb-options" role="listbox" aria-label=${open.level === "machine" ? "Choose a machine" : open.level === "project" ? "Choose a project" : "Choose a folder"}>
           ${open.level === "machine" ? nothing : html`
             <button type="button" role="option" aria-selected=${open.chosen ? "false" : "true"} class="crumb-option" @click=${() => { this.clearLevel(open.level); }}>
               ${open.level === "project" ? "All projects" : "All folders"}
@@ -196,6 +198,7 @@ export class QuickSwitcher extends LitElement {
           `)}
         </div>
       `}
+      </nav>
     `;
   }
 
@@ -462,35 +465,25 @@ export class QuickSwitcher extends LitElement {
     /* Hollow rather than filled: this one marks work that stopped, so it should
        not read as another kind of activity at a glance. */
     .row-flag.interrupted { background: transparent; border: 2px solid var(--pi-warning, var(--pi-accent)); }
-    /* Filters scroll sideways rather than wrapping into a wall of chips; the
-       row keeps one line so it never competes with the list for height. */
-    .machine-tabs { flex: 0 0 auto; display: flex; align-items: stretch; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-5) 0;
-      border-bottom: 1px solid var(--pi-border); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
-    .machine-tabs::-webkit-scrollbar { display: none; }
-    .machine-tab { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-bottom: 0; border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
-    /* The selected tab merges into the strip rule below it, which is what the
-       border-bottom: 0 idiom is for; without the strip drawing that line the
-       tabs were three-sided boxes floating over nothing. */
-    .machine-tab[aria-selected="true"] { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); margin-bottom: -1px; }
+    /* The path scrolls sideways rather than wrapping: it keeps one line so it
+       never competes with the session list for height. */
     .crumbs { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
     .crumbs::-webkit-scrollbar { display: none; }
     .crumb { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); cursor: pointer; }
     .crumb.chosen { background: var(--pi-selection-bg); color: var(--pi-text-bright); border-color: var(--pi-accent-border); }
+    .crumb:focus-visible, .crumb-option:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
+    /* The drawn box stays on the bar template; a thumb gets the 44px floor
+       through reach, as the message actions do. */
+    @media (pointer: coarse) { .crumb { position: relative; } .crumb::after { content: ""; position: absolute; inset: calc((var(--pi-control-height) - var(--pi-control-height-touch, 44px)) / 2) 0; } }
     .crumb-sep { flex: 0 0 auto; display: inline-grid; place-items: center; color: var(--pi-muted); }
     .crumb-sep .ui-icon { width: 14px; height: 14px; }
     .crumb-options { flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); max-height: 40vh; overflow-y: auto; }
     .crumb-option { box-sizing: border-box; display: grid; gap: 2px; width: 100%; min-height: var(--pi-control-height-comfort); padding: var(--pi-space-2) var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); text-align: start; cursor: pointer; }
     .crumb-option.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .crumb-option-detail { color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .filters { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
-    .filters::-webkit-scrollbar { display: none; }
     /* Chips ghost by default and carry their selected state in the tint, not
        in an outline: a row of outlined pills read as a wall of boxes (C4). */
-    .chip { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-md); background: var(--pi-surface-hover); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
-    .chip.on { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     /* Nested chips read as a second level, not as peers of the projects. */
-    .chip.nested { font-size: var(--pi-text-xs); }
-    .chip:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     /* One box per session. The menu button used to have a column of its own
        beside the tile, so a row of three sessions read as six boxes; it is
        used occasionally, while the name is read every time. */
@@ -528,8 +521,6 @@ export class QuickSwitcher extends LitElement {
        exactly that bug once). */
     @media (pointer: coarse) {
       .close { width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }
-      .machine-tab { min-height: var(--pi-control-height-touch); }
-      .chip { min-height: var(--pi-control-height-touch); min-width: var(--pi-control-height-touch); }
       .row-menu-toggle { width: var(--qs-menu-size); min-height: var(--qs-menu-size); }
       .row-menu button { min-height: var(--pi-control-height-touch); }
       input { height: var(--pi-panel-header-control-height); }

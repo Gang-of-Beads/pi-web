@@ -50,7 +50,7 @@ describe("the switcher's machine tabs", () => {
 
   it("omits the machine level when there is only one machine", async () => {
     const solo = await mountWithMachines([machine("local", "Local")], "local");
-    expect(machineCrumb(solo)?.textContent.trim()).toBe("All projects");
+    expect(machineCrumb(solo)).toBeUndefined();
   });
 
   it("reports the chosen machine to its host", async () => {

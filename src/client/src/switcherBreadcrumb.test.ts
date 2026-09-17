@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { switcherBreadcrumb } from "./switcherBreadcrumb";
+import { reconcileBreadcrumbFilter, switcherBreadcrumb } from "./switcherBreadcrumb";
 
 const soloMachine = { id: "local", name: "Local" };
 const machines = [soloMachine, { id: "pi", name: "pi" }];
@@ -42,6 +42,22 @@ describe("switcherBreadcrumb", () => {
   it("drops the folder level when the chosen project has none", () => {
     const segments = switcherBreadcrumb({ machines, machineId: "local", projects, projectId: "p2", folders: [], folderPath: undefined });
     expect(segments.map((segment) => segment.level)).toEqual(["machine", "project"]);
+  });
+
+  it("drops a project key no level offers, so the path never claims a scope the list ignores", () => {
+    const reconciled = reconcileBreadcrumbFilter({ machines, machineId: "local", projects, projectId: "gone", folders, folderPath: "/repos/pi-web" });
+    expect(reconciled).toEqual({ projectId: undefined, folderPath: undefined });
+  });
+
+  it("drops a folder key whose folder disappeared but keeps the project", () => {
+    const reconciled = reconcileBreadcrumbFilter({ machines, machineId: "local", projects, projectId: "p1", folders, folderPath: "/repos/removed" });
+    expect(reconciled).toEqual({ projectId: "p1", folderPath: undefined });
+  });
+
+  it("offers folders as the only level when there are no projects to group by", () => {
+    const segments = switcherBreadcrumb({ machines, machineId: "local", projects: [], projectId: undefined, folders, folderPath: undefined });
+    expect(segments.map((segment) => segment.level)).toEqual(["machine", "folder"]);
+    expect(segments[1]?.options).toHaveLength(3);
   });
 
   it("marks the current option at every level", () => {
