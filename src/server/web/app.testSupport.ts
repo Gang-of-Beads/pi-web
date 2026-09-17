@@ -10,7 +10,7 @@ import { createServerPluginRuntime, type ServerPluginModuleImporter, type Server
 import type { PiWebPluginCatalogEntry } from "../shared/piWebPluginCatalog.js";
 import { ProjectService } from "../shared/projects/projectService.js";
 import { ProjectStore } from "../shared/storage/projectStore.js";
-import type { MachineClient } from "../../../server-plugin-api.js";
+import type { MachineClient } from "../../server-plugin-api.js";
 import { MachineService } from "../../../pi-web-plugins/machines/server/machineService.js";
 import { MachineStore } from "../../../pi-web-plugins/machines/server/machineStore.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
