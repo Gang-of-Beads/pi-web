@@ -13,11 +13,6 @@ export interface GatewaySettingsLoadResult {
   error: string;
 }
 
-export interface PiPackagesLoadResult {
-  packagesResponse?: PiPackagesResponse;
-  error: string;
-}
-
 export async function loadGatewaySettingsData(loaders: GatewaySettingsLoaders): Promise<GatewaySettingsLoadResult> {
   const [config, plugins] = await Promise.allSettled([loaders.loadConfig(), loaders.loadPlugins()]);
   const result: GatewaySettingsLoadResult = { error: "" };
@@ -33,7 +28,7 @@ export async function loadGatewaySettingsData(loaders: GatewaySettingsLoaders): 
   return result;
 }
 
-export async function loadPiPackagesData(target: PiPackageTargetContext, loadPackages: (targetId: string) => Promise<PiPackagesResponse>): Promise<PiPackagesLoadResult> {
+export async function loadPiPackagesData(target: PiPackageTargetContext, loadPackages: (targetId: string) => Promise<PiPackagesResponse>) {
   try {
     return { packagesResponse: await loadPackages(target.id), error: "" };
   } catch (error) {

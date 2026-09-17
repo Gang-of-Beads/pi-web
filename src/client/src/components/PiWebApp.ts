@@ -42,7 +42,7 @@ import { machineSessionKey } from "../machineKeys";
 import { commandsForSession } from "../commandLedger";
 import { composedPathOf, composerCollapsedForFocus, composerCollapseTransition, shouldReleaseComposerCollapse } from "../composerCollapse";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
-import { isWaitingForUser } from "../sessionWaiting";
+import { isWaitingForUser } from "../../../shared/sessionActivityState";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { SessionUnreadController } from "../sessionUnread";
 import { workspaceViewTransition } from "../workspaceViewTransition";

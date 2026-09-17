@@ -14,14 +14,12 @@
 
 import { normalizeSessionPath } from "./sessionPaths";
 
-export type SessionLocationVerdict = "described" | "unknown";
-
-export function sessionLocationVerdict(cwd: string, selectedWorkspacePath: string | undefined): SessionLocationVerdict {
+export function sessionLocationVerdict(cwd: string, selectedWorkspacePath: string | undefined) {
   if (cwd === "" || selectedWorkspacePath === undefined || selectedWorkspacePath === "") return "unknown";
   const child = normalizeSessionPath(cwd);
   const parent = normalizeSessionPath(selectedWorkspacePath);
   if (parent === "" || child === "") return "unknown";
   if (child === parent) return "described";
   const separator = parent.includes("\\") || child.includes("\\") ? "\\" : "/";
-  return child.startsWith(`${parent}${separator}`) ? "described" : "unknown";
+  return child.startsWith(parent === separator ? parent : `${parent}${separator}`) ? "described" : "unknown";
 }

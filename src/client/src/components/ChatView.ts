@@ -19,7 +19,7 @@ import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedS
 import { commandDeliveryPresentation, commandResultLine, type CommandLedgerEntry } from "../commandLedger";
 import type { ClosedExtensionDialog } from "../appState";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
-import { isWaitingForUser } from "../sessionWaiting";
+import { isWaitingForUser } from "../../../shared/sessionActivityState";
 import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import type { DrawerSectionContext, QualifiedDrawerSectionContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";

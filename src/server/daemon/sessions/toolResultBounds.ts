@@ -16,14 +16,7 @@
  */
 export const TOOL_RESULT_TEXT_BYTES = 128 * 1024;
 
-export interface BoundedToolResultText {
-  text: string;
-  truncated: boolean;
-  /** Bytes the whole result had, so the row can say what is missing. */
-  totalBytes: number;
-}
-
-export function boundToolResultText(text: string, maxBytes = TOOL_RESULT_TEXT_BYTES): BoundedToolResultText {
+export function boundToolResultText(text: string, maxBytes = TOOL_RESULT_TEXT_BYTES) {
   const encoder = new TextEncoder();
   const totalBytes = encoder.encode(text).byteLength;
   if (totalBytes <= maxBytes) return { text, truncated: false, totalBytes };

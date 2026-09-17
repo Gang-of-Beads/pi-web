@@ -9,7 +9,7 @@ import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
-import { type AppState, type ClosedExtensionDialog } from "../appState";
+import { resetWorkspaceScopedState, type AppState, type ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
 import { carryUnsettledForward } from "../transcriptReconcile";
@@ -342,6 +342,7 @@ export class SessionController {
       void this.locateAndApplySessionWorkspace(session, machineId, seq);
     }
     this.setState({
+      ...(workspaceMoved ? resetWorkspaceScopedState() : {}),
       selectedSession: session,
       ...(ancestors === undefined ? {} : { selectedWorkspace: ancestors.workspace, selectedProject: ancestors.project }),
       // A workspace move must not carry the previous workspace's session list
@@ -1893,11 +1894,15 @@ export class SessionController {
     });
     if (found === undefined || seq !== this.selectionSeq) return;
     if (this.getState().selectedSession?.id !== session.id) return;
-    const project = this.getState().projects.find((candidate) => candidate.id === found.project.id);
-    const workspaceMoved = found.workspace.id !== this.getState().selectedWorkspace?.id;
+    const state = this.getState();
+    const workspaceMoved = found.workspace.id !== state.selectedWorkspace?.id || found.project.id !== state.selectedProject?.id;
     this.setState({
+      ...(workspaceMoved ? resetWorkspaceScopedState() : {}),
+      projects: state.projects.some((project) => project.id === found.project.id) ? state.projects : [...state.projects, found.project],
+      selectedProject: found.project,
       selectedWorkspace: found.workspace,
-      ...(project === undefined ? {} : { selectedProject: project }),
+      workspaces: [...found.workspaces],
+      workspacesByProjectId: { ...state.workspacesByProjectId, [found.project.id]: [...found.workspaces] },
       // The move that takes the chip must take the session list with it, as
       // the exact-match path does: rows from the workspace being left,
       // rendered under the located one, are another workspace's data on the

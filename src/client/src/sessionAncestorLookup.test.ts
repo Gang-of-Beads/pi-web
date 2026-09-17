@@ -32,6 +32,7 @@ describe("locating the workspace that owns a session", () => {
 
     expect(found?.workspace.id).toBe("w-other");
     expect(found?.project.id).toBe("proj-other");
+    expect(found?.workspaces).toEqual([other]);
   });
 
   it("returns undefined when no project owns the directory", async () => {

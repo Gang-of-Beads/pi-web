@@ -31,6 +31,10 @@ describe("sessionLocationVerdict", () => {
     expect(sessionLocationVerdict("/home/user/repo/nested", "/home/user/repo/")).toBe("described");
   });
 
+  it("treats the filesystem root as containing absolute sessions", () => {
+    expect(sessionLocationVerdict("/home/user/repo", "/")).toBe("described");
+  });
+
   it("handles a session path with a trailing separator", () => {
     expect(sessionLocationVerdict("/home/user/repo/", "/home/user/repo")).toBe("described");
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PendingExtensionDialog, SessionStatus } from "../../shared/apiTypes";
-import { isWaitingForUser } from "./sessionWaiting";
+import { isWaitingForUser } from "../../shared/sessionActivityState";
 
 const dialog: PendingExtensionDialog = { dialogId: "d1", kind: "confirm", title: "Update pi?", askedAt: "", runScoped: true };
 
