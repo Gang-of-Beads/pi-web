@@ -1,5 +1,64 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.2
+
+### Patch Changes
+
+- 6915ec6: A capability the machine does not have stops showing as a dead button.
+
+  Composer contributions declare `available` now: dictation without a configured
+  speech endpoint is absent from the composer rather than greyed out. A disabled
+  control is a promise the product cannot keep, and a reader cannot tell it from
+  one that is merely busy; `enabled` still means "not right now".
+
+- 2983619: The activity dock stops owning other people's work.
+
+  The shell hard-coded what "idle · N background runs" means, which is a domain
+  it does not own. Plugins contribute activity notes now: the shell keeps the
+  dock, the idle rule and the session status frame, and whoever owns the work
+  supplies the count and the words. The bundled background-runs plugin does that
+  for this chat's own background tasks.
+
+- e6a1170: The shell stops knowing which plugin wants what.
+
+  A plugin declares the host facts it needs by name in its package manifest, and
+  the web process fills them; it no longer asks "is this the updates plugin?" to
+  attach a docker mode. The navigation accordion the Navigate page replaced is
+  gone with its hard-coded section order, and the four navigation shortcuts open
+  the Navigate page on a kind instead of focusing panel sections that no longer
+  rendered.
+
+- 6915ec6: A multi-line tool command starts on its own line.
+
+  Beside the tool name, every line after the first began at the inline column,
+  so the card looked indented around an empty gutter. Multi-line targets now sit
+  on the row below at the card edge; one-liners still read beside the name.
+
+- 2983619: A question card stops shaking while the agent writes.
+
+  The pending ask arrives on every status frame as a fresh object, so a
+  streaming turn rebuilt the form many times a second and controls moved under
+  the reader. The card re-renders only when the question itself changes.
+
+- 3499993: The tools panel can be found again on the desktop.
+
+  With no project chosen the shell gives the tool column up, but the edge control
+  still described the panel as open, and it painted as a 14px translucent sliver
+  at the window edge - so Files, Git and Terminal read as missing from both sides
+  of a desktop window, with no way back. The control now reports the state the
+  reader sees, opening it wins over the automatic surrender (the panel shows its
+  own "Select a project"), and a collapsed handle paints as a real bordered
+  control.
+
+- 024a3ed: Messages meant for the model stop showing as broken ones.
+
+  A custom entry whose author marked it undisplayed - goal continuations are the
+  standing case - was rendered as "Unrecognized message", telling the reader
+  something was wrong with a message they were never meant to see. Those are
+  dropped now. Background task notifications, which are meant to be read, get a
+  renderer from the background-runs plugin: the task name, its outcome and its
+  exit code.
+
 ## 2.202609.1
 
 ### Patch Changes
@@ -11,6 +70,7 @@
   Navigation is machine, project, session; a project lists the sessions from all
   of its folders, and which folder a session runs in stays a property of that
   session rather than a place to stand.
+
 - 2e993c3: The attach key stays inside the message field.
 
   At one line the phone's field is 40px tall and the 36px key sat 8px from the
