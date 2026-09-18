@@ -28,6 +28,8 @@ function readStoredPanelCollapse(): StoredPanelCollapse {
 export class PanelCollapseController implements ReactiveController {
   navigationPanelCollapsed: boolean;
   workspacePanelCollapsed: boolean;
+  /** Set when the reader opens the panel themselves; see `workspacePanelTakesSpace`. */
+  workspacePanelRequested = false;
 
   hostConnected(): void {
     return;
@@ -65,6 +67,7 @@ export class PanelCollapseController implements ReactiveController {
 
   toggleWorkspacePanel(): void {
     this.workspacePanelCollapsed = !this.workspacePanelCollapsed;
+    this.workspacePanelRequested = !this.workspacePanelCollapsed;
     this.persist();
     this.host.requestUpdate();
   }
@@ -77,7 +80,11 @@ export class PanelCollapseController implements ReactiveController {
   }
 
   expandWorkspacePanel(): void {
-    if (!this.workspacePanelCollapsed) return;
+    this.workspacePanelRequested = true;
+    if (!this.workspacePanelCollapsed) {
+      this.host.requestUpdate();
+      return;
+    }
     this.workspacePanelCollapsed = false;
     this.persist();
     this.host.requestUpdate();
@@ -88,7 +95,7 @@ export class PanelCollapseController implements ReactiveController {
       "shell",
       mainViewClass(mainView),
       ...(this.navigationPanelCollapsed ? ["navigation-panel-collapsed"] : []),
-      ...(workspacePanelTakesSpace(this.workspacePanelCollapsed, hasWorkspace) ? [] : ["workspace-panel-collapsed"]),
+      ...(workspacePanelTakesSpace(this.workspacePanelCollapsed, hasWorkspace, this.workspacePanelRequested) ? [] : ["workspace-panel-collapsed"]),
     ].join(" ");
   }
 }
@@ -100,12 +107,15 @@ export class PanelCollapseController implements ReactiveController {
  * than the chat it sits beside. Spending that on a panel whose only content is
  * "Select a project" leaves the conversation in 400px while half the window
  * shows an empty state, so the column is given up until there is a workspace to
- * put in it. An explicit collapse still wins: the user's choice is not
- * second-guessed once made.
+ * put in it. The reader's own choice wins in both directions: an explicit
+ * collapse keeps it away, and an explicit open shows it - with the panel's own
+ * "Select a project" state - even before a workspace exists. Without that, the
+ * edge control was a visible button that did nothing, which is how the tools
+ * were reported missing from both sides of a desktop window.
  */
-export function workspacePanelTakesSpace(collapsed: boolean, hasWorkspace: boolean): boolean {
+export function workspacePanelTakesSpace(collapsed: boolean, hasWorkspace: boolean, requested = false): boolean {
   if (collapsed) return false;
-  return hasWorkspace;
+  return hasWorkspace || requested;
 }
 
 export function mainViewClass(mainView: AppState["mainView"]): "navigation-view" | "chat-view" | "workspace-view" {

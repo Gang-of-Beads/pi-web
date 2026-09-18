@@ -22,6 +22,16 @@ describe("workspacePanelTakesSpace", () => {
   it("stays collapsed when both reasons apply", () => {
     expect(workspacePanelTakesSpace(true, false)).toBe(false);
   });
+
+  it("shows the panel the reader asked for even before a workspace exists", () => {
+    // Otherwise the edge control is a visible button that does nothing, which
+    // is how the tools read as missing on a desktop with no project chosen.
+    expect(workspacePanelTakesSpace(false, false, true)).toBe(true);
+  });
+
+  it("still honours a collapse that came after the request", () => {
+    expect(workspacePanelTakesSpace(true, false, true)).toBe(false);
+  });
 });
 
 /**

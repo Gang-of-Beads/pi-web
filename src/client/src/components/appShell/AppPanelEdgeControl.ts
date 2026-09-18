@@ -220,6 +220,12 @@ export class AppPanelEdgeControl extends LitElement {
     .edge-button::after { content: ""; position: absolute; inset: 0 calc(-1 * var(--pi-space-3)); }
     .edge-button:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; }
     @media (hover: hover) { .edge-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; } }
+    /* Collapsed, this control is the only way back to a panel that is no
+       longer on screen. As a 14px 0.75-opacity sliver it read as nothing at
+       all - the tools panel was reported missing on both sides of a desktop
+       window. A control that is the sole route to a surface paints as a
+       control. */
+    :host([collapsed]) .edge-button { flex: 0 0 auto; width: 24px; min-width: 24px; opacity: 1; color: var(--pi-text); background: var(--pi-surface); border-color: var(--pi-border); border-radius: var(--pi-radius-sm); box-shadow: var(--pi-shadow-soft); }
     :host([side="navigation"][collapsed]) .edge-button { transform: translateX(calc(50% - .5px)); }
     :host([side="workspace"][collapsed]) .edge-button { transform: translateX(calc(-50% + .5px)); }
     .edge-icon { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }

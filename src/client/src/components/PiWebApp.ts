@@ -62,7 +62,7 @@ import "./appShell/ContextSwitcherSheet";
 import "./appShell/AppGoToSheet";
 import "./SessionRenameDialog";
 import type { GoToDestination } from "./appShell/AppGoToSheet";
-import { PanelCollapseController, mainViewClass, panelToggleHiddenState } from "../appShell/panelCollapseController";
+import { PanelCollapseController, mainViewClass, panelToggleHiddenState, workspacePanelTakesSpace } from "../appShell/panelCollapseController";
 import { PanelResizeController, type PanelResizeConstraints, type ResizablePanelSide } from "../appShell/panelResizeController";
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
 import { readSettingsOpen, readSettingsSection, writeSettingsOpen, writeSettingsSection, type SettingsSection } from "../settingsRoute";
@@ -2108,6 +2108,20 @@ export class PiWebApp extends LitElement {
     `;
   }
 
+  /**
+   * Whether the tool panel is actually on screen, which is not the same as
+   * "not collapsed": the shell also gives the column up while no workspace is
+   * chosen. The edge control has to describe the state the reader sees, or it
+   * offers to collapse a panel that is already gone.
+   */
+  private workspacePanelOnScreen(): boolean {
+    return workspacePanelTakesSpace(
+      this.panelCollapse.workspacePanelCollapsed,
+      this.state.selectedWorkspace !== undefined,
+      this.panelCollapse.workspacePanelRequested,
+    );
+  }
+
   private renderWorkspacePanelEdgeControl() {
     const constraints = this.resizablePanelConstraints("workspace");
     return html`
@@ -2117,12 +2131,15 @@ export class PiWebApp extends LitElement {
         resizeLabel="Resize workspace panel"
         expandLabel="Expand workspace panel"
         collapseLabel="Collapse workspace panel"
-        .collapsed=${this.panelCollapse.workspacePanelCollapsed}
+        .collapsed=${!this.workspacePanelOnScreen()}
         .resizable=${!this.appShell.isMobileNavigationLayout}
         .panelWidth=${this.panelResize.panelWidth("workspace")}
         .minWidth=${constraints.minWidth}
         .maxWidth=${constraints.maxWidth}
-        .onToggle=${() => { this.panelCollapse.toggleWorkspacePanel(); }}
+        .onToggle=${() => {
+          if (this.workspacePanelOnScreen()) this.panelCollapse.toggleWorkspacePanel();
+          else this.panelCollapse.expandWorkspacePanel();
+        }}
         .onResizeStart=${() => this.startPanelResize("workspace")}
         .onResize=${(width: number) => { this.panelResize.resizePanel("workspace", width, { persist: false }); }}
         .onResizeEnd=${() => { this.panelResize.persistPanelSizes(); }}
