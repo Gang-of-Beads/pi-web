@@ -1,4 +1,5 @@
 import { watch } from "node:fs";
+import { watchablePath } from "./watchPath.js";
 
 /**
  * Tells the room a workspace's files moved.
@@ -35,7 +36,7 @@ export interface WorkspaceWatcherDependencies {
 }
 
 const defaultDependencies: WorkspaceWatcherDependencies = {
-  watchDirectory: (path, onChange) => watch(path, { persistent: false, recursive: true }, onChange),
+  watchDirectory: (path, onChange) => watch(watchablePath(path), { persistent: false, recursive: true }, onChange),
   setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
   clearTimer: (timer) => { clearTimeout(timer); },
 };

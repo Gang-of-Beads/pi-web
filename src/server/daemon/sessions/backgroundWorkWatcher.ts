@@ -1,4 +1,5 @@
 import { watch } from "node:fs";
+import { watchablePath } from "../workspaces/watchPath.js";
 import { basename, dirname, join } from "node:path";
 
 export interface BackgroundWorkWatchTarget {
@@ -19,7 +20,7 @@ export interface BackgroundWorkWatcherDependencies {
 }
 
 const defaultDependencies: BackgroundWorkWatcherDependencies = {
-  watchDirectory: (path, onChange) => watch(path, { persistent: false }, onChange),
+  watchDirectory: (path, onChange) => watch(watchablePath(path), { persistent: false }, onChange),
   setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
   clearTimer: (timer) => { clearTimeout(timer); },
 };
