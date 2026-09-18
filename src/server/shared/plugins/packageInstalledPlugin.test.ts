@@ -1,4 +1,4 @@
-import { npmCommand } from "../../../npmCommand";
+import { npmInvocation } from "../../../npmCommand";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,6 +6,8 @@ import { join, resolve } from "node:path";
 import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 import { PiWebPluginCatalog } from "../piWebPluginCatalog";
+
+const npm = npmInvocation();
 
 /**
  * A plugin has to be installable as a package, not only readable from this
@@ -42,13 +44,13 @@ async function packagedPluginRoot(): Promise<string> {
     files: ["pi-web-plugin.js"],
     piWeb: { plugins: [{ id: "themes", browserRoot: ".", module: "pi-web-plugin.js" }] },
   }), "utf8");
-  const tarball = execFileSync(npmCommand(), ["pack", "--silent"], { cwd: packageDir, encoding: "utf8" }).trim();
+  const tarball = execFileSync(npm.command, ["pack", "--silent"], { cwd: packageDir, encoding: "utf8", shell: npm.shell }).trim();
 
   const agentDir = join(staging, "agent");
   mkdirSync(join(agentDir, "npm"), { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:@gang-of-beads/pi-web-updates"] }), "utf8");
-  execFileSync(npmCommand(), ["init", "-y", "--silent"], { cwd: join(agentDir, "npm"), stdio: "ignore" });
-  execFileSync(npmCommand(), ["install", "--silent", "--no-audit", "--no-fund", join(packageDir, tarball)], { cwd: join(agentDir, "npm"), stdio: "ignore" });
+  execFileSync(npm.command, ["init", "-y", "--silent"], { cwd: join(agentDir, "npm"), stdio: "ignore", shell: npm.shell });
+  execFileSync(npm.command, ["install", "--silent", "--no-audit", "--no-fund", join(packageDir, tarball)], { cwd: join(agentDir, "npm"), stdio: "ignore", shell: npm.shell });
   return agentDir;
 }
 

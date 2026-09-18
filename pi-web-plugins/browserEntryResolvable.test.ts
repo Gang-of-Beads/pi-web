@@ -1,8 +1,10 @@
-import { npmCommand } from "../src/npmCommand";
+import { npmInvocation } from "../src/npmCommand";
 import { execFileSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+
+const npm = npmInvocation();
 
 /**
  * A browser plugin entry is served raw and loaded by the page. There is no
@@ -47,7 +49,7 @@ function declaredPlugins(metadata: unknown): Record<string, unknown>[] {
 
 describe("shipped browser plugin entries", () => {
   it("carry no specifier a browser could not resolve", { timeout: 120_000 }, async () => {
-    execFileSync(npmCommand(), ["run", "build:plugins"], { stdio: "ignore" });
+    execFileSync(npm.command, ["run", "build:plugins"], { stdio: "ignore", shell: npm.shell });
 
     const entries = await browserEntries();
     expect(entries.length).toBeGreaterThan(0);

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { npmCommand } from "./npmCommand";
+import { npmInvocation } from "./npmCommand";
 
-describe("npmCommand", () => {
-  it("uses the Windows shim where there is no shell to find it", () => {
-    expect(npmCommand("win32")).toBe("npm.cmd");
+describe("npmInvocation", () => {
+  it("uses the Windows shim through a shell, which is the only way Node will run a .cmd", () => {
+    expect(npmInvocation("win32")).toEqual({ command: "npm.cmd", shell: true });
   });
 
-  it("uses the plain name everywhere else", () => {
-    expect(npmCommand("darwin")).toBe("npm");
-    expect(npmCommand("linux")).toBe("npm");
+  it("uses the plain name without a shell everywhere else", () => {
+    expect(npmInvocation("darwin")).toEqual({ command: "npm", shell: false });
+    expect(npmInvocation("linux")).toEqual({ command: "npm", shell: false });
   });
 });

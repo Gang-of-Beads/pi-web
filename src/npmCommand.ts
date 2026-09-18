@@ -1,10 +1,15 @@
 /**
- * The npm executable's name on this platform.
+ * How to spawn npm from a test or script on this platform.
  *
- * `execFileSync` does not go through a shell, and on Windows the shim is
- * `npm.cmd`; spawning bare "npm" there fails with ENOENT, which is how the
- * Windows release check first went red.
+ * `execFileSync` does not go through a shell. On Windows npm is the `npm.cmd`
+ * shim, and since Node 20 spawning a `.cmd` without a shell is refused with
+ * EINVAL, so the command name and the shell flag have to travel together.
  */
-export function npmCommand(platform: NodeJS.Platform = process.platform): string {
-  return platform === "win32" ? "npm.cmd" : "npm";
+export interface NpmInvocation {
+  command: string;
+  shell: boolean;
+}
+
+export function npmInvocation(platform: NodeJS.Platform = process.platform): NpmInvocation {
+  return platform === "win32" ? { command: "npm.cmd", shell: true } : { command: "npm", shell: false };
 }
