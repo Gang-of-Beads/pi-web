@@ -150,11 +150,13 @@ export class AppNavigatePage extends LitElement {
     `;
   }
 
+  /** The name alone: the owner's call, after a row of hashes and then a line of
+   *  state proved to be noise on a list whose job is to be scanned. */
   private renderSession(row: NavigateSessionRow) {
     return html`
       <button type="button" class="row session" @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
         <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" aria-label="Pinned">•</span>` : nothing}${sessionLabel(row.session)}</span>
-        ${row.detail === "" ? nothing : html`<span class="row-detail">${row.detail}</span>`}
+
       </button>
     `;
   }

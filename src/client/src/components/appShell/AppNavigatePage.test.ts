@@ -86,6 +86,11 @@ describe("app-navigate-page", () => {
     expect(onOpenSession).toHaveBeenCalledWith(expect.objectContaining({ id: "z" }), "pi");
   });
 
+  it("lists a session by name alone", async () => {
+    const page = await mount({}, input({ waitingSessionIds: new Set(["a"]) }));
+    expect(texts(page, ".row.session")).toEqual(["fix login"]);
+  });
+
   it("filters by tag from the search field", async () => {
     const page = await mount({}, input({ waitingSessionIds: new Set(["a"]) }));
     const search = page.renderRoot.querySelector<HTMLInputElement>(".search");
