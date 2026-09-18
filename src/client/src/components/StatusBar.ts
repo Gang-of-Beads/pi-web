@@ -9,7 +9,10 @@ const statusBarStyles = css`${unsafeCSS(uiIconStyle)}
     /* Control chrome, not content: buttons and labels here are not copy targets. (T1/T3) */
     :host, :host * { -webkit-user-select: none; user-select: none; }
     :host textarea, :host input, :host [contenteditable] { -webkit-user-select: text; user-select: text; }
-  .bar { box-sizing: border-box; display: flex; justify-content: flex-end; gap: var(--pi-space-6); align-items: center; min-width: 0; min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); line-height: var(--pi-panel-header-control-height); border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
+  /* A read-only tally, not a bar of controls: it keeps under half the bar
+     template's height (two thirds, twice), and the rest belongs to the
+     transcript. */
+  .bar { box-sizing: border-box; display: flex; justify-content: flex-end; gap: var(--pi-space-6); align-items: center; min-width: 0; min-height: calc(var(--pi-panel-header-height) * 4 / 9); padding: 0 var(--pi-bar-inset); line-height: var(--pi-panel-header-control-height); border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
   span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .muted { color: var(--pi-muted); }
 `;

@@ -40,7 +40,6 @@ import type { RecoveredPrompt } from "../resendMessage";
 import { keyboardInset, visualViewportOffsetTop } from "../appShell/keyboardInset";
 import { machineSessionKey } from "../machineKeys";
 import { commandsForSession } from "../commandLedger";
-import { composedPathOf, composerCollapsedForFocus, composerCollapseTransition, shouldReleaseComposerCollapse } from "../composerCollapse";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
 import { isWaitingForUser } from "../../../shared/sessionActivityState";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
@@ -84,6 +83,8 @@ import { hasRenderedModal } from "./modalLayerRegistry";
 import "./WorkspacePanel";
 import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
 import "./appShell/AppContextBar";
+import "./appShell/AppNavigatePage";
+import type { NavigateInput, NavigateLevel } from "../navigateModel";
 import { shouldShowMachinesSection, type AppNavigationPanel, type NavigationFocusTarget, type ShellToolTab } from "./appShell/AppNavigationPanel";
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
@@ -136,6 +137,10 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .shell { --navigation-panel-size: 340px; --workspace-panel-size: 340px; --navigation-panel-width: var(--navigation-panel-size); --workspace-panel-width: var(--workspace-panel-size); display: grid; grid-template-columns: var(--navigation-panel-width) 1px minmax(320px, 1.35fr) 1px var(--workspace-panel-width); height: 100%; min-height: 0; }
   aside { grid-column: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   aside app-navigation-panel { flex: 1 1 auto; min-height: 0; }
+  aside app-navigate-page { flex: 1 1 auto; min-height: 0; }
+  /* Over the session, not instead of it: the page covers the screen while it
+     is open and the close returns to the conversation underneath. */
+  .navigate-overlay { position: fixed; inset: var(--pi-app-viewport-offset-top, 0px) 0 0 0; z-index: var(--pi-layer-overlay); background: var(--pi-bg); }
   header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
   .header-actions { display: flex; align-items: center; gap: var(--pi-space-4); }
   main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -241,16 +246,6 @@ const SOCKET_LIVENESS_CHECK_MS = 5_000;
 /** A tap is a person waiting: probe the sockets, but not on every finger down. */
 const INTERACTION_LIVENESS_THROTTLE_MS = 2_000;
 
-interface FocusEventTargetLike {
-  addEventListener(type: string, listener: (event: FocusEvent) => void): void;
-  removeEventListener(type: string, listener: (event: FocusEvent) => void): void;
-}
-
-function isEventTargetLike(value: unknown): value is FocusEventTargetLike {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate: { addEventListener?: unknown; removeEventListener?: unknown } = value;
-  return typeof candidate.addEventListener === "function" && typeof candidate.removeEventListener === "function";
-}
 const INTERRUPTED_RUNS_UNKNOWN_MESSAGE = "Interrupted-run status is unknown: the read failed. Reconnect to read it again.";
 const PI_WEB_STATUS_DEFER_MS = 750;
 export const REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000, 30_000] as const;
@@ -424,12 +419,12 @@ export class PiWebApp extends LitElement {
   private lastScheduledMachineId: string | undefined = undefined;
   private bannerContextKey = "";
   @state() private quickSwitcherOpen = false;
+  /** The one navigation surface; see `navigateModel`. */
+  @state() private navigateOpen = false;
   @state() private contextSheetOpen = false;
   @state() private goToSheetOpen = false;
   /** The session whose name the bar title hold asked to change. */
   @state() private renameFromBar: SessionInfo | undefined;
-  /** True while a question form or dialog field has focus (see composerCollapse). */
-  @state() private composerCollapsed = false;
   @state() private quickSwitcherLoading = false;
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
   private quickSwitcherFetchedAt = 0;
@@ -587,82 +582,6 @@ export class PiWebApp extends LitElement {
     this.checkSocketLiveness();
   };
 
-  /**
-   * Focus moving inside this element's shadow tree is not redispatched to the
-   * host, so a listener on the host only ever saw focus arriving from outside
-   * the app - which is every case except the one this exists for. The listener
-   * belongs on the shadow root, where the retargeted event actually travels.
-   */
-  private readonly onFocusIn = (event: FocusEvent) => {
-    const next = composerCollapseTransition({
-      pointerInFlight: this.pointerPressInFlight,
-      collapsed: this.composerCollapsed,
-      held: this.deferredCollapse,
-      next: composerCollapsedForFocus(event.composedPath()),
-    });
-    this.composerCollapsed = next.collapsed;
-    this.deferredCollapse = next.held;
-  };
-
-  private pointerPressInFlight = false;
-  private deferredCollapse: boolean | undefined = undefined;
-
-  private readonly onPointerPressStart = () => {
-    this.pointerPressInFlight = true;
-  };
-
-  private readonly onPointerPressEnd = () => {
-    const next = composerCollapseTransition({
-      pointerInFlight: false,
-      collapsed: this.composerCollapsed,
-      held: this.deferredCollapse,
-      next: this.deferredCollapse ?? this.composerCollapsed,
-    });
-    this.composerCollapsed = next.collapsed;
-    this.deferredCollapse = next.held;
-  };
-
-  /**
-   * Collapsing is a loan, not a sale: focus leaving the form gives the composer
-   * back. `relatedTarget` is where focus is going, so a move within the same
-   * form keeps it collapsed.
-   */
-  /**
-   * Subscribe the shadow root to focus movement, where a retargeted focus event
-   * actually travels. Tolerates a stand-in render root: node-environment tests
-   * install a minimal object with no event API.
-   */
-  private listenForFormFocus(action: "add" | "remove"): void {
-    const root: unknown = this.renderRoot;
-    if (!isEventTargetLike(root)) return;
-    if (action === "add") {
-      root.addEventListener("focusin", this.onFocusIn);
-      root.addEventListener("focusout", this.onFocusOut);
-      root.addEventListener("pointerdown", this.onPointerPressStart);
-      root.addEventListener("pointerup", this.onPointerPressEnd);
-      root.addEventListener("pointercancel", this.onPointerPressEnd);
-      return;
-    }
-    root.removeEventListener("focusin", this.onFocusIn);
-    root.removeEventListener("focusout", this.onFocusOut);
-    root.removeEventListener("pointerdown", this.onPointerPressStart);
-    root.removeEventListener("pointerup", this.onPointerPressEnd);
-    root.removeEventListener("pointercancel", this.onPointerPressEnd);
-  }
-
-  private readonly onFocusOut = (event: FocusEvent) => {
-    const next = event.relatedTarget;
-    if (next === null) return;
-    const transition = composerCollapseTransition({
-      pointerInFlight: this.pointerPressInFlight,
-      collapsed: this.composerCollapsed,
-      held: this.deferredCollapse,
-      next: composerCollapsedForFocus(composedPathOf(next)),
-    });
-    this.composerCollapsed = transition.collapsed;
-    this.deferredCollapse = transition.held;
-  };
-
   private readonly onDocumentVisibilityChange = () => {
     this.updateSubagentPolling();
     if (document.visibilityState === "visible") {
@@ -761,16 +680,6 @@ export class PiWebApp extends LitElement {
     const machineId = selectedMachineId(this.state);
     if (!this.isSessionSeen(machineId, session)) return;
     void this.sessionUnread.acknowledge(machineId, session);
-    // The collapse is a loan: when the surfaces it stepped aside for are gone
-    // (a dialog answered and removed while its field held focus fires no
-    // focusout), the loan ends unless focus sits in another form. The state's
-    // empty dialog/ask lists mean the hosts are gone from the DOM.
-    if (this.composerCollapsed && this.state.pendingDialogs.length === 0 && this.state.pendingAsk === undefined) {
-      if (shouldReleaseComposerCollapse({ collapsed: true, collapsingHostStillPresent: false, activeElementPath: composedPathOf(document.activeElement) })) {
-        this.composerCollapsed = false;
-        this.requestUpdate();
-      }
-    }
   }
 
   private markSessionsRead(sessions: readonly SessionInfo[]): void {
@@ -1072,7 +981,6 @@ export class PiWebApp extends LitElement {
     // Surface backed up: the pi-web runtime status readout (PI_WEB_STATUS_REFRESH_MS).
     this.piWebStatusTimer = window.setInterval(() => { this.schedulePiWebStatusRefresh(); }, PI_WEB_STATUS_REFRESH_MS);
     document.addEventListener("visibilitychange", this.onDocumentVisibilityChange);
-    this.listenForFormFocus("add");
     // Surface backed up: every socket's liveness (SOCKET_LIVENESS_CHECK_MS).
     this.livenessTimer = window.setInterval(() => { this.checkSocketLiveness(); }, SOCKET_LIVENESS_CHECK_MS);
     window.addEventListener("online", this.onBrowserOnline);
@@ -1184,7 +1092,6 @@ export class PiWebApp extends LitElement {
     window.removeEventListener("online", this.onBrowserOnline);
     window.removeEventListener("pointerdown", this.onInteractionLivenessProbe, { capture: true });
     document.removeEventListener("visibilitychange", this.onDocumentVisibilityChange);
-    this.listenForFormFocus("remove");
     this.clearPendingRemoteRouteRestore();
     this.clearPendingMachineLoadRestore();
     super.disconnectedCallback();
@@ -1209,9 +1116,6 @@ export class PiWebApp extends LitElement {
     // and the selection paths that can afford an immediate read already ask for
     // one. The poll picks up every other path within its interval.
     if (previous.selectedSession?.id !== this.state.selectedSession?.id) this.updateSubagentPolling();
-    // Nothing left to answer, nothing left to yield to: a form that closed
-    // while its field held focus emits no focusout anyone can act on.
-    if (this.composerCollapsed && this.state.pendingAsk === undefined && this.state.pendingDialogs.length === 0) this.composerCollapsed = false;
   }
 
   private async loadProjectsAndRestoreRoute() {
@@ -2495,6 +2399,7 @@ export class PiWebApp extends LitElement {
   /** True while a modal layer owns the back gesture. */
   private modalLayerOpen(): boolean {
     return this.quickSwitcherOpen
+      || this.navigateOpen
       || this.contextSheetOpen
       || this.goToSheetOpen
       || this.state.actionPaletteOpen
@@ -2592,6 +2497,73 @@ export class PiWebApp extends LitElement {
     this.pluginDialogs = [...this.pluginDialogs, entry];
     this.pushModalLayerFrame();
     return { close: entry.close };
+  }
+
+  private openNavigate(): void {
+    dismissKeyboardIfRaised();
+    this.navigateOpen = true;
+    this.pushModalLayerFrame();
+  }
+
+  private closeNavigate(): void {
+    this.navigateOpen = false;
+  }
+
+  /** The facts the navigation surface reads; see `navigateModel`. */
+  private navigateInput(): Omit<NavigateInput, "query"> {
+    const state = this.state;
+    const machineId = selectedMachineId(state);
+    const sessions = state.sessions;
+    const pinnedIds = this.pinnedSessionIds;
+    return {
+      scope: { machineId, projectId: state.selectedProject?.id, folderPath: state.selectedWorkspace?.path },
+      machines: state.machines.map((machine) => ({ id: machine.id, name: machine.name })),
+      projects: state.projects.map((project) => ({ id: project.id, name: project.name, path: project.path })),
+      folders: state.workspaces.map((workspace) => ({ id: workspace.id, label: workspace.label, path: workspace.path, projectId: workspace.projectId })),
+      sessions,
+      pinned: sessions.filter((session) => pinnedIds.has(session.id)).map((session) => ({ session, machineId })),
+      waitingSessionIds: this.waitingSessionIds(),
+      activeSessionIds: this.activeSessionIds(),
+      pinnedSessionIds: pinnedIds,
+    };
+  }
+
+  private renderNavigatePage(closable: boolean) {
+    return html`<app-navigate-page
+      .input=${this.navigateInput()}
+      ?closable=${closable}
+      .onClose=${() => { this.closeNavigate(); }}
+      .onChoose=${(level: NavigateLevel, id: string) => { void this.navigateChoose(level, id); }}
+      .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
+      .onOpenSession=${(session: SessionInfo) => { this.closeNavigate(); void this.openSessionFromQuickSwitcher(session); }}
+      .onCreateSession=${() => { this.closeNavigate(); void this.startSessionAndOpenChat(); }}
+      .onAddProject=${this.hasAddProjectEntry() ? () => { this.closeNavigate(); this.openProjectDialog(); } : undefined}
+    ></app-navigate-page>`;
+  }
+
+  private async navigateChoose(level: NavigateLevel, id: string): Promise<void> {
+    if (level === "machine") { this.browseQuickSwitcherMachine(id); return; }
+    if (level === "project") {
+      const project = this.state.projects.find((entry) => entry.id === id);
+      if (project !== undefined) await this.workspaces.selectProject(project);
+      return;
+    }
+    const workspace = this.state.workspaces.find((entry) => entry.path === id);
+    if (workspace !== undefined) await this.workspaces.selectWorkspace(workspace);
+  }
+
+  /**
+   * Widening is how the reader goes back: tapping a level drops it and
+   * everything under it, and the page stays where it is.
+   */
+  private async navigateWiden(level: NavigateLevel): Promise<void> {
+    if (level === "machine") return;
+    if (level === "folder") {
+      const project = this.state.selectedProject;
+      if (project !== undefined) await this.workspaces.selectProject(project);
+      return;
+    }
+    this.workspaces.clearSelection();
   }
 
   private openQuickSwitcher(): void {
@@ -4068,11 +4040,10 @@ export class PiWebApp extends LitElement {
         .activeSurface=${this.activeSurfaceLabel()}
         .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? () => { this.openGoToSheet(); } : undefined}
         .onRenameRequest=${(session: SessionInfo) => { this.renameFromBar = session; }}
-        ?isWorking=${this.state.selectedSession !== undefined && isActive(this.state)}
         ?panelOpen=${this.shellPanelOpen()}
         .toggleTarget=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? "menu" : "panel"}
         ?panelToggleHidden=${panelToggleHiddenState({ mobileLayout: this.appShell.isMobileNavigationLayout, displayView: this.displayMainView() })}
-        .onTogglePanel=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? () => { this.openQuickSwitcher(); } : () => { this.toggleShellPanel(); }}
+        .onTogglePanel=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? () => { this.openNavigate(); } : () => { this.toggleShellPanel(); }}
         .onQuickSwitch=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? undefined : () => { this.openQuickSwitcher(); }}
       ></app-context-bar>
     `;
@@ -4144,7 +4115,7 @@ export class PiWebApp extends LitElement {
     const displayView = this.displayMainView();
     return html`
       <div class=${`${this.panelCollapse.shellClass(displayView, state.selectedWorkspace !== undefined)}${this.workspacePanelFullscreen ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
-        <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigationPanel()}</aside>
+        <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigatePage(false)}</aside>
         ${this.contextSheetOpen ? null : this.renderNavigationPanelEdgeControl()}
         <main class=${mainViewClass(displayView)}>
           ${this.appShell.isMobileNavigationLayout && displayView === "navigation" ? null : this.renderContextBar()}
@@ -4153,10 +4124,10 @@ export class PiWebApp extends LitElement {
           ${this.renderStaleClientBanner()}
           ${this.renderSelfUpdateBanner()}
           ${deprecatedAgentInputsBanner(deprecatedAgentInputsWarnings(state.machines, state.machineRuntimes))}
-          <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigationPanel() : null}</div>
+          <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigatePage(false) : null}</div>
           ${state.selectedSession ? html`
             ${this.renderChatView(state, state.selectedSession)}
-            <prompt-editor .sessionId=${state.selectedSession.id} .cwd=${composerCwd(state)} .sessionPrompts=${this.sessionPromptsFor(state)} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .disabled=${state.selectedSession.archived === true} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true} ?collapsed=${this.composerCollapsed} .onExpand=${() => { this.composerCollapsed = false; void this.focusPromptEditorSoon(); }} .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .composerContributions=${this.plugins.getComposerContributions(selectedMachineId(state))} .onPluginNotice=${(message: string) => { this.setState(noticePatch(noticeForReader(message))); }}></prompt-editor>
+            <prompt-editor .sessionId=${state.selectedSession.id} .cwd=${composerCwd(state)} .sessionPrompts=${this.sessionPromptsFor(state)} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .disabled=${state.selectedSession.archived === true} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true}  .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .composerContributions=${this.plugins.getComposerContributions(selectedMachineId(state))} .onPluginNotice=${(message: string) => { this.setState(noticePatch(noticeForReader(message))); }}></prompt-editor>
             ${this.renderStatusBar(state)}
             ${state.commandDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} .title=${state.commandDialog.title} .options=${state.commandDialog.options} .onPick=${(value: string) => this.sessions.respondToCommand(state.commandDialog?.requestId ?? "", value)} .onCancel=${() => { this.sessions.cancelCommand(); }}></command-picker>` : null}
             ${state.modelDialog !== undefined ? html`<model-picker ?abovedialog=${this.settingsOpen} title=${state.modelDialog.title} .options=${state.modelDialog.options} .catalog=${state.modelDialog.catalog} .selectedValue=${state.modelDialog.selectedValue} .onPick=${(value: string) => { void this.pickModel(value); }} .onToggleEnabled=${this.handleToggleModelEnabled} .onCancel=${() => { this.setState({ modelDialog: undefined }); }}></model-picker>` : null}
@@ -4166,6 +4137,7 @@ export class PiWebApp extends LitElement {
         ${this.contextSheetOpen ? null : this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
+        ${this.navigateOpen ? html`<div class="navigate-overlay">${this.renderNavigatePage(true)}</div>` : null}
         ${this.quickSwitcherOpen ? html`<quick-switcher
           .loading=${this.quickSwitcherLoading}
           .sessions=${this.quickSwitcherSessions}

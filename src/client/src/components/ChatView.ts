@@ -1,6 +1,7 @@
 import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
 import { renderCheckIcon, renderCopyIcon, renderCrossIcon, renderDoubleCheckIcon, renderPendingRingIcon, renderRecallIcon, renderResendIcon, renderRunIcon, uiIconStyle } from "./uiIcons.js";
 import { scrollbarWidthOf } from "../scrollbarWidth";
+import { ScrollThumbVisibility } from "../scrollActivity";
 import { toolResultImagePath } from "../api/urls";
 import { resolveAppUrl } from "../appUrl";
 import type { SessionRef } from "../../../shared/apiTypes";
@@ -31,7 +32,6 @@ import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback } fro
 import { deliveryTaken } from "../messageDelivery";
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
-import "./ConversationMeter";
 import "./FormattedText";
 import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
@@ -211,12 +211,19 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      below the scroller now, so the transcript ends with the room it had before
      the dock existed: one space-7 of padding on top of the message rhythm's own
      16px margin, i.e. 32px from the last message to the dock. */
-  .chat { flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box;
+  .chat { scrollbar-width: none; scrollbar-color: transparent transparent; flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box;
   /* The top edge cuts scrolled lines mid-glyph with no card boundary to the
      left or right (assistant surfaces are border-less), which read as stray
      text. A short fade makes the same clip read as intentional depth. */
   mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); }
+  /* No rail at rest: a permanent bar down the edge reads as page furniture.
+     The thumb appears with the gesture and retires shortly after it. */
+  .chat::-webkit-scrollbar { width: 0; height: 0; }
+  :host([scrolling]) .chat { scrollbar-width: thin; scrollbar-color: var(--pi-border) transparent; }
+  :host([scrolling]) .chat::-webkit-scrollbar { width: 6px; }
+  :host([scrolling]) .chat::-webkit-scrollbar-track { background: transparent; }
+  :host([scrolling]) .chat::-webkit-scrollbar-thumb { border-radius: var(--pi-radius-pill); background: var(--pi-border); }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
   /* Its own row of the column, so the transcript above can grow all it likes
      without moving a control the reader is aiming at. Tall questions scroll
@@ -235,7 +242,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      their own. Nothing is pinned, so the transcript scrolls at any card
      height and the card covers none of its own rows. */
   .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); }
-  .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-5); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
+  .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); margin-top: calc(-1 * var(--pi-space-4)); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.
 
@@ -352,17 +359,22 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .history-load-button:disabled { cursor: default; opacity: var(--pi-disabled-opacity); }
   /* Queued messages are drawn in the transcript, gold; this slim strip carries
      only the count and the clear action the queue as a whole needs. */
-  .queued-strip { display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-4); padding: var(--pi-space-2) var(--pi-space-3); color: var(--pi-warning); font-size: var(--pi-text-xs); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-md); background: var(--pi-warning-surface); }
+  /* One line with one action: the owner read the bordered block as a card in
+     its own right, which is more weight than "the queue can be cleared". */
+  .queued-strip { display: flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-4); padding: 0; color: var(--pi-warning); font-size: var(--pi-text-xs); border: 0; background: transparent; }
   /* A command bubble is a user bubble in the browser's own record, not
      server history; only its result line and mark tell it apart. */
   .msg.command { font-family: var(--pi-font-mono); }
   .msg.command .command-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg.command .command-result { margin: var(--pi-space-3) 0 0; font-family: var(--pi-font-ui); font-size: var(--pi-text-sm); color: var(--pi-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg.command.failed .command-result { color: var(--pi-danger); }
-  .queued-clear-button { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
+  .queued-clear-button { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   @media (pointer: coarse) {
     .image-zoom-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
-    .queued-clear-button { min-height: var(--pi-control-height-touch); }
+    /* The drawn control keeps the bar template's height; the thumb gets its
+       floor through reach, as the message actions do. */
+    .queued-clear-button { position: relative; min-height: var(--pi-control-height-comfort); }
+    .queued-clear-button::after { content: ""; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch, 44px)) / 2) 0; }
     .history-load-button { min-height: var(--pi-control-height-touch); }
   }
   .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
@@ -932,6 +944,7 @@ export class ChatView extends LitElement {
     window.removeEventListener("resize", this.onViewportResize);
     window.removeEventListener("pagehide", this.onPageHide);
     window.visualViewport?.removeEventListener("resize", this.onViewportResize);
+    this.scrollThumb.dispose();
     super.disconnectedCallback();
   }
 
@@ -1140,7 +1153,6 @@ if (this.heldWaitingClearTimer !== undefined) {
       ${this.renderTopNotices()}
       ${this.renderQuoteChip()}
       <div class="chat-wrap">
-        ${this.renderConversationRail()}
         <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${() => { this.notePressStart(); }} @pointerup=${() => { this.releasePointer(); }} @pointercancel=${() => { this.releasePointer(); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
           ${this.renderHistoryBoundary()}
           ${repeat(
@@ -1796,13 +1808,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     `;
   }
 
-  private renderConversationRail() {
-    if (!this.messages.length || this.messageTotal <= 0) return null;
-    const total = this.conversationDisplayTotal();
-    const position = this.conversationPositionPercent(total);
-    const loadedPercent = this.hasMore ? clampPercent((this.messages.length / total) * 100) : 100;
-    return html`<conversation-meter .positionPercent=${position} .loadedPercent=${loadedPercent}></conversation-meter>`;
-  }
 
   private conversationDisplayTotal(): number {
     if (!this.hasMore && this.messageStart === 0) return Math.max(1, this.messages.length);
@@ -2191,7 +2196,11 @@ if (this.heldWaitingClearTimer !== undefined) {
     if (this.disclosures.applyToggle(key, details.open, defaultOpen)) this.requestUpdate();
   }
 
+  /** The scroll thumb belongs to the gesture; see `scrollActivity`. */
+  private readonly scrollThumb = new ScrollThumbVisibility((visible) => { this.toggleAttribute("scrolling", visible); });
+
   private onScroll() {
+    this.scrollThumb.noteScroll();
     if (this.quoteChip !== undefined) { this.quoteChip = undefined; this.requestUpdate(); }
     this.requestLoadMoreIfNeeded();
     this.updatePinnedToBottomFromScroll();

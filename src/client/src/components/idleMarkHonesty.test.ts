@@ -45,10 +45,6 @@ import { join } from "node:path";
 describe("the companion rules that make [hidden] real", () => {
   const read = (path: string): string => readFileSync(join(process.cwd(), path), "utf8");
 
-  it("restates hidden for the persistent working mark", () => {
-    expect(read("src/client/src/components/appShell/AppContextBar.ts")).toContain(".working[hidden] { display: none; }");
-  });
-
   it("restates hidden for the persistent activity badge", () => {
     expect(read("src/client/src/components/shared.ts")).toContain(".action-activity[hidden] { display: none; }");
   });

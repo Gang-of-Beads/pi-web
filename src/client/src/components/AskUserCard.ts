@@ -1,5 +1,6 @@
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { acceptsOptionChange } from "../askStepGuard";
 import { ifDefined } from "lit/directives/if-defined.js";
 import {
   ASK_USER_OTHER_TEXT_MAX_LENGTH,
@@ -183,6 +184,13 @@ export class AskUserCard extends LitElement {
     return this.renderQuestion(ask, question, index);
   }
 
+  /** When the step last moved; see `askStepGuard`. */
+  private stepChangedAt: number | undefined;
+
+  private acceptsChange(): boolean {
+    return acceptsOptionChange({ now: Date.now(), stepChangedAt: this.stepChangedAt });
+  }
+
   private stepIndex(ask: PendingAskUser): number {
     return Math.min(Math.max(this.step, 0), Math.max(ask.questions.length - 1, 0));
   }
@@ -209,6 +217,7 @@ export class AskUserCard extends LitElement {
   }
 
   private goToStep(ask: PendingAskUser, next: number): void {
+    this.stepChangedAt = Date.now();
     this.step = Math.min(Math.max(next, 0), Math.max(ask.questions.length - 1, 0));
     this.focusQuestion(this.step);
   }
@@ -290,6 +299,7 @@ export class AskUserCard extends LitElement {
   private changeOption(question: AskUserQuestion, value: string, event: Event): void {
     const input = event.currentTarget;
     if (!(input instanceof HTMLInputElement)) return;
+    if (!this.acceptsChange()) { input.checked = false; return; }
     if (question.multiple !== true) {
       if (input.checked) this.setAnswer(question, { values: [value] });
       return;
@@ -307,6 +317,7 @@ export class AskUserCard extends LitElement {
   private changeOther(question: AskUserQuestion, index: number, event: Event): void {
     const input = event.currentTarget;
     if (!(input instanceof HTMLInputElement)) return;
+    if (!this.acceptsChange()) { input.checked = false; return; }
     const current = this.answers[question.id];
     if (question.multiple === true) {
       this.setAnswer(question, {

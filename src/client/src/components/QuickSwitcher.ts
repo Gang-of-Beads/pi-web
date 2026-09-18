@@ -178,7 +178,8 @@ export class QuickSwitcher extends LitElement {
     if (segments.length === 0) return nothing;
     const open = segments.find((segment) => segment.level === this.openLevel);
     return html`
-      <nav class="crumbs" aria-label="Context">
+      <nav class="crumb-nav" aria-label="Context">
+        <div class="crumbs">
         ${segments.map((segment, index) => html`
           ${index === 0 ? nothing : html`<span class="crumb-sep">${renderChevronRightIcon()}</span>`}
           <button
@@ -190,6 +191,7 @@ export class QuickSwitcher extends LitElement {
             @click=${() => { this.openLevel = this.openLevel === segment.level ? undefined : segment.level; }}
           >${segment.label}</button>
         `)}
+        </div>
       ${open === undefined ? nothing : html`
         <div class="crumb-options" id="crumb-options" role="group" aria-label=${open.level === "machine" ? "Choose a machine" : open.level === "project" ? "Choose a project" : "Choose a folder"}>
           ${open.level === "machine" ? nothing : html`
@@ -504,6 +506,9 @@ export class QuickSwitcher extends LitElement {
     .row-flag.interrupted { background: transparent; border: 2px solid var(--pi-warning, var(--pi-accent)); }
     /* The path scrolls sideways rather than wrapping: it keeps one line so it
        never competes with the session list for height. */
+    /* The path row and the open level stack; the nav is their column, not a
+       row that would set the option list beside the crumbs. */
+    .crumb-nav { flex: 0 0 auto; display: flex; flex-direction: column; min-width: 0; }
     .crumbs { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
     .crumbs::-webkit-scrollbar { display: none; }
     .crumb { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); cursor: pointer; }

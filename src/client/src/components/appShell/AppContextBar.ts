@@ -6,8 +6,9 @@ import { renderGridIcon } from "../uiIcons";
 import { LongPressTracker } from "../../longPress";
 
 /**
- * The single resident row of the shell: the panel toggle, the session name,
- * and the working indicator. Everything else lives in the collapsible panel
+ * The single resident row of the shell: the menu key and the session name.
+ * Session state is the activity dock's job and the status footer's; saying it
+ * a third time here was noise the owner asked to drop. Everything else lives in the collapsible panel
  * (see `appSurface.ts`), so this row never scrolls, never truncates into
  * unreadability, and never stacks a second bar.
  */
@@ -16,8 +17,6 @@ export class AppContextBar extends LitElement {
   @property({ attribute: false }) session?: SessionInfo;
   /** The tool surface the reader is on ("Files", "Terminal", …), empty on the chat. */
   @property({ type: String }) activeSurface = "";
-  /** Whether the session being read has work in progress. */
-  @property({ type: Boolean }) isWorking = false;
   /** Whether the collapsible panel is currently presented. */
   @property({ type: Boolean }) panelOpen = false;
   /** What the leading control opens: the side panel, or the session menu the
@@ -89,13 +88,6 @@ export class AppContextBar extends LitElement {
               @pointercancel=${() => { this.titleHold.cancel(); }}
               @contextmenu=${(event: Event) => { if (this.onRenameRequest !== undefined) event.preventDefault(); }}
             ><span class="session-title-text">${this.activeSurface === "" ? sessionContextLabel(this.session) : `${this.activeSurface} · ${sessionContextLabel(this.session)}`}</span></button>`}
-        <span
-          class="working"
-          role="status"
-          aria-label=${this.isWorking ? "Session is working" : ""}
-          title=${this.isWorking ? "Session is working" : ""}
-          ?hidden=${!this.isWorking}
-        ><span class="working-dot"></span><span class="working-dot"></span><span class="working-dot"></span></span>
         ${this.onOpenGoTo === undefined ? null : html`
         <button
           type="button"
@@ -118,7 +110,7 @@ export class AppContextBar extends LitElement {
     /* The rail header and this bar sit either side of one vertical divider, so
        they share a height: 44px of control plus the 1px rule, measured 45 on
        the rail and 53 here before the padding was taken out of the equation. */
-    .context-bar { position: relative; flex: 0 0 auto; min-width: 0; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; gap: var(--pi-space-2); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
+    .context-bar { position: relative; flex: 0 0 auto; min-width: 0; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; gap: var(--pi-space-5); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
     button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     @media (pointer: coarse) { button:active { background: var(--pi-surface-hover); } }
     .panel-toggle { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); }
@@ -126,7 +118,9 @@ export class AppContextBar extends LitElement {
     @media (hover: hover) { .panel-toggle:hover { background: var(--pi-surface-hover); } }
     .toggle-icon { width: 16px; height: 16px; pointer-events: none; }
     .go-to .ui-icon { width: 18px; height: 18px; pointer-events: none; }
-    .session-title { flex: 1 1 auto; min-width: 0; min-height: var(--pi-panel-header-control-height); display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; border: 0; background: none; color: var(--pi-text-bright, var(--pi-text)); padding: 0; font: inherit; line-height: var(--pi-panel-header-control-height); font-weight: var(--pi-weight-strong); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+    /* Centred between the two keys, the owner's call: the name is the bar's
+       subject, not a label hanging off the menu key. */
+    .session-title { flex: 1 1 auto; min-width: 0; min-height: var(--pi-panel-header-control-height); display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden; border: 0; background: none; color: var(--pi-text-bright, var(--pi-text)); padding: 0; font: inherit; line-height: var(--pi-panel-header-control-height); font-weight: var(--pi-weight-strong); text-align: center; text-overflow: ellipsis; white-space: nowrap; }
     .session-title.empty { color: var(--pi-muted); font-weight: var(--pi-weight-medium); }
     .session-title.static { cursor: default; }
     /* text-overflow needs a block box with the text in it: on the flex button
@@ -135,17 +129,8 @@ export class AppContextBar extends LitElement {
     .session-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .session-title:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     @media (hover: hover) { .session-title:hover { color: var(--pi-text-bright); } }
-    /* The wrapper is persistent and toggled with [hidden]; an author display
-       rule beats the UA sheet's [hidden] rule, so the hidden state must be
-       restated or an idle session wears three bouncing dots forever. */
-    .working[hidden] { display: none; }
-    .working { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-1); max-height: 100%; min-height: var(--pi-panel-header-control-height); padding: var(--pi-space-2) var(--pi-space-3); }
-    .working-dot { width: var(--pi-dot-xs); height: var(--pi-dot-xs); border-radius: 50%; background: var(--pi-accent, var(--pi-text-bright)); animation: working-bounce 1.2s ease-in-out infinite; }
     .working-dot:nth-child(2) { animation-delay: .2s; }
-    .working-dot:nth-child(3) { animation-delay: .4s; }
-    @keyframes working-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .55; } 30% { transform: translateY(-3px); opacity: 1; } }
     @media (prefers-reduced-motion: reduce) {
-      .working-dot { animation: none; opacity: .8; }
     }
   `;
 }

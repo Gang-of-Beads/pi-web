@@ -70,15 +70,8 @@ describe("the resident row hands off to the panel and the quick switcher", () =>
     expect(required(bar.renderRoot, ".session-title").textContent).toBe("Git");
   });
 
-  it("shows the working indicator only while the session works", async () => {
-    const bar = await mount({ session: session({ name: "Ship the release" }), isWorking: true });
-    expect(bar.renderRoot.querySelectorAll(".working-dot").length).toBe(3);
-
-    bar.isWorking = false;
-    await bar.updateComplete;
-
-    // The chip stays mounted and hides, so a session that starts and stops
-    // working updates one element instead of rebuilding it under the reader.
-    expect(bar.renderRoot.querySelector(".working")?.hasAttribute("hidden")).toBe(true);
+  it("leaves session state to the activity dock and the status footer", async () => {
+    const bar = await mount({ session: session({ name: "Ship the release" }) });
+    expect(bar.renderRoot.querySelector(".working")).toBeNull();
   });
 });

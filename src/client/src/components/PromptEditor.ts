@@ -1,5 +1,5 @@
 import type { EditorView } from "@codemirror/view";
-import { renderCrossIcon, renderUpIcon, uiIconStyle } from "./uiIcons.js";
+import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import type { ComposerEditorHandle } from "./composerEditorSetup";
 
 type ComposerEditorModule = typeof import("./composerEditorSetup");
@@ -67,7 +67,6 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   /* Same column as the expanded composer and the transcript: the private
      10px inset made the box edge jump 6px one way on desktop and the other
      way on the phone when the composer collapsed. */
-  footer.collapsed { padding: var(--pi-space-3) var(--pi-chat-gutter); }
   .expand-composer { box-sizing: border-box; display: flex; align-items: center; gap: var(--pi-space-4); width: 100%; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .expand-composer:focus-visible { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   @media (hover: hover) { .expand-composer:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
@@ -164,7 +163,11 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .attachment-chip-file { display: grid; place-items: center; }
   .attachment-file-preview { box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: 26px; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-surface); color: var(--pi-muted); font: var(--pi-weight-bold) var(--pi-text-2xs)/1 var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; letter-spacing: normal; }
   .attachment-file-name { position: absolute; right: var(--pi-space-2); bottom: var(--pi-space-1); left: var(--pi-space-2); overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1.2; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-  .attachment-remove { box-sizing: border-box; position: absolute; top: var(--pi-space-1); right: var(--pi-space-1); width: 18px; height: 18px; padding: 0; line-height: 16px; border-radius: 50%; border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-sm); cursor: pointer; }
+  /* A square badge in the corner, not a circle over the picture: the round
+     44px control covered the thumbnail it was meant to remove (owner). The
+     drawn box stays small and the thumb reaches it through a pseudo-element. */
+  .attachment-remove { box-sizing: border-box; position: absolute; top: 0; right: 0; display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; line-height: 1; border-radius: 0 var(--pi-radius-md) 0 var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-2xs); cursor: pointer; }
+  .attachment-remove::after { content: ""; position: absolute; inset: calc(-1 * var(--pi-space-6)); }
   /* A thumb is about 9mm wide. An 18px remove badge on a 56px thumbnail means
      the tap lands on the image instead, so on touch the badge grows and the
      chip grows with it rather than swallowing its own control. */
@@ -180,7 +183,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   button:not(:disabled):active { background: var(--pi-surface-hover); }
   button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
   @media (max-width: 760px) {
-    footer { gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-bar-inset); }
+    footer { gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset); }
     /* The action row is a bar: one bar tall, its 36px controls centred. */
     .actions { min-height: var(--pi-panel-header-height); gap: var(--pi-space-3); }
     .compact-status { flex: 1 1 220px; gap: var(--pi-space-3); }
@@ -207,7 +210,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
      floor without redrawing the control, as the message actions do. */
   @media (pointer: coarse) {
     .icon-button::after { content: ""; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch, 44px)) / 2); }
-    .attachment-remove { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); line-height: calc(var(--pi-control-height-touch, 44px) - 2px); top: 0; right: 0; }
+    .attachment-remove { width: 18px; height: 18px; }
     .select-model { min-height: var(--pi-control-height-comfort); }
     .select-thinking { min-width: var(--pi-control-height-comfort); }
     .compact-status > button { min-width: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); }
@@ -231,14 +234,6 @@ export class PromptEditor extends LitElement {
   @property({ attribute: false }) status?: SessionStatus;
   @property({ type: Boolean }) sending = false;
   /**
-   * Step aside while another input owns the screen.
-   *
-   * On a phone the composer plus its action row is a third of what is left
-   * above the keyboard, and while answering a question form none of it is
-   * usable. Collapsed it keeps one tappable line that restores it.
-   */
-  @property({ type: Boolean, reflect: true }) collapsed = false;
-  /**
    * Send handler. Resolving `false` means the message was not accepted, and the
    * composer puts its contents back rather than losing them.
    */
@@ -248,8 +243,6 @@ export class PromptEditor extends LitElement {
   @property({ attribute: false }) onPluginNotice?: (message: string, severity: "info" | "warning" | "error") => void;
   @property({ attribute: false }) onSelectModel?: () => void;
   @property({ attribute: false }) onSelectThinking?: () => void;
-  /** Asked to come back, when the reader taps the collapsed composer. */
-  @property({ attribute: false }) onExpand?: () => void;
   @property({ attribute: false }) availableThinkingLevels: readonly string[] = [];
   @query(".markdown-editor") private editorHost?: HTMLDivElement;
   @query(".attachment-input") private attachmentInput?: HTMLInputElement;
@@ -352,16 +345,6 @@ export class PromptEditor extends LitElement {
     // the old view down here, `createEditor` sees a live `this.editor` and
     // declines to rebuild, so the composer came back as an empty strip with no
     // way to type and no visible draft. The rebuilt view is seeded from
-    // `this.draft`, so the unsent text returns with it.
-    if (changed.has("collapsed")) {
-      if (this.collapsed) {
-        this.editor?.destroy();
-        this.editor = undefined;
-        this.editorControls = undefined;
-      } else {
-        this.createEditor();
-      }
-    }
     if (changed.has("disabled")) this.updateEditorDisabledState();
     if (changed.has("sessionId") || changed.has("machineId")) {
       this.syncEditorDoc();
@@ -385,7 +368,6 @@ export class PromptEditor extends LitElement {
   }
 
   override render() {
-    if (this.collapsed) return this.renderCollapsed();
     const shellInputMode = this.currentInputMode.kind === "shell" ? this.currentInputMode : undefined;
     const shellMode = shellInputMode !== undefined;
     const queuesInput = this.canSteer || this.isCompacting;
@@ -421,24 +403,6 @@ export class PromptEditor extends LitElement {
     `;
   }
 
-  private renderCollapsed() {
-    return html`
-      <footer class="collapsed">
-        <button
-          type="button"
-          class="expand-composer"
-          title="Write a message"
-          aria-label="Write a message to pi"
-          aria-expanded="false"
-          @click=${() => { this.onExpand?.(); }}
-        >
-          <span class="expand-composer-label">Message pi…</span>
-          ${this.draftPreview === "" ? null : html`<span class="expand-composer-draft" dir="auto">${this.draftPreview}</span>`}
-          <span class="expand-composer-hint">${renderUpIcon()}</span>
-        </button>
-      </footer>
-    `;
-  }
 
   /** The start of the unsent draft, so a collapsed composer is not a black box. */
   private get draftPreview(): string {
@@ -712,7 +676,7 @@ export class PromptEditor extends LitElement {
   /** The searchable history sheet, anchored above the composer so it never
    * covers the editor it fills. */
   private renderHistoryPanel() {
-    if (!this.historyOpen || this.collapsed) return null;
+    if (!this.historyOpen) return null;
     const key = draftStorageKey(this.machineId, this.sessionId);
     if (key === undefined) return null;
     return html`
@@ -1028,7 +992,6 @@ export class PromptEditor extends LitElement {
    * already hidden then, and the shortcut must not open an empty room.
    */
   private openPromptHistoryPicker(): boolean {
-    if (this.collapsed) return false;
     const key = draftStorageKey(this.machineId, this.sessionId);
     if (key === undefined) return false;
     if (searchPromptHistory(key, "", this.sessionPrompts).length === 0) return false;

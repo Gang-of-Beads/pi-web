@@ -59,6 +59,5 @@ describe("the resident row stays minimal and tappable", () => {
 
     expect(sheet).toMatch(/\.panel-toggle\s*\{[^}]*width:\s*var\(--pi-panel-header-control-height\)/u);
     expect(sheet).toMatch(/\.session-title\s*\{[^}]*min-height:\s*var\(--pi-panel-header-control-height\)/u);
-    expect(sheet).toMatch(/\.working\s*\{[^}]*min-height:\s*var\(--pi-panel-header-control-height\)/u);
   });
 });

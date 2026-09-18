@@ -41,8 +41,25 @@ const producers: { name: string; file: string; selector: string; height: "height
   { name: "workspace tool toolbar", file: "./shared.ts", selector: ".workspace-tool-toolbar {", height: "min-height" },
   { name: "bundled plugin toolbar", file: "./shared.ts", selector: ".toolbar {", height: "min-height" },
   { name: "chat drawer header", file: "./ChatView.ts", selector: "\n  .drawer-header {", height: "min-height" },
-  { name: "status footer", file: "./StatusBar.ts", selector: ".bar {", height: "min-height" },
 ];
+
+/**
+ * The status footer is not a bar: it holds no controls, only a tally, and the
+ * owner asked for a third of the height back for the transcript. It still owes
+ * the template its inset, and its height stays derived from the bar token so
+ * the two cannot drift apart.
+ */
+const statusFooterHeight = "calc(var(--pi-panel-header-height) * 4 / 9)";
+
+describe("the status footer", () => {
+  it("is two thirds of the bar height and keeps the bar inset", () => {
+    const css = read("./StatusBar.ts");
+    const start = css.indexOf(".bar {");
+    const found = css.slice(start, css.indexOf("}", start));
+    expect(found).toContain(`min-height: ${statusFooterHeight}`);
+    expect(found).toMatch(/padding: (?:0|var\(--pi-space-\d\)) var\(--pi-bar-inset\)/u);
+  });
+});
 
 describe("every bar producer", () => {
   for (const producer of producers) {
@@ -58,7 +75,7 @@ describe("every bar producer", () => {
 
   it("the composer footer is a bar too on the phone", () => {
     const css = read("./PromptEditor.ts");
-    expect(css).toContain("footer { gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-bar-inset); }");
+    expect(css).toContain("footer { gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset); }");
     expect(css).toContain(".actions { min-height: var(--pi-panel-header-height); gap: var(--pi-space-3); }");
   });
 
