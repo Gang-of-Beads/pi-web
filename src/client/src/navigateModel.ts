@@ -37,8 +37,10 @@ export interface NavigateSessionRow {
   session: SessionInfo;
   machineId: string;
   pinned: boolean;
-  /** Derived tags: project, folder, machine, state. Searchable with `#`. */
+  /** Derived tags: project, folder, machine, state. Searchable with `#`, not shown. */
   tags: string[];
+  /** One quiet line under the name: what it is doing, how big, where it runs. */
+  detail: string;
 }
 
 export interface NavigateSection {
@@ -127,7 +129,28 @@ function row(session: SessionInfo, machineId: string, input: NavigateInput): Nav
     machineId,
     pinned: input.pinnedSessionIds.has(session.id),
     tags: [...new Set([...derivedTags(session, input, machineId), ...manual.map((tag) => tag.toLowerCase())])],
+    detail: sessionDetail(session, machineId, input),
   };
+}
+
+/**
+ * The subtitle a reader can use: state first because it decides whether to
+ * open, then size, then the folder it runs in. Tags stay searchable but off
+ * the screen - a row of hashes said nothing at a glance (owner).
+ */
+function sessionDetail(session: SessionInfo, machineId: string, input: NavigateInput): string {
+  const parts: string[] = [];
+  if (input.waitingSessionIds.has(session.id)) parts.push("waiting for you");
+  else if (input.activeSessionIds.has(session.id)) parts.push("working");
+  const count = session.messageCount;
+  if (typeof count === "number" && count > 0) parts.push(count === 1 ? "1 message" : `${String(count)} messages`);
+  const folder = input.folders.find((entry) => entry.path === session.cwd);
+  if (folder !== undefined) parts.push(folder.label);
+  else if (machineId !== input.scope.machineId) {
+    const machine = input.machines.find((entry) => entry.id === machineId);
+    if (machine !== undefined) parts.push(machine.name);
+  }
+  return parts.join(" · ");
 }
 
 function pinnedSection(input: NavigateInput): NavigateSessionRow[] {

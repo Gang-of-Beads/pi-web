@@ -92,7 +92,9 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .stop-button:not(:disabled) { color: var(--pi-danger); }
   .select-thinking .prompt-thinking-gauge .gauge-bar { fill: currentColor; stroke: none; opacity: .28; }
   .select-thinking .prompt-thinking-gauge .gauge-bar-active { opacity: 1; }
-  .editor-attach { position: absolute; right: var(--pi-space-4); bottom: var(--pi-space-4); z-index: 2; width: var(--pi-control-height); height: var(--pi-control-height); }
+  /* Inside the field, not over its edge: on a phone the field is 40px tall at
+     one line and a 36px control with an 8px offset stood past the top rule. */
+  .editor-attach { position: absolute; right: var(--pi-space-1); bottom: var(--pi-space-1); z-index: 2; width: var(--pi-control-height); height: var(--pi-control-height); }
   .editor-attach .prompt-action-icon { width: 18px; height: 18px; }
   textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; }
   textarea { overflow-y: auto; padding: var(--pi-space-4); padding-right: calc(var(--pi-space-4) + 36px); }

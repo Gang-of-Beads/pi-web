@@ -21,6 +21,7 @@ const standalone = await page.evaluate(`(function(){
   return {
     present: page !== null && page !== undefined,
     path: [...(root?.querySelectorAll(".path-step") ?? [])].map((node) => node.textContent.trim()),
+    kinds: [...(root?.querySelectorAll(".kind") ?? [])].map((node) => node.textContent.trim()),
     sections: [...(root?.querySelectorAll(".section-title") ?? [])].map((node) => node.textContent.trim()),
     creates: [...(root?.querySelectorAll(".create") ?? [])].map((node) => node.textContent.trim()),
     closable: root?.querySelector(".close") !== null && root?.querySelector(".close") !== undefined,
@@ -29,7 +30,8 @@ const standalone = await page.evaluate(`(function(){
 
 if (!standalone.present) fail("without a session the phone does not land on the navigation page");
 if (!standalone.path.includes("All projects")) fail(`the standalone page has no project level: ${JSON.stringify(standalone.path)}`);
-if (!standalone.sections.includes("Projects")) fail(`the standalone page offers no projects: ${JSON.stringify(standalone.sections)}`);
+if (!standalone.kinds.includes("Projects")) fail(`the standalone page cannot list projects: ${JSON.stringify(standalone.kinds)}`);
+if (!standalone.kinds.includes("Sessions")) fail(`the standalone page cannot list sessions: ${JSON.stringify(standalone.kinds)}`);
 if (!standalone.creates.some((label) => label.includes("New session"))) fail("the standalone page cannot start a session");
 if (standalone.closable) fail("the standalone page offers a close, but there is nothing behind it");
 
@@ -49,7 +51,10 @@ if (opened.view !== "chat") fail(`expected the chat view before opening navigati
 
 await page.evaluate(`(function(){
   const app = document.querySelector("pi-web-app");
-  app.shadowRoot.querySelector("app-context-bar").shadowRoot.querySelector(".panel-toggle").click();
+  const bar = app.shadowRoot.querySelector("app-context-bar").shadowRoot;
+  const key = bar.querySelector("button[aria-label='Open navigation']");
+  if (key === null) throw new Error("no navigation key in the chat bar");
+  key.click();
 })()`);
 await page.waitForTimeout(1000);
 
@@ -60,6 +65,7 @@ const overlay = await page.evaluate(`(function(){
     open: root !== null && root !== undefined,
     closable: root?.querySelector(".close") !== null && root?.querySelector(".close") !== undefined,
     path: [...(root?.querySelectorAll(".path-step") ?? [])].map((node) => node.textContent.trim()),
+    kinds: [...(root?.querySelectorAll(".kind") ?? [])].map((node) => node.textContent.trim()),
     sections: [...(root?.querySelectorAll(".section-title") ?? [])].map((node) => node.textContent.trim()),
     rows: [...(root?.querySelectorAll(".row.session .row-title") ?? [])].map((node) => node.textContent.trim()),
     sheets: app.shadowRoot.querySelector("context-switcher-sheet") !== null,
@@ -70,7 +76,7 @@ if (!overlay.open) fail("the menu key did not open the navigation page over the 
 if (!overlay.closable) fail("the navigation page over a session offers no way back to it");
 if (overlay.sheets) fail("the retired projects sheet opened as well");
 if (overlay.path.length === 0) fail("the navigation page shows no context path");
-if (!overlay.sections.includes("Folders")) fail(`standing in a folder the page does not offer its siblings: ${JSON.stringify(overlay.sections)}`);
+if (!overlay.kinds.includes("Folders")) fail(`standing in a folder the page cannot list its siblings: ${JSON.stringify(overlay.kinds)}`);
 if (overlay.rows.length === 0) fail("the navigation page lists no sessions in scope");
 if (overlay.rows.some((title) => /^[0-9a-f]{8}-/u.test(title))) fail(`sessions are listed by id rather than name: ${JSON.stringify(overlay.rows)}`);
 

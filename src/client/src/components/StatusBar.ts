@@ -5,14 +5,14 @@ import type { SessionStatus } from "../api";
 import { formatCost, formatTokenCount } from "../utils/format";
 
 const statusBarStyles = css`${unsafeCSS(uiIconStyle)}
-  :host { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); line-height: inherit; }
+  :host { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); line-height: 1.3; }
     /* Control chrome, not content: buttons and labels here are not copy targets. (T1/T3) */
     :host, :host * { -webkit-user-select: none; user-select: none; }
     :host textarea, :host input, :host [contenteditable] { -webkit-user-select: text; user-select: text; }
   /* A read-only tally, not a bar of controls: it keeps under half the bar
      template's height (two thirds, twice), and the rest belongs to the
      transcript. */
-  .bar { box-sizing: border-box; display: flex; justify-content: flex-end; gap: var(--pi-space-6); align-items: center; min-width: 0; min-height: calc(var(--pi-panel-header-height) * 4 / 9); padding: 0 var(--pi-bar-inset); line-height: var(--pi-panel-header-control-height); border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
+  .bar { box-sizing: border-box; display: flex; justify-content: flex-end; gap: var(--pi-space-6); align-items: center; line-height: 1.3; min-width: 0; min-height: calc(var(--pi-panel-header-height) * 4 / 9); padding: 0 var(--pi-bar-inset); border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
   span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .muted { color: var(--pi-muted); }
 `;

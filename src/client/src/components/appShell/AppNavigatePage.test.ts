@@ -57,12 +57,15 @@ describe("app-navigate-page", () => {
     const page = await mount();
     expect(texts(page, ".path-step")).toEqual(["All projects"]);
     expect(texts(page, ".row.session").join(" ")).toContain("fix login");
-    expect(texts(page, ".section-title")).toEqual(["Recent", "Projects"]);
+    expect(texts(page, ".section-title")).toEqual(["Recent"]);
+    expect(texts(page, ".kind")).toEqual(["Sessions", "Projects"]);
   });
 
   it("narrows through a choice without leaving the page", async () => {
     const onChoose = vi.fn<(level: NavigateLevel, id: string) => void>();
     const page = await mount({ onChoose });
+    [...page.renderRoot.querySelectorAll<HTMLButtonElement>(".kind")].find((tab) => tab.textContent.includes("Projects"))?.click();
+    await page.updateComplete;
     const project = [...page.renderRoot.querySelectorAll<HTMLButtonElement>(".row:not(.session)")].find((row) => row.textContent.includes("pi-web"));
     project?.click();
     expect(onChoose).toHaveBeenCalledWith("project", "p1");

@@ -88,6 +88,13 @@ describe("navigateModel", () => {
     expect(model.matchCount).toBe(1);
   });
 
+  it("says state, size and folder under the name instead of a row of hashes", () => {
+    const model = navigateModel({ ...base, waitingSessionIds: new Set(["a"]) });
+    const rows = model.sections.flatMap((section) => section.rows);
+    expect(rows.find((row) => row.session.id === "a")?.detail).toBe("waiting for you · 2 messages · main");
+    expect(rows.find((row) => row.session.id === "c")?.detail).toBe("2 messages · main");
+  });
+
   it("derives machine, project, folder and state tags", () => {
     expect(derivedTags(session("a", "/repos/pi-web"), { ...base, waitingSessionIds: new Set(["a"]) }, "local")).toEqual(["local", "main", "pi-web", "waiting"]);
   });

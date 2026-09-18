@@ -1,9 +1,10 @@
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionInfo } from "../../api";
-import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSessionRow } from "../../navigateModel";
+import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow } from "../../navigateModel";
 import { switcherBreadcrumb } from "../../switcherBreadcrumb";
-import { renderChevronRightIcon, uiIconStyle } from "../uiIcons.js";
+import { createStableRowOrder } from "../../stableRowOrder";
+import { renderChatIcon, renderChevronRightIcon, renderFolderIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { interactiveSurfaceStyles } from "../shared";
 import { sessionLabel } from "../../sessionLabels";
 
@@ -30,6 +31,16 @@ export class AppNavigatePage extends LitElement {
   /** Whether a session is open behind this page, which is what a close returns to. */
   @property({ type: Boolean }) closable = false;
   @state() private query = "";
+  /** Live refreshes may not move a row under a thumb; see `stableRowOrder`. */
+  private readonly rowOrder = createStableRowOrder<NavigateSessionRow>((row) => `${row.machineId}:${row.session.id}`);
+
+  override disconnectedCallback(): void {
+    this.rowOrder.release();
+    super.disconnectedCallback();
+  }
+
+  /** Which kind of thing the page is listing; one page shows one kind. */
+  @state() private kind: "sessions" | "machine" | "project" | "folder" = "sessions";
 
   override render() {
     const input = this.input;
@@ -43,51 +54,97 @@ export class AppNavigatePage extends LitElement {
       folders: input.folders,
       folderPath: input.scope.folderPath,
     });
+    const showsSessions = this.kind === "sessions";
+    const choices = model.sections.flatMap((section) => section.choices).filter((choice) => choice.level === this.kind);
     return html`
       <section class="navigate">
         <header class="path-bar">
           <div class="path-row">
-          ${segments.map((segment, index) => html`
-            ${index === 0 ? nothing : html`<span class="path-sep">${renderChevronRightIcon()}</span>`}
-            <button type="button" class=${segment.chosen ? "path-step chosen" : "path-step"} @click=${() => { this.onWiden?.(segment.level); }}>${segment.label}</button>
-          `)}
+            ${segments.map((segment, index) => html`
+              ${index === 0 ? nothing : html`<span class="path-sep">${renderChevronRightIcon()}</span>`}
+              <button
+                type="button"
+                class=${segment.chosen ? "path-step chosen" : "path-step"}
+                title=${segment.label}
+                @click=${() => { this.kind = segment.level; this.onWiden?.(segment.level); }}
+              >${segment.label}</button>
+            `)}
           </div>
           ${this.closable ? html`<button type="button" class="close" aria-label="Close navigation" @click=${() => { this.onClose?.(); }}>${renderChevronRightIcon()}</button>` : nothing}
         </header>
-        <div class="search-row">
-          <input
-            class="search"
-            type="search"
-            inputmode="search"
-            autocomplete="off"
-            spellcheck="false"
-            enterkeyhint="search"
-            aria-label="Search sessions and tags"
-            placeholder="Search sessions, #tags"
-            .value=${this.query}
-            @input=${(event: Event) => { if (event.target instanceof HTMLInputElement) this.query = event.target.value; }}
-          />
-        </div>
+        <nav class="kinds" aria-label="What to list">
+          ${this.renderKindTab("sessions", "Sessions", renderChatIcon())}
+          ${segments.some((segment) => segment.level === "machine") ? this.renderKindTab("machine", "Machines", renderMachineIcon()) : nothing}
+          ${this.renderKindTab("project", "Projects", renderProjectIcon())}
+          ${input.scope.projectId === undefined ? nothing : this.renderKindTab("folder", "Folders", renderFolderIcon())}
+        </nav>
+        ${showsSessions ? html`
+          <div class="search-row">
+            <input
+              class="search"
+              type="search"
+              inputmode="search"
+              autocomplete="off"
+              spellcheck="false"
+              enterkeyhint="search"
+              aria-label="Search sessions and tags"
+              placeholder="Search sessions, #tags"
+              .value=${this.query}
+              @input=${(event: Event) => { if (event.target instanceof HTMLInputElement) this.query = event.target.value; }}
+            />
+          </div>
+        ` : nothing}
         <div class="actions">
-          <button type="button" class="create" @click=${() => { this.onCreateSession?.(); }}>+ New session</button>
-          ${this.onAddProject === undefined ? nothing : html`<button type="button" class="create secondary" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>`}
+          ${showsSessions
+            ? html`<button type="button" class="create" @click=${() => { this.onCreateSession?.(); }}>+ New session</button>`
+            : this.kind === "project" && this.onAddProject !== undefined
+              ? html`<button type="button" class="create" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>`
+              : nothing}
         </div>
         <div class="body">
-          ${model.sections.map((section) => html`
-            <h3 class="section-title">${section.title}</h3>
-            ${section.choices.map((choice) => this.renderChoice(choice))}
-            ${section.rows.map((row) => this.renderSession(row))}
-          `)}
-          ${model.matchCount === 0 && this.query.trim() !== "" ? html`<p class="empty" role="status">No sessions match “${this.query.trim()}”.</p>` : nothing}
+          ${showsSessions
+            ? html`
+                ${this.orderedSections(model.sections).map((section) => html`
+                  <h3 class="section-title">${section.title}</h3>
+                  ${section.rows.map((row) => this.renderSession(row))}
+                `)}
+                ${model.matchCount === 0 ? html`<p class="empty" role="status">${this.query.trim() === "" ? "No sessions here yet." : `No sessions match “${this.query.trim()}”.`}</p>` : nothing}
+              `
+            : html`
+                ${choices.map((choice) => this.renderChoice(choice))}
+                ${choices.length === 0 ? html`<p class="empty" role="status">Nothing to choose at this level.</p>` : nothing}
+              `}
         </div>
       </section>
     `;
   }
 
+  /**
+   * The sections with their rows in the sequence this page opened with: a
+   * refresh changes what a row says, never where it sits.
+   */
+  private orderedSections(sections: readonly NavigateSection[]): NavigateSection[] {
+    const ordered = this.rowOrder.order(sections.flatMap((section) => section.rows));
+    const placeOf = new Map(ordered.map((row, index) => [`${row.machineId}:${row.session.id}`, index]));
+    return sections
+      .filter((section) => section.rows.length > 0)
+      .map((section) => ({ ...section, rows: [...section.rows].sort((left, right) => (placeOf.get(`${left.machineId}:${left.session.id}`) ?? 0) - (placeOf.get(`${right.machineId}:${right.session.id}`) ?? 0)) }));
+  }
+
+  private renderKindTab(kind: "sessions" | "machine" | "project" | "folder", label: string, icon: unknown) {
+    return html`<button
+      type="button"
+      class=${this.kind === kind ? "kind current" : "kind"}
+      aria-pressed=${this.kind === kind ? "true" : "false"}
+      @click=${() => { this.kind = kind; }}
+    ><span class="kind-icon" data-kind=${kind}>${icon}</span><span class="kind-label">${label}</span></button>`;
+  }
+
   private renderChoice(choice: NavigateChoice) {
+    const icon = choice.level === "machine" ? renderMachineIcon() : choice.level === "project" ? renderProjectIcon() : renderFolderIcon();
     return html`
-      <button type="button" class=${choice.current ? "row current" : "row"} @click=${() => { this.onChoose?.(choice.level, choice.id); }}>
-        <span class="row-title">${choice.label}</span>
+      <button type="button" class=${choice.current ? "row current" : "row"} @click=${() => { this.onChoose?.(choice.level, choice.id); this.kind = "sessions"; }}>
+        <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${icon}</span>${choice.label}</span>
         ${choice.detail === undefined ? nothing : html`<span class="row-detail">${choice.detail}</span>`}
       </button>
     `;
@@ -96,8 +153,8 @@ export class AppNavigatePage extends LitElement {
   private renderSession(row: NavigateSessionRow) {
     return html`
       <button type="button" class="row session" @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
-        <span class="row-title">${row.pinned ? html`<span class="pin" aria-label="Pinned">•</span>` : nothing}${sessionLabel(row.session)}</span>
-        <span class="row-detail">${row.tags.slice(0, 3).map((tag) => html`<span class="tag">#${tag}</span>`)}</span>
+        <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" aria-label="Pinned">•</span>` : nothing}${sessionLabel(row.session)}</span>
+        ${row.detail === "" ? nothing : html`<span class="row-detail">${row.detail}</span>`}
       </button>
     `;
   }
@@ -106,13 +163,27 @@ export class AppNavigatePage extends LitElement {
     :host { display: block; min-height: 0; height: 100%; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     .navigate { display: flex; flex-direction: column; min-height: 0; height: 100%; }
     .path-bar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-2); min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
-    .path-row { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
-    .path-row::-webkit-scrollbar { display: none; }
-    .path-step { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); font: inherit; cursor: pointer; }
+    /* No sideways scrolling on a phone: the path shares the width and each
+       step ellipsises, so the whole scope is readable at a glance (owner). */
+    .path-row { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow: hidden; }
+    .path-step { box-sizing: border-box; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); font: inherit; cursor: pointer; }
     .path-step.chosen { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     .path-sep { flex: 0 0 auto; display: inline-grid; place-items: center; color: var(--pi-muted); }
     .path-sep .ui-icon, .close .ui-icon { width: 14px; height: 14px; }
     .close { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+    .kinds { flex: 0 0 auto; display: flex; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
+    .kind { box-sizing: border-box; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
+    .kind.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+    .kind-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .kind-icon, .row-icon { display: inline-grid; place-items: center; }
+    .kind-icon .ui-icon, .row-icon .ui-icon { width: 14px; height: 14px; }
+    /* One colour per kind, so a folder is never mistaken for a session. */
+    [data-kind="session"] { color: var(--pi-accent); }
+    [data-kind="folder"] { color: var(--pi-success); }
+    [data-kind="project"] { color: var(--pi-purple); }
+    [data-kind="machine"] { color: var(--pi-warning); }
+    .row-icon { margin-right: var(--pi-space-3); }
+    .row-title { display: inline-flex; align-items: center; }
     .search-row { flex: 0 0 auto; padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
     .search { box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-font-ui); }
     .actions { flex: 0 0 auto; display: flex; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset) 0; }

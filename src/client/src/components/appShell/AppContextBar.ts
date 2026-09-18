@@ -46,11 +46,11 @@ export class AppContextBar extends LitElement {
         <button
           type="button"
           class="panel-toggle"
-          title=${panelToggleLabel(this.toggleTarget, this.panelOpen)}
-          aria-label=${panelToggleLabel(this.toggleTarget, this.panelOpen)}
+          title=${this.toggleTarget === "menu" ? "Go to a view" : panelToggleLabel(this.toggleTarget, this.panelOpen)}
+          aria-label=${this.toggleTarget === "menu" ? "Go to a view" : panelToggleLabel(this.toggleTarget, this.panelOpen)}
           aria-haspopup=${this.toggleTarget === "menu" ? "dialog" : nothing}
           aria-expanded=${this.toggleTarget === "menu" ? nothing : this.panelOpen ? "true" : "false"}
-          @click=${() => { this.onTogglePanel?.(); }}
+          @click=${() => { if (this.toggleTarget === "menu" && this.onOpenGoTo !== undefined) this.onOpenGoTo(); else this.onTogglePanel?.(); }}
         >
           <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M4 6h16M4 12h16M4 18h16"></path>
@@ -92,10 +92,10 @@ export class AppContextBar extends LitElement {
         <button
           type="button"
           class="panel-toggle go-to"
-          title="Go to a view"
-          aria-label="Go to a view"
+          title="Open navigation"
+          aria-label="Open navigation"
           aria-haspopup="dialog"
-          @click=${() => { this.onOpenGoTo?.(); }}
+          @click=${() => { this.onTogglePanel?.(); }}
         >${renderGridIcon()}</button>
         `}
       </nav>
@@ -143,7 +143,9 @@ export class AppContextBar extends LitElement {
  * case the shared helper has no opinion about: no session selected at all.
  */
 /**
- * What the leading control promises. A menu key that says "Open panel" and
+ * What the leading control promises. On a phone the hamburger is the views
+ * menu - the icon the platform reads as "menu" - and the grid on the right
+ * opens navigation, the owner's swap. A menu key that says "Open panel" and
  * then covers the screen with another surface is the mismatch the owner
  * reported; the words follow the surface the tap actually opens.
  */
