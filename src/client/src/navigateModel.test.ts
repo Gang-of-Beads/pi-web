@@ -2,14 +2,17 @@ import { describe, expect, it } from "vitest";
 import { derivedTags, navigateModel, type NavigateInput } from "./navigateModel";
 import type { SessionInfo } from "./api";
 
-const session = (id: string, cwd: string, name = id): SessionInfo => ({
+const session = (id: string, cwd: string, name?: string): SessionInfo => ({
   id,
-  cwd,
-  name,
   path: `/store/${id}.jsonl`,
-  createdAt: "2026-09-01T00:00:00.000Z",
-  updatedAt: "2026-09-01T00:00:00.000Z",
-} as unknown as SessionInfo);
+  cwd,
+  persisted: true,
+  created: "2026-09-01T00:00:00.000Z",
+  modified: "2026-09-01T00:00:00.000Z",
+  messageCount: 2,
+  firstMessage: "",
+  ...(name === undefined ? {} : { name }),
+});
 
 const base: NavigateInput = {
   scope: { machineId: "local", projectId: undefined, folderPath: undefined },

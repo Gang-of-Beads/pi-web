@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ScrollThumbVisibility, SCROLL_THUMB_LINGER_MS } from "./scrollActivity";
 
 function harness() {
@@ -6,7 +6,7 @@ function harness() {
   let pending: (() => void) | undefined;
   let cleared = 0;
   const visibility = new ScrollThumbVisibility((visible) => { changes.push(visible); }, {
-    setTimer: (callback) => { pending = callback; return 1 as unknown as ReturnType<typeof setTimeout>; },
+    setTimer: (callback) => { pending = callback; return setTimeout(() => undefined, 0); },
     clearTimer: () => { cleared += 1; },
   });
   return { visibility, changes, fire: () => { const run = pending; pending = undefined; run?.(); }, cleared: () => cleared };
