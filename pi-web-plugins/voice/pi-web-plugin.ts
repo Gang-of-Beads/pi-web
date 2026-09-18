@@ -73,8 +73,8 @@ const plugin: PiWebPlugin = {
           slot: "trailing",
           title: "Dictate",
           icon: context.svg`<svg class="prompt-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path><path d="M12 18v3"></path></svg>`,
-          enabled: (composer) => dictationOffered(config) && dictationEnabled(state, composer),
-          disabledReason: () => dictationOffered(config) ? undefined : "Dictation is not configured on this machine",
+          available: () => dictationOffered(config),
+          enabled: (composer) => dictationEnabled(state, composer),
           status: () => dictationStatus(state),
           run: async (composer) => {
             if (!dictationOffered(config)) return;

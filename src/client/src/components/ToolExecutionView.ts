@@ -1,4 +1,5 @@
 import { LitElement, css, html, unsafeCSS, type TemplateResult } from "lit";
+import { toolTargetPlacement } from "./toolTargetPlacement";
 import { renderCheckIcon, renderCrossIcon, renderFilledDotIcon, renderPendingRingIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import { writeClipboardText } from "../clipboard";
@@ -44,7 +45,7 @@ export class ToolExecutionView extends LitElement {
           <div class="tool-title">
             <span class="status-icon" aria-hidden="true">${STATUS_ICON[displayedStatus]()}</span>
             <strong>${execution.toolName}</strong>
-            ${this.renderHeaderTarget(target)}
+            ${toolTargetPlacement(target?.text) === "inline" ? this.renderHeaderTarget(target) : null}
           </div>
           <div class="tool-meta">
             ${editCountLabel(execution) === undefined ? null : html`<span>${editCountLabel(execution)}</span>`}
@@ -53,6 +54,9 @@ export class ToolExecutionView extends LitElement {
           </div>
         </div>
 
+        ${target === undefined || toolTargetPlacement(target.text) === "inline"
+          ? null
+          : html`<pre class="target-block" aria-label=${`${target.label}: ${target.text}`}>${target.text}</pre>`}
         ${previewMismatch ? html`<p class="notice">Applied diff differs from the preview.</p>` : null}
         ${errorText === undefined || errorText === "" ? null : html`<pre class="error-text">${errorText}</pre>`}
         ${visibleDiff === undefined ? this.renderTextBody(bodyText, execution.status === "error", target) : this.renderDiffBody(visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff", target)}
@@ -145,6 +149,7 @@ export class ToolExecutionView extends LitElement {
     strong { flex: 0 0 auto; color: var(--pi-text); }
     .path, .summary { display: block; flex: 1 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; white-space: pre; color: var(--pi-accent); font: var(--pi-text-sm) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: inherit; direction: ltr; text-align: left; unicode-bidi: isolate; }
     .summary { color: var(--pi-muted); font-family: inherit; }
+    .target-block { margin: var(--pi-space-2) 0 0; padding: 0; color: var(--pi-muted); font-family: inherit; font-size: inherit; white-space: pre; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
     .tool-meta { flex: 0 0 auto; display: inline-flex; align-items: baseline; gap: var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-xs); }
     .diff-stats { display: inline-flex; gap: var(--pi-space-2); }
     .added, .diff .added { color: var(--pi-success); }

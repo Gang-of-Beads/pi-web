@@ -551,6 +551,13 @@ export interface ComposerContribution {
   title: string;
   icon?: TemplateResult;
   order?: number;
+  /**
+   * Whether this control belongs in the composer at all. A capability the
+   * machine does not have is absent, not greyed out: a disabled control is a
+   * promise the product cannot keep, and the reader cannot tell it apart from
+   * one that is merely busy. Use `enabled` for "not right now".
+   */
+  available?: (context: ComposerRuntimeContext) => boolean;
   enabled?: (context: ComposerRuntimeContext) => boolean;
   disabledReason?: (context: ComposerRuntimeContext) => string | undefined;
   /** Rendered live under the input while defined; undefined renders nothing. */

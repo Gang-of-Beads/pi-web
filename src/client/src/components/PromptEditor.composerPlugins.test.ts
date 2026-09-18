@@ -90,4 +90,17 @@ describe("composer plugin contributions", () => {
 
     expect(element.shadowRoot?.querySelector(".plugin-icon")?.textContent).toBe("M");
   });
+
+  it("leaves an unavailable control out of the composer instead of greying it", async () => {
+    const element = await editorWith([contribution({ available: () => false, status: () => ({ text: "Dictation", severity: "info" as const }) })]);
+
+    expect(buttons(element).some((button) => button.getAttribute("aria-label") === "Dictate")).toBe(false);
+    expect(element.shadowRoot?.textContent).not.toContain("Dictation");
+  });
+
+  it("shows the control once the capability is there", async () => {
+    const element = await editorWith([contribution({ available: () => true })]);
+
+    expect(buttons(element).some((button) => button.getAttribute("aria-label") === "Dictate")).toBe(true);
+  });
 });

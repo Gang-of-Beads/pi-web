@@ -720,9 +720,9 @@ export class PromptEditor extends LitElement {
   }
 
   private renderComposerContributions(slot: ComposerSlot) {
-    const entries = this.composerContributions.filter((entry) => entry.slot === slot);
-    if (entries.length === 0) return null;
     const context = this.composerContributionContext();
+    const entries = this.composerContributions.filter((entry) => entry.slot === slot && (entry.available?.(context) ?? true));
+    if (entries.length === 0) return null;
     return html`${entries.map((entry) => {
       const enabled = entry.enabled?.(context) ?? true;
       const reason = enabled ? undefined : entry.disabledReason?.(context);
@@ -740,6 +740,7 @@ export class PromptEditor extends LitElement {
   private renderComposerContributionStatus() {
     const context = this.composerContributionContext();
     const lines = this.composerContributions.flatMap((entry) => {
+      if (entry.available?.(context) === false) return [];
       const status = entry.status?.(context);
       return status === undefined ? [] : [{ id: entry.id, status }];
     });
