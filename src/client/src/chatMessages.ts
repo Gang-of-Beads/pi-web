@@ -237,6 +237,7 @@ function normalizeRole(role: unknown): ChatLine["role"] {
 function normalizeContent(content: unknown, message: unknown): ChatPart[] {
   const askUserRecord = askUserRecordPart(message);
   if (askUserRecord !== undefined) return [askUserRecord];
+  if (isHiddenCustomMessage(message)) return [];
   const custom = customPart(message);
   if (custom !== undefined) return [custom];
   if (typeof content === "string") return content !== "" ? [{ type: "text", text: content }] : [];
@@ -286,6 +287,16 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
  * entry fell through to its model-facing text, which reads as if the message
  * were ordinary prose.
  */
+/**
+ * A custom entry whose author set `display: false` is addressed to the model,
+ * not to the reader - goal continuations are the standing example. Rendering
+ * it as an unknown card told the reader that something was broken about a
+ * message they were never meant to see.
+ */
+function isHiddenCustomMessage(message: unknown): boolean {
+  return getString(message, "role") === "custom" && getProperty(message, "display") === false;
+}
+
 function customPart(message: unknown): Extract<ChatPart, { type: "custom" }> | undefined {
   if (getString(message, "role") !== "custom") return undefined;
   const tag = getString(message, "customType");

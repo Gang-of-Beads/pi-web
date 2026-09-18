@@ -67,6 +67,26 @@ describe("chat message normalization", () => {
     expect(groupChatMessages(normalized)).toEqual([{ kind: "message", index: 0, message: recordLine }]);
   });
 
+  it("keeps a custom message its author marked invisible out of the transcript", () => {
+    expect(normalizeMessage({
+      role: "custom",
+      customType: "pi-goal-event",
+      content: "<pi_goal_continuation kind=\"checkpoint\"/>",
+      display: false,
+      details: { kind: "checkpoint" },
+    })).toEqual([]);
+  });
+
+  it("still offers a visible custom message to the renderers", () => {
+    expect(normalizeMessage({
+      role: "custom",
+      customType: "background-task-notification",
+      content: "<background-task-notification/>",
+      display: true,
+      details: { id: "t1", name: "build", status: "completed" },
+    })).toEqual([{ role: "system", parts: [{ type: "custom", tag: "background-task-notification", payload: { id: "t1", name: "build", status: "completed" } }] }]);
+  });
+
   it("falls back to model-facing text when an ask_user answer record is malformed", () => {
     expect(normalizeMessage({
       role: "custom",
