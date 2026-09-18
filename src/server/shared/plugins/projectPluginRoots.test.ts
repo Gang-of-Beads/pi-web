@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { projectPluginRoots } from "./projectPluginRoots";
 import { projectPluginDirectory } from "./projectPluginVerdict";
@@ -35,8 +36,8 @@ describe("resolving the projects whose own plugins may load", () => {
   it("does not let a trusted project vouch for an untrusted sibling", async () => {
     const resolved = await projectPluginRoots(inputFor(["/trusted", "/untrusted"], (path) => path === "/trusted", ["/trusted", "/untrusted"]));
 
-    expect(resolved.find((entry) => entry.directory.startsWith("/trusted"))?.root).toBeDefined();
-    expect(resolved.find((entry) => entry.directory.startsWith("/untrusted"))?.root).toBeUndefined();
+    expect(resolved.find((entry) => entry.directory.startsWith(join("/trusted")))?.root).toBeDefined();
+    expect(resolved.find((entry) => entry.directory.startsWith(join("/untrusted")))?.root).toBeUndefined();
   });
 
   it("asks about each project once even when it is listed twice", async () => {

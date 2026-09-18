@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 /**
  * Control heights are a published scale (`--pi-control-height` 32,
@@ -44,7 +44,9 @@ function styleSources(root: string): string[] {
       if (entry === "node_modules" || entry === "dist") continue;
       const full = join(dir, entry);
       if (statSync(full).isDirectory()) { walk(full); continue; }
-      if (entry.endsWith(".ts") && !entry.endsWith(".test.ts")) found.push(full);
+      // Slash-normalised so the exemption list and the offence report read the
+      // same on Windows, where join yields backslashes.
+      if (entry.endsWith(".ts") && !entry.endsWith(".test.ts")) found.push(full.split(sep).join("/"));
     }
   };
   walk(root);

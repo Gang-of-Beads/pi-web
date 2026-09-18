@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiAgentSession } from "./piSessionService.js";
 import { PiSessionService } from "./piSessionService.js";
@@ -44,10 +45,10 @@ describe("workspace watch holds follow the session a runtime is bound to", () =>
     const spies = spyWatcher(service);
 
     await service.start("/workspace/");
-    expect(spies.hold).toHaveBeenCalledWith("session-1", "/workspace");
+    expect(spies.hold).toHaveBeenCalledWith("session-1", resolve("/workspace"));
 
     await service.stop({ id: "session-1", cwd: "/workspace" });
-    expect(spies.release).toHaveBeenCalledWith("session-1", "/workspace");
+    expect(spies.release).toHaveBeenCalledWith("session-1", resolve("/workspace"));
   });
 
   it("moves the hold to the replacement session when the SDK runtime rebinds", async () => {
@@ -62,7 +63,7 @@ describe("workspace watch holds follow the session a runtime is bound to", () =>
     Object.defineProperty(fake.runtime, "session", { configurable: true, value: replacement.session });
     await rebindSession?.(replacement.session);
 
-    expect(spies.release).toHaveBeenCalledWith("session-1", "/workspace");
-    expect(spies.hold).toHaveBeenLastCalledWith("session-2", "/workspace");
+    expect(spies.release).toHaveBeenCalledWith("session-1", resolve("/workspace"));
+    expect(spies.hold).toHaveBeenLastCalledWith("session-2", resolve("/workspace"));
   });
 });

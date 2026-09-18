@@ -1,3 +1,4 @@
+import { npmCommand } from "../src/npmCommand";
 import { execFileSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -46,7 +47,7 @@ function declaredPlugins(metadata: unknown): Record<string, unknown>[] {
 
 describe("shipped browser plugin entries", () => {
   it("carry no specifier a browser could not resolve", { timeout: 120_000 }, async () => {
-    execFileSync("npm", ["run", "build:plugins"], { stdio: "ignore" });
+    execFileSync(npmCommand(), ["run", "build:plugins"], { stdio: "ignore" });
 
     const entries = await browserEntries();
     expect(entries.length).toBeGreaterThan(0);

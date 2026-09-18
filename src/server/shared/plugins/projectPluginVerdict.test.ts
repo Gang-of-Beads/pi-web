@@ -1,5 +1,9 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { projectPluginDirectory, projectPluginVerdict, resolveProjectPluginRoot, type ProjectPluginVerdict } from "./projectPluginVerdict";
+
+/** The same path the module builds, so the separator is the platform's. */
+const pluginDirectory = join("/repo", ".pi-web", "plugins");
 
 describe("whether a project's own plugins may load", () => {
   it("loads them from a trusted project that has them", () => {
@@ -25,13 +29,13 @@ describe("whether a project's own plugins may load", () => {
   });
 
   it("keeps a project's plugins inside the project's own PI WEB directory", () => {
-    expect(projectPluginDirectory("/repo")).toBe("/repo/.pi-web/plugins");
+    expect(projectPluginDirectory("/repo")).toBe(pluginDirectory);
   });
 
   it("offers a readable root only for a trusted project", () => {
     const resolved = resolveProjectPluginRoot("/repo", { trusted: true, directoryExists: true });
 
-    expect(resolved.root).toEqual({ path: "/repo/.pi-web/plugins", source: "project", scope: "local" });
+    expect(resolved.root).toEqual({ path: pluginDirectory, source: "project", scope: "local" });
     expect(resolved.withheld).toBeUndefined();
   });
 
@@ -40,7 +44,7 @@ describe("whether a project's own plugins may load", () => {
 
     expect(resolved.root).toBeUndefined();
     expect(resolved.withheld?.message).toContain("not trusted");
-    expect(resolved.withheld?.source).toBe("/repo/.pi-web/plugins");
+    expect(resolved.withheld?.source).toBe(pluginDirectory);
   });
 
   it("says nothing at all about a project that has no plugin directory", () => {

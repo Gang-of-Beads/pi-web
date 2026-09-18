@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_PORT_PAGE_LIMIT, TRANSCRIPT_PORT_NOT_READY, createSessionTranscriptPort, type TranscriptReader } from "./sessionTranscriptPort.js";
 
@@ -31,7 +32,7 @@ describe("session transcript port", () => {
     const calls: unknown[] = [];
     const port = createSessionTranscriptPort(() => reader({ messages: (ref, page) => { calls.push({ ref, page }); return Promise.resolve({ messages: ["m"], start: 4, total: 9 }); } }));
     await expect(port.readMessages({ id: "s1", cwd: "/repo" }, { before: 5, limit: 1 })).resolves.toEqual({ messages: ["m"], start: 4, total: 9 });
-    expect(calls).toEqual([{ ref: { id: "s1", cwd: "/repo" }, page: { before: 5, limit: 1 } }]);
+    expect(calls).toEqual([{ ref: { id: "s1", cwd: resolve("/repo") }, page: { before: 5, limit: 1 } }]);
   });
 
   it("sizes an unsized read as a page, never the whole transcript", async () => {
@@ -45,7 +46,7 @@ describe("session transcript port", () => {
     const calls: string[] = [];
     const port = createSessionTranscriptPort(() => reader({ list: (cwd) => { calls.push(cwd); return Promise.resolve([]); } }));
     await port.listSessions("/repo/../repo/");
-    expect(calls).toEqual(["/repo"]);
+    expect(calls).toEqual([resolve("/repo")]);
     await expect(port.listSessions("relative/dir")).rejects.toThrow(/absolute/u);
   });
 
