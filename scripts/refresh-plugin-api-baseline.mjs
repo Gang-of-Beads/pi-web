@@ -4,7 +4,20 @@ import { join } from "node:path";
 import ts from "typescript";
 
 const repoRoot = process.cwd();
-const declarations = ["plugin-api.d.ts", "server-plugin-api.d.ts", "shared/pluginApiTypes.d.ts"];
+// Every declaration the package smoke compares, so refreshing a baseline
+// cannot leave half of it behind - which is how the release smoke failed on a
+// file this script never touched.
+const declarations = [
+  "plugin-api.d.ts",
+  "server-plugin-api.d.ts",
+  "shared/activeAgentProfile.d.ts",
+  "shared/apiTypes.d.ts",
+  "shared/capabilities.d.ts",
+  "shared/machineStatus.d.ts",
+  "shared/piWebStatusParsing.d.ts",
+  "shared/pluginApiTypes.d.ts",
+  "shared/thinkingLevels.d.ts",
+];
 
 const configPath = join(repoRoot, "tsconfig.plugin-api.json");
 const config = ts.getParsedCommandLineOfConfigFile(configPath, {}, {

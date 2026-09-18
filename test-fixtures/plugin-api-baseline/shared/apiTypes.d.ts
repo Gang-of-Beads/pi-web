@@ -291,6 +291,9 @@ export interface Workspace {
     readonly path: string;
     readonly label: string;
     readonly isMain: boolean;
+    /** True when the workspace's folder is gone: the listing stamped it, and
+     * sessions or terminals can never start inside it. */
+    readonly cwdMissing?: boolean;
     readonly provider?: WorkspaceProviderMetadata;
     readonly removal?: WorkspaceRemovalHostState;
     /** Workspace-effective project/global settings needed by workspace UI features. Always present on current server workspace responses. */
@@ -326,6 +329,19 @@ export interface SessionUnreadCatalogSnapshot {
     /** Bounded by `SESSION_UNREAD_LIMIT` and ordered newest completion first. */
     sessions: SessionUnreadSummary[];
 }
+/**
+ * The answer to a listing refresh that echoed back a stored revision:
+ * either the payload with its current revision, or a cheap verdict that
+ * nothing changed and the reader's rows already are the truth.
+ */
+export type SessionsRevisionResponse = {
+    revision: string;
+    unchanged: true;
+} | {
+    revision: string;
+    unchanged?: false;
+    sessions: SessionInfo[];
+};
 /**
  * What the daemon did with an acknowledgement.
  *
@@ -488,6 +504,8 @@ export interface SessionInfo extends SessionRef {
     parentSessionPath?: string;
     archived?: boolean;
     archivedAt?: string;
+    /** The stored working directory is gone: the row renders as unopenable. */
+    cwdMissing?: boolean;
 }
 export interface ArchiveSessionsResponse {
     archived: true;
@@ -521,6 +539,8 @@ export interface SessionBulkDeleteArchivedResponse {
 export interface SessionCleanupRequest {
     /** Archive non-archived sessions whose modified time is older than this many days. Omit/null to disable. */
     archiveIdleDays?: number | null;
+    /** Also archive every non-archived session whose folder no longer exists. */
+    archiveMissingFolder?: boolean;
     /** Permanently delete archived sessions whose archivedAt time is older than this many days. Omit/null to disable. */
     deleteArchivedDays?: number | null;
     /** Stored cwd paths selected from a preview. Omit/null to include all discovered project/workspace paths. */
@@ -529,6 +549,8 @@ export interface SessionCleanupRequest {
 export interface SessionCleanupThresholds {
     archiveIdleDays?: number;
     deleteArchivedDays?: number;
+    /** Archive every non-archived session whose folder no longer exists. */
+    archiveMissingFolder?: boolean;
 }
 export interface SessionCleanupProjectSummary {
     cwd: string;
@@ -1243,11 +1265,18 @@ export type SessionStreamSync = {
     kind: "resync";
     sinceSeq: number;
 };
+/**
+ * `deferred` marks a command the daemon accepted but has not run: a runtime
+ * command forwarded behind the reply in flight, or a reload parked until the
+ * session is idle. The browser must show it as queued, never as done; the
+ * daemon says so explicitly because the browser cannot tell from the prose.
+ */
 export type CommandResult = {
     type: "done";
     message?: string;
     session?: SessionInfo;
     promptDraft?: string;
+    deferred?: true;
 } | {
     type: "select";
     requestId: string;
@@ -1389,7 +1418,16 @@ type SessionUiEventBody =
 export type GlobalSessionEvent = Extract<SessionUiEventBody, {
     type: "status.update" | "activity.update" | "session.name" | "session.created";
 }> | SessionNotificationSummaryEvent | SessionUnreadEvent | SessionStartupProgressEvent;
-export type RealtimeEvent = GlobalSessionEvent | TerminalUiEvent | MachineStatusUiEvent;
+/**
+ * A watched working directory changed on disk. The daemon names the directory
+ * only; the browser decides whether it is the workspace it shows and refreshes
+ * its panels through the invalidation they already implement.
+ */
+export interface WorkspaceChangedUiEvent {
+    readonly type: "workspace.changed";
+    readonly cwd: string;
+}
+export type RealtimeEvent = GlobalSessionEvent | TerminalUiEvent | MachineStatusUiEvent | WorkspaceChangedUiEvent;
 /** A run a restart cut off, as reported once by the daemon and then cleared. */
 export interface InterruptedRunInfo {
     readonly sessionId: string;
