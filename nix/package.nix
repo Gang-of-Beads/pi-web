@@ -10,8 +10,11 @@ buildNpmPackage rec {
 
   npmDepsFetcherVersion = 2;
   # Includes package-lock's root package version as well as dependency entries.
-  # Update with `nix build .#pi-web --no-link` whenever package-lock.json moves.
-  npmDepsHash = "sha256-xR34uSqMUT2oDrhWiQkQ8IeL8hdsimjc5vFPEOjDtSE=";
+  # Update with `nix build .#pi-web --no-link` whenever package-lock.json moves,
+  # and take the hash from that build or from CI's own "got:" line. A bare
+  # `nix run nixpkgs#prefetch-npm-deps` resolves a different nixpkgs than this
+  # flake pins and produced a hash CI rejected.
+  npmDepsHash = "sha256-fjgow3yR+sL9jUKSUgRnHtABwJVRNmH3F+Rf6LR0pvI=";
 
   nativeBuildInputs = [ makeWrapper python3 pkg-config ]
     ++ lib.optionals stdenv.isLinux [ stdenv.cc ];
