@@ -1,5 +1,134 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.1
+
+### Patch Changes
+
+- 3d2d4f1: Navigation drops the folder level.
+
+  A project and a folder read as the same thing - a project with no worktrees
+  prints its name on both levels - so the level cost a tap and taught nothing.
+  Navigation is machine, project, session; a project lists the sessions from all
+  of its folders, and which folder a session runs in stays a property of that
+  session rather than a place to stand.
+- 2e993c3: The attach key stays inside the message field.
+
+  At one line the phone's field is 40px tall and the 36px key sat 8px from the
+  bottom, so it stood over the field's top rule. It sits in the corner now.
+
+- d6782b0: Removing an attachment stops covering the attachment.
+
+  The remove control was a round 44px button drawn over the thumbnail it belongs
+  to. It is a small square badge in the corner now, with the touch reach kept as
+  an invisible area around it.
+
+- d6782b0: The chat bar stops repeating the session's state.
+
+  The activity dock says what the session is doing and the status footer says it
+  again; a third copy in the top bar was noise. The bar is the menu key and the
+  session name, centred.
+
+- d6782b0: The composer stays put while you answer a question.
+
+  It used to shrink to a strip whenever a question form or dialog field took
+  focus, which moved a control under the thumb and cost a tap to get the editor
+  back. The collapse is removed rather than disabled: the state, its listeners
+  and its module are gone.
+
+- 8c41459: The folder level appears only when there is a folder to choose.
+
+  A project whose only folder is its own checkout printed the same name on two
+  levels, which read as a duplicate rather than as a hierarchy. The folder level
+  now appears when a project has more than one folder, which is when git
+  worktrees exist; the path still names the folder a session runs in.
+
+- 2e993c3: The navigation page lists one kind of thing at a time.
+
+  Sessions, folders and projects were stacked on one page, so a folder read as a
+  session; the path also scrolled sideways, which is unusable with a thumb. The
+  page now has a scope line that shares the width and ellipsises, a row of kinds
+
+  - Sessions, Machines, Projects, Folders - and a list showing exactly one of
+    them, with a colour and an icon per kind. Session rows say state, size and
+    folder instead of a row of hashes; tags stay searchable.
+
+- d6782b0: One navigation surface replaces the sheets you could not get back from.
+
+  Where you are - machine, project, folder - is now a path at the top of a single
+  page, and the page holds everything reachable from there: pinned sessions,
+  what waits for you, what is working, the rest, and the level below. Tapping a
+  level on the path widens; tapping a choice narrows; neither leaves the page.
+  Opening a session is the only thing that does. Sessions carry derived tags -
+  machine, project, folder, state - so `#waiting` or `#pi-web` filters the list.
+  On a phone the page opens over the session from the menu key and closes back
+  to it; without a session it is the page itself, with New session and Add
+  project on it. On desktop it is the left panel.
+
+- 2e993c3: The phone's two chrome keys swap meaning.
+
+  A hamburger reads as a menu, so it opens the views menu now; the grid on the
+  right opens navigation. Their positions swap with them, which is where the
+  owner reaches for each.
+
+- fcb8e98: The navigation list marks the session you are reading.
+
+  Every row looked the same, so the list said nothing about where the reader
+  already was. The open session is highlighted and announced as the current
+  item; a session with the same id on another machine is not.
+
+- 9bc2a90: A session in the navigation list is just its name.
+
+  The row carried a line of tags, then a line of state and size; the owner read
+  both as noise on a list whose only job is to be scanned. The name stands
+  alone, and the tags stay searchable behind `#`.
+
+- 2e993c3: Navigation rows stop moving under your thumb.
+
+  The page refreshes from live events, and recency order let an arriving event
+  lift a row past the one being aimed at. While the page is open the order it
+  opened with is held: rows keep their places, new sessions append, gone ones
+  drop, and the state inside each row still updates. Closing releases the hold.
+
+- d6782b0: Next no longer answers Custom for you.
+
+  The step's controls are replaced under the finger, so the tail of the gesture
+  that tapped Next - the click a touch screen sends after pointerup - landed on
+  whatever now stood there, which is Custom. A change arriving within a short
+  window of a step change is judged part of that gesture and refused.
+
+- 0435a70: The plugin API subpath resolves at runtime, not only for types.
+
+  `@gang-of-beads/pi-web/plugin-api` exported types but no runtime entry, so a
+  plugin importing its one runtime value - the core status flags - failed to
+  resolve the specifier. The subpath now maps to the built module as well.
+
+- 5fa4e01: A tool the agent is running says running.
+
+  A call the agent has issued reads as pending in the data until its result
+  arrives, and the card printed that word - which the owner read as waiting for
+  something that had not started, while the command was executing. While the
+  turn streams such a call is shown as running; with no turn behind it, it is
+  interrupted, as before. Nothing displays as pending any more.
+
+- d6782b0: The scroll thumb belongs to the gesture.
+
+  A rail was drawn down the right edge of every transcript at rest, and the
+  reading-progress meter drew a second amber one beside it. The rail is gone:
+  a small thumb appears while the reader scrolls and retires shortly after, and
+  the meter is retired with it.
+
+- 2e993c3: The status tally is finally as short as it looks.
+
+  Its height was pinned by a 36px line-height, so shrinking the box changed
+  nothing. The line-height follows the text now and the tally is under half a
+  bar tall.
+
+- d6782b0: The status tally gives most of its height back.
+
+  The token and context readout is not a bar of controls, yet it stood as tall
+  as one. It is now under half the bar height, and the transcript keeps the
+  difference.
+
 ## 2.202609.0
 
 ### Major Changes
