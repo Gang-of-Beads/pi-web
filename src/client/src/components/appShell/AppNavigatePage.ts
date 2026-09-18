@@ -1,11 +1,13 @@
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionInfo } from "../../api";
-import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow } from "../../navigateModel";
+import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow, type NavigateSessionState } from "../../navigateModel";
 import { switcherBreadcrumb } from "../../switcherBreadcrumb";
 import { createStableRowOrder } from "../../stableRowOrder";
 import { renderChatIcon, renderChevronRightIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
-import { interactiveSurfaceStyles } from "../shared";
+import { interactiveSurfaceStyles, listStyles } from "../shared";
+import { actionMenuPanelStyle } from "../actionMenu";
+import { navigateRowActions, type NavigateRowActionId, type NavigateRowKind } from "../../navigateRowActions";
 import { sessionLabel } from "../../sessionLabels";
 
 /**
@@ -21,6 +23,12 @@ import { sessionLabel } from "../../sessionLabels";
  */
 export type NavigateKind = "sessions" | "machine" | "project";
 
+const STATE_LABEL: Record<NavigateSessionState, string> = {
+  waiting: "Waiting for you",
+  working: "Working",
+  idle: "Idle",
+};
+
 @customElement("app-navigate-page")
 export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) input?: Omit<NavigateInput, "query">;
@@ -30,6 +38,10 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onCreateSession?: () => void;
   @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onClose?: () => void;
+  /** What the row menu does; the page names the action, the host performs it. */
+  @property({ attribute: false }) onRowAction?: (kind: NavigateRowKind, id: string, action: NavigateRowActionId) => void;
+  @property({ attribute: false }) canRenameSession = false;
+  @property({ attribute: false }) canCloseProject = false;
   /** Whether a session is open behind this page, which is what a close returns to. */
   @property({ type: Boolean }) closable = false;
   @state() private query = "";
@@ -43,6 +55,8 @@ export class AppNavigatePage extends LitElement {
 
   /** Which kind of thing the page is listing; one page shows one kind. */
   @state() private kind: NavigateKind = "sessions";
+  @state() private openMenuRowId: string | undefined = undefined;
+  @state() private menuStyle = "";
 
   /** Open the page on one kind; the keyboard shortcuts name a kind, not a panel. */
   showKind(kind: NavigateKind): void {
@@ -148,26 +162,93 @@ export class AppNavigatePage extends LitElement {
 
   private renderChoice(choice: NavigateChoice) {
     const icon = choice.level === "machine" ? renderMachineIcon() : renderProjectIcon();
-    return html`
-      <button type="button" class=${choice.current ? "row current" : "row"} @click=${() => { this.onChoose?.(choice.level, choice.id); this.kind = "sessions"; }}>
+    const kind: NavigateRowKind = choice.level === "machine" ? "machine" : "project";
+    const rowId = `${kind}:${choice.id}`;
+    return this.renderRowShell(rowId, kind, choice.id, choice.label, html`
+      <button
+        type="button"
+        class=${choice.current ? "row current" : "row"}
+        title=${choice.detail ?? choice.label}
+        @click=${() => { this.onChoose?.(choice.level, choice.id); this.kind = "sessions"; }}
+      >
         <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${icon}</span>${choice.label}</span>
-        ${choice.detail === undefined ? nothing : html`<span class="row-detail">${choice.detail}</span>`}
       </button>
+    `, { hasPath: choice.detail !== undefined, closable: kind === "project" && this.canCloseProject });
+  }
+
+  /**
+   * One thing on the left, one control on the right. The row used to carry a
+   * second line of path under the name and no way to act on it; the name is
+   * what a list is scanned by, and everything you can do to the row lives
+   * behind the menu beside it.
+   */
+  private renderRowShell(
+    rowId: string,
+    kind: NavigateRowKind,
+    id: string,
+    label: string,
+    row: unknown,
+    facts: { pinned?: boolean; hasPath?: boolean; closable?: boolean },
+  ) {
+    const actions = navigateRowActions(kind, {
+      ...facts,
+      renamable: kind === "session" && this.canRenameSession,
+    });
+    const open = this.openMenuRowId === rowId;
+    return html`
+      <div class="row-wrap">
+        ${row}
+        ${actions.length <= 1 ? nothing : html`
+          <button
+            type="button"
+            class="action-menu-toggle"
+            title="Actions"
+            aria-label=${`Actions for ${label}`}
+            aria-haspopup="menu"
+            aria-expanded=${open ? "true" : "false"}
+            @click=${(event: MouseEvent) => { this.toggleRowMenu(rowId, event.currentTarget); }}
+          >⋯</button>
+        `}
+        ${open ? html`
+          <div class="action-menu-panel" role="menu" style=${this.menuStyle}>
+            ${actions.map((action) => html`
+              <button type="button" role="menuitem" @click=${() => { this.openMenuRowId = undefined; this.onRowAction?.(kind, id, action.id); }}>${action.label}</button>
+            `)}
+          </div>
+        ` : nothing}
+      </div>
     `;
+  }
+
+  private toggleRowMenu(rowId: string, target: EventTarget | null): void {
+    this.openMenuRowId = this.openMenuRowId === rowId ? undefined : rowId;
+    this.menuStyle = this.openMenuRowId === undefined ? "" : actionMenuPanelStyle(target, { constrainTo: "viewport" });
   }
 
   /** The name alone: the owner's call, after a row of hashes and then a line of
    *  state proved to be noise on a list whose job is to be scanned. */
   private renderSession(row: NavigateSessionRow) {
-    return html`
-      <button type="button" class=${row.current ? "row session current" : "row session"} aria-current=${row.current ? "true" : "false"} @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
-        <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" aria-label="Pinned">•</span>` : nothing}${sessionLabel(row.session)}</span>
-
+    const label = sessionLabel(row.session);
+    return this.renderRowShell(`session:${row.machineId}:${row.session.id}`, "session", row.session.id, label, html`
+      <button type="button" class=${row.current ? "row session current" : "row session"} aria-current=${row.current ? "true" : "false"} title=${label} @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
+        <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" aria-label="Pinned">•</span>` : nothing}<span class="row-name">${label}</span></span>
+        <span class=${`state ${row.state}`} title=${STATE_LABEL[row.state]} aria-label=${STATE_LABEL[row.state]}></span>
       </button>
-    `;
+    `, { pinned: row.pinned });
   }
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, css`
+
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, listStyles, css`
+    .row .row-title { flex: 1 1 auto; min-width: 0; }
+    .row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row.session { display: flex; align-items: center; gap: var(--pi-space-3); }
+    .state { flex: 0 0 auto; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; }
+    .state.waiting { background: var(--pi-accent); }
+    .state.working { background: var(--pi-success); }
+    .state.idle { background: var(--pi-border); }
+    .row-wrap { position: relative; display: flex; align-items: stretch; gap: var(--pi-space-2); }
+    .row-wrap .row { flex: 1 1 auto; min-width: 0; }
+
     :host { display: block; min-height: 0; height: 100%; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); user-select: none; -webkit-user-select: none; }
     .navigate { display: flex; flex-direction: column; min-height: 0; height: 100%; }
     .path-bar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-2); min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }

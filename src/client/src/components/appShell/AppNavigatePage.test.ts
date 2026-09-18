@@ -123,4 +123,34 @@ describe("app-navigate-page", () => {
     const standalone = await mount();
     expect(standalone.renderRoot.querySelector(".close")).toBeNull();
   });
+
+  it("gives every row one name on the left and one menu on the right, with no second line", async () => {
+    const page = await mount();
+    page.showKind("project");
+    await page.updateComplete;
+    const row = page.renderRoot.querySelector(".row-wrap");
+    expect(row).not.toBeNull();
+    expect(row?.querySelector(".row-detail")).toBeNull();
+    const menu = row?.querySelector(".action-menu-toggle");
+    expect(menu?.getAttribute("aria-haspopup")).toBe("menu");
+    expect(menu?.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("reports the action the reader picked against that row, not the current selection", async () => {
+    const picked: string[] = [];
+    const page = await mount();
+    page.canCloseProject = true;
+    page.onRowAction = (kind, id, action) => { picked.push(`${kind}:${id}:${action}`); };
+    page.showKind("project");
+    await page.updateComplete;
+    const toggle = page.renderRoot.querySelector<HTMLButtonElement>(".action-menu-toggle");
+    toggle?.click();
+    await page.updateComplete;
+    const items = [...page.renderRoot.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+    expect(items.map((item) => item.textContent.trim())).toContain("Close project");
+    items.find((item) => item.textContent.trim() === "Close project")?.click();
+    await page.updateComplete;
+    expect(picked).toHaveLength(1);
+    expect(picked[0] ?? "").toMatch(/^project:.*:close-project$/u);
+  });
 });

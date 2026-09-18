@@ -37,9 +37,9 @@ describe("navigateModel", () => {
   it("offers projects and every session while the path is empty", () => {
     const model = navigateModel(base);
     expect(model.nextLevel).toBe("project");
-    expect(sectionIds(base)).toEqual(["recent", "choices"]);
+    expect(sectionIds(base)).toEqual(["recent", "choices", "choices"]);
     expect(model.sections.find((section) => section.id === "recent")?.rows).toHaveLength(3);
-    expect(model.sections.find((section) => section.id === "choices")?.choices.map((choice) => choice.label)).toEqual(["pi-web", "trade"]);
+    expect(model.sections.filter((section) => section.id === "choices").flatMap((section) => section.choices).filter((choice) => choice.level === "project").map((choice) => choice.label)).toEqual(["pi-web", "trade"]);
   });
 
   it("lists a chosen project's sessions across all of its folders", () => {
@@ -55,7 +55,7 @@ describe("navigateModel", () => {
 
   it("separates what waits for the reader from what is merely running", () => {
     const model = navigateModel({ ...base, waitingSessionIds: new Set(["a"]), activeSessionIds: new Set(["a", "b"]) });
-    expect(sectionIds({ ...base, waitingSessionIds: new Set(["a"]), activeSessionIds: new Set(["a", "b"]) })).toEqual(["waiting", "running", "recent", "choices"]);
+    expect(sectionIds({ ...base, waitingSessionIds: new Set(["a"]), activeSessionIds: new Set(["a", "b"]) })).toEqual(["waiting", "running", "recent", "choices", "choices"]);
     expect(model.sections[0]?.rows.map((row) => row.session.id)).toEqual(["a"]);
     expect(model.sections[1]?.rows.map((row) => row.session.id)).toEqual(["b"]);
   });
@@ -104,5 +104,21 @@ describe("navigateModel", () => {
 
   it("offers machines as the only level when there are no projects to group by", () => {
     expect(navigateModel({ ...base, projects: [] }).nextLevel).toBe("machine");
+  });
+
+  it("offers machines even while a project is the next level", () => {
+    // Asking for Machines from inside a project answered "nothing to choose"
+    // while two machines sat in the same input.
+    const model = navigateModel({ ...base, machines: [{ id: "local", name: "local" }, { id: "work", name: "work" }] });
+    const machines = model.sections.flatMap((section) => section.choices).filter((choice) => choice.level === "machine");
+    expect(machines.map((choice) => choice.label)).toEqual(["local", "work"]);
+  });
+
+  it("marks what each session is doing", () => {
+    const model = navigateModel({ ...base, waitingSessionIds: new Set(["a"]), activeSessionIds: new Set(["a", "b"]) });
+    const states = new Map(model.sections.flatMap((section) => section.rows).map((row) => [row.session.id, row.state]));
+    expect(states.get("a")).toBe("waiting");
+    expect(states.get("b")).toBe("working");
+    expect(states.get("c")).toBe("idle");
   });
 });

@@ -42,6 +42,8 @@ export interface NavigateChoice {
   sessionCount?: number;
 }
 
+export type NavigateSessionState = "waiting" | "working" | "idle";
+
 export interface NavigateSessionRow {
   session: SessionInfo;
   machineId: string;
@@ -52,6 +54,8 @@ export interface NavigateSessionRow {
   tags: string[];
   /** One quiet line under the name: what it is doing, how big, where it runs. */
   detail: string;
+  /** What the session is doing right now, for the mark beside its name. */
+  state: NavigateSessionState;
 }
 
 export interface NavigateSection {
@@ -110,8 +114,13 @@ export function navigateModel(input: NavigateInput): NavigateModel {
   const rest = matching.filter((entry) => !waiting.includes(entry) && !running.includes(entry) && !entry.pinned);
   if (rest.length > 0) sections.push({ id: "recent", title: "Recent", rows: rest, choices: [] });
 
-  const choices = choicesFor(nextLevel, input);
-  if (choices.length > 0) sections.push({ id: "choices", title: choiceTitle(nextLevel), rows: [], choices });
+  // Every level's choices, not just the next one: the page lists one kind at a
+  // time, and asking for Machines while standing in a project used to answer
+  // "Nothing to choose at this level" with machines sitting right there.
+  for (const level of ["machine", "project"] as const) {
+    const choices = choicesFor(level, input);
+    if (choices.length > 0) sections.push({ id: "choices", title: choiceTitle(level), rows: [], choices });
+  }
 
   return { nextLevel, sections, matchCount: matching.length + pinnedRows.length };
 }
@@ -133,6 +142,17 @@ export function derivedTags(session: SessionInfo, input: Pick<NavigateInput, "pr
   return [...new Set(tags.map((tag) => tag.toLowerCase()))];
 }
 
+/**
+ * A list of names alone could not say which session was working and which was
+ * waiting for an answer, which is what a reader scans for. Waiting outranks
+ * working: an answer the agent is blocked on is the only state that needs a
+ * person.
+ */
+function sessionState(session: SessionInfo, input: NavigateInput): NavigateSessionState {
+  if (input.waitingSessionIds.has(session.id)) return "waiting";
+  return input.activeSessionIds.has(session.id) ? "working" : "idle";
+}
+
 function row(session: SessionInfo, machineId: string, input: NavigateInput): NavigateSessionRow {
   const manual = input.manualTags?.[session.id] ?? [];
   return {
@@ -142,6 +162,7 @@ function row(session: SessionInfo, machineId: string, input: NavigateInput): Nav
     current: machineId === input.scope.machineId && session.id === input.scope.sessionId,
     tags: [...new Set([...derivedTags(session, input, machineId), ...manual.map((tag) => tag.toLowerCase())])],
     detail: sessionDetail(session, machineId, input),
+    state: sessionState(session, input),
   };
 }
 

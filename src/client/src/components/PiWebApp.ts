@@ -84,6 +84,8 @@ import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
 import "./appShell/AppContextBar";
 import "./appShell/AppNavigatePage";
 import type { AppNavigatePage, NavigateKind } from "./appShell/AppNavigatePage";
+import type { NavigateRowActionId, NavigateRowKind } from "../navigateRowActions";
+import { writeClipboardText } from "../clipboard";
 import type { NavigateInput, NavigateLevel } from "../navigateModel";
 import type { ShellToolTab } from "../appShell/shellToolTabs";
 import "./appShell/AppPanelEdgeControl";
@@ -2450,7 +2452,45 @@ export class PiWebApp extends LitElement {
       .onOpenSession=${(session: SessionInfo) => { this.closeNavigate(); void this.openSessionFromQuickSwitcher(session); }}
       .onCreateSession=${() => { this.closeNavigate(); void this.startSessionAndOpenChat(); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { this.closeNavigate(); this.openProjectDialog(); } : undefined}
+      .canRenameSession=${true}
+      .canCloseProject=${true}
+      .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => { void this.runNavigateRowAction(kind, id, action); }}
     ></app-navigate-page>`;
+  }
+
+  /**
+   * The row menu names an action; the shell performs it against the row's own
+   * scope. A row acts on the thing it names, never on the current selection.
+   */
+  private async runNavigateRowAction(kind: NavigateRowKind, id: string, action: NavigateRowActionId): Promise<void> {
+    if (action === "open") {
+      if (kind === "session") {
+        const session = this.state.sessions.find((entry) => entry.id === id);
+        if (session === undefined) return;
+        this.closeNavigate();
+        await this.openSessionFromQuickSwitcher(session);
+        return;
+      }
+      await this.navigateChoose(kind === "machine" ? "machine" : "project", id);
+      return;
+    }
+    if (action === "pin" || action === "unpin") {
+      const session = this.state.sessions.find((entry) => entry.id === id);
+      if (session !== undefined) this.togglePinnedSession(session);
+      return;
+    }
+    if (action === "rename") {
+      const session = this.state.sessions.find((entry) => entry.id === id);
+      if (session !== undefined) this.renameFromBar = session;
+      return;
+    }
+    const project = this.state.projects.find((entry) => entry.id === id);
+    if (project === undefined) return;
+    if (action === "copy-path") {
+      await writeClipboardText(project.path);
+      return;
+    }
+    await this.projects.closeProject(project.id);
   }
 
   private async navigateChoose(level: NavigateLevel, id: string): Promise<void> {
