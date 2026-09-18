@@ -82,7 +82,7 @@ describe("production build contents", () => {
     if (!isRecord(metadata)) throw new Error("package.json was not an object");
 
     expect(metadata["exports"]).toEqual({
-      "./plugin-api": { types: "./dist/plugin-api.d.ts" },
+      "./plugin-api": { types: "./dist/plugin-api.d.ts", import: "./dist/plugin-api.js", default: "./dist/plugin-api.js" },
       "./server-plugin-api": { types: "./dist/server-plugin-api.d.ts", import: "./dist/server-plugin-api.js" },
     });
     expect(metadata["typesVersions"]).toEqual({

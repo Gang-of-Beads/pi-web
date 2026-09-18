@@ -15,7 +15,7 @@ Changes to the web/API/UI side generally only require the `pi-web-ui-dev.service
 
 `src/server/` is organized by which process loads a module. `src/server/index.ts` and `src/server/sessiond.ts` are the two entry points and stay at the root; everything else lives under exactly one of:
 
-- `src/server/web/` — loaded only by the web/API process (routes, proxies, machines/fleet, static serving).
+- `src/server/web/` — loaded only by the web/API process (routes, proxies, machines/fleet, static serving). Since the plugin-architecture refactor the web process also assembles its own server-plugin runtime for plugins declared `runs: "web" | "both"` and mounts their contributed routes under `/api` and `/api/machines/local`.
 - `src/server/daemon/` — loaded only by the session daemon (sessions, terminals, realtime hub, status, workspace providers).
 - `src/server/shared/` — loaded by both processes (project store, plugin catalog/runtime, the sessiond client under `shared/sessiondClient/`).
 
@@ -57,6 +57,71 @@ Never report failed, incomplete, or skipped verification as passing. Identify an
 - Project-local PI WEB core config should use one commit-able file: `<project>/.pi-web/config.json`.
 - Core features should add keys to these config files, not create one project file per feature.
 - Plugins may own separate project config files, such as `.pi-web/tasks.json`.
+
+## Code style (owner's standing rules)
+
+- No inline comments. Write self-explanatory code; a comment that narrates what
+  the next line does is noise the owner has asked twice to stop. Docstrings on
+  modules, classes, and non-obvious functions are welcome when they carry the
+  "why" - design rationale, invariants, the incident that motivated the shape.
+- Design before code: name the module boundary, what it encapsulates, and what
+  it exposes. Prefer small cohesive modules over growth inside an existing god
+  file. New behavior gets its own unit with its own tests when it has its own
+  reason to change.
+- Prefer state machines and enums over string comparison and if/else ladders.
+  A branchy decision that appears twice or carries product meaning gets its
+  states named in one pure classifier (see `revisionVerdict`, `replayDecision`,
+  `bottomAnchorAction`, `promptDeliveryBehavior`); callers stay dumb executors;
+  tests enumerate every state so an unhandled one fails in CI, not production.
+- Keep cyclomatic complexity down: early returns over nesting, lookup tables
+  over switch ladders, extraction over accumulation. If a function needs a
+  paragraph to explain its branches, it wants to be a classifier plus
+  executors.
+- Encapsulation is real: a module owns its state and its invariants; callers
+  do not reach in. Data that crosses a boundary carries the scope it belongs
+  to (machine + project + workspace + session).
+
+## Git etiquette (owner's standing rules)
+
+- Never `git add -A`, `git add .`, or `git add -u` across the tree. Stage the
+  exact files this change touched, by path, and read `git status --short`
+  first; an unrelated file in the commit is a review lie and has shipped
+  accidents here before.
+- One coherent change per commit, committed the moment it is green; a commit
+  message states what changed and why in English, present tense, with the
+  incident or report that motivated it when there is one.
+- User-visible changes carry a patch-level changeset in the same commit (see
+  the changeset skill); minor-level bumps are forbidden - they roll the fake
+  CalVer month.
+- Untracked scratch (CHECKLIST.md, /tmp artifacts, probe screenshots) stays
+  untracked; do not let a broad stage sweep it in.
+- Push promptly after committing (the fork updater hard-resets unpushed work),
+  verify the push landed under the right GitHub account
+  (`gh auth switch --user VincentHanxiaoDu` first when needed), and watch CI
+  on main afterwards - a red main is the next person's ambush.
+- PRs from forks get a real review before merge; never claim merged without
+  checking `gh pr view` says so.
+
+## Verification workflow (owner's standing rules)
+
+Every non-trivial change wave gets, before it is called done:
+
+1. **Multi-lane bllm max-thinking review**: anonymous parallel lanes on the
+   builtin `reviewer` shell with `botim-bllm/glm-5.3-flash:max` and
+   `botim-bllm/qwen3.8-flash-next:max` (two glm lanes with split focus plus a
+   qwen full pass is the working shape). Give each lane the diff, the live
+   file paths, and a directed hunt list; require file:line findings with a
+   minimal failure scenario and true/false adjudication of each suspicion.
+   Triage in writing (fixed / not-fixed-with-reason / judged-not-true) before
+   fixing; two lanes disagreeing is settled by reading the source, not by
+   trusting either lane.
+2. **Live Playwright verification on the 8505 stack**: rebuild and restart via
+   `scripts/stack-8505.sh up`, then drive the real UI (`scripts/probe-*.mjs`
+   pattern) for the touched flows - real session, real daemon, coarse-pointer
+   393x850 where the surface is phone-relevant. Probe assertions must fail
+   loudly on missing preconditions rather than passing empty. When a probe and
+   the product disagree, first establish which one rotted before changing
+   either.
 
 ## How we work
 
