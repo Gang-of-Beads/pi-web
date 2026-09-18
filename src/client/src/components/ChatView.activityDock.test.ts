@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionActivity, SessionStatus } from "../../../shared/apiTypes";
-import { activityDockLabel, backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
+import { activityDockLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
 
 function status(over: Partial<SessionStatus>): SessionStatus {
   return {
@@ -100,17 +100,23 @@ describe("ChatView activity dock states", () => {
     expect(host.querySelector(".activity-text")?.textContent).toContain("Sending");
   });
 });
-describe("backgroundWorkLabel", () => {
+describe("contributed activity notes", () => {
   // "idle" alone is a lie while this chat's children are still running: the
-  // assistant's turn is over, the work is not.
-  it("names the live background work that outlives the turn", () => {
-    expect(backgroundWorkLabel({ working: 1 })).toBe("idle · 1 background run");
-    expect(backgroundWorkLabel({ working: 3 })).toBe("idle · 3 background runs");
-  });
+  // assistant's turn is over, the work is not. The shell no longer knows what
+  // that work is called; a plugin says so.
+  it("shows a plugin's note beside idle, and nothing when no plugin speaks", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new ChatView();
+    view.status = status({});
+    view.activityNotes = [{ id: "p:n", pluginId: "p", localId: "n", note: () => "2 background runs" }];
+    host.append(view);
+    await view.updateComplete;
+    expect(view.renderRoot.textContent).toContain("idle · 2 background runs");
 
-  it("leaves a quiet session alone", () => {
-    expect(backgroundWorkLabel({ working: 0 })).toBeUndefined();
-    expect(backgroundWorkLabel(undefined)).toBeUndefined();
+    view.activityNotes = [{ id: "p:n", pluginId: "p", localId: "n", note: () => undefined }];
+    await view.updateComplete;
+    expect(view.renderRoot.textContent).not.toContain("background runs");
   });
 });
 

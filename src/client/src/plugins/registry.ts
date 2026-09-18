@@ -1,6 +1,6 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
-import type { ComposerContribution, DrawerSectionContribution, QualifiedDrawerSectionContribution, NavSectionContribution, QualifiedNavSectionContribution, MachineSectionContribution, QualifiedMachineSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ActivityNoteContribution, QualifiedActivityNoteContribution, ComposerContribution, DrawerSectionContribution, QualifiedDrawerSectionContribution, NavSectionContribution, QualifiedNavSectionContribution, MachineSectionContribution, QualifiedMachineSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -33,6 +33,7 @@ export class PluginRegistry {
   private messageRenderers: QualifiedMessageRendererContribution[] = [];
   private codeFenceRenderers: QualifiedCodeFenceRendererContribution[] = [];
   private drawerSections: QualifiedDrawerSectionContribution[] = [];
+  private activityNotes: QualifiedActivityNoteContribution[] = [];
   private navSections: QualifiedNavSectionContribution[] = [];
   private machineSections: QualifiedMachineSectionContribution[] = [];
   private readonly settingsByPlugin = new Map<string, PluginSettings>();
@@ -96,6 +97,7 @@ export class PluginRegistry {
       const settingsSections = (contributions.settingsSections ?? []).map((section) => this.qualifySettingsSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const claimedTags = new Set<string>();
       const drawerSections = (contributions.drawerSections ?? []).map((section) => this.qualifyDrawerSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
+      const activityNotes = (contributions.activityNotes ?? []).map((note) => this.qualifyActivityNote(runtimePluginId, note, registration.machineId, registration.sourcePluginId, contributionIds));
       const navSections = (contributions.navSections ?? []).map((section) => this.qualifyNavSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const machineSections = (contributions.machineSections ?? []).map((section) => this.qualifyMachineSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const messageRenderers = (contributions.messageRenderers ?? []).map((renderer) => this.qualifyMessageRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds, claimedTags));
@@ -117,6 +119,7 @@ export class PluginRegistry {
       this.messageRenderers.push(...messageRenderers);
       this.codeFenceRenderers.push(...codeFenceRenderers);
       this.drawerSections.push(...drawerSections);
+      this.activityNotes.push(...activityNotes);
     this.navSections.push(...navSections);
     this.machineSections.push(...machineSections);
       if (registration.machineId === undefined) {
@@ -175,6 +178,12 @@ export class PluginRegistry {
     return this.drawerSections
       .filter((section) => selectedMachineId !== undefined && this.isContributionActive(section.pluginId, section.machineId, selectedMachineId, section.sourcePluginId))
       .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
+  }
+
+  getActivityNotes(selectedMachineId: string | undefined): QualifiedActivityNoteContribution[] {
+    return this.activityNotes
+      .filter((note) => selectedMachineId !== undefined && this.isContributionActive(note.pluginId, note.machineId, selectedMachineId, note.sourcePluginId))
+      .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.localId.localeCompare(right.localId));
   }
 
   getNavSections(selectedMachineId: string | undefined): QualifiedNavSectionContribution[] {
@@ -300,6 +309,7 @@ export class PluginRegistry {
     this.messageRenderers = this.messageRenderers.filter((entry) => entry.pluginId !== runtimePluginId);
     this.codeFenceRenderers = this.codeFenceRenderers.filter((entry) => entry.pluginId !== runtimePluginId);
     this.drawerSections = this.drawerSections.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.activityNotes = this.activityNotes.filter((entry) => entry.pluginId !== runtimePluginId);
     this.navSections = this.navSections.filter((entry) => entry.pluginId !== runtimePluginId);
     this.machineSections = this.machineSections.filter((entry) => entry.pluginId !== runtimePluginId);
     for (const contributionId of [...this.contributionIds]) {
@@ -404,6 +414,23 @@ export class PluginRegistry {
       id: this.qualify(pluginId, section.id, contributionIds),
       pluginId,
       localId: section.id,
+      ...(machineId === undefined ? {} : { machineId }),
+      ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
+    };
+  }
+
+  private qualifyActivityNote(
+    pluginId: string,
+    note: ActivityNoteContribution,
+    machineId: string | undefined,
+    sourcePluginId: string | undefined,
+    contributionIds: Set<QualifiedContributionId>,
+  ): QualifiedActivityNoteContribution {
+    return {
+      ...note,
+      id: this.qualify(pluginId, note.id, contributionIds),
+      pluginId,
+      localId: note.id,
       ...(machineId === undefined ? {} : { machineId }),
       ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
     };

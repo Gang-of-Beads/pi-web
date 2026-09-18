@@ -373,6 +373,38 @@ export interface PluginContributions {
   messageRenderers?: MessageRendererContribution[];
   codeFenceRenderers?: CodeFenceRendererContribution[];
   drawerSections?: DrawerSectionContribution[];
+  activityNotes?: ActivityNoteContribution[];
+}
+
+/**
+ * A short line the activity dock shows beside the session's own state, for
+ * work the shell does not own. "idle" is about the assistant's turn; a plugin
+ * that knows something is still running - background tasks, a queue, an
+ * external job - says so here rather than teaching the shell its domain.
+ */
+export interface ActivityNoteContribution {
+  id: LocalContributionId;
+  order?: number;
+  /** The note, or undefined when this plugin has nothing to add right now. */
+  note: (context: ActivityNoteContext) => string | undefined;
+}
+
+export interface ActivityNoteContext {
+  sessionId: string;
+  machineId: string;
+  sessionCwd: string | undefined;
+  /** The session status frame the shell already holds, unread by the shell's own dock. */
+  status: unknown;
+  /** Whether the assistant's own turn is idle, which is when a note is worth showing. */
+  idle: boolean;
+}
+
+export interface QualifiedActivityNoteContribution extends ActivityNoteContribution {
+  id: QualifiedContributionId;
+  pluginId: PluginId;
+  localId: LocalContributionId;
+  machineId?: string;
+  sourcePluginId?: PluginId;
 }
 
 /**

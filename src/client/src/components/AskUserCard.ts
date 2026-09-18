@@ -1,6 +1,7 @@
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { acceptsOptionChange } from "../askStepGuard";
+import { askCardNeedsRender } from "../askCardIdentity";
 import { ifDefined } from "lit/directives/if-defined.js";
 import {
   ASK_USER_OTHER_TEXT_MAX_LENGTH,
@@ -52,6 +53,16 @@ function growToFit(input: HTMLTextAreaElement): void {
 @customElement("ask-user-card")
 export class AskUserCard extends LitElement {
   @property({ attribute: false }) ask?: PendingAskUser;
+
+  /**
+   * A streaming turn re-delivers the same pending ask many times a second as a
+   * fresh object; rebuilding the form for each one shook the card under the
+   * reader. Only a change to the question itself is a reason to render.
+   */
+  protected override shouldUpdate(changed: PropertyValues<this>): boolean {
+    if (changed.size !== 1 || !changed.has("ask")) return true;
+    return askCardNeedsRender(changed.get("ask"), this.ask);
+  }
   @property({ attribute: false }) outcome?: AskUserOutcome;
   /** Machine-scoped session cache key used by the ask draft store. */
   @property({ attribute: false }) draftSessionId = "";

@@ -23,7 +23,7 @@ import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from ".
 import { isWaitingForUser } from "../../../shared/sessionActivityState";
 import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
-import type { DrawerSectionContext, QualifiedDrawerSectionContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";
+import type { DrawerSectionContext, QualifiedActivityNoteContribution, QualifiedDrawerSectionContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";
 import { selectedDrawerTab, type DrawerTab } from "../drawerTabSelection";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
@@ -699,6 +699,8 @@ export class ChatView extends LitElement {
   /** True while this session's transcript is being read for the first time. */
   @property({ type: Boolean }) transcriptLoading = false;
   @property({ attribute: false }) transcriptFailed?: string;
+  /** Activity notes contributed by plugins; see `ActivityNoteContribution`. */
+  @property({ attribute: false }) activityNotes: readonly QualifiedActivityNoteContribution[] = [];
   @property({ attribute: false }) findMessageRenderer?: (tag: string) => QualifiedMessageRendererContribution | undefined;
   @property({ attribute: false }) findCodeFenceRenderer?: (language: string) => QualifiedCodeFenceRendererContribution | undefined;
   @property({ type: Boolean }) isSendingPrompt = false;
@@ -1518,8 +1520,8 @@ if (this.heldWaitingClearTimer !== undefined) {
     // "idle" is about the assistant's own turn, and saying it while this chat's
     // subagents and background tasks are still running reads as "nothing is
     // happening" when something is.
-    const background = backgroundWorkLabel(this.activityPanelState());
-    const showBackground = background !== undefined && (category === "idle" || category === undefined);
+    const background = this.contributedActivityNote(category === "idle" || category === undefined);
+    const showBackground = background !== undefined;
     // The named work has no drawer page to open any more: the dock states it
     // and stays a pill, because a control that looks actionable and is inert
     // is worse than a state line.
@@ -1649,6 +1651,25 @@ if (this.heldWaitingClearTimer !== undefined) {
     }
     this.heldWaiting = undefined;
     return null;
+  }
+
+  /**
+   * The note a plugin adds beside the session's own state. The shell keeps the
+   * dock and the idle rule; what else is running, and what to call it, belongs
+   * to whoever owns that work.
+   */
+  private contributedActivityNote(idle: boolean): string | undefined {
+    const notes = this.activityNotes
+      .map((contribution) => contribution.note({
+        sessionId: this.sessionId,
+        machineId: this.drawerMachineId,
+        sessionCwd: this.sessionCwd,
+        status: this.status,
+        idle,
+      }))
+      .filter((note): note is string => note !== undefined && note !== "");
+    if (notes.length === 0) return undefined;
+    return ["idle", ...notes].join(" · ");
   }
 
   private renderWaitingSlot(ask: PendingAskUser | undefined, dialog: PendingExtensionDialog | undefined, queuedCount: number) {
@@ -2620,12 +2641,6 @@ function sectionBadgeMark(section: QualifiedDrawerSectionContribution, context: 
 interface ActivityPanelState {
   /** How many pieces of this chat's background work are happening now. */
   working: number;
-}
-
-export function backgroundWorkLabel(activity: { working: number } | undefined): string | undefined {
-  if (activity === undefined) return undefined;
-  if (activity.working === 0) return undefined;
-  return activity.working === 1 ? "idle · 1 background run" : `idle · ${String(activity.working)} background runs`;
 }
 
 export function activityDockLabel(category: string | undefined, state: string, text: string): string {

@@ -335,6 +335,27 @@ export interface PluginContributions {
     messageRenderers?: MessageRendererContribution[];
     codeFenceRenderers?: CodeFenceRendererContribution[];
     drawerSections?: DrawerSectionContribution[];
+    activityNotes?: ActivityNoteContribution[];
+}
+/**
+ * A short line beside the session's own activity state, for work the shell
+ * does not own. "idle" is about the assistant's turn; a plugin that knows
+ * something is still running says so here rather than teaching the shell a
+ * domain that is not its own.
+ */
+export interface ActivityNoteContribution {
+    id: string;
+    order?: number;
+    note: (context: ActivityNoteContext) => string | undefined;
+}
+export interface ActivityNoteContext {
+    sessionId: string;
+    machineId: string;
+    sessionCwd: string | undefined;
+    /** The session's status frame, which the shell holds but does not read here. */
+    status: unknown;
+    /** Whether the assistant's own turn is idle. */
+    idle: boolean;
 }
 /**
  * A section in the session drawer. The drawer renders exactly what plugins

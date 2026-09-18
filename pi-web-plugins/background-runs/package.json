@@ -1,0 +1,9 @@
+{
+  "name": "@pi-web/background-runs-plugin",
+  "private": true,
+  "piWeb": {
+    "plugins": [
+      { "id": "background-runs", "browserRoot": ".", "module": "pi-web-plugin.js" }
+    ]
+  }
+}
