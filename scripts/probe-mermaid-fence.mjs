@@ -36,7 +36,7 @@ try {
     await new Promise((r) => setTimeout(r, 2500));
     const target = (Reflect.get(app, "state").sessions ?? []).find((s) => s.id === ${JSON.stringify(seed.id)});
     if (!target) return { error: "diagram session is not listed" };
-    await app.selectNavigationItem("sessions", "chat", () => Reflect.get(app, "sessions").selectSession(target));
+    await Reflect.get(app, "openSessionFromQuickSwitcher").call(app, target);
     for (let attempt = 0; attempt < 40; attempt += 1) {
       await new Promise((r) => setTimeout(r, 500));
       const chat = app.shadowRoot.querySelector("chat-view");

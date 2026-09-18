@@ -209,6 +209,31 @@ export const workspacePanelStyles = css`
   p { margin: var(--pi-space-5); }
 `;
 
+/**
+ * The row-menu control and its floating panel, on their own.
+ *
+ * They used to be reachable only by adopting the whole list stylesheet, so a
+ * surface that wanted a ⋯ menu also inherited `section { padding }` and every
+ * other list rule - which is how the navigate rows ended up inset twice as far
+ * as the bar above them.
+ */
+export const actionMenuStyles = css`
+  .action-menu { position: relative; align-self: stretch; }
+  .action-menu-toggle { box-sizing: border-box; display: grid; place-items: center; height: 100%; min-width: var(--pi-control-height); padding: 0; color: var(--pi-muted); border: 0; border-radius: 0; background: transparent; }
+  @media (hover: hover) { .action-menu-toggle:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
+  /* The row menu is the same verb as the tile menu and the session row menu,
+     so it carries the same floor: a 32px column in a sheet whose other
+     controls measured 44px was the widest touch-floor split left. */
+  @media (pointer: coarse) { .action-menu-toggle { min-width: var(--pi-control-height-touch); } }
+  .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(240px, calc(100vw - 2 * var(--pi-bar-inset))); max-width: calc(100vw - 2 * var(--pi-bar-inset)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
+  .action-menu-panel button { box-sizing: border-box; display: block; min-height: var(--pi-control-height-comfort); width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 0; background: transparent; color: var(--pi-text); }
+  .action-menu-panel button + button { border-top: 1px solid var(--pi-border-muted); }
+  @media (hover: hover) { .action-menu-panel button:hover { background: var(--pi-selection-bg); } }
+  /* After the base rule it raises: a media query carries no extra specificity,
+     so a coarse floor written earlier loses to a later base declaration. */
+  @media (pointer: coarse) { .action-menu-panel button { min-height: var(--pi-control-height-touch); } }
+`;
+
 export const listStyles = css`
   /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
      over a round or rounded control. Suppressed in favour of the app's own
@@ -497,20 +522,7 @@ export const listStyles = css`
   .unread-ring { flex: 0 0 auto; box-sizing: border-box; display: inline-grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); margin-right: var(--pi-space-3); border: 1.5px solid var(--pi-purple); border-radius: 50%; vertical-align: 1px; }
   .unread-ring .activity-indicator { width: var(--pi-dot-xs); height: var(--pi-dot-xs); margin: 0; vertical-align: 0; }
   .action-activity .unread-ring { margin: 0; vertical-align: 0; }
-  .action-menu { position: relative; align-self: stretch; }
-  .action-menu-toggle { box-sizing: border-box; display: grid; place-items: center; height: 100%; min-width: var(--pi-control-height); padding: 0; color: var(--pi-muted); border: 0; border-radius: 0; background: transparent; }
-  @media (hover: hover) { .action-menu-toggle:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
-  /* The row menu is the same verb as the tile menu and the session row menu,
-     so it carries the same floor: a 32px column in a sheet whose other
-     controls measured 44px was the widest touch-floor split left. */
-  @media (pointer: coarse) { .action-menu-toggle { min-width: var(--pi-control-height-touch); } }
-  .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(240px, calc(100vw - 2 * var(--pi-bar-inset))); max-width: calc(100vw - 2 * var(--pi-bar-inset)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
-  .action-menu-panel button { box-sizing: border-box; display: block; min-height: var(--pi-control-height-comfort); width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 0; background: transparent; color: var(--pi-text); }
-  .action-menu-panel button + button { border-top: 1px solid var(--pi-border-muted); }
-  @media (hover: hover) { .action-menu-panel button:hover { background: var(--pi-selection-bg); } }
-  /* After the base rule it raises: a media query carries no extra specificity,
-     so a coarse floor written earlier loses to a later base declaration. */
-  @media (pointer: coarse) { .action-menu-panel button { min-height: var(--pi-control-height-touch); } }
+  ${actionMenuStyles}
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
   small { display: block; white-space: normal; color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; }

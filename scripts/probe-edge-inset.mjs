@@ -31,6 +31,9 @@ await page.evaluate(`(async function(){
   await new Promise((r) => setTimeout(r, 2500));
 })()`);
 
+await page.evaluate(`(function(){ const app = document.querySelector("pi-web-app"); Reflect.get(app, "openNavigate").call(app); })()`);
+await page.waitForTimeout(1200);
+
 const measured = await page.evaluate(() => {
   const width = window.innerWidth;
   const app = document.querySelector("pi-web-app");
@@ -60,6 +63,18 @@ const measured = await page.evaluate(() => {
       box(root.querySelector("status-bar")?.shadowRoot?.querySelector(".status-bar") ?? null, "status bar"),
       box(root.querySelector("chat-view")?.shadowRoot?.querySelector(".msg") ?? null, "first message card"),
       box(root.querySelector("chat-view")?.shadowRoot?.querySelector(".activity-dock") ?? null, "activity dock"),
+      ...(() => {
+        const hosts = [...root.querySelectorAll("app-navigate-page")];
+        const page = hosts[hosts.length - 1]?.shadowRoot ?? null;
+        if (page === null || page === undefined) return [];
+        const lastOf = (selector) => { const all = [...page.querySelectorAll(selector)]; return all[all.length - 1] ?? null; };
+        return [
+          box(page.querySelector(".path-step"), "navigate path step"),
+          box(page.querySelector(".kind"), "navigate first kind tab"),
+          box(lastOf(".kind"), "navigate last kind tab"),
+          box(page.querySelector(".row-wrap"), "navigate row"),
+        ];
+      })(),
     ].filter((entry) => entry !== undefined),
   };
 });
@@ -72,8 +87,8 @@ console.log(JSON.stringify(measured, null, 2));
 
 const reference = measured.entries.find((entry) => entry.name === "composer box");
 if (reference === undefined) fail("the composer box was not measured, so this probe proves nothing");
-const LEFT_ANCHORED = new Set(["bar first control", "composer row first control", "composer box", "status bar", "first message card", "activity dock"]);
-const RIGHT_ANCHORED = new Set(["bar last control", "composer row last control", "composer box", "status bar", "first message card"]);
+const LEFT_ANCHORED = new Set(["bar first control", "composer row first control", "composer box", "status bar", "first message card", "activity dock", "navigate path step", "navigate first kind tab", "navigate row"]);
+const RIGHT_ANCHORED = new Set(["bar last control", "composer row last control", "composer box", "status bar", "first message card", "navigate last kind tab", "navigate row"]);
 const off = measured.entries.filter((entry) =>
   (LEFT_ANCHORED.has(entry.name) && entry.left !== reference.left)
   || (RIGHT_ANCHORED.has(entry.name) && entry.right !== reference.right));

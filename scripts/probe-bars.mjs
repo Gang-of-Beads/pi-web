@@ -50,9 +50,9 @@ await page.waitForSelector("pi-web-app");
 await page.waitForTimeout(3000);
 const surfaces = {
   sessions: `(async function(){ const app=document.querySelector("pi-web-app"); const p=Reflect.get(app,"state").projects.find((x)=>x.name==="pi-web-8505-seed-workspace")??Reflect.get(app,"state").projects[0]; await Reflect.get(app,"workspaces").selectProject(p); await new Promise(r=>setTimeout(r,2500)); })()`,
-  chat: `(async function(){ const app=document.querySelector("pi-web-app"); const s=(Reflect.get(app,"state").sessions??[])[0]; await app.selectNavigationItem("sessions","chat",()=>Reflect.get(app,"sessions").selectSession(s)); await new Promise(r=>setTimeout(r,3000)); })()`,
+  chat: `(async function(){ const app=document.querySelector("pi-web-app"); const s=(Reflect.get(app,"state").sessions??[])[0]; await Reflect.get(app,"openSessionFromQuickSwitcher").call(app,s); await new Promise(r=>setTimeout(r,3000)); })()`,
   git: `(async function(){ const app=document.querySelector("pi-web-app"); Reflect.get(app,"openWorkspaceTool").call(app,"git:workspace.git"); await new Promise(r=>setTimeout(r,2000)); const f=app.shadowRoot.querySelector("workspace-panel")?.shadowRoot?.querySelector(".workspace-tool-fold"); if (f && f.getAttribute("aria-expanded")!=="true") f.click(); await new Promise(r=>setTimeout(r,500)); })()`,
-  sheet: `(async function(){ const app=document.querySelector("pi-web-app"); app.selectNavigationItem("sessions","navigation"); await new Promise(r=>setTimeout(r,800)); const nav=app.shadowRoot.querySelector("app-navigation-panel"); nav?.shadowRoot?.querySelector(".compact-scope")?.click(); await new Promise(r=>setTimeout(r,1200)); })()`,
+  sheet: `(async function(){ const app=document.querySelector("pi-web-app"); Reflect.get(app,"openNavigate").call(app); await new Promise(r=>setTimeout(r,900)); return true; })()`,
 };
 for (const [name, script] of Object.entries(surfaces)) {
   await page.evaluate(script);

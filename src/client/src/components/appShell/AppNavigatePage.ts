@@ -5,7 +5,7 @@ import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLe
 import { switcherBreadcrumb } from "../../switcherBreadcrumb";
 import { createStableRowOrder } from "../../stableRowOrder";
 import { renderChatIcon, renderChevronRightIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
-import { interactiveSurfaceStyles, listStyles } from "../shared";
+import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { actionMenuPanelStyle } from "../actionMenu";
 import { navigateRowActions, type NavigateRowActionId, type NavigateRowKind } from "../../navigateRowActions";
 import { sessionLabel } from "../../sessionLabels";
@@ -238,7 +238,7 @@ export class AppNavigatePage extends LitElement {
   }
 
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, listStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, css`
     .row .row-title { flex: 1 1 auto; min-width: 0; }
     .row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row.session { display: flex; align-items: center; gap: var(--pi-space-3); }

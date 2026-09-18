@@ -60,7 +60,7 @@ const selected = await page.evaluate(`(async function(){
   const sessions = Reflect.get(app, "state").sessions ?? [];
   const target = sessions.find((candidate) => candidate.id === ${JSON.stringify(seed.id)});
   if (target === undefined) return { error: "seeded screenshot session is not listed in the workspace" };
-  await app.selectNavigationItem("sessions", "chat", () => Reflect.get(app, "sessions").selectSession(target));
+  await Reflect.get(app, "openSessionFromQuickSwitcher").call(app, target);
   await new Promise((resolve) => setTimeout(resolve, 3500));
   return { ok: true };
 })()`);

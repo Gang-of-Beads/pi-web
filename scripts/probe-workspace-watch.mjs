@@ -44,7 +44,7 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 2500));
     const target = (Reflect.get(app, "state").sessions ?? []).find((candidate) => candidate.id === ${JSON.stringify(seed.id)});
     if (target === undefined) return { error: "seeded session is not listed" };
-    await app.selectNavigationItem("sessions", "chat", () => Reflect.get(app, "sessions").selectSession(target));
+    await Reflect.get(app, "openSessionFromQuickSwitcher").call(app, target);
     await new Promise((resolve) => setTimeout(resolve, 3000));
     return { ok: true };
   })()`);

@@ -30,7 +30,7 @@ try {
     await new Promise((r) => setTimeout(r, 2500));
     const target = (Reflect.get(app, "state").sessions ?? []).find((s) => s.id === ${JSON.stringify(seed.id)});
     if (!target) return { error: "seed session not listed" };
-    await app.selectNavigationItem("sessions", "chat", () => Reflect.get(app, "sessions").selectSession(target));
+    await Reflect.get(app, "openSessionFromQuickSwitcher").call(app, target);
     await new Promise((r) => setTimeout(r, 3000));
     await Reflect.get(app, "sessions").runCommand("/session");
     await Reflect.get(app, "sessions").runCommand("/new");

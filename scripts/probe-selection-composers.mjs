@@ -53,7 +53,7 @@ try {
     await new Promise((r) => setTimeout(r, 2500));
     const target = (Reflect.get(app, "state").sessions ?? [])[0];
     if (!target) return { error: "no session listed" };
-    await app.selectNavigationItem("sessions", "chat", () => Reflect.get(app, "sessions").selectSession(target));
+    await Reflect.get(app, "openSessionFromQuickSwitcher").call(app, target);
     await new Promise((r) => setTimeout(r, 3000));
     return {};
   })()`);
