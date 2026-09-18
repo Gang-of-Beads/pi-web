@@ -29,7 +29,7 @@ try {
     await app.selectNavigationItem("sessions", "chat", () => Reflect.get(app, "sessions").selectSession(session));
     await new Promise((r) => setTimeout(r, 2500));
     const bar0 = app.shadowRoot.querySelector("app-context-bar");
-    const goTo = bar0?.shadowRoot?.querySelector("button.go-to");
+    const goTo = bar0?.shadowRoot?.querySelector("button[aria-label='Go to a view']");
     if (!goTo) return { error: "no Go to control in the chat bar" };
     const rect = goTo.getBoundingClientRect();
     goTo.click();
@@ -45,7 +45,7 @@ try {
     if (app.shadowRoot.querySelector("app-go-to-sheet")) return { error: "sheet stayed open after choosing" };
     const bar = app.shadowRoot.querySelector("app-context-bar");
     const title = bar?.shadowRoot?.querySelector(".session-title-text")?.textContent ?? "";
-    const barGoTo = bar?.shadowRoot?.querySelector("button.go-to");
+    const barGoTo = bar?.shadowRoot?.querySelector("button[aria-label='Go to a view']");
     if (!barGoTo) return { error: "no Go to control in the chat/tool bar" };
     barGoTo.click();
     await new Promise((r) => setTimeout(r, 800));
