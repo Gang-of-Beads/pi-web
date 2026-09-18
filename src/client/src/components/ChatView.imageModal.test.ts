@@ -23,7 +23,7 @@ describe("ChatView native image modal", () => {
     await view.updateComplete;
     const firstDialog = imageDialog(view);
     expect(firstDialog.open).toBe(true);
-    expect(view.shadowRoot?.activeElement).toBe(imageCloseButton(firstDialog));
+    expect(view.shadowRoot?.activeElement).toBe(firstDialog);
     expect(hasRenderedModal(document)).toBe(true);
 
     const cancel = new Event("cancel", { cancelable: true });
@@ -65,7 +65,7 @@ describe("ChatView native image modal", () => {
     expect(dialog.open).toBe(true);
     expect(lowerDialogSection(lower).getAttribute("aria-modal")).toBe("false");
     expect(lowerDialogSection(lower).getAttribute("aria-hidden")).toBe("true");
-    expect(view.shadowRoot?.activeElement).toBe(imageCloseButton(dialog));
+    expect(view.shadowRoot?.activeElement).toBe(dialog);
 
     dialog.dispatchEvent(new Event("cancel", { cancelable: true }));
     await view.updateComplete;
@@ -96,10 +96,6 @@ function chatImage(view: ChatView): HTMLElement {
 
 function imageDialog(view: ChatView): HTMLDialogElement {
   return requiredElement(view.shadowRoot?.querySelector<HTMLDialogElement>("dialog.image-zoom"), "image zoom dialog");
-}
-
-function imageCloseButton(dialog: HTMLDialogElement): HTMLButtonElement {
-  return requiredElement(dialog.querySelector<HTMLButtonElement>(".image-zoom-close"), "image close button");
 }
 
 function lowerDialogSection(surface: ModalSurface): HTMLElement {

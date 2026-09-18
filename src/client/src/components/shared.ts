@@ -164,9 +164,6 @@ export const workspacePanelStyles = css`
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(var(--pi-space-4), env(safe-area-inset-top)); right: max(var(--pi-space-4), env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
-  .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
-  @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   :host { display: flex; flex-direction: column; min-height: 0; color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-sm) var(--pi-font-ui); line-height: inherit; container-type: inline-size; }
   header.panel-header { flex: 0 0 auto; padding: 0 var(--pi-bar-inset); }
   .workspace-tool-summary { color: var(--pi-muted); font-weight: var(--pi-weight-regular); }
@@ -259,9 +256,6 @@ export const listStyles = css`
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(var(--pi-space-4), env(safe-area-inset-top)); right: max(var(--pi-space-4), env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
-  .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
-  @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
      Scoped to controls, so scrollable and pannable surfaces keep the gestures
      they set for themselves; and it lives here rather than on the app shell

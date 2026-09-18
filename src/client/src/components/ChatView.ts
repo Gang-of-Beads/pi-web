@@ -64,9 +64,6 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(var(--pi-space-4), env(safe-area-inset-top)); right: max(var(--pi-space-4), env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
-  .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
-  @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
      Scoped to controls, so scrollable and pannable surfaces keep the gestures
      they set for themselves; and it lives here rather than on the app shell
@@ -340,10 +337,6 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   dialog.image-zoom[open] { display: flex; }
   dialog.image-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .image-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; cursor: zoom-out; }
-  .image-zoom-close { box-sizing: border-box; position: absolute; top: max(var(--pi-space-4), env(safe-area-inset-top)); right: max(var(--pi-space-4), env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
-  .image-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
-  @media (hover: hover) { .image-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
-  .image-zoom-close:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
   /* A child's conversation, over the parent's. It borrows the output viewer's
      frame because it is the same kind of thing - something opened from an
      activity row - but its body is a message list rather than a log. */
@@ -370,7 +363,6 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg.command.failed .command-result { color: var(--pi-danger); }
   .queued-clear-button { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   @media (pointer: coarse) {
-    .image-zoom-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
     /* The drawn control keeps the bar template's height; the thumb gets its
        floor through reach, as the message actions do. */
     .queued-clear-button { position: relative; min-height: var(--pi-control-height-comfort); }
@@ -901,8 +893,13 @@ export class ChatView extends LitElement {
   private readonly closeImageZoom = (): void => {
     if (this.zoomedImage !== undefined) this.zoomedImage = undefined;
   };
-  private readonly onImageZoomDialogClick = (event: MouseEvent): void => {
-    if (event.target === this.imageZoomDialog) this.closeImageZoom();
+  /**
+   * A tap anywhere closes the picture, the image included: the owner asked for
+   * the corner cross to go, because looking at a photo and tapping it again is
+   * the gesture people already have.
+   */
+  private readonly onImageZoomDialogClick = (): void => {
+    this.closeImageZoom();
   };
   private readonly onPageHide = () => {
     this.saveScrollPosition();
@@ -1123,8 +1120,7 @@ if (this.heldWaitingClearTimer !== undefined) {
           element: dialog,
           nativeTopLayer: true,
           focus: () => {
-            const close = this.renderRoot.querySelector<HTMLElement>(".image-zoom-close");
-            (close ?? dialog).focus();
+            dialog.focus();
           },
         });
         this.imageZoomModalRegistration = registration;
@@ -1353,9 +1349,8 @@ if (this.heldWaitingClearTimer !== undefined) {
 
   private renderImageZoom() {
     return html`
-      <dialog class="image-zoom" @click=${this.onImageZoomDialogClick} @close=${this.closeImageZoom} @cancel=${this.closeImageZoom}>
+      <dialog class="image-zoom" tabindex="-1" aria-label="Image, tap to close" @click=${this.onImageZoomDialogClick} @close=${this.closeImageZoom} @cancel=${this.closeImageZoom}>
         ${this.zoomedImage === undefined ? null : html`
-          <button type="button" class="image-zoom-close" aria-label="Close image" @click=${this.closeImageZoom}>${renderCrossIcon()}</button>
           <img class="image-zoom-full" src=${this.zoomedImage.src} alt=${this.zoomedImage.alt} />
         `}
       </dialog>

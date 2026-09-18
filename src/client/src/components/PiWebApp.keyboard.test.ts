@@ -176,7 +176,7 @@ async function openImageZoom(app: PiWebApp): Promise<HTMLElement> {
   await view.updateComplete;
   const dialog = requiredElement(view.shadowRoot?.querySelector<HTMLDialogElement>("dialog.image-zoom"), "image zoom dialog");
   expect(dialog.open).toBe(true);
-  return requiredElement(dialog.querySelector<HTMLElement>(".image-zoom-close"), "image zoom close button");
+  return dialog;
 }
 
 async function openUploadReview(app: PiWebApp): Promise<HTMLElement> {

@@ -23,8 +23,10 @@ describe("what floats over the composer", () => {
 
     expect(attach).toMatch(/position:\s*absolute/u);
     expect(dictate).not.toMatch(/position:\s*absolute/u);
-    // Room for one button, not two.
-    expect(rule).toMatch(/padding-right:\s*calc\(var\(--pi-space-4\) \+ 36px\)/u);
+    // Room for one button and the gap it floats in, on both sides of it.
+    expect(attach).toMatch(/right:\s*var\(--pi-space-3\)/u);
+    expect(attach).toMatch(/bottom:\s*var\(--pi-space-3\)/u);
+    expect(rule).toMatch(/padding-right:\s*calc\(var\(--pi-space-3\) \+ var\(--pi-control-height\) \+ var\(--pi-space-3\)\)/u);
   });
 
   /**

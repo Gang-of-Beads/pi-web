@@ -49,9 +49,6 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(var(--pi-space-4), env(safe-area-inset-top)); right: max(var(--pi-space-4), env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
-  .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
-  @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
      Scoped to controls, so scrollable and pannable surfaces keep the gestures
      they set for themselves; and it lives here rather than on the app shell
@@ -94,10 +91,12 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .select-thinking .prompt-thinking-gauge .gauge-bar-active { opacity: 1; }
   /* Inside the field, not over its edge: on a phone the field is 40px tall at
      one line and a 36px control with an 8px offset stood past the top rule. */
-  .editor-attach { position: absolute; right: var(--pi-space-1); bottom: var(--pi-space-1); z-index: 2; width: var(--pi-control-height); height: var(--pi-control-height); }
+  /* The clip sat 2px off the box's inner corner, which read as stuck to the
+     border; it keeps the same breathing room the text inside does. */
+  .editor-attach { position: absolute; right: var(--pi-space-3); bottom: var(--pi-space-3); z-index: 2; width: var(--pi-control-height); height: var(--pi-control-height); }
   .editor-attach .prompt-action-icon { width: 18px; height: 18px; }
   textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; }
-  textarea { overflow-y: auto; padding: var(--pi-space-4); padding-right: calc(var(--pi-space-4) + 36px); }
+  textarea { overflow-y: auto; padding: var(--pi-space-4); padding-right: calc(var(--pi-space-3) + var(--pi-control-height) + var(--pi-space-3)); }
   /* A phone with the keyboard open leaves roughly 400px of viewport, and a
      composer sized for a full screen took 119px of it - the transcript was
      left with about two lines. The composer keeps a floor so it stays usable
@@ -562,8 +561,9 @@ export class PromptEditor extends LitElement {
     this.zoomedAttachment = undefined;
   };
 
-  private readonly onAttachmentZoomDialogClick = (event: MouseEvent): void => {
-    if (event.target === this.attachmentZoomDialog) this.closeAttachmentZoom();
+  /** A tap anywhere closes the picture, the image included. */
+  private readonly onAttachmentZoomDialogClick = (): void => {
+    this.closeAttachmentZoom();
   };
 
   private syncAttachmentZoomDialog(): void {
@@ -584,8 +584,7 @@ export class PromptEditor extends LitElement {
         this.zoomedAttachment = undefined;
         return;
       }
-      const close = this.renderRoot.querySelector<HTMLElement>(".attachment-zoom-close");
-      (close ?? dialog).focus();
+      dialog.focus();
       return;
     }
     if (dialog.open) dialog.close();
@@ -594,9 +593,8 @@ export class PromptEditor extends LitElement {
   private renderAttachmentZoom() {
     const zoomed = this.zoomedAttachment;
     return html`
-      <dialog class="attachment-zoom" @click=${this.onAttachmentZoomDialogClick} @close=${this.closeAttachmentZoom} @cancel=${this.closeAttachmentZoom}>
+      <dialog class="attachment-zoom" tabindex="-1" aria-label="Image, tap to close" @click=${this.onAttachmentZoomDialogClick} @close=${this.closeAttachmentZoom} @cancel=${this.closeAttachmentZoom}>
         ${zoomed === undefined ? null : html`
-          <button type="button" class="attachment-zoom-close" aria-label="Close image" @click=${this.closeAttachmentZoom}>${renderCrossIcon()}</button>
           <img class="attachment-zoom-full" src=${zoomed.src} alt=${zoomed.alt} />
         `}
       </dialog>

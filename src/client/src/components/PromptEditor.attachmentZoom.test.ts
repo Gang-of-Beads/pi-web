@@ -69,17 +69,17 @@ describe("attachment thumbnail zoom", () => {
     const dialog = zoomDialog(editor);
     expect(dialog.open).toBe(true);
     expect(dialog.querySelector<HTMLImageElement>(".attachment-zoom-full")?.getAttribute("src")).toBe(`data:image/png;base64,${IMAGE_DATA}`);
-    expect(editor.shadowRoot?.activeElement?.classList.contains("attachment-zoom-close")).toBe(true);
+    expect(editor.shadowRoot?.activeElement).toBe(dialog);
   });
 
-  it("closes on the close button, on cancel, and on a backdrop click", async () => {
+  it("closes on a tap anywhere, on cancel, and on a backdrop click", async () => {
     const editor = await mountWithImage();
     thumbnail(editor).click();
     await editor.updateComplete;
     const dialog = zoomDialog(editor);
     expect(dialog.open).toBe(true);
 
-    dialog.querySelector<HTMLButtonElement>(".attachment-zoom-close")?.click();
+    dialog.querySelector<HTMLImageElement>(".attachment-zoom-full")?.click();
     await editor.updateComplete;
     expect(dialog.open).toBe(false);
 
