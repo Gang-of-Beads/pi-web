@@ -222,7 +222,10 @@
            floor instead of 56px, and message/section rhythm drops one token
            each - through tokens only, so every surface tightens together. */
         :root {
-          --pi-chat-gutter: var(--pi-space-3);
+          /* One column for every edge-anchored surface. The transcript used a
+             tighter gutter than the bars and the composer, so cards started
+             two pixels outside the box the reader types in. */
+          --pi-chat-gutter: var(--pi-bar-inset);
           --pi-reading-edge: var(--pi-space-4);
           --pi-row-min-height: 44px;
           /* Type drops one step too: the owner read the phone sizes as
