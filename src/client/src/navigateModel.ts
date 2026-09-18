@@ -15,7 +15,14 @@
 
 import type { SessionInfo } from "./api";
 
-export type NavigateLevel = "machine" | "project" | "folder";
+/**
+ * The levels a reader navigates. There is no folder level: the owner could not
+ * tell a project from a folder, because a project with no worktrees prints the
+ * same name twice and a folder is an implementation of where a checkout lives.
+ * Sessions are listed for the whole project; which folder one runs in is a
+ * property of that session, not a place to stand.
+ */
+export type NavigateLevel = "machine" | "project";
 
 export interface NavigateScope {
   machineId: string;
@@ -163,7 +170,6 @@ function pinnedSection(input: NavigateInput): NavigateSessionRow[] {
 }
 
 function inScope(session: SessionInfo, input: NavigateInput): boolean {
-  if (input.scope.folderPath !== undefined) return session.cwd === input.scope.folderPath;
   if (input.scope.projectId === undefined) return true;
   const paths = input.folders.filter((folder) => folder.projectId === input.scope.projectId).map((folder) => folder.path);
   // An unloaded folder list is the absence of an answer, not "no folders":
@@ -184,10 +190,6 @@ function matches(entry: NavigateSessionRow, query: string): boolean {
 }
 
 function nextLevelFor(input: NavigateInput): NavigateLevel | undefined {
-  // Standing in a folder still offers its siblings: the level the reader is on
-  // is the level they most often want to change.
-  if (input.scope.folderPath !== undefined) return "folder";
-  if (input.scope.projectId !== undefined) return "folder";
   return input.projects.length === 0 && input.machines.length > 1 ? "machine" : "project";
 }
 
@@ -196,31 +198,15 @@ function choicesFor(level: NavigateLevel | undefined, input: NavigateInput): Nav
   if (level === "machine") {
     return input.machines.map((machine) => ({ level, id: machine.id, label: machine.name, current: machine.id === input.scope.machineId }));
   }
-  if (level === "project") {
-    return input.projects.map((project) => ({
-      level,
-      id: project.id,
-      label: project.name,
-      ...(project.path === undefined ? {} : { detail: project.path }),
-      current: project.id === input.scope.projectId,
-    }));
-  }
-  const seen = new Set<string>();
-  return input.folders
-    .filter((folder) => folder.projectId === input.scope.projectId)
-    .filter((folder) => { if (seen.has(folder.path)) return false; seen.add(folder.path); return true; })
-    .map((folder) => ({
-      level,
-      id: folder.path,
-      label: folder.label,
-      detail: folder.path,
-      current: folder.path === input.scope.folderPath,
-      sessionCount: input.sessions.filter((session) => session.cwd === folder.path && session.archived !== true).length,
-    }));
+  return input.projects.map((project) => ({
+    level,
+    id: project.id,
+    label: project.name,
+    ...(project.path === undefined ? {} : { detail: project.path }),
+    current: project.id === input.scope.projectId,
+  }));
 }
 
 function choiceTitle(level: NavigateLevel | undefined): string {
-  if (level === "machine") return "Machines";
-  if (level === "project") return "Projects";
-  return "Folders";
+  return level === "machine" ? "Machines" : "Projects";
 }

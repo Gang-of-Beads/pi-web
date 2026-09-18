@@ -77,8 +77,8 @@ if (!overlay.open) fail("the menu key did not open the navigation page over the 
 if (!overlay.closable) fail("the navigation page over a session offers no way back to it");
 if (overlay.sheets) fail("the retired projects sheet opened as well");
 if (overlay.path.length === 0) fail("the navigation page shows no context path");
-if (overlay.folderCount > 1 && !overlay.kinds.includes("Folders")) fail(`a project with worktrees cannot list its folders: ${JSON.stringify(overlay.kinds)}`);
-if (overlay.folderCount <= 1 && overlay.kinds.includes("Folders")) fail("a project with only its own checkout still offers a folder level");
+if (overlay.kinds.includes("Folders")) fail("navigation still offers a folder level");
+if (!overlay.kinds.includes("Sessions")) fail(`navigation cannot list sessions: ${JSON.stringify(overlay.kinds)}`);
 if (overlay.rows.length === 0) fail("the navigation page lists no sessions in scope");
 if (overlay.rows.some((title) => /^[0-9a-f]{8}-/u.test(title))) fail(`sessions are listed by id rather than name: ${JSON.stringify(overlay.rows)}`);
 

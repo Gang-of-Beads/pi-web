@@ -42,19 +42,10 @@ describe("navigateModel", () => {
     expect(model.sections.find((section) => section.id === "choices")?.choices.map((choice) => choice.label)).toEqual(["pi-web", "trade"]);
   });
 
-  it("offers a chosen project's folders and only its sessions", () => {
+  it("lists a chosen project's sessions across all of its folders", () => {
     const model = navigateModel({ ...base, scope: { machineId: "local", projectId: "p1", folderPath: undefined, sessionId: undefined } });
-    expect(model.nextLevel).toBe("folder");
+    expect(model.nextLevel).toBe("project");
     expect(model.sections.find((section) => section.id === "recent")?.rows.map((row) => row.session.id)).toEqual(["a", "b"]);
-    expect(model.sections.find((section) => section.id === "choices")?.choices.map((choice) => choice.label)).toEqual(["main", "probe"]);
-  });
-
-  it("ends the path at a folder and lists that folder's sessions", () => {
-    const model = navigateModel({ ...base, scope: { machineId: "local", projectId: "p1", folderPath: "/repos/pi-web-probe", sessionId: undefined } });
-    expect(model.nextLevel).toBe("folder");
-    expect(model.sections.map((section) => section.id)).toEqual(["recent", "choices"]);
-    expect(model.sections[0]?.rows.map((row) => row.session.id)).toEqual(["b"]);
-    expect(model.sections[1]?.choices.filter((choice) => choice.current).map((choice) => choice.label)).toEqual(["probe"]);
   });
 
   it("keeps every session listed while a chosen project's folders are unknown", () => {

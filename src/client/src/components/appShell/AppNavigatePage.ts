@@ -4,7 +4,7 @@ import type { SessionInfo } from "../../api";
 import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow } from "../../navigateModel";
 import { switcherBreadcrumb } from "../../switcherBreadcrumb";
 import { createStableRowOrder } from "../../stableRowOrder";
-import { renderChatIcon, renderChevronRightIcon, renderFolderIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
+import { renderChatIcon, renderChevronRightIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { interactiveSurfaceStyles } from "../shared";
 import { sessionLabel } from "../../sessionLabels";
 
@@ -40,7 +40,7 @@ export class AppNavigatePage extends LitElement {
   }
 
   /** Which kind of thing the page is listing; one page shows one kind. */
-  @state() private kind: "sessions" | "machine" | "project" | "folder" = "sessions";
+  @state() private kind: "sessions" | "machine" | "project" = "sessions";
 
   override render() {
     const input = this.input;
@@ -52,8 +52,8 @@ export class AppNavigatePage extends LitElement {
       projects: input.projects,
       projectId: input.scope.projectId,
       folders: input.folders,
-      folderPath: input.scope.folderPath,
-    });
+      folderPath: undefined,
+    }).filter((segment) => segment.level !== "folder");
     const showsSessions = this.kind === "sessions";
     const choices = model.sections.flatMap((section) => section.choices).filter((choice) => choice.level === this.kind);
     return html`
@@ -66,7 +66,7 @@ export class AppNavigatePage extends LitElement {
                 type="button"
                 class=${segment.chosen ? "path-step chosen" : "path-step"}
                 title=${segment.label}
-                @click=${() => { this.kind = segment.level; this.onWiden?.(segment.level); }}
+                @click=${() => { if (segment.level === "folder") return; this.kind = segment.level; this.onWiden?.(segment.level); }}
               >${segment.label}</button>
             `)}
           </div>
@@ -76,7 +76,6 @@ export class AppNavigatePage extends LitElement {
           ${this.renderKindTab("sessions", "Sessions", renderChatIcon())}
           ${segments.some((segment) => segment.level === "machine") ? this.renderKindTab("machine", "Machines", renderMachineIcon()) : nothing}
           ${this.renderKindTab("project", "Projects", renderProjectIcon())}
-          ${foldersWorthChoosing(input) ? this.renderKindTab("folder", "Folders", renderFolderIcon()) : nothing}
         </nav>
         ${showsSessions ? html`
           <div class="search-row">
@@ -131,7 +130,7 @@ export class AppNavigatePage extends LitElement {
       .map((section) => ({ ...section, rows: [...section.rows].sort((left, right) => (placeOf.get(`${left.machineId}:${left.session.id}`) ?? 0) - (placeOf.get(`${right.machineId}:${right.session.id}`) ?? 0)) }));
   }
 
-  private renderKindTab(kind: "sessions" | "machine" | "project" | "folder", label: string, icon: unknown) {
+  private renderKindTab(kind: "sessions" | "machine" | "project", label: string, icon: unknown) {
     return html`<button
       type="button"
       class=${this.kind === kind ? "kind current" : "kind"}
@@ -141,7 +140,7 @@ export class AppNavigatePage extends LitElement {
   }
 
   private renderChoice(choice: NavigateChoice) {
-    const icon = choice.level === "machine" ? renderMachineIcon() : choice.level === "project" ? renderProjectIcon() : renderFolderIcon();
+    const icon = choice.level === "machine" ? renderMachineIcon() : renderProjectIcon();
     return html`
       <button type="button" class=${choice.current ? "row current" : "row"} @click=${() => { this.onChoose?.(choice.level, choice.id); this.kind = "sessions"; }}>
         <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${icon}</span>${choice.label}</span>
@@ -202,15 +201,6 @@ export class AppNavigatePage extends LitElement {
   `];
 }
 
-/**
- * A project whose only folder is its own checkout says the same word twice -
- * the level costs a tap and teaches nothing. The folder level appears when
- * there is a choice to make, which is when worktrees exist.
- */
-function foldersWorthChoosing(input: Omit<NavigateInput, "query">): boolean {
-  if (input.scope.projectId === undefined) return false;
-  return input.folders.filter((folder) => folder.projectId === input.scope.projectId).length > 1;
-}
 
 declare global {
   interface HTMLElementTagNameMap {

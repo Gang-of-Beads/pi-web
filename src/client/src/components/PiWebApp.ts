@@ -2543,27 +2543,15 @@ export class PiWebApp extends LitElement {
 
   private async navigateChoose(level: NavigateLevel, id: string): Promise<void> {
     if (level === "machine") { this.browseQuickSwitcherMachine(id); return; }
-    if (level === "project") {
-      const project = this.state.projects.find((entry) => entry.id === id);
-      if (project !== undefined) await this.workspaces.selectProject(project);
-      return;
-    }
-    const workspace = this.state.workspaces.find((entry) => entry.path === id);
-    if (workspace !== undefined) await this.workspaces.selectWorkspace(workspace);
+    const project = this.state.projects.find((entry) => entry.id === id);
+    if (project !== undefined) await this.workspaces.selectProject(project);
   }
 
-  /**
-   * Widening is how the reader goes back: tapping a level drops it and
-   * everything under it, and the page stays where it is.
-   */
+  /** Widening drops the level and everything under it; the page stays put. */
   private async navigateWiden(level: NavigateLevel): Promise<void> {
     if (level === "machine") return;
-    if (level === "folder") {
-      const project = this.state.selectedProject;
-      if (project !== undefined) await this.workspaces.selectProject(project);
-      return;
-    }
     this.workspaces.clearSelection();
+    await Promise.resolve();
   }
 
   private openQuickSwitcher(): void {
