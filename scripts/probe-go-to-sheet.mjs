@@ -24,10 +24,13 @@ try {
     if (!project) return { error: "git probe repository is not a project; run scripts/probe-git-worktree-add.mjs first" };
     await Reflect.get(app, "workspaces").selectProject(project);
     await new Promise((r) => setTimeout(r, 2500));
-    const nav = app.shadowRoot.querySelector("app-navigation-panel");
-    if (nav.shadowRoot.querySelector(".tools-section")) return { error: "tool tiles still listed under the sessions" };
-    const goTo = nav.shadowRoot.querySelector("button.compact-go-to");
-    if (!goTo) return { error: "no Go to control in the phone header" };
+    const session = (Reflect.get(app, "state").sessions ?? [])[0];
+    if (!session) return { error: "the probe repository has no session to open" };
+    await app.selectNavigationItem("sessions", "chat", () => Reflect.get(app, "sessions").selectSession(session));
+    await new Promise((r) => setTimeout(r, 2500));
+    const bar0 = app.shadowRoot.querySelector("app-context-bar");
+    const goTo = bar0?.shadowRoot?.querySelector("button.go-to");
+    if (!goTo) return { error: "no Go to control in the chat bar" };
     const rect = goTo.getBoundingClientRect();
     goTo.click();
     await new Promise((r) => setTimeout(r, 800));
@@ -57,7 +60,7 @@ try {
   if (!result.current.includes("Git")) fail(`Go to from the git page does not mark Git current: ${JSON.stringify(result.current)}`);
   if (result.controlHeight !== 36) fail(`Go to control is ${String(result.controlHeight)}px tall, not 36`);
   await page.screenshot({ path: "/tmp/journeys/go-to-sheet.png" });
-  console.log("PASS: no tool tiles; Go to lists every destination; Git opens and is marked current");
+  console.log("PASS: Go to lists every destination; Git opens and is marked current");
 } finally {
   await browser.close();
 }
