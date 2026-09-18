@@ -57,7 +57,6 @@ import { createWorkspaceFiles as createPluginWorkspaceFiles } from "../plugins/w
 import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
 import { AppShellController } from "../appShell/appShellController";
 import { BrowserResumeController } from "../appShell/browserResumeController";
-import { NavigationSectionsController, type NavigationSection } from "../appShell/navigationState";
 import "./appShell/ContextSwitcherSheet";
 import "./appShell/AppGoToSheet";
 import "./SessionRenameDialog";
@@ -84,8 +83,9 @@ import "./WorkspacePanel";
 import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
 import "./appShell/AppContextBar";
 import "./appShell/AppNavigatePage";
+import type { AppNavigatePage, NavigateKind } from "./appShell/AppNavigatePage";
 import type { NavigateInput, NavigateLevel } from "../navigateModel";
-import { shouldShowMachinesSection, type AppNavigationPanel, type NavigationFocusTarget, type ShellToolTab } from "./appShell/AppNavigationPanel";
+import type { ShellToolTab } from "../appShell/shellToolTabs";
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
 import { quickSwitcherSessionStates, renameSessionInList } from "../quickSwitcher";
@@ -280,7 +280,7 @@ export class PiWebApp extends LitElement {
   @state() private workspacePanelFullscreen = false;
   @query("chat-view") private chatView?: ChatView;
   @query("prompt-editor") private promptEditor?: PromptEditor;
-  @query("app-navigation-panel") private navigationPanel?: AppNavigationPanel;
+  @query("app-navigate-page") private navigatePage?: AppNavigatePage;
   @query("#navigation-panel") private navigationPanelFrame?: HTMLElement;
   @query("#workspace-panel") private workspacePanelFrame?: HTMLElement;
 
@@ -374,7 +374,6 @@ export class PiWebApp extends LitElement {
   });
   private readonly panelCollapse = new PanelCollapseController(this);
   private readonly panelResize = new PanelResizeController(this);
-  private readonly navigationSections = new NavigationSectionsController(this, () => this.state);
   private readonly systemLightThemeMedia = typeof window !== "undefined" && "matchMedia" in window ? window.matchMedia("(prefers-color-scheme: light)") : undefined;
   private terminalAutoStartWorkspaceId: string | undefined;
   private piWebStatusTimer: number | undefined;
@@ -2243,114 +2242,10 @@ export class PiWebApp extends LitElement {
     }
   }
 
-  private renderNavigationPanel() {
-    return html`
-      <app-navigation-panel
-        .workspaceGone=${this.state.selectedWorkspace?.cwdMissing === true}
-        .machines=${this.state.machines}
-        .selectedMachine=${this.state.selectedMachine}
-        .machinesCollapsed=${this.navigationSections.isCollapsed("machines")}
-        .onToggleMachines=${() => { this.navigationSections.toggle("machines"); }}
-        .selectedProject=${this.state.selectedProject}
-        .selectedWorkspace=${this.state.selectedWorkspace}
-        .sessions=${this.state.sessions}
-        .sessionsLoad=${this.state.sessionsLoad}
-        .sessionStatuses=${this.state.sessionStatuses}
-        .sessionActivities=${this.state.sessionActivities}
-        .sendingPrompts=${this.state.sendingPrompts}
-        .unreadSessionIds=${this.unreadSessionIds}
-        .selectedSession=${this.state.selectedSession}
-        .startingSessionCount=${this.state.startingSessionCount}
-        .canStartSession=${!!this.state.selectedWorkspace}
-        .collapsible=${true}
-        .compact=${this.appShell.isMobileNavigationLayout}
-        .session=${this.state.selectedSession}
-        .activeSurface=${this.activeSurfaceLabel()}
-        .isWorking=${this.state.selectedSession !== undefined && isActive(this.state)}
-        .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
-        .toolTabs=${this.shellToolTabs()}
-        .onSelectTool=${(id: string) => { this.openShellToolTab(id); }}
-        .projectsCollapsed=${this.navigationSections.isCollapsed("projects")}
-        .workspacesCollapsed=${this.navigationSections.isCollapsed("workspaces")}
-        .sessionsCollapsed=${this.navigationSections.isCollapsed("sessions")}
-        .refreshControl=${this.appShell.shouldShowAppRefreshInHeader() || this.appShell.shouldShowAppRefreshInContextBar() ? this.renderAppRefresh() : undefined}
-        .onAddProject=${this.hasAddProjectEntry() ? () => { this.openProjectDialog(); } : undefined}
-        .onShowActions=${() => { this.openActionPalette(); }}
-        .onOpenSettings=${() => { this.openSettings(); }}
-        .onAddMachine=${() => { this.openMachineDialog(); }}
-        .onToggleProjects=${() => { this.navigationSections.toggle("projects"); }}
-        .onToggleWorkspaces=${() => { this.navigationSections.toggle("workspaces"); }}
-        .onToggleSessions=${() => { this.navigationSections.toggle("sessions"); }}
-        .onRequestSection=${(section: NavigationSection) => { this.navigationSections.expand(section); }}
-        .onOpenContextSheet=${() => { this.openContextSheet(); }}
-        .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? () => { this.openGoToSheet(); } : undefined}
-        .onArchivedCollapsed=${() => { this.sessions.clearSelectionAfterArchivedCollapse(); }}
-        .onStartSession=${() => this.startSessionFromNavigation()}
-        .onSelectSession=${(session: SessionInfo) => this.selectNavigationItem("sessions", "chat", () => this.sessions.selectSession(session).finally(() => { void this.refreshSubagents(); }))}
-        .onPrefetchSession=${(session: SessionInfo) => { this.sessions.prefetchSession(session); }}
-        .onMarkSessionRead=${(session: SessionInfo) => { this.markSessionsRead([session]); }}
-        .onMarkSessionsRead=${(sessions: SessionInfo[]) => { this.markSessionsRead(sessions); }}
-        .onArchiveSession=${(session: SessionInfo) => this.sessions.archiveSession(session)}
-        .onArchiveSessionWithDescendants=${(session: SessionInfo) => this.sessions.archiveSessionWithDescendants(session)}
-        .onArchiveSessions=${(sessions: SessionInfo[]) => this.sessions.archiveSessions(sessions)}
-        .onRestoreSession=${(session: SessionInfo) => this.selectNavigationItem("sessions", "chat", () => this.sessions.restoreSession(session).finally(() => { void this.refreshSubagents(); }))}
-        .onDeleteCachedNewSession=${(session: SessionInfo) => this.sessions.deleteCachedNewSession(session)}
-        .onDeleteArchivedSession=${(session: SessionInfo) => this.sessions.deleteArchivedSessions([session])}
-        .onDeleteArchivedSessions=${(sessions: SessionInfo[]) => this.sessions.deleteArchivedSessions(sessions)}
-        .onDetachParentSession=${(session: SessionInfo) => this.sessions.detachParent(session)}
-        .onRenameSession=${(session: SessionInfo, name: string) => {
-          this.applyRenameToQuickSwitcher(session.id, name);
-          return this.sessions.renameSession(session, name);
-        }}
-        .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(this.state))}
-        .navSections=${this.plugins.getNavSections(selectedMachineId(this.state))}
-        .navSectionContext=${this.buildNavSectionContext("panel")}
-        .machineSections=${this.plugins.getMachineSections(selectedMachineId(this.state))}
-        .machineSectionContext=${this.buildMachineSectionContext("panel")}
-        .sectionMachineId=${selectedMachineId(this.state)}
-        .onRunSectionCommand=${(command: string) => this.runGoalCommand(command)}
-        .onReloadSession=${(session: SessionInfo) => this.sessions.reloadSession(session)}
-        .onOpenSessionTree=${(session: SessionInfo) => this.openSessionTree(session)}
-        .onCleanupSessions=${() => { this.openSessionCleanupDialog(); }}
-        .pinnedSessionIds=${this.pinnedSessionIds}
-        .onToggleSessionPin=${(session: SessionInfo) => { this.togglePinnedSession(session); }}
-        .onFocusNavigationTarget=${(target: NavigationFocusTarget) => { void this.focusNavigationTarget(target); }}
-        .onCancelKeyboardNavigation=${() => { void this.focusChatComposer(); }}
-      ></app-navigation-panel>
-    `;
-  }
-
-  private openNavigationSection(section: NavigationSection): void {
-    this.navigationSections.open(section, () => { this.selectMainView("navigation"); });
-  }
-
-  private async selectNavigationItem(section: NavigationSection, nextTarget: NavigationFocusTarget, action: () => Promise<void>): Promise<void> {
-    const seq = ++this.navigationSelectionSeq;
-    const isCurrentSelection = () => seq === this.navigationSelectionSeq;
-
-    await this.withChatScrollTransition(async () => {
-      this.navigationSections.advanceAfterSelection(section);
-      await action();
-    }, isCurrentSelection);
-
-    if (!isCurrentSelection()) return;
-    // The workspace count is only known once the project has loaded, so the
-    // decision to skip that step is re-made here rather than guessed at the tap.
-    // Selecting the project already selects its only workspace, so stopping on
-    // a list of one would ask for a tap that changes nothing.
-    let target = nextTarget;
-    if (section === "projects") {
-      this.navigationSections.advanceAfterSelection("projects", { workspaceCount: this.state.workspaces.length });
-      if (this.state.workspaces.length === 1 && this.state.selectedWorkspace !== undefined) target = "sessions";
-    }
-    await this.focusNavigationTarget(target);
-  }
-
   private async startSessionFromNavigation(): Promise<void> {
     const seq = ++this.navigationSelectionSeq;
     const isCurrentSelection = () => seq === this.navigationSelectionSeq;
 
-    this.navigationSections.advanceAfterSelection("sessions");
     await this.startSessionAndOpenChat(isCurrentSelection);
   }
 
@@ -2768,27 +2663,6 @@ export class PiWebApp extends LitElement {
     void start;
   }
 
-  private async focusNavigationTarget(target: NavigationFocusTarget): Promise<void> {
-    if (target === "chat") {
-      await this.focusChatComposer();
-      return;
-    }
-    await this.focusNavigationSection(target);
-  }
-
-  private async focusNavigationSection(section: NavigationSection): Promise<void> {
-    if (section === "machines" && !shouldShowMachinesSection(this.state.machines)) {
-      await this.focusNavigationSection("projects");
-      return;
-    }
-    this.panelCollapse.expandNavigationPanel();
-    if (this.appShell.isMobileNavigationLayout) this.selectMainView("navigation");
-    this.navigationSections.expand(section);
-    await this.updateComplete;
-    await nextFrame();
-    await this.navigationPanel?.focusSection(section);
-  }
-
   private async focusChatComposer(): Promise<void> {
     if (this.state.mainView !== "chat") this.selectMainView("chat");
     await this.updateComplete;
@@ -2966,7 +2840,7 @@ export class PiWebApp extends LitElement {
         const project = projectById(projectId);
         if (project === undefined) return;
         if (closeSheet) this.contextSheetOpen = false;
-        void this.selectNavigationItem("projects", "workspaces", () => this.workspaces.selectProject(project));
+        void this.withChatScrollTransition(() => this.workspaces.selectProject(project), () => true);
       },
       closeProject: (projectId) => { void this.projects.closeProject(projectId); },
       addProject: () => {
@@ -2977,7 +2851,7 @@ export class PiWebApp extends LitElement {
         const workspace = workspaceById(workspaceId);
         if (workspace === undefined) return;
         if (closeSheet) this.contextSheetOpen = false;
-        void this.selectNavigationItem("workspaces", "sessions", () => this.workspaces.selectWorkspace(workspace));
+        void this.withChatScrollTransition(() => this.workspaces.selectWorkspace(workspace), () => true);
       },
       deleteWorkspace: (workspaceId) => {
         const workspace = workspaceById(workspaceId);
@@ -3074,7 +2948,7 @@ export class PiWebApp extends LitElement {
         }
         window.open(baseUrl, "_blank", "noopener,noreferrer");
       },
-      toggleCollapsed: () => { this.navigationSections.toggle("machines"); },
+      toggleCollapsed: () => undefined,
       focusPreviousSection: () => undefined,
       focusNextSection: () => undefined,
       cancelKeyboardNavigation: () => undefined,
@@ -3241,39 +3115,22 @@ export class PiWebApp extends LitElement {
 
   private navigationFocusActions(): AppAction[] {
     return [
-      {
-        id: "app.navigation.focus-machines",
-        title: "Focus machines",
-        description: "Move keyboard focus to the machine selector",
-        shortcut: "mod+g m",
-        group: "Navigation",
-        run: () => this.focusNavigationSection("machines"),
-      },
-      {
-        id: "app.navigation.focus-projects",
-        title: "Focus projects",
-        description: "Move keyboard focus to the projects list",
-        shortcut: "mod+g p",
-        group: "Navigation",
-        run: () => this.focusNavigationSection("projects"),
-      },
-      {
-        id: "app.navigation.focus-workspaces",
-        title: "Focus workspaces",
-        description: "Move keyboard focus to the workspaces list",
-        shortcut: "mod+g w",
-        group: "Navigation",
-        run: () => this.focusNavigationSection("workspaces"),
-      },
-      {
-        id: "app.navigation.focus-sessions",
-        title: "Focus sessions",
-        description: "Move keyboard focus to the sessions list",
-        shortcut: "mod+g s",
-        group: "Navigation",
-        run: () => this.focusNavigationSection("sessions"),
-      },
+      { id: "app.navigation.focus-machines", title: "Go to machines", description: "Open navigation on the machines list", shortcut: "mod+g m", group: "Navigation", run: () => { this.openNavigateOn("machine"); } },
+      { id: "app.navigation.focus-projects", title: "Go to projects", description: "Open navigation on the projects list", shortcut: "mod+g p", group: "Navigation", run: () => { this.openNavigateOn("project"); } },
+      { id: "app.navigation.focus-sessions", title: "Go to sessions", description: "Open navigation on the sessions list", shortcut: "mod+g s", group: "Navigation", run: () => { this.openNavigateOn("sessions"); } },
     ];
+  }
+
+  /**
+   * Navigation is one page listing one kind, so a shortcut names a kind. The
+   * four shortcuts used to focus sections of an accordion panel that the
+   * Navigate page replaced; with the panel gone they focused nothing.
+   */
+  private openNavigateOn(kind: NavigateKind): void {
+    this.openNavigate();
+    void this.updateComplete.then(() => {
+      this.navigatePage?.showKind(kind);
+    });
   }
 
   private ensureGatewayPluginsLoaded(): Promise<void> {
@@ -4166,7 +4023,7 @@ export class PiWebApp extends LitElement {
           .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}
           .onOpenSession=${(session: SessionInfo) => { void this.openSessionFromQuickSwitcher(session); }}
           .onSelectWorkspace=${(workspace: Workspace) => { void this.openWorkspaceFromQuickSwitcher(workspace); }}
-          .onBrowse=${() => { this.openNavigationSection("projects"); }}
+          .onBrowse=${() => { this.openNavigateOn("project"); }}
           .onOpenSettings=${() => { this.openSettings(); }}
           .onTogglePin=${(session: SessionInfo) => { void this.moveToBrowsedMachine().then((moved) => { if (moved) this.togglePinnedSession(session); }); }}
           .onRenameSession=${async (session: SessionInfo, name: string) => {

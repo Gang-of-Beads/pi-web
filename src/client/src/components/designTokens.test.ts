@@ -135,8 +135,8 @@ describe("accessibility floors", () => {
  * than that they happen to compute equal today.
  */
 describe("panel headers share one height", () => {
-  const navigationPanel = readFileSync(
-    join(process.cwd(), "src/client/src/components/appShell/AppNavigationPanel.ts"),
+  const navigationPage = readFileSync(
+    join(process.cwd(), "src/client/src/components/appShell/AppNavigatePage.ts"),
     "utf8",
   );
 
@@ -155,12 +155,12 @@ describe("panel headers share one height", () => {
   });
 
   it("sizes the navigation header and the drawer header from that token", () => {
-    expect(navigationPanel).toContain("min-height: var(--pi-panel-header-height)");
+    expect(navigationPage).toContain("min-height: var(--pi-panel-header-height)");
     expect(String(chatStyles)).toContain("min-height: var(--pi-panel-header-height)");
   });
 
   it("sizes the navigation header controls from the token rather than the user agent", () => {
-    expect(navigationPanel).toContain("height: var(--pi-panel-header-control-height)");
+    expect(navigationPage).toContain("height: var(--pi-panel-header-control-height)");
   });
 });
 

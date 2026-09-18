@@ -1,11 +1,7 @@
-import type { TemplateResult } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Machine, SessionInfo, SessionUnreadEvent, SessionUnreadSummary } from "../api";
 import { initialAppState, type AppState } from "../appState";
 import type { BrowserRealtimeEvent } from "../sessionSocket";
-// Template inspection is proportionate here because this node-environment test
-// verifies only PiWebApp's unread-state property wiring into navigation.
-import { templateValueAfterMarker } from "../templateInspection.testSupport";
 import { PiWebApp } from "./PiWebApp";
 
 afterEach(() => {
@@ -233,7 +229,6 @@ describe("PiWebApp session unread wiring", () => {
   });
 });
 
-type RenderNavigationPanel = (this: PiWebApp) => TemplateResult;
 type SetAppState = (this: PiWebApp, patch: Partial<AppState>) => void;
 type HandleRealtimeEvent = (this: PiWebApp, machineId: string, event: BrowserRealtimeEvent) => void;
 type UpdatedHook = (this: PiWebApp) => void;
@@ -342,7 +337,7 @@ function refreshUnread(app: PiWebApp, machineId: string): Promise<void> {
 }
 
 function navigationUnreadSessionIds(app: PiWebApp): ReadonlySet<string> {
-  const value = navigationPanelValue(app, ".unreadSessionIds=");
+  const value: unknown = Reflect.get(app, "unreadSessionIds");
   if (!(value instanceof Set) || ![...value].every((entry: unknown) => typeof entry === "string")) {
     throw new Error("Expected unread session ids in navigation");
   }
@@ -350,21 +345,18 @@ function navigationUnreadSessionIds(app: PiWebApp): ReadonlySet<string> {
 }
 
 function navigationMarkSessionRead(app: PiWebApp): MarkSessionRead {
-  const value = navigationPanelValue(app, ".onMarkSessionRead=");
-  if (!isMarkSessionRead(value)) throw new Error("Expected mark-session-read callback in navigation");
-  return value;
+  const method = markSessionsReadMethod(app);
+  return (session) => { method([session]); };
 }
 
 function navigationMarkSessionsRead(app: PiWebApp): MarkSessionsRead {
-  const value = navigationPanelValue(app, ".onMarkSessionsRead=");
-  if (!isMarkSessionsRead(value)) throw new Error("Expected mark-sessions-read callback in navigation");
-  return value;
+  return markSessionsReadMethod(app);
 }
 
-function navigationPanelValue(app: PiWebApp, marker: string): unknown {
-  const method: unknown = Reflect.get(app, "renderNavigationPanel");
-  if (!isRenderNavigationPanel(method)) throw new Error("PiWebApp.renderNavigationPanel is not callable");
-  return templateValueAfterMarker(method.call(app), marker);
+function markSessionsReadMethod(app: PiWebApp): MarkSessionsRead {
+  const method: unknown = Reflect.get(app, "markSessionsRead");
+  if (!isMarkSessionsRead(method)) throw new Error("PiWebApp.markSessionsRead is not callable");
+  return (sessions) => { method.call(app, sessions); };
 }
 
 function machine(id: string): Machine {
@@ -444,10 +436,6 @@ function stubJsonFetch(body: unknown) {
   return fetchMock;
 }
 
-function isRenderNavigationPanel(value: unknown): value is RenderNavigationPanel {
-  return typeof value === "function";
-}
-
 function isSetAppState(value: unknown): value is SetAppState {
   return typeof value === "function";
 }
@@ -465,10 +453,6 @@ function isDisconnectedHook(value: unknown): value is DisconnectedHook {
 }
 
 function isRefreshUnread(value: unknown): value is RefreshUnread {
-  return typeof value === "function";
-}
-
-function isMarkSessionRead(value: unknown): value is MarkSessionRead {
   return typeof value === "function";
 }
 

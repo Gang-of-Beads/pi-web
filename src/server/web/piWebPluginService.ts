@@ -3,6 +3,7 @@ import { isPiWebPluginId } from "../../shared/pluginIds.js";
 import {
   PiWebPluginCatalog,
   readPiWebPluginPackageArtifact,
+  type PiWebHostFactName,
   type PiWebPluginCatalogEntry,
   type PiWebPluginCatalogOptions,
   type PiWebPluginPackageEntry,
@@ -262,13 +263,24 @@ function browserModuleUrl(plugin: PiWebPluginCatalogEntry): string {
   const browserModule = plugin.browserModule;
   if (browserModule === undefined) throw new Error(`PI WEB plugin has no browser module: ${plugin.id}`);
   const path = browserModule.path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
-  return `/pi-web-plugins/${encodeURIComponent(plugin.id)}/${path}?${pluginModuleQuery(plugin.id, browserModule.revision)}`;
+  return `/pi-web-plugins/${encodeURIComponent(plugin.id)}/${path}?${pluginModuleQuery(plugin.hostFacts ?? [], browserModule.revision)}`;
 }
 
-function pluginModuleQuery(pluginId: string, revision: string): string {
+/**
+ * Host facts ride the module URL by name, for whoever declared them. The web
+ * process used to ask "is this the updates plugin?" and attach its docker mode,
+ * which made one plugin's need part of the host's code.
+ */
+const HOST_FACTS: Record<PiWebHostFactName, () => string | undefined> = {
+  dockerMode: dockerModeFromEnv,
+};
+
+function pluginModuleQuery(hostFacts: readonly PiWebHostFactName[], revision: string): string {
   const params = new URLSearchParams({ v: revision });
-  const dockerMode = pluginId === "updates" ? dockerModeFromEnv() : undefined;
-  if (dockerMode !== undefined) params.set("piWebDockerMode", dockerMode);
+  for (const fact of hostFacts) {
+    const value = HOST_FACTS[fact]();
+    if (value !== undefined) params.set(fact, value);
+  }
   return params.toString();
 }
 

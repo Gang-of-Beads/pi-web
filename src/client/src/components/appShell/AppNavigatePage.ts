@@ -19,6 +19,8 @@ import { sessionLabel } from "../../sessionLabels";
  * neither leaves the page. Only opening a session leaves, because that is the
  * thing the page exists to reach.
  */
+export type NavigateKind = "sessions" | "machine" | "project";
+
 @customElement("app-navigate-page")
 export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) input?: Omit<NavigateInput, "query">;
@@ -40,7 +42,12 @@ export class AppNavigatePage extends LitElement {
   }
 
   /** Which kind of thing the page is listing; one page shows one kind. */
-  @state() private kind: "sessions" | "machine" | "project" = "sessions";
+  @state() private kind: NavigateKind = "sessions";
+
+  /** Open the page on one kind; the keyboard shortcuts name a kind, not a panel. */
+  showKind(kind: NavigateKind): void {
+    this.kind = kind;
+  }
 
   override render() {
     const input = this.input;
@@ -130,7 +137,7 @@ export class AppNavigatePage extends LitElement {
       .map((section) => ({ ...section, rows: [...section.rows].sort((left, right) => (placeOf.get(`${left.machineId}:${left.session.id}`) ?? 0) - (placeOf.get(`${right.machineId}:${right.session.id}`) ?? 0)) }));
   }
 
-  private renderKindTab(kind: "sessions" | "machine" | "project", label: string, icon: unknown) {
+  private renderKindTab(kind: NavigateKind, label: string, icon: unknown) {
     return html`<button
       type="button"
       class=${this.kind === kind ? "kind current" : "kind"}
@@ -161,7 +168,7 @@ export class AppNavigatePage extends LitElement {
   }
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, css`
-    :host { display: block; min-height: 0; height: 100%; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+    :host { display: block; min-height: 0; height: 100%; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); user-select: none; -webkit-user-select: none; }
     .navigate { display: flex; flex-direction: column; min-height: 0; height: 100%; }
     .path-bar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-2); min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
     /* No sideways scrolling on a phone: the path shares the width and each

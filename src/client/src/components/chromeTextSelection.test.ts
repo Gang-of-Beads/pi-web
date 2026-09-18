@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { AppNavigationPanel } from "./appShell/AppNavigationPanel";
 import { AppContextBar } from "./appShell/AppContextBar";
+import { AppNavigatePage } from "./appShell/AppNavigatePage";
 import { StatusBar } from "./StatusBar";
 import { PromptEditor } from "./PromptEditor";
 
 describe("control chrome text selection (T1/T3)", () => {
-  it("navigation panel chrome is not a copy target", () => {
-    expect(String(AppNavigationPanel.styles)).toContain("user-select: none");
+  it("navigation page chrome is not a copy target", () => {
+    expect(String(AppNavigatePage.styles)).toContain("user-select: none");
   });
 
   it("context bar chrome is not a copy target", () => {

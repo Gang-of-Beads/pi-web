@@ -18,13 +18,12 @@ describe("the panel-header banner contract", () => {
     expect(panelHeaderStyles.cssText).not.toContain("--pi-fg");
   });
 
-  it("the drawer compact header sits exactly on the token with no vertical padding", () => {
-    const css = read("./appShell/AppNavigationPanel.ts");
-    const start = css.indexOf(".compact-header {");
+  it("the navigate path bar sits exactly on the token with no vertical padding", () => {
+    const css = read("./appShell/AppNavigatePage.ts");
+    const start = css.indexOf(".path-bar {");
     const rule = css.slice(start, css.indexOf("}", start));
-    expect(rule).toContain("height: var(--pi-panel-header-height)");
-    expect(rule).toContain("padding: 0 ");
-    expect(rule).not.toMatch(/padding:\s+var\(--pi-space/);
+    expect(rule).toContain("min-height: var(--pi-panel-header-height)");
+    expect(rule).toMatch(/padding:\s*0 /u);
   });
 
   it("the context sheet header has no top padding to scroll rows above the sticky title", () => {

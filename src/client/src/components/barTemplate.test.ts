@@ -35,7 +35,7 @@ describe("the bar template tokens", () => {
 });
 
 const producers: { name: string; file: string; selector: string; height: "height" | "min-height" }[] = [
-  { name: "phone drawer header", file: "./appShell/AppNavigationPanel.ts", selector: ".compact-header {", height: "height" },
+  { name: "navigate path bar", file: "./appShell/AppNavigatePage.ts", selector: ".path-bar {", height: "min-height" },
   { name: "chat context bar", file: "./appShell/AppContextBar.ts", selector: ".context-bar {", height: "min-height" },
   { name: "workspace tool header", file: "./shared.ts", selector: "header.panel-header {", height: "min-height" },
   { name: "workspace tool toolbar", file: "./shared.ts", selector: ".workspace-tool-toolbar {", height: "min-height" },

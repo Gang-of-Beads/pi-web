@@ -503,21 +503,22 @@ describe("PiWebPluginService", () => {
     await expect(service.readAsset("cache-identity", "public/alternate.js", "sha256:stale")).resolves.toBeUndefined();
   });
 
-  it("adds Docker runtime hints to the Updates plugin module URL", async () => {
+  it("tells a plugin the host facts it declared, and no others", async () => {
     process.env["PI_WEB_DOCKER_RUNTIME"] = "1";
     process.env["PI_WEB_DOCKER_MODE"] = "dev";
     await writePlugin(join(tempDir, "plugins", "updates"), {
-      packageJson: { piWeb: { plugins: [{ id: "updates", browserRoot: ".", module: "pi-web-plugin.js", machineSpecific: true }] } },
+      packageJson: { piWeb: { plugins: [{ id: "updates", browserRoot: ".", module: "pi-web-plugin.js", machineSpecific: true, hostFacts: ["dockerMode"] }] } },
       files: { "pi-web-plugin.js": "export default {};" },
     });
 
     const service = new PiWebPluginService({ roots: [{ path: join(tempDir, "plugins"), source: "test", scope: "local" }], packageProvider: false });
 
     const manifest = await service.manifest();
-    const moduleUrl = new URL(manifest.plugins[0]?.module ?? "", "http://pi-web.test/pi-web-plugins/manifest.json");
+    const updates = manifest.plugins.find((plugin) => plugin.id === "updates");
+    const moduleUrl = new URL(updates?.module ?? "", "http://pi-web.test/pi-web-plugins/manifest.json");
     expect(moduleUrl.pathname).toBe("/pi-web-plugins/updates/pi-web-plugin.js");
     expect(moduleUrl.searchParams.get("v")).toMatch(/^sha256:[a-f\d]{64}$/u);
-    expect(moduleUrl.searchParams.get("piWebDockerMode")).toBe("dev");
+    expect(moduleUrl.searchParams.get("dockerMode")).toBe("dev");
   });
 
   it("discovers Pi package plugins through an injected package provider", async () => {

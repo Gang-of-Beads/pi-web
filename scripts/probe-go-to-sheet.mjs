@@ -26,7 +26,7 @@ try {
     await new Promise((r) => setTimeout(r, 2500));
     const session = (Reflect.get(app, "state").sessions ?? [])[0];
     if (!session) return { error: "the probe repository has no session to open" };
-    await app.selectNavigationItem("sessions", "chat", () => Reflect.get(app, "sessions").selectSession(session));
+    await Reflect.get(app, "openSessionFromQuickSwitcher").call(app, session);
     await new Promise((r) => setTimeout(r, 2500));
     const bar0 = app.shadowRoot.querySelector("app-context-bar");
     const goTo = bar0?.shadowRoot?.querySelector("button[aria-label='Go to a view']");

@@ -50,7 +50,7 @@ function renderCommand(html: HtmlTemplateTag, terminal: WorkspacePanelTerminal |
 
 function updatesRuntimeHintFromModuleUrl(moduleUrl: string): UpdatesRuntimeHint {
   try {
-    const dockerMode = new URL(moduleUrl).searchParams.get("piWebDockerMode");
+    const dockerMode = new URL(moduleUrl).searchParams.get("dockerMode");
     return dockerMode === "runtime" || dockerMode === "dev" ? { dockerMode } : {};
   } catch {
     return {};

@@ -53,6 +53,12 @@ export interface PiWebPluginPackageEntry {
   machineSpecific: boolean;
   /** Which host process activates the server module; default "daemon". */
   runs?: PiWebPluginRuns;
+  /**
+   * Host facts this plugin's browser module asks to be told, by name. The host
+   * knows the facts, never which plugin wants them: before this the web
+   * process special-cased one plugin id to attach its docker mode.
+   */
+  hostFacts?: readonly PiWebHostFactName[];
 }
 
 export interface PiWebPluginCatalogEntry extends PiWebPluginPackageEntry {
@@ -117,9 +123,13 @@ interface PiWebPluginMetadataEntry {
   serverModule?: string;
   machineSpecific: boolean;
   runs?: PiWebPluginRuns;
+  hostFacts?: readonly PiWebHostFactName[];
 }
 
 export type PiWebPluginRuns = "daemon" | "web" | "both";
+
+export const PI_WEB_HOST_FACT_NAMES = ["dockerMode"] as const;
+export type PiWebHostFactName = typeof PI_WEB_HOST_FACT_NAMES[number];
 
 /**
  * Keep only the entries whose `runs` declaration addresses the given host
@@ -384,6 +394,7 @@ async function discoverPluginEntries(
       ...(serverModule === undefined ? {} : { serverModule }),
       machineSpecific: entry.machineSpecific,
       ...(entry.runs === undefined ? {} : { runs: entry.runs }),
+      ...(entry.hostFacts === undefined ? {} : { hostFacts: entry.hostFacts }),
     });
   }
   return plugins;
@@ -683,14 +694,26 @@ function parsePluginEntries(piWeb: Record<string, unknown>, packagePath: string)
     if (runs !== undefined && runs !== "daemon" && serverModule === undefined) {
       throw new Error(`PI WEB plugin ${id} declares runs "${runs}" without a serverModule in ${packagePath}`);
     }
+    const hostFacts = parseHostFacts(entry["hostFacts"], packagePath, id);
     return {
       id,
+      ...(hostFacts === undefined ? {} : { hostFacts }),
       ...(browserRoot === undefined ? {} : { browserRoot }),
       ...(module === undefined ? {} : { module }),
       ...(serverModule === undefined ? {} : { serverModule }),
       machineSpecific,
       ...(runs === undefined ? {} : { runs }),
     };
+  });
+}
+
+function parseHostFacts(value: unknown, packagePath: string, pluginId: string): readonly PiWebHostFactName[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error(`PI WEB plugin hostFacts must be an array for ${pluginId} in ${packagePath}`);
+  return value.map((entry): PiWebHostFactName => {
+    const known = PI_WEB_HOST_FACT_NAMES.find((name) => name === entry);
+    if (known === undefined) throw new Error(`Unknown PI WEB host fact for ${pluginId} in ${packagePath}: ${formatUnknownValue(entry)}`);
+    return known;
   });
 }
 

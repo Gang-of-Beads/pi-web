@@ -43,7 +43,7 @@ const opened = await page.evaluate(`(async function(){
   await new Promise((resolve) => setTimeout(resolve, 2000));
   const session = (Reflect.get(app, "state").sessions ?? [])[0];
   if (session === undefined) throw new Error("seed session missing");
-  await app.selectNavigationItem("sessions", "chat", () => Reflect.get(app, "sessions").selectSession(session));
+  await Reflect.get(app, "openSessionFromQuickSwitcher").call(app, session);
   await new Promise((resolve) => setTimeout(resolve, 2500));
   return { view: app.displayMainView(), session: Reflect.get(app, "state").selectedSession?.id };
 })()`);
