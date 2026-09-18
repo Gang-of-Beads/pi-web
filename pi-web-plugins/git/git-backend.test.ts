@@ -115,7 +115,11 @@ function createSpacedPathFixture(): { dir: string } {
   return { dir: sup };
 }
 
-describe("Git history backend", () => {
+/* Real git processes: on the Windows runner an init-and-commit fixture takes
+   several seconds, where the default 5s budget expired mid-test. */
+const GIT_FIXTURE_TIMEOUT_MS = 120_000;
+
+describe("Git history backend", { timeout: GIT_FIXTURE_TIMEOUT_MS }, () => {
   it("pages a frozen current-HEAD timeline with NUL-safe commit fields", async () => {
     const base = mkdtempSync(join(tmpdir(), "pi-web-history-"));
     created.push(base);
@@ -215,7 +219,7 @@ describe("Git history backend", () => {
   });
 });
 
-describe("Git changes backend", () => {
+describe("Git changes backend", { timeout: GIT_FIXTURE_TIMEOUT_MS }, () => {
   it("preserves staged, unstaged, and untracked file behavior", async () => {
     const { dir } = createFixture();
     writeFileSync(join(dir, "root.txt"), "root\nstaged\n");
@@ -248,7 +252,7 @@ describe("Git changes backend", () => {
   });
 });
 
-describe("Git worktree add backend", () => {
+describe("Git worktree add backend", { timeout: GIT_FIXTURE_TIMEOUT_MS }, () => {
   function worktreeAdd(cwd: string, input: JsonValue) {
     return requestGitBackend(backendContext, {
       operation: GIT_WORKTREE_ADD_OPERATION,
@@ -306,7 +310,7 @@ describe("Git command failures", () => {
   });
 });
 
-describe("gitStatus with submodules", () => {
+describe("gitStatus with submodules", { timeout: GIT_FIXTURE_TIMEOUT_MS }, () => {
   it("surfaces a moved commit pointer with short SHAs and no inner files", async () => {
     const { dir, c1, c2 } = createFixture();
     git(join(dir, "HARL"), ["checkout", c1]); // move the pointer, leave the tree clean
@@ -434,7 +438,7 @@ describe("gitStatus with submodules", () => {
   });
 });
 
-describe("submodule paths containing spaces", () => {
+describe("submodule paths containing spaces", { timeout: GIT_FIXTURE_TIMEOUT_MS }, () => {
   it("expands status and routes diffs into the space-named submodule", async () => {
     const { dir } = createSpacedPathFixture();
     writeFileSync(join(dir, "my sub", "a.txt"), "v1\nchanged\n");
@@ -450,7 +454,7 @@ describe("submodule paths containing spaces", () => {
   });
 });
 
-describe("gitDiff routing into submodules", () => {
+describe("gitDiff routing into submodules", { timeout: GIT_FIXTURE_TIMEOUT_MS }, () => {
   it("returns real content for a tracked file inside the submodule", async () => {
     const { dir } = createFixture();
     writeFileSync(join(dir, "HARL", "a.txt"), "v2\nchanged\n");
