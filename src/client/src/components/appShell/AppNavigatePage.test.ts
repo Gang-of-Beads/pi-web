@@ -91,6 +91,23 @@ describe("app-navigate-page", () => {
     expect(texts(page, ".row.session")).toEqual(["fix login"]);
   });
 
+  it("hides the folder level when the project has only its own checkout", async () => {
+    const page = await mount({}, input({ scope: { machineId: "local", projectId: "p1", folderPath: undefined, sessionId: undefined } }));
+    expect(texts(page, ".kind")).toEqual(["Sessions", "Projects"]);
+  });
+
+  it("offers the folder level once a project has worktrees", async () => {
+    const withWorktree = input({
+      scope: { machineId: "local", projectId: "p1", folderPath: undefined, sessionId: undefined },
+      folders: [
+        { id: "w1", label: "main", path: "/repos/pi-web", projectId: "p1" },
+        { id: "w2", label: "probe", path: "/repos/pi-web-probe", projectId: "p1" },
+      ],
+    });
+    const page = await mount({}, withWorktree);
+    expect(texts(page, ".kind")).toEqual(["Sessions", "Projects", "Folders"]);
+  });
+
   it("marks the open session in the list", async () => {
     const page = await mount({}, input({ scope: { machineId: "local", projectId: undefined, folderPath: undefined, sessionId: "a" } }));
     const current = page.renderRoot.querySelector(".row.session.current");

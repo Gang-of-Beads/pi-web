@@ -69,6 +69,7 @@ const overlay = await page.evaluate(`(function(){
     sections: [...(root?.querySelectorAll(".section-title") ?? [])].map((node) => node.textContent.trim()),
     rows: [...(root?.querySelectorAll(".row.session .row-title") ?? [])].map((node) => node.textContent.trim()),
     sheets: app.shadowRoot.querySelector("context-switcher-sheet") !== null,
+    folderCount: (Reflect.get(app, "state").workspaces ?? []).filter((workspace) => workspace.projectId === Reflect.get(app, "state").selectedProject?.id).length,
   };
 })()`);
 
@@ -76,7 +77,8 @@ if (!overlay.open) fail("the menu key did not open the navigation page over the 
 if (!overlay.closable) fail("the navigation page over a session offers no way back to it");
 if (overlay.sheets) fail("the retired projects sheet opened as well");
 if (overlay.path.length === 0) fail("the navigation page shows no context path");
-if (!overlay.kinds.includes("Folders")) fail(`standing in a folder the page cannot list its siblings: ${JSON.stringify(overlay.kinds)}`);
+if (overlay.folderCount > 1 && !overlay.kinds.includes("Folders")) fail(`a project with worktrees cannot list its folders: ${JSON.stringify(overlay.kinds)}`);
+if (overlay.folderCount <= 1 && overlay.kinds.includes("Folders")) fail("a project with only its own checkout still offers a folder level");
 if (overlay.rows.length === 0) fail("the navigation page lists no sessions in scope");
 if (overlay.rows.some((title) => /^[0-9a-f]{8}-/u.test(title))) fail(`sessions are listed by id rather than name: ${JSON.stringify(overlay.rows)}`);
 

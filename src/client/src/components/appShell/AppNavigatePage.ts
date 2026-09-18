@@ -76,7 +76,7 @@ export class AppNavigatePage extends LitElement {
           ${this.renderKindTab("sessions", "Sessions", renderChatIcon())}
           ${segments.some((segment) => segment.level === "machine") ? this.renderKindTab("machine", "Machines", renderMachineIcon()) : nothing}
           ${this.renderKindTab("project", "Projects", renderProjectIcon())}
-          ${input.scope.projectId === undefined ? nothing : this.renderKindTab("folder", "Folders", renderFolderIcon())}
+          ${foldersWorthChoosing(input) ? this.renderKindTab("folder", "Folders", renderFolderIcon()) : nothing}
         </nav>
         ${showsSessions ? html`
           <div class="search-row">
@@ -200,6 +200,16 @@ export class AppNavigatePage extends LitElement {
     .pin { margin-right: var(--pi-space-2); color: var(--pi-accent); }
     .empty { margin: var(--pi-space-5) 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   `];
+}
+
+/**
+ * A project whose only folder is its own checkout says the same word twice -
+ * the level costs a tap and teaches nothing. The folder level appears when
+ * there is a choice to make, which is when worktrees exist.
+ */
+function foldersWorthChoosing(input: Omit<NavigateInput, "query">): boolean {
+  if (input.scope.projectId === undefined) return false;
+  return input.folders.filter((folder) => folder.projectId === input.scope.projectId).length > 1;
 }
 
 declare global {
