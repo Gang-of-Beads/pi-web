@@ -2,12 +2,17 @@ import { describe, expect, it } from "vitest";
 import { toolExecutionDisplayStatus, ToolExecutionStatus } from "./shared";
 
 describe("toolExecutionDisplayStatus", () => {
-  it("keeps a pending call pending while the turn streams", () => {
-    expect(toolExecutionDisplayStatus(ToolExecutionStatus.Pending, true)).toBe(ToolExecutionStatus.Pending);
+  it("shows a pending call as running while the turn streams", () => {
+    expect(toolExecutionDisplayStatus(ToolExecutionStatus.Pending, true)).toBe(ToolExecutionStatus.Running);
   });
 
   it("calls a pending call interrupted once nothing is streaming", () => {
     expect(toolExecutionDisplayStatus(ToolExecutionStatus.Pending, false)).toBe("interrupted");
+  });
+
+  it("never displays a status the reader reads as not started", () => {
+    const displayed = [true, false].flatMap((streaming) => Object.values(ToolExecutionStatus).map((status) => toolExecutionDisplayStatus(status, streaming)));
+    expect(displayed).not.toContain("pending");
   });
 
   it("leaves a successful call alone whether or not the turn streams", () => {

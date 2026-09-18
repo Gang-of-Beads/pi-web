@@ -237,7 +237,6 @@ function isRemovedDiffLine(line: string): boolean {
  * whichever font resolved them, sitting beside 14px icons in the same card.
  */
 const STATUS_ICON: Record<ToolExecutionDisplayStatus, () => TemplateResult> = {
-  pending: renderPendingRingIcon,
   running: renderFilledDotIcon,
   success: renderCheckIcon,
   error: renderCrossIcon,
@@ -245,7 +244,6 @@ const STATUS_ICON: Record<ToolExecutionDisplayStatus, () => TemplateResult> = {
 };
 
 const STATUS_LABEL: Record<ToolExecutionDisplayStatus, string> = {
-  pending: "pending",
   running: "running",
   success: "done",
   error: "failed",

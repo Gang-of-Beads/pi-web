@@ -49,16 +49,17 @@ export const ToolExecutionStatus = {
 } as const;
 export type ToolExecutionStatus = (typeof ToolExecutionStatus)[keyof typeof ToolExecutionStatus];
 
-/** What the card displays: the data status plus the derived interrupted state. */
-export type ToolExecutionDisplayStatus = ToolExecutionStatus | "interrupted";
-
 /**
- * A pending call is work in flight only while the turn is actually streaming.
- * A daemon restart can cut a turn mid-tool; the orphaned call then displays as
- * interrupted instead of pending, and the status chip honestly says idle.
+ * What the card displays. There is no displayed "pending": a call the agent
+ * has issued while the turn streams is running - the owner read "pending" as
+ * waiting for something that never started, when the command was executing.
+ * The same call with no turn behind it is interrupted, not pending.
  */
+export type ToolExecutionDisplayStatus = Exclude<ToolExecutionStatus, "pending"> | "interrupted";
+
 export function toolExecutionDisplayStatus(status: ToolExecutionStatus, streaming: boolean): ToolExecutionDisplayStatus {
-  return status === ToolExecutionStatus.Pending && !streaming ? "interrupted" : status;
+  if (status !== ToolExecutionStatus.Pending) return status;
+  return streaming ? "running" : "interrupted";
 }
 
 export interface ToolExecutionPart {
