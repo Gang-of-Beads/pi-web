@@ -15,7 +15,7 @@ const session = (id: string, cwd: string, name?: string): SessionInfo => ({
 });
 
 const base: NavigateInput = {
-  scope: { machineId: "local", projectId: undefined, folderPath: undefined },
+  scope: { machineId: "local", projectId: undefined, folderPath: undefined, sessionId: undefined },
   machines: [{ id: "local", name: "Local" }, { id: "pi", name: "pi" }],
   projects: [{ id: "p1", name: "pi-web", path: "/repos/pi-web" }, { id: "p2", name: "trade", path: "/repos/trade" }],
   folders: [
@@ -43,14 +43,14 @@ describe("navigateModel", () => {
   });
 
   it("offers a chosen project's folders and only its sessions", () => {
-    const model = navigateModel({ ...base, scope: { machineId: "local", projectId: "p1", folderPath: undefined } });
+    const model = navigateModel({ ...base, scope: { machineId: "local", projectId: "p1", folderPath: undefined, sessionId: undefined } });
     expect(model.nextLevel).toBe("folder");
     expect(model.sections.find((section) => section.id === "recent")?.rows.map((row) => row.session.id)).toEqual(["a", "b"]);
     expect(model.sections.find((section) => section.id === "choices")?.choices.map((choice) => choice.label)).toEqual(["main", "probe"]);
   });
 
   it("ends the path at a folder and lists that folder's sessions", () => {
-    const model = navigateModel({ ...base, scope: { machineId: "local", projectId: "p1", folderPath: "/repos/pi-web-probe" } });
+    const model = navigateModel({ ...base, scope: { machineId: "local", projectId: "p1", folderPath: "/repos/pi-web-probe", sessionId: undefined } });
     expect(model.nextLevel).toBe("folder");
     expect(model.sections.map((section) => section.id)).toEqual(["recent", "choices"]);
     expect(model.sections[0]?.rows.map((row) => row.session.id)).toEqual(["b"]);
@@ -58,7 +58,7 @@ describe("navigateModel", () => {
   });
 
   it("keeps every session listed while a chosen project's folders are unknown", () => {
-    const model = navigateModel({ ...base, folders: [], scope: { machineId: "local", projectId: "p1", folderPath: undefined } });
+    const model = navigateModel({ ...base, folders: [], scope: { machineId: "local", projectId: "p1", folderPath: undefined, sessionId: undefined } });
     expect(model.sections.find((section) => section.id === "recent")?.rows).toHaveLength(3);
   });
 
@@ -67,6 +67,18 @@ describe("navigateModel", () => {
     expect(sectionIds({ ...base, waitingSessionIds: new Set(["a"]), activeSessionIds: new Set(["a", "b"]) })).toEqual(["waiting", "running", "recent", "choices"]);
     expect(model.sections[0]?.rows.map((row) => row.session.id)).toEqual(["a"]);
     expect(model.sections[1]?.rows.map((row) => row.session.id)).toEqual(["b"]);
+  });
+
+  it("marks the session the reader already has open", () => {
+    const model = navigateModel({ ...base, scope: { ...base.scope, sessionId: "b" } });
+    const rows = model.sections.flatMap((section) => section.rows);
+    expect(rows.filter((row) => row.current).map((row) => row.session.id)).toEqual(["b"]);
+  });
+
+  it("does not mark another machine's session with the same id", () => {
+    const model = navigateModel({ ...base, scope: { ...base.scope, sessionId: "z" }, pinned: [{ session: session("z", "/elsewhere"), machineId: "pi" }] });
+    const rows = model.sections.flatMap((section) => section.rows);
+    expect(rows.filter((row) => row.current)).toEqual([]);
   });
 
   it("lists pinned sessions from other machines above the local ones", () => {

@@ -80,6 +80,14 @@ if (!overlay.kinds.includes("Folders")) fail(`standing in a folder the page cann
 if (overlay.rows.length === 0) fail("the navigation page lists no sessions in scope");
 if (overlay.rows.some((title) => /^[0-9a-f]{8}-/u.test(title))) fail(`sessions are listed by id rather than name: ${JSON.stringify(overlay.rows)}`);
 
+const marked = await page.evaluate(`(function(){
+  const app = document.querySelector("pi-web-app");
+  const root = app.shadowRoot.querySelector(".navigate-overlay app-navigate-page").shadowRoot;
+  const current = [...root.querySelectorAll(".row.session[aria-current='true']")].map((node) => node.textContent.trim());
+  return { current, open: Reflect.get(app, "state").selectedSession?.name };
+})()`);
+if (marked.current.length !== 1) fail(`the open session is not marked exactly once: ${JSON.stringify(marked)}`);
+
 const tagged = await page.evaluate(`(async function(){
   const app = document.querySelector("pi-web-app");
   const root = app.shadowRoot.querySelector(".navigate-overlay app-navigate-page").shadowRoot;

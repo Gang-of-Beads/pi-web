@@ -19,6 +19,8 @@ export type NavigateLevel = "machine" | "project" | "folder";
 
 export interface NavigateScope {
   machineId: string;
+  /** The session being read, so the list can mark where the reader already is. */
+  sessionId: string | undefined;
   projectId: string | undefined;
   folderPath: string | undefined;
 }
@@ -37,6 +39,8 @@ export interface NavigateSessionRow {
   session: SessionInfo;
   machineId: string;
   pinned: boolean;
+  /** Whether this row is the session currently open. */
+  current: boolean;
   /** Derived tags: project, folder, machine, state. Searchable with `#`, not shown. */
   tags: string[];
   /** One quiet line under the name: what it is doing, how big, where it runs. */
@@ -128,6 +132,7 @@ function row(session: SessionInfo, machineId: string, input: NavigateInput): Nav
     session,
     machineId,
     pinned: input.pinnedSessionIds.has(session.id),
+    current: machineId === input.scope.machineId && session.id === input.scope.sessionId,
     tags: [...new Set([...derivedTags(session, input, machineId), ...manual.map((tag) => tag.toLowerCase())])],
     detail: sessionDetail(session, machineId, input),
   };

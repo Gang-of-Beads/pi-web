@@ -2516,7 +2516,7 @@ export class PiWebApp extends LitElement {
     const sessions = state.sessions;
     const pinnedIds = this.pinnedSessionIds;
     return {
-      scope: { machineId, projectId: state.selectedProject?.id, folderPath: state.selectedWorkspace?.path },
+      scope: { machineId, projectId: state.selectedProject?.id, folderPath: state.selectedWorkspace?.path, sessionId: state.selectedSession?.id },
       machines: state.machines.map((machine) => ({ id: machine.id, name: machine.name })),
       projects: state.projects.map((project) => ({ id: project.id, name: project.name, path: project.path })),
       folders: state.workspaces.map((workspace) => ({ id: workspace.id, label: workspace.label, path: workspace.path, projectId: workspace.projectId })),

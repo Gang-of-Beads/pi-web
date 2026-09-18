@@ -154,7 +154,7 @@ export class AppNavigatePage extends LitElement {
    *  state proved to be noise on a list whose job is to be scanned. */
   private renderSession(row: NavigateSessionRow) {
     return html`
-      <button type="button" class="row session" @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
+      <button type="button" class=${row.current ? "row session current" : "row session"} aria-current=${row.current ? "true" : "false"} @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
         <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" aria-label="Pinned">•</span>` : nothing}${sessionLabel(row.session)}</span>
 
       </button>
