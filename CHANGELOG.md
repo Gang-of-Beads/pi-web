@@ -1,5 +1,72 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.4
+
+### Patch Changes
+
+- f623b19: The attach clip stays inside a one-line composer.
+
+  On a short viewport the box is 40px while the control plus its gaps needs 44,
+  so the clip spilled over the border - the overflow reported twice. It shrinks
+  with the box instead of overflowing it.
+
+- a8dfe3f: A dialog no longer wears a gold frame.
+
+  The modal shell takes focus when the host names no first control, and the
+  browser painted a focus ring around the whole surface - a full-screen accent
+  border that marks nothing anyone can act on. The ring belongs on the controls
+  inside, which still carry it.
+
+- f623b19: Navigation opens on everything, and the path is the only scope control.
+
+  The page landed on whatever folder you were standing in and grew a widen
+  button beside the list. Opening now lists every session on the machine -
+  the view people actually want - and stepping into a project narrows it;
+  tapping a level of the path steps back up. No second control, no scope
+  sentence: machine, project, session, in that order.
+
+- 4018791: A list row is one box with two things in it.
+
+  The row menu floated outside the bordered row, which read as a stray glyph
+  beside the list. The box now holds the name and the menu side by side, divided
+  by a hairline, on the row height scale. The quick-access list is reachable
+  again from the phone bar: it was hidden whenever a session was open, so the
+  page that pins any session on any machine could not be opened at all.
+
+- 228f9a2: The session list says how far it reaches.
+
+  Nothing on the page distinguished "this project's sessions" from "every
+  session on this machine", so the reader had to guess which list they were
+  looking at. A line above the list names the reach and, while it is narrowed to
+  a project, offers the one tap that widens it - and widening now actually
+  lists the machine's sessions instead of leaving an empty list under the wider
+  claim.
+
+- f623b19: Settings is reachable from navigation again.
+
+  Its only entry lived on the navigation panel that the Navigate page replaced,
+  leaving the quick-access list as the single way in - and that list was hidden
+  on a phone with a session open. Navigation carries a Settings row.
+
+- a00a383: Settings is a square key in the navigation bar.
+
+  It arrived as a full-width row pinned to the bottom of the page, which reads
+  as a list item rather than a control. It is a bordered square on the control
+  height scale, in the top-right of the navigation bar beside the close key.
+
+- b30b793: Settings can be searched.
+
+  The section list grows with every plugin that adds one, so it now has a search
+  field above it. The match forgives dropped letters ("sesdaemon" finds Session
+  daemon) and falls back to the section description, ranking name matches first.
+  A query that matches nothing says so rather than showing an empty list.
+
+- f623b19: Pinch to size the terminal.
+
+  Two fingers change the terminal font size between 8 and 28px and the pty is
+  refitted, so a phone can read output without zooming the page (which scrolled
+  the app instead of the terminal).
+
 ## 2.202609.3
 
 ### Patch Changes
