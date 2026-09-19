@@ -332,7 +332,7 @@ export class AppNavigatePage extends LitElement {
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, css`
     .row .row-title { flex: 1 1 auto; min-width: 0; }
     .row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .row.session { display: grid; align-content: center; gap: 2px; }
+    .row.session { display: grid; align-content: center; gap: var(--pi-space-2); }
     .row .row-title { display: flex; align-items: center; gap: var(--pi-space-2); }
     .state { margin-left: auto; }
     .state { flex: 0 0 auto; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; }
@@ -342,10 +342,12 @@ export class AppNavigatePage extends LitElement {
     /* One box, two things: the name on the left and the menu on the right
        live inside the same bordered row. The menu used to float outside the
        box, which read as a stray glyph beside the list. */
-    .row-wrap { position: relative; box-sizing: border-box; display: flex; align-items: stretch; min-height: var(--pi-row-min-height, 48px); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); overflow: hidden; }
+    /* A board of places, not a dense list: the tile is tall enough to read
+       two lines without crowding and to be hit with a thumb anywhere on it. */
+    .row-wrap { position: relative; box-sizing: border-box; display: flex; align-items: stretch; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); overflow: hidden; }
     .row-wrap:has(.row.current) { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row-wrap .row { flex: 1 1 auto; min-width: 0; border: 0; border-radius: 0; background: transparent; }
-    .row-wrap .action-menu-toggle { flex: 0 0 auto; border: 0; border-left: 1px solid var(--pi-border-muted); border-radius: 0; background: transparent; }
+    .row-wrap .action-menu-toggle { flex: 0 0 auto; min-width: var(--pi-control-height-touch); border: 0; border-left: 1px solid var(--pi-border-muted); border-radius: 0; background: transparent; }
 
     :host { display: block; min-height: 0; height: 100%; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); user-select: none; -webkit-user-select: none; }
     .navigate { display: flex; flex-direction: column; min-height: 0; height: 100%; }
@@ -390,7 +392,7 @@ export class AppNavigatePage extends LitElement {
     .section-title, .empty { grid-column: 1 / -1; }
     .row-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .section-title { margin: var(--pi-space-4) 0 var(--pi-space-1); color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
-    .row { box-sizing: border-box; display: grid; gap: 2px; width: 100%; min-height: var(--pi-row-min-height, 48px); padding: var(--pi-space-2) var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
+    .row { box-sizing: border-box; display: grid; gap: var(--pi-space-2); width: 100%; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
     .row.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row-detail { min-width: 0; display: flex; gap: var(--pi-space-3); overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-2xs); white-space: nowrap; }

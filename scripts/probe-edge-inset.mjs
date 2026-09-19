@@ -69,10 +69,11 @@ const measured = await page.evaluate(() => {
         if (page === null || page === undefined) return [];
         const lastOf = (selector) => { const all = [...page.querySelectorAll(selector)]; return all[all.length - 1] ?? null; };
         return [
-          box(page.querySelector(".path-step"), "navigate path step"),
+          box(page.querySelector(".quick-access"), "navigate first control"),
           box(page.querySelector(".kind"), "navigate first kind tab"),
           box(lastOf(".kind"), "navigate last kind tab"),
-          box(page.querySelector(".row-wrap"), "navigate row"),
+          box(page.querySelector(".row-wrap"), "navigate first tile"),
+          box(lastOf(".row-wrap"), "navigate last tile"),
         ];
       })(),
     ].filter((entry) => entry !== undefined),
@@ -87,8 +88,10 @@ console.log(JSON.stringify(measured, null, 2));
 
 const reference = measured.entries.find((entry) => entry.name === "composer box");
 if (reference === undefined) fail("the composer box was not measured, so this probe proves nothing");
-const LEFT_ANCHORED = new Set(["bar first control", "composer row first control", "composer box", "status bar", "first message card", "activity dock", "navigate path step", "navigate first kind tab", "navigate row"]);
-const RIGHT_ANCHORED = new Set(["bar last control", "composer row last control", "composer box", "status bar", "first message card", "navigate last kind tab", "navigate row"]);
+// The navigate list is a two-column board, so only the first tile answers for
+// the left column and only a tile in the right column answers for the right.
+const LEFT_ANCHORED = new Set(["bar first control", "composer row first control", "composer box", "status bar", "first message card", "activity dock", "navigate first control", "navigate first kind tab", "navigate first tile"]);
+const RIGHT_ANCHORED = new Set(["bar last control", "composer row last control", "composer box", "status bar", "first message card", "navigate last kind tab"]);
 const off = measured.entries.filter((entry) =>
   (LEFT_ANCHORED.has(entry.name) && entry.left !== reference.left)
   || (RIGHT_ANCHORED.has(entry.name) && entry.right !== reference.right));
