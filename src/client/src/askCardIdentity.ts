@@ -30,3 +30,35 @@ export function askCardFingerprint(ask: AskLike | undefined): string {
 export function askCardNeedsRender(previous: AskLike | undefined, next: AskLike | undefined): boolean {
   return askCardFingerprint(previous) !== askCardFingerprint(next);
 }
+
+interface DialogLike {
+  dialogId?: string;
+  kind?: string;
+  title?: string;
+  message?: string;
+  placeholder?: string;
+  options?: readonly string[];
+  expiresAt?: string;
+}
+
+/**
+ * The same reasoning for the extension dialog card, which sits in the same
+ * waiting slot and arrives on the same status frames. Fixing only the ask card
+ * would have left its sibling shaking.
+ */
+export function dialogCardFingerprint(dialog: DialogLike | undefined): string {
+  if (dialog === undefined) return "";
+  return [
+    dialog.dialogId ?? "",
+    dialog.kind ?? "",
+    dialog.title ?? "",
+    dialog.message ?? "",
+    dialog.placeholder ?? "",
+    dialog.expiresAt ?? "",
+    (dialog.options ?? []).join("\u0001"),
+  ].join("\n");
+}
+
+export function dialogCardNeedsRender(previous: DialogLike | undefined, next: DialogLike | undefined): boolean {
+  return dialogCardFingerprint(previous) !== dialogCardFingerprint(next);
+}

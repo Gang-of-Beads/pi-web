@@ -1,5 +1,6 @@
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { dialogCardNeedsRender } from "../askCardIdentity";
 import { ifDefined } from "lit/directives/if-defined.js";
 import {
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
@@ -126,6 +127,16 @@ export function extensionDialogCountdownText(timeoutAt: string | undefined, nowM
 @customElement("extension-dialog-card")
 export class ExtensionDialogCard extends LitElement {
   @property({ attribute: false }) dialog?: PendingExtensionDialog;
+
+  /**
+   * A streaming turn re-delivers the same pending dialog as a fresh object on
+   * every status frame; rebuilding the form under the reader is the shake the
+   * ask card was fixed for, and this card sits in the same slot.
+   */
+  protected override shouldUpdate(changed: PropertyValues<this>): boolean {
+    if (changed.size !== 1 || !changed.has("dialog")) return true;
+    return dialogCardNeedsRender(changed.get("dialog"), this.dialog);
+  }
   @property({ attribute: false }) outcome?: ClosedExtensionDialog;
   @property({ attribute: false }) onAnswer?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancel?: ExtensionDialogCancelCallback;

@@ -13,7 +13,7 @@ import { ChatDisclosureController } from "../chatDisclosure";
 import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type ChatGroup } from "../chatGroups";
 import { writeClipboardText } from "../clipboard";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
-import { shouldRequestEarlierMessages } from "../chatHistoryLoading";
+import { shouldRequestNewerMessages, shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
@@ -346,10 +346,6 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .group-msg.system { color: var(--pi-muted); }
   .group-msg.bash { color: var(--pi-success); }
   .history-boundary { position: relative; z-index: 5; display: grid; gap: var(--pi-space-2); justify-items: center; margin: 0 auto var(--pi-space-7); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
-  .history-load-button { box-sizing: border-box; min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; cursor: pointer; }
-  .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
-  @media (hover: hover) { .history-load-button:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
-  .history-load-button:disabled { cursor: default; opacity: var(--pi-disabled-opacity); }
   /* Queued messages are drawn in the transcript, gold; this slim strip carries
      only the count and the clear action the queue as a whole needs. */
   /* One line with one action: the owner read the bordered block as a card in
@@ -367,7 +363,6 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
        floor through reach, as the message actions do. */
     .queued-clear-button { position: relative; min-height: var(--pi-control-height-comfort); }
     .queued-clear-button::after { content: ""; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch, 44px)) / 2) 0; }
-    .history-load-button { min-height: var(--pi-control-height-touch); }
   }
   .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
   @media (hover: hover) { .queued-clear-button:hover { border-color: var(--pi-warning); color: var(--pi-text-bright); } }
@@ -686,6 +681,8 @@ export class ChatView extends LitElement {
   @property({ type: Boolean }) hasMore = false;
   /** True when the in-memory span is trimmed at the bottom: the tail lives beyond it. */
   @property({ type: Boolean }) hasNewer = false;
+  /** One newer fetch in flight; cleared when the loaded range moves. */
+  @state() private newerRequested = false;
   @property({ type: Number }) newerCount = 0;
   @property({ type: Boolean }) loadingMore = false;
   /** True while this session's transcript is being read for the first time. */
@@ -1047,6 +1044,10 @@ if (this.heldWaitingClearTimer !== undefined) {
     if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestLoadMoreIfNeeded();
+    if (changed.has("messages") || changed.has("messageEnd") || changed.has("hasNewer")) {
+      this.newerRequested = false;
+      this.requestNewerIfNeeded();
+    }
     this.drawerTabEdgeTracker.observe(this.drawerTabs ?? undefined);
     this.publishScrollbarWidth();
     this.observeDock();
@@ -1837,11 +1838,17 @@ if (this.heldWaitingClearTimer !== undefined) {
     return clampPercent((index / (total - 1)) * 100);
   }
 
+  /**
+   * The transcript loads itself at both ends. It used to stop at a button the
+   * reader had to find and press; the reader asked for scrolling to be the
+   * only gesture, so the boundary states what it is doing and the fetch starts
+   * a screen and a half early.
+   */
   private renderNewerBoundary() {
     if (!this.hasNewer || this.newerCount <= 0) return undefined;
     return html`
       <div class="history-boundary">
-        <button type="button" class="history-load-button" @click=${() => { this.onLoadNewer?.(); }}>Load ${String(this.newerCount)} newer message${this.newerCount === 1 ? "" : "s"}</button>
+        <span role="status">Loading ${String(this.newerCount)} newer message${this.newerCount === 1 ? "" : "s"}…</span>
       </div>
     `;
   }
@@ -1851,8 +1858,7 @@ if (this.heldWaitingClearTimer !== undefined) {
     if (this.loadingMore) return html`<div class="history-boundary"><span>Loading earlier messages…</span>${range}</div>`;
     if (this.hasMore) return html`
       <div class="history-boundary">
-        <button type="button" class="history-load-button" ?disabled=${this.loadMoreRequested} @click=${() => { this.requestLoadMore(); }}>Load earlier messages</button>
-        <span>Scroll up to load earlier messages</span>
+        <span role="status">Loading earlier messages…</span>
         ${range}
       </div>
     `;
@@ -2219,6 +2225,7 @@ if (this.heldWaitingClearTimer !== undefined) {
     this.scrollThumb.noteScroll();
     if (this.quoteChip !== undefined) { this.quoteChip = undefined; this.requestUpdate(); }
     this.requestLoadMoreIfNeeded();
+    this.requestNewerIfNeeded();
     this.updatePinnedToBottomFromScroll();
     this.scheduleConversationRailUpdate();
     if (!this.suppressScrollSave) this.scheduleScrollPositionSave();
@@ -2352,6 +2359,22 @@ if (this.heldWaitingClearTimer !== undefined) {
         clientHeight: chat.clientHeight,
       })) this.requestLoadMore();
     });
+  }
+
+  /** The forward end of the same rule; see `renderNewerBoundary`. */
+  private requestNewerIfNeeded(): void {
+    const chat = this.chat;
+    if (chat === undefined) return;
+    if (!shouldRequestNewerMessages({
+      hasNewer: this.hasNewer,
+      loadingNewer: this.newerRequested,
+      canRequest: this.onLoadNewer !== undefined,
+      scrollTop: chat.scrollTop,
+      scrollHeight: chat.scrollHeight,
+      clientHeight: chat.clientHeight,
+    })) return;
+    this.newerRequested = true;
+    this.onLoadNewer?.();
   }
 
   private requestLoadMore(): void {

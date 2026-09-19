@@ -2449,6 +2449,9 @@ export class PiWebApp extends LitElement {
       .onOpenSession=${(session: SessionInfo) => { this.closeNavigate(); void this.openSessionFromQuickSwitcher(session); }}
       .onCreateSession=${() => { this.closeNavigate(); void this.startSessionAndOpenChat(); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { this.closeNavigate(); this.openProjectDialog(); } : undefined}
+      .loadingSessions=${this.state.sessionsLoad === "loading" || this.state.isLoadingWorkspaces}
+      .loadingChoices=${this.state.projectsLoad === "loading" || this.state.isLoadingWorkspaces}
+      .loadError=${this.state.projectsLoad === "failed" ? "Couldn't read the projects on this machine." : undefined}
       .canRenameSession=${true}
       .canCloseProject=${true}
       .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => { void this.runNavigateRowAction(kind, id, action); }}

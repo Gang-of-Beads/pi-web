@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { askCardNeedsRender } from "./askCardIdentity";
+import { askCardNeedsRender, dialogCardNeedsRender } from "./askCardIdentity";
 
 const ask = (id: string, questions: { id: string; question: string; options?: unknown[] }[]) => ({ id, questions });
 
@@ -22,5 +22,24 @@ describe("askCardNeedsRender", () => {
   it("re-renders when the card appears or goes away", () => {
     expect(askCardNeedsRender(undefined, ask("a1", []))).toBe(true);
     expect(askCardNeedsRender(ask("a1", []), undefined)).toBe(true);
+  });
+});
+
+describe("dialogCardNeedsRender", () => {
+  const dialog = (over: Record<string, unknown> = {}) => ({ dialogId: "d1", kind: "confirm", title: "Update now?", options: ["Yes", "No"], ...over });
+
+  it("does not re-render for the same dialog arriving again", () => {
+    expect(dialogCardNeedsRender(dialog(), dialog())).toBe(false);
+  });
+
+  it("re-renders when the question, its choices or its deadline change", () => {
+    expect(dialogCardNeedsRender(dialog(), dialog({ title: "Update later?" }))).toBe(true);
+    expect(dialogCardNeedsRender(dialog(), dialog({ options: ["Yes"] }))).toBe(true);
+    expect(dialogCardNeedsRender(dialog(), dialog({ expiresAt: "2026-09-18T00:00:00.000Z" }))).toBe(true);
+  });
+
+  it("re-renders when the card appears or goes away", () => {
+    expect(dialogCardNeedsRender(undefined, dialog())).toBe(true);
+    expect(dialogCardNeedsRender(dialog(), undefined)).toBe(true);
   });
 });

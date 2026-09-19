@@ -6,6 +6,7 @@ import { switcherBreadcrumb } from "../../switcherBreadcrumb";
 import { createStableRowOrder } from "../../stableRowOrder";
 import { renderChatIcon, renderChevronRightIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
+import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
 import { actionMenuPanelStyle } from "../actionMenu";
 import { navigateRowActions, type NavigateRowActionId, type NavigateRowKind } from "../../navigateRowActions";
 import { sessionLabel } from "../../sessionLabels";
@@ -42,6 +43,10 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onRowAction?: (kind: NavigateRowKind, id: string, action: NavigateRowActionId) => void;
   @property({ attribute: false }) canRenameSession = false;
   @property({ attribute: false }) canCloseProject = false;
+  /** What the host is still reading, so the page says "loading" instead of "none". */
+  @property({ attribute: false }) loadingSessions = false;
+  @property({ attribute: false }) loadingChoices = false;
+  @property({ attribute: false }) loadError: string | undefined = undefined;
   /** Whether a session is open behind this page, which is what a close returns to. */
   @property({ type: Boolean }) closable = false;
   @state() private query = "";
@@ -128,11 +133,13 @@ export class AppNavigatePage extends LitElement {
                   <h3 class="section-title">${section.title}</h3>
                   ${section.rows.map((row) => this.renderSession(row))}
                 `)}
-                ${model.matchCount === 0 ? html`<p class="empty" role="status">${this.query.trim() === "" ? "No sessions here yet." : `No sessions match “${this.query.trim()}”.`}</p>` : nothing}
+                ${this.renderSessionsEmptyState(model.matchCount)}
               `
             : html`
                 ${choices.map((choice) => this.renderChoice(choice))}
-                ${choices.length === 0 ? html`<p class="empty" role="status">Nothing to choose at this level.</p>` : nothing}
+                ${choices.length > 0
+                  ? nothing
+                  : html`<p class="empty" role="status">${this.loadingChoices ? "Loading…" : this.loadError ?? "Nothing to choose at this level."}</p>`}
               `}
         </div>
       </section>
@@ -149,6 +156,23 @@ export class AppNavigatePage extends LitElement {
     return sections
       .filter((section) => section.rows.length > 0)
       .map((section) => ({ ...section, rows: [...section.rows].sort((left, right) => (placeOf.get(`${left.machineId}:${left.session.id}`) ?? 0) - (placeOf.get(`${right.machineId}:${right.session.id}`) ?? 0)) }));
+  }
+
+  /**
+   * Absence is not negation: while the host is still reading, an empty list
+   * means "not known yet". Saying "No sessions here yet." at that moment is
+   * how a tap that did work read as a tap that did nothing.
+   */
+  private renderSessionsEmptyState(matchCount: number) {
+    const meaning = switcherEmptyMeaning({
+      loadError: this.loadError,
+      loading: this.loadingSessions,
+      matchCount,
+      query: this.query,
+      scoped: this.input?.scope.projectId !== undefined,
+    });
+    if (meaning.kind === "none") return nothing;
+    return html`<p class="empty" role="status">${meaning.message}</p>`;
   }
 
   private renderKindTab(kind: NavigateKind, label: string, icon: unknown) {

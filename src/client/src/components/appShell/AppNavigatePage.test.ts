@@ -153,4 +153,23 @@ describe("app-navigate-page", () => {
     expect(picked).toHaveLength(1);
     expect(picked[0] ?? "").toMatch(/^project:.*:close-project$/u);
   });
+
+  it("says it is reading rather than claiming the scope is empty", async () => {
+    const page = await mount({ loadingSessions: true }, { ...input(), sessions: [] });
+    expect(page.renderRoot.textContent).toContain("Loading sessions…");
+    expect(page.renderRoot.textContent).not.toContain("No sessions");
+  });
+
+  it("names a failed read instead of an empty list", async () => {
+    const page = await mount({ loadError: "Couldn't read the sessions here." }, { ...input(), sessions: [] });
+    expect(page.renderRoot.textContent).toContain("Couldn't read the sessions here.");
+  });
+
+  it("says it is reading while the choices for a kind are unknown", async () => {
+    const page = await mount({ loadingChoices: true }, { ...input(), projects: [], machines: [] });
+    page.showKind("project");
+    await page.updateComplete;
+    expect(page.renderRoot.textContent).toContain("Loading…");
+    expect(page.renderRoot.textContent).not.toContain("Nothing to choose");
+  });
 });

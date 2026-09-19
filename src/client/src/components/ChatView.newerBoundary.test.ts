@@ -30,31 +30,37 @@ describe("ChatView newer-messages boundary", () => {
     expect(view.renderRoot.querySelector(".history-boundary:last-of-type")).toBeNull();
   });
 
-  it("renders a newer boundary with the parked count when the span is trimmed at the bottom", async () => {
+  it("says it is loading the parked count instead of offering a button", async () => {
     const view = await mount();
     view.messageEnd = 300;
     view.messageTotal = 700;
     view.hasNewer = true;
     view.newerCount = 400;
     await view.updateComplete;
-    const buttons = [...view.renderRoot.querySelectorAll(".history-load-button")];
-    const newer = buttons.find((button) => button.textContent.includes("newer"));
-    expect(newer).toBeDefined();
-    expect(newer?.textContent).toContain("400");
+    expect(view.renderRoot.querySelector(".history-load-button")).toBeNull();
+    const boundary = [...view.renderRoot.querySelectorAll(".history-boundary")]
+      .find((element) => element.textContent.includes("newer"));
+    expect(boundary?.textContent).toContain("400");
+    expect(boundary?.querySelector("[role='status']")).not.toBeNull();
   });
 
-  it("invokes onLoadNewer when the boundary is tapped", async () => {
+  it("asks the host for the newer span itself once the reader nears the end", async () => {
     const view = await mount();
-    let taps = 0;
+    let asks = 0;
+    view.onLoadNewer = () => { asks += 1; };
     view.messageEnd = 300;
     view.messageTotal = 700;
     view.hasNewer = true;
     view.newerCount = 400;
-    view.onLoadNewer = () => { taps += 1; };
     await view.updateComplete;
-    const buttons = [...view.renderRoot.querySelectorAll(".history-load-button")];
-    const newer = buttons.find((button) => button.textContent.includes("newer"));
-    newer?.dispatchEvent(new Event("click", { bubbles: true, composed: true }));
-    expect(taps).toBe(1);
+    const chat = view.renderRoot.querySelector(".chat");
+    if (chat === null) throw new Error("the transcript scroller is missing, so this test proves nothing");
+    Object.defineProperty(chat, "scrollHeight", { value: 4000, configurable: true });
+    Object.defineProperty(chat, "clientHeight", { value: 800, configurable: true });
+    chat.scrollTop = 3000;
+    chat.dispatchEvent(new Event("scroll"));
+    await view.updateComplete;
+    expect(asks).toBe(1);
   });
+
 });
