@@ -2411,7 +2411,8 @@ export class PiWebApp extends LitElement {
   }
 
   private openNavigate(): void {
-    if (this.state.selectedProject === undefined) void this.loadQuickSwitcherData();
+    void this.loadQuickSwitcherData();
+    void this.updateComplete.then(() => { this.navigatePage?.showEverything(); });
     dismissKeyboardIfRaised();
     this.navigateOpen = true;
     this.pushModalLayerFrame();
@@ -2431,7 +2432,7 @@ export class PiWebApp extends LitElement {
   private navigateInput(): Omit<NavigateInput, "query"> {
     const state = this.state;
     const machineId = selectedMachineId(state);
-    const sessions = state.selectedProject === undefined ? this.quickSwitcherSessions : state.sessions;
+    const sessions = state.sessions;
     const pinnedIds = this.pinnedSessionIds;
     return {
       scope: { machineId, projectId: state.selectedProject?.id, folderPath: state.selectedWorkspace?.path, sessionId: state.selectedSession?.id },
@@ -2456,9 +2457,9 @@ export class PiWebApp extends LitElement {
       .onOpenSession=${(session: SessionInfo) => { this.closeNavigate(); void this.openSessionFromQuickSwitcher(session); }}
       .onCreateSession=${() => { this.closeNavigate(); void this.startSessionAndOpenChat(); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { this.closeNavigate(); this.openProjectDialog(); } : undefined}
-      .loadingSessions=${this.state.selectedProject === undefined
-        ? this.quickSwitcherLoading
-        : this.state.sessionsLoad === "loading" || this.state.isLoadingWorkspaces}
+      .machineSessions=${this.quickSwitcherSessions}
+      .onOpenSettings=${() => { this.closeNavigate(); this.openSettings(); }}
+      .loadingSessions=${this.quickSwitcherLoading && this.quickSwitcherSessions.length === 0}
       .loadingChoices=${this.state.projectsLoad === "loading" || this.state.isLoadingWorkspaces}
       .loadError=${this.state.projectsLoad === "failed" ? "Couldn't read the projects on this machine." : undefined}
       .canRenameSession=${true}

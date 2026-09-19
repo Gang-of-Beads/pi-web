@@ -7,7 +7,6 @@ import { createStableRowOrder } from "../../stableRowOrder";
 import { renderChatIcon, renderChevronRightIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
-import { navigateScopeLine } from "../../navigateScopeLine";
 import { actionMenuPanelStyle } from "../actionMenu";
 import { navigateRowActions, type NavigateRowActionId, type NavigateRowKind } from "../../navigateRowActions";
 import { sessionLabel } from "../../sessionLabels";
@@ -40,6 +39,12 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onCreateSession?: () => void;
   @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onClose?: () => void;
+  /**
+   * Settings used to hang off the navigation panel; when that panel was
+   * deleted the only way in was a page a phone could not open. Navigation is
+   * where you go to reach a place, and settings is a place.
+   */
+  @property({ attribute: false }) onOpenSettings?: () => void;
   /** What the row menu does; the page names the action, the host performs it. */
   @property({ attribute: false }) onRowAction?: (kind: NavigateRowKind, id: string, action: NavigateRowActionId) => void;
   @property({ attribute: false }) canRenameSession = false;
@@ -59,8 +64,18 @@ export class AppNavigatePage extends LitElement {
     super.disconnectedCallback();
   }
 
+  /**
+   * Every session on the machine, for the default view. Narrowing to a
+   * project is a deliberate step down the path, not the starting point: the
+   * list people want on opening is "what am I running", not "what is in the
+   * folder I happen to be standing in".
+   */
+  @property({ attribute: false }) machineSessions: readonly SessionInfo[] = [];
+
   /** Which kind of thing the page is listing; one page shows one kind. */
   @state() private kind: NavigateKind = "sessions";
+  /** The project the reader stepped into on this page, if any. */
+  @state() private pathProjectId: string | undefined = undefined;
   @state() private openMenuRowId: string | undefined = undefined;
   @state() private menuStyle = "";
 
@@ -69,15 +84,23 @@ export class AppNavigatePage extends LitElement {
     this.kind = kind;
   }
 
+  /** Opening lands on the machine's whole list; see `listedInput`. */
+  showEverything(): void {
+    this.pathProjectId = undefined;
+    this.kind = "sessions";
+    this.query = "";
+  }
+
   override render() {
     const input = this.input;
     if (input === undefined) return html`<p class="empty" role="status">Reading this machine…</p>`;
-    const model = navigateModel({ ...input, query: this.query });
+    const listed = this.listedInput(input);
+    const model = navigateModel({ ...listed, query: this.query });
     const segments = switcherBreadcrumb({
-      machines: input.machines,
-      machineId: input.scope.machineId,
-      projects: input.projects,
-      projectId: input.scope.projectId,
+      machines: listed.machines,
+      machineId: listed.scope.machineId,
+      projects: listed.projects,
+      projectId: listed.scope.projectId,
       folders: input.folders,
       folderPath: undefined,
     }).filter((segment) => segment.level !== "folder");
@@ -93,7 +116,17 @@ export class AppNavigatePage extends LitElement {
                 type="button"
                 class=${segment.chosen ? "path-step chosen" : "path-step"}
                 title=${segment.label}
-                @click=${() => { if (segment.level === "folder") return; this.kind = segment.level; this.onWiden?.(segment.level); }}
+                @click=${() => {
+                  if (segment.level === "folder") return;
+                  // Tapping any level of the path steps up to it, and every
+                  // level above a project lists the machine again.
+                  this.pathProjectId = undefined;
+                  // The path says where; the list under it is always the
+                  // sessions there. Stepping up used to switch the page to
+                  // listing projects, which is a different question.
+                  this.kind = "sessions";
+                  this.onWiden?.(segment.level);
+                }}
               >${segment.label}</button>
             `)}
           </div>
@@ -127,7 +160,6 @@ export class AppNavigatePage extends LitElement {
               ? html`<button type="button" class="create" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>`
               : nothing}
         </div>
-        ${showsSessions ? this.renderScopeLine(input) : nothing}
         <div class="body">
           ${showsSessions
             ? html`
@@ -144,6 +176,11 @@ export class AppNavigatePage extends LitElement {
                   : html`<p class="empty" role="status">${this.loadingChoices ? "Loading…" : this.loadError ?? "Nothing to choose at this level."}</p>`}
               `}
         </div>
+        ${this.onOpenSettings === undefined ? nothing : html`
+          <footer class="page-footer">
+            <button type="button" class="settings" @click=${() => { this.onOpenSettings?.(); }}><span>Settings</span></button>
+          </footer>
+        `}
       </section>
     `;
   }
@@ -177,18 +214,21 @@ export class AppNavigatePage extends LitElement {
     return html`<p class="empty" role="status">${meaning.message}</p>`;
   }
 
-  /** See `navigateScopeLine`: the list says how far it reaches. */
-  private renderScopeLine(input: Omit<NavigateInput, "query">) {
-    const scope = navigateScopeLine({
-      machineName: input.machines.find((machine) => machine.id === input.scope.machineId)?.name,
-      projectName: input.projects.find((project) => project.id === input.scope.projectId)?.name,
-    });
-    return html`
-      <div class="scope-line">
-        <span class="scope-label">${scope.label}</span>
-        ${scope.widen === undefined ? nothing : html`<button type="button" class="scope-widen" @click=${() => { this.onWiden?.("project"); }}>${scope.widen.label}</button>`}
-      </div>
-    `;
+  /**
+   * The path is the only scope control: standing on the machine lists every
+   * session it runs, and stepping into a project narrows to that project.
+   * There is no separate widen button - the path level above you is it.
+   */
+  private listedInput(input: Omit<NavigateInput, "query">): Omit<NavigateInput, "query"> {
+    if (this.pathProjectId !== undefined) return input;
+    return {
+      ...input,
+      scope: { ...input.scope, projectId: undefined, folderPath: undefined },
+      // Pins are cross-machine and arrive already carrying their machine;
+      // rebuilding them from this machine's list dropped the ones pinned
+      // elsewhere.
+      sessions: this.machineSessions,
+    };
   }
 
   private renderKindTab(kind: NavigateKind, label: string, icon: unknown) {
@@ -209,7 +249,11 @@ export class AppNavigatePage extends LitElement {
         type="button"
         class=${choice.current ? "row current" : "row"}
         title=${choice.detail ?? choice.label}
-        @click=${() => { this.onChoose?.(choice.level, choice.id); this.kind = "sessions"; }}
+        @click=${() => {
+          if (choice.level === "project") this.pathProjectId = choice.id;
+          this.onChoose?.(choice.level, choice.id);
+          this.kind = "sessions";
+        }}
       >
         <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${icon}</span>${choice.label}</span>
       </button>
@@ -324,16 +368,15 @@ export class AppNavigatePage extends LitElement {
     .create { box-sizing: border-box; flex: 1 1 0; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-selection-bg); color: var(--pi-text-bright); font: inherit; cursor: pointer; }
     .create.secondary { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text); }
     .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--pi-space-3) var(--pi-bar-inset) var(--pi-space-5); display: flex; flex-direction: column; gap: var(--pi-space-2); }
-    .scope-line { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
-    .scope-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-xs); }
-    .scope-widen { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-ui); }
-    @media (pointer: coarse) { .scope-widen { min-height: var(--pi-control-height-touch); } }
     .section-title { margin: var(--pi-space-4) 0 var(--pi-space-1); color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
     .row { box-sizing: border-box; display: grid; gap: 2px; width: 100%; min-height: var(--pi-row-min-height, 48px); padding: var(--pi-space-2) var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
     .row.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row-detail { min-width: 0; display: flex; gap: var(--pi-space-3); overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-2xs); white-space: nowrap; }
     .pin { margin-right: var(--pi-space-2); color: var(--pi-accent); }
+    .page-footer { flex: 0 0 auto; padding: var(--pi-space-3) var(--pi-bar-inset) calc(var(--pi-space-4) + env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border-muted); }
+    .settings { box-sizing: border-box; display: flex; align-items: center; gap: var(--pi-space-3); width: 100%; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
+    @media (pointer: coarse) { .settings { min-height: var(--pi-control-height-touch); } }
     .empty { margin: var(--pi-space-5) 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   `];
 }

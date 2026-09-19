@@ -36,6 +36,9 @@ function input(patch: Partial<Omit<NavigateInput, "query">> = {}): Omit<Navigate
 async function mount(patch: Partial<AppNavigatePage> = {}, modelInput = input()): Promise<AppNavigatePage> {
   const page = document.createElement("app-navigate-page");
   page.input = modelInput;
+  // The page opens on the machine's whole list, which the host supplies
+  // separately; tests that care about a narrowed path set it themselves.
+  page.machineSessions = modelInput.sessions;
   Object.assign(page, patch);
   document.body.append(page);
   await page.updateComplete;

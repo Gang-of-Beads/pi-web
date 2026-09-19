@@ -94,7 +94,11 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
      one line and a 36px control with an 8px offset stood past the top rule. */
   /* The clip sat 2px off the box's inner corner, which read as stuck to the
      border; it keeps the same breathing room the text inside does. */
-  .editor-attach { position: absolute; right: var(--pi-space-3); bottom: var(--pi-space-3); z-index: 2; width: var(--pi-control-height); height: var(--pi-control-height); }
+  /* The clip is anchored inside the box, so it must never be taller than the
+     box: a one-line composer on a short viewport is 40px, and a 32px control
+     plus its two 6px gaps is 44 - it spilled over the border, which is the
+     overflow reported twice now. It shrinks with the box instead. */
+  .editor-attach { position: absolute; right: var(--pi-space-3); bottom: var(--pi-space-3); z-index: 2; box-sizing: border-box; width: min(var(--pi-control-height), calc(100% - 2 * var(--pi-space-3))); height: min(var(--pi-control-height), calc(100% - 2 * var(--pi-space-3))); aspect-ratio: 1; }
   .editor-attach .prompt-action-icon { width: 18px; height: 18px; }
   textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; }
   textarea { overflow-y: auto; padding: var(--pi-space-4); padding-right: calc(var(--pi-space-3) + var(--pi-control-height) + var(--pi-space-3)); }

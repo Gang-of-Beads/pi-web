@@ -26,6 +26,8 @@ describe("what floats over the composer", () => {
     // Room for one button and the gap it floats in, on both sides of it.
     expect(attach).toMatch(/right:\s*var\(--pi-space-3\)/u);
     expect(attach).toMatch(/bottom:\s*var\(--pi-space-3\)/u);
+    // It may not outgrow the box it floats in; see the rule's own note.
+    expect(attach).toMatch(/height:\s*min\(var\(--pi-control-height\), calc\(100% - 2 \* var\(--pi-space-3\)\)\)/u);
     expect(rule).toMatch(/padding-right:\s*calc\(var\(--pi-space-3\) \+ var\(--pi-control-height\) \+ var\(--pi-space-3\)\)/u);
   });
 

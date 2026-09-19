@@ -12,6 +12,7 @@ import { createTerminalCopySnapshot, DEFAULT_TERMINAL_ANSI_THEME, type TerminalC
 import { createTerminalSoftKeysDefaultEnvironmentMedia, hasTerminalSoftKeysPreference, initialTerminalSoftKeysEnabled, isTerminalSoftKeysDefaultEnvironment, writeTerminalSoftKeysPreference } from "./terminalSoftKeysPreference.js";
 import "./TerminalSoftKeys";
 import type { TerminalSoftKeyInputOptions } from "./TerminalSoftKeys.js";
+import { clampTerminalFontSize, pinchDistance, pinchFontSize, type PinchState } from "./pinchZoom.js";
 import { describeTerminalError } from "./hostUi.js";
 import { adoptTerminalHostStyles } from "./hostUi.js";
 
@@ -39,6 +40,9 @@ export class TerminalPanel extends LitElement {
   @property({ attribute: false }) sessions?: WorkspaceTerminalSessions;
   @property({ attribute: false }) onSelectTerminal: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => void = () => undefined;
   @query(".terminal-host") private terminalHost?: HTMLDivElement | null;
+  /** Type size the terminal renders at; two fingers change it. See `pinchZoom`. */
+  @state() private fontSize = TERMINAL_OPTIONS_BASE.fontSize ?? 13;
+  private pinch: PinchState | undefined;
   @query(".terminal-copy-content") private terminalCopyContent?: HTMLPreElement | null;
   @query(".terminal-copy-selector") private terminalCopySelector?: HTMLTextAreaElement | null;
   @state() private terminals: TerminalInfo[] = [];
@@ -325,11 +329,44 @@ export class TerminalPanel extends LitElement {
     }
   }
 
+  private readonly onPinchStart = (event: TouchEvent): void => {
+    const distance = pinchDistance([...event.touches]);
+    if (distance === undefined) return;
+    this.pinch = { startDistance: distance, startFontSize: this.fontSize };
+  };
+
+  private readonly onPinchMove = (event: TouchEvent): void => {
+    const state = this.pinch;
+    if (state === undefined) return;
+    const distance = pinchDistance([...event.touches]);
+    if (distance === undefined) return;
+    // The gesture belongs to the terminal: without this the page zooms and
+    // the terminal scrolls out from under the fingers.
+    event.preventDefault();
+    const next = pinchFontSize(state, distance, this.fontSize);
+    if (next === undefined) return;
+    this.applyFontSize(next);
+  };
+
+  private readonly onPinchEnd = (): void => {
+    this.pinch = undefined;
+  };
+
+  private applyFontSize(size: number): void {
+    const next = clampTerminalFontSize(size);
+    if (next === this.fontSize) return;
+    this.fontSize = next;
+    const terminal = this.terminal;
+    if (terminal === undefined) return;
+    terminal.options.fontSize = next;
+    this.fitAndNotify();
+  }
+
   private ensureTerminalView(): void {
     const workspace = this.workspace;
     const terminalHost = this.terminalHostElement();
     if (!this.visible || this.terminal !== undefined || this.selectedId === undefined || terminalHost === undefined || workspace === undefined) return;
-    const terminal = new Terminal(terminalOptions(this));
+    const terminal = new Terminal({ ...terminalOptions(this), fontSize: this.fontSize });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(terminalHost);
@@ -337,6 +374,10 @@ export class TerminalPanel extends LitElement {
     this.fitAddon = fitAddon;
     this.resizeObserver = new ResizeObserver(() => { this.fitAndNotify(); });
     this.resizeObserver.observe(terminalHost);
+    terminalHost.addEventListener("touchstart", this.onPinchStart, { passive: true });
+    terminalHost.addEventListener("touchmove", this.onPinchMove, { passive: false });
+    terminalHost.addEventListener("touchend", this.onPinchEnd, { passive: true });
+    terminalHost.addEventListener("touchcancel", this.onPinchEnd, { passive: true });
     terminal.onData((data) => {
       if (this.suppressTerminalInput || this.copySnapshot !== undefined) return;
       this.sendTerminalInput(data);
@@ -474,6 +515,14 @@ export class TerminalPanel extends LitElement {
   private disposeTerminalView(): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = undefined;
+    const host = this.terminalHostElement();
+    if (host !== undefined) {
+      host.removeEventListener("touchstart", this.onPinchStart);
+      host.removeEventListener("touchmove", this.onPinchMove);
+      host.removeEventListener("touchend", this.onPinchEnd);
+      host.removeEventListener("touchcancel", this.onPinchEnd);
+    }
+    this.pinch = undefined;
     this.socket?.close();
     this.socket = undefined;
     this.terminal?.dispose();
