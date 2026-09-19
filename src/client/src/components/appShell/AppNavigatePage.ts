@@ -261,7 +261,8 @@ export class AppNavigatePage extends LitElement {
           this.kind = "sessions";
         }}
       >
-        <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${icon}</span>${choice.label}</span>
+        <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${icon}</span><span class="row-name">${choice.label}</span></span>
+        ${choice.detail === undefined ? nothing : html`<span class="row-path">${choice.detail}</span>`}
       </button>
     `, { hasPath: choice.detail !== undefined, closable: kind === "project" && this.canCloseProject });
   }
@@ -321,8 +322,8 @@ export class AppNavigatePage extends LitElement {
     const label = sessionLabel(row.session);
     return this.renderRowShell(`session:${row.machineId}:${row.session.id}`, "session", row.session.id, label, html`
       <button type="button" class=${row.current ? "row session current" : "row session"} aria-current=${row.current ? "true" : "false"} title=${label} @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
-        <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" aria-label="Pinned">•</span>` : nothing}<span class="row-name">${label}</span></span>
-        <span class=${`state ${row.state}`} title=${STATE_LABEL[row.state]} aria-label=${STATE_LABEL[row.state]}></span>
+        <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" aria-label="Pinned">•</span>` : nothing}<span class="row-name">${label}</span><span class=${`state ${row.state}`} title=${STATE_LABEL[row.state]} aria-label=${STATE_LABEL[row.state]}></span></span>
+        ${row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
       </button>
     `, { pinned: row.pinned });
   }
@@ -331,7 +332,9 @@ export class AppNavigatePage extends LitElement {
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, css`
     .row .row-title { flex: 1 1 auto; min-width: 0; }
     .row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .row.session { display: flex; align-items: center; gap: var(--pi-space-3); }
+    .row.session { display: grid; align-content: center; gap: 2px; }
+    .row .row-title { display: flex; align-items: center; gap: var(--pi-space-2); }
+    .state { margin-left: auto; }
     .state { flex: 0 0 auto; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; }
     .state.waiting { background: var(--pi-accent); }
     .state.working { background: var(--pi-success); }
@@ -381,7 +384,11 @@ export class AppNavigatePage extends LitElement {
     .actions { flex: 0 0 auto; display: flex; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
     .create { box-sizing: border-box; flex: 1 1 0; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-selection-bg); color: var(--pi-text-bright); font: inherit; cursor: pointer; }
     .create.secondary { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text); }
-    .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--pi-space-3) var(--pi-bar-inset) var(--pi-space-5); display: flex; flex-direction: column; gap: var(--pi-space-2); }
+    /* Two entries to a line: the owner reads this list as a board of places,
+       and one tall row per screen line wasted half the width. */
+    .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--pi-space-3) var(--pi-bar-inset) var(--pi-space-5); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: var(--pi-space-2); }
+    .section-title, .empty { grid-column: 1 / -1; }
+    .row-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .section-title { margin: var(--pi-space-4) 0 var(--pi-space-1); color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
     .row { box-sizing: border-box; display: grid; gap: 2px; width: 100%; min-height: var(--pi-row-min-height, 48px); padding: var(--pi-space-2) var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
     .row.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }

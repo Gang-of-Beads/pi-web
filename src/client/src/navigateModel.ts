@@ -54,6 +54,8 @@ export interface NavigateSessionRow {
   tags: string[];
   /** One quiet line under the name: what it is doing, how big, where it runs. */
   detail: string;
+  /** Where the session lives, for the line under its name. */
+  path: string;
   /** What the session is doing right now, for the mark beside its name. */
   state: NavigateSessionState;
 }
@@ -162,6 +164,7 @@ function row(session: SessionInfo, machineId: string, input: NavigateInput): Nav
     current: machineId === input.scope.machineId && session.id === input.scope.sessionId,
     tags: [...new Set([...derivedTags(session, input, machineId), ...manual.map((tag) => tag.toLowerCase())])],
     detail: sessionDetail(session, machineId, input),
+    path: sessionPath(session, input),
     state: sessionState(session, input),
   };
 }
@@ -171,6 +174,17 @@ function row(session: SessionInfo, machineId: string, input: NavigateInput): Nav
  * open, then size, then the folder it runs in. Tags stay searchable but off
  * the screen - a row of hashes said nothing at a glance (owner).
  */
+/**
+ * The project a session runs in, or its working directory when the project is
+ * not in the loaded catalogue. The owner reads a list of names by where they
+ * are, so the row says where before it says how busy.
+ */
+function sessionPath(session: SessionInfo, input: NavigateInput): string {
+  const folder = input.folders.find((entry) => entry.path === session.cwd);
+  const project = folder === undefined ? undefined : input.projects.find((entry) => entry.id === folder.projectId);
+  return project?.name ?? folder?.label ?? session.cwd;
+}
+
 function sessionDetail(session: SessionInfo, machineId: string, input: NavigateInput): string {
   const parts: string[] = [];
   if (input.waitingSessionIds.has(session.id)) parts.push("waiting for you");

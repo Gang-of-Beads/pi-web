@@ -89,9 +89,10 @@ describe("app-navigate-page", () => {
     expect(onOpenSession).toHaveBeenCalledWith(expect.objectContaining({ id: "z" }), "pi");
   });
 
-  it("lists a session by name alone", async () => {
+  it("lists a session by name with the project it runs in under it", async () => {
     const page = await mount({}, input({ waitingSessionIds: new Set(["a"]) }));
-    expect(texts(page, ".row.session")).toEqual(["fix login"]);
+    expect(texts(page, ".row.session .row-name")).toEqual(["fix login"]);
+    expect(texts(page, ".row.session .row-path")).toEqual(["pi-web"]);
   });
 
   it("offers only the levels a reader can stand on", async () => {
