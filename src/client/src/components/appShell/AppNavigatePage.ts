@@ -4,7 +4,7 @@ import type { SessionInfo } from "../../api";
 import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow, type NavigateSessionState } from "../../navigateModel";
 import { switcherBreadcrumb } from "../../switcherBreadcrumb";
 import { createStableRowOrder } from "../../stableRowOrder";
-import { renderChatIcon, renderChevronRightIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
+import { renderChatIcon, renderChevronRightIcon, renderGearIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
 import { actionMenuPanelStyle } from "../actionMenu";
@@ -130,7 +130,10 @@ export class AppNavigatePage extends LitElement {
               >${segment.label}</button>
             `)}
           </div>
-          ${this.closable ? html`<button type="button" class="close" aria-label="Close navigation" @click=${() => { this.onClose?.(); }}>${renderChevronRightIcon()}</button>` : nothing}
+          <div class="path-bar-actions">
+            ${this.onOpenSettings === undefined ? nothing : html`<button type="button" class="settings" aria-label="Settings" title="Settings" @click=${() => { this.onOpenSettings?.(); }}>${renderGearIcon()}</button>`}
+            ${this.closable ? html`<button type="button" class="close" aria-label="Close navigation" @click=${() => { this.onClose?.(); }}>${renderChevronRightIcon()}</button>` : nothing}
+          </div>
         </header>
         <nav class="kinds" aria-label="What to list">
           ${this.renderKindTab("sessions", "Sessions", renderChatIcon())}
@@ -176,11 +179,6 @@ export class AppNavigatePage extends LitElement {
                   : html`<p class="empty" role="status">${this.loadingChoices ? "Loading…" : this.loadError ?? "Nothing to choose at this level."}</p>`}
               `}
         </div>
-        ${this.onOpenSettings === undefined ? nothing : html`
-          <footer class="page-footer">
-            <button type="button" class="settings" @click=${() => { this.onOpenSettings?.(); }}><span>Settings</span></button>
-          </footer>
-        `}
       </section>
     `;
   }
@@ -348,6 +346,9 @@ export class AppNavigatePage extends LitElement {
     .path-step.chosen { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     .path-sep { flex: 0 0 auto; display: inline-grid; place-items: center; color: var(--pi-muted); }
     .path-sep .ui-icon, .close .ui-icon { width: 14px; height: 14px; }
+    .path-bar-actions { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); }
+    .settings { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+    .settings .ui-icon { width: 18px; height: 18px; }
     .close { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     .kinds { flex: 0 0 auto; display: flex; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
     .kind { box-sizing: border-box; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
@@ -374,9 +375,6 @@ export class AppNavigatePage extends LitElement {
     .row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row-detail { min-width: 0; display: flex; gap: var(--pi-space-3); overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-2xs); white-space: nowrap; }
     .pin { margin-right: var(--pi-space-2); color: var(--pi-accent); }
-    .page-footer { flex: 0 0 auto; padding: var(--pi-space-3) var(--pi-bar-inset) calc(var(--pi-space-4) + env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border-muted); }
-    .settings { box-sizing: border-box; display: flex; align-items: center; gap: var(--pi-space-3); width: 100%; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
-    @media (pointer: coarse) { .settings { min-height: var(--pi-control-height-touch); } }
     .empty { margin: var(--pi-space-5) 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   `];
 }
