@@ -29,6 +29,11 @@ describe("what floats over the composer", () => {
     // It may not outgrow the box it floats in; see the rule's own note.
     expect(attach).toMatch(/height:\s*min\(var\(--pi-control-height\), calc\(100% - 2 \* var\(--pi-space-3\)\)\)/u);
     expect(rule).toMatch(/padding-right:\s*calc\(var\(--pi-space-3\) \+ var\(--pi-control-height\) \+ var\(--pi-space-3\)\)/u);
+    // Every producer of the clip's size clamps it against the field, coarse
+    // pointer included: that rule is the one that put it back over the border.
+    const clampedRules = [...sheets.matchAll(/button\.editor-attach\s*\{([^}]*)\}/gu)].map((match) => match[1] ?? "");
+    expect(clampedRules.length).toBeGreaterThan(1);
+    for (const clamped of clampedRules.slice(1)) expect(clamped).toMatch(/height:\s*min\(/u);
   });
 
   /**
@@ -37,7 +42,7 @@ describe("what floats over the composer", () => {
    * element, so the text needs no extra room beyond the fine-pointer path.
    */
   it("keeps the drawn attach box at the comfort height on a touch screen and reaches the floor invisibly", () => {
-    expect(sheets).toContain(".editor-attach { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); }");
+    expect(sheets).toMatch(/button\.editor-attach \{ width: min\(var\(--pi-control-height-comfort\)/u);
     expect(sheets).toContain(".icon-button::after { content: \"\"; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch, 44px)) / 2); }");
     expect(sheets).not.toContain("padding-right: calc(var(--pi-space-4) + 44px)");
   });

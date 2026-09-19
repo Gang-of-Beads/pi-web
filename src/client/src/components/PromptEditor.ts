@@ -74,7 +74,12 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .expand-composer-hint .ui-icon { width: var(--pi-dot-md); height: var(--pi-dot-md); }
   .expand-composer-draft { min-width: 0; overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-xs); text-overflow: ellipsis; white-space: nowrap; }
   footer.shell-mode { border-top-color: var(--pi-success); background: var(--pi-success-bg); }
-  .editor-wrap { position: relative; min-width: 0; }
+  .editor-wrap { min-width: 0; }
+  /* The clip is clamped against the box it floats in, so that box must be the
+     input itself and nothing else: anchored to the whole wrap it measured the
+     hints above the field too, and on a short viewport with the keyboard up it
+     stood taller than the 40px field and spilled over the border. */
+  .editor-box { position: relative; min-width: 0; display: grid; }
   .actions { display: flex; gap: var(--pi-space-4); align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
   .actions button { line-height: var(--pi-panel-header-control-height); }
   .compact-status { display: flex; min-width: 0; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); flex: 1 1 0; }
@@ -98,7 +103,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
      box: a one-line composer on a short viewport is 40px, and a 32px control
      plus its two 6px gaps is 44 - it spilled over the border, which is the
      overflow reported twice now. It shrinks with the box instead. */
-  .editor-attach { position: absolute; right: var(--pi-space-3); bottom: var(--pi-space-3); z-index: 2; box-sizing: border-box; width: min(var(--pi-control-height), calc(100% - 2 * var(--pi-space-3))); height: min(var(--pi-control-height), calc(100% - 2 * var(--pi-space-3))); aspect-ratio: 1; }
+  button.editor-attach { position: absolute; right: var(--pi-space-3); bottom: var(--pi-space-3); z-index: 2; box-sizing: border-box; width: min(var(--pi-control-height), calc(100% - 2 * var(--pi-space-3))); height: min(var(--pi-control-height), calc(100% - 2 * var(--pi-space-3))); aspect-ratio: 1; }
   .editor-attach .prompt-action-icon { width: 18px; height: 18px; }
   textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; }
   textarea { overflow-y: auto; padding: var(--pi-space-4); padding-right: calc(var(--pi-space-3) + var(--pi-control-height) + var(--pi-space-3)); }
@@ -179,7 +184,9 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
      chip grows with it rather than swallowing its own control. */
   @media (pointer: coarse) {
     .attachment-chip { width: 72px; height: 72px; }
-    .editor-attach { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); }
+    /* Still clamped: a touch-sized control must not outgrow a one-line field
+       on a short viewport, which is exactly where the keyboard puts it. */
+    button.editor-attach { width: min(var(--pi-control-height-comfort), calc(100% - 2 * var(--pi-space-3))); height: min(var(--pi-control-height-comfort), calc(100% - 2 * var(--pi-space-3))); }
   }
   .attachment-error { flex-basis: 100%; color: var(--pi-danger); font-size: var(--pi-text-xs); }
   /* Bordered controls, the owner's ruling against the ghosted round: on a
@@ -387,12 +394,14 @@ export class PromptEditor extends LitElement {
           ${shellMode ? html`<div class="mode-hint">Shell command${shellInputMode.excludeFromContext ? " · excluded from context" : ""}</div>` : null}
           ${this.renderComposerContributionStatus()}
           ${this.isCompacting && !shellMode ? html`<div class="mode-hint">Compacting history · message will be queued</div>` : null}
-          <div
-            class=${`markdown-editor${this.disabled ? " markdown-editor-disabled" : ""}`}
-            aria-label="Message pi"
-            aria-disabled=${this.disabled ? "true" : "false"}
-          ></div>
-          <button class="editor-attach icon-button" ?disabled=${this.disabled} title="Attach files" aria-label="Attach files" @click=${() => { this.attachmentInput?.click(); }}>${renderAttachIcon()}</button>
+          <div class="editor-box">
+            <div
+              class=${`markdown-editor${this.disabled ? " markdown-editor-disabled" : ""}`}
+              aria-label="Message pi"
+              aria-disabled=${this.disabled ? "true" : "false"}
+            ></div>
+            <button class="editor-attach icon-button" ?disabled=${this.disabled} title="Attach files" aria-label="Attach files" @click=${() => { this.attachmentInput?.click(); }}>${renderAttachIcon()}</button>
+          </div>
           <autocomplete-menu .items=${this.completions} .selectedIndex=${this.selectedIndex} .onPick=${(item: CompletionItem) => { this.pick(item); }}></autocomplete-menu>
         </div>
         <div class="actions">
