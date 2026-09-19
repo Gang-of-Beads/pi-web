@@ -169,8 +169,8 @@ export class SettingsDialog extends LitElement {
           <h1 class="panel-header-title">Settings</h1>
           <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
-        ${this.renderSearchField()}
         <nav class="settings-list" aria-label="Settings sections">
+          ${this.renderSearchField()}
           ${this.matchedSections().map((entry) => this.renderListRow(entry.id, entry.label, entry.detail))}
           ${this.renderNoMatch()}
         </nav>
