@@ -171,9 +171,15 @@ export class ModalSurface extends LitElement {
          --modal-surface-border / --modal-surface-radius / --modal-surface-shadow */
     :host { display: block; width: 100%; height: 100%; }
     .backdrop { box-sizing: border-box; width: 100%; height: 100%; display: grid; place-items: var(--modal-surface-place-items, center); padding: var(--modal-surface-backdrop-padding, 0); background: var(--pi-overlay); overflow: hidden; }
-    /* The shell takes focus when a host names no first control; without this it
-       wears the platform ring in the platform blue, beside our accent one. */
-    section[role="dialog"]:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
+    /* The shell takes focus when a host names no first control, and the
+       browser then paints a focus ring around the whole surface - a gold frame
+       the length of the screen that marks nothing a reader can act on, and
+       which the owner read as a stray decoration. The ring is suppressed here
+       and kept on the controls inside, which is where focus is worth seeing;
+       the platform's own ring is suppressed with it rather than swapped for a
+       differently coloured version of the same noise. */
+    section[role="dialog"]:focus { outline: none; }
+    section[role="dialog"]:focus-visible { outline: none; }
     section[role="dialog"] { box-sizing: border-box; width: var(--modal-surface-width, min(720px, 100%)); max-width: var(--modal-surface-max-width, 100%); height: var(--modal-surface-height, auto); max-height: var(--modal-surface-max-height, 100%); min-height: var(--modal-surface-min-height, auto); display: flex; flex-direction: column; border: var(--modal-surface-border, 1px solid var(--pi-border)); border-radius: var(--modal-surface-radius, var(--pi-radius-lg)); background: var(--pi-bg); box-shadow: var(--modal-surface-shadow, var(--pi-elevation-3)); overflow: hidden; }
   `;
 }
