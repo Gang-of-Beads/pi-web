@@ -473,6 +473,18 @@ export interface MessageRendererViewModel {
   readonly payload: unknown;
   readonly streaming: boolean;
   readonly createdAt: string | undefined;
+  /**
+   * Put text in the composer for the reader to edit and send. A card that
+   * knows what a reply should say can offer it without sending anything in
+   * the reader's name.
+   */
+  readonly insertIntoComposer?: ((text: string) => void) | undefined;
+  /**
+   * Send text to this session as the reader, exactly as typing it would. The
+   * only channel a browser has into a running agent: a card that needs to act
+   * says what it is sending and sends that.
+   */
+  readonly sendMessage?: ((text: string) => void | Promise<void>) | undefined;
 }
 
 export interface MessageRendererContribution {

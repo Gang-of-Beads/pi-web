@@ -1,0 +1,9 @@
+{
+  "name": "@pi-web/subagents-plugin",
+  "private": true,
+  "piWeb": {
+    "plugins": [
+      { "id": "subagents", "browserRoot": ".", "module": "pi-web-plugin.js" }
+    ]
+  }
+}

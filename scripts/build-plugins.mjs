@@ -113,14 +113,39 @@ async function browserEntryManifests() {
   return entries;
 }
 
+/**
+ * Whether anything the entry reaches needs a bundler.
+ *
+ * This used to read the entry file alone, so a plugin whose entry imported
+ * only its own modules shipped unbundled even when one of those modules
+ * imported "lit" - the browser then refused the whole plugin with "Failed to
+ * resolve module specifier". The question is about the graph, so the graph is
+ * what gets walked.
+ */
 async function needsBundling(entryPath) {
-  let source;
-  try {
-    source = await readFile(entryPath, "utf8");
-  } catch {
-    return false;
+  const seen = new Set();
+  const queue = [entryPath];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === undefined || seen.has(current)) continue;
+    seen.add(current);
+    let source;
+    try {
+      source = await readFile(current, "utf8");
+    } catch {
+      continue;
+    }
+    for (const match of source.matchAll(/(?:^|\n)\s*(?:import|export)\s[^;]*from\s+"([^"]+)"/gu)) {
+      const specifier = match[1] ?? "";
+      if (!specifier.startsWith(".")) return true;
+      queue.push(resolve(dirname(current), specifier));
+    }
+    for (const match of source.matchAll(/import\("([^"]+)"\)/gu)) {
+      const specifier = match[1] ?? "";
+      if (!specifier.startsWith(".")) return true;
+    }
   }
-  return /(?:^|\n)\s*import\s[^;]*from\s+"(?!\.)/u.test(source);
+  return false;
 }
 
 async function buildDirectory(sourceDir, targetDir) {

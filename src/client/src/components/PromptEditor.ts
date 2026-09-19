@@ -3,7 +3,8 @@ import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import type { ComposerEditorHandle } from "./composerEditorSetup";
 
 type ComposerEditorModule = typeof import("./composerEditorSetup");
-import { css, unsafeCSS, LitElement, html, type PropertyValues } from "lit";
+import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues } from "lit";
+import { pendingPromptActions } from "../pendingPromptActions";
 import { SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
@@ -494,13 +495,14 @@ export class PromptEditor extends LitElement {
       }
       return null;
     }
+    const actions = pendingPromptActions({ sending: this.sending });
     return html`
       <div class="pending-prompts" role="status">
         ${lingering.map((prompt) => html`
           <div class="pending-prompt">
             <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>
-            <span class="pending-prompt-state">Unsent</span>
-            <button type="button" @click=${() => { this.flushPendingPrompts(); }}>Retry</button>
+            <span class="pending-prompt-state">${actions.label}</span>
+            ${actions.retry ? html`<button type="button" @click=${() => { this.flushPendingPrompts(); }}>Retry</button>` : nothing}
             <button type="button" class="pending-prompt-discard" @click=${() => { this.discardPendingPrompt(prompt); }}>Discard</button>
           </div>
         `)}

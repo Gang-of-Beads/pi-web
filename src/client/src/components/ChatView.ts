@@ -415,7 +415,9 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg.bash > .msg-header { border-bottom-color: var(--pi-border-muted); background: var(--pi-success-bg); }
   .msg.skill > .msg-header { border-bottom-color: var(--pi-border-muted); background: var(--pi-purple-surface); }
   .group-msg > .msg-header { position: sticky; top: var(--pi-chat-sticky-top); z-index: 4; margin: calc(-1 * var(--pi-space-5)) 0 var(--pi-space-4); padding: var(--pi-space-4) 0 var(--pi-space-3); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
-  .msg-header-trailing { min-width: 0; flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-4); }
+  /* The last control used to end on the card's inner edge, which reads as
+     stuck to the border on a phone where the card is the screen. */
+  .msg-header-trailing { min-width: 0; flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-4); padding-right: var(--pi-space-2); }
   .msg-actions { flex: 0 0 auto; display: inline-flex; gap: var(--pi-space-3); opacity: 0; transition: opacity var(--pi-motion-fast) var(--pi-ease); }  .msg.user .msg-action, .msg.user .msg-meta { color: var(--pi-text-secondary, var(--pi-text)); }
   /* One bordered box per control, every control the same box: the ghost
      glyphs read as stray marks and sat at different heights between the
@@ -479,6 +481,12 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .skill-invocation > summary, .skill-read > strong { color: var(--pi-purple); }
   .skill-invocation > small, .skill-read > small { display: block; margin: var(--pi-space-3) 0 0; color: var(--pi-muted); }
   summary { cursor: pointer; color: var(--pi-muted); }
+  /* Thinking is the quietest thing in a turn: it is the model talking to
+     itself, and it sat in the same ink as the answer right before a tool card,
+     which read as an abrupt second voice. */
+  .part.thinking { border-top-color: var(--pi-border-muted); }
+  .part.thinking > summary { color: var(--pi-dim); }
+  .part.thinking > formatted-text { color: var(--pi-muted); }
   pre { margin: var(--pi-space-3) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; direction: ltr; text-align: left; unicode-bidi: isolate; }
   .shell-output { color: var(--pi-text); font: var(--pi-text-sm) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: inherit; line-height: 1.45; direction: ltr; text-align: left; unicode-bidi: isolate; }
   @keyframes pulse { 0%, 100% { transform: scale(.75); opacity: .55; } 50% { transform: scale(1.2); opacity: 1; } }
@@ -726,6 +734,9 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onLoadNewer?: () => void;
   /** Puts the cursor in the composer, for the empty session's way forward. */
   @property({ attribute: false }) onFocusComposer?: () => void;
+  /** Seams a message renderer may act through; see `MessageRendererViewModel`. */
+  @property({ attribute: false }) onInsertIntoComposer?: (text: string) => void;
+  @property({ attribute: false }) onSendMessage?: (text: string) => void | Promise<void>;
   /** The reader selected transcript text and asked to continue from it. */
   @property({ attribute: false }) onQuoteSelection?: (quoted: string) => void;
   @query(".chat") private chat?: HTMLDivElement;
@@ -1955,6 +1966,8 @@ if (this.heldWaitingClearTimer !== undefined) {
         payload: part.payload,
         streaming: this.status?.isStreaming === true,
         createdAt: undefined,
+        insertIntoComposer: this.onInsertIntoComposer,
+        sendMessage: this.onSendMessage,
       });
     } catch (error) {
       console.error(`Plugin ${renderer.pluginId} failed rendering ${part.tag}`, error);
@@ -2168,7 +2181,7 @@ if (this.heldWaitingClearTimer !== undefined) {
   private renderPart(part: ChatPart, message?: ChatLine) {
     if (part.type === "text" && message?.role === "bash") return html`<pre class="part shell-output">${part.text}</pre>`;
     if (part.type === "text") return html`<formatted-text class="part" .text=${part.text} .findCodeFenceRenderer=${this.findCodeFenceRenderer} .streaming=${this.status?.isStreaming === true}></formatted-text>`;
-    if (part.type === "thinking") return html`<details class="part"><summary>thinking</summary><formatted-text .text=${part.text}></formatted-text></details>`;
+    if (part.type === "thinking") return html`<details class="part thinking"><summary>thinking</summary><formatted-text .text=${part.text}></formatted-text></details>`;
     if (part.type === "skillInvocation") return html`
       <details class="part skill-invocation">
         <summary><b>[skill]</b> ${part.name}</summary>

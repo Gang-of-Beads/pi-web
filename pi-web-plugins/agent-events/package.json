@@ -1,0 +1,9 @@
+{
+  "name": "@pi-web/agent-events-plugin",
+  "private": true,
+  "piWeb": {
+    "plugins": [
+      { "id": "agent-events", "browserRoot": ".", "module": "pi-web-plugin.js" }
+    ]
+  }
+}

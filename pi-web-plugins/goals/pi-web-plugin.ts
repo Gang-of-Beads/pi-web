@@ -3,6 +3,10 @@ import { html } from "lit";
 import { rememberGoalsHostUi } from "./hostUi.js";
 import { badgeFor, type GoalsSectionState } from "./goalsSectionElement.js";
 import type { GoalRecordSummary } from "./goalRecords.js";
+import { goalEventSummary } from "./goalEventSummary.js";
+
+/** Goal lifecycle messages this plugin draws; the shell knows none of them. */
+const GOAL_EVENT_TAGS = ["pi-goal-audit-event", "pi-goal-guard", "pi-goal-draft", "pi-goal-focus"];
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -53,6 +57,14 @@ const plugin: PiWebPlugin = {
 
     return {
       contributions: {
+        messageRenderers: GOAL_EVENT_TAGS.map((tag) => ({
+          id: `message.${tag}`,
+          tag,
+          render: (view: { payload: unknown }) => {
+            const summary = goalEventSummary(tag, view.payload);
+            return html`<strong>${summary.title}</strong>${summary.detail === undefined ? null : html`<small>${summary.detail}</small>`}`;
+          },
+        })),
         drawerSections: [
           {
             id: "goals",
