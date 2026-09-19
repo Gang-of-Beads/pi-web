@@ -4,7 +4,7 @@ import type { SessionInfo } from "../../api";
 import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow, type NavigateSessionState } from "../../navigateModel";
 import { switcherBreadcrumb } from "../../switcherBreadcrumb";
 import { createStableRowOrder } from "../../stableRowOrder";
-import { renderChatIcon, renderChevronRightIcon, renderGearIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
+import { renderAllSessionsIcon, renderChatIcon, renderChevronRightIcon, renderGearIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
 import { actionMenuPanelStyle } from "../actionMenu";
@@ -109,6 +109,14 @@ export class AppNavigatePage extends LitElement {
     return html`
       <section class="navigate">
         <header class="path-bar">
+          <button
+            type="button"
+            class=${this.pathProjectId === undefined && this.kind === "sessions" ? "quick-access current" : "quick-access"}
+            aria-pressed=${this.pathProjectId === undefined && this.kind === "sessions" ? "true" : "false"}
+            title="All sessions on this machine"
+            aria-label="All sessions on this machine"
+            @click=${() => { this.showEverything(); this.onWiden?.("project"); }}
+          >${renderAllSessionsIcon()}</button>
           <div class="path-row">
             ${segments.map((segment, index) => html`
               ${index === 0 ? nothing : html`<span class="path-sep">${renderChevronRightIcon()}</span>`}
@@ -346,6 +354,11 @@ export class AppNavigatePage extends LitElement {
     .path-step.chosen { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     .path-sep { flex: 0 0 auto; display: inline-grid; place-items: center; color: var(--pi-muted); }
     .path-sep .ui-icon, .close .ui-icon { width: 14px; height: 14px; }
+    /* One tap back to every session this machine runs; the path alone made the
+       reader work out where "everything" lived. */
+    .quick-access { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+    .quick-access.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-accent); }
+    .quick-access .ui-icon { width: 18px; height: 18px; }
     .path-bar-actions { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); }
     .settings { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     .settings .ui-icon { width: 18px; height: 18px; }
