@@ -2443,7 +2443,12 @@ export class PiWebApp extends LitElement {
       projects: state.projects.map((project) => ({ id: project.id, name: project.name, path: project.path })),
       folders: state.workspaces.map((workspace) => ({ id: workspace.id, label: workspace.label, path: workspace.path, projectId: workspace.projectId })),
       sessions,
-      pinned: sessions.filter((session) => pinnedIds.has(session.id)).map((session) => ({ session, machineId })),
+      // Pins answer for the machine, not for the project the reader happens to
+      // stand in: a session pinned from the global list vanished from Pinned
+      // as soon as the page listed a project's sessions.
+      pinned: dedupeById([...this.quickSwitcherSessions, ...sessions])
+        .filter((session) => pinnedIds.has(session.id))
+        .map((session) => ({ session, machineId })),
       waitingSessionIds: this.waitingSessionIds(),
       activeSessionIds: this.activeSessionIds(),
       pinnedSessionIds: pinnedIds,
