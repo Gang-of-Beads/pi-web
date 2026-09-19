@@ -2431,7 +2431,10 @@ export class PiWebApp extends LitElement {
    */
   private navigateInput(): Omit<NavigateInput, "query"> {
     const state = this.state;
-    const machineId = selectedMachineId(state);
+    // The page lists the machine being browsed, so the path must name that
+    // machine and its rows must carry it; using the selected machine printed
+    // one machine's name over another machine's sessions.
+    const machineId = this.browsedMachineId();
     const sessions = state.sessions;
     const pinnedIds = this.pinnedSessionIds;
     return {
