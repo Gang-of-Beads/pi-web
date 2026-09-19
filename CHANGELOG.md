@@ -1,5 +1,93 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.3
+
+### Patch Changes
+
+- e615e4d: The attach clip stops touching the message box.
+
+  It sat 2px from the inner corner, reading as stuck to the border. It now keeps
+  the same breathing room the text inside does, and the text reserves the clip's
+  width plus that room on both sides rather than a hard-coded 36px.
+
+- 11f92cb: Custom messages get owners instead of a defect notice.
+
+  Goal lifecycle events, subagent notices, web searches, browser sessions and
+  account selections all drew "Unrecognized message". Each now belongs to a
+  plugin: goals draws its own events, a new subagents plugin draws the run
+  notices and answers a supervisor request - the reply is sent to this session,
+  which owns the supervisor tool, and the card says exactly that - and a new
+  agent-events plugin summarises the agent's own tool bookkeeping. Message
+  renderers may now insert into the composer or send as the reader.
+
+- 9bb4ae5: Navigation says it is reading instead of claiming nothing is there.
+
+  Tapping a project answered "No sessions here yet." until the read landed, so a
+  tap that worked read as a tap that did nothing - and the empty claim was not
+  true. The page now opens on the loading state, names a failed read, and keeps
+  the empty answer for an actually empty scope. The extension dialog card gained
+  the identity guard its sibling ask card already had, so neither rebuilds under
+  the reader while a turn streams.
+
+- 9bb4ae5: The transcript loads itself at both ends.
+
+  Reading history stopped at a button the reader had to find and press. Scrolling
+  is the only gesture now: the earlier and newer spans are fetched a screen and a
+  half before the reader reaches them, and the boundary says what it is doing
+  instead of offering a control.
+
+- becd06f: The navigation page stops being inset twice.
+
+  Its rows sat 16px from the edge while its own bar sat at 8, because the page
+  adopted the whole list stylesheet to get a row menu and inherited that sheet's
+  section padding with it. The row menu control and its panel are their own
+  stylesheet now, so a surface that wants a menu does not inherit a list.
+
+- 6210d6c: Every edge on the phone starts on the same column.
+
+  The transcript used a tighter gutter than the bars and the composer, so message
+  cards and the activity pill sat two pixels outside the box the reader types in.
+  The compact tier now derives the chat gutter from the bar inset, so the menu
+  key, the message cards, the composer and its action row share one column.
+
+- 11f92cb: A plugin whose helper imports a package still loads.
+
+  The plugin build decided whether to bundle by reading the entry file alone, so
+  a plugin whose entry imported only its own modules shipped unbundled even when
+  one of those modules imported lit - the browser then refused the whole plugin.
+  The decision now walks the entry's import graph.
+
+- df5d1c4: List rows say one thing, and the menu beside them does the rest.
+
+  Every navigation row is now a name on the left and a ⋯ menu on the right: the
+  second line of path is gone from project rows (it stays in the tooltip), and
+  the menu carries what you can do to that row - open, pin, rename, copy path,
+  close project - acting on the row it belongs to rather than the current
+  selection. Session rows carry their state again as a mark beside the name:
+  waiting, working, or idle. Asking for Machines while standing in a project
+  answered "Nothing to choose at this level" with machines sitting right there;
+  every level offers its own choices now.
+
+- 11f92cb: A message on its way can only be taken back.
+
+  The pending row said "Unsent · Retry · Discard" while the screen also said
+  "Sending your message…", offering to send again something that had not
+  finished leaving. While a send is in flight the row says Sending and offers
+  only Discard.
+
+- e615e4d: A photo closes by tapping it again.
+
+  The zoom view no longer paints a corner cross; a tap anywhere - the image
+  included - closes it, which is the gesture people already have for a photo.
+  Escape and the backdrop still close it, and focus still returns to the
+  thumbnail that opened it.
+
+- 11f92cb: Thinking reads as the quietest part of a turn, and the header controls breathe.
+
+  A thinking block sat in the same ink as the answer right before a tool card,
+  which read as an abrupt second voice; it now uses the dim scale. The last
+  control in a message header no longer ends on the card's inner edge.
+
 ## 2.202609.2
 
 ### Patch Changes
