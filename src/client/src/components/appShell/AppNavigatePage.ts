@@ -270,8 +270,13 @@ export class AppNavigatePage extends LitElement {
     .state.waiting { background: var(--pi-accent); }
     .state.working { background: var(--pi-success); }
     .state.idle { background: var(--pi-border); }
-    .row-wrap { position: relative; display: flex; align-items: stretch; gap: var(--pi-space-2); }
-    .row-wrap .row { flex: 1 1 auto; min-width: 0; }
+    /* One box, two things: the name on the left and the menu on the right
+       live inside the same bordered row. The menu used to float outside the
+       box, which read as a stray glyph beside the list. */
+    .row-wrap { position: relative; box-sizing: border-box; display: flex; align-items: stretch; min-height: var(--pi-row-min-height, 48px); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); overflow: hidden; }
+    .row-wrap:has(.row.current) { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
+    .row-wrap .row { flex: 1 1 auto; min-width: 0; border: 0; border-radius: 0; background: transparent; }
+    .row-wrap .action-menu-toggle { flex: 0 0 auto; border: 0; border-left: 1px solid var(--pi-border-muted); border-radius: 0; background: transparent; }
 
     :host { display: block; min-height: 0; height: 100%; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); user-select: none; -webkit-user-select: none; }
     .navigate { display: flex; flex-direction: column; min-height: 0; height: 100%; }
@@ -304,7 +309,7 @@ export class AppNavigatePage extends LitElement {
     .create.secondary { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text); }
     .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--pi-space-3) var(--pi-bar-inset) var(--pi-space-5); display: flex; flex-direction: column; gap: var(--pi-space-2); }
     .section-title { margin: var(--pi-space-4) 0 var(--pi-space-1); color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
-    .row { box-sizing: border-box; display: grid; gap: 2px; width: 100%; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
+    .row { box-sizing: border-box; display: grid; gap: 2px; width: 100%; min-height: var(--pi-row-min-height, 48px); padding: var(--pi-space-2) var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
     .row.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row-detail { min-width: 0; display: flex; gap: var(--pi-space-3); overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-2xs); white-space: nowrap; }
