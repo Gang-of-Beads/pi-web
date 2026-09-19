@@ -7,6 +7,7 @@ import { configApi, piPackagesApi, pluginsApi, type Machine, type MachineHealth,
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
 import type { QualifiedContributionId, QualifiedThemeContribution } from "../plugins/types";
 import { isPluginSettingsSection, type SettingsSection } from "../settingsRoute";
+import { searchSettings, type SettingsEntry } from "../settingsSearch";
 import type { PluginRuntimeContext, QualifiedSettingsSectionContribution } from "../plugins/types";
 import "./ModalSurface";
 import "./settings/SettingsAppearancePanel";
@@ -29,6 +30,8 @@ import { interactiveSurfaceStyles } from "./shared";
 @customElement("settings-dialog")
 export class SettingsDialog extends LitElement {
   @state() private phoneLayout = false;
+  /** What the reader is looking for; see `searchSettings`. */
+  @state() private query = "";
   private readonly phoneQuery: MediaQueryList | undefined = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(COARSE_OR_MOBILE_MEDIA_QUERY) : undefined;
   /** Undefined means the drill-down root: the phone shows the section list, the desktop falls back to General. */
   @property({ attribute: false }) section: SettingsSection | undefined = undefined;
@@ -146,14 +149,9 @@ export class SettingsDialog extends LitElement {
         </header>
         <div class="settings-body">
           <nav class="settings-nav" aria-label="Settings sections">
-            ${this.renderNavButton("general", "General", "Gateway + selected machine")}
-            ${this.renderNavButton("appearance", "Appearance", "Theme and system preference")}
-            ${this.renderNavButton("machines", "Machines", "All connected devices")}
-            ${this.renderNavButton("sessiond", "Session daemon", "Selected machine")}
-            ${this.renderNavButton("packages", "Pi packages", "Selected machine")}
-            ${this.renderNavButton("plugins", "PI WEB plugins", "Selected machine")}
-            ${this.renderNavButton("shortcuts", "Keyboard", "Gateway shortcuts")}
-            ${this.pluginSections.map((entry) => this.renderNavButton(entry.id, entry.title, "Plugin"))}
+            ${this.renderSearchField()}
+            ${this.matchedSections().map((entry) => this.renderNavButton(entry.id, entry.label, entry.detail))}
+            ${this.renderNoMatch()}
           </nav>
           <main class="settings-content">
             ${this.renderActiveSection()}
@@ -171,18 +169,54 @@ export class SettingsDialog extends LitElement {
           <h1 class="panel-header-title">Settings</h1>
           <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
+        ${this.renderSearchField()}
         <nav class="settings-list" aria-label="Settings sections">
-          ${this.renderListRow("general", "General", "Gateway + selected machine")}
-          ${this.renderListRow("appearance", "Appearance", "Theme and system preference")}
-          ${this.renderListRow("machines", "Machines", "All connected devices")}
-          ${this.renderListRow("sessiond", "Session daemon", "Selected machine")}
-          ${this.renderListRow("packages", "Pi packages", "Selected machine")}
-          ${this.renderListRow("plugins", "PI WEB plugins", "Selected machine")}
-          ${this.renderListRow("shortcuts", "Keyboard", "Gateway shortcuts")}
-          ${this.pluginSections.map((entry) => this.renderListRow(entry.id, entry.title, "Plugin"))}
+          ${this.matchedSections().map((entry) => this.renderListRow(entry.id, entry.label, entry.detail))}
+          ${this.renderNoMatch()}
         </nav>
       </modal-surface>
     `;
+  }
+
+  /** The sections this dialog offers, before any search narrows them. */
+  private sectionEntries(): SettingsEntry<SettingsSection>[] {
+    return [
+      { id: "general", label: "General", detail: "Gateway + selected machine" },
+      { id: "appearance", label: "Appearance", detail: "Theme and system preference" },
+      { id: "machines", label: "Machines", detail: "All connected devices" },
+      { id: "sessiond", label: "Session daemon", detail: "Selected machine" },
+      { id: "packages", label: "Pi packages", detail: "Selected machine" },
+      { id: "plugins", label: "PI WEB plugins", detail: "Selected machine" },
+      { id: "shortcuts", label: "Keyboard", detail: "Gateway shortcuts" },
+      ...this.pluginSections.map((entry) => ({ id: entry.id, label: entry.title, detail: "Plugin" })),
+    ];
+  }
+
+  private matchedSections(): SettingsEntry<SettingsSection>[] {
+    return searchSettings(this.sectionEntries(), this.query);
+  }
+
+  private renderSearchField(): TemplateResult {
+    return html`
+      <div class="settings-search">
+        <input
+          type="search"
+          class="settings-search-input"
+          inputmode="search"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Search settings"
+          placeholder="Search settings"
+          .value=${this.query}
+          @input=${(event: Event) => { if (event.target instanceof HTMLInputElement) this.query = event.target.value; }}
+        >
+      </div>
+    `;
+  }
+
+  private renderNoMatch(): TemplateResult | null {
+    if (this.matchedSections().length > 0) return null;
+    return html`<p class="settings-no-match" role="status">No setting matches “${this.query.trim()}”.</p>`;
   }
 
   private renderListRow(section: SettingsSection, label: string, detail: string): TemplateResult {
@@ -764,6 +798,10 @@ export class SettingsDialog extends LitElement {
     .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .settings-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+    .settings-search { padding: 0 0 var(--pi-space-4); }
+    .settings-search-input { box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: inherit; }
+    @media (pointer: coarse) { .settings-search-input { min-height: var(--pi-control-height-touch); } }
+    .settings-no-match { margin: var(--pi-space-4) 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
     .settings-nav { min-height: 0; padding: var(--pi-space-5); border-right: 1px solid var(--pi-border); background: var(--pi-surface); overflow: auto; }
     .settings-nav button { display: grid; gap: var(--pi-space-1); box-sizing: border-box; width: 100%; margin: 0 0 var(--pi-space-3); text-align: left; border-color: transparent; background: transparent; }
     .settings-nav button:focus { background: var(--pi-surface-hover); }
