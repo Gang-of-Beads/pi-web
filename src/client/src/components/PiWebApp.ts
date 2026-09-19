@@ -2411,6 +2411,7 @@ export class PiWebApp extends LitElement {
   }
 
   private openNavigate(): void {
+    if (this.state.selectedProject === undefined) void this.loadQuickSwitcherData();
     dismissKeyboardIfRaised();
     this.navigateOpen = true;
     this.pushModalLayerFrame();
@@ -2421,10 +2422,16 @@ export class PiWebApp extends LitElement {
   }
 
   /** The facts the navigation surface reads; see `navigateModel`. */
+  /**
+   * What the navigate page lists. Narrowed to a project it is the project's
+   * own sessions; widened to the machine it must actually be the machine's,
+   * or the page claims a reach it does not keep - widening used to leave an
+   * empty list under "All sessions on this machine".
+   */
   private navigateInput(): Omit<NavigateInput, "query"> {
     const state = this.state;
     const machineId = selectedMachineId(state);
-    const sessions = state.sessions;
+    const sessions = state.selectedProject === undefined ? this.quickSwitcherSessions : state.sessions;
     const pinnedIds = this.pinnedSessionIds;
     return {
       scope: { machineId, projectId: state.selectedProject?.id, folderPath: state.selectedWorkspace?.path, sessionId: state.selectedSession?.id },
@@ -2449,7 +2456,9 @@ export class PiWebApp extends LitElement {
       .onOpenSession=${(session: SessionInfo) => { this.closeNavigate(); void this.openSessionFromQuickSwitcher(session); }}
       .onCreateSession=${() => { this.closeNavigate(); void this.startSessionAndOpenChat(); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { this.closeNavigate(); this.openProjectDialog(); } : undefined}
-      .loadingSessions=${this.state.sessionsLoad === "loading" || this.state.isLoadingWorkspaces}
+      .loadingSessions=${this.state.selectedProject === undefined
+        ? this.quickSwitcherLoading
+        : this.state.sessionsLoad === "loading" || this.state.isLoadingWorkspaces}
       .loadingChoices=${this.state.projectsLoad === "loading" || this.state.isLoadingWorkspaces}
       .loadError=${this.state.projectsLoad === "failed" ? "Couldn't read the projects on this machine." : undefined}
       .canRenameSession=${true}
@@ -2503,7 +2512,7 @@ export class PiWebApp extends LitElement {
   private async navigateWiden(level: NavigateLevel): Promise<void> {
     if (level === "machine") return;
     this.workspaces.clearSelection();
-    await Promise.resolve();
+    await this.loadQuickSwitcherData();
   }
 
   private openQuickSwitcher(): void {
@@ -2567,8 +2576,18 @@ export class PiWebApp extends LitElement {
     }
   }
 
+  /**
+   * Which machine the session-wide list is reading. Empty means "the machine
+   * the app is on"; resolving it in one place matters because the staleness
+   * guards below compare against it - comparing the raw field discarded every
+   * answer whenever the reader had not switched tabs.
+   */
+  private browsedMachineId(): string {
+    return this.quickSwitcherBrowseMachineId === "" ? selectedMachineId(this.state) : this.quickSwitcherBrowseMachineId;
+  }
+
   private async loadQuickSwitcherData(force = false): Promise<void> {
-    const machineId = this.quickSwitcherBrowseMachineId === "" ? selectedMachineId(this.state) : this.quickSwitcherBrowseMachineId;
+    const machineId = this.browsedMachineId();
     if (this.quickSwitcherMachineId !== undefined && this.quickSwitcherMachineId !== machineId) {
       this.quickSwitcherSessions = [];
       this.quickSwitcherWorkspaces = [];
@@ -2605,7 +2624,7 @@ export class PiWebApp extends LitElement {
         }
       }));
       // A late answer for a tab the reader has left renders the wrong machine.
-      if (this.quickSwitcherBrowseMachineId !== machineId) return;
+      if (this.browsedMachineId() !== machineId) return;
       this.quickSwitcherMachineId = machineId;
       this.quickSwitcherFetchedAt = Date.now();
       this.quickSwitcherWorkspaces = workspaces;
@@ -2613,9 +2632,9 @@ export class PiWebApp extends LitElement {
       this.quickSwitcherError = undefined;
     } catch (error) {
       // The app banner renders behind this modal; the failure belongs here.
-      if (this.quickSwitcherBrowseMachineId === machineId) this.quickSwitcherError = `Failed to load sessions: ${describeError(error)}`;
+      if (this.browsedMachineId() === machineId) this.quickSwitcherError = `Failed to load sessions: ${describeError(error)}`;
     } finally {
-      if (this.quickSwitcherBrowseMachineId === machineId) this.quickSwitcherLoading = false;
+      if (this.browsedMachineId() === machineId) this.quickSwitcherLoading = false;
     }
   }
 

@@ -7,6 +7,7 @@ import { createStableRowOrder } from "../../stableRowOrder";
 import { renderChatIcon, renderChevronRightIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
+import { navigateScopeLine } from "../../navigateScopeLine";
 import { actionMenuPanelStyle } from "../actionMenu";
 import { navigateRowActions, type NavigateRowActionId, type NavigateRowKind } from "../../navigateRowActions";
 import { sessionLabel } from "../../sessionLabels";
@@ -126,6 +127,7 @@ export class AppNavigatePage extends LitElement {
               ? html`<button type="button" class="create" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>`
               : nothing}
         </div>
+        ${showsSessions ? this.renderScopeLine(input) : nothing}
         <div class="body">
           ${showsSessions
             ? html`
@@ -173,6 +175,20 @@ export class AppNavigatePage extends LitElement {
     });
     if (meaning.kind === "none") return nothing;
     return html`<p class="empty" role="status">${meaning.message}</p>`;
+  }
+
+  /** See `navigateScopeLine`: the list says how far it reaches. */
+  private renderScopeLine(input: Omit<NavigateInput, "query">) {
+    const scope = navigateScopeLine({
+      machineName: input.machines.find((machine) => machine.id === input.scope.machineId)?.name,
+      projectName: input.projects.find((project) => project.id === input.scope.projectId)?.name,
+    });
+    return html`
+      <div class="scope-line">
+        <span class="scope-label">${scope.label}</span>
+        ${scope.widen === undefined ? nothing : html`<button type="button" class="scope-widen" @click=${() => { this.onWiden?.("project"); }}>${scope.widen.label}</button>`}
+      </div>
+    `;
   }
 
   private renderKindTab(kind: NavigateKind, label: string, icon: unknown) {
@@ -308,6 +324,10 @@ export class AppNavigatePage extends LitElement {
     .create { box-sizing: border-box; flex: 1 1 0; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-selection-bg); color: var(--pi-text-bright); font: inherit; cursor: pointer; }
     .create.secondary { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text); }
     .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--pi-space-3) var(--pi-bar-inset) var(--pi-space-5); display: flex; flex-direction: column; gap: var(--pi-space-2); }
+    .scope-line { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
+    .scope-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-xs); }
+    .scope-widen { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-ui); }
+    @media (pointer: coarse) { .scope-widen { min-height: var(--pi-control-height-touch); } }
     .section-title { margin: var(--pi-space-4) 0 var(--pi-space-1); color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
     .row { box-sizing: border-box; display: grid; gap: 2px; width: 100%; min-height: var(--pi-row-min-height, 48px); padding: var(--pi-space-2) var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
     .row.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
