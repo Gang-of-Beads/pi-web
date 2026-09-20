@@ -1,5 +1,97 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.5
+
+### Patch Changes
+
+- 86e01b5: The attach clip finally stays inside the field.
+
+  Two earlier fixes missed it: the clip was measured against the whole composer
+  wrap (hints included) rather than the input, and the coarse-pointer rule set a
+  fixed size after the clamp, so with the keyboard up - a 40px one-line field -
+  it stood 36px tall plus its gaps and crossed the border. The clip now lives in
+  a box that is only the field, and every rule that sizes it clamps against that
+  box; a guard fails if a later rule sets a fixed size again.
+
+- 450f1b1: Back leaves the navigation page.
+
+  The page pushed a history frame when it opened but nothing answered the
+  gesture, so the browser and phone back button looked dead on it. Back now
+  closes it and returns to the session it was opened from; a dialog opened over
+  the page still answers first.
+
+- cd9e039: The navigation board follows the quick-access card.
+
+  Cards that fit the width (240px columns, 140px under 430px), a title clamped
+  to two lines, the place under it, and the row menu as a square in the card's
+  own top-right corner - the shape the owner already approved in quick access,
+  instead of a second design beside it.
+
+- 35ceeeb: The navigation tiles are taller and easier to hit.
+
+  Two entries to a line were drawn at list density, so each tile was a thin strip
+  with its two lines crowded. The tile takes a full row height plus a step, the
+  text breathes, and the row menu column meets the touch floor.
+
+- ceb7335: The path names the machine whose sessions are listed.
+
+  Browsing another machine kept the path on the machine the app was attached to,
+  so one machine's name stood over another machine's sessions - and the rows
+  carried the wrong machine with them. The path, the rows and the list all speak
+  for the machine being browsed; picking a machine leaves the global session
+  list for that machine, which is where navigation opens.
+
+- 450f1b1: A pinned row wears the pin.
+
+  The navigation board marked a pin with a bullet while quick access drew the
+  pin itself; both now draw the one shared icon.
+
+- 12542d0: Pinned answers for the machine, not the current project.
+
+  Pinning from the global list worked but the Pinned group did not appear: the
+  pinned set was read from the project-scoped session list, so a pin on anything
+  outside that project had nothing to render. It reads the machine-wide list too.
+
+- 70c8211: Projects pin too, and a row menu is a menu.
+
+  A pinned project leads the board and carries the same mark a pinned session
+  does, remembered per machine on this device. The menu that opens beside a
+  narrow tile keeps its own width and slides along the edge instead of
+  stretching across the screen like a sheet.
+
+- a6134c1: A key for every session on this machine.
+
+  Reaching the global list meant understanding that the path level above a
+  project was it. The navigation bar carries a quick-access key on the left:
+  one tap lists every session the machine runs, and it shows itself as the
+  current view while that list is what you are reading.
+
+- 335febf: A row menu says whose menu it is.
+
+  On a two-column board a panel could open across the width with nothing tying
+  it to the tile that opened it. The panel names its subject at the top, the
+  tile it belongs to is outlined while the menu is open, and the panel keeps a
+  margin from the edges instead of running the full width.
+
+- 9ec1b6f: A row menu opened beside a narrow tile stays on screen.
+
+  Right-aligning the panel to its trigger assumed the trigger had 240px of room
+  to its left. On the two-column board at 393px it does not, so the panel hung
+  off the left edge with half its items unreadable. When there is not enough
+  room beside the trigger the panel sits inside the bounds instead.
+
+- 589ad64: Tapping elsewhere takes a row menu back.
+
+  The menu only closed through one of its own items or its toggle; a tap on the
+  rest of the board did nothing and left it hanging. A tap outside now
+  dismisses it, without also acting on whatever was under the tap.
+
+- 6c590ac: Two entries to a line, each saying where it lives.
+
+  The list spent a whole screen line on one name. It is a two-column board now,
+  and every tile carries the place under the name: a session shows its project,
+  a project shows its path. The row menu stays inside the tile.
+
 ## 2.202609.4
 
 ### Patch Changes
