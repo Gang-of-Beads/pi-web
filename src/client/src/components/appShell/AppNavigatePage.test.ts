@@ -177,3 +177,23 @@ describe("app-navigate-page", () => {
     expect(page.renderRoot.textContent).not.toContain("Nothing to choose");
   });
 });
+
+describe("the quick-access key", () => {
+  it("widens to everything first and closes the page when there is nothing left to widen", async () => {
+    const closes: number[] = [];
+    const page = await mount({ closable: true, onClose: () => { closes.push(1); } });
+    Reflect.set(page, "kind", "project");
+    await page.updateComplete;
+
+    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+    await page.updateComplete;
+
+    expect(Reflect.get(page, "kind")).toBe("sessions");
+    expect(closes).toHaveLength(0);
+
+    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+
+    expect(closes).toHaveLength(1);
+    page.remove();
+  });
+});

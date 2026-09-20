@@ -87,6 +87,21 @@ export class AppNavigatePage extends LitElement {
   }
 
   /** Opening lands on the machine's whole list; see `listedInput`. */
+  /**
+   * The key that opened the page closes it: pressed once it widens to every
+   * session on the machine, pressed again - already showing everything -
+   * there is nothing left to widen to, so it goes back where it came from.
+   */
+  private quickAccessPressed(): void {
+    if (this.showsEverything()) { this.onClose?.(); return; }
+    this.showEverything();
+    this.onWiden?.("project");
+  }
+
+  private showsEverything(): boolean {
+    return this.pathProjectId === undefined && this.kind === "sessions";
+  }
+
   showEverything(): void {
     this.pathProjectId = undefined;
     this.kind = "sessions";
@@ -116,9 +131,9 @@ export class AppNavigatePage extends LitElement {
             type="button"
             class=${this.pathProjectId === undefined && this.kind === "sessions" ? "quick-access current" : "quick-access"}
             aria-pressed=${this.pathProjectId === undefined && this.kind === "sessions" ? "true" : "false"}
-            title="All sessions on this machine"
-            aria-label="All sessions on this machine"
-            @click=${() => { this.showEverything(); this.onWiden?.("project"); }}
+            title=${this.pathProjectId === undefined && this.kind === "sessions" ? "Close navigation" : "All sessions on this machine"}
+            aria-label=${this.showsEverything() ? "Close navigation" : "All sessions on this machine"}
+            @click=${() => { this.quickAccessPressed(); }}
           >${renderAllSessionsIcon()}</button>
           <div class="path-row">
             ${segments.map((segment, index) => html`
