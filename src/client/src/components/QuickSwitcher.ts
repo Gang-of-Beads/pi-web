@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
-import { renderCheckIcon, renderChevronRightIcon, renderCrossIcon, uiIconStyle } from "./uiIcons.js";
+import { renderCheckIcon, renderChevronRightIcon, renderCrossIcon, renderPinIcon, uiIconStyle } from "./uiIcons.js";
 import { quickSwitcherFilterProjects } from "../quickSwitcher";
 import { reconcileBreadcrumbFilter, switcherBreadcrumb, type BreadcrumbLevel } from "../switcherBreadcrumb";
 import { switcherEmptyMeaning, switcherScopeNotice } from "../switcherEmptyMeaning";
@@ -307,7 +307,7 @@ export class QuickSwitcher extends LitElement {
           @pointerup=${() => { this.longPress.cancel(); }}
           @pointercancel=${() => { this.longPress.cancel(); }}
         >
-          <span class="row-title" dir="auto">${pinned ? html`<span class="pin-mark" title="Pinned" aria-label="Pinned"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"></path><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"></path></svg></span> ` : nothing}${sessionLabel(session)}</span>
+          <span class="row-title" dir="auto">${pinned ? html`<span class="pin-mark" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span> ` : nothing}${sessionLabel(session)}</span>
           <span class="row-subtitle">${quickSwitcherSessionSubtitle(session, this.workspaces)}</span>
           ${interrupted ? html`<span class="row-flag interrupted" title="A restart interrupted this run" aria-label="A restart interrupted this run"></span>` : html`<span class="row-state">${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread))}</span>`}
         </button>
@@ -573,7 +573,7 @@ export class QuickSwitcher extends LitElement {
     @media (hover: hover) { .row-menu button:hover:not(:disabled) { background: var(--pi-selection-bg); } }
     .row-menu button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     .pin-mark { display: inline-flex; align-items: center; }
-    .pin-mark svg { width: 14px; height: 14px; }
+    .pin-mark svg, .pin-mark .ui-icon { width: 14px; height: 14px; }
     .pin-mark { color: var(--pi-accent); }
     /* "· main" was prose inside a two-line clamp, so the state it carried was
        the first thing a long workspace name cut off. */

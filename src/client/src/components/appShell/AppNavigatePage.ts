@@ -4,7 +4,7 @@ import type { SessionInfo } from "../../api";
 import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow, type NavigateSessionState } from "../../navigateModel";
 import { switcherBreadcrumb } from "../../switcherBreadcrumb";
 import { createStableRowOrder } from "../../stableRowOrder";
-import { renderAllSessionsIcon, renderChatIcon, renderChevronRightIcon, renderGearIcon, renderMachineIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
+import { renderAllSessionsIcon, renderChatIcon, renderChevronRightIcon, renderGearIcon, renderMachineIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
 import { actionMenuPanelStyle } from "../actionMenu";
@@ -264,7 +264,7 @@ export class AppNavigatePage extends LitElement {
           this.kind = "sessions";
         }}
       >
-        <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${icon}</span>${kind === "project" && this.pinnedProjectIds.has(choice.id) ? html`<span class="pin" aria-label="Pinned">•</span>` : nothing}<span class="row-name">${choice.label}</span></span>
+        <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${icon}</span>${kind === "project" && this.pinnedProjectIds.has(choice.id) ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${choice.label}</span></span>
         ${choice.detail === undefined ? nothing : html`<span class="row-path">${choice.detail}</span>`}
       </button>
     `, {
@@ -330,7 +330,7 @@ export class AppNavigatePage extends LitElement {
     const label = sessionLabel(row.session);
     return this.renderRowShell(`session:${row.machineId}:${row.session.id}`, "session", row.session.id, label, html`
       <button type="button" class=${row.current ? "row session current" : "row session"} aria-current=${row.current ? "true" : "false"} title=${label} @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
-        <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" aria-label="Pinned">•</span>` : nothing}<span class="row-name">${label}</span><span class=${`state ${row.state}`} title=${STATE_LABEL[row.state]} aria-label=${STATE_LABEL[row.state]}></span></span>
+        <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span><span class=${`state ${row.state}`} title=${STATE_LABEL[row.state]} aria-label=${STATE_LABEL[row.state]}></span></span>
         ${row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
       </button>
     `, { pinned: row.pinned });
@@ -419,7 +419,8 @@ export class AppNavigatePage extends LitElement {
     .row.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row-title { min-width: 0; overflow: hidden; }
     .row-detail { min-width: 0; display: flex; gap: var(--pi-space-3); overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-2xs); white-space: nowrap; }
-    .pin { margin-right: var(--pi-space-2); color: var(--pi-accent); }
+    .pin { display: inline-flex; align-items: center; margin-right: var(--pi-space-2); color: var(--pi-accent); }
+    .pin .ui-icon { width: 14px; height: 14px; }
     .empty { margin: var(--pi-space-5) 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   `];
 }

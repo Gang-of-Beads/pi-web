@@ -28,6 +28,32 @@ describe("PiWebApp back gesture", () => {
     expect(restoreRoute).not.toHaveBeenCalled();
   });
 
+  it("closes the navigation page, which is the outermost layer", () => {
+    const app = createApp();
+    setAppState(app, stateWithSession());
+    Reflect.set(app, "navigateOpen", true);
+    const restoreRoute = stubRestoreRoute(app);
+
+    popState(app);
+
+    expect(Reflect.get(app, "navigateOpen")).toBe(false);
+    expect(restoreRoute).not.toHaveBeenCalled();
+  });
+
+  it("answers a dialog opened over the navigation page before the page itself", () => {
+    const app = createApp();
+    setAppState(app, { ...stateWithSession(), themeDialog: { title: "Theme", options: [] } });
+    Reflect.set(app, "navigateOpen", true);
+
+    popState(app);
+
+    expect(Reflect.get(app, "navigateOpen")).toBe(true);
+
+    popState(app);
+
+    expect(Reflect.get(app, "navigateOpen")).toBe(false);
+  });
+
   it("ignores a placeholder frame left by a layer closed through its own cancel", () => {
     const app = createApp();
     setAppState(app, stateWithSession());

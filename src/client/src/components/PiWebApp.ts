@@ -548,7 +548,11 @@ export class PiWebApp extends LitElement {
     if (this.pluginDialogs.length > 0) {
       const top = this.pluginDialogs[this.pluginDialogs.length - 1];
       if (top !== undefined) top.close();
+      return;
     }
+    // The navigation page is the outermost layer: everything above it has
+    // already answered the gesture, so back leaves the page it was opened on.
+    if (this.navigateOpen) this.closeNavigate();
   }
   private readonly onPageShow = () => {
     void this.sessionUnread.refreshAll();

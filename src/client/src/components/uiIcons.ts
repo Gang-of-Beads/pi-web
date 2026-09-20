@@ -104,3 +104,8 @@ export function renderGearIcon(): TemplateResult {
 export function renderAllSessionsIcon(): TemplateResult {
   return html`<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h10"></path><circle cx="19" cy="18" r="2.4"></circle></svg>`;
 }
+
+/** The mark a pinned row carries; the quick-access board's pin, drawn once. */
+export function renderPinIcon(): TemplateResult {
+  return html`<svg class="ui-icon" viewBox=${ATTRIBUTES.viewBox} aria-hidden="true" focusable="false" fill=${ATTRIBUTES.fill} stroke=${ATTRIBUTES.stroke} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"></path><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"></path></svg>`;
+}
