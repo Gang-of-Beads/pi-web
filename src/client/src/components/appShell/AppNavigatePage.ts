@@ -4,7 +4,7 @@ import type { SessionInfo } from "../../api";
 import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow, type NavigateSessionState } from "../../navigateModel";
 import { switcherBreadcrumb } from "../../switcherBreadcrumb";
 import { createStableRowOrder } from "../../stableRowOrder";
-import { renderAllSessionsIcon, renderChatIcon, renderChevronRightIcon, renderGearIcon, renderMachineIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
+import { renderChatIcon, renderChevronRightIcon, renderGearIcon, renderGridIcon, renderMachineIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
 import { actionMenuPanelStyle } from "../actionMenu";
@@ -134,7 +134,7 @@ export class AppNavigatePage extends LitElement {
             title=${this.pathProjectId === undefined && this.kind === "sessions" ? "Close navigation" : "All sessions on this machine"}
             aria-label=${this.showsEverything() ? "Close navigation" : "All sessions on this machine"}
             @click=${() => { this.quickAccessPressed(); }}
-          >${renderAllSessionsIcon()}</button>
+          >${renderGridIcon()}</button>
           <div class="path-row">
             ${segments.map((segment, index) => html`
               ${index === 0 ? nothing : html`<span class="path-sep">${renderChevronRightIcon()}</span>`}
