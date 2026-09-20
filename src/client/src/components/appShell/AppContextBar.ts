@@ -42,20 +42,15 @@ export class AppContextBar extends LitElement {
   override render() {
     return html`
       <nav class="context-bar" aria-label="Current session">
-        ${this.panelToggleHidden ? null : html`
+        ${this.onOpenGoTo === undefined ? null : html`
         <button
           type="button"
-          class="panel-toggle"
-          title=${this.toggleTarget === "menu" ? "Go to a view" : panelToggleLabel(this.toggleTarget, this.panelOpen)}
-          aria-label=${this.toggleTarget === "menu" ? "Go to a view" : panelToggleLabel(this.toggleTarget, this.panelOpen)}
-          aria-haspopup=${this.toggleTarget === "menu" ? "dialog" : nothing}
-          aria-expanded=${this.toggleTarget === "menu" ? nothing : this.panelOpen ? "true" : "false"}
-          @click=${() => { if (this.toggleTarget === "menu" && this.onOpenGoTo !== undefined) this.onOpenGoTo(); else this.onTogglePanel?.(); }}
-        >
-          <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M4 6h16M4 12h16M4 18h16"></path>
-          </svg>
-        </button>
+          class="panel-toggle go-to"
+          title="Open navigation"
+          aria-label="Open navigation"
+          aria-haspopup="dialog"
+          @click=${() => { this.onTogglePanel?.(); }}
+        >${renderGridIcon()}</button>
         `}
         ${this.session === undefined
           ? this.onQuickSwitch === undefined
@@ -88,15 +83,20 @@ export class AppContextBar extends LitElement {
               @pointercancel=${() => { this.titleHold.cancel(); }}
               @contextmenu=${(event: Event) => { if (this.onRenameRequest !== undefined) event.preventDefault(); }}
             ><span class="session-title-text">${this.activeSurface === "" ? sessionContextLabel(this.session) : `${this.activeSurface} · ${sessionContextLabel(this.session)}`}</span></button>`}
-        ${this.onOpenGoTo === undefined ? null : html`
+        ${this.panelToggleHidden ? null : html`
         <button
           type="button"
-          class="panel-toggle go-to"
-          title="Open navigation"
-          aria-label="Open navigation"
-          aria-haspopup="dialog"
-          @click=${() => { this.onTogglePanel?.(); }}
-        >${renderGridIcon()}</button>
+          class="panel-toggle"
+          title=${this.toggleTarget === "menu" ? "Go to a view" : panelToggleLabel(this.toggleTarget, this.panelOpen)}
+          aria-label=${this.toggleTarget === "menu" ? "Go to a view" : panelToggleLabel(this.toggleTarget, this.panelOpen)}
+          aria-haspopup=${this.toggleTarget === "menu" ? "dialog" : nothing}
+          aria-expanded=${this.toggleTarget === "menu" ? nothing : this.panelOpen ? "true" : "false"}
+          @click=${() => { if (this.toggleTarget === "menu" && this.onOpenGoTo !== undefined) this.onOpenGoTo(); else this.onTogglePanel?.(); }}
+        >
+          <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M4 6h16M4 12h16M4 18h16"></path>
+          </svg>
+        </button>
         `}
       </nav>
     `;

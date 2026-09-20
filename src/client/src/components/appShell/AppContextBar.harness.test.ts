@@ -75,3 +75,27 @@ describe("the resident row hands off to the panel and the quick switcher", () =>
     expect(bar.renderRoot.querySelector(".working")).toBeNull();
   });
 });
+
+/**
+ * The owner asked for the two bar keys to trade sides: the grid that opens
+ * navigation leads the bar, the lines that open the panel close it.
+ */
+describe("AppContextBar key order", () => {
+  it("puts the navigation grid first and the panel lines last", async () => {
+    const bar = new AppContextBar();
+    const opened: string[] = [];
+    Object.assign(bar, {
+      onOpenGoTo: () => { opened.push("go-to"); },
+      onTogglePanel: () => { opened.push("panel"); },
+    });
+    document.body.append(bar);
+    await bar.updateComplete;
+
+    const keys = [...bar.renderRoot.querySelectorAll(".panel-toggle")];
+
+    expect(keys).toHaveLength(2);
+    expect(keys[0]?.classList.contains("go-to")).toBe(true);
+    expect(keys[1]?.classList.contains("go-to")).toBe(false);
+    bar.remove();
+  });
+});
