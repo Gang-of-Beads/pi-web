@@ -28,8 +28,8 @@ describe("actionMenuPanelStyle in a narrow column", () => {
 
     const style = actionMenuPanelStyle(trigger, { constrainTo: "viewport" });
 
-    expect(style).toContain("left: 0px;");
-    expect(style).toContain("right: 0px;");
+    expect(style).toContain("left: 8px;");
+    expect(style).toContain("right: 8px;");
   });
 
   it("still right-aligns to a trigger with room for a readable menu", () => {
@@ -40,7 +40,7 @@ describe("actionMenuPanelStyle in a narrow column", () => {
     const style = actionMenuPanelStyle(trigger, { constrainTo: "viewport" });
 
     expect(style).toContain("right: 8px;");
-    expect(style).not.toContain("left: 0px;");
+    expect(style).not.toContain("left: 8px;");
   });
 });
 

@@ -6,6 +6,8 @@ const ACTION_MENU_GAP_PX = 0;
  * could not be read or tapped (reported on a two-column board at 393px).
  */
 const ACTION_MENU_MIN_WIDTH_PX = 200;
+/** Breathing room kept from the edges when the panel cannot hug its trigger. */
+const ACTION_MENU_EDGE_INSET_PX = 8;
 const ACTION_MENU_MIN_USEFUL_HEIGHT_PX = 120;
 
 interface ActionMenuRect {
@@ -48,9 +50,9 @@ export function actionMenuPanelStyle(target: EventTarget | null, options: Action
   // hanging off them.
   return [
     ...placement,
-    `left: ${px(leftBound)};`,
-    `right: ${px(Math.max(0, viewportWidth - rightBound))};`,
-    `max-width: ${px(Math.max(0, rightBound - leftBound))};`,
+    `left: ${px(leftBound + ACTION_MENU_EDGE_INSET_PX)};`,
+    `right: ${px(Math.max(0, viewportWidth - rightBound) + ACTION_MENU_EDGE_INSET_PX)};`,
+    `max-width: ${px(Math.max(0, rightBound - leftBound - 2 * ACTION_MENU_EDGE_INSET_PX))};`,
   ].join(" ");
 }
 

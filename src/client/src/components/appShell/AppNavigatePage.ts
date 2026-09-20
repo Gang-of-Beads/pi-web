@@ -287,7 +287,7 @@ export class AppNavigatePage extends LitElement {
     });
     const open = this.openMenuRowId === rowId;
     return html`
-      <div class="row-wrap">
+      <div class=${open ? "row-wrap menu-open" : "row-wrap"}>
         ${row}
         ${actions.length <= 1 ? nothing : html`
           <button
@@ -301,7 +301,8 @@ export class AppNavigatePage extends LitElement {
           >⋯</button>
         `}
         ${open ? html`
-          <div class="action-menu-panel" role="menu" style=${this.menuStyle}>
+          <div class="action-menu-panel" role="menu" aria-label=${`Actions for ${label}`} style=${this.menuStyle}>
+            <p class="action-menu-subject">${label}</p>
             ${actions.map((action) => html`
               <button type="button" role="menuitem" @click=${() => { this.openMenuRowId = undefined; this.onRowAction?.(kind, id, action.id); }}>${action.label}</button>
             `)}
@@ -346,6 +347,11 @@ export class AppNavigatePage extends LitElement {
        two lines without crowding and to be hit with a thumb anywhere on it. */
     .row-wrap { position: relative; box-sizing: border-box; display: flex; align-items: stretch; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); overflow: hidden; }
     .row-wrap:has(.row.current) { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
+    /* The open menu names its subject and the tile it belongs to lights up:
+       a floating panel over a two-column board said nothing about which tile
+       it was acting on. */
+    .row-wrap.menu-open { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent); }
+    .action-menu-subject { margin: 0; padding: var(--pi-space-3) var(--pi-space-4); border-bottom: 1px solid var(--pi-border); color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row-wrap .row { flex: 1 1 auto; min-width: 0; border: 0; border-radius: 0; background: transparent; }
     .row-wrap .action-menu-toggle { flex: 0 0 auto; min-width: var(--pi-control-height-touch); border: 0; border-left: 1px solid var(--pi-border-muted); border-radius: 0; background: transparent; }
 
