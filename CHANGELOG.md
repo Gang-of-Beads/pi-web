@@ -1,5 +1,34 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.6
+
+### Patch Changes
+
+- a3eda55: The key that opens navigation is the key that closes it, same glyph.
+
+  After the bar keys traded sides the chat opened navigation with a grid on the
+  left, but the page itself kept a different mark in that corner, so the press
+  that returns did not look like the press that entered.
+
+- 12cd058: The key that opens navigation closes it.
+
+  Pressed on a narrowed path it still widens to every session on the machine;
+  pressed when everything is already listed there is nothing left to widen to,
+  so it returns to the session it was opened from.
+
+- 3a051a6: Returning from navigation works on the phone too.
+
+  The key only closed the overlay, so on the phone - where navigation is a main
+  view rather than an overlay - pressing it again did nothing. Leaving now hands
+  the main area back to the open session on both layouts, and where there is
+  nothing to return to, such as the desktop rail, the key stays a widen-only
+  key and says so.
+
+- c54ca6e: The two session-bar keys trade sides.
+
+  Navigation now opens from the left of the bar and the panel from the right,
+  as the owner asked.
+
 ## 2.202609.5
 
 ### Patch Changes
