@@ -308,6 +308,10 @@ export class AppNavigatePage extends LitElement {
           >⋯</button>
         `}
         ${open ? html`
+          <div
+            class="menu-scrim"
+            @pointerdown=${(event: PointerEvent) => { event.preventDefault(); this.openMenuRowId = undefined; }}
+          ></div>
           <div class="action-menu-panel" role="menu" aria-label=${`Actions for ${label}`} style=${this.menuStyle}>
             <p class="action-menu-subject">${label}</p>
             ${actions.map((action) => html`
@@ -361,6 +365,9 @@ export class AppNavigatePage extends LitElement {
        a floating panel over a two-column board said nothing about which tile
        it was acting on. */
     .row-wrap.menu-open > .row { border-color: var(--pi-accent); }
+    /* A menu stays until it is answered or dismissed: a tap anywhere else
+       takes it back, which is what a reader expects of a popup. */
+    .menu-scrim { position: fixed; inset: 0; z-index: calc(var(--pi-layer-popover) - 1); background: transparent; }
     .action-menu-panel { min-width: 160px; }
     .action-menu-subject { margin: 0; padding: var(--pi-space-3) var(--pi-space-4); border-bottom: 1px solid var(--pi-border); color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row-wrap > .row { height: 100%; }
