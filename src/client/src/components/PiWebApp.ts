@@ -2479,12 +2479,26 @@ export class PiWebApp extends LitElement {
     };
   }
 
+  /**
+   * Leaving navigation means two different things on the two layouts: the
+   * overlay closes, while the phone's navigation view has to hand the main
+   * area back to the session that is open behind it. One exit for both, or
+   * the key that returns does nothing on the layout that needs it most.
+   */
+  private leaveNavigate(): void {
+    this.closeNavigate();
+    if (this.state.mainView === "navigation" && this.state.selectedSession !== undefined) {
+      this.setState({ mainView: "chat" });
+    }
+  }
+
   private renderNavigatePage(closable: boolean) {
     return html`<app-navigate-page
       .input=${this.navigateInput()}
       .pinnedProjectIds=${this.pinnedProjectIds}
       ?closable=${closable}
-      .onClose=${() => { this.closeNavigate(); }}
+      ?returnable=${closable || (this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined)}
+      .onClose=${() => { this.leaveNavigate(); }}
       .onChoose=${(level: NavigateLevel, id: string) => { void this.navigateChoose(level, id); }}
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
       .onOpenSession=${(session: SessionInfo) => { this.closeNavigate(); void this.openSessionFromQuickSwitcher(session); }}

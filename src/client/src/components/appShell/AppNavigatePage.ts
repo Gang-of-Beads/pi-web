@@ -57,6 +57,12 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) loadError: string | undefined = undefined;
   /** Whether a session is open behind this page, which is what a close returns to. */
   @property({ type: Boolean }) closable = false;
+  /**
+   * Whether there is somewhere to go back to. The desktop rail is the page's
+   * permanent home, so its leading key only widens; an overlay and the phone's
+   * navigation view both have a session behind them to return to.
+   */
+  @property({ type: Boolean }) returnable = false;
   @state() private query = "";
   /** Live refreshes may not move a row under a thumb; see `stableRowOrder`. */
   private readonly rowOrder = createStableRowOrder<NavigateSessionRow>((row) => `${row.machineId}:${row.session.id}`);
@@ -93,7 +99,7 @@ export class AppNavigatePage extends LitElement {
    * there is nothing left to widen to, so it goes back where it came from.
    */
   private quickAccessPressed(): void {
-    if (this.showsEverything()) { this.onClose?.(); return; }
+    if (this.returnable && this.showsEverything()) { this.onClose?.(); return; }
     this.showEverything();
     this.onWiden?.("project");
   }
@@ -131,8 +137,8 @@ export class AppNavigatePage extends LitElement {
             type="button"
             class=${this.pathProjectId === undefined && this.kind === "sessions" ? "quick-access current" : "quick-access"}
             aria-pressed=${this.pathProjectId === undefined && this.kind === "sessions" ? "true" : "false"}
-            title=${this.pathProjectId === undefined && this.kind === "sessions" ? "Close navigation" : "All sessions on this machine"}
-            aria-label=${this.showsEverything() ? "Close navigation" : "All sessions on this machine"}
+            title=${this.returnable && this.showsEverything() ? "Close navigation" : "All sessions on this machine"}
+            aria-label=${this.returnable && this.showsEverything() ? "Close navigation" : "All sessions on this machine"}
             @click=${() => { this.quickAccessPressed(); }}
           >${renderGridIcon()}</button>
           <div class="path-row">

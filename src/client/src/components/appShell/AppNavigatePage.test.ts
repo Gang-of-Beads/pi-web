@@ -181,7 +181,7 @@ describe("app-navigate-page", () => {
 describe("the quick-access key", () => {
   it("widens to everything first and closes the page when there is nothing left to widen", async () => {
     const closes: number[] = [];
-    const page = await mount({ closable: true, onClose: () => { closes.push(1); } });
+    const page = await mount({ closable: true, returnable: true, onClose: () => { closes.push(1); } });
     Reflect.set(page, "kind", "project");
     await page.updateComplete;
 
@@ -194,6 +194,21 @@ describe("the quick-access key", () => {
     page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
 
     expect(closes).toHaveLength(1);
+    page.remove();
+  });
+});
+
+describe("the quick-access key with nowhere to return to", () => {
+  it("only widens on the desktop rail, which is the page's permanent home", async () => {
+    const closes: number[] = [];
+    const page = await mount({ closable: false, returnable: false, onClose: () => { closes.push(1); } });
+
+    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+    await page.updateComplete;
+    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+
+    expect(closes).toHaveLength(0);
+    expect(page.renderRoot.querySelector(".quick-access")?.getAttribute("aria-label")).toBe("All sessions on this machine");
     page.remove();
   });
 });
