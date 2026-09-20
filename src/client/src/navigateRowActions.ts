@@ -36,6 +36,7 @@ export function navigateRowActions(kind: NavigateRowKind, facts: NavigateRowFact
     if (facts.renamable === true) actions.push({ id: "rename", label: "Rename" });
   }
   if (kind === "project") {
+    actions.push(facts.pinned === true ? { id: "unpin", label: "Unpin" } : { id: "pin", label: "Pin to top" });
     if (facts.hasPath === true) actions.push({ id: "copy-path", label: "Copy path" });
     if (facts.closable === true) actions.push({ id: "close-project", label: "Close project" });
   }

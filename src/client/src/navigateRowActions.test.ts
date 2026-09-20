@@ -20,8 +20,9 @@ describe("navigateRowActions", () => {
   it("only offers what the host can actually do", () => {
     expect(ids("session", { renamable: false })).not.toContain("rename");
     expect(ids("session", { renamable: true })).toContain("rename");
-    expect(ids("project", { hasPath: false, closable: false })).toEqual(["open"]);
-    expect(ids("project", { hasPath: true, closable: true })).toEqual(["open", "copy-path", "close-project"]);
+    expect(ids("project", { hasPath: false, closable: false })).toEqual(["open", "pin"]);
+    expect(ids("project", { pinned: true })).toContain("unpin");
+    expect(ids("project", { hasPath: true, closable: true })).toEqual(["open", "pin", "copy-path", "close-project"]);
   });
 
   it("names the machine action for what it does", () => {

@@ -94,6 +94,7 @@ import { quickSwitcherSessionStates, renameSessionInList } from "../quickSwitche
 import { reloadOffer } from "../versionSkew";
 import { oneRowPerIdentity } from "../transcriptInvariant";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
+import { readPinnedProjectIds, togglePinnedProjectId, writePinnedProjectIds } from "../projectPins";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
 import { errorBanner, normalizeTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
@@ -2286,6 +2287,25 @@ export class PiWebApp extends LitElement {
     return errored;
   }
 
+  private pinnedProjectCache: { machineId: string; ids: ReadonlySet<string> } | undefined;
+
+  private get pinnedProjectIds(): ReadonlySet<string> {
+    const machineId = this.browsedMachineId();
+    const cached = this.pinnedProjectCache;
+    if (cached?.machineId === machineId) return cached.ids;
+    const fresh = { machineId, ids: readPinnedProjectIds(machineId) };
+    this.pinnedProjectCache = fresh;
+    return fresh.ids;
+  }
+
+  private togglePinnedProject(projectId: string): void {
+    const machineId = this.browsedMachineId();
+    const ids = togglePinnedProjectId(this.pinnedProjectIds, projectId);
+    this.pinnedProjectCache = { machineId, ids };
+    writePinnedProjectIds(machineId, ids);
+    this.requestUpdate();
+  }
+
   private togglePinnedSession(session: SessionInfo): void {
     const machineId = selectedMachineId(this.state);
     const ids = togglePinnedSessionId(this.pinnedSessionIds, session.id);
@@ -2458,6 +2478,7 @@ export class PiWebApp extends LitElement {
   private renderNavigatePage(closable: boolean) {
     return html`<app-navigate-page
       .input=${this.navigateInput()}
+      .pinnedProjectIds=${this.pinnedProjectIds}
       ?closable=${closable}
       .onClose=${() => { this.closeNavigate(); }}
       .onChoose=${(level: NavigateLevel, id: string) => { void this.navigateChoose(level, id); }}
@@ -2493,6 +2514,7 @@ export class PiWebApp extends LitElement {
       return;
     }
     if (action === "pin" || action === "unpin") {
+      if (kind === "project") { this.togglePinnedProject(id); return; }
       const session = this.state.sessions.find((entry) => entry.id === id);
       if (session !== undefined) this.togglePinnedSession(session);
       return;

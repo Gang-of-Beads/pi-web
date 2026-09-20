@@ -46,13 +46,22 @@ export function actionMenuPanelStyle(target: EventTarget | null, options: Action
       `max-width: ${px(alignedWidth)};`,
     ].join(" ");
   }
-  // Too little room beside the trigger: sit inside the bounds instead of
-  // hanging off them.
+  // Too little room to the trigger's left: keep the panel its own width and
+  // slide it along the bounds instead of stretching it across them. A menu
+  // that spans the screen reads as a sheet, not as this row's actions.
+  const inner = Math.max(0, rightBound - leftBound - 2 * ACTION_MENU_EDGE_INSET_PX);
+  const width = Math.min(ACTION_MENU_MIN_WIDTH_PX, inner);
+  const preferred = trigger.left - width;
+  const left = Math.min(
+    Math.max(preferred, leftBound + ACTION_MENU_EDGE_INSET_PX),
+    Math.max(leftBound + ACTION_MENU_EDGE_INSET_PX, rightBound - ACTION_MENU_EDGE_INSET_PX - width),
+  );
   return [
     ...placement,
-    `left: ${px(leftBound + ACTION_MENU_EDGE_INSET_PX)};`,
-    `right: ${px(Math.max(0, viewportWidth - rightBound) + ACTION_MENU_EDGE_INSET_PX)};`,
-    `max-width: ${px(Math.max(0, rightBound - leftBound - 2 * ACTION_MENU_EDGE_INSET_PX))};`,
+    `left: ${px(left)};`,
+    "right: auto;",
+    `width: ${px(width)};`,
+    `max-width: ${px(inner)};`,
   ].join(" ");
 }
 

@@ -29,7 +29,10 @@ describe("actionMenuPanelStyle in a narrow column", () => {
     const style = actionMenuPanelStyle(trigger, { constrainTo: "viewport" });
 
     expect(style).toContain("left: 8px;");
-    expect(style).toContain("right: 8px;");
+    expect(style).toContain("right: auto;");
+    // Its own width, not the screen's: a panel that spans the viewport reads
+    // as a sheet rather than as this row's actions.
+    expect(style).toContain("width: 200px;");
   });
 
   it("still right-aligns to a trigger with room for a readable menu", () => {

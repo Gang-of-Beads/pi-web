@@ -49,6 +49,8 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onRowAction?: (kind: NavigateRowKind, id: string, action: NavigateRowActionId) => void;
   @property({ attribute: false }) canRenameSession = false;
   @property({ attribute: false }) canCloseProject = false;
+  /** Project ids the reader pinned; the host owns the store. */
+  @property({ attribute: false }) pinnedProjectIds: ReadonlySet<string> = new Set();
   /** What the host is still reading, so the page says "loading" instead of "none". */
   @property({ attribute: false }) loadingSessions = false;
   @property({ attribute: false }) loadingChoices = false;
@@ -105,7 +107,8 @@ export class AppNavigatePage extends LitElement {
       folderPath: undefined,
     }).filter((segment) => segment.level !== "folder");
     const showsSessions = this.kind === "sessions";
-    const choices = model.sections.flatMap((section) => section.choices).filter((choice) => choice.level === this.kind);
+    const levelChoices = model.sections.flatMap((section) => section.choices).filter((choice) => choice.level === this.kind);
+    const choices = this.kind === "project" ? pinnedFirst(levelChoices, this.pinnedProjectIds) : levelChoices;
     return html`
       <section class="navigate">
         <header class="path-bar">
@@ -261,10 +264,14 @@ export class AppNavigatePage extends LitElement {
           this.kind = "sessions";
         }}
       >
-        <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${icon}</span><span class="row-name">${choice.label}</span></span>
+        <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${icon}</span>${kind === "project" && this.pinnedProjectIds.has(choice.id) ? html`<span class="pin" aria-label="Pinned">•</span>` : nothing}<span class="row-name">${choice.label}</span></span>
         ${choice.detail === undefined ? nothing : html`<span class="row-path">${choice.detail}</span>`}
       </button>
-    `, { hasPath: choice.detail !== undefined, closable: kind === "project" && this.canCloseProject });
+    `, {
+      hasPath: choice.detail !== undefined,
+      closable: kind === "project" && this.canCloseProject,
+      pinned: kind === "project" && this.pinnedProjectIds.has(choice.id),
+    });
   }
 
   /**
@@ -422,4 +429,12 @@ declare global {
   interface HTMLElementTagNameMap {
     "app-navigate-page": AppNavigatePage;
   }
+}
+
+/**
+ * A pin means "keep this close", so a pinned project leads the board; the rest
+ * keep the order the model gave them.
+ */
+function pinnedFirst<T extends { id: string }>(choices: readonly T[], pinned: ReadonlySet<string>): T[] {
+  return [...choices.filter((choice) => pinned.has(choice.id)), ...choices.filter((choice) => !pinned.has(choice.id))];
 }
