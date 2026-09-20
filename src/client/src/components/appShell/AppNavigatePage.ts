@@ -332,10 +332,12 @@ export class AppNavigatePage extends LitElement {
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, css`
     .row .row-title { flex: 1 1 auto; min-width: 0; }
-    .row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row-name { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); line-height: 1.3; overflow-wrap: anywhere; }
     .row.session { display: grid; align-content: center; gap: var(--pi-space-2); }
-    .row .row-title { display: flex; align-items: center; gap: var(--pi-space-2); }
-    .state { margin-left: auto; }
+    /* Two lines of name, like the quick-access card: a one-line clamp turned
+       every session into the same truncated prefix. */
+    .row .row-title { display: flex; align-items: flex-start; gap: var(--pi-space-2); white-space: normal; }
+    .state { flex: 0 0 auto; margin-left: auto; margin-top: calc(0.65em - var(--pi-dot-sm) / 2); }
     .state { flex: 0 0 auto; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; }
     .state.waiting { background: var(--pi-accent); }
     .state.working { background: var(--pi-success); }
@@ -345,15 +347,19 @@ export class AppNavigatePage extends LitElement {
        box, which read as a stray glyph beside the list. */
     /* A board of places, not a dense list: the tile is tall enough to read
        two lines without crowding and to be hit with a thumb anywhere on it. */
-    .row-wrap { position: relative; box-sizing: border-box; display: flex; align-items: stretch; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); overflow: hidden; }
-    .row-wrap:has(.row.current) { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
+    .row-wrap { position: relative; display: block; height: 100%; --tile-menu-size: var(--pi-control-height-comfort); }
+    @media (pointer: coarse) { .row-wrap { --tile-menu-size: var(--pi-control-height-touch, 44px); } }
+
     /* The open menu names its subject and the tile it belongs to lights up:
        a floating panel over a two-column board said nothing about which tile
        it was acting on. */
-    .row-wrap.menu-open { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent); }
+    .row-wrap.menu-open > .row { border-color: var(--pi-accent); }
+    .action-menu-panel { min-width: 160px; }
     .action-menu-subject { margin: 0; padding: var(--pi-space-3) var(--pi-space-4); border-bottom: 1px solid var(--pi-border); color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .row-wrap .row { flex: 1 1 auto; min-width: 0; border: 0; border-radius: 0; background: transparent; }
-    .row-wrap .action-menu-toggle { flex: 0 0 auto; min-width: var(--pi-control-height-touch); border: 0; border-left: 1px solid var(--pi-border-muted); border-radius: 0; background: transparent; }
+    .row-wrap > .row { height: 100%; }
+    .row-wrap .action-menu-toggle { position: absolute; top: 0; right: 0; box-sizing: border-box; display: grid; place-items: center; width: var(--tile-menu-size); min-width: 0; height: var(--tile-menu-size); padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-ui); }
+    .row-wrap .action-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }
+    @media (hover: hover) { .row-wrap .action-menu-toggle:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
 
     :host { display: block; min-height: 0; height: 100%; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); user-select: none; -webkit-user-select: none; }
     .navigate { display: flex; flex-direction: column; min-height: 0; height: 100%; }
@@ -394,13 +400,17 @@ export class AppNavigatePage extends LitElement {
     .create.secondary { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text); }
     /* Two entries to a line: the owner reads this list as a board of places,
        and one tall row per screen line wasted half the width. */
-    .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--pi-space-3) var(--pi-bar-inset) var(--pi-space-5); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: var(--pi-space-2); }
+    /* The quick-access board's shape, which the owner asked this page to
+       follow: cards that fit the width, a two-line title, the place under it
+       and the menu in the card's own corner. */
+    .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--pi-space-3) var(--pi-bar-inset) var(--pi-space-5); display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-content: start; gap: var(--pi-space-3); }
+    @media (max-width: 430px) { .body { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); } }
     .section-title, .empty { grid-column: 1 / -1; }
     .row-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .section-title { margin: var(--pi-space-4) 0 var(--pi-space-1); color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
-    .row { box-sizing: border-box; display: grid; gap: var(--pi-space-2); width: 100%; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
+    .row { box-sizing: border-box; display: grid; gap: var(--pi-space-2); width: 100%; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); padding: var(--pi-space-4) calc(var(--tile-menu-size) + var(--pi-space-2)) var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
     .row.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
-    .row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row-title { min-width: 0; overflow: hidden; }
     .row-detail { min-width: 0; display: flex; gap: var(--pi-space-3); overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-2xs); white-space: nowrap; }
     .pin { margin-right: var(--pi-space-2); color: var(--pi-accent); }
     .empty { margin: var(--pi-space-5) 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
