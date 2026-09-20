@@ -14,7 +14,7 @@ buildNpmPackage rec {
   # and take the hash from that build or from CI's own "got:" line. A bare
   # `nix run nixpkgs#prefetch-npm-deps` resolves a different nixpkgs than this
   # flake pins and produced a hash CI rejected.
-  npmDepsHash = "sha256-0CEXtJlqI2SYqrRqjNm3/YduN+JHvzVQ+1dW9hRZr9c=";
+  npmDepsHash = "sha256-kcEjNYL4ceJGht+UhxUwUN4ctsFYMsGRY/+oXPKOdDI=";
 
   nativeBuildInputs = [ makeWrapper python3 pkg-config ]
     ++ lib.optionals stdenv.isLinux [ stdenv.cc ];
