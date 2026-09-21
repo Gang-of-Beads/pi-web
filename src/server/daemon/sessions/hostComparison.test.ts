@@ -144,7 +144,12 @@ describe("host-vs-native comparison (recording mode)", () => {
       else if (before.endsWith("\n\n")) before = before.slice(0, -2);
       recovered = before + after;
     }
-    expect(recovered, "the prompt delta must be exactly the seam's sections — the seam explains 100% of the difference").toBe(nativePrompt);
+    // pi 0.86 wraps whatever a host appends in an <addendum> block, so the
+    // seam's own sections are no longer the whole delta: the wrapper pi adds
+    // around them is too. Excising an emptied wrapper keeps the contract
+    // honest - the seam still explains every byte pi did not add itself.
+    recovered = recovered.replace("<addendum>\n\n</addendum>\n\n", "");
+    expect(recovered, "the prompt delta must be exactly the seam's sections plus pi's own addendum wrapper").toBe(nativePrompt);
 
     // --- Tool diff ---------------------------------------------------------
     // 3.2: the comparison is no longer purely a recording — the construction

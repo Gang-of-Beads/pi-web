@@ -1,3 +1,4 @@
+import { normalizeContext } from "@earendil-works/pi-ai";
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 
@@ -16,14 +17,17 @@ export function deterministicSessionName(firstMessage: unknown): string | undefi
 export async function generateShortSessionName<TApi extends Api>(streamFn: StreamFn, model: Model<TApi>, firstMessage: string): Promise<string | undefined> {
   const stream = await streamFn(
     model,
-    {
+    // Since pi 0.86 a stream takes a normalized transcript: the system prompt
+    // is a leading system message rather than a request field, and only
+    // normalizeContext may produce the branded type.
+    normalizeContext({
       systemPrompt: "Generate a concise title for a coding-agent chat session. Return only the title, with no quotes or punctuation wrapper.",
       messages: [{
         role: "user",
         content: `Create a 2-6 word title for this request:\n\n${truncateInput(firstMessage)}`,
         timestamp: Date.now(),
       }],
-    },
+    }),
     {
       maxTokens: 24,
       reasoning: "minimal",
