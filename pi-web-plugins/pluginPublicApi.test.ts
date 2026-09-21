@@ -27,6 +27,9 @@ const allowed = new Map<string, readonly string[]>([
   // remote machine - the literal is the remote endpoint's path, handed to the
   // contract's MachineClient, never a URL the plugin resolves itself.
   ["pi-web-plugins/machines/server/machineService.ts", ["direct PI WEB API URL"]],
+  // Updates reads the machine's own status through the host's fetchJson: the
+  // literal names that endpoint, and the host still resolves it.
+  ["pi-web-plugins/updates/pi-web-plugin.ts", ["direct PI WEB API URL"]],
 ]);
 
 describe("bundled PI WEB plugins", () => {

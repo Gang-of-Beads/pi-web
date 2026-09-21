@@ -1,5 +1,7 @@
 import type { TemplateResult } from "lit";
-import type { HtmlTemplateTag, PiWebComponentStatus, PiWebPlugin, PiWebStatusResponse, PluginRuntimeState, WorkspacePanelTerminal } from "@gang-of-beads/pi-web/plugin-api";
+import { piWebUpdateOffer } from "./piWebUpdateOffer.js";
+import { showPiWebUpdateNotice, showPiWebUpdateOffer } from "./updateOfferDialog.js";
+import type { HtmlTemplateTag, PiWebComponentStatus, PiWebPlugin, PluginActivationContext, PiWebStatusResponse, PluginRuntimeState, WorkspacePanelTerminal } from "@gang-of-beads/pi-web/plugin-api";
 import { additionalCommands, fallbackDockerStatus, formatVersion, installationLabel, messageCount, recommendedCommand, shouldShowUpdatesPanel, statusFor, type UpdatesRuntimeHint } from "./updatesLogic.js";
 
 function runCommandInTerminal(terminal: WorkspacePanelTerminal, label: string, command: string): void {
@@ -152,10 +154,64 @@ function renderUpdatesPanel(html: HtmlTemplateTag, terminal: WorkspacePanelTermi
   `;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The machine's PI WEB update offer, once.
+ *
+ * PI WEB carries the pi agent its sessions run - not the pi on the machine's
+ * PATH - so this is the update that matters, and it is the plugin's own
+ * business: the decision, the machine-owned record of answered versions and
+ * the popup all live here, and the shell only lends its modal layer. The
+ * plugin is machine-specific, so one activation is one machine.
+ *
+ * The command restarts the web process and the session daemon, so it is handed
+ * to the reader instead of executed from the page that would die running it.
+ */
+function offerPiWebUpdate(context: PluginActivationContext): void {
+  const { callOperation, fetchJson, ui } = context;
+  if (callOperation === undefined || fetchJson === undefined || ui === undefined) return;
+  void Promise.all([fetchJson("api/pi-web/status"), callOperation("offer.answered")])
+    .then(([status, answered]) => {
+      const release = isRecord(status) && isRecord(status["release"]) ? status["release"] : undefined;
+      const commands = isRecord(status) && isRecord(status["commands"]) ? status["commands"] : undefined;
+      const running = isRecord(status) && typeof status["version"] === "string" ? status["version"] : undefined;
+      const answeredVersions = isRecord(answered) && Array.isArray(answered["answeredVersions"])
+        ? answered["answeredVersions"].filter((entry): entry is string => typeof entry === "string")
+        : [];
+      const verdict = piWebUpdateOffer({
+        running,
+        release: {
+          ...(typeof release?.["latestVersion"] === "string" ? { latestVersion: release["latestVersion"] } : {}),
+          ...(typeof release?.["updateAvailable"] === "boolean" ? { updateAvailable: release["updateAvailable"] } : {}),
+        },
+        answeredVersions,
+      });
+      if (verdict.kind !== "offer") return;
+      const command = typeof commands?.["update"] === "string" && commands["update"] !== "" ? commands["update"] : undefined;
+      showPiWebUpdateOffer({ running: verdict.running, latest: verdict.latest, command }, {
+        ui,
+        html: context.html,
+        answer: async (version) => { await callOperation("offer.answer", { version }); },
+        copy: (value) => ui.copyText(value),
+        notify: (message, kind) => { showPiWebUpdateNotice(context.html, ui, message, kind); },
+      });
+    })
+    .catch(() => {
+      // A machine that cannot be asked is not a machine without updates: no
+      // offer is shown, and the next activation asks again.
+    });
+}
+
 const plugin: PiWebPlugin = {
   apiVersion: 2,
   name: "Updates",
-  activate: ({ html, svg }) => ({
+  activate: (context) => {
+    const { html, svg } = context;
+    offerPiWebUpdate(context);
+    return {
     contributions: {
       actions: [
         {
@@ -195,7 +251,8 @@ const plugin: PiWebPlugin = {
         },
       ],
     },
-  }),
+    };
+  },
 };
 
 export default plugin;

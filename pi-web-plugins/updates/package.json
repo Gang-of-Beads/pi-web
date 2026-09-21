@@ -1,6 +1,7 @@
 {
   "name": "@pi-web/updates-plugin",
   "private": true,
+  "type": "module",
   "piWeb": {
     "plugins": [
       {
@@ -10,7 +11,8 @@
         "machineSpecific": true,
         "hostFacts": [
           "dockerMode"
-        ]
+        ],
+        "serverModule": "server-plugin.js"
       }
     ]
   }
