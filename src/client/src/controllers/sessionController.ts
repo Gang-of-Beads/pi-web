@@ -2335,8 +2335,16 @@ export class SessionController {
       // is repaired by the gap replay like any other session frame. Session
       // frames apply to the selected session; the wrapper's own guard keeps a
       // stale frame from touching another chat.
-      const selected = this.getState().selectedSession;
-      if (selected !== undefined) this.markDelivery(selected.id, event.clientMessageId, "queued");
+      const current = this.getState();
+      const selected = current.selectedSession;
+      if (selected !== undefined) {
+        this.markDelivery(selected.id, event.clientMessageId, "queued");
+        // The daemon has it: whatever the send call reported - a timeout that
+        // raced an accepted request, a socket that dropped mid-reply - this
+        // message is not unsent, so it leaves the outbox. Leaving it there is
+        // what offered "Retry" for a message the agent had already answered.
+        forgetPendingPrompt(machineSessionKey(selectedMachineId(current), selected.id), event.clientMessageId);
+      }
       return;
     }
     if (event.type === "ask.closed") {

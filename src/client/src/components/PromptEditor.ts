@@ -15,7 +15,7 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
-import { isNetworkFailure, loadPendingPrompts, forgetPendingPrompt, savePendingPrompt, type PendingPrompt } from "../pendingOutbox";
+import { isNetworkFailure, loadPendingPrompts, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, type PendingPrompt } from "../pendingOutbox";
 import { classifySubmission, handleOutcome } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { newClientMessageId } from "../messageDelivery";
@@ -168,6 +168,15 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   /* Attachments live above the text box, so pasted images/files are visible
      before the user starts editing the message body and never get hidden below
      the keyboard/action row on mobile. */
+  /* The undelivered strip is its own box: with no style of its own it read
+     as loose text continuing the transcript, so a failed message looked like
+     something the agent had said. */
+  .pending-prompts { display: grid; gap: var(--pi-space-2); box-sizing: border-box; margin: 0 var(--pi-bar-inset) var(--pi-space-3); padding: var(--pi-space-3) var(--pi-space-4); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-lg); background: color-mix(in srgb, var(--pi-warning) 8%, var(--pi-surface)); color: var(--pi-text); }
+  .pending-prompt { display: flex; align-items: center; gap: var(--pi-space-3); min-width: 0; }
+  .pending-prompt .pending-prompt-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pending-prompt .pending-prompt-state { flex: 0 0 auto; color: var(--pi-warning); font-size: var(--pi-text-xs); }
+  .pending-prompt button { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; cursor: pointer; }
+  @media (pointer: coarse) { .pending-prompt button { min-height: var(--pi-control-height-touch); } }
   .attachments { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-4); margin: 0; padding: 0 0 var(--pi-space-1); }
   .attachment-chip { box-sizing: border-box; position: relative; width: 56px; height: 56px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); overflow: hidden; background: var(--pi-bg); }
   .attachment-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -347,9 +356,18 @@ export class PromptEditor extends LitElement {
     if (this.pendingPrompts.length > 0) this.flushPendingPrompts();
   }
 
+  private readonly onOutboxChanged = (event: Event) => {
+    const key = machineSessionKey(this.machineId, this.sessionId ?? "");
+    if (key === "") return;
+    const changed: unknown = event instanceof CustomEvent ? event.detail : undefined;
+    if (changed !== undefined && changed !== key) return;
+    this.pendingPrompts = this.pendingPromptsForSession();
+  };
+
   override connectedCallback(): void {
     super.connectedCallback();
     this.pendingPrompts = this.pendingPromptsForSession();
+    window.addEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
   }
 
   protected override updated(changed: PropertyValues) {
@@ -370,6 +388,7 @@ export class PromptEditor extends LitElement {
 
   override disconnectedCallback(): void {
     window.removeEventListener("online", this.flushPendingPrompts);
+    window.removeEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
     if (this.pendingRevealTimer !== undefined) {
       clearTimeout(this.pendingRevealTimer);
       this.pendingRevealTimer = undefined;
@@ -510,7 +529,7 @@ export class PromptEditor extends LitElement {
     }
     const actions = pendingPromptActions({ sending: this.sending });
     return html`
-      <div class="pending-prompts" role="status">
+      <div class="pending-prompts" role="status" aria-label="Messages not delivered">
         ${lingering.map((prompt) => html`
           <div class="pending-prompt">
             <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>

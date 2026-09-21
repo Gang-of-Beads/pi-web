@@ -62,6 +62,21 @@ export class NetworkSendError extends Error {
   }
 }
 
+/**
+ * Announced whenever the outbox for a session changes.
+ *
+ * The outbox lives in storage, so a writer that is not the composer - the
+ * session controller retiring an accepted prompt - had no way to tell the
+ * composer to re-read. The owner met the result: a message the agent had
+ * already answered still offered "Unsent · Retry".
+ */
+export const OUTBOX_CHANGED_EVENT = "pi-web.outbox-changed";
+
+function announceOutboxChange(sessionKey: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(OUTBOX_CHANGED_EVENT, { detail: sessionKey }));
+}
+
 export function loadPendingPrompts(sessionKey: string, storage = browserStorage()): PendingPrompt[] {
   try {
     const raw = storage?.getItem(outboxKey(sessionKey));
@@ -85,6 +100,7 @@ export function savePendingPrompt(sessionKey: string, prompt: PendingPrompt, sto
     if (index === -1) pending.push(prompt);
     else pending[index] = prompt;
     storage?.setItem(outboxKey(sessionKey), JSON.stringify(pending));
+    announceOutboxChange(sessionKey);
   } catch {
     // localStorage unavailable (private mode/quota): the message is still in
     // the composer's restore buffer; the outbox is best-effort.
@@ -96,6 +112,7 @@ export function forgetPendingPrompt(sessionKey: string, clientMessageId: string,
     const remaining = loadPendingPrompts(sessionKey, storage).filter((entry) => entry.clientMessageId !== clientMessageId);
     if (remaining.length === 0) storage?.removeItem(outboxKey(sessionKey));
     else storage?.setItem(outboxKey(sessionKey), JSON.stringify(remaining));
+    announceOutboxChange(sessionKey);
   } catch {
     return;
   }
@@ -104,6 +121,7 @@ export function forgetPendingPrompt(sessionKey: string, clientMessageId: string,
 export function clearPendingPrompts(sessionKey: string, storage = browserStorage()): void {
   try {
     storage?.removeItem(outboxKey(sessionKey));
+    announceOutboxChange(sessionKey);
   } catch {
     // Ignore storage failures; next online flush will retry once more.
   }
