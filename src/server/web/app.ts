@@ -29,6 +29,8 @@ import { createWorkspaceProviderRuntimeSnapshot, type WorkspaceProviderRuntimeSn
 import { mountServerPluginRoutes } from "./plugins/serverPluginRouteMount.js";
 import { createActiveProfilePiPackageService, type PiPackageService } from "./piPackageService.js";
 import { registerPiPackageRoutes } from "./piPackageRoutes.js";
+import { registerSessionPinRoutes } from "./sessionPinRoutes.js";
+import { SessionPinStore } from "../shared/storage/sessionPinStore.js";
 import { createPiWebStatusCache, type PiWebStatusCache } from "./piWebStatusCache.js";
 import { getPiWebRuntime, getPiWebStatus, getPiWebVersionStatus } from "../shared/piWebStatus.js";
 import {
@@ -58,6 +60,7 @@ export interface AppDependencies {
   /** Pre-activated web-process plugin runtime; assembled from the catalog when omitted. */
   serverPluginRuntime?: ServerPluginRuntime;
   piPackages?: PiPackageService;
+  sessionPins?: SessionPinStore;
   piWebStatusCache?: PiWebStatusCache;
   config?: PiWebConfigService;
   clientDist?: string | false;
@@ -257,6 +260,9 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   app.get("/api/machines/local/plugins", async (_request, reply) => withProfileDependency(reply, () => piWebPlugins.plugins()));
   registerPiPackageRoutes(app, piPackages);
   registerPiPackageRoutes(app, piPackages, "/api/machines/local");
+  const sessionPins = deps.sessionPins ?? new SessionPinStore();
+  registerSessionPinRoutes(app, sessionPins);
+  registerSessionPinRoutes(app, sessionPins, "/api/machines/local");
   const invalidatingConfigService = invalidatePiWebStatusOnWrite(configService, piWebStatusCache);
   registerConfigRoutes(app, invalidatingConfigService);
   registerLocalMachineConfigRoutes(app, invalidatingConfigService);

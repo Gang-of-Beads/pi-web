@@ -5,6 +5,7 @@ import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { request } from "../api/http";
+import { sessionPinsApi } from "../api/clients";
 import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
 import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
 import { describeError, noticeForReader, noticeFromTransport, RetiredBy } from "../notice";
@@ -434,19 +435,57 @@ export class PiWebApp extends LitElement {
    * ids are unique per machine; the cache is re-read whenever the selection
    * moves, so machine A's pins can never mark or act on machine B's rows.
    */
-  private pinCache: { machineId: string; ids: ReadonlySet<string> } | undefined;
+  @state() private pinCache: { machineId: string; ids: ReadonlySet<string> } | undefined;
+  private pinReadsInFlight = new Set<string>();
+  private pinsAdopted = new Set<string>();
 
   private get pinnedSessionIds(): ReadonlySet<string> {
     return this.pinnedSessionIdsFor(selectedMachineId(this.state));
   }
 
-  /** Pins belong to a machine; a surface reads the machine it is showing. */
+  /**
+   * Pins belong to the machine that holds the sessions, so the answer comes
+   * from that machine and every device browsing it sees the same set. The
+   * device's old local pins are handed to the machine once, so nothing the
+   * owner pinned before the move is lost. Until the machine answers, the
+   * local set stands in - it is the last thing known to be true, for this
+   * machine, on this device.
+   */
   private pinnedSessionIdsFor(machineId: string): ReadonlySet<string> {
     const cached = this.pinCache;
-    if (cached?.machineId === machineId) return cached.ids;
+    if (cached?.machineId === machineId) {
+      void this.ensureMachinePins(machineId);
+      return cached.ids;
+    }
     const ids = readPinnedSessionIds(machineId);
     this.pinCache = { machineId, ids };
+    void this.ensureMachinePins(machineId);
     return ids;
+  }
+
+  private async ensureMachinePins(machineId: string): Promise<void> {
+    if (this.pinReadsInFlight.has(machineId)) return;
+    this.pinReadsInFlight.add(machineId);
+    try {
+      const local = readPinnedSessionIds(machineId);
+      const answered = this.pinsAdopted.has(machineId) || local.size === 0
+        ? await sessionPinsApi.pins(machineId)
+        : await sessionPinsApi.adopt([...local], machineId);
+      this.pinsAdopted.add(machineId);
+      this.applyMachinePins(machineId, answered);
+    } catch {
+      // The machine could not answer: the local set keeps standing in, and the
+      // next read tries again. A pin is never invented or silently dropped.
+      this.pinReadsInFlight.delete(machineId);
+      return;
+    }
+    this.pinReadsInFlight.delete(machineId);
+  }
+
+  private applyMachinePins(machineId: string, ids: readonly string[]): void {
+    writePinnedSessionIds(machineId, new Set(ids));
+    if (this.pinCache?.machineId === machineId) this.pinCache = { machineId, ids: new Set(ids) };
+    this.requestUpdate();
   }
   @state() private quickSwitcherWorkspaces: readonly Workspace[] = [];
   private quickSwitcherMachineId: string | undefined;
@@ -2321,11 +2360,16 @@ export class PiWebApp extends LitElement {
   }
 
   private togglePinnedSession(session: SessionInfo): void {
-    const machineId = selectedMachineId(this.state);
-    const ids = togglePinnedSessionId(this.pinnedSessionIds, session.id);
+    const machineId = this.browsedMachineId();
+    const ids = togglePinnedSessionId(this.pinnedSessionIdsFor(machineId), session.id);
+    // Optimistic, then the machine's answer: the mark must move under the
+    // finger, and the machine owns the set every other device will read.
     this.pinCache = { machineId, ids };
     writePinnedSessionIds(machineId, ids);
     this.requestUpdate();
+    void sessionPinsApi.setPinned(session.id, ids.has(session.id), machineId)
+      .then((answered) => { this.applyMachinePins(machineId, answered); })
+      .catch((error: unknown) => { this.setState(errorNoticePatch(error)); });
   }
 
   /**

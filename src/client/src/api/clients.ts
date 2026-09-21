@@ -189,6 +189,31 @@ export const piPackagesApi = {
   },
 };
 
+/**
+ * Pins belong to the machine that holds the sessions, so every device that
+ * browses that machine reads and writes the same set.
+ */
+export const sessionPinsApi = {
+  pins: (machineId = "local") => request(`${machinePrefix(machineId)}/session-pins`, parsePinnedSessionIds, { cache: "no-store" }),
+  setPinned: (sessionId: string, pinned: boolean, machineId = "local") => request(
+    `${machinePrefix(machineId)}/session-pins`,
+    parsePinnedSessionIds,
+    { method: "POST", body: JSON.stringify({ sessionId, pinned }) },
+  ),
+  adopt: (sessionIds: readonly string[], machineId = "local") => request(
+    `${machinePrefix(machineId)}/session-pins`,
+    parsePinnedSessionIds,
+    { method: "POST", body: JSON.stringify({ adopt: [...sessionIds] }) },
+  ),
+};
+
+function parsePinnedSessionIds(value: unknown): string[] {
+  if (typeof value !== "object" || value === null) throw new Error("The machine did not answer with its pins");
+  const pinned: unknown = Reflect.get(value, "pinnedSessionIds");
+  if (!Array.isArray(pinned)) throw new Error("The machine did not answer with its pins");
+  return pinned.filter((id): id is string => typeof id === "string");
+}
+
 export const machineStatusApi = {
   machineStatus: (machineId = "local") => request(`${machinePrefix(machineId)}/status`, requireMachineStatusSnapshot),
 };
