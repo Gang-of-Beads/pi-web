@@ -2440,6 +2440,16 @@ export class PiWebApp extends LitElement {
     this.pushModalLayerFrame();
   }
 
+  /**
+   * The bar key is a toggle: pressing it while the sheet is open closes what
+   * it opened. A key that only opens leaves the reader hunting for the way
+   * back out.
+   */
+  private toggleGoToSheet(): void {
+    if (this.goToSheetOpen) { this.goToSheetOpen = false; return; }
+    this.openGoToSheet();
+  }
+
   private openGoToSheet(): void {
     dismissKeyboardIfRaised();
     this.goToSheetOpen = true;
@@ -4094,7 +4104,7 @@ export class PiWebApp extends LitElement {
       <app-context-bar
         .session=${this.state.selectedSession}
         .activeSurface=${this.activeSurfaceLabel()}
-        .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? () => { this.openGoToSheet(); } : undefined}
+        .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? () => { this.toggleGoToSheet(); } : undefined}
         .onRenameRequest=${(session: SessionInfo) => { this.renameFromBar = session; }}
         ?panelOpen=${this.shellPanelOpen()}
         .toggleTarget=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? "menu" : "panel"}

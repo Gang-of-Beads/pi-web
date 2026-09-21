@@ -32,7 +32,20 @@ export class AppGoToSheet extends LitElement {
   override render() {
     return html`
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"Go to"} .initialFocus=${"button"}>
-        <header class="panel-header"><h2 class="panel-header-title">Go to</h2></header>
+        <header class="panel-header">
+          <h2 class="panel-header-title">Go to</h2>
+          <button
+            type="button"
+            class="panel-key"
+            title="Close Go to"
+            aria-label="Close Go to"
+            @click=${() => { this.onClose?.(); }}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 6h16M4 12h16M4 18h16"></path>
+            </svg>
+          </button>
+        </header>
         <div class="body" role="list">
           ${this.destinations.map((destination) => this.renderDestination(destination))}
         </div>
@@ -66,6 +79,13 @@ export class AppGoToSheet extends LitElement {
       --modal-surface-width: min(560px, 100vw);
       --modal-surface-max-height: min(70dvh, 560px);
     }
+    /* The key that opened the sheet keeps its place in it, so a second press
+       closes what the first press opened. Without it the sheet had no key at
+       all and the gesture had nowhere to land. */
+    .panel-key { box-sizing: border-box; flex: 0 0 auto; margin-left: auto; display: grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+    .panel-key svg { width: 18px; height: 18px; }
+    .panel-key:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
+    @media (hover: hover) { .panel-key:hover { background: var(--pi-surface-hover); } }
     .panel-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
     .panel-header-title { margin: 0; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-text); line-height: var(--pi-panel-header-control-height); }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-reading-edge); padding-bottom: max(var(--pi-space-4), env(safe-area-inset-bottom)); overscroll-behavior: contain; }
