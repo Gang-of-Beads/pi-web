@@ -19,11 +19,23 @@ import { renderCrossIcon } from "./uiIcons.js";
  * into "Reconnecting to the session daemon…" presented a permanent failure as
  * a self-healing one and deleted the operation the reader needs to retry.
  */
-export function errorBanner(error: string, onDismiss: () => void, retiredBy: RetiredBy = "reply"): TemplateResult | null {
+export function errorBanner(
+  error: string,
+  onDismiss: () => void,
+  retiredBy: RetiredBy = "reply",
+  onRetry?: () => void,
+): TemplateResult | null {
   if (error === "") return null;
   const transient = retiredBy === "reply" ? normalizeTransientError(error) : undefined;
+  // A failure the reader has to retire keeps a way to try again: a red line
+  // with nothing but a cross is a dead end, and the owner met one on a
+  // session read that answered "Session not found".
+  const retry = transient === undefined && onRetry !== undefined
+    ? html`<button type="button" class="error-retry" @click=${() => { onRetry(); }}>Retry</button>`
+    : null;
   return html`<div class=${`error${transient === undefined ? "" : " transient"}`} role=${transient === undefined ? "alert" : "status"}>
     <span class="error-text">${transient ?? error}</span>
+    ${retry}
     <button type="button" class="error-dismiss" aria-label="Dismiss error" title="Dismiss error" @click=${() => { onDismiss(); }}>${renderCrossIcon()}</button>
   </div>`;
 }

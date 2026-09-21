@@ -155,3 +155,28 @@ describe("the daemon-unavailable banner the server actually sends", () => {
     expect(isTransientError("Session daemon unavailable: permission denied")).toBe(false);
   });
 });
+
+/**
+ * Owner rule: no permanent error without a retry. A reader-retired failure -
+ * "Session not found" on a machine that does not have it - used to offer only
+ * a cross.
+ */
+describe("a reader-retired banner offers a way to try again", () => {
+  it("renders Retry and calls it", () => {
+    const retries: number[] = [];
+    const host = document.createElement("div");
+    render(errorBanner("Session not found", () => undefined, "reader", () => { retries.push(1); }), host);
+    const retry = host.querySelector<HTMLButtonElement>(".error-retry");
+
+    expect(retry).not.toBeNull();
+    retry?.click();
+    expect(retries).toEqual([1]);
+  });
+
+  it("does not add Retry to a self-healing transport claim", () => {
+    const host = document.createElement("div");
+    render(errorBanner("remote machine request cancelled", () => undefined, "reply", () => undefined), host);
+
+    expect(host.querySelector(".error-retry")).toBeNull();
+  });
+});

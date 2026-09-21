@@ -158,3 +158,32 @@ describe("badges while browsing elsewhere", () => {
     expect(source).toContain("!this.quickSwitcherBrowsingElsewhere() && this.canStartSession()");
   });
 });
+
+/**
+ * Owner report from hxd-pi: tapping a listed session answered "Session not
+ * found". The page listed the selected machine's sessions while naming the
+ * browsed machine, so the row belonged to one machine and the open ran
+ * against another.
+ */
+describe("rows while browsing another machine", () => {
+  it("lists only sessions fetched for the browsed machine", () => {
+    const app = createApp();
+    applyState(app, {
+      machines: [machine("local"), machine("remote-b")],
+      selectedMachine: machine("local"),
+      sessions: [sessionOn("/on-local")],
+    });
+    const remote = { ...sessionOn("/on-remote"), id: "remote-session" };
+    if (!Reflect.set(app, "quickSwitcherSessions", [remote])) throw new Error("Could not seed browsed rows");
+    if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "remote-b")) throw new Error("Could not set browse machine");
+
+    const build: unknown = Reflect.get(app, "navigateInput");
+    if (typeof build !== "function") throw new Error("navigateInput was unavailable");
+    const input: unknown = Reflect.apply(build, app, []);
+    if (typeof input !== "object" || input === null) throw new Error("navigateInput returned nothing");
+    const listed: unknown = Reflect.get(input, "sessions");
+    if (!Array.isArray(listed)) throw new Error("sessions missing");
+
+    expect(listed.map((entry: { id: string }) => entry.id)).toEqual(["remote-session"]);
+  });
+});

@@ -196,6 +196,8 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .error { display: flex; gap: var(--pi-space-4); align-items: flex-start; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .error .error-retry { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-5); border: 1px solid currentColor; border-radius: var(--pi-radius-md); background: none; color: inherit; font: inherit; cursor: pointer; }
+  @media (pointer: coarse) { .error .error-retry { min-height: var(--pi-control-height-touch); } }
   .error .error-dismiss { box-sizing: border-box; flex: 0 0 auto; display: grid; place-items: center; min-width: var(--pi-control-height); min-height: var(--pi-control-height); padding: 0 var(--pi-space-3); border: 0; background: none; color: inherit; line-height: 1.4; }
   .deprecation-notice { padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-warning); }
   .deprecation-notice .deprecation-notice-text { margin: 0; overflow-wrap: anywhere; }
@@ -435,7 +437,11 @@ export class PiWebApp extends LitElement {
   private pinCache: { machineId: string; ids: ReadonlySet<string> } | undefined;
 
   private get pinnedSessionIds(): ReadonlySet<string> {
-    const machineId = selectedMachineId(this.state);
+    return this.pinnedSessionIdsFor(selectedMachineId(this.state));
+  }
+
+  /** Pins belong to a machine; a surface reads the machine it is showing. */
+  private pinnedSessionIdsFor(machineId: string): ReadonlySet<string> {
     const cached = this.pinCache;
     if (cached?.machineId === machineId) return cached.ids;
     const ids = readPinnedSessionIds(machineId);
@@ -2459,8 +2465,14 @@ export class PiWebApp extends LitElement {
     // machine and its rows must carry it; using the selected machine printed
     // one machine's name over another machine's sessions.
     const machineId = this.browsedMachineId();
-    const sessions = state.sessions;
-    const pinnedIds = this.pinnedSessionIds;
+    // Rows carry the machine they were fetched for. Listing the selected
+    // machine's sessions under another machine's name is how a tap produced
+    // "Session not found": the row belonged to one machine and the open ran
+    // against another. Browsing elsewhere, only rows fetched for that
+    // machine are listed.
+    const browsingElsewhere = machineId !== selectedMachineId(state);
+    const sessions = browsingElsewhere ? this.quickSwitcherSessions : state.sessions;
+    const pinnedIds = this.pinnedSessionIdsFor(machineId);
     return {
       scope: { machineId, projectId: state.selectedProject?.id, folderPath: state.selectedWorkspace?.path, sessionId: state.selectedSession?.id },
       machines: state.machines.map((machine) => ({ id: machine.id, name: machine.name })),
@@ -2470,7 +2482,7 @@ export class PiWebApp extends LitElement {
       // Pins answer for the machine, not for the project the reader happens to
       // stand in: a session pinned from the global list vanished from Pinned
       // as soon as the page listed a project's sessions.
-      pinned: dedupeById([...this.quickSwitcherSessions, ...sessions])
+      pinned: dedupeById(browsingElsewhere ? [...this.quickSwitcherSessions] : [...this.quickSwitcherSessions, ...sessions])
         .filter((session) => pinnedIds.has(session.id))
         .map((session) => ({ session, machineId })),
       waitingSessionIds: this.waitingSessionIds(),
@@ -3897,6 +3909,21 @@ export class PiWebApp extends LitElement {
     `;
   }
 
+  /**
+   * What "Retry" means on the shell banner: read the current scope again.
+   * The banner reports a failed read of the selection, so the retry is the
+   * read the selection needs - not a generic reload that would lose the
+   * reader's place.
+   */
+  private async retryAfterError(): Promise<void> {
+    this.bannerDismissedByReader = true;
+    this.heldErrorBanner = null;
+    this.setState(clearErrorPatch());
+    const session = this.state.selectedSession;
+    if (session !== undefined) { await this.sessions.selectSession(session); return; }
+    await this.machines.loadMachines();
+  }
+
   private renderErrorBanner(error: string, retiredBy: RetiredBy) {
     // The hold window is an anti-churn device for one context. A scope
     // switch resets only this hold bookkeeping - the banner itself survives
@@ -3999,7 +4026,7 @@ export class PiWebApp extends LitElement {
       }
       this.heldErrorBanner = null;
       this.setState(clearErrorPatch());
-    }, retiredBy);
+    }, retiredBy, () => { void this.retryAfterError(); });
     return this.heldErrorBanner;
   }
 
