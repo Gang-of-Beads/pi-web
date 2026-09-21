@@ -3,7 +3,13 @@
   "private": true,
   "piWeb": {
     "plugins": [
-      { "id": "subagents", "browserRoot": ".", "module": "pi-web-plugin.js" }
+      {
+        "id": "subagents",
+        "browserRoot": ".",
+        "module": "pi-web-plugin.js",
+        "serverModule": "server-plugin.js"
+      }
     ]
-  }
+  },
+  "type": "module"
 }
