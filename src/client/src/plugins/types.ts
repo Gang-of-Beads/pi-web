@@ -874,6 +874,12 @@ export interface ThemeContribution {
   order?: number;
   colorScheme: ThemeColorScheme;
   tokens: ThemeTokens;
+  /**
+   * The tab icon while this theme is active: inline SVG markup or an image
+   * URL. Without one the host typesets the product's pi glyph in the theme's
+   * accent, so a theme only declares this when it wants its own mark.
+   */
+  icon?: string;
 }
 
 export interface ThemePairContribution {

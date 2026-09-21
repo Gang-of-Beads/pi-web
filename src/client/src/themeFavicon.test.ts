@@ -6,7 +6,9 @@ describe("the favicon follows the theme", () => {
     const svg = themeFaviconSvg("#e8643c", "#15110e");
     expect(svg).toContain('fill="#15110e"');
     expect(svg).toContain('fill="#e8643c"');
-    expect(svg.match(/<rect /gu)?.length).toBeGreaterThan(10);
+    // The glyph is typeset, not drawn as pixels: one tile plus one letter.
+    expect(svg).toContain("&#960;");
+    expect(svg).toContain("ui-monospace");
   });
 
   it("encodes an inline data href", () => {

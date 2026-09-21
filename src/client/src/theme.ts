@@ -21,6 +21,8 @@ export interface ThemePreferenceResolution {
   fallbackTheme: QualifiedThemeContribution | undefined;
 }
 
+import { CORE_PRO_LIGHT_THEME_ID, CORE_PRO_LIGHT_TOKENS } from "./nativeLightTheme";
+
 export const CLASSIC_THEME_ID: QualifiedContributionId = "themes:classic";
 export const DEFAULT_THEME_ID: QualifiedContributionId = "themes:clay-soft";
 /** The core's own look: no plugin theme applied, the index.html defaults -
@@ -29,6 +31,7 @@ export const DEFAULT_THEME_ID: QualifiedContributionId = "themes:clay-soft";
 export const CORE_PRO_THEME_ID: QualifiedContributionId = "core:pro";
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = { themeId: CORE_PRO_THEME_ID, auto: true };
 export const THEME_STORAGE_KEY = "pi-web-app-theme";
+export { CORE_PRO_LIGHT_THEME_ID } from "./nativeLightTheme";
 
 export const THEME_TOKENS: ThemeToken[] = [
   "--pi-bg",
@@ -113,8 +116,42 @@ export function writeStoredThemePreference(preference: ThemePreference): void {
 export function applyNativeProTheme(): void {
   const root = document.documentElement;
   root.dataset["piWebTheme"] = CORE_PRO_THEME_ID;
-  root.style.removeProperty("color-scheme");
+  root.style.colorScheme = "dark";
   for (const token of THEME_TOKENS) root.style.removeProperty(token);
+  // The native look's colours live in the stylesheet, so the icon reads them
+  // back from the resolved root rather than from a second copy in TypeScript.
+  applyThemeFavicon(resolvedRootTokens(root, ["--pi-accent", "--pi-bg"]), document);
+}
+
+function resolvedRootTokens(root: Element, names: readonly string[]): Record<string, string> {
+  const computed = getComputedStyle(root);
+  const resolved: Record<string, string> = {};
+  for (const name of names) {
+    const value = computed.getPropertyValue(name).trim();
+    if (value !== "") resolved[name] = value;
+  }
+  return resolved;
+}
+
+/**
+ * The core's light side, picked rather than inherited from the system. The
+ * values come from one place (nativeLightTheme) so the picked theme and the
+ * pre-JavaScript `prefers-color-scheme` block cannot disagree.
+ */
+export function applyNativeProLightTheme(): void {
+  const root = document.documentElement;
+  root.dataset["piWebTheme"] = CORE_PRO_LIGHT_THEME_ID;
+  root.style.colorScheme = "light";
+  for (const token of THEME_TOKENS) {
+    const value = CORE_PRO_LIGHT_TOKENS[token];
+    if (value === undefined) root.style.removeProperty(token);
+    else root.style.setProperty(token, value);
+  }
+  applyThemeFavicon({ ...CORE_PRO_LIGHT_TOKENS }, document);
+}
+
+export function isNativeThemeId(themeId: QualifiedContributionId): boolean {
+  return themeId === CORE_PRO_THEME_ID || themeId === CORE_PRO_LIGHT_THEME_ID;
 }
 
 export function applyPiWebTheme(theme: QualifiedThemeContribution): void {
@@ -126,7 +163,7 @@ export function applyPiWebTheme(theme: QualifiedThemeContribution): void {
     if (typeof value === "string" && value !== "") root.style.setProperty(token, value);
     else root.style.removeProperty(token);
   }
-  applyThemeFavicon(collectStringTokens(theme.tokens), document);
+  applyThemeFavicon(collectStringTokens(theme.tokens), document, theme.icon);
 }
 
 function collectStringTokens(tokens: QualifiedThemeContribution["tokens"]): Record<string, string> {
@@ -139,7 +176,7 @@ function collectStringTokens(tokens: QualifiedThemeContribution["tokens"]): Reco
 
 export function resolveThemePreference(options: ResolveThemePreferenceOptions): ThemePreferenceResolution {
   const fallbackTheme = findFallbackTheme(options.themes, options.fallbackThemeId ?? CLASSIC_THEME_ID);
-  if (options.preference.themeId === CORE_PRO_THEME_ID) {
+  if (isNativeThemeId(options.preference.themeId)) {
     return { selectedTheme: undefined, activeTheme: undefined, selectedThemePair: undefined, fallbackTheme };
   }
   const selectedTheme = options.themes.find((candidate) => candidate.id === options.preference.themeId) ?? fallbackTheme;

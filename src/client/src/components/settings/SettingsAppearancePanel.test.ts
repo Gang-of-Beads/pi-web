@@ -91,7 +91,8 @@ describe("settings-appearance-panel", () => {
       element.themes = [...element.themes, theme("from-a-plugin", { name: "From a plugin" })];
     });
 
-    expect(cards(panel).map((card) => card.querySelector(".theme-name")?.textContent)).toEqual(["Pro (native)", "pi-web-dark", "paper", "From a plugin"]);
+    expect(cards(panel).map((card) => card.querySelector(".theme-name")?.textContent)).toEqual(["Pro (native)",
+      "Pro Light (native)", "pi-web-dark", "paper", "From a plugin"]);
   });
 
   it("previews the colours a theme will apply rather than naming it alone", async () => {
@@ -99,7 +100,7 @@ describe("settings-appearance-panel", () => {
       element.themes = [theme("accented", { tokens: tokens({ "--pi-accent": "#ff0066", "--pi-bg": "#001122" }) })];
     });
 
-    const preview = cards(panel)[1]?.querySelector<HTMLElement>(".preview");
+    const preview = cards(panel)[2]?.querySelector<HTMLElement>(".preview");
     expect(preview?.getAttribute("style")).toContain("--preview-accent: #ff0066");
     expect(preview?.getAttribute("style")).toContain("--preview-bg: #001122");
   });
@@ -110,8 +111,8 @@ describe("settings-appearance-panel", () => {
       element.activeThemeId = themeId("paper");
     });
 
-    expect(cards(panel)[1]?.getAttribute("aria-pressed")).toBe("true");
-    expect(cards(panel)[2]?.textContent).toContain("in use");
+    expect(cards(panel)[2]?.getAttribute("aria-pressed")).toBe("true");
+    expect(cards(panel)[3]?.textContent).toContain("in use");
   });
 
   it("lists the native pro look first and selects it like any theme", async () => {
@@ -127,7 +128,7 @@ describe("settings-appearance-panel", () => {
     const onSelectTheme = vi.fn<(id: QualifiedContributionId) => void>();
     const panel = await mount((element) => { element.onSelectTheme = onSelectTheme; });
 
-    cards(panel)[2]?.click();
+    cards(panel)[3]?.click();
 
     expect(onSelectTheme).toHaveBeenCalledWith("themes:paper");
   });

@@ -49,7 +49,7 @@ import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { workspaceChangeVerdict } from "../workspaceChange";
 import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, MachineSectionContext } from "../plugins/types";
-import { CORE_PRO_THEME_ID, CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyNativeProTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
+import { CORE_PRO_LIGHT_THEME_ID, isNativeThemeId, applyNativeProLightTheme, CORE_PRO_THEME_ID, CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyNativeProTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
 import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope } from "../plugins/registry";
@@ -3705,8 +3705,8 @@ export class PiWebApp extends LitElement {
   private selectTheme(themeId: QualifiedContributionId): void {
     // The native pro look is a sentinel, not a plugin theme: it never appears
     // in the registry, so it must be handled before the registry lookup.
-    if (themeId === CORE_PRO_THEME_ID) {
-      this.themePreference = { themeId: CORE_PRO_THEME_ID, auto: false };
+    if (isNativeThemeId(themeId)) {
+      this.themePreference = { themeId, auto: false };
       this.applyPreferredTheme(true);
       return;
     }
@@ -3747,9 +3747,15 @@ export class PiWebApp extends LitElement {
     const theme = this.resolveCurrentThemePreference().activeTheme;
     if (persist) writeStoredThemePreference(this.themePreference);
     if (theme === undefined) {
-      if (this.activeThemeId === CORE_PRO_THEME_ID) return;
-      this.activeThemeId = CORE_PRO_THEME_ID;
-      applyNativeProTheme();
+      // The native look is a pair too: following the system switches between
+      // its dark and light sides, and an explicit pick pins one of them.
+      const nativeId = this.themePreference.auto
+        ? (this.systemPrefersLight() ? CORE_PRO_LIGHT_THEME_ID : CORE_PRO_THEME_ID)
+        : (this.themePreference.themeId === CORE_PRO_LIGHT_THEME_ID ? CORE_PRO_LIGHT_THEME_ID : CORE_PRO_THEME_ID);
+      if (this.activeThemeId === nativeId) return;
+      this.activeThemeId = nativeId;
+      if (nativeId === CORE_PRO_LIGHT_THEME_ID) applyNativeProLightTheme();
+      else applyNativeProTheme();
       return;
     }
     if (theme.id === this.activeThemeId) return;
