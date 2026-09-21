@@ -1,5 +1,94 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.7
+
+### Patch Changes
+
+- 5123d8a: The copy control on a code block draws its mark again.
+
+  The mark carries the shared icon class, whose sheet this shadow root does not
+  adopt, so nothing gave it a size and the control read as an empty square. The
+  stylesheet that owns the control now sizes its own mark.
+
+- a514381: A delivered message stops asking to be sent again.
+
+  When the daemon accepts a prompt the outbox entry is retired, so a send that
+  reported a failure while the request actually landed no longer offers Retry
+  for a message the agent has already answered. The undelivered strip is also a
+  box of its own instead of loose text continuing the transcript.
+
+- cd48c07: The Go to key closes Go to.
+
+  The sheet had no key of its own, so the press that opened it had nowhere to
+  land coming back. The key keeps its place in the sheet's header, and the bar
+  key is a toggle: a second press closes what the first opened.
+
+- 4a3b03e: A native light theme, and an icon that follows it.
+
+  The core had a light palette all along, reachable only by changing the
+  system preference: it is now a card of its own, "Pro Light (native)", so a
+  phone in dark mode can pick it. The tab icon follows whichever look is
+  active - the pi glyph typeset in the product mono face, coloured by the
+  palette - and a theme plugin may declare its own icon instead.
+
+- 47709a5: Pi 0.86.1.
+
+  The agent SDK moved the system prompt into the transcript, so a stream takes
+  a normalized context and an agent context no longer carries a prompt field.
+
+- fd56eb5: One update offer per version, for PI WEB, wherever you are.
+
+  The offer is about PI WEB - which carries the pi agent a session runs, rather
+  than the pi on the machine's PATH - and it arrives as one host-level popup
+  instead of a command dialog inside whichever session happened to be open. The
+  machine remembers which versions it has offered, so closing the popup on one
+  device settles that version for every device, and the update command is handed
+  to a terminal because it restarts the processes that would run it.
+
+- 95258ff: Pins belong to the machine, not to one browser.
+
+  A pin was kept in the browser's local storage, so the phone and the desktop
+  each had their own set and neither knew about the other. The machine that
+  holds the sessions now holds their pins: every device browsing it reads and
+  writes the same set, and the pins a device already had are handed over once
+  rather than dropped.
+
+- 89d47b4: Row actions work on the desktop rail.
+
+  Pin, rename and open looked the row up only among the selected workspace's
+  sessions, so on the rail - whose rows come from the machine listing - every
+  menu action returned silently. The rail also requests that listing now,
+  instead of reading "No sessions in this part of the path" on a machine full
+  of them.
+
+- 46dd91a: A session row belongs to the machine it was listed under.
+
+  Browsing another machine, the board listed the selected machine's sessions
+  under the browsed machine's name, so opening one asked a machine that had
+  never heard of it and answered "Session not found". Rows and pins now come
+  from the machine being browsed, and a failure the reader has to retire
+  carries Retry beside the dismissal.
+
+- 4638759: The browser can see what a session's subagents are doing.
+
+  The subagents plugin now owns the whole feature: it reads the runs a session
+  started on its own machine and lists them in a Subagents panel, with the
+  working ones counted on the tab. A run that went silent reads as lost rather
+  than failed, and "not known yet" is never drawn as "none".
+
+- 86bf198: The transcript stops jolting when a scroll ends.
+
+  The scroll rail grew from nothing to 6px with the gesture and shrank back
+  when it retired, so the content box changed width twice and every message
+  rewrapped. The gutter is now reserved at all times and only the thumb's
+  colour answers the gesture.
+
+- 30c9a8e: Work in progress moves again.
+
+  A session that is working shows the three bouncing dots the transcript
+  already uses, instead of a static green pip that was hard to tell from the
+  grey idle one. Idle and waiting keep their still dot.
+
 ## 2.202609.6
 
 ### Patch Changes
