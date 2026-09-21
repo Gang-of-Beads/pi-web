@@ -656,6 +656,8 @@ export class PiWebApp extends LitElement {
 
   protected override willUpdate(): void {
     this.toggleAttribute("pwa-display-mode", this.appShell.isPwaDisplayMode);
+    if (this.displayMainView() === "navigation") this.noteNavigationViewShown();
+    else this.navigationViewLoaded = false;
     // The tree module is fetched when its dialog first appears, outside the
     // render path: a load call from render schedules an update on every settle,
     // and once the module has settled that is an unbounded microtask loop.
@@ -1005,10 +1007,12 @@ export class PiWebApp extends LitElement {
     // on screen until the page was reloaded by hand.
     observeTransportRecovery((machineId) => { this.clearTransientError(machineId); });
     this.unreadConnected = true;
-    // The desktop rail is the navigation page, permanently mounted: nothing
-    // opens it, so the listing it needs was never requested and the rail read
-    // "No sessions in this part of the path" on a machine full of sessions.
-    if (!this.appShell.isMobileNavigationLayout) void this.loadQuickSwitcherData();
+    // The navigation page is mounted, not opened: the desktop rail always is,
+    // and the phone boots straight into it. Nothing called openNavigate in
+    // either case, so the listing it renders was never requested - the board
+    // showed pins alone until the reader tapped a path level, which is what
+    // finally asked for it.
+    void this.loadQuickSwitcherData();
     window.visualViewport?.addEventListener("resize", this.onVisualViewportChange);
     window.visualViewport?.addEventListener("scroll", this.onVisualViewportChange);
     // The layout viewport changes on its own when a phone's address bar hides,
@@ -2505,6 +2509,20 @@ export class PiWebApp extends LitElement {
     this.navigateOpen = true;
     this.pushModalLayerFrame();
   }
+
+  /**
+   * Entering the navigation view is the same event as opening the page: the
+   * list must be asked for, whether the reader arrived by pressing the key or
+   * by the shell restoring the view on boot.
+   */
+  private noteNavigationViewShown(): void {
+    if (this.displayMainView() !== "navigation") return;
+    if (this.navigationViewLoaded) return;
+    this.navigationViewLoaded = true;
+    void this.loadQuickSwitcherData();
+  }
+
+  private navigationViewLoaded = false;
 
   private closeNavigate(): void {
     this.navigateOpen = false;

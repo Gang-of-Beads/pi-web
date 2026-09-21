@@ -209,3 +209,46 @@ describe("a row action on a listing row", () => {
     expect(pinned).toEqual(["listing-session"]);
   });
 });
+
+/**
+ * Owner report: opening the app on the navigation board showed pins alone
+ * until a path level was tapped. The board is mounted rather than opened - the
+ * desktop rail always, the phone on boot - so nothing had asked for the
+ * machine's listing.
+ */
+describe("the navigation board's listing", () => {
+  it("is requested when the board is the view, without anyone opening it", () => {
+    const app = createApp();
+    const loads: number[] = [];
+    if (!Reflect.set(app, "loadQuickSwitcherData", () => { loads.push(1); return Promise.resolve(); })) {
+      throw new Error("Could not stub the load");
+    }
+    applyState(app, { machines: [machine("local")], selectedMachine: machine("local"), mainView: "navigation" });
+
+    const willUpdate: unknown = Reflect.get(app, "willUpdate");
+    if (typeof willUpdate !== "function") throw new Error("willUpdate unavailable");
+    Reflect.apply(willUpdate, app, []);
+    Reflect.apply(willUpdate, app, []);
+
+    expect(loads.length, "one read per arrival, not one per render").toBe(1);
+  });
+
+  it("asks again the next time the board is entered", () => {
+    const app = createApp();
+    const loads: number[] = [];
+    if (!Reflect.set(app, "loadQuickSwitcherData", () => { loads.push(1); return Promise.resolve(); })) {
+      throw new Error("Could not stub the load");
+    }
+    const willUpdate: unknown = Reflect.get(app, "willUpdate");
+    if (typeof willUpdate !== "function") throw new Error("willUpdate unavailable");
+
+    applyState(app, { machines: [machine("local")], selectedMachine: machine("local"), mainView: "navigation" });
+    Reflect.apply(willUpdate, app, []);
+    applyState(app, { mainView: "chat" });
+    Reflect.apply(willUpdate, app, []);
+    applyState(app, { mainView: "navigation" });
+    Reflect.apply(willUpdate, app, []);
+
+    expect(loads.length).toBe(2);
+  });
+});
