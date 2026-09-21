@@ -212,3 +212,35 @@ describe("the quick-access key with nowhere to return to", () => {
     page.remove();
   });
 });
+
+/**
+ * Owner's call: a static green pip could not be told from the idle grey one.
+ * Work in progress is the shared bouncing dots the transcript already uses.
+ */
+describe("the working mark", () => {
+  it("animates three dots for a session that is working", async () => {
+    const working = session("busy", "/repos/pi-web", "running now");
+    const page = await mount({}, input({
+      sessions: [working],
+      activeSessionIds: new Set(["busy"]),
+    }));
+
+    const running = page.renderRoot.querySelector(".session-state.running");
+
+    expect(running).not.toBeNull();
+    expect(running?.querySelectorAll(".state-dot").length).toBe(3);
+    expect(running?.getAttribute("aria-label")).toBe("Working");
+    expect(page.renderRoot.querySelector(".state.working")).toBeNull();
+  });
+
+  it("keeps a still dot for idle and waiting", async () => {
+    const page = await mount({}, input({
+      sessions: [session("idle-one", "/repos/pi-web", "done"), session("asked", "/repos/pi-web", "asking")],
+      waitingSessionIds: new Set(["asked"]),
+    }));
+
+    expect(page.renderRoot.querySelector(".state.idle")).not.toBeNull();
+    expect(page.renderRoot.querySelector(".state.waiting")).not.toBeNull();
+    expect(page.renderRoot.querySelector(".session-state.running")).toBeNull();
+  });
+});

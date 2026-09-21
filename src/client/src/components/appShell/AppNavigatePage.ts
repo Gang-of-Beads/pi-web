@@ -7,6 +7,7 @@ import { createStableRowOrder } from "../../stableRowOrder";
 import { renderChatIcon, renderChevronRightIcon, renderGearIcon, renderGridIcon, renderMachineIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
+import { sessionStateBadgeStyles } from "../sessionStateBadgeStyles.js";
 import { actionMenuPanelStyle } from "../actionMenu";
 import { navigateRowActions, type NavigateRowActionId, type NavigateRowKind } from "../../navigateRowActions";
 import { sessionLabel } from "../../sessionLabels";
@@ -29,6 +30,20 @@ const STATE_LABEL: Record<NavigateSessionState, string> = {
   working: "Working",
   idle: "Idle",
 };
+
+/**
+ * Work in progress is the shared bouncing dots, not a static green pip: a
+ * still dot the owner had to squint at could not be told from the idle one,
+ * and the transcript already animates work this way.
+ */
+function renderNavigateStateMark(state: NavigateSessionState) {
+  const label = STATE_LABEL[state];
+  if (state === "working") {
+    const dots = [0, 1, 2].map((index) => html`<span class="state-dot" style=${`animation-delay:${(index * 0.14).toFixed(2)}s`}></span>`);
+    return html`<span class="session-state running" role="img" title=${label} aria-label=${label}><span class="state-dots">${dots}</span></span>`;
+  }
+  return html`<span class=${`state ${state}`} role="img" title=${label} aria-label=${label}></span>`;
+}
 
 @customElement("app-navigate-page")
 export class AppNavigatePage extends LitElement {
@@ -355,14 +370,14 @@ export class AppNavigatePage extends LitElement {
     const label = sessionLabel(row.session);
     return this.renderRowShell(`session:${row.machineId}:${row.session.id}`, "session", row.session.id, label, html`
       <button type="button" class=${row.current ? "row session current" : "row session"} aria-current=${row.current ? "true" : "false"} title=${label} @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
-        <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span><span class=${`state ${row.state}`} title=${STATE_LABEL[row.state]} aria-label=${STATE_LABEL[row.state]}></span></span>
+        <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${renderNavigateStateMark(row.state)}</span>
         ${row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
       </button>
     `, { pinned: row.pinned });
   }
 
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, sessionStateBadgeStyles, css`
     .row .row-title { flex: 1 1 auto; min-width: 0; }
     .row-name { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); line-height: 1.3; overflow-wrap: anywhere; }
     .row.session { display: grid; align-content: center; gap: var(--pi-space-2); }
@@ -372,7 +387,9 @@ export class AppNavigatePage extends LitElement {
     .state { flex: 0 0 auto; margin-left: auto; margin-top: calc(0.65em - var(--pi-dot-sm) / 2); }
     .state { flex: 0 0 auto; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; }
     .state.waiting { background: var(--pi-accent); }
-    .state.working { background: var(--pi-success); }
+    /* The working mark is the shared badge's three dots; this block keeps
+       only the still states. */
+    .session-state { flex: 0 0 auto; margin-left: auto; margin-top: calc(0.65em - var(--pi-dot-md) / 2); }
     .state.idle { background: var(--pi-border); }
     /* One box, two things: the name on the left and the menu on the right
        live inside the same bordered row. The menu used to float outside the
