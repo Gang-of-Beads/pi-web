@@ -208,19 +208,22 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      below the scroller now, so the transcript ends with the room it had before
      the dock existed: one space-7 of padding on top of the message rhythm's own
      16px margin, i.e. 32px from the last message to the dock. */
-  .chat { scrollbar-width: none; scrollbar-color: transparent transparent; flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box;
+  .chat { scrollbar-width: thin; scrollbar-gutter: stable; scrollbar-color: transparent transparent; flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box;
   /* The top edge cuts scrolled lines mid-glyph with no card boundary to the
      left or right (assistant surfaces are border-less), which read as stray
      text. A short fade makes the same clip read as intentional depth. */
   mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); }
-  /* No rail at rest: a permanent bar down the edge reads as page furniture.
-     The thumb appears with the gesture and retires shortly after it. */
-  .chat::-webkit-scrollbar { width: 0; height: 0; }
-  :host([scrolling]) .chat { scrollbar-width: thin; scrollbar-color: var(--pi-border) transparent; }
-  :host([scrolling]) .chat::-webkit-scrollbar { width: 6px; }
-  :host([scrolling]) .chat::-webkit-scrollbar-track { background: transparent; }
-  :host([scrolling]) .chat::-webkit-scrollbar-thumb { border-radius: var(--pi-radius-pill); background: var(--pi-border); }
+  /* No rail at rest, but the rail's width is reserved at all times. Growing
+     the scrollbar from 0 to 6px with the gesture took 6px out of the content
+     box, so every message re-wrapped when the thumb appeared and again when
+     it retired: the owner's jolt at the end of a scroll. The gutter is
+     constant; only the thumb's colour changes. */
+  .chat::-webkit-scrollbar { width: 6px; height: 0; }
+  .chat::-webkit-scrollbar-track { background: transparent; }
+  .chat::-webkit-scrollbar-thumb { border-radius: var(--pi-radius-pill); background: transparent; }
+  :host([scrolling]) .chat { scrollbar-color: var(--pi-border) transparent; }
+  :host([scrolling]) .chat::-webkit-scrollbar-thumb { background: var(--pi-border); }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
   /* Its own row of the column, so the transcript above can grow all it likes
      without moving a control the reader is aiming at. Tall questions scroll
