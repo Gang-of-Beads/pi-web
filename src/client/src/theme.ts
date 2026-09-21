@@ -22,6 +22,7 @@ export interface ThemePreferenceResolution {
 }
 
 import { CORE_PRO_LIGHT_THEME_ID, CORE_PRO_LIGHT_TOKENS } from "./nativeLightTheme";
+import { CORE_PRO_DARK_TOKENS } from "./nativeDarkTheme";
 
 export const CLASSIC_THEME_ID: QualifiedContributionId = "themes:classic";
 export const DEFAULT_THEME_ID: QualifiedContributionId = "themes:clay-soft";
@@ -117,21 +118,18 @@ export function applyNativeProTheme(): void {
   const root = document.documentElement;
   root.dataset["piWebTheme"] = CORE_PRO_THEME_ID;
   root.style.colorScheme = "dark";
-  for (const token of THEME_TOKENS) root.style.removeProperty(token);
-  // The native look's colours live in the stylesheet, so the icon reads them
-  // back from the resolved root rather than from a second copy in TypeScript.
-  applyThemeFavicon(resolvedRootTokens(root, ["--pi-accent", "--pi-bg"]), document);
+  // A picked look outranks the system's preference. The stylesheet's light
+  // `prefers-color-scheme` block overrides the base dark values, so choosing
+  // the dark side on a light-preference device used to stay light; setting the
+  // values makes the choice hold.
+  for (const token of THEME_TOKENS) {
+    const value = CORE_PRO_DARK_TOKENS[token];
+    if (value === undefined) root.style.removeProperty(token);
+    else root.style.setProperty(token, value);
+  }
+  applyThemeFavicon({ ...CORE_PRO_DARK_TOKENS }, document);
 }
 
-function resolvedRootTokens(root: Element, names: readonly string[]): Record<string, string> {
-  const computed = getComputedStyle(root);
-  const resolved: Record<string, string> = {};
-  for (const name of names) {
-    const value = computed.getPropertyValue(name).trim();
-    if (value !== "") resolved[name] = value;
-  }
-  return resolved;
-}
 
 /**
  * The core's light side, picked rather than inherited from the system. The
