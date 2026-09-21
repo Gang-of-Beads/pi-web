@@ -550,6 +550,10 @@ export const formattedTextStyles = css`
   pre { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: var(--pi-space-5); overflow-x: auto; overflow-y: hidden; direction: ltr; text-align: left; unicode-bidi: isolate; }
   pre code { border: 0; padding: 0; background: transparent; }
   .code-copy-button { box-sizing: border-box; position: absolute; top: var(--pi-space-3); right: var(--pi-space-3); z-index: 1; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; line-height: 1; cursor: pointer; }
+  /* The icon carries the class the shared icon sheet sizes, and that sheet is
+     not adopted here: without a size of its own the mark drew nothing and the
+     button read as an empty square on the phone. */
+  .code-copy-button .ui-icon, .code-copy-button svg { display: block; width: 14px; height: 14px; pointer-events: none; }
   .code-copy-button:focus { color: var(--pi-text); border-color: var(--pi-accent); }
   @media (hover: hover) { .code-copy-button:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
   blockquote { border-left: 3px solid var(--pi-border); padding-left: var(--pi-space-5); color: var(--pi-muted); }
