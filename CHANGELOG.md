@@ -1,5 +1,16 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.8
+
+### Patch Changes
+
+- 7a5e801: The navigation board asks for its list on arrival.
+
+  Opening the app on the board showed the pinned rows alone until a path level
+  was tapped: the board is mounted rather than opened - the desktop rail always
+  is, and the phone boots straight into it - so nothing had asked the machine
+  for its sessions.
+
 ## 2.202609.7
 
 ### Patch Changes
