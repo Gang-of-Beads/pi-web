@@ -187,3 +187,25 @@ describe("rows while browsing another machine", () => {
     expect(listed.map((entry: { id: string }) => entry.id)).toEqual(["remote-session"]);
   });
 });
+
+/**
+ * Owner report from the desktop: "Pin to top" did nothing. The rail's rows
+ * come from the machine listing, and the action looked the row up only in the
+ * selected workspace's sessions, so it found nothing and returned silently.
+ */
+describe("a row action on a listing row", () => {
+  it("pins a session the rail listed but the workspace did not", async () => {
+    const app = createApp();
+    applyState(app, { machines: [machine("local")], selectedMachine: machine("local"), sessions: [] });
+    const listed = { ...sessionOn("/repos/pi-web"), id: "listing-session" };
+    if (!Reflect.set(app, "quickSwitcherSessions", [listed])) throw new Error("Could not seed the listing");
+    const pinned: string[] = [];
+    if (!Reflect.set(app, "togglePinnedSession", (session: { id: string }) => { pinned.push(session.id); })) {
+      throw new Error("Could not replace togglePinnedSession");
+    }
+
+    await callable(app, "runNavigateRowAction")("session", "listing-session", "pin");
+
+    expect(pinned).toEqual(["listing-session"]);
+  });
+});

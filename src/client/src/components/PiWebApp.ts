@@ -966,6 +966,10 @@ export class PiWebApp extends LitElement {
     // on screen until the page was reloaded by hand.
     observeTransportRecovery((machineId) => { this.clearTransientError(machineId); });
     this.unreadConnected = true;
+    // The desktop rail is the navigation page, permanently mounted: nothing
+    // opens it, so the listing it needs was never requested and the rail read
+    // "No sessions in this part of the path" on a machine full of sessions.
+    if (!this.appShell.isMobileNavigationLayout) void this.loadQuickSwitcherData();
     window.visualViewport?.addEventListener("resize", this.onVisualViewportChange);
     window.visualViewport?.addEventListener("scroll", this.onVisualViewportChange);
     // The layout viewport changes on its own when a phone's address bar hides,
@@ -2528,13 +2532,24 @@ export class PiWebApp extends LitElement {
   }
 
   /**
+   * The session a listed row names, from the same sources the list was built
+   * from. Looking only in `state.sessions` made every menu action on the
+   * desktop rail a no-op: its rows come from the machine listing, so the
+   * lookup found nothing and the action returned silently.
+   */
+  private listedSession(id: string): SessionInfo | undefined {
+    return this.state.sessions.find((entry) => entry.id === id)
+      ?? this.quickSwitcherSessions.find((entry) => entry.id === id);
+  }
+
+  /**
    * The row menu names an action; the shell performs it against the row's own
    * scope. A row acts on the thing it names, never on the current selection.
    */
   private async runNavigateRowAction(kind: NavigateRowKind, id: string, action: NavigateRowActionId): Promise<void> {
     if (action === "open") {
       if (kind === "session") {
-        const session = this.state.sessions.find((entry) => entry.id === id);
+        const session = this.listedSession(id);
         if (session === undefined) return;
         this.closeNavigate();
         await this.openSessionFromQuickSwitcher(session);
@@ -2545,12 +2560,12 @@ export class PiWebApp extends LitElement {
     }
     if (action === "pin" || action === "unpin") {
       if (kind === "project") { this.togglePinnedProject(id); return; }
-      const session = this.state.sessions.find((entry) => entry.id === id);
+      const session = this.listedSession(id);
       if (session !== undefined) this.togglePinnedSession(session);
       return;
     }
     if (action === "rename") {
-      const session = this.state.sessions.find((entry) => entry.id === id);
+      const session = this.listedSession(id);
       if (session !== undefined) this.renameFromBar = session;
       return;
     }
