@@ -15,6 +15,10 @@ Source and docs: <https://github.com/Gang-of-Beads/pi-web>
 
 ![PI WEB desktop screenshot](docs/assets/pi-web-desktop.png)
 
+| On a phone | Going somewhere else |
+| --- | --- |
+| ![The navigation board on a phone](docs/assets/pi-web-mobile.png) | ![The Go to sheet on a phone](docs/assets/pi-web-mobile-goto.png) |
+
 ## Why PI WEB?
 
 Agentic development works better when the work environment is persistent.
