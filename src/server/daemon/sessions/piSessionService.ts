@@ -101,6 +101,7 @@ import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { OwnedPromptQueue, type OwnedQueueEntry } from "./ownedPromptQueue.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
+import { applyProviderSafeToolSchemas } from "./providerSafeToolSchema.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
 import { planSessionCleanup, summarizeSessionCleanupExecution, type NormalizedSessionCleanupRequest, type SessionCleanupPlan } from "./sessionCleanup.js";
 import type { SpawnTargetDecision, SpawnTargetResolver } from "./spawnTargetResolver.js";
@@ -479,6 +480,16 @@ export interface PiAgentSession {
   getUserMessagesForForking(): readonly { entryId: string; text: string }[];
   getSessionStats(): { sessionId: string; totalMessages: number; userMessages: number; assistantMessages: number; toolCalls: number; tokens: ClientSessionStatus["tokens"]; cost: number };
   reload(options?: { beforeSessionStart?: () => void | Promise<void> }): Promise<void>;
+  /**
+   * The registered tools and the mutable definitions behind them.
+   *
+   * `getAllTools` hands back fresh wrappers, so a schema rewritten on one of
+   * those is lost; the definition returned by `getToolDefinition` is the object
+   * the runtime re-reads when it rebuilds the tool list. Used to make tool
+   * schemas safe for the provider boundary.
+   */
+  getAllTools(): readonly { name: string; parameters?: unknown }[];
+  getToolDefinition(name: string): { parameters: unknown } | undefined;
   getContextUsage(): ClientSessionStatus["contextUsage"] | undefined;
   prompt(text: string, options?: { streamingBehavior?: "steer" | "followUp"; images?: ImageContent[] }): Promise<void>;
   sendCustomMessage(message: { customType: string; content: string; display: boolean; details?: unknown }, options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" }): Promise<void>;
@@ -1053,6 +1064,7 @@ function createDefaultRuntimeFactory(
     // the narrow PiAgentSession interface declares it optional, real sessions
     // carry it, test fakes legitimately do not.
     const sdkSession = result.session;
+    if (process.env["PI_WEB_RAW_TOOL_SCHEMAS"] !== "1") applyProviderSafeToolSchemas(sdkSession);
     const sessionWithCapture: typeof sdkSession & Pick<PiAgentSession, "captureModelSurface"> = Object.assign(sdkSession, {
       captureModelSurface: (): { systemPrompt: string; tools: readonly { name: string; description: string }[] } => ({
         systemPrompt: sdkSession.systemPrompt,
@@ -3209,6 +3221,7 @@ export class PiSessionService implements SessionRouteService {
               this.replaceSessionNotificationContext(session, candidateGeneration);
             },
           });
+          applyProviderSafeToolSchemas(session);
           if (candidateGeneration !== undefined) {
             this.publishNotificationMutations(this.notificationStore.commitReplacement(candidateGeneration));
           }

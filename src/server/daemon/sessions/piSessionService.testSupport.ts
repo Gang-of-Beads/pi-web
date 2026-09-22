@@ -134,6 +134,7 @@ export function testModel(): NonNullable<PiAgentSession["model"]> {
 }
 
 export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession> = {}) {
+  const tools: { name: string; parameters: unknown }[] = [];
   const promptCalls: { text: string; options: unknown }[] = [];
   const customMessageCalls: { message: { customType: string; content: string; display: boolean; details?: unknown }; options: unknown }[] = [];
   const bindExtensionCalls: TestExtensionBindings[] = [];
@@ -180,6 +181,8 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
     },
     getSessionStats: () => ({ sessionId, totalMessages: 0, userMessages: 0, assistantMessages: 0, toolCalls: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, cost: 0 }),
     getContextUsage: () => undefined,
+    getAllTools: () => tools.map((tool) => ({ name: tool.name, parameters: tool.parameters })),
+    getToolDefinition: (name: string) => tools.find((tool) => tool.name === name),
     reload: () => {
       calls.reload += 1;
       return Promise.resolve();
