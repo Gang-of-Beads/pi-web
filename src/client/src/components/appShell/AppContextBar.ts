@@ -23,6 +23,9 @@ export class AppContextBar extends LitElement {
    *  phone reaches from this bar. The icon is a menu glyph either way, so the
    *  words have to say which surface answers it. */
   @property({ type: String }) toggleTarget: "panel" | "menu" = "panel";
+  /** What the grid key opens: a panel that stays beside the session, or a page
+   *  that takes the screen. Both are navigation; only the words differ. */
+  @property({ type: String }) navigationTarget: "panel" | "page" = "page";
   /** Hidden when the panel is the whole view (phone with no session): a toggle would advertise closing the only surface. */
   @property({ type: Boolean }) panelToggleHidden = false;
   @property({ attribute: false }) onTogglePanel?: () => void;
@@ -46,9 +49,10 @@ export class AppContextBar extends LitElement {
         <button
           type="button"
           class="panel-toggle go-to"
-          title="Open navigation"
-          aria-label="Open navigation"
-          aria-haspopup="dialog"
+          title=${navigationKeyLabel(this.navigationTarget, this.panelOpen)}
+          aria-label=${navigationKeyLabel(this.navigationTarget, this.panelOpen)}
+          aria-haspopup=${this.navigationTarget === "page" ? "dialog" : nothing}
+          aria-expanded=${this.navigationTarget === "page" ? nothing : this.panelOpen ? "true" : "false"}
           @click=${() => { this.onTogglePanel?.(); }}
         >${renderGridIcon()}</button>
         `}
@@ -149,6 +153,20 @@ export class AppContextBar extends LitElement {
  * then covers the screen with another surface is the mismatch the owner
  * reported; the words follow the surface the tap actually opens.
  */
+/**
+ * What the grid key promises.
+ *
+ * The two keys mean the same thing on every layout, which is the owner's
+ * ruling: the grid opens navigation - machine, project, session - and the
+ * three bars open the Go to menu. On a desktop the navigation is a panel that
+ * stays, so the key names the side it is about to change; on a phone it is a
+ * page that takes over.
+ */
+export function navigationKeyLabel(target: "panel" | "page", panelOpen: boolean): string {
+  if (target === "page") return "Open navigation";
+  return panelOpen ? "Close navigation panel" : "Open navigation panel";
+}
+
 export function panelToggleLabel(target: "panel" | "menu", panelOpen: boolean): string {
   if (target === "menu") return "Open session menu";
   return panelOpen ? "Close panel" : "Open panel";

@@ -4132,10 +4132,11 @@ export class PiWebApp extends LitElement {
       <app-context-bar
         .session=${this.state.selectedSession}
         .activeSurface=${this.activeSurfaceLabel()}
-        .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? () => { this.toggleGoToSheet(); } : undefined}
+        .onOpenGoTo=${() => { this.toggleGoToSheet(); }}
         .onRenameRequest=${(session: SessionInfo) => { this.renameFromBar = session; }}
         ?panelOpen=${this.shellPanelOpen()}
-        .toggleTarget=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? "menu" : "panel"}
+        .toggleTarget=${"menu"}
+        .navigationTarget=${this.appShell.isMobileNavigationLayout ? "page" : "panel"}
         ?panelToggleHidden=${panelToggleHiddenState({ mobileLayout: this.appShell.isMobileNavigationLayout, displayView: this.displayMainView() })}
         .onTogglePanel=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? () => { this.openNavigate(); } : () => { this.toggleShellPanel(); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
