@@ -39,6 +39,7 @@ import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPositi
 import { imageLoadScrollCorrection } from "../imageLoadScroll";
 import { quotedPrompt } from "../selectionComposer";
 import { bottomAnchorAction } from "../bottomAnchor";
+import { streamingBottomHold } from "../streamingBottomHold";
 
 export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   ${SessionStateBadgeStyles}
@@ -946,6 +947,7 @@ export class ChatView extends LitElement {
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
     if (this.loadMoreCheckFrame !== undefined) cancelAnimationFrame(this.loadMoreCheckFrame);
     if (this.scrollToBottomFrame !== undefined) cancelAnimationFrame(this.scrollToBottomFrame);
+    this.stopWatchingStreamingGrowth();
     if (this.conversationRailFrame !== undefined) cancelAnimationFrame(this.conversationRailFrame);
     if (this.catchUpFollowTimer !== undefined) {
       clearTimeout(this.catchUpFollowTimer);
@@ -1045,6 +1047,7 @@ if (this.heldWaitingClearTimer !== undefined) {
   protected override updated(changed: Map<string, unknown>): void {
     this.armImageRetries();
     this.holdBottomEdge();
+    this.watchStreamingGrowth();
     if (changed.has("loadingMore") && !this.loadingMore) this.loadMoreRequested = false;
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
     if (changed.has("sessionId")) this.restoreScrollPosition();
@@ -2415,6 +2418,56 @@ if (this.heldWaitingClearTimer !== undefined) {
   private canScrollUp(): boolean {
     const chat = this.chat;
     return chat !== undefined && chat.scrollTop > 0;
+  }
+
+  private streamingHoldFrame: number | undefined;
+
+  /**
+   * Keep the bottom edge still between renders while a turn is live.
+   *
+   * `holdBottomEdge` runs on this component's own updates, and the growth that
+   * moved the owner's queued message was not one: a streaming reply grows
+   * inside children that render on their own, so the bottom drifted away and
+   * was yanked back only when the next parent update happened to arrive. That
+   * is the bounce that was reported three times.
+   *
+   * The watch is a frame loop rather than an observer because every producer
+   * has to be covered - streamed text, a tool result filling in, a subagent row
+   * appearing - and they share no single element to observe. It runs only while
+   * the session is live and the reader is aimed at the bottom, and it stops
+   * itself the moment either stops being true.
+   */
+  private watchStreamingGrowth(): void {
+    if (this.streamingHoldFrame !== undefined) return;
+    if (!this.isSessionLive() || !this.pinnedToBottom) return;
+    const tick = () => {
+      this.streamingHoldFrame = undefined;
+      const chat = this.chat;
+      if (chat === undefined) return;
+      const action = streamingBottomHold({
+        sessionLive: this.isSessionLive(),
+        pinnedToBottom: this.pinnedToBottom,
+        userScrolling: this.userScrollInFlight,
+        distanceFromBottom: chat.scrollHeight - chat.scrollTop - chat.clientHeight,
+      });
+      if (action === "stop-watching") return;
+      if (action === "hold-bottom") {
+        this.withSuppressedScrollSave(() => {
+          chat.scrollTop = chat.scrollHeight;
+          this.lastScrollTop = chat.scrollTop;
+          this.lastClientHeight = chat.clientHeight;
+        });
+        this.heightAtLastBottomHold = chat.scrollHeight;
+      }
+      this.streamingHoldFrame = requestAnimationFrame(tick);
+    };
+    this.streamingHoldFrame = requestAnimationFrame(tick);
+  }
+
+  private stopWatchingStreamingGrowth(): void {
+    if (this.streamingHoldFrame === undefined) return;
+    cancelAnimationFrame(this.streamingHoldFrame);
+    this.streamingHoldFrame = undefined;
   }
 
   private holdBottomEdge(): void {
