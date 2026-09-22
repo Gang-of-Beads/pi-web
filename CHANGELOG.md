@@ -1,5 +1,47 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.9
+
+### Patch Changes
+
+- 3984096: A project's board shows that project, and a session appears once.
+
+  Pins follow the path: standing in a project lists that project's pinned
+  sessions, while the machine-wide board still lists them all. A pinned session
+  that is also waiting or working no longer draws a second row - both copies
+  carried the open-session highlight - and the working mark has room for its
+  three dots instead of being clipped to one and a half.
+
+- 11428a2: Pi 0.87.0.
+- 2120cb0: A picked theme outranks the system preference.
+
+  Choosing "Pro (native)" on a device whose system prefers light stayed light:
+  the stylesheet's light block overrode the base dark values, and the picked
+  look only removed its own. The dark side now sets its values like the light
+  one does, with a guard that keeps both copies equal to the stylesheet.
+
+- d674276: A queued message stops bouncing while the answer above it streams.
+
+  Growth during a turn happens inside children that render on their own, so the
+  transcript re-pinned its bottom only when a parent update happened to arrive:
+  the queued bubble was pushed down and yanked back, chunk after chunk. The
+  bottom is now held every frame of a live turn, for a reader aimed at it and
+  not while a finger is down.
+
+- 3984096: The status bar says which kind of nothing it has.
+
+  "No session status yet" covered both a read that has not happened and one
+  that failed, and the failed one sat there with no way to ask again. A failed
+  read says so and carries Retry.
+
+- 11428a2: A transcript reopened later starts from what it already had.
+
+  The cached page lived in sessionStorage, which a phone empties whenever the
+  browser reclaims the tab, and expired after half an hour: coming back to a
+  conversation therefore rebuilt it from the daemon every time. The cache is
+  durable now, and a hit is replayed forward from its watermark rather than
+  refetched.
+
 ## 2.202609.8
 
 ### Patch Changes
