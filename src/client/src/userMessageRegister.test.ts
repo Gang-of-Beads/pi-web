@@ -96,6 +96,26 @@ describe("one message, one row", () => {
     expect(register({ transcript: [settled(undefined, "from cli"), settled(undefined, "from cli")] })).toHaveLength(2);
   });
 
+  /**
+   * The reported duplicate: a queued message whose accepted echo had already
+   * reached the transcript. The echo carries its minted id on
+   * `echoClientMessageId` and the queue carries the same id, but reading only
+   * `delivery.clientMessageId` gave the echo a positional key - so one message
+   * drew as a plain row and again as a queued one.
+   */
+  it("keeps one row when the server has echoed a still-queued message", () => {
+    const echo: ChatLine = {
+      role: "user",
+      parts: [{ type: "text", text: "还没修复完么" }],
+      meta: { echo: true, echoClientMessageId: "c9" },
+    };
+
+    const rows = register({ transcript: [echo], queued: [queuedEntry("还没修复完么", "c9")] });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.state).toBe("queued");
+  });
+
   it("does not let an idless queue entry take over somebody else's row", () => {
     const rows = register({ optimistic: [bubble("c1", "mine")], queued: [queuedEntry("mine")] });
 

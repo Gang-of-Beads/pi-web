@@ -48,7 +48,13 @@ interface RegisterInput {
 }
 
 function identityOf(line: ChatLine, fallbackIndex: number): string {
-  const minted = line.meta?.delivery?.clientMessageId;
+  // A minted id rides on whichever of three carriers the line came through:
+  // `delivery` for a bubble this browser drew, `clientMessageId` for the
+  // server's own copy, `echoClientMessageId` for the echo of an accepted
+  // prompt. Reading only the first gave an echoed line a positional identity
+  // while the queue carried the minted one, so the same queued message drew
+  // twice - once under each key. (transcriptInvariant reads the same chain.)
+  const minted = line.meta?.delivery?.clientMessageId ?? line.meta?.clientMessageId ?? line.meta?.echoClientMessageId;
   if (minted !== undefined && minted !== "") return minted;
   // A message this browser did not send is keyed by where it sits in the
   // transcript, which is stable for a settled entry and unique by construction.
