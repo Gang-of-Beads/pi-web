@@ -1,5 +1,31 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.10
+
+### Patch Changes
+
+- 61aab12: The two header keys mean the same thing on every width.
+
+  A desktop had grown a lone hamburger that toggled a panel, so the same two
+  glyphs meant different things depending on the window: the grid opens
+  navigation - machine, project, session - and the three bars open Go to,
+  everywhere. Opening a tool panel no longer leaves the session without a way
+  back: both keys stay in the header while the panel is up.
+
+- 1976bb1: A queued message stops drawing twice.
+
+  The accepted echo carries its minted id on one meta field and the queue
+  carries it on another, so the register that exists to make one row per
+  message keyed the same message apart and drew it plain and badged at once.
+
+- 336116b: Tool schemas stop carrying the bounds Anthropic refuses.
+
+  A 400 reading "tools.44.custom: For 'integer' type, properties maximum,
+  minimum are not supported" killed every turn of a session, because one
+  bounded integer property anywhere in the tool list fails the whole request.
+  The bounds are now stripped at the boundary that sends schemas, in place, so
+  extension tools and MCP servers are covered as well as our own.
+
 ## 2.202609.9
 
 ### Patch Changes
