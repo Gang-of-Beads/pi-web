@@ -390,6 +390,11 @@ export class AppNavigatePage extends LitElement {
     /* The working mark is the shared badge's three dots; this block keeps
        only the still states. */
     .session-state { flex: 0 0 auto; margin-left: auto; margin-top: calc(0.65em - var(--pi-dot-md) / 2); }
+    /* The working mark is three dots in a row, not one dot: the shared badge
+       box is a circle the width of a single dot, which cut the third one in
+       half on the board. Only the animated mark widens; the still states keep
+       the circle. */
+    .session-state.running { width: auto; min-width: var(--pi-dot-md); overflow: visible; }
     .state.idle { background: var(--pi-border); }
     /* One box, two things: the name on the left and the menu on the right
        live inside the same bordered row. The menu used to float outside the

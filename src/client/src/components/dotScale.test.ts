@@ -56,3 +56,19 @@ describe("the state dot scale", () => {
     expect(tokens).toContain("--pi-dot-md:");
   });
 });
+
+/**
+ * Owner report from the desktop: the working mark showed a dot and half a dot.
+ * The shared badge box is a circle one dot wide, which is right for the still
+ * states and wrong for the three that animate.
+ */
+describe("the working mark's box", () => {
+  it("widens for the three dots instead of clipping them", async () => {
+    const { AppNavigatePage } = await import("./appShell/AppNavigatePage");
+    const css = (Array.isArray(AppNavigatePage.styles) ? AppNavigatePage.styles : [AppNavigatePage.styles])
+      .map((sheet) => String(sheet))
+      .join("\n");
+    expect(css).toMatch(/\.session-state\.running \{[^}]*width: auto/u);
+    expect(css).toMatch(/\.session-state\.running \{[^}]*overflow: visible/u);
+  });
+});

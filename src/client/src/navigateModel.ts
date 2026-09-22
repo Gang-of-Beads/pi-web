@@ -107,13 +107,18 @@ export function navigateModel(input: NavigateInput): NavigateModel {
   const pinnedRows = pinnedSection(input).filter((entry) => matches(entry, input.query));
   if (pinnedRows.length > 0) sections.push({ id: "pinned", title: "Pinned", rows: pinnedRows, choices: [] });
 
-  const waiting = matching.filter((entry) => input.waitingSessionIds.has(entry.session.id));
+  // One session, one row. A pinned session that is also waiting or working
+  // appeared twice, and both copies drew the "this is the open one" highlight,
+  // which read as two selections. Its state is on the pinned row already.
+  const unpinned = matching.filter((entry) => !entry.pinned);
+
+  const waiting = unpinned.filter((entry) => input.waitingSessionIds.has(entry.session.id));
   if (waiting.length > 0) sections.push({ id: "waiting", title: "Waiting for you", rows: waiting, choices: [] });
 
-  const running = matching.filter((entry) => input.activeSessionIds.has(entry.session.id) && !input.waitingSessionIds.has(entry.session.id));
+  const running = unpinned.filter((entry) => input.activeSessionIds.has(entry.session.id) && !input.waitingSessionIds.has(entry.session.id));
   if (running.length > 0) sections.push({ id: "running", title: "Working", rows: running, choices: [] });
 
-  const rest = matching.filter((entry) => !waiting.includes(entry) && !running.includes(entry) && !entry.pinned);
+  const rest = unpinned.filter((entry) => !waiting.includes(entry) && !running.includes(entry));
   if (rest.length > 0) sections.push({ id: "recent", title: "Recent", rows: rest, choices: [] });
 
   // Every level's choices, not just the next one: the page lists one kind at a
@@ -200,8 +205,16 @@ function sessionDetail(session: SessionInfo, machineId: string, input: NavigateI
   return parts.join(" · ");
 }
 
+/**
+ * Pins obey the path, because the path is the only scope control on this
+ * board. Standing in a project and being shown another project's pinned
+ * sessions read as the global list with a different title - the owner's
+ * report - so a narrowed path lists only the pins it actually contains.
+ */
 function pinnedSection(input: NavigateInput): NavigateSessionRow[] {
-  return input.pinned.map((entry) => row(entry.session, entry.machineId, input));
+  return input.pinned
+    .filter((entry) => inScope(entry.session, input))
+    .map((entry) => row(entry.session, entry.machineId, input));
 }
 
 function inScope(session: SessionInfo, input: NavigateInput): boolean {

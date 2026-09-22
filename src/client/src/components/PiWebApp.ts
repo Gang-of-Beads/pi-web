@@ -3998,7 +3998,11 @@ export class PiWebApp extends LitElement {
 
   private renderStatusBar(state: AppState) {
     return html`
-      <status-bar .status=${state.status}></status-bar>
+      <status-bar
+        .status=${state.status}
+        .failure=${state.status === undefined ? state.transcriptFailed : undefined}
+        .onRetry=${() => { void this.retryAfterError(); }}
+      ></status-bar>
     `;
   }
 

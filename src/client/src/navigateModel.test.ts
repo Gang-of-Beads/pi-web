@@ -122,3 +122,72 @@ describe("navigateModel", () => {
     expect(states.get("c")).toBe("idle");
   });
 });
+
+/**
+ * Owner's rule: a project's board shows that project's pins; the machine-wide
+ * quick-access board shows them all. Standing in a project and being shown
+ * another project's pins read as the global page under a project's name.
+ */
+describe("pins under a narrowed path", () => {
+  const local = session("a", "/repos/pi-web", "fix login");
+  const other = session("c", "/repos/trade", "ledger");
+  const pinnedBoth = [{ session: local, machineId: "local" }, { session: other, machineId: "local" }];
+
+  it("lists only the pins the path contains", () => {
+    const model = navigateModel({
+      ...base,
+      scope: { ...base.scope, projectId: "p1" },
+      pinned: pinnedBoth,
+      pinnedSessionIds: new Set(["a", "c"]),
+    });
+
+    const rows = model.sections.find((section) => section.id === "pinned")?.rows ?? [];
+    expect(rows.map((row) => row.session.id)).toEqual(["a"]);
+  });
+
+  it("keeps every pin when the path is the whole machine", () => {
+    const model = navigateModel({ ...base, pinned: pinnedBoth, pinnedSessionIds: new Set(["a", "c"]) });
+
+    const rows = model.sections.find((section) => section.id === "pinned")?.rows ?? [];
+    expect(rows.map((row) => row.session.id)).toEqual(["a", "c"]);
+  });
+
+  it("does not hide pins while the folder list is unread", () => {
+    const model = navigateModel({
+      ...base,
+      folders: [],
+      scope: { ...base.scope, projectId: "p1" },
+      pinned: pinnedBoth,
+      pinnedSessionIds: new Set(["a", "c"]),
+    });
+
+    const rows = model.sections.find((section) => section.id === "pinned")?.rows ?? [];
+    expect(rows.map((row) => row.session.id), "an unread folder list is not an empty project").toEqual(["a", "c"]);
+  });
+});
+
+/**
+ * Owner report from the phone: a pinned session that was also working drew a
+ * row in both sections, and the open-session highlight appeared on both.
+ */
+describe("one session, one row", () => {
+  it("does not repeat a pinned session under Waiting or Working", () => {
+    const busy = session("a", "/repos/pi-web", "fix login");
+    const model = navigateModel({
+      ...base,
+      pinned: [{ session: busy, machineId: "local" }],
+      pinnedSessionIds: new Set(["a"]),
+      activeSessionIds: new Set(["a"]),
+      waitingSessionIds: new Set(["a"]),
+    });
+
+    const ids = model.sections.flatMap((section) => section.rows.map((row) => row.session.id));
+    expect(ids.filter((id) => id === "a").length).toBe(1);
+    expect(model.sections.find((section) => section.id === "pinned")?.rows[0]?.session.id).toBe("a");
+  });
+
+  it("still lists an unpinned working session under Working", () => {
+    const model = navigateModel({ ...base, activeSessionIds: new Set(["b"]) });
+    expect(model.sections.find((section) => section.id === "running")?.rows.map((row) => row.session.id)).toEqual(["b"]);
+  });
+});
