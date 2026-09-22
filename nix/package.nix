@@ -16,7 +16,7 @@ buildNpmPackage rec {
   # different nixpkgs than this flake pins and produced a hash CI rejected.
   # Keep the word nix prints before a computed hash out of this comment: the
   # machine updater scrapes build output for it and adopted this line instead.
-  npmDepsHash = "sha256-bRxOhlsc5su99v0L/jRDp1tnDOsQI84o4XrCmSXUM4Y=";
+  npmDepsHash = "sha256-1wT/57dxxIZeEZpPFJ/wSLscIVH5Pa4UohNYhp70mvo=";
 
   nativeBuildInputs = [ makeWrapper python3 pkg-config ]
     ++ lib.optionals stdenv.isLinux [ stdenv.cc ];

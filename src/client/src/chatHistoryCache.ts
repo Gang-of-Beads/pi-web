@@ -1,5 +1,13 @@
 const CACHE_PREFIX = "pi-web:chat-history:v2:";
-const CACHE_TTL_MS = 30 * 60 * 1000;
+/**
+ * How long a cached page may be used before it is re-read from scratch.
+ *
+ * Staleness is cheap here and absence is not: a hit is replayed forward from
+ * its watermark, so an old page costs one delta request, while a miss costs
+ * the whole transcript. Half an hour meant a session revisited after lunch
+ * always paid the full price.
+ */
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * What one session may take of the shared quota.
@@ -27,20 +35,46 @@ export interface HistoryStorage {
   keys(): string[];
 }
 
+/**
+ * Where the pages live.
+ *
+ * sessionStorage empties when the tab closes, which on a phone is every time
+ * the browser reclaims the app: reopening a conversation then rebuilt its
+ * whole transcript from the daemon, which is exactly the cost this cache
+ * exists to avoid. localStorage survives that, and the same eviction keeps it
+ * inside the origin's budget. A browser that refuses localStorage (private
+ * modes do) falls back to the per-tab store rather than losing the cache.
+ */
 function browserStorage(): HistoryStorage {
+  const backing = durableStore() ?? perTabStore();
   return {
-    getItem: (key) => sessionStorage.getItem(key),
-    setItem: (key, value) => { sessionStorage.setItem(key, value); },
-    removeItem: (key) => { sessionStorage.removeItem(key); },
+    getItem: (key) => backing.getItem(key),
+    setItem: (key, value) => { backing.setItem(key, value); },
+    removeItem: (key) => { backing.removeItem(key); },
     keys: () => {
       const keys: string[] = [];
-      for (let index = 0; index < sessionStorage.length; index += 1) {
-        const key = sessionStorage.key(index);
+      for (let index = 0; index < backing.length; index += 1) {
+        const key = backing.key(index);
         if (key !== null) keys.push(key);
       }
       return keys;
     },
   };
+}
+
+function durableStore(): Storage | undefined {
+  try {
+    const probe = `${CACHE_PREFIX}probe`;
+    localStorage.setItem(probe, "1");
+    localStorage.removeItem(probe);
+    return localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+function perTabStore(): Storage {
+  return sessionStorage;
 }
 
 export interface RawMessagePage {
