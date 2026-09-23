@@ -1851,51 +1851,29 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * Void the session's open ask because the user sent a chat message instead of
-   * answering it. Every browser closes the card as cancelled, and the model is
-   * told — without being woken — so the notice rides into the turn the message
-   * itself triggers rather than becoming a turn of its own.
-   */
-  private async voidOpenAskForUserMessage(session: PiAgentSession): Promise<void> {
-    const outcome = this.pendingAskStore.cancelOpen(session.sessionId, "user-message");
-    if (outcome === undefined) return;
-    this.publishAskClosed(session.sessionId, outcome);
-    await this.runSessionEntryMutation(session, "void the open questions", () => session.sendCustomMessage(
-      { customType: ASK_USER_ANSWERS_CUSTOM_TYPE, content: renderAskUserAnswersText(outcome), display: true, details: outcome },
-      { triggerTurn: false, deliverAs: "followUp" },
-    ));
-    this.publishStatus(session);
-  }
-
-  /**
-   * Void an open ask when a user message the browser did not just send arrives.
+   * A message delivered while the form is open leaves it alone.
    *
-   * `prompt()` voids the ask for a message sent while the form is on screen,
-   * but a message queued *before* `ask_user` ran is delivered by the agent the
-   * moment the ask ends the run - a few milliseconds after the form appears.
-   * The form was then left open with nobody waiting for it: the model read the
-   * queued message, carried on, and told the reader they had not answered
-   * questions that were still sitting on their screen (observed 2026-08-24,
-   * ask posted at 16:25:45.991, queued message delivered at 16:25:45.997).
+   * It used to void the ask: the model was told the questions were dead and
+   * carried on with defaults. The owner's ruling is the opposite - a message
+   * neither answers the form nor disturbs it - so the questions stay up and the
+   * answers arrive later as their own turn. The case that made this visible was
+   * a message queued *before* the questions were posted: it was delivered a
+   * second after the form appeared, so the reader watched a form they had never
+   * touched close itself, reported as "I never replied, why does it say
+   * unanswered".
+   *
+   * The message is still claimed, which is what tells a message queued before
+   * the questions from one sent after them; the claim is spent either way so a
+   * redelivery stays idempotent.
    */
-  private async voidOpenAskForDeliveredMessage(session: PiAgentSession, event: unknown): Promise<void> {
+  private voidOpenAskForDeliveredMessage(session: PiAgentSession, event: unknown): void {
     if (this.pendingAskStore.pendingAsk(session.sessionId) === undefined) return;
     const message = getProperty(event, "message");
     const { text } = committedMessageShape(getProperty(message, "content"));
     // The stamp ran before this handler in the same subscription, so a prompt
     // this daemon accepted carries its sender's id here.
     const stamped = isRecord(message) && typeof message["clientMessageId"] === "string" ? message["clientMessageId"] : undefined;
-    const delivered = { ...(stamped === undefined ? {} : { clientMessageId: stamped }), text };
-    if (!this.pendingAskStore.claimPreAskDelivery(session.sessionId, delivered)) return;
-    try {
-      await this.voidOpenAskForUserMessage(session);
-    } catch (error) {
-      // The claim is spent but the void never reached anyone; give the claim
-      // back so the next delivery of the same message retries it, instead of
-      // leaving the form open forever on a consumed entry.
-      this.pendingAskStore.restorePreAskDelivery(session.sessionId, delivered);
-      throw error;
-    }
+    this.pendingAskStore.claimPreAskDelivery(session.sessionId, { ...(stamped === undefined ? {} : { clientMessageId: stamped }), text });
   }
 
   /**
@@ -4459,7 +4437,7 @@ export class PiSessionService implements SessionRouteService {
       this.publishActivityForEvent(session, event);
       const eventType = getString(event, "type");
       if (eventType === "agent_end") this.abortRunScopedExtensionDialogs(session.sessionId);
-      if (isDeliveredUserMessageEvent(event)) void this.voidOpenAskForDeliveredMessage(session, event);
+      if (isDeliveredUserMessageEvent(event)) this.voidOpenAskForDeliveredMessage(session, event);
       if (eventType === "compaction_end") this.scheduleCompactionQueueDrain(session.sessionId);
       if (eventType === "agent_start" || eventType === "agent_end") this.scheduleCompactionQueueDrain(session.sessionId);
       // agent_end/turn_end fire from inside the SDK's still-running loop, so

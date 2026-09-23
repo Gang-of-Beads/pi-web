@@ -282,10 +282,10 @@ describe("PiSessionService.prompt with an open ask", () => {
 
   // The failure this covers, observed 2026-08-24: a message queued before
   // `ask_user` ran was delivered by the agent six milliseconds after the form
-  // appeared, because the ask is what ends the run. Nothing voided the ask, so
-  // the reader kept a live form on screen while the model read the queued
-  // message and reported the questions unanswered.
-  it("voids the open ask when a message queued earlier is delivered", async () => {
+  // appeared, because the ask is what ends the run. The form used to be voided
+  // for it; the owner's ruling is that a message neither answers the form nor
+  // disturbs it, so the questions now stay up for the reader.
+  it("keeps the open ask when a message queued earlier is delivered", async () => {
     const { service, store, events, fake } = askService({ withActiveSession: true });
     // Opens the runtime, which is what subscribes to its events.
     await service.status(sessionRef(ACTIVE_SESSION_ID));
@@ -297,16 +297,16 @@ describe("PiSessionService.prompt with an open ask", () => {
     expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeDefined();
 
     fake.emit({ type: "message_start", message: { role: "user", content: "queued before the questions" } });
-    await vi.waitFor(() => { expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeUndefined(); });
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
+    expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeDefined();
     expect(askEvents(events).map(({ event }) => withoutStamps(event))).toEqual([
       { type: "ask.opened", ask: { askId: "ask-1", askedAt: "2026-02-01T10:00:00.000Z", questions } },
-      { type: "ask.closed", askId: "ask-1", reason: "cancelled" },
     ]);
-    expect(askRevisions(events)).toEqual([1, 2]);
-    const [delivered] = fake.calls.sendCustomMessage;
-    expect(delivered?.message.content).toContain("unanswered: db");
-    expect(delivered?.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+    expect(askRevisions(events)).toEqual([1]);
+    // Nothing is delivered to the model: the questions are still the reader's
+    // to answer, and the answers will arrive as their own turn.
+    expect(fake.calls.sendCustomMessage).toEqual([]);
     await service.dispose();
   });
 
@@ -331,7 +331,8 @@ describe("PiSessionService.prompt with an open ask", () => {
   // Review findings, all three directions of the id key: texts drift under
   // template expansion, captionless photos have no text at all, and a text
   // collision must never void the form for a remark that carries its own id.
-  it("voids for a captionless pre-ask photo, by id", async () => {
+  // All three still leave the form open.
+  it("keeps the form for a captionless pre-ask photo, by id", async () => {
     const { service, store, fake } = askService({ withActiveSession: true });
     const cwd = await mkdtemp(join(tmpdir(), "pi-web-ask-photo-"));
     fake.session.sessionManager.getCwd = () => cwd;
@@ -343,11 +344,12 @@ describe("PiSessionService.prompt with an open ask", () => {
     await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
 
     fake.emit({ type: "message_start", message: { role: "user", clientMessageId: "c-photo", content: [{ type: "image", mimeType: "image/png", data: "AAAA" }] } });
-    await vi.waitFor(() => { expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeUndefined(); });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeDefined();
     await service.dispose();
   });
 
-  it("voids for a pre-ask prompt the runtime rewrote, by id", async () => {
+  it("keeps the form for a pre-ask prompt the runtime rewrote, by id", async () => {
     const { service, store, fake } = askService({ withActiveSession: true });
     const cwd = await mkdtemp(join(tmpdir(), "pi-web-ask-template-"));
     fake.session.sessionManager.getCwd = () => cwd;
@@ -359,11 +361,12 @@ describe("PiSessionService.prompt with an open ask", () => {
     await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
 
     fake.emit({ type: "message_start", message: { role: "user", clientMessageId: "c-template", content: "the expanded skill body" } });
-    await vi.waitFor(() => { expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeUndefined(); });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeDefined();
     await service.dispose();
   });
 
-  it("never voids for a remark whose words collide with the pre-ask queue", async () => {
+  it("keeps the form for a remark whose words collide with the pre-ask queue", async () => {
     const { service, store, fake } = askService({ withActiveSession: true });
     const cwd = await mkdtemp(join(tmpdir(), "pi-web-ask-collision-"));
     fake.session.sessionManager.getCwd = () => cwd;
