@@ -1,5 +1,24 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.11
+
+### Patch Changes
+
+- d6049a9: A chat message no longer closes the open question form.
+
+  A message queued before the questions were posted was delivered a second
+  after the form appeared and voided it - the reader watched a form they had
+  never touched close itself and read "you sent a chat message instead of
+  answering". The form now stays: a message neither answers it nor disturbs it,
+  and the answers arrive later as their own turn.
+
+- f6a716d: A slash command bubble stays where it was issued.
+
+  It was drawn only in the transcript tail, after every message, so a /goal that
+  started the turn sat under the reply it caused and read as something still
+  waiting. Commands are placed by issue time now; only one newer than everything
+  on screen stays in the tail.
+
 ## 2.202609.10
 
 ### Patch Changes
