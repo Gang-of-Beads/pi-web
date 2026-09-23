@@ -18,6 +18,7 @@ import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
 import { commandDeliveryPresentation, commandResultLine, type CommandLedgerEntry } from "../commandLedger";
+import { placeCommands } from "../commandPlacement";
 import type { ClosedExtensionDialog } from "../appState";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { isWaitingForUser } from "../../../shared/sessionActivityState";
@@ -1165,6 +1166,9 @@ if (this.heldWaitingClearTimer !== undefined) {
 
   override render() {
     const groups = this.groupedMessages();
+    // A command bubble belongs where it was issued; only one newer than
+    // everything on screen stays in the tail. See commandPlacement.ts.
+    const commands = placeCommands(this.commandLedger, groups.map((group) => this.groupTimestamp(group)));
     return html`
       ${this.renderTopNotices()}
       ${this.renderQuoteChip()}
@@ -1175,14 +1179,15 @@ if (this.heldWaitingClearTimer !== undefined) {
             groups,
             (group) => group.kind === "group" ? this.groupRenderKey(group.startIndex) : this.messageAnchorKey(group.index),
             (group, index) => {
-              if (group.kind === "group") return this.renderMessageGroup(group.messages, group.startIndex, group.endIndex, this.isLiveTailGroup(groups, index));
-              if (group.kind === "tool-image") return this.renderToolImageOutput(group.message, group.index, group.toolName);
-              return this.renderMessage(group.message, group.index);
+              const before = this.renderCommandRows(commands.before.get(index) ?? []);
+              if (group.kind === "group") return html`${before}${this.renderMessageGroup(group.messages, group.startIndex, group.endIndex, this.isLiveTailGroup(groups, index))}`;
+              if (group.kind === "tool-image") return html`${before}${this.renderToolImageOutput(group.message, group.index, group.toolName)}`;
+              return html`${before}${this.renderMessage(group.message, group.index)}`;
             },
           )}
           ${this.renderNewerBoundary()}
           ${this.renderSessionActivity()}
-          ${this.renderCommandLedger()}
+          ${this.renderCommandRows(commands.tail)}
           ${this.renderPendingMessages()}
           ${this.renderQueuedMessages()}
           ${this.renderClosedDialogs()}
@@ -1716,11 +1721,21 @@ if (this.heldWaitingClearTimer !== undefined) {
    * sent message wears. Rows come before the queued messages because the
    * daemon takes a command before whatever the reader queued after it.
    */
-  private renderCommandLedger() {
-    if (this.commandLedger.length === 0) return null;
+  /** The moment a group happened, for placing commands around it. */
+  private groupTimestamp(group: ChatGroup): number | undefined {
+    const lines = group.kind === "group" ? group.messages : [group.message];
+    for (const line of lines) {
+      const at = Date.parse(line.meta?.timestamp ?? "");
+      if (Number.isFinite(at)) return at;
+    }
+    return undefined;
+  }
+
+  private renderCommandRows(rows: readonly CommandLedgerEntry[]) {
+    if (rows.length === 0) return null;
     const streaming = this.status?.isStreaming === true;
     return html`
-      ${this.commandLedger.map((entry) => {
+      ${rows.map((entry) => {
         const presentation = commandDeliveryPresentation(entry, streaming);
         const result = commandResultLine(entry);
         return html`

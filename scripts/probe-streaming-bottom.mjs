@@ -65,7 +65,9 @@ async function main() {
         await Reflect.apply(setModel, sessions, [provider, rest.join("/")]);
         await new Promise((resolve) => setTimeout(resolve, 1500));
       }
-      const live = () => app.shadowRoot.querySelector("chat-view")?.shadowRoot?.textContent?.includes("receiving response") === true;
+      // The dock's wording moves between "agent running" and "receiving
+      // response" depending on phase; either means the turn is live.
+      const live = () => /receiving response|agent running/u.test(app.shadowRoot.querySelector("chat-view")?.shadowRoot?.textContent ?? "");
       const queuedNow = () => app.shadowRoot.querySelector("chat-view")?.shadowRoot?.textContent?.includes("Queued") === true;
       // A queue only forms while a turn is actually running, and how long the
       // model takes is not under this probe's control: ask for a long answer,

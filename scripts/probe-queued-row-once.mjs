@@ -42,11 +42,13 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 1200));
     const view = () => app.shadowRoot.querySelector("chat-view")?.shadowRoot;
     void Reflect.apply(Reflect.get(sessions, "send"), sessions, ["Count slowly from 1 to 300, one number per line, nothing else."]);
-    for (let waited = 0; waited < 90_000; waited += 500) {
+    for (let waited = 0; waited < 180_000; waited += 500) {
       await new Promise((resolve) => setTimeout(resolve, 500));
-      if ((view()?.textContent ?? "").includes("receiving response")) break;
+      // The dock's own wording moves between "agent running" and "receiving
+      // response" depending on phase; either means the turn is live.
+      if (/receiving response|agent running/u.test(view()?.textContent ?? "")) break;
     }
-    if (!(view()?.textContent ?? "").includes("receiving response")) return "the turn never started streaming";
+    if (!/receiving response|agent running/u.test(view()?.textContent ?? "")) return "the turn never started streaming";
     const marker = `queued-once-${String(Date.now())}`;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       void Reflect.apply(Reflect.get(sessions, "send"), sessions, [`${marker} turn ${String(attempt)}`]);
