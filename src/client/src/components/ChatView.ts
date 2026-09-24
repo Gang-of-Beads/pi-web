@@ -19,6 +19,12 @@ import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
 import { commandDeliveryPresentation, commandResultLine, type CommandLedgerEntry } from "../commandLedger";
 import { placeCommands } from "../commandPlacement";
+import { IDENTITY_ZOOM, pinchZoom, panZoom, wheelZoom, type PinchPoint, type PinchStart, type ZoomTransform } from "../imageZoomGesture";
+
+/** Movement under this is still a tap, so a stray pixel does not swallow the close. */
+const ZOOM_TAP_SLOP_PX = 8;
+/** One wheel notch, as a scale factor: exp(-deltaY / this). */
+const WHEEL_ZOOM_STEP = 300;
 import type { ClosedExtensionDialog } from "../appState";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { isWaitingForUser } from "../../../shared/sessionActivityState";
@@ -341,6 +347,10 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   dialog.image-zoom { box-sizing: border-box; position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
   dialog.image-zoom[open] { display: flex; }
   dialog.image-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
+  /* Pinch owns the gesture: without this the browser scrolls and page-zooms
+     under the fingers. */
+  dialog.image-zoom { touch-action: none; }
+  .image-zoom-full { will-change: transform; }
   .image-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; cursor: zoom-out; }
   /* A child's conversation, over the parent's. It borrows the output viewer's
      frame because it is the same kind of thing - something opened from an
@@ -754,6 +764,7 @@ export class ChatView extends LitElement {
   /** Whether the newest message is far enough away to be worth a button. */
   @state() private jumpToBottomVisible = false;
   @state() private zoomedImage: { src: string; alt: string } | undefined = undefined;
+  @state() private zoomTransform: ZoomTransform = IDENTITY_ZOOM;
   @state() private expandedMetaKey: string | undefined;
   @state() private copiedMessageKey: string | undefined;
   @state() private currentConversationIndex: number | undefined;
@@ -901,10 +912,82 @@ export class ChatView extends LitElement {
   private lastScrollHeight: number | undefined;
   private heightAtLastBottomHold: number | undefined;
   private readonly openImageZoom = (src: string, alt: string): void => {
+    this.zoomTransform = IDENTITY_ZOOM;
     this.zoomedImage = { src, alt };
   };
   private readonly closeImageZoom = (): void => {
+    this.zoomTransform = IDENTITY_ZOOM;
+    this.zoomPointers.clear();
+    this.zoomPinch = undefined;
+    this.zoomPan = undefined;
     if (this.zoomedImage !== undefined) this.zoomedImage = undefined;
+  };
+
+  /**
+   * The picture is opened at fit size, so a screenshot's small print is
+   * unreadable on a phone; pinch and pan are the gestures that fix it. Both are
+   * measured against the dialog's centre, which is where the untransformed
+   * picture sits, so the maths does not chase the transform it is producing.
+   */
+  private readonly zoomPointers = new Map<number, { x: number; y: number }>();
+  private zoomPinch: PinchStart | undefined;
+  private zoomPan: { from: { x: number; y: number }; transform: ZoomTransform } | undefined;
+  private zoomMoved = false;
+
+  private zoomPoint(event: { clientX: number; clientY: number }): { x: number; y: number } {
+    const box = this.imageZoomDialog?.getBoundingClientRect();
+    const centreX = box === undefined ? 0 : box.left + box.width / 2;
+    const centreY = box === undefined ? 0 : box.top + box.height / 2;
+    return { x: event.clientX - centreX, y: event.clientY - centreY };
+  }
+
+  private pinchPoint(): PinchPoint | undefined {
+    const [first, second] = [...this.zoomPointers.values()];
+    if (first === undefined || second === undefined) return undefined;
+    return {
+      distance: Math.hypot(second.x - first.x, second.y - first.y),
+      midpoint: { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 },
+    };
+  }
+
+  private readonly onImageZoomPointerDown = (event: PointerEvent): void => {
+    this.zoomPointers.set(event.pointerId, this.zoomPoint(event));
+    if (this.zoomPointers.size >= 2) {
+      const pinch = this.pinchPoint();
+      this.zoomPinch = pinch === undefined ? undefined : { ...pinch, transform: this.zoomTransform };
+      this.zoomPan = undefined;
+      this.zoomMoved = true;
+      return;
+    }
+    this.zoomPan = { from: this.zoomPoint(event), transform: this.zoomTransform };
+    this.zoomMoved = false;
+  };
+
+  private readonly onImageZoomPointerMove = (event: PointerEvent): void => {
+    if (!this.zoomPointers.has(event.pointerId)) return;
+    const point = this.zoomPoint(event);
+    this.zoomPointers.set(event.pointerId, point);
+    if (this.zoomPinch !== undefined && this.zoomPointers.size >= 2) {
+      const pinch = this.pinchPoint();
+      if (pinch !== undefined) this.zoomTransform = pinchZoom(this.zoomPinch, pinch);
+      return;
+    }
+    const pan = this.zoomPan;
+    if (pan === undefined || this.zoomPointers.size !== 1) return;
+    if (Math.hypot(point.x - pan.from.x, point.y - pan.from.y) > ZOOM_TAP_SLOP_PX) this.zoomMoved = true;
+    this.zoomTransform = panZoom(pan.from, point, pan.transform);
+  };
+
+  private readonly onImageZoomPointerUp = (event: PointerEvent): void => {
+    this.zoomPointers.delete(event.pointerId);
+    if (this.zoomPointers.size < 2) this.zoomPinch = undefined;
+    if (this.zoomPointers.size === 0) this.zoomPan = undefined;
+  };
+
+  private readonly onImageZoomWheel = (event: WheelEvent): void => {
+    if (this.zoomedImage === undefined) return;
+    event.preventDefault();
+    this.zoomTransform = wheelZoom(this.zoomTransform, Math.exp(-event.deltaY / WHEEL_ZOOM_STEP), this.zoomPoint(event));
   };
   /**
    * A tap anywhere closes the picture, the image included: the owner asked for
@@ -1372,9 +1455,14 @@ if (this.heldWaitingClearTimer !== undefined) {
 
   private renderImageZoom() {
     return html`
-      <dialog class="image-zoom" tabindex="-1" aria-label="Image, tap to close" @click=${this.onImageZoomDialogClick} @close=${this.closeImageZoom} @cancel=${this.closeImageZoom}>
+      <dialog class="image-zoom" tabindex="-1" aria-label="Image, tap to close" @click=${this.onImageZoomDialogClick} @close=${this.closeImageZoom} @cancel=${this.closeImageZoom} @pointerdown=${this.onImageZoomPointerDown} @pointermove=${this.onImageZoomPointerMove} @pointerup=${this.onImageZoomPointerUp} @pointercancel=${this.onImageZoomPointerUp} @wheel=${this.onImageZoomWheel}>
         ${this.zoomedImage === undefined ? null : html`
-          <img class="image-zoom-full" src=${this.zoomedImage.src} alt=${this.zoomedImage.alt} />
+          <img
+            class="image-zoom-full"
+            style=${`transform: translate(${String(this.zoomTransform.x)}px, ${String(this.zoomTransform.y)}px) scale(${String(this.zoomTransform.scale)})`}
+            src=${this.zoomedImage.src}
+            alt=${this.zoomedImage.alt}
+          />
         `}
       </dialog>
     `;
