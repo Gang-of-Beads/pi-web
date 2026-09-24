@@ -1791,9 +1791,6 @@ export class PiSessionService implements SessionRouteService {
       ...ownedEntries.map((entry) => entry.clientMessageId).filter((id): id is string => id !== undefined),
     ];
     const result = this.pendingAskStore.open({ ...input, queuedMessageTexts, queuedMessageIds });
-    // A supersede closes the earlier ask, so the browsers watching it must hear
-    // that before they hear about its replacement.
-    if (result.superseded !== undefined) this.publishAskClosed(input.sessionId, result.superseded);
     this.events.publish(input.sessionId, { type: "ask.opened", ask: result.ask, revision: this.nextDialogRevision(input.sessionId), daemonInstanceId: this.notificationStore.daemonInstanceId });
     this.publishStatusForSessionId(input.sessionId);
     return result;
@@ -4936,7 +4933,8 @@ export class PiSessionService implements SessionRouteService {
     const contextUsage = session.getContextUsage();
     const warnings = this.warningsForSession(session);
     this.fileWarningNotifications(session, warnings);
-    const pendingAsk = this.pendingAskStore.pendingAsk(session.sessionId);
+    const pendingAsks = this.pendingAskStore.pendingAsks(session.sessionId);
+    const pendingAsk = pendingAsks[0];
     const pendingDialogs = this.pendingExtensionDialogStore.pendingDialogs(session.sessionId);
     // One transcript pass feeds both the count and the visible queue list:
     // consumed-message reconciliation walks session.messages, and running it
@@ -4975,6 +4973,7 @@ export class PiSessionService implements SessionRouteService {
       ...(contextUsage === undefined ? {} : { contextUsage }),
       ...(warnings.length === 0 ? {} : { warnings }),
       ...(pendingAsk === undefined ? {} : { pendingAsk }),
+      ...(pendingAsks.length === 0 ? {} : { pendingAsks }),
       ...(pendingDialogs.length === 0 ? {} : { pendingDialogs }),
       // The dialog surface's revision and the process that stamped it: a client
       // comparing frame revisions must know when the revision space was

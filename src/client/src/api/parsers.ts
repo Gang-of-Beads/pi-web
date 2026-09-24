@@ -355,6 +355,12 @@ function parsePendingAskUser(value: unknown): PendingAskUser {
   };
 }
 
+function optionalPendingAsks(value: unknown): Pick<SessionStatus, "pendingAsks"> | object {
+  if (!Array.isArray(value)) return {};
+  const asks = value.map(parsePendingAskUser);
+  return asks.length === 0 ? {} : { pendingAsks: asks };
+}
+
 function optionalPendingAsk(value: unknown): Pick<SessionStatus, "pendingAsk"> | object {
   if (value === undefined) return {};
   return { pendingAsk: parsePendingAskUser(value) };
@@ -623,6 +629,7 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     ...optionalField("thinkingLevel", optionalString(record, "thinkingLevel")),
     ...optionalWarnings(record["warnings"]),
     ...optionalPendingAsk(record["pendingAsk"]),
+    ...optionalPendingAsks(record["pendingAsks"]),
     ...optionalPendingDialogs(record["pendingDialogs"]),
   };
 }

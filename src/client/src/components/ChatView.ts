@@ -722,6 +722,8 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) status?: SessionStatus;
   @property({ attribute: false }) activity?: SessionActivity;
   @property({ attribute: false }) pendingAsk?: PendingAskUser;
+  /** Every open form, oldest first; a second ask no longer closes the first. */
+  @property({ attribute: false }) pendingAsks: PendingAskUser[] = [];
   @property({ attribute: false }) askDraftSessionId = "";
   @property({ attribute: false }) onSubmitAsk?: (askId: string, submission: AskUserSubmission) => void | Promise<void>;
   @property({ attribute: false }) pendingDialogs: PendingExtensionDialog[] = [];
@@ -1741,7 +1743,7 @@ if (this.heldWaitingClearTimer !== undefined) {
    */
   private renderWaitingForYou() {
     const dialog = this.pendingDialogs[0];
-    if (this.pendingAsk !== undefined || dialog !== undefined) {
+    if (this.pendingAsk !== undefined || this.pendingAsks.length > 0 || dialog !== undefined) {
       this.heldWaiting = { ask: this.pendingAsk, dialog, queuedCount: this.pendingDialogs.length - 1 };
       return this.renderWaitingSlot(this.pendingAsk, dialog, this.pendingDialogs.length - 1);
     }
@@ -1779,15 +1781,18 @@ if (this.heldWaitingClearTimer !== undefined) {
   }
 
   private renderWaitingSlot(ask: PendingAskUser | undefined, dialog: PendingExtensionDialog | undefined, queuedCount: number) {
+    // Every open form is drawn, oldest first: a second `ask_user` used to close
+    // the first and leave it unanswerable.
+    const forms = this.pendingAsks.length > 0 ? this.pendingAsks : (ask === undefined ? [] : [ask]);
     return html`
       <div class="waiting-slot" role="region" aria-label="Waiting for your answer">
-        ${ask === undefined ? null : html`
+        ${forms.map((form) => html`
           <ask-user-card
-            .ask=${ask}
+            .ask=${form}
             .draftSessionId=${this.askDraftSessionId}
             .onSubmit=${this.onSubmitAsk}
           ></ask-user-card>
-        `}
+        `)}
         ${dialog === undefined ? null : html`
           <extension-dialog-card
             class="open-dialog-card"

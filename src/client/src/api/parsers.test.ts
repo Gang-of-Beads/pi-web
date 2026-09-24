@@ -1045,6 +1045,16 @@ describe("API parsers", () => {
     expect(parseSessionStatus(statusWire()).pendingAsk).toBeUndefined();
   });
 
+  // A session can hold more than one open form; the list is what the waiting
+  // slot renders, and it has to survive the status boundary.
+  it("parses every open ask, in order", () => {
+    const second = { ...pendingAskWire(), askId: "ask-2" };
+    const parsed = parseSessionStatus({ ...statusWire(), pendingAsks: [pendingAskWire(), second] });
+
+    expect(parsed.pendingAsks?.map((ask) => ask.askId)).toEqual(["ask-1", "ask-2"]);
+    expect(parseSessionStatus(statusWire()).pendingAsks).toBeUndefined();
+  });
+
   it("validates an ask before rendering it", () => {
     const ask = pendingAskWire();
     const first = ask.questions[0];

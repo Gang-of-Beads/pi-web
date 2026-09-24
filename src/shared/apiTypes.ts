@@ -1233,6 +1233,14 @@ export interface SessionStatus {
    */
   pendingAsk?: PendingAskUser;
   /**
+   * Every open question form, oldest first.
+   *
+   * `pendingAsk` is the oldest of these, kept because it is what the waiting
+   * slot shows first; a second `ask_user` used to supersede the first and leave
+   * it unanswerable.
+   */
+  pendingAsks?: PendingAskUser[];
+  /**
    * The session's open extension dialogs, oldest first, when any are waiting
    * for the user. Daemon-owned, so they survive browser reload and web/API
    * restarts. Several may be open at once; the UI presents them as a queue.

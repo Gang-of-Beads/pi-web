@@ -2043,7 +2043,7 @@ export class SessionController {
       activity: isSelected && clearsStaleActivity ? undefined : state.activity,
       // The daemon owns whether an ask is open, so every status it publishes is
       // authoritative for the selected session's card, including its removal.
-      ...(isSelected ? { pendingAsk: status.pendingAsk } : {}),
+      ...(isSelected ? { pendingAsk: status.pendingAsk, pendingAsks: status.pendingAsks ?? (status.pendingAsk === undefined ? [] : [status.pendingAsk]) } : {}),
       // Same for extension dialogs: the status projection is authoritative for
       // the open list. Closed-card outcomes are event/response-driven instead,
       // so a status without the dialog simply drops it from the open list.
@@ -2187,24 +2187,35 @@ export class SessionController {
   private applyOpenedAsk(ask: PendingAskUser): void {
     const state = this.getState();
     if (state.selectedSession === undefined) return;
-    // A superseded ask keeps its draft: the read-only record of an ask the user
-    // never submitted must still be able to show what they had typed.
-    this.setState({ pendingAsk: ask });
+    // A later form no longer closes the earlier one, so this appends: a form
+    // that arrived while the reader was still answering must stay answerable,
+    // and its draft is kept for as long as it is open.
+    const pendingAsks = state.pendingAsks.some((open) => open.askId === ask.askId)
+      ? state.pendingAsks
+      : [...state.pendingAsks, ask];
+    this.setState({ pendingAsks, pendingAsk: pendingAsks[0] });
   }
 
   private applyClosedAsk(askId: string): void {
-    // A close for an ask that is not the one on screen is already reflected here
-    // (typically the supersede half of an open), so it must not clear the card.
     const state = this.getState();
-    if (state.pendingAsk?.askId !== askId) return;
+    const remaining = state.pendingAsks.filter((open) => open.askId !== askId);
+    if (remaining.length === state.pendingAsks.length && state.pendingAsk?.askId !== askId) return;
     const sessionId = state.selectedSession?.id;
-    this.setState({ pendingAsk: undefined });
+    // Whatever is still open moves up; the closed one leaves the screen.
+    this.setState({ pendingAsks: remaining, pendingAsk: remaining[0] });
     // Same for the status map: the rows and the next selection read it, so an
     // answered ask must be retracted there as well.
     this.patchSessionStatus(sessionId, (sessionStatus) => {
-      if (sessionStatus.pendingAsk === undefined) return sessionStatus;
+      if (sessionStatus.pendingAsk === undefined && (sessionStatus.pendingAsks ?? []).length === 0) return sessionStatus;
       const next: SessionStatus = { ...sessionStatus };
-      delete next.pendingAsk;
+      const left = (sessionStatus.pendingAsks ?? []).filter((open) => open.askId !== askId);
+      if (left.length === 0) delete next.pendingAsks;
+      else next.pendingAsks = left;
+      const [oldest] = left;
+      if (next.pendingAsk?.askId === askId) {
+        if (oldest === undefined) delete next.pendingAsk;
+        else next.pendingAsk = oldest;
+      }
       return next;
     });
   }

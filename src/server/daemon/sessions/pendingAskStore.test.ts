@@ -4,7 +4,7 @@ import {
   PendingAskStore,
   PendingAskValidationError,
   renderAskUserAnswersText,
-  renderSupersededAskText,
+  
 } from "./pendingAskStore.js";
 
 const sessionId = "session-1";
@@ -62,7 +62,6 @@ describe("PendingAskStore validation", () => {
         },
       ],
     });
-    expect(result.superseded).toBeUndefined();
     expect(store.pendingAsk(sessionId)).toEqual(result.ask);
     expect(store.pendingAsk("other-session")).toBeUndefined();
   });
@@ -224,38 +223,41 @@ describe("PendingAskStore submit", () => {
 });
 
 describe("PendingAskStore close transitions", () => {
-  it("supersedes an unanswered ask and reports its questions as unanswered", () => {
+  it("keeps the earlier form open instead of superseding it", () => {
     const store = testStore();
-    const first = openTwoQuestions(store);
+    openTwoQuestions(store);
 
     const second = store.open({ sessionId, questions: [question("q3")] });
 
     expect(second.ask.askId).toBe("ask-2");
-    expect(second.superseded).toEqual({
-      askId: "ask-1",
-      reason: "superseded",
-      askedAt: "2026-01-01T00:00:00.000Z",
-      closedAt: "2026-01-01T00:00:01.000Z",
-      questions: [
-        { question: first.ask.questions[0], answered: false, values: [] },
-        { question: first.ask.questions[1], answered: false, values: [] },
-      ],
-      answeredCount: 0,
-      unansweredIds: ["q1", "q2"],
-      summary: "Answered 0 of 2; unanswered: q1, q2",
-    });
-    expect(store.pendingAsk(sessionId)?.askId).toBe("ask-2");
-    expect(store.submit(sessionId, first.ask.askId, { answers: [] })).toEqual({ status: "stale" });
+    // Both are open, oldest first, and the first is still the one to answer.
+    expect(store.pendingAsks(sessionId).map((ask) => ask.askId)).toEqual(["ask-1", "ask-2"]);
+    expect(store.pendingAsk(sessionId)?.askId).toBe("ask-1");
+  });
+
+  // The reported bug: a form that arrived while an earlier one was still open
+  // could no longer be answered - the second closed the first.
+  it("lets the earlier ask be answered after a later one arrived", () => {
+    const store = testStore();
+    const first = openTwoQuestions(store);
+    store.open({ sessionId, questions: [question("q3")] });
+
+    const answered = store.submit(sessionId, first.ask.askId, { answers: [{ id: "q1", values: ["yes"] }, { id: "q2", values: ["no"] }] });
+
+    if (answered.status !== "closed") throw new Error("expected the earlier ask to close");
+    expect(answered.outcome).toMatchObject({ askId: "ask-1", reason: "submitted", answeredCount: 2 });
+    // Answering the older form leaves the newer one open.
+    expect(store.pendingAsks(sessionId).map((ask) => ask.askId)).toEqual(["ask-2"]);
   });
 
   it("does not supersede an ask that belongs to another session", () => {
     const store = testStore();
     const first = openTwoQuestions(store);
 
-    const second = store.open({ sessionId: "session-2", questions: [question("q3")] });
+    store.open({ sessionId: "session-2", questions: [question("q3")] });
 
-    expect(second.superseded).toBeUndefined();
     expect(store.pendingAsk(sessionId)?.askId).toBe(first.ask.askId);
+    expect(store.pendingAsks("session-2")).toHaveLength(1);
   });
 
   it("cancels an open ask as fully unanswered", () => {
@@ -350,15 +352,4 @@ describe("ask outcome rendering", () => {
     expect(renderAskUserAnswersText(result.outcome)).toContain("closed (cancelled) before it was fully answered");
   });
 
-  it("names the abandoned questions when an ask is superseded", () => {
-    const store = testStore();
-    openTwoQuestions(store);
-    const superseded = store.open({ sessionId, questions: [question("q3")] }).superseded;
-    if (superseded === undefined) throw new Error("expected a superseded outcome");
-
-    expect(renderSupersededAskText(superseded)).toBe([
-      "This replaced an earlier question set (ask-1) that the user never submitted.",
-      "Left unanswered: q1, q2.",
-    ].join("\n"));
-  });
 });

@@ -94,15 +94,17 @@ describe("PiSessionService.openAsk", () => {
     await service.dispose();
   });
 
-  it("supersedes the session's earlier unanswered ask and reports its outcome", async () => {
+  // The reported bug: a form that arrived while an earlier one was open left
+  // the earlier one unanswerable. Both stay open now, oldest first.
+  it("keeps the session's earlier unanswered ask open", async () => {
     const { service, store } = askService();
     await service.openAsk({ sessionId: "session-1", questions });
 
     const result = await service.openAsk({ sessionId: "session-1", questions: [{ id: "again", question: "Still?", options: [] }] });
 
     expect(result.ask.askId).toBe("ask-2");
-    expect(result.superseded).toMatchObject({ askId: "ask-1", reason: "superseded", answeredCount: 0, unansweredIds: ["db"] });
-    expect(store.pendingAsk("session-1")).toMatchObject({ askId: "ask-2" });
+    expect(store.pendingAsks("session-1").map((ask) => ask.askId)).toEqual(["ask-1", "ask-2"]);
+    expect(store.pendingAsk("session-1")).toMatchObject({ askId: "ask-1" });
     await service.dispose();
   });
 
@@ -144,7 +146,7 @@ describe("PiSessionService.openAsk", () => {
     await service.dispose();
   });
 
-  it("publishes the supersede as a close before the replacement opens", async () => {
+  it("publishes the second form without closing the first", async () => {
     const { service, events } = askService();
     await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
 
@@ -152,10 +154,9 @@ describe("PiSessionService.openAsk", () => {
 
     expect(askEvents(events).map(({ event }) => withoutStamps(event))).toEqual([
       { type: "ask.opened", ask: { askId: "ask-1", askedAt: "2026-02-01T10:00:00.000Z", questions } },
-      { type: "ask.closed", askId: "ask-1", reason: "superseded" },
       { type: "ask.opened", ask: { askId: "ask-2", askedAt: "2026-02-01T10:00:00.000Z", questions: [{ id: "again", question: "Still?", options: [] }] } },
     ]);
-    expect(askRevisions(events)).toEqual([1, 2, 3]);
+    expect(askRevisions(events)).toEqual([1, 2]);
     await service.dispose();
   });
 });

@@ -109,7 +109,7 @@ describe("createAskUserToolDefinition", () => {
     });
   });
 
-  it("tells the model which questions the superseded ask left unanswered", async () => {
+  it("posts the second form without a supersede notice", async () => {
     const { tool } = toolOverStore();
     await tool.execute("call-first", twoQuestions, undefined, undefined, ctxFor("session-1"));
 
@@ -117,9 +117,8 @@ describe("createAskUserToolDefinition", () => {
 
     expect(result.terminate).toBe(true);
     expect(firstText(result.content)).toContain("Posted 1 question to the user as ask ask-2.");
-    expect(firstText(result.content)).toContain("This replaced an earlier question set (ask-1) that the user never submitted.");
-    expect(firstText(result.content)).toContain("Left unanswered: db, why.");
-    expect(result.details).toMatchObject({ superseded: { askId: "ask-1", reason: "superseded", unansweredIds: ["db", "why"] } });
+    // The earlier form is still open, so nothing is lost and nothing to report.
+    expect(firstText(result.content)).not.toContain("replaced an earlier question set");
   });
 
   it("says nothing about superseding when no earlier ask was open", async () => {

@@ -46,7 +46,6 @@ export interface PendingAskOpenInput {
  */
 export interface PendingAskOpenResult {
   ask: PendingAskUser;
-  superseded?: AskUserOutcome;
 }
 
 /**
@@ -85,7 +84,16 @@ type RecordedAnswers = ReadonlyMap<string, AskUserAnswer>;
 export class PendingAskStore {
   private readonly now: () => Date;
   private readonly createAskId: () => string;
-  private readonly openBySessionId = new Map<string, PendingAskUser>();
+  /**
+   * Open asks per session, oldest first.
+   *
+   * A session used to hold exactly one: a second `ask_user` superseded the
+   * first, which closed it and turned the earlier form into an unanswerable
+   * record - reported as "one is not finished, the next arrives, and the
+   * previous can no longer be answered". Both are answerable now; each closes
+   * on its own submit.
+   */
+  private readonly openBySessionId = new Map<string, PendingAskUser[]>();
   private readonly preAskQueues = new Map<string, Set<string>>();
   private readonly preAskQueueIds = new Map<string, Set<string>>();
 
@@ -94,29 +102,34 @@ export class PendingAskStore {
     this.createAskId = options.createAskId ?? randomUUID;
   }
 
-  /** The session's open ask, for {@link SessionStatus} projection. */
+  /** The session's oldest open ask, for {@link SessionStatus} projection. */
   pendingAsk(sessionId: string): PendingAskUser | undefined {
-    const ask = this.openBySessionId.get(requireSessionId(sessionId));
+    const ask = this.openBySessionId.get(requireSessionId(sessionId))?.[0];
     return ask === undefined ? undefined : cloneAsk(ask);
+  }
+
+  /** Every open ask, oldest first, so a browser can show all of them. */
+  pendingAsks(sessionId: string): PendingAskUser[] {
+    return (this.openBySessionId.get(requireSessionId(sessionId)) ?? []).map(cloneAsk);
   }
 
   open(input: PendingAskOpenInput): PendingAskOpenResult {
     const sessionId = requireSessionId(input.sessionId);
     const questions = validateQuestions(input.questions);
     const askedAt = this.timestamp();
-    const superseded = this.close(sessionId, "superseded", askedAt, new Map());
     const ask: PendingAskUser = {
       askId: requireId(this.createAskId(), "askId"),
       askedAt,
       questions,
     };
-    this.openBySessionId.set(sessionId, ask);
-    this.preAskQueues.set(sessionId, new Set(input.queuedMessageTexts ?? []));
-    this.preAskQueueIds.set(sessionId, new Set(input.queuedMessageIds ?? []));
-    return {
-      ask: cloneAsk(ask),
-      ...(superseded === undefined ? {} : { superseded }),
-    };
+    const open = this.openBySessionId.get(sessionId);
+    if (open === undefined) this.openBySessionId.set(sessionId, [ask]);
+    else open.push(ask);
+    // The queued messages are the ones that predate the FIRST form; a later
+    // form leaves that record alone.
+    if (!this.preAskQueues.has(sessionId)) this.preAskQueues.set(sessionId, new Set(input.queuedMessageTexts ?? []));
+    if (!this.preAskQueueIds.has(sessionId)) this.preAskQueueIds.set(sessionId, new Set(input.queuedMessageIds ?? []));
+    return { ask: cloneAsk(ask) };
   }
 
   /**
@@ -125,12 +138,13 @@ export class PendingAskStore {
    * rather than silently truncated; the ask stays open in that case.
    */
   submit(sessionId: string, askId: string, submission: AskUserSubmission): PendingAskCloseResult {
-    const ask = this.openBySessionId.get(requireSessionId(sessionId));
-    if (ask?.askId !== askId) return { status: "stale" };
+    const key = requireSessionId(sessionId);
+    const ask = this.find(key, askId);
+    if (ask === undefined) return { status: "stale" };
     // Validate before closing so a submission that does not fit its questions
     // leaves the ask open for the browser to correct.
     const answers = validateSubmission(ask, submission);
-    return { status: "closed", outcome: this.requireClose(sessionId, "submitted", answers) };
+    return { status: "closed", outcome: this.requireClose(key, askId, "submitted", answers) };
   }
 
   /**
@@ -138,9 +152,9 @@ export class PendingAskStore {
    * unanswered, because answers only ever reach the daemon through a submit.
    */
   cancel(sessionId: string, askId: string): PendingAskCloseResult {
-    const ask = this.openBySessionId.get(requireSessionId(sessionId));
-    if (ask?.askId !== askId) return { status: "stale" };
-    return { status: "closed", outcome: this.requireClose(sessionId, "cancelled", new Map()) };
+    const key = requireSessionId(sessionId);
+    if (this.find(key, askId) === undefined) return { status: "stale" };
+    return { status: "closed", outcome: this.requireClose(key, askId, "cancelled", new Map()) };
   }
 
   /**
@@ -149,7 +163,9 @@ export class PendingAskStore {
    * or `undefined` when the session has no open ask.
    */
   cancelOpen(sessionId: string, cause?: AskUserCloseCause): AskUserOutcome | undefined {
-    const outcome = this.close(requireSessionId(sessionId), "cancelled", this.timestamp(), new Map());
+    const key = requireSessionId(sessionId);
+    const oldest = this.openBySessionId.get(key)?.[0];
+    const outcome = oldest === undefined ? undefined : this.close(key, oldest.askId, "cancelled", this.timestamp(), new Map());
     if (outcome === undefined || cause === undefined) return outcome;
     return { ...outcome, cause };
   }
@@ -161,10 +177,14 @@ export class PendingAskStore {
     this.preAskQueueIds.delete(requireSessionId(sessionId));
   }
 
-  private requireClose(sessionId: string, reason: AskUserCloseReason, answers: RecordedAnswers): AskUserOutcome {
-    const outcome = this.close(sessionId, reason, this.timestamp(), answers);
+  private requireClose(sessionId: string, askId: string, reason: AskUserCloseReason, answers: RecordedAnswers): AskUserOutcome {
+    const outcome = this.close(sessionId, askId, reason, this.timestamp(), answers);
     if (outcome === undefined) throw new Error(`Pending ask of session ${sessionId} disappeared while closing`);
     return outcome;
+  }
+
+  private find(sessionId: string, askId: string): PendingAskUser | undefined {
+    return this.openBySessionId.get(sessionId)?.find((ask) => ask.askId === askId);
   }
 
   /**
@@ -190,15 +210,22 @@ export class PendingAskStore {
 
   private close(
     sessionId: string,
+    askId: string,
     reason: AskUserCloseReason,
     closedAt: string,
     answers: RecordedAnswers,
   ): AskUserOutcome | undefined {
-    const ask = this.openBySessionId.get(sessionId);
-    if (ask === undefined) return undefined;
-    this.openBySessionId.delete(sessionId);
-    this.preAskQueues.delete(sessionId);
-    this.preAskQueueIds.delete(sessionId);
+    const open = this.openBySessionId.get(sessionId);
+    const ask = open?.find((candidate) => candidate.askId === askId);
+    if (open === undefined || ask === undefined) return undefined;
+    const remaining = open.filter((candidate) => candidate.askId !== askId);
+    if (remaining.length === 0) {
+      this.openBySessionId.delete(sessionId);
+      this.preAskQueues.delete(sessionId);
+      this.preAskQueueIds.delete(sessionId);
+    } else {
+      this.openBySessionId.set(sessionId, remaining);
+    }
     return askUserOutcome(ask, answers, reason, closedAt);
   }
 
@@ -218,16 +245,6 @@ export function renderAskUserAnswersText(outcome: AskUserOutcome): string {
   return [lead, "", ...outcome.questions.map(questionLines).flat(), "", outcome.summary].join("\n");
 }
 
-/**
- * Notice for the model when a new ask replaced one the user never answered, so a
- * supersede is never a silent loss of the earlier questions.
- */
-export function renderSupersededAskText(outcome: AskUserOutcome): string {
-  return [
-    `This replaced an earlier question set (${outcome.askId}) that the user never submitted.`,
-    `Left unanswered: ${outcome.unansweredIds.join(", ")}.`,
-  ].join("\n");
-}
 
 function questionLines(record: AskUserQuestionRecord): string[] {
   const header = `- ${record.question.id}: ${record.question.question}`;

@@ -8,7 +8,7 @@ import {
   type AskUserQuestion,
   type AskUserQuestionOption,
 } from "../../../shared/apiTypes.js";
-import { renderSupersededAskText, type PendingAskOpenResult } from "./pendingAskStore.js";
+import { type PendingAskOpenResult } from "./pendingAskStore.js";
 
 /** One `ask_user` call: the questions to post, for the session that called the tool. */
 export interface AskUserInvocation {
@@ -88,7 +88,7 @@ function toOption(param: Static<typeof AskUserOptionParams>): AskUserQuestionOpt
 function postedText(result: PendingAskOpenResult): string {
   const count = result.ask.questions.length;
   const posted = `Posted ${count.toString()} question${count === 1 ? "" : "s"} to the user as ask ${result.ask.askId}. Ending this run; the answers arrive as a follow-up message that wakes you, naming every question the user left unanswered. Do not repost these questions.`;
-  return result.superseded === undefined ? posted : `${posted}\n\n${renderSupersededAskText(result.superseded)}`;
+  return posted;
 }
 
 /**
