@@ -9,6 +9,13 @@ await page.goto("http://localhost:8505/", { waitUntil: "networkidle" });
 await page.waitForTimeout(3000);
 
 const openSwitcher = await page.evaluate(() => {
+  // The bar's control was renamed ("Open session selection" is gone); calling the
+  // app's own opener is deterministic and survives the next rename.
+  const app = document.querySelector("pi-web-app");
+  if (typeof Reflect.get(app ?? {}, "openQuickSwitcher") === "function") {
+    Reflect.apply(Reflect.get(app, "openQuickSwitcher"), app, []);
+    return true;
+  }
   let hit = null;
   const walk = (root) => {
     for (const el of root.querySelectorAll("button, [role=button]")) {
