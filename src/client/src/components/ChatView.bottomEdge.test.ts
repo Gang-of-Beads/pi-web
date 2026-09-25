@@ -54,6 +54,26 @@ describe("the bottom edge is held without waiting a frame", () => {
     document.body.replaceChildren();
   });
 
+  it("settles in one render when the jump-to-bottom value does not change", async () => {
+    const { view } = await mount();
+    let renders = 0;
+    const original = view.requestUpdate.bind(view);
+    view.requestUpdate = (...args: Parameters<typeof original>) => {
+      renders += 1;
+      original(...args);
+    };
+    await view.updateComplete;
+    renders = 0;
+    view.requestUpdate();
+    await view.updateComplete;
+    await Promise.resolve();
+    await view.updateComplete;
+    // updated() used to assign @state unconditionally, so each render re-entered
+    // the cycle; on a long transcript the clock's one-second tick therefore cost
+    // a cascade - 832 renders in three seconds while a turn ran, against 84 after.
+    expect(renders).toBeLessThan(4);
+  });
+
   it("returns to the bottom in the same update that grew the content", async () => {
     const { view, chat } = await mount();
     chat.scrollTop = 500;

@@ -1162,7 +1162,7 @@ if (this.heldWaitingClearTimer !== undefined) {
     // only while scrolling left a reader who stopped following four screens
     // from the newest message with no way back.
     const chat = this.chat;
-    if (chat !== undefined) this.jumpToBottomVisible = showsJumpToBottom(chat);
+    if (chat !== undefined) this.setJumpToBottomVisible(showsJumpToBottom(chat));
     if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
     if (changed.has("zoomedImage")) this.syncImageZoomDialog();
   }
@@ -1216,6 +1216,19 @@ if (this.heldWaitingClearTimer !== undefined) {
     this.contentResizeObserver?.disconnect();
     this.contentResizeObserver = new ResizeObserver(() => { this.holdBottomEdge(); });
     for (const row of rows) this.contentResizeObserver.observe(row);
+  }
+
+  /**
+   * Assign only on a change.
+   *
+   * `updated()` runs after every render, and a bare assignment to a @state
+   * re-enters the render cycle even when the value is identical - so the clock's
+   * one-second tick cost a cascade of renders, and on a sixteen-thousand-message
+   * transcript that is the pulse the page was visibly doing.
+   */
+  private setJumpToBottomVisible(next: boolean): void {
+    if (this.jumpToBottomVisible === next) return;
+    this.jumpToBottomVisible = next;
   }
 
   private observeDock(): void {
@@ -2478,7 +2491,7 @@ if (this.heldWaitingClearTimer !== undefined) {
     if (aimed !== undefined && Math.abs(chat.scrollTop - aimed) <= 2) {
       this.followScrollTarget = undefined;
       this.pinnedToBottom = true;
-      this.jumpToBottomVisible = showsJumpToBottom(chat);
+      this.setJumpToBottomVisible(showsJumpToBottom(chat));
       this.lastScrollTop = chat.scrollTop;
       this.lastClientHeight = chat.clientHeight;
       return;
