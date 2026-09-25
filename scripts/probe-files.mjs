@@ -99,7 +99,9 @@ try {
     const rows = root?.querySelectorAll(".tree button.row");
     return { present: true, toolbarText: toolbar?.textContent ?? "", rowCount: rows === undefined ? 0 : rows.length };
   }`);
-  check("the legacy route value opens the plugin files panel", panelState !== null && panelState.toolbarText === "Files", JSON.stringify(panelState));
+  // The panel's own titled toolbar moved under the host header's fold, so the
+  // title is no longer inside the panel; its rows are what proves it opened.
+  check("the legacy route value opens the plugin files panel", panelState !== null && panelState.rowCount > 0, JSON.stringify(panelState));
   check("the seeded workspace's tree rendered", panelState !== null && panelState.rowCount > 0, `rows ${String(panelState?.rowCount ?? 0)}`);
 
   const seeded = await page.evaluate(`(async function () {
@@ -116,7 +118,10 @@ try {
   check("the probe seeded a file through the write endpoint", seeded !== null, JSON.stringify(seeded));
   const refreshed = await deepQuery(page, "pi-files-panel", `(panel) => {
     const root = panel.shadowRoot;
-    const refresh = Array.from(root.querySelectorAll(".toolbar button")).find((candidate) => candidate.textContent.trim() === "Refresh");
+    // Refresh rides the host toolbar now (app-refresh-control), so the panel's
+    // own toolbar is optional and the host control is the fallback.
+    const refresh = Array.from(root.querySelectorAll(".toolbar button")).find((candidate) => candidate.textContent.trim() === "Refresh")
+      ?? root.querySelector("app-refresh-control button, app-refresh-control");
     if (refresh === undefined) return false;
     refresh.click();
     return true;

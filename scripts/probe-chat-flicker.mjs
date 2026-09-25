@@ -1,4 +1,5 @@
 import { chromium } from "@playwright/test";
+import { openProbedSession } from "./probeSession.mjs";
 
 /**
  * Flicker, measured rather than described.
@@ -45,11 +46,10 @@ const clickInside = async (host, selector) => page.evaluate(`(function () {
   return label;
 })()`);
 
-for (const [host, wait] of [["project-list", 1800], ["workspace-list", 2000], ["session-list", 2600]]) {
-  const label = await clickInside(host, ".action-main");
-  if (label === "none") { console.error(`FAIL: no row to click in ${host}; the stack has no seeded session to observe`); await browser.close(); process.exit(1); }
-  await page.waitForTimeout(wait);
-}
+// The board is app-navigate-page now and its tiles are not the old
+// project-list/workspace-list/session-list ladder, so the click-through landed
+// nowhere; the scope comes from the URL instead.
+await openProbedSession(page, BASE);
 
 const reachedChat = await page.evaluate(`(function () {
   let found = false;
