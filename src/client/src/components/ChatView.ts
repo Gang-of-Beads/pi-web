@@ -1028,6 +1028,9 @@ export class ChatView extends LitElement {
     this.dockResizeObserver?.disconnect();
     this.dockResizeObserver = undefined;
     this.observedDock = undefined;
+    this.contentResizeObserver?.disconnect();
+    this.contentResizeObserver = undefined;
+    this.observedContent = undefined;
     this.releaseImageZoomModal();
     this.prependRestoreToken += 1;
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
@@ -1134,6 +1137,7 @@ if (this.heldWaitingClearTimer !== undefined) {
     this.armImageRetries();
     this.holdBottomEdge();
     this.watchStreamingGrowth();
+    this.observeStreamingContent();
     if (changed.has("loadingMore") && !this.loadingMore) this.loadMoreRequested = false;
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
     if (changed.has("sessionId")) this.restoreScrollPosition();
@@ -1175,6 +1179,44 @@ if (this.heldWaitingClearTimer !== undefined) {
 
   private observedDock: HTMLElement | undefined;
   private dockResizeObserver: ResizeObserver | undefined;
+  /**
+   * Where our own follow-scroll is aiming, so the scroll event it causes is not
+   * mistaken for the reader moving.
+   *
+   * A follow lands 240px lower while the answer grows 551px, so the next scroll
+   * event sees a reader 311px above the bottom - and the old rule read that as
+   * "they are not at the bottom any more" and stopped following for the rest of
+   * the answer. The move was ours; only a move the reader made may unpin.
+   */
+  private followScrollTarget: number | undefined;
+  private contentResizeObserver: ResizeObserver | undefined;
+  private observedContent: string | undefined;
+
+  /**
+   * The last row, watched so its growth is corrected before the paint.
+   *
+   * `updated()` holds the bottom for this component's own renders, and the frame
+   * loop covers everything else - but only on the next frame, so a big one-shot
+   * growth (a tool result filling in, a whole answer landing) paints one frame
+   * 988px short of the bottom in the probe's worst case. A ResizeObserver fires
+   * after layout and before paint, which is the one hook that can correct it in
+   * time. The watched element is re-pointed on every render, because the last
+   * row is what grows while an answer streams.
+   */
+  private observeStreamingContent(): void {
+    if (typeof ResizeObserver === "undefined") return;
+    const rows = [...(this.chat?.children ?? [])];
+    // Any row can grow while an answer streams - a tool result fills in inside
+    // an earlier group, a formatted block gains a line - so all of them are
+    // watched, not just the last one. The signature keeps this from re-attaching
+    // on every render.
+    const signature = `${String(rows.length)}:${rows[0]?.id ?? ""}:${rows.at(-1)?.id ?? ""}`;
+    if (this.observedContent === signature) return;
+    this.observedContent = signature;
+    this.contentResizeObserver?.disconnect();
+    this.contentResizeObserver = new ResizeObserver(() => { this.holdBottomEdge(); });
+    for (const row of rows) this.contentResizeObserver.observe(row);
+  }
 
   private observeDock(): void {
     // A4: the dock room used to be measured on every render, forcing a
@@ -2432,8 +2474,19 @@ if (this.heldWaitingClearTimer !== undefined) {
   private updatePinnedToBottomFromScroll() {
     const chat = this.chat;
     if (!chat) return;
+    const aimed = this.followScrollTarget;
+    if (aimed !== undefined && Math.abs(chat.scrollTop - aimed) <= 2) {
+      this.followScrollTarget = undefined;
+      this.pinnedToBottom = true;
+      this.jumpToBottomVisible = showsJumpToBottom(chat);
+      this.lastScrollTop = chat.scrollTop;
+      this.lastClientHeight = chat.clientHeight;
+      return;
+    }
+    this.followScrollTarget = undefined;
     const heightChanged = this.didChatHeightChange();
     const wasPinnedToBottom = this.pinnedToBottom;
+    const moved = chat.scrollTop !== this.lastScrollTop;
     const scrollingUp = chat.scrollTop < this.lastScrollTop;
     if (heightChanged && wasPinnedToBottom) {
       this.lastClientHeight = chat.clientHeight;
@@ -2441,8 +2494,13 @@ if (this.heldWaitingClearTimer !== undefined) {
       return;
     }
     if (this.isAtBottom()) this.pinnedToBottom = true;
-    else if (scrollingUp) this.pinnedToBottom = false;
-    else this.pinnedToBottom = this.isNearBottom();
+    // A scroll event that did not move the reader is the *content* changing, not
+    // the reader: a row above folding, a strip leaving. Deciding "near bottom"
+    // from that demoted a pinned reader for the rest of a long answer, and every
+    // later line landed below them - reported as the view flinging itself far
+    // up while they were using it. Only an actual move can unpin.
+    else if (moved) this.pinnedToBottom = scrollingUp ? false : this.isNearBottom();
+    else this.pinnedToBottom = wasPinnedToBottom;
     this.jumpToBottomVisible = showsJumpToBottom(chat);
     this.lastScrollTop = chat.scrollTop;
     this.lastClientHeight = chat.clientHeight;
@@ -2561,7 +2619,7 @@ if (this.heldWaitingClearTimer !== undefined) {
       if (action === "stop-watching") return;
       if (action === "hold-bottom") {
         this.withSuppressedScrollSave(() => {
-          chat.scrollTop = chat.scrollHeight;
+          this.followBottom(chat);
           this.lastScrollTop = chat.scrollTop;
           this.lastClientHeight = chat.clientHeight;
         });
@@ -2576,6 +2634,13 @@ if (this.heldWaitingClearTimer !== undefined) {
     if (this.streamingHoldFrame === undefined) return;
     cancelAnimationFrame(this.streamingHoldFrame);
     this.streamingHoldFrame = undefined;
+  }
+
+
+  /** Scroll to the bottom on the reader's behalf, remembering where that lands. */
+  private followBottom(chat: HTMLElement): void {
+    chat.scrollTop = chat.scrollHeight;
+    this.followScrollTarget = chat.scrollTop;
   }
 
   private holdBottomEdge(): void {
@@ -2603,6 +2668,7 @@ if (this.heldWaitingClearTimer !== undefined) {
       this.scrollToBottomFrame = undefined;
       const chat = this.chat;
       if (!chat) return;
+      this.followScrollTarget = chat.scrollHeight;
       if (!this.followGate.followsNewest(Date.now())) return;
       this.withSuppressedScrollSave(() => {
         chat.scrollTop = chat.scrollHeight;
