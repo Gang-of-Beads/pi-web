@@ -1959,7 +1959,12 @@ export class PiWebApp extends LitElement {
       this.rememberCurrentMachineNavigation();
       this.writeSelectedTerminalToUrl(selectedTerminalId, { replace: true });
     }
-    if (workspaceViewTransition({ mobileLayout: this.appShell.isMobileNavigationLayout, hasSession: next.selectedSession !== undefined, view: next.mainView }) === "return-to-picker") {
+    // Not while a route is restoring: a deep link sets the workspace before the
+    // session it names has been selected, so the transition saw "workspace, no
+    // session, chat" and sent a shared phone link to the picker - at 209ms,
+    // after the route had already put the reader in the conversation.
+    const restoringRoute = this.routeRestoreInProgress;
+    if (!restoringRoute && workspaceViewTransition({ mobileLayout: this.appShell.isMobileNavigationLayout, hasSession: next.selectedSession !== undefined, view: next.mainView }) === "return-to-picker") {
       this.setState({ mainView: "navigation" });
     }
     if (next.selectedWorkspace === undefined) return;
