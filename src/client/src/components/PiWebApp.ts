@@ -273,6 +273,9 @@ interface SessionCleanupDialogState {
   error?: string | undefined;
 }
 
+/** How long a machine's pin answer stands before it is worth re-reading. */
+const PIN_REFRESH_MS = 2_000;
+
 @customElement("pi-web-app")
 export class PiWebApp extends LitElement {
   @state() private state: AppState = initialAppState();
@@ -463,8 +466,26 @@ export class PiWebApp extends LitElement {
     return ids;
   }
 
+  /**
+   * Read the machine's pins once, not once per render.
+   *
+   * `pinnedSessionIdsFor` runs while rendering, so anything that ends in a
+   * render starts another read: the read applied its answer, that scheduled a
+   * render, the render asked again. Measured on a phone-sized viewport: 7,127
+   * requests to this endpoint in five seconds - 1,425 a second - with the whole
+   * app re-rendering just as often. It is why the interface felt busy and why
+   * the transcript kept moving under the reader.
+   *
+   * A machine already answered is re-read only once the answer is stale, which
+   * keeps a pin made on another device appearing, and a machine that never
+   * answered is retried on the next render.
+   */
+  private readonly pinsReadAt = new Map<string, number>();
+
   private async ensureMachinePins(machineId: string): Promise<void> {
     if (this.pinReadsInFlight.has(machineId)) return;
+    const readAt = this.pinsReadAt.get(machineId);
+    if (this.pinsAdopted.has(machineId) && readAt !== undefined && Date.now() - readAt < PIN_REFRESH_MS) return;
     this.pinReadsInFlight.add(machineId);
     try {
       const local = readPinnedSessionIds(machineId);
@@ -472,6 +493,7 @@ export class PiWebApp extends LitElement {
         ? await sessionPinsApi.pins(machineId)
         : await sessionPinsApi.adopt([...local], machineId);
       this.pinsAdopted.add(machineId);
+      this.pinsReadAt.set(machineId, Date.now());
       this.applyMachinePins(machineId, answered);
     } catch {
       // The machine could not answer: the local set keeps standing in, and the
