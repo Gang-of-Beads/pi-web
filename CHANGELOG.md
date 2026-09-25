@@ -1,5 +1,47 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.13
+
+### Patch Changes
+
+- 4a7b889: The transcript stops losing the bottom while an answer streams.
+
+  A follow-scroll moved the view 240px down while the answer grew 551px; the
+  scroll event it caused was read as the reader moving away, so following stopped
+  for the rest of the answer and every later line landed below them. Our own
+  follows are now marked, the last row is watched for growth before the paint, and
+  a scroll event that did not move the reader no longer demotes the pin.
+
+- ef60e9d: The idle app stops re-rendering and re-asking for pins.
+
+  Reading the machine pins happened while rendering, and every read ended in a
+  render that read again: 1,425 requests a second to the pins endpoint and just
+  as many full re-renders, which is what made the interface feel busy and kept
+  moving the transcript under the reader. A machine that has answered is now
+  re-read only once its answer is stale.
+
+- 51a2744: An outbox row tells the truth about itself.
+
+  The row took its state from the composer's global "sending" flag, so an unsent
+  row could read "Sending" while a message still on its way could offer "Retry" -
+  two states that cannot coexist. The state is per message now, and a message the
+  daemon confirmed leaves the outbox rather than lingering with actions that no
+  longer apply.
+
+- 6bfdb40: A session reopens where the reader left it.
+
+  Only a position within two pixels of the bottom counted as the bottom; anything
+  further up saved an anchor, and an anchor that is not in the loaded window
+  sends the restore to the top of the transcript to page history in. So opening
+  a session could throw the reader far above and make them scroll all the way
+  back. Reading near the bottom now saves the bottom.
+
+- b6e6e88: The failure row says who stopped the turn.
+
+  An aborted turn reported only the provider's "Request was aborted", so a stop
+  could not be told from a dropped stream. A deliberate stop names itself - you,
+  another device, a reload, a close.
+
 ## 2.202609.12
 
 ### Patch Changes
