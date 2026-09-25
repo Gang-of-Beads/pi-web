@@ -192,7 +192,13 @@ async function runGit(
 ): Promise<ServerPluginExecFileResult> {
   const result = await context.execFile({
     file: "git",
-    args: ["-C", cwd, ...args],
+    // --no-optional-locks: `git status` otherwise refreshes .git/index, the
+    // workspace watcher reports that write as a change, the client refetches the
+    // tree and the status, and the whole thing runs forever at the watcher's
+    // debounce - measured 13 requests in 4 seconds and 18 app renders a second
+    // on an idle page, which is the shake the owner reported. The flag is a
+    // global option and a no-op for the subcommands that take no optional lock.
+    args: ["--no-optional-locks", "-C", cwd, ...args],
     unsetEnv: GIT_LOCAL_ENV_VARS,
     signal,
   });
