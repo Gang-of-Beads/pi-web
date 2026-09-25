@@ -1,4 +1,5 @@
 import { chromium } from "@playwright/test";
+import { openProbedSession } from "./probeSession.mjs";
 
 const BASE = process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
 const results = [];
@@ -13,7 +14,7 @@ const consoleErrors = [];
 page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
 
 try {
-  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await openProbedSession(page, BASE);
   await page.waitForTimeout(3500);
 
   // The corner fix is structural now: the card clips, nothing depends on a

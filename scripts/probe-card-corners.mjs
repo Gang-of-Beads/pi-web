@@ -1,4 +1,5 @@
 import { chromium } from "@playwright/test";
+import { openProbedSession } from "./probeSession.mjs";
 
 // Rasterized truth, not computed styles: three earlier versions of this probe
 // read border-radius values back and reported flush corners while the phone
@@ -15,8 +16,7 @@ function fail(message) {
 const browser = await chromium.launch();
 
 async function openTranscript(page) {
-  await page.goto(BASE, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(3000);
+  await openProbedSession(page, BASE);
   const tapped = await page.evaluate(() => {
     function walk(root, out) {
       for (const node of root.querySelectorAll("*")) {

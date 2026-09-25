@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { openProbedSession } from "./probeSession.mjs";
 /**
  * Live check: a screenshot-heavy session renders its tool-result images from
  * addresses, not inline base64, and its history cache entry is written.
@@ -47,7 +48,7 @@ const imageResponses = [];
 page.on("response", (response) => {
   if (response.url().includes("/tool-results/") && response.url().includes("/images/")) imageResponses.push({ url: response.url(), status: response.status(), type: response.headers()["content-type"], cacheControl: response.headers()["cache-control"] });
 });
-await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+await openProbedSession(page, BASE);
 await page.waitForSelector("pi-web-app");
 await page.waitForTimeout(3000);
 const selected = await page.evaluate(`(async function(){
@@ -97,8 +98,8 @@ if (!imageResponses.every((r) => r.status !== 200 || String(r.cacheControl).incl
 console.log(`fetched: ${String(decoded.length)}/${String(loaded.length)} images complete; ${String(okImages.length)} image-route responses observed (${okImages[0]?.type ?? "n/a"})`);
 
 const cache = await page.evaluate(`(function(){
-  const keys = Object.keys(sessionStorage).filter((key) => key.includes(${JSON.stringify(seed.id)}));
-  return { keys, bytes: keys.reduce((sum, key) => sum + (sessionStorage.getItem(key) ?? "").length, 0) };
+  const keys = Object.keys(localStorage).filter((key) => key.includes(${JSON.stringify(seed.id)}));
+  return { keys, bytes: keys.reduce((sum, key) => sum + (localStorage.getItem(key) ?? "").length, 0) };
 })()`);
 if (cache.keys.length === 0) fail("history cache entry for the screenshot session was not written");
 console.log(`cache: ${String(cache.keys.length)} entries, ${String(cache.bytes)} chars`);

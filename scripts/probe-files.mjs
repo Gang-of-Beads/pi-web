@@ -15,6 +15,7 @@
  * Usage: node scripts/probe-files.mjs
  * Every unmet precondition FAILS loudly rather than passing empty.
  */
+import { openProbedSession } from "./probeSession.mjs";
 import { chromium } from "@playwright/test";
 
 const EXE = `${process.env.HOME}/Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`;
@@ -47,9 +48,7 @@ const browser = await chromium.launch({ executablePath: EXE, headless: true });
 try {
   const context = await browser.newContext({ viewport: DESKTOP, hasTouch: false });
   const page = await context.newPage();
-  await page.goto(BASE, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector("pi-web-app", { timeout: 15_000 });
-  await page.waitForTimeout(2_500);
+  await openProbedSession(page, BASE);
 
   const boot = await page.evaluate(`(function () {
     const state = Reflect.get(document.querySelector("pi-web-app"), "state");
