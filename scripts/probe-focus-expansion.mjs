@@ -22,6 +22,7 @@
  * Usage: node scripts/probe-focus-expansion.mjs [port]
  */
 import { chromium } from "@playwright/test";
+import { openProbedSession } from "./probeSession.mjs";
 
 const PORT = process.argv[2] ?? "8505";
 const EXE = `${process.env.HOME}/Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`;
@@ -105,24 +106,19 @@ async function main() {
         : original(query));
     });
     const page = await context.newPage();
-    await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "networkidle" });
-    await page.waitForTimeout(2500);
-    await page.evaluate(DEEP_CLICK, "pi-web/Users");
-    await page.waitForTimeout(2000);
-    await page.evaluate(DEEP_CLICK, "main");
-    await page.waitForTimeout(2500);
+    // The board boots as the first surface and its tiles do not carry a message
+    // count, so the old "click the row with the most messages" path found
+    // nothing. Naming the scope in the URL lands in the transcript directly.
+    await openProbedSession(page, `http://127.0.0.1:${PORT}`);
     const opened = await page.evaluate(() => {
-      const walk = (root, out = []) => {
-        for (const el of root.querySelectorAll("button,[role=listitem],li")) out.push(el);
-        for (const el of root.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot, out);
+      function walk(root, out) {
+        for (const node of root.querySelectorAll("*")) {
+          if (node.matches?.(".msg")) out.push(node);
+          if (node.shadowRoot) walk(node.shadowRoot, out);
+        }
         return out;
-      };
-      const rows = walk(document)
-        .map((el) => ({ el, count: Number(/(\d+)\s+messages/u.exec(el.textContent ?? "")?.[1] ?? 0) }))
-        .filter((row) => row.count > 0)
-        .sort((left, right) => right.count - left.count);
-      rows[0]?.el.click();
-      return rows[0]?.count ?? 0;
+      }
+      return walk(document, []).length;
     });
     await page.waitForTimeout(9000);
     console.log(`session : ${String(opened)} messages`);
