@@ -41,7 +41,18 @@ export type ChatScrollRestoreResult =
 const SCROLL_STORAGE_PREFIX = "pi-web:chat-scroll:";
 const DEFAULT_SAVE_DELAY_MS = 180;
 const DEFAULT_NEAR_BOTTOM_THRESHOLD = 48;
-const DEFAULT_BOTTOM_SAVE_THRESHOLD = 2;
+/**
+ * How close to the bottom still counts as "reading the bottom".
+ *
+ * Two pixels was the old answer, and it decided more than it looks: anything
+ * further up saved an *anchor* instead, and an anchor that is not in the loaded
+ * window sends the restore to the top of the transcript to page history in -
+ * the reader opened a session and watched it jump far above, then had to scroll
+ * back down. A reader within the near-bottom band is at the bottom for every
+ * purpose that matters, so the position is saved as the bottom and restores as
+ * the bottom.
+ */
+const DEFAULT_BOTTOM_SAVE_THRESHOLD = DEFAULT_NEAR_BOTTOM_THRESHOLD;
 
 const browserScrollStorage: ChatScrollStorage = {
   getItem(key: string): string | null {
