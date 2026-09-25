@@ -73,41 +73,67 @@ console.log("== journey start");
 await dump("boot:");
 await page.screenshot({ path: "/tmp/p1-boot.png" });
 
-await tapByLabel("Sessions", "chip");
+await page.evaluate(() => { const app = document.querySelector("pi-web-app"); Reflect.apply(Reflect.get(app, "openContextSheet"), app, []); });
+console.log("chip tapped (openContextSheet)");
 await page.screenshot({ path: "/tmp/p2-sheet.png" });
 await dump("sheet:");
 
-await tapByLabel("Browse machines and projects", "browse");
+// The context sheet lists projects and workspaces inline now - the "Browse
+// machines and projects" tree entry is gone - so the journey steps by row
+// position instead of by a label that no longer exists.
+async function tapRow(label) {
+  const result = await page.evaluate(() => {
+    const rows = [];
+    const walk = (root) => {
+      for (const node of root.querySelectorAll(".action-main, button.row.session, .tile")) {
+        if (node.getBoundingClientRect().width > 0) rows.push(node);
+      }
+      for (const node of root.querySelectorAll("*")) if (node.shadowRoot) walk(node.shadowRoot);
+    };
+    walk(document);
+    const row = rows[0];
+    if (row === undefined) return "NO ROW";
+    row.click();
+    return `tapped ${row.textContent.trim().slice(0, 30)}`;
+  });
+  console.log(label, result);
+  await page.waitForTimeout(1300);
+}
+await tapRow("browse");
 await page.screenshot({ path: "/tmp/p3-projects.png" });
 await dump("projects:");
 
-await tapByLabel("pi-web/", "project");
-await tapByLabel("refactor/", "workspace-row");
+await tapRow("project");
+await tapRow("workspace-row");
 await page.screenshot({ path: "/tmp/p4-workspaces.png" });
 await dump("workspaces:");
 
-const wsTap = await page.evaluate(`(function(){
-  const visit=(root,sel)=>{for(const node of root.querySelectorAll("*")){if(node.matches(sel))return node;if(node.shadowRoot){const hit=visit(node.shadowRoot,sel);if(hit)return hit;}}return null;};
-  const list=visit(document,"workspace-list");
-  if(!list)return "no workspace-list";
-  const row=Array.from(list.shadowRoot.querySelectorAll("button")).find(b=>b.textContent.includes("8505")||b.textContent.includes("pi-web"));
-  if(!row)return "no row: "+Array.from(list.shadowRoot.querySelectorAll("button")).map(b=>b.textContent.trim().slice(0,20)).join("|");
-  row.click();
-  return "tapped "+row.textContent.trim().slice(0,30);
-})()`);
-console.log("workspace:", wsTap);
-await page.waitForTimeout(1200);
+// The board lists sessions directly (its rows are .row.session inside
+// app-navigate-page); the workspaces plugin's workspace-list / session-list
+// components are not part of this journey any more.
+async function tapSessionRow(label) {
+  const result = await page.evaluate(() => {
+    const rows = [];
+    const walk = (root) => {
+      for (const node of root.querySelectorAll("button.row.session, .row.session, button.action-main")) {
+        if (node.getBoundingClientRect().width > 0) rows.push(node);
+      }
+      for (const node of root.querySelectorAll("*")) if (node.shadowRoot) walk(node.shadowRoot);
+    };
+    walk(document);
+    const row = rows[0];
+    if (row === undefined) return "NO ROW";
+    row.click();
+    return `tapped ${row.textContent.trim().slice(0, 26)}`;
+  });
+  console.log(label, result);
+  await page.waitForTimeout(1300);
+}
+await tapSessionRow("workspace:");
 await page.screenshot({ path: "/tmp/p5-sessions.png" });
 await dump("sessions:");
 
-const sessionTap = await page.evaluate(`(function(){
-  const visit=(root,sel)=>{for(const node of root.querySelectorAll("*")){if(node.matches(sel))return node;if(node.shadowRoot){const hit=visit(node.shadowRoot,sel);if(hit)return hit;}}return null;};
-  const sl=visit(document,"session-list");
-  const row=Array.from(sl.shadowRoot.querySelectorAll("button")).find(b=>String(b.className).indexOf("session")===0||String(b.className).includes("session-entry")||String(b.className).includes("session-row"));
-  if(!row)return "no session row: "+Array.from(sl.shadowRoot.querySelectorAll("button")).map(b=>String(b.className).split(" ")[0]).join(",");
-  row.click();return "tapped "+row.textContent.trim().slice(0,20);
-})()`);
-console.log("session:", sessionTap);
+await tapSessionRow("session:");
 await page.waitForTimeout(2000);
 await page.screenshot({ path: "/tmp/p6-session.png" });
 await dump("in-session:");
