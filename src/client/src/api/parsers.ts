@@ -865,6 +865,8 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
       return { type: "status.update", status: parseSessionStatus(record["status"]) };
     case "activity.update":
       return { type: "activity.update", activity: parseSessionActivity(record["activity"]) };
+    case "session.stopped":
+      return parseSessionStoppedEvent(record);
     case "command.output":
       return parseCommandOutputEvent(record);
     case "session.error":
@@ -934,6 +936,12 @@ function optionalNumberOrNull(record: Record<string, unknown>, key: string): num
   if (value === null) return null;
   if (typeof value !== "number") throw new Error(`Expected optional number|null field: ${key}`);
   return value;
+}
+
+function parseSessionStoppedEvent(record: Record<string, unknown>): Extract<SessionUiEvent, { type: "session.stopped" }> {
+  const cause = record["cause"];
+  if (cause !== "user" && cause !== "reload" && cause !== "closed") throw new Error("Invalid stop cause");
+  return { type: "session.stopped", cause };
 }
 
 function parseCommandOutputEvent(record: Record<string, unknown>): Extract<SessionUiEvent, { type: "command.output" }> {

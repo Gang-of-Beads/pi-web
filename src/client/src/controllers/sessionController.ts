@@ -12,6 +12,7 @@ import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { resetWorkspaceScopedState, type AppState, type ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
+import { noteStopCause } from "../stopCause";
 import { carryUnsettledForward } from "../transcriptReconcile";
 import { machineSessionKey } from "../machineKeys";
 import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessionsCache";
@@ -1544,6 +1545,11 @@ export class SessionController {
   async stopActiveWork(): Promise<QueuedSessionMessage[]> {
     const session = this.getState().selectedSession;
     if (!session) return [];
+    // Remembered before the request so the failure row that follows can say who
+    // stopped the turn; the daemon's own event must not overwrite it with
+    // "another device" for a stop this client asked for.
+    this.stopRequestedAt = Date.now();
+    noteStopCause("you");
     try {
       const result = await this.api.abort(session, selectedMachineId(this.getState()));
       for (const message of result.discarded) {
@@ -2196,6 +2202,9 @@ export class SessionController {
     this.setState({ pendingAsks, pendingAsk: pendingAsks[0] });
   }
 
+  /** When this client last asked the daemon to stop, so its own stop stays its own. */
+  private stopRequestedAt = 0;
+
   private applyClosedAsk(askId: string): void {
     const state = this.getState();
     const remaining = state.pendingAsks.filter((open) => open.askId !== askId);
@@ -2318,6 +2327,13 @@ export class SessionController {
     // so the card follows the daemon's own open/close order.
     if (event.type === "ask.opened") {
       this.dialogScope.observe(event, () => { this.applyOpenedAsk(event.ask); });
+      return;
+    }
+    if (event.type === "session.stopped") {
+      // A stop this client asked for keeps its own wording; anything else came
+      // from another device or the daemon, and says so.
+      const mine = Date.now() - this.stopRequestedAt < 5_000;
+      noteStopCause(event.cause === "user" ? (mine ? "you" : "another-device") : event.cause);
       return;
     }
     if (event.type === "activity.changed") {

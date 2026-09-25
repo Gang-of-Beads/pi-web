@@ -2,6 +2,7 @@ import { ASK_USER_ANSWERS_CUSTOM_TYPE } from "../../shared/apiTypes";
 import { deliverySettled } from "./messageDelivery";
 import { parseAskUserOutcome } from "./api/parsers";
 import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview, ToolResultImageRef } from "./components/shared";
+import { recentStopCause, stopCauseSuffix, type StopCause } from "./stopCause";
 
 export function normalizeMessages(messages: unknown[]): ChatLine[] {
   return coalesceToolExecutions(messages.flatMap(normalizeMessage)).filter((message) => message.parts.length > 0);
@@ -94,7 +95,7 @@ function assistantErrorLine(message: unknown): ChatLine | undefined {
   if (getString(message, "role") !== "assistant" || getString(message, "stopReason") !== "error") return undefined;
   const errorMessage = getString(message, "errorMessage")?.trim();
   const detail = errorMessage === undefined || errorMessage === "" ? "The model returned an error." : errorMessage;
-  return textMessage("system", `Model response failed: ${describeAssistantFailure(detail, message)}`);
+  return textMessage("system", `Model response failed: ${describeAssistantFailure(detail, message, recentStopCause())}`);
 }
 
 /**
@@ -105,15 +106,19 @@ function assistantErrorLine(message: unknown): ChatLine | undefined {
  * reader to work out which one happened. The message that failed still carries
  * the tool it was calling, so the turn can say so.
  */
-export function describeAssistantFailure(detail: string, message: unknown): string {
+export function describeAssistantFailure(detail: string, message: unknown, cause?: StopCause): string {
   if (isUnreplayableThinkingFailure(detail)) {
     return `${detail} (a turn was interrupted while the model was thinking, so this conversation carries a thinking block the provider will not accept again; every retry on this branch fails the same way. Open /tree and fork from the user message that asked for the broken turn - the fork drops it and returns your message as a draft.)`;
   }
   if (!/aborted/iu.test(detail)) return detail;
+  // Who stopped it, when the client knows: the daemon only records the cause
+  // for its own stops, so an unknown cause stays "stopped", never a guess.
+  const whose = stopCauseSuffix(cause);
   const tool = lastToolCallName(message);
-  return tool === undefined
+  if (tool !== undefined) return `${detail} (stopped while running ${tool}${whose === undefined ? "" : `, ${whose}`})`;
+  return whose === undefined
     ? `${detail} (the turn was stopped before it finished)`
-    : `${detail} (stopped while running ${tool})`;
+    : `${detail} (${whose})`;
 }
 
 /**

@@ -3643,6 +3643,9 @@ export class PiSessionService implements SessionRouteService {
     // strand the dialog until its timeout. Settling before the runtime abort
     // also means a failing or hung abort cannot strand the parked waiter.
     this.abortRunScopedExtensionDialogs(sessionId);
+    // Named before the abort: the failure row the browser builds from it has to
+    // be able to say who stopped the turn.
+    this.events.publish(sessionId, { type: "session.stopped", cause: "user" });
     try {
       await this.abortSessionOperations(active.runtime.session);
       this.publishActivity(active.runtime.session, "stopped", "idle");
@@ -3865,6 +3868,7 @@ export class PiSessionService implements SessionRouteService {
     active.unsubscribe();
     active.runtime.setRebindSession(undefined);
     try {
+      this.events.publish(sessionId, { type: "session.stopped", cause: "closed" });
       await this.abortSessionOperations(active.runtime.session);
     } finally {
       await active.runtime.dispose();

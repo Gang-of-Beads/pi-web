@@ -349,7 +349,11 @@ describe("PiSessionService session-tree behavior", () => {
 
     expect(service.activeCount()).toBe(0);
     expect(fake.calls.dispose).toBe(1);
-    expect(hub.sessionEvents).toEqual([]);
+    // The teardown names itself, so the failure row the browser builds can say
+    // who stopped the turn; nothing else is republished.
+    expect(hub.sessionEvents.map(({ event }) => ({ ...event, revision: undefined }))).toEqual([
+      { type: "session.stopped", cause: "closed", revision: undefined },
+    ]);
     await service.dispose();
   });
 
