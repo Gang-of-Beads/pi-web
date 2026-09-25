@@ -1,5 +1,35 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.14
+
+### Patch Changes
+
+- f222f5e: A link naming a session opens the conversation on a phone.
+
+  The phone layout returns to the picker when the workspace changes without a
+  session under it - correct for a tap, wrong while a route is still restoring,
+  which is when the workspace is set before the session it names has been
+  selected. At 209ms a shared link flipped from the conversation to the picker,
+  while the same link opened the transcript on a desktop.
+
+- 89ac830: An idle page on a git workspace stops asking itself the same question.
+
+  `git status` refreshes .git/index. The workspace watcher sees that write, the
+  client refetches the file tree and the status, that status refreshes the index
+  again: a loop at the watcher's 250ms debounce. Measured on the owners own
+  session: 13 tree and 13 status requests per 4 idle seconds, 18 app renders a
+  second, which is what the page was shaking from. `git --no-optional-locks`
+  leaves the index alone, which is the canonical fix.
+
+- 9b325a9: The transcript stops re-rendering itself from inside its own render.
+
+  updated() assigned the jump-to-bottom flag on every render, and a @state write
+  schedules another render, so each pass re-entered the cycle. While a turn ran the
+  page rendered in bursts (30-60 renders a second on the seed session, measured
+  with the turn clock instrumented), and on a sixteen-thousand-message transcript
+  that is the pulse the page was visibly doing. The flag is assigned only when it
+  changes now, and a test pins one nudge to a single render.
+
 ## 2.202609.13
 
 ### Patch Changes
