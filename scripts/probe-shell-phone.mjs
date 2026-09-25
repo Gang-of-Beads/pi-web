@@ -1,4 +1,5 @@
 import { chromium } from "@playwright/test";
+import { openProbedSession } from "./probeSession.mjs";
 
 const EXE = `${process.env.HOME}/Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`;
 const BASE = process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
@@ -8,7 +9,7 @@ const context = await browser.newContext({ viewport: { width: 393, height: 850 }
 const page = await context.newPage();
 page.on("pageerror", (e) => console.log("PAGEERROR:", e.message.slice(0, 200)));
 
-await page.goto(BASE, { waitUntil: "domcontentloaded" });
+await openProbedSession(page, BASE);
 await page.waitForSelector("pi-web-app", { timeout: 15000 });
 await page.waitForTimeout(3000);
 

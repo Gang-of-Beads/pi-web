@@ -82,7 +82,7 @@ async function main() {
     const entryUrl = `/${entry.replace(/^\.?\//u, "")}`;
     await page.route("**/probe.html", (route) => {
       route.fulfill({ status: 200, contentType: "text/html", body: PAGE(entryUrl) });
-    });
+    }, process.env.PROBE_NO_PRESS === "1");
     await page.goto("http://127.0.0.1:8505/probe.html", { waitUntil: "networkidle" });
     await page.waitForFunction(() => window.__ready === true, undefined, { timeout: 15000 });
     await page.waitForTimeout(800);
@@ -93,9 +93,11 @@ async function main() {
     await page.waitForTimeout(300);
     const rest = await page.evaluate(STATE);
     console.log(`rest : ${JSON.stringify(rest)}`);
-    await page.evaluate(() => {
+    // process.env is a Node thing; inside page.evaluate the flag has to be handed
+    // over as an argument, which is what "process is not defined" was about.
+    await page.evaluate((noPress) => {
       const chat = window.__view.renderRoot.querySelector(".chat");
-      if (!process.env.PROBE_NO_PRESS) for (const type of ["pointerdown", "touchstart"]) chat.dispatchEvent(new Event(type, { bubbles: true, composed: true }));
+      if (!noPress) for (const type of ["pointerdown", "touchstart"]) chat.dispatchEvent(new Event(type, { bubbles: true, composed: true }));
     });
     await page.evaluate(OPEN_ASK);
     await page.waitForTimeout(500);
