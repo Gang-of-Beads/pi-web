@@ -1,5 +1,29 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.12
+
+### Patch Changes
+
+- 6d72b7d: A second question form no longer closes the first.
+
+  Asking twice left the earlier form a read-only record, so it could no longer
+  be answered. Both stay open now, oldest first, and each closes on its own
+  submit.
+
+- 6ac578b: A slash command answer reaches the screen.
+
+  ui.notify from a command wrote to the notification store, and nothing read that
+  store - so /goal-list settled to "Read" with no list anywhere. The answer is
+  published to the transcript as well, on its own visible row.
+
+- 9da084f: The photo preview zooms under a pinch.
+
+  It opened at fit size only, which leaves a screenshot unreadable on a phone.
+  Two fingers zoom around the point between them and a finger drags the picture
+  while zoomed; a wheel does the same on a desktop, and a tap still closes it.
+
+- c1522e8: Update the Pi runtime and development dependencies to 0.87.1.
+
 ## 2.202609.11
 
 ### Patch Changes
