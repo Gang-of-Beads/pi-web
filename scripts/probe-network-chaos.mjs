@@ -1,8 +1,9 @@
 import { chromium } from "@playwright/test";
+import { openProbedSession } from "./probeSession.mjs";
 
 const BASE = process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
-const SESSION = "01a06835-8d26-7f50-ae73-a22d3b9fc00c";
-const CWD = "/private/tmp/test";
+const SESSION = process.env.PI_WEB_PROBE_SESSION ?? "01a05000-5eed-7c00-8000-0000000000c1";
+const CWD = process.env.PI_WEB_PROBE_CWD ?? "/Users/hanxiao.du/.pi-web-8505/pi-web-8505-seed-workspace";
 const CAPTION = `chaos steer ${String(Date.now())}`;
 const results = [];
 
@@ -22,11 +23,10 @@ const page = await context.newPage();
 try {
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(3000);
-  await page.evaluate(() => {
-    function walk(root, out, sel) { for (const n of root.querySelectorAll("*")) { if (n.matches?.(sel)) out.push(n); if (n.shadowRoot) walk(n.shadowRoot, out, sel); } return out; }
-    walk(document, [], "button").find((n) => (n.textContent ?? "").trim().startsWith("test/private/tmp/test"))?.click();
-  });
-  await page.waitForTimeout(2000);
+  // The board click hunted for a button labelled with the old project name
+  // ("test/private/tmp/test"); naming the scope in the URL is what the rest of
+  // the suite does and it survives a seed that renames things.
+  await openProbedSession(page, BASE);
   await page.evaluate(() => { document.querySelector("pi-web-app")?.selectMainView?.("chat"); });
   await page.waitForTimeout(1500);
 

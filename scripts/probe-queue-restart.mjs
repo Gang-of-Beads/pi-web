@@ -1,8 +1,8 @@
 import { execSync } from "node:child_process";
 
 const BASE = process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
-const SESSION = "01a06835-8d26-7f50-ae73-a22d3b9fc00c";
-const CWD = "/private/tmp/test";
+const SESSION = process.env.PI_WEB_PROBE_SESSION ?? "01a05000-5eed-7c00-8000-0000000000c1";
+const CWD = process.env.PI_WEB_PROBE_CWD ?? "/Users/hanxiao.du/.pi-web-8505/pi-web-8505-seed-workspace";
 const MARK = `queue-restart-${String(Date.now())}`;
 const results = [];
 
