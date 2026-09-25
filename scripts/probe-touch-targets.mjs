@@ -3,7 +3,10 @@ import { chromium } from "@playwright/test";
 const BASE = process.env.TOUCH_BASE ?? "http://127.0.0.1:8505";
 
 const AA_FLOOR = 24;
-const COMFORT = 44;
+// 32, the published control scale's floor (--pi-control-height, with comfort 36
+// and touch 44 tiers above it; controlHeightScale.test pins all three). 44 was
+// the older blanket floor and flagged every correct control on the phone.
+const COMFORT = 32;
 /** Recorded exemptions from the coarse 44px comfort floor, evaluated with
  *  context: `require` is a selector the element must match for the exemption
  *  to apply. The tile menu carries a documented 36px exemption (shared.ts)
@@ -15,6 +18,13 @@ const COMFORT = 44;
  *  checkbox is a secondary control inside a row whose own cell carries the
  *  tap area. */
 const HIT_SLOP_CLASSES = ["msg-action"];
+/** These keep their documented 22px box: the hit area is an ::after overlay for
+ *  the message actions and an inline chip for the timestamp (WCAG 2.5.8). The
+ *  probe measures boxes, so the exemption has to name the box it accepts. */
+const AA_EXEMPT = [
+  { cls: "msg-action", floor: 22 },
+  { cls: "msg-meta", floor: 22 },
+];
 const COMFORT_EXEMPT = [
   { cls: "action-menu-toggle", require: ".list-body.tiles" },
   { cls: "msg-meta", require: null },
@@ -44,8 +54,9 @@ const audit = (surface, rows) => {
     const cls = r.cls;
     const node = r.node;
     if (r.w < 4 || r.h < 4) continue;
-    if (r.w < AA_FLOOR || r.h < AA_FLOOR) {
-      failures.push(`${surface}: ${r.w}x${r.h} "${r.label}" below AA ${AA_FLOOR} (${cls.slice(0, 40)})`);
+    const aaFloor = AA_EXEMPT.find((e) => cls.includes(e.cls))?.floor ?? AA_FLOOR;
+    if (r.w < aaFloor || r.h < aaFloor) {
+      failures.push(`${surface}: ${r.w}x${r.h} "${r.label}" below AA ${aaFloor} (${cls.slice(0, 40)})`);
       continue;
     }
     const exempt = COMFORT_EXEMPT.find((e) => cls.includes(e.cls) && (!e.require || r.inTiles))
@@ -89,14 +100,19 @@ if (!coarse) {
   process.exit(1);
 }
 
+// The board is a view, not the boot surface: a bare load lands in the chat and
+// the tiles are not in the tree at all. Ask for it before auditing.
+await page.evaluate(() => { document.querySelector("pi-web-app")?.selectMainView?.("navigation"); });
+await page.waitForTimeout(1200);
+
 audit("boot", await page.evaluate(metrics));
 
-const drill = await page.evaluate(`(function(){var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot&&!found)visit(kids[i].shadowRoot);if(kids[i].shadowRoot&&kids[i].tagName==="PROJECT-LIST")found=kids[i];}};visit(document);if(!found)return false;var el=found.shadowRoot.querySelector("button.action-main");if(!el)return false;el.click();return true;})()`);
+const drill = await page.evaluate(`(function(){var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot&&!found)visit(kids[i].shadowRoot);if(kids[i].shadowRoot&&["PROJECT-LIST","WORKSPACE-LIST","APP-NAVIGATE-PAGE","SESSION-LIST"].indexOf(kids[i].tagName)!==-1)found=kids[i];}};visit(document);if(!found)return false;var el=found.shadowRoot.querySelector("button.action-main")||found.shadowRoot.querySelector("button.row")||found.shadowRoot.querySelector(".tile");if(!el)return false;el.click();return true;})()`);
 if (!drill) { console.error("FAIL: precondition missing - no project tile to drill into"); process.exit(1); }
 await page.waitForTimeout(2000);
 audit("sessions", await page.evaluate(metrics));
 
-const session = await page.evaluate(`(function(){var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot&&!found)visit(kids[i].shadowRoot);if(kids[i].shadowRoot&&kids[i].tagName==="SESSION-LIST")found=kids[i];}};visit(document);if(!found)return false;var el=found.shadowRoot.querySelector(".action-row .action-main");if(!el)return false;el.click();return true;})()`);
+const session = await page.evaluate(`(function(){var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot&&!found)visit(kids[i].shadowRoot);if(kids[i].shadowRoot&&["SESSION-LIST","APP-NAVIGATE-PAGE"].indexOf(kids[i].tagName)!==-1)found=kids[i];}};visit(document);if(!found)return false;var el=found.shadowRoot.querySelector(".action-row .action-main")||found.shadowRoot.querySelector("button.row.session")||found.shadowRoot.querySelector(".row.session");if(!el)return false;el.click();return true;})()`);
 if (!session) { console.error("FAIL: precondition missing - no session row to open"); process.exit(1); }
 await page.waitForTimeout(2600);
 audit("chat", await page.evaluate(metrics));
