@@ -1,6 +1,7 @@
 import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
 import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
+import type { StopCause } from "./stopCause";
 import { RetiredBy } from "./notice";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { QualifiedContributionId } from "./plugins/ids";
@@ -82,6 +83,8 @@ export interface AppState {
    */
   pendingAsk: PendingAskUser | undefined;
   pendingAsks: PendingAskUser[];
+  /** Who stopped the last turn, for the failure row that follows it. */
+  stopCause: StopCause | undefined;
   /**
    * The selected session's open extension dialogs, derived from the
    * daemon-owned {@link SessionStatus.pendingDialogs} plus live dialog events.
@@ -261,6 +264,7 @@ export function initialAppState(): AppState {
     activity: undefined,
     pendingAsk: undefined,
     pendingAsks: [],
+    stopCause: undefined,
     pendingDialogs: [],
     closedDialogs: [],
     dismissedDialogIds: [],

@@ -1550,6 +1550,7 @@ export class SessionController {
     // "another device" for a stop this client asked for.
     this.stopRequestedAt = Date.now();
     noteStopCause("you");
+    this.setState({ stopCause: "you" });
     try {
       const result = await this.api.abort(session, selectedMachineId(this.getState()));
       for (const message of result.discarded) {
@@ -2333,7 +2334,9 @@ export class SessionController {
       // A stop this client asked for keeps its own wording; anything else came
       // from another device or the daemon, and says so.
       const mine = Date.now() - this.stopRequestedAt < 5_000;
-      noteStopCause(event.cause === "user" ? (mine ? "you" : "another-device") : event.cause);
+      const cause = event.cause === "user" ? (mine ? "you" : "another-device") : event.cause;
+      noteStopCause(cause);
+      this.setState({ stopCause: cause });
       return;
     }
     if (event.type === "activity.changed") {
