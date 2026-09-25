@@ -61,7 +61,7 @@ try {
       if (list === null) throw new Error(${JSON.stringify("${listTag} missing from the open panel")});
       const root = list.shadowRoot;
       if (root === null) throw new Error(${JSON.stringify("${listTag} shadow root missing")});
-      const row = root.querySelector("button.action-main");
+      const row = root.querySelector("button.row") ?? root.querySelector("button.action-main");
       if (row === null) return false;
       row.click();
       return true;
@@ -71,8 +71,11 @@ try {
     }
     await page.waitForTimeout(waitMs);
   };
-  await clickFirstRow("project-list", 800);
-  await clickFirstRow("workspace-list", 1_000);
+  // The panel is a self-contained tree now: the workspaces plugin's
+  // project-list/workspace-list are not part of it, and the boot URL has already
+  // selected the project and workspace. The first tree row is a folder, so
+  // clicking it exercises expansion.
+  await clickFirstRow("pi-files-panel", 900);
   const selected = await page.evaluate(`(function () {
     const state = Reflect.get(document.querySelector("pi-web-app"), "state");
     return { hasWorkspace: state.selectedWorkspace !== undefined, workspaceId: state.selectedWorkspace?.id ?? "" };

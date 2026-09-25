@@ -33,13 +33,17 @@ try {
   const activityText = await page.evaluate(() => {
     function walk(root, out) {
       for (const node of root.querySelectorAll("*")) {
-        if (node.matches?.(".activity-empty")) out.push(node);
+        if (node.matches?.(".activity-dock, .activity-empty")) out.push(node);
         if (node.shadowRoot) walk(node.shadowRoot, out);
       }
       return out;
     }
     return walk(document, []).map((node) => (node.textContent ?? "").trim());
   });
+  // The drawer's activity panel became plugin-contributed, so its empty-state
+  // class is gone from this surface. The dock the reader sees on the chat is what
+  // carries the claim now, and "Nothing running right now." was the wording that
+  // flattened every reason into one.
   const claimsQuiet = activityText.some((text) => text === "Nothing running right now.");
   // An unreachable panel is not a pass: it is a check the probe could not
   // make, and reporting it as ok would let the claim survive unverified.
