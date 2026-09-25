@@ -1378,6 +1378,15 @@ type SessionUiEventBody =
     type: "command.output";
     level: "info" | "success" | "error";
     message: string;
+}
+/**
+ * A turn was stopped deliberately, and by what. An abort otherwise travels as
+ * the provider's own "Request was aborted", which cannot say whether the
+ * reader pressed Stop, another device did, or the runtime was reloaded.
+ */
+ | {
+    type: "session.stopped";
+    cause: "user" | "reload" | "closed";
 } | SessionNotificationInboxEvent | {
     type: "session.error";
     message: string;
