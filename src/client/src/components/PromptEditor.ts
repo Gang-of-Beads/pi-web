@@ -517,6 +517,8 @@ export class PromptEditor extends LitElement {
   }
 
   private pendingRevealTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The sends this composer is still waiting on, by client message id. */
+  private readonly outboxInFlight = new Set<string>();
 
   private renderPendingPrompts() {
     const now = Date.now();
@@ -527,17 +529,21 @@ export class PromptEditor extends LitElement {
       }
       return null;
     }
-    const actions = pendingPromptActions({ sending: this.sending });
     return html`
       <div class="pending-prompts" role="status" aria-label="Messages not delivered">
-        ${lingering.map((prompt) => html`
-          <div class="pending-prompt">
-            <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>
-            <span class="pending-prompt-state">${actions.label}</span>
-            ${actions.retry ? html`<button type="button" @click=${() => { this.flushPendingPrompts(); }}>Retry</button>` : nothing}
-            <button type="button" class="pending-prompt-discard" @click=${() => { this.discardPendingPrompt(prompt); }}>Discard</button>
-          </div>
-        `)}
+        ${lingering.map((prompt) => {
+          // Per message, not the composer's global flag: an in-flight row and a
+          // failed one sit side by side and must not borrow each other's state.
+          const actions = pendingPromptActions(this.outboxInFlight.has(prompt.clientMessageId ?? "") ? "in-flight" : "unsent");
+          return html`
+            <div class="pending-prompt">
+              <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>
+              <span class="pending-prompt-state">${actions.label}</span>
+              ${actions.retry ? html`<button type="button" @click=${() => { this.flushPendingPrompts(); }}>Retry</button>` : nothing}
+              <button type="button" class="pending-prompt-discard" @click=${() => { this.discardPendingPrompt(prompt); }}>Discard</button>
+            </div>
+          `;
+        })}
       </div>
     `;
   }
@@ -1130,11 +1136,14 @@ export class PromptEditor extends LitElement {
 
     let accepted: boolean | undefined;
     let failure: unknown;
+    this.outboxInFlight.add(outboxId);
     try {
       accepted = await this.onSend?.(text, behavior, attachments, attachments === undefined ? undefined : delivery, { clientMessageId: outboxId });
     } catch (error) {
       accepted = false;
       failure = error;
+    } finally {
+      this.outboxInFlight.delete(outboxId);
     }
     if (accepted !== false) {
       if (outboxKey !== "") {
