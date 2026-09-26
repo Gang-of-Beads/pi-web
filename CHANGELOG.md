@@ -1,5 +1,42 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.15
+
+### Patch Changes
+
+- 2f4e41e: An extension's own screen reaches the browser, and a dialog that opened before you
+  connected no longer disappears.
+
+  ctx.ui.custom was intercepted and cancelled: pi's headless host resolved the
+  promise without running the factory, so the pi updater asked for its version
+  prompt every session and got nothing but a notice saying so. The factory runs
+  now, the component's lines are shown in a modal, keys are forwarded and redraw
+  it, and the extension receives the result.
+
+  Two state gaps came with it: the client rejected the "custom" kind it was sent,
+  and a dialog opened before the page connected was not read from the status (the
+  connection-wide catalog is fetched at boot only), so a reload during an open
+  dialog showed none.
+
+- 033ef19: A message the daemon has is no longer offered as unsent.
+
+  The send call and the daemon acceptance frame are two reports of one fact, and
+  on a phone over a tailnet both can go missing while the message itself arrives.
+  The outbox then kept an "Unsent / Retry / Discard" row under a running turn with
+  the message visible in the transcript above it - the reader: 既然是 running 怎么
+  可能还有 retry/discard.
+
+  The transcript is the proof that needs no frame: a delivered message carries the
+  id the browser minted, so a stored outbox entry whose id is settled is retired.
+
+- b1490e3: The title in the header opens the scope picker, as its own label promised.
+
+  The context sheet - projects and workspaces with the current one marked - had no
+  opener at all: openContextSheet() was called by nothing, so the sheet rendered
+  only in tests. The header title has said "Open session selection" in its
+  aria-label all along, so its plain click opens the sheet now, and the quick
+  switcher keeps Cmd+K on a desktop and the board search on a phone.
+
 ## 2.202609.14
 
 ### Patch Changes
