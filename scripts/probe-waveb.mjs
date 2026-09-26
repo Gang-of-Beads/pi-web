@@ -36,8 +36,16 @@ const openSheet = async () => {
     Reflect.apply(open, app, []);
     return true;
   });
-  console.log("  openSheet via app:", String(opened));
-  if (opened) { await page.waitForTimeout(1200); return; }
+  if (opened) {
+    // Render timing, not a fixture: wait for the element rather than a fixed beat.
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const there = await page.evaluate(() => { const w = (r) => { for (const n of r.querySelectorAll("*")) { if (n.localName === "context-switcher-sheet") return true; if (n.shadowRoot) { const hit = w(n.shadowRoot); if (hit) return true; } } return false; }; return w(document); });
+      if (there) return;
+      await page.waitForTimeout(250);
+    }
+    console.log("  openSheet: the app opened it but no sheet element appeared");
+    return;
+  }
   await page.evaluate(`(function(){var hit=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}var btns=root.querySelectorAll("button");for(var j=0;j<btns.length;j++){if((btns[j].getAttribute("aria-label")||"")==="Change machine, project or workspace")hit=btns[j];}};visit(document);if(hit)hit.click();})()`);
   await page.waitForTimeout(1200);
 };
@@ -46,10 +54,23 @@ const closeSheet = async () => {
   await page.waitForTimeout(800);
 };
 const sheetMachineRows = () => page.evaluate(`(function(){
-  var found={sheet:false,machineList:false,rows:0,names:[]};
-  var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}var cs=root.querySelector("context-switcher-sheet");if(cs&&cs.shadowRoot&&!found.sheet){var ml=cs.shadowRoot.querySelector("machine-list");if(ml&&ml.shadowRoot){found.sheet=true;found.machineList=true;ml.shadowRoot.querySelectorAll("button.action-main").forEach(function(b){found.rows+=1;found.names.push(b.textContent.trim().slice(0,40));});}}};
-  visit(document);return found;
+  // Contributed section bodies render into their own elements, so the rows live at
+  // any depth under the sheet; collect them by recursion rather than one query.
+  var sheet=null;
+  var find=function(root){for(var i=0;i<root.querySelectorAll("*").length;i++){var n=root.querySelectorAll("*")[i];if(n.localName==="context-switcher-sheet")return n;if(n.shadowRoot){var hit=find(n.shadowRoot);if(hit)return hit;}}return null;};
+  sheet=find(document);
+  if(!sheet)return {sheet:false,machineList:false,rows:0,names:[]};
+  var names=[];var machineList=false;
+  var walk=function(root){
+    for(var i=0;i<root.querySelectorAll("*").length;i++){var n=root.querySelectorAll("*")[i];
+      if(String(n.localName).indexOf("machine")!==-1)machineList=true;
+      if(n.matches&&n.matches(".action-main,[role=option],button.machine")){var t=(n.textContent||"").trim();if(t&&t.length<40)names.push(t);}
+      if(n.shadowRoot)walk(n.shadowRoot);}
+  };
+  walk(sheet.shadowRoot||sheet);
+  return {sheet:true,machineList:machineList,rows:names.length,names:names.slice(0,6)};
 })()`);
+
 const selectMachineInSheet = async (name) => {
   const ok = await page.evaluate(`(function(){
     var hit=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}var cs=root.querySelector("context-switcher-sheet");if(cs&&cs.shadowRoot){var ml=cs.shadowRoot.querySelector("machine-list");if(ml&&ml.shadowRoot){var btns=ml.shadowRoot.querySelectorAll("button.action-main");for(var i=0;i<btns.length;i++){if(btns[i].textContent.indexOf(${JSON.stringify(name)})!==-1)hit=btns[i];}}}};
