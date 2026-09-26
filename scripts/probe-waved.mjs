@@ -50,7 +50,10 @@ try {
   const dockButtons = await page.evaluate(`${deepAll("button.activity-dock")}.length`);
   check("dock is never a button", dockButtons === 0, `buttons=${String(dockButtons)}`);
 
-  // Drill into a chat: project tile, then the first session row.
+  // The tiles moved off the boot surface; the URL names project, workspace and
+  // session, which is the same boot a share link uses.
+  await page.goto(`${BASE}/?project=991606fd-e498-4b93-a1ce-2af09efdb0e7&workspace=ef2cdf93e1ac&session=01a05000-5eed-7c00-8000-0000000000c1&view=chat`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(3000);
   await page.evaluate(`(function(){var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot&&!found)visit(kids[i].shadowRoot);if(kids[i].shadowRoot&&kids[i].tagName==="PROJECT-LIST")found=kids[i];}};visit(document);if(!found)return;var el=found.shadowRoot.querySelector("button.action-main");if(el)el.click();})()`);
   await page.waitForTimeout(2200);
   await page.evaluate(`(function(){var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot&&!found)visit(kids[i].shadowRoot);if(kids[i].shadowRoot&&kids[i].tagName==="SESSION-LIST")found=kids[i];}};visit(document);if(!found)return;var el=found.shadowRoot.querySelector(".action-row .action-main");if(el)el.click();})()`);
