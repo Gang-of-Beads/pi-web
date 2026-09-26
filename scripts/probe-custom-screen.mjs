@@ -58,8 +58,8 @@ try {
   } else {
     const lines = dialog.lines ?? [];
     console.log("screen:", JSON.stringify(lines));
-    if (!lines.some((line) => line.includes("custom screen probe"))) fail(`the dialog does not carry the component's lines: ${JSON.stringify(lines)}`);
-    else if (dialog.rendered === undefined || !dialog.rendered.includes("custom screen probe")) fail(`the screen is not rendered on the page: ${JSON.stringify(dialog.rendered)}`);
+    if (!lines.some((line) => line.includes("ui-custom probe"))) fail(`the dialog does not carry the component's lines: ${JSON.stringify(lines)}`);
+    else if (dialog.rendered === undefined || !dialog.rendered.includes("ui-custom probe")) fail(`the screen is not rendered on the page: ${JSON.stringify(dialog.rendered)}`);
     else console.log("rendered:", JSON.stringify(dialog.rendered.slice(0, 90)));
 
     const sendKey = (key) => fetch(`${BASE}/api/sessions/${sessionId}/dialog/key`, {
@@ -73,7 +73,7 @@ try {
     const redrawn = await screen();
     console.log("after a key:", JSON.stringify(redrawn?.lines ?? null), "· delivered:", JSON.stringify(delivered));
     if (redrawn === undefined) fail("the screen closed on a key it should have counted");
-    else if (!(redrawn.lines ?? []).some((line) => line.includes("keys 1"))) fail("the key did not reach the component (no redraw)");
+    else if (!(redrawn.lines ?? []).some((line) => line.includes("keys pressed: 1"))) fail("the key did not reach the component (no redraw)");
 
     const logPath = process.env.PROBE_DAEMON_LOG ?? `${process.env.HOME}/.pi-web-8505/logs/sessiond.log`;
     const countReturns = () => { try { return (readFileSync(logPath, "utf8").match(/ui-custom-probe\] returned/gu) ?? []).length; } catch { return 0; } };

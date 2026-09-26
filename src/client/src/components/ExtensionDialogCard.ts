@@ -222,6 +222,7 @@ export class ExtensionDialogCard extends LitElement {
    */
   private renderCustomBody(dialog: PendingExtensionDialog): TemplateResult {
     return html`
+      ${dialog.message === undefined ? null : html`<p class="dialog-screen-hint">${dialog.message}</p>`}
       <pre class="dialog-screen" role="group" aria-label="Extension screen" tabindex="0" @keydown=${(event: KeyboardEvent) => { this.forwardScreenKey(event, dialog); }}>${(dialog.lines ?? []).join("\n")}</pre>
       <footer class="dialog-footer">
         <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Close</button>
@@ -465,7 +466,11 @@ export class ExtensionDialogCard extends LitElement {
        click. */
     .option-button:active:not(:disabled) { border-color: var(--pi-accent); background: var(--pi-surface-active); }
     .dialog-input-form { display: grid; }
-    .dialog-screen { box-sizing: border-box; margin: 0; padding: var(--pi-space-4); max-height: 46vh; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-family: var(--pi-font-mono); font-size: var(--pi-text-xs); line-height: 1.45; white-space: pre; tab-size: 2; }
+    /* A terminal the reader can recognise: mono, its own darker pane, room for a
+     tall menu, and a hint above it saying who is asking and where keys go. */
+  .dialog-screen { box-sizing: border-box; margin: 0; padding: var(--pi-space-4) var(--pi-space-5); max-height: 46vh; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font-family: var(--pi-font-mono); font-size: var(--pi-text-xs); line-height: 1.5; white-space: pre; tab-size: 2; }
+  .dialog-screen:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
+  .dialog-screen-hint { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   .dialog-input {
       box-sizing: border-box;
       width: calc(100% - 32px);

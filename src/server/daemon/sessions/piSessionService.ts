@@ -110,7 +110,7 @@ import {
   type SessionNotificationMutation,
 } from "./sessionNotificationStore.js";
 import { plainTextTheme } from "./plainTextTheme.js";
-import { customScreenHarness, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
+import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
 import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
 import { deferToolResultImages, findToolResultImage } from "./toolResultImages.js";
@@ -1184,6 +1184,12 @@ function applyFactory(factory: unknown, args: unknown[]): unknown {
   return Reflect.apply(factory, undefined, args);
 }
 
+const CUSTOM_SCREEN_HINT = "keys go to the extension · Esc closes";
+
+function customScreenOwner(stack: string | undefined): string | undefined {
+  return extensionNameFromStack(stack);
+}
+
 function isCustomScreenComponent(value: unknown): value is CustomScreenComponent {
   return value !== null && typeof value === "object" && typeof Reflect.get(value, "render") === "function";
 }
@@ -1294,6 +1300,8 @@ export class PiSessionService implements SessionRouteService {
   private readonly pendingExtensionDialogStore: PendingExtensionDialogStore;
   private readonly extensionDialogsTimeoutMs: number;
   /** The parked extension Promise resolvers behind the store's open dialogs. */
+  /** The last factory call's stack, read for the extension's own frame. */
+  private customScreenStack: string | undefined;
   /** Open extension screens, by dialog id, so a keypress can find its component. */
   private readonly customScreens = new Map<string, (key: string) => void>();
   private readonly dialogWaiters = new ExtensionDialogWaiters();
@@ -1985,6 +1993,8 @@ export class PiSessionService implements SessionRouteService {
   private async openCustomScreen(session: PiAgentSession, factory: unknown, opts: unknown): Promise<unknown> {
     if (typeof factory !== "function") return undefined;
     const options = customScreenOptions(opts);
+    // Captured before the factory runs so the frame belongs to the extension.
+    this.customScreenStack = new Error().stack;
     const harness = customScreenHarness();
     let settle: (result: unknown) => void = () => undefined;
     const finished = new Promise<unknown>((resolve) => { settle = resolve; });
@@ -2020,7 +2030,7 @@ export class PiSessionService implements SessionRouteService {
     // same tick would flash an empty screen.
     if (lifecycle.settledBeforeMount) return await finished;
     const lines = renderCustomScreen(component);
-    dialogId = this.openCustomDialog(session, lines);
+    dialogId = this.openCustomDialog(session, lines, customScreenOwner(this.customScreenStack));
     const onKey = (key: string): void => {
       try {
         component.handleInput?.(key);
@@ -2066,11 +2076,14 @@ export class PiSessionService implements SessionRouteService {
     return value === undefined || value === "done" ? undefined : value;
   }
 
-  private openCustomDialog(session: PiAgentSession, lines: string[]): string {
+  private openCustomDialog(session: PiAgentSession, lines: string[], openedBy: string | undefined): string {
     const dialog = this.pendingExtensionDialogStore.open({
       sessionId: session.sessionId,
       kind: "custom",
       title: "Extension screen",
+      // Who and what, in one line: the surface carried no title of its own and
+      // "Extension screen" alone read as something unannounced.
+      message: openedBy === undefined ? CUSTOM_SCREEN_HINT : `${openedBy} · ${CUSTOM_SCREEN_HINT}`,
       lines,
       runScoped: session.isStreaming,
     });

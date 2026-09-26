@@ -55,3 +55,29 @@ export function renderCustomScreen(component: CustomScreenComponent, width = CUS
   while (trimmed.length > 0 && (trimmed[trimmed.length - 1] ?? "").trim() === "") trimmed.pop();
   return trimmed.slice(0, maxLines);
 }
+
+/**
+ * Which extension is asking, from the call stack.
+ *
+ * `ctx.ui.custom` carries no title and the UI context is shared by every
+ * extension in the session, so a bare "Extension screen" told the reader nothing
+ * about who opened it - the owner's "不知道是什么". The factory runs inside the
+ * extension's own module, so its frame is the extension: the first path that is
+ * not this host's and not the SDK's.
+ */
+export function extensionNameFromStack(stack: string | undefined): string | undefined {
+  if (stack === undefined) return undefined;
+  for (const line of stack.split("\n").slice(1)) {
+    const match = /(?:\(|at |\s)([^\s()]+\.[cm]?[jt]s)(?::\d+|\?|$)/u.exec(line);
+    const path = match?.[1];
+    if (path === undefined) continue;
+    if (path.includes("/node_modules/")) continue;
+    if (path.includes("/dist/server/") || path.includes("/src/server/")) continue;
+    const parts = path.split("/");
+    const file = (parts[parts.length - 1] ?? "").replace(/\.[cm]?[jt]s$/u, "");
+    const parent = parts[parts.length - 2] ?? "";
+    if (file === "index" && parent !== "") return parent;
+    return file;
+  }
+  return undefined;
+}
