@@ -1457,6 +1457,13 @@ class CapturingRouteSessionService implements SessionRouteService {
     return Promise.resolve({ result: "stale", sessionStatus: idleStatus(lookup) });
   }
 
+  readonly customScreenKeyCalls: { lookup: SessionRouteRef; dialogId: string; key: string }[] = [];
+
+  sendCustomScreenKey(lookup: SessionRouteRef, dialogId: string, key: string): Promise<boolean> {
+    this.customScreenKeyCalls.push({ lookup, dialogId, key });
+    return Promise.resolve(true);
+  }
+
   answerDialog(lookup: SessionRouteRef, dialogId: string, value: ExtensionDialogAnswer): Promise<ExtensionDialogCloseResponse> {
     if (this.dialogError !== undefined) return Promise.reject(this.dialogError);
     this.answerDialogCalls.push({ lookup, dialogId, value });

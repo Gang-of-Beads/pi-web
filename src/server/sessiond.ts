@@ -290,10 +290,10 @@ async function createSessionDaemonRuntime() {
             logger: app.log,
           }),
         ],
-        // The one surface the browser cannot draw today: an extension's free
-        // form. Requests are answered for the human in the browser; the call
-        // resolves to a cancellation, announced, never silent.
-        unsupportedSurfaces: ["custom"],
+        // Every surface is answered for the human in the browser now: confirm,
+        // select, input, and custom - whose TUI component is rendered to lines and
+        // shown as a modal. The list stays for a host that gives one up.
+        unsupportedSurfaces: [],
       },
       extensionDialogsTimeoutMs: config.extensionDialogsTimeoutMs,
       notificationStore,

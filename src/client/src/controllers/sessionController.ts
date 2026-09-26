@@ -362,7 +362,11 @@ export class SessionController {
       status: session.archived === true ? undefined : this.getState().sessionStatuses[session.id],
       activity: session.archived === true ? undefined : this.getState().sessionActivities[session.id],
       pendingAsk: session.archived === true ? undefined : this.getState().sessionStatuses[session.id]?.pendingAsk,
-      pendingDialogs: session.archived === true ? [] : (this.getState().sessionStatuses[session.id]?.pendingDialogs ?? []),
+      // A dialog list this same session already had stays until a status replaces
+      // it: the transcript load runs after the select and reset it to empty when
+      // the connection's status catalog knew nothing about the session yet, so a
+      // dialog the daemon held open vanished a moment after it appeared.
+      pendingDialogs: pendingDialogsForSelection(this.getState(), session),
       closedDialogs: [],
       dismissedDialogIds: [],
       availableThinkingLevels: [],
@@ -371,6 +375,16 @@ export class SessionController {
     // The seeded list is the cache's best guess; the workspace's own listing
     // replaces it. Race-guarded inside against a newer selection.
     if (workspaceMoved) void this.refreshCurrentWorkspaceSessions(machineId);
+    // Read this session's status once. The connection-wide catalog is fetched at
+    // boot and never again, so a session created after that has no entry - and an
+    // extension dialog opened before this browser connected lives only in the
+    // status. Selecting such a session showed no dialog at all while the daemon
+    // held one open.
+    if (this.getState().sessionStatuses[session.id] === undefined && !isClientPendingStartSessionInfo(session)) {
+      void this.api.status(session, machineId)
+        .then((status) => { if (this.isCurrentSessionSelection(session.id, machineId, seq)) this.applyStatus(status); })
+        .catch(() => undefined);
+    }
     let buffered: SessionUiEvent[] | undefined;
     try {
       if (session.archived === true) {
@@ -1157,7 +1171,17 @@ export class SessionController {
       }
     }
     if (next === previous) return;
-    this.setState({ sessionStatuses: next });
+    // A status snapshot that lands after the reader selected a session has to reach
+    // the *selected* state too: the selection ran against whatever the catalog held
+    // at that moment, and a dialog opened before this browser connected lives only
+    // in these snapshots. Without this a reload during an open dialog showed no
+    // dialog at all - the daemon reported it, the page did not.
+    const selectedId = this.getState().selectedSession?.id;
+    const selectedDialogs = selectedId === undefined ? [] : next[selectedId]?.pendingDialogs ?? [];
+    this.setState({
+      sessionStatuses: next,
+      ...(selectedId === undefined || selectedDialogs.length === 0 ? {} : { pendingDialogs: openDialogsAfterDismissals(selectedDialogs, this.getState().dismissedDialogIds) }),
+    });
   }
 
   async deleteCachedNewSession(session = this.getState().selectedSession) {
@@ -1433,6 +1457,19 @@ export class SessionController {
   /** Send the value the user gave for one of the session's open extension dialogs. */
   answerDialog(dialogId: string, value: ExtensionDialogAnswer): Promise<void> {
     return this.closeOpenDialog(dialogId, (session, machineId) => this.api.answerDialog(session, dialogId, value, machineId));
+  }
+
+  /**
+   * Forward a keypress to an open extension screen.
+   *
+   * Not `closeOpenDialog`: the screen stays open across keys, it only redraws. A
+   * keystroke that lands after the component finished is answered `false`, which
+   * is a race and not an error.
+   */
+  sendDialogKey(dialogId: string, key: string): Promise<void> {
+    const session = this.getState().selectedSession;
+    if (session === undefined) return Promise.resolve();
+    return this.api.sendDialogKey(session, dialogId, key, selectedMachineId(this.getState())).then(() => undefined);
   }
 
   /** Close one of the session's open extension dialogs without answering it. */
@@ -2644,6 +2681,14 @@ function leavesOutcomeCard(closed: ClosedExtensionDialog): boolean {
  * status projection describes what the daemon believed when it was built, which
  * for a dialog settled here is older news than the close this browser applied.
  */
+/** The dialogs a selection starts with: the status when it has them, else what this same session already showed. */
+function pendingDialogsForSelection(state: AppState, session: SessionInfo): PendingExtensionDialog[] {
+  if (session.archived === true) return [];
+  const fromStatus = state.sessionStatuses[session.id]?.pendingDialogs;
+  if (fromStatus !== undefined) return fromStatus;
+  return state.selectedSession?.id === session.id ? state.pendingDialogs : [];
+}
+
 function openDialogsAfterDismissals(
   pendingDialogs: readonly PendingExtensionDialog[] | undefined,
   dismissedDialogIds: readonly string[],

@@ -81,6 +81,9 @@ function sessionBasePath(session: SessionRef, machineId = "local"): string {
   return `${machinePrefix(machineId)}/sessions/${encodeURIComponent(session.id)}`;
 }
 
+const parseDialogKeyResponse = (body: unknown): boolean =>
+  typeof body === "object" && body !== null && "delivered" in body && body.delivered === true;
+
 function sessionPath(session: SessionRef, endpoint: string, machineId = "local"): string {
   return `${sessionBasePath(session, machineId)}/${endpoint}`;
 }
@@ -333,6 +336,8 @@ export const sessionsApi = {
   submitAsk: (session: SessionRef, askId: string, submission: AskUserSubmission, machineId = "local") => request(sessionPath(session, "ask/submit", machineId), parseAskUserCloseResponse, { method: "POST", body: sessionBody(session, { askId, answers: submission.answers }) }),
   cancelAsk: (session: SessionRef, askId: string, machineId = "local") => request(sessionPath(session, "ask/cancel", machineId), parseAskUserCloseResponse, { method: "POST", body: sessionBody(session, { askId }) }),
   answerDialog: (session: SessionRef, dialogId: string, value: ExtensionDialogAnswer, machineId = "local") => request(sessionPath(session, "dialogs/answer", machineId), parseExtensionDialogCloseResponse, { method: "POST", body: sessionBody(session, { dialogId, value }) }),
+  sendDialogKey: (session: SessionRef, dialogId: string, key: string, machineId = "local") =>
+    request(sessionPath(session, "dialog/key", machineId), parseDialogKeyResponse, { method: "POST", body: sessionBody(session, { dialogId, key }) }),
   cancelDialog: (session: SessionRef, dialogId: string, machineId = "local") => request(sessionPath(session, "dialogs/cancel", machineId), parseExtensionDialogCloseResponse, { method: "POST", body: sessionBody(session, { dialogId }) }),
   models: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "models", machineId), parseModelSelectionResponse),
   modelCatalog: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "models/catalog", machineId), parseSessionModelCatalogResponse),

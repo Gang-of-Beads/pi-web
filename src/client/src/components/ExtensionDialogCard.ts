@@ -9,9 +9,12 @@ import {
   type PendingExtensionDialog,
 } from "../../../shared/apiTypes";
 import type { ClosedExtensionDialog } from "../appState";
+import { dialogScreenKey } from "../dialogScreenKey.js";
 
 export type ExtensionDialogAnswerCallback = (dialogId: string, value: ExtensionDialogAnswer) => void | Promise<void>;
 export type ExtensionDialogCancelCallback = (dialogId: string) => void | Promise<void>;
+/** A keypress for a `custom` screen's component. */
+export type ExtensionDialogKeyCallback = (dialogId: string, key: string) => void | Promise<void>;
 
 const COUNTDOWN_TICK_MS = 1_000;
 
@@ -140,6 +143,7 @@ export class ExtensionDialogCard extends LitElement {
   @property({ attribute: false }) outcome?: ClosedExtensionDialog;
   @property({ attribute: false }) onAnswer?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancel?: ExtensionDialogCancelCallback;
+  @property({ attribute: false }) onKey?: ExtensionDialogKeyCallback;
 
   @state() private inputValue = "";
   @state() private closing = false;
@@ -202,9 +206,34 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   private renderOpenBody(dialog: PendingExtensionDialog): TemplateResult {
+    if (dialog.kind === "custom") return this.renderCustomBody(dialog);
     if (dialog.kind === "select") return this.renderSelectBody(dialog);
     if (dialog.kind === "input") return this.renderInputBody(dialog);
     return this.renderConfirmBody(dialog);
+  }
+
+  /**
+   * An extension's own screen, rendered from the lines its component drew.
+   *
+   * The lines are plain text (the daemon hands the component a plain theme), so
+   * they go out in one `<pre>` and the reader's keys are forwarded to the
+   * component, which redraws. Scrollable and focusable, because a screen can be
+   * taller than the modal and the arrows belong to it either way.
+   */
+  private renderCustomBody(dialog: PendingExtensionDialog): TemplateResult {
+    return html`
+      <pre class="dialog-screen" role="group" aria-label="Extension screen" tabindex="0" @keydown=${(event: KeyboardEvent) => { this.forwardScreenKey(event, dialog); }}>${(dialog.lines ?? []).join("\n")}</pre>
+      <footer class="dialog-footer">
+        <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Close</button>
+      </footer>
+    `;
+  }
+
+  private forwardScreenKey(event: KeyboardEvent, dialog: PendingExtensionDialog): void {
+    const key = dialogScreenKey(event);
+    if (key === undefined) return;
+    event.preventDefault();
+    void this.onKey?.(dialog.dialogId, key);
   }
 
   private renderConfirmBody(dialog: PendingExtensionDialog): TemplateResult {
@@ -436,7 +465,8 @@ export class ExtensionDialogCard extends LitElement {
        click. */
     .option-button:active:not(:disabled) { border-color: var(--pi-accent); background: var(--pi-surface-active); }
     .dialog-input-form { display: grid; }
-    .dialog-input {
+    .dialog-screen { box-sizing: border-box; margin: 0; padding: var(--pi-space-4); max-height: 46vh; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-family: var(--pi-font-mono); font-size: var(--pi-text-xs); line-height: 1.45; white-space: pre; tab-size: 2; }
+  .dialog-input {
       box-sizing: border-box;
       width: calc(100% - 32px);
       margin: var(--pi-space-6) var(--pi-space-7) 0;

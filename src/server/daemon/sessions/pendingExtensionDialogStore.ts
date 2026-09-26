@@ -3,6 +3,7 @@ import {
   EXTENSION_DIALOG_ID_MAX_LENGTH,
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   EXTENSION_DIALOG_OPTION_LIMIT,
+  EXTENSION_DIALOG_SCREEN_MAX_LINES,
   EXTENSION_DIALOG_PROSE_MAX_LENGTH,
   EXTENSION_DIALOG_TEXT_MAX_LENGTH,
   type ExtensionDialogAnswer,
@@ -27,6 +28,8 @@ export interface PendingExtensionDialogOpenInput {
   sessionId: string;
   kind: ExtensionDialogKind;
   title: string;
+  /** Rendered lines of a `custom` screen. */
+  lines?: string[] | undefined;
   message?: string | undefined;
   options?: string[] | undefined;
   placeholder?: string | undefined;
@@ -125,6 +128,25 @@ export class PendingExtensionDialogStore {
     return { status: "closed", outcome: this.requireClose(sessionId, dialog, "answered", answer) };
   }
 
+  /**
+   * Replace a `custom` dialog's screen in place.
+   *
+   * A TUI component redraws after every key and the dialog's id has to survive
+   * that: re-opening would mint a new id and the browser would treat the redraw as
+   * a second dialog. The caller publishes the status afterwards, which is how the
+   * browser sees the new lines.
+   */
+  update(dialogId: string, lines: string[]): PendingExtensionDialog | undefined {
+    const next = validateLines(lines);
+    for (const dialogs of this.openBySessionId.values()) {
+      const dialog = dialogs.get(dialogId);
+      if (dialog === undefined) continue;
+      dialog.lines = next;
+      return cloneDialog(dialog);
+    }
+    return undefined;
+  }
+
   /** Close the dialog without an answer; the extension's wait settles with its kind's cancel value. */
   cancel(sessionId: string, dialogId: string, reason: ExtensionDialogCancelReason): PendingExtensionDialogCloseResult {
     const dialog = this.openBySessionId.get(requireSessionId(sessionId))?.get(dialogId);
@@ -157,6 +179,13 @@ export class PendingExtensionDialogStore {
   }
 }
 
+function validateLines(lines: string[] | undefined): string[] {
+  if (!Array.isArray(lines)) return [];
+  return lines
+    .slice(0, EXTENSION_DIALOG_SCREEN_MAX_LINES)
+    .map((line) => (typeof line === "string" ? line.slice(0, EXTENSION_DIALOG_INPUT_MAX_LENGTH) : ""));
+}
+
 function validateAnswer(dialog: PendingExtensionDialog, value: ExtensionDialogAnswer): ExtensionDialogAnswer {
   switch (dialog.kind) {
     case "confirm":
@@ -166,6 +195,9 @@ function validateAnswer(dialog: PendingExtensionDialog, value: ExtensionDialogAn
       if (typeof value !== "string" || dialog.options?.includes(value) !== true) {
         throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} has no option ${String(value)}`);
       }
+      return value;
+    case "custom":
+      if (typeof value !== "string") throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} expects the extension's result as text`);
       return value;
     case "input":
       if (typeof value !== "string") throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} expects a text answer`);
@@ -180,7 +212,7 @@ function validateAnswer(dialog: PendingExtensionDialog, value: ExtensionDialogAn
 function kindFields(
   kind: ExtensionDialogKind,
   input: PendingExtensionDialogOpenInput,
-): Pick<PendingExtensionDialog, "message" | "options" | "placeholder"> {
+): Pick<PendingExtensionDialog, "message" | "options" | "placeholder" | "lines"> {
   switch (kind) {
     case "confirm": {
       const message = optionalProse(input.message, "dialog message");
@@ -192,6 +224,8 @@ function kindFields(
       const placeholder = optionalText(input.placeholder, "dialog placeholder");
       return placeholder === undefined ? {} : { placeholder };
     }
+    case "custom":
+      return { lines: validateLines(input.lines) };
   }
 }
 
@@ -230,10 +264,8 @@ function requireSessionId(sessionId: string): string {
 
 /** Runtime guard: the input crosses extension code, so the declared kind is checked despite its type. */
 function requireKind(kind: string): ExtensionDialogKind {
-  if (kind !== "confirm" && kind !== "select" && kind !== "input") {
-    throw new PendingExtensionDialogValidationError(`Unknown dialog kind ${kind}`);
-  }
-  return kind;
+  if (kind === "confirm" || kind === "select" || kind === "input" || kind === "custom") return kind;
+  throw new PendingExtensionDialogValidationError(`Unknown dialog kind ${kind}`);
 }
 
 function requireId(value: string, field: string): string {

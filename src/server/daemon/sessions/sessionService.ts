@@ -90,6 +90,9 @@ export interface SessionRouteService {
   recallQueuedMessage(ref: SessionRouteRef, target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }>;
   submitAsk(ref: SessionRouteRef, askId: string, submission: AskUserSubmission): Promise<AskUserCloseResponse>;
   cancelAsk(ref: SessionRouteRef, askId: string): Promise<AskUserCloseResponse>;
+  /** Deliver a keypress to an open extension screen; false when none is open. */
+  sendCustomScreenKey(ref: SessionRouteRef, dialogId: string, key: string): Promise<boolean>;
+
   answerDialog(ref: SessionRouteRef, dialogId: string, value: ExtensionDialogAnswer): Promise<ExtensionDialogCloseResponse>;
   cancelDialog(ref: SessionRouteRef, dialogId: string): Promise<ExtensionDialogCloseResponse>;
   dismissWarning(ref: SessionRouteRef, dismissId: string): Promise<ClientSessionStatus>;

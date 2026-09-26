@@ -1,6 +1,5 @@
 import { existsSync, statSync } from "node:fs";
 import { sessionActivityLabel } from "./sessionActivityLabel.js";
-import { announceUnsupportedSurface, withUnsupportedSurfaceAnnouncement } from "./unsupportedSurface.js";
 import { EMPTY_HOST_CONTRIBUTIONS, type HostContributions } from "./hostContributions.js";
 import { takeUnfiledWarnings } from "./warningFiling.js";
 import { basename, dirname, join } from "node:path";
@@ -111,6 +110,7 @@ import {
   type SessionNotificationMutation,
 } from "./sessionNotificationStore.js";
 import { plainTextTheme } from "./plainTextTheme.js";
+import { customScreenHarness, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
 import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
 import { deferToolResultImages, findToolResultImage } from "./toolResultImages.js";
@@ -1167,6 +1167,27 @@ export interface PiSessionServiceDependencies {
   catalogRefreshStatus?: CatalogRefreshStatus;
 }
 
+/** The extension's own options, read defensively: it may pass nothing or junk. */
+function customScreenOptions(opts: unknown): { signal?: AbortSignal | undefined; timeout?: number | undefined } {
+  if (opts === null || typeof opts !== "object") return {};
+  const signal: unknown = Reflect.get(opts, "signal");
+  const timeout: unknown = Reflect.get(opts, "timeout");
+  return {
+    ...(signal instanceof AbortSignal ? { signal } : {}),
+    ...(typeof timeout === "number" ? { timeout } : {}),
+  };
+}
+
+/** Run the extension's factory, which arrives as `unknown` like everything else from it. */
+function applyFactory(factory: unknown, args: unknown[]): unknown {
+  if (typeof factory !== "function") return undefined;
+  return Reflect.apply(factory, undefined, args);
+}
+
+function isCustomScreenComponent(value: unknown): value is CustomScreenComponent {
+  return value !== null && typeof value === "object" && typeof Reflect.get(value, "render") === "function";
+}
+
 export class PiSessionService implements SessionRouteService {
   private readonly active = new Map<string, ActiveSession<PiSessionRuntime>>();
   private readonly pendingSessionOpens = new Map<string, PendingSessionOpen>();
@@ -1273,6 +1294,8 @@ export class PiSessionService implements SessionRouteService {
   private readonly pendingExtensionDialogStore: PendingExtensionDialogStore;
   private readonly extensionDialogsTimeoutMs: number;
   /** The parked extension Promise resolvers behind the store's open dialogs. */
+  /** Open extension screens, by dialog id, so a keypress can find its component. */
+  private readonly customScreens = new Map<string, (key: string) => void>();
   private readonly dialogWaiters = new ExtensionDialogWaiters();
   private readonly catalogRefreshStatus: CatalogRefreshStatus | undefined;
   private readonly unreadPublicationRetryInitialMs: number;
@@ -1948,6 +1971,129 @@ export class PiSessionService implements SessionRouteService {
         if (this.closeExtensionDialogFromTrigger(session.sessionId, dialog.dialogId, reason)) this.publishStatusForSessionId(session.sessionId);
       },
     });
+  }
+
+  /**
+   * Run an extension's TUI component as a browser modal.
+   *
+   * The component draws lines for a width and takes keys back; the dialog id
+   * survives each redraw so the browser sees one screen being updated rather than
+   * a new dialog every keystroke. `done(result)` (which the component calls) ends
+   * the wait with that result; closing the modal ends it with `undefined`, which
+   * is what pi's own cancel path answered before.
+   */
+  private async openCustomScreen(session: PiAgentSession, factory: unknown, opts: unknown): Promise<unknown> {
+    if (typeof factory !== "function") return undefined;
+    const options = customScreenOptions(opts);
+    const harness = customScreenHarness();
+    let settle: (result: unknown) => void = () => undefined;
+    const finished = new Promise<unknown>((resolve) => { settle = resolve; });
+    // An object rather than a boolean: the flag is set from inside `done`, and TS
+    // narrows a closed-over boolean to its initial `false` at the check below.
+    const lifecycle = { settledBeforeMount: false };
+    // Assigned once, after the factory has run - but the factory may call `done`
+    // while being built, which reads this, so it cannot be a `const` below.
+    // eslint-disable-next-line prefer-const
+    let dialogId: string | undefined;
+    // The component finishing closes its screen: the reader must not be left with a
+    // modal the extension has already moved past.
+    const done = (result: unknown): void => {
+      if (dialogId === undefined) lifecycle.settledBeforeMount = true;
+      else {
+        const closed = this.pendingExtensionDialogStore.answer(session.sessionId, dialogId, "done");
+        if (closed.status === "closed") {
+          this.publishDialogClosed(session.sessionId, closed.outcome);
+          this.dialogWaiters.settleWithAnswer(dialogId, "done");
+        }
+      }
+      settle(result);
+    };
+    let component: CustomScreenComponent;
+    try {
+      component = await this.buildCustomScreen(factory, harness, done);
+    } catch (error) {
+      this.publishActivity(session, `extension screen failed: ${String(error)}`, "idle");
+      return undefined;
+    }
+    // A component that calls done() while being built (a capability probe does
+    // exactly that) never mounts: opening a modal for it and closing it in the
+    // same tick would flash an empty screen.
+    if (lifecycle.settledBeforeMount) return await finished;
+    const lines = renderCustomScreen(component);
+    dialogId = this.openCustomDialog(session, lines);
+    const onKey = (key: string): void => {
+      try {
+        component.handleInput?.(key);
+      } finally {
+        this.pendingExtensionDialogStore.update(dialogId, renderCustomScreen(component));
+        this.publishStatusForSessionId(session.sessionId);
+      }
+    };
+    this.customScreens.set(dialogId, onKey);
+    try {
+      return await Promise.race([finished, this.customDialogClosed(session, dialogId, options)]);
+    } finally {
+      this.customScreens.delete(dialogId);
+      component.dispose?.();
+    }
+  }
+
+  /**
+   * Run the extension's factory and require the shape a component must have.
+   *
+   * The factory arrives as `unknown` (it comes from the extension), so the check
+   * is a type guard rather than a cast: a component that cannot render is a clear
+   * error at the boundary instead of a crash inside the host later.
+   */
+  private async buildCustomScreen(factory: unknown, harness: { tui: object; keybindings: object }, done: (result: unknown) => void): Promise<CustomScreenComponent> {
+    const built: unknown = await applyFactory(factory, [harness.tui, plainTextTheme, harness.keybindings, done]);
+    if (!isCustomScreenComponent(built)) throw new Error("the extension's custom factory did not return a component");
+    return built;
+  }
+
+  /** The wait that ends when the reader closes the screen instead of the component. */
+  private async customDialogClosed(session: PiAgentSession, dialogId: string, options: { signal?: AbortSignal | undefined; timeout?: number | undefined }): Promise<unknown> {
+    const dialog = this.pendingExtensionDialogStore.pendingDialogs(session.sessionId).find((candidate) => candidate.dialogId === dialogId);
+    if (dialog === undefined) return undefined;
+    const timeoutMs = effectiveExtensionDialogTimeoutMs(options.timeout, this.extensionDialogsTimeoutMs);
+    const value = await this.dialogWaiters.park(dialog, {
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      onTrigger: (reason) => {
+        if (this.closeExtensionDialogFromTrigger(session.sessionId, dialog.dialogId, reason)) this.publishStatusForSessionId(session.sessionId);
+      },
+    });
+    return value === undefined || value === "done" ? undefined : value;
+  }
+
+  private openCustomDialog(session: PiAgentSession, lines: string[]): string {
+    const dialog = this.pendingExtensionDialogStore.open({
+      sessionId: session.sessionId,
+      kind: "custom",
+      title: "Extension screen",
+      lines,
+      runScoped: session.isStreaming,
+    });
+    const revision = this.nextDialogRevision(session.sessionId);
+    this.events.publish(session.sessionId, { type: "dialog.opened", dialog, revision, daemonInstanceId: this.notificationStore.daemonInstanceId });
+    this.publishStatus(session);
+    return dialog.dialogId;
+  }
+
+  /**
+   * Deliver a keypress to an open extension screen.
+   *
+   * Returns whether a screen was there to take it: a keystroke that arrives after
+   * the component finished is the normal race, not an error.
+   */
+  async sendCustomScreenKey(ref: PiSessionRef, dialogId: string, key: string): Promise<boolean> {
+    await this.assertWritable(ref);
+    const session = await this.sessionForStatusOrDialogClose(ref);
+    const handler = this.customScreens.get(dialogId);
+    if (handler === undefined) return false;
+    void session;
+    handler(key);
+    return true;
   }
 
   /**
@@ -4238,7 +4384,6 @@ export class PiSessionService implements SessionRouteService {
     // the browser answers, while every other UI method delegates to Pi's
     // headless defaults so unsupported surfaces cancel safely instead of
     // hanging.
-    const warnedSurfaces = new Set<string>();
     return new Proxy(baseUiContext, {
       get: (target, property, receiver): unknown => {
         if (property === "notify") return notify;
@@ -4248,22 +4393,12 @@ export class PiSessionService implements SessionRouteService {
         // for instance - believed the user chose nothing and asked again next
         // session. The cancellation stays; the silence goes.
         if (property === "custom") {
-          const base: unknown = Reflect.get(target, property, receiver);
-          if (typeof base !== "function") return base;
-          // The interception is seam data: only a surface the host declared
-          // unsupported is answered here, so withdrawing it from the
-          // contributions withdraws it from the model's path. The silent form
-          // of this cancel made the updater's prompt return every session
-          // with nothing anywhere saying why.
-          if (!this.hostContributions.unsupportedSurfaces.includes("custom")) return base;
-          return withUnsupportedSurfaceAnnouncement(
-            (...args: unknown[]): unknown => Reflect.apply(base, target, args),
-            () => {
-              if (warnedSurfaces.has("custom")) return;
-              warnedSurfaces.add("custom");
-              notify(announceUnsupportedSurface("custom"), "warning");
-            },
-          );
+          // Rendered, not cancelled. Pi's headless default resolves this promise
+          // without running the factory, so a screen the extension meant to show
+          // was an immediate no-op; here the factory runs, its component draws
+          // into lines, and the browser shows them.
+          console.error(`[custom-trap] hit for ${session.sessionId}`);
+          return (factory: unknown, opts?: unknown) => this.openCustomScreen(session, factory, opts);
         }
         if (property === "confirm") {
           return (title: string, message: string, opts?: ExtensionUIDialogOptions) =>

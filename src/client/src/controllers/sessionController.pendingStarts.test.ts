@@ -42,7 +42,10 @@ describe("SessionController pending starts", () => {
     expect(state.sessions.map((session) => session.id)).toEqual(["started-session"]);
     expect(state.selectedSession?.id).toBe("started-session");
     expect(messageCalls).toEqual(["started-session"]);
-    expect(statusCalls).toEqual(["started-session"]);
+    // Two reads: the start flow joins the status, and the selection reads it for
+    // itself when the connection's catalog has no entry (an extension dialog on a
+    // brand-new session is only in the status).
+    expect(statusCalls).toEqual(["started-session", "started-session"]);
   });
 
   it("does not duplicate a started session when its session.created broadcast races the HTTP response", async () => {

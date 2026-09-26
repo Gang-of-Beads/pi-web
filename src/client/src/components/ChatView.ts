@@ -35,7 +35,7 @@ import { selectedDrawerTab, type DrawerTab } from "../drawerTabSelection";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
-import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback } from "./ExtensionDialogCard";
+import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback } from "./ExtensionDialogCard";
 import { deliveryTaken } from "../messageDelivery";
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
@@ -732,6 +732,7 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) closedDialogs: ClosedExtensionDialog[] = [];
   @property({ attribute: false }) onAnswerDialog?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancelDialog?: ExtensionDialogCancelCallback;
+  @property({ attribute: false }) onDialogKey?: ExtensionDialogKeyCallback;
   /**
    * Put a sent prompt back in the composer, images included. Offered on user
    * messages because a turn that fails after delivery leaves the transcript as
@@ -1854,6 +1855,7 @@ if (this.heldWaitingClearTimer !== undefined) {
             .dialog=${dialog}
             .onAnswer=${this.onAnswerDialog}
             .onCancel=${this.onCancelDialog}
+            .onKey=${this.onDialogKey}
           ></extension-dialog-card>
           ${queuedCount > 0
             ? html`<p class="queued-dialogs" role="status">${String(queuedCount)} more extension ${queuedCount === 1 ? "dialog" : "dialogs"} queued</p>`

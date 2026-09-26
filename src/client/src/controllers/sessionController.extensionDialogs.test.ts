@@ -227,10 +227,10 @@ describe("SessionController extension dialog state", () => {
       ...selectableApi(status(oldSession.id)),
       status: () => {
         statusCalls += 1;
-        // The first read is the selection's own join and must settle, or the
-        // selection await never returns; the repair reads it gates are the ones
-        // this test controls.
-        if (statusCalls === 1) return Promise.resolve(status(oldSession.id));
+        // The first two reads are joins and must settle (the selection reads the
+        // status for itself when the connection catalog has no entry); the repair
+        // read this test gates is the third.
+        if (statusCalls <= 2) return Promise.resolve(status(oldSession.id));
         return statusReads.promise;
       },
     };
@@ -256,7 +256,9 @@ describe("SessionController extension dialog state", () => {
 
     // Call 1 was the selection's own join; exactly one repair read covers both
     // the skipped revision and any further gap while it runs.
-    expect(statusCalls).toBe(2);
+    // One selection read, one repair read, and now one more: the selection reads the
+    // status for itself when the connection catalog has no entry for the session.
+    expect(statusCalls).toBe(3);
     statusReads.resolve(repaired);
     await statusReads.promise;
     // The repair reads messages, status and the stream snapshot together; the
