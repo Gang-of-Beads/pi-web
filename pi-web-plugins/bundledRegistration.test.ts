@@ -25,7 +25,7 @@ async function browserPluginDirectories(): Promise<string[]> {
   for (const entry of await readdir(pluginsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const files = await readdir(join(pluginsRoot, entry.name)).catch(() => []);
-    if (files.includes("pi-web-plugin.ts")) directories.push(entry.name);
+    if (files.some((name) => name === "pi-web-plugin.ts")) directories.push(entry.name);
   }
   return directories.sort();
 }
@@ -59,7 +59,7 @@ describe("bundled plugins register and activate", () => {
       // Activation is what the host actually calls, with the host's own template
       // tags; a plugin whose activate throws would load and contribute nothing.
       const context = createPluginRuntimeContext().context;
-      plugin.activate(Object.freeze({ ...context, pluginId: directory, runtimePluginId: directory, html, svg }));
+      plugin.activate(Object.freeze({ ...context, apiVersion: 2, pluginId: directory, runtimePluginId: directory, html, svg }));
     }
     expect(failures).toEqual([]);
   });
