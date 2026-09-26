@@ -227,8 +227,10 @@ try {
     return true;
   }`);
   await desktopPage.waitForTimeout(700);
-  const switcherOpen = await deepExists(desktopPage, "quick-switcher");
-  check("desktop has a pointer path to the quick switcher (B1)", desktopState === true && switcherOpen, `clicked=${String(desktopState)} switcher=${String(switcherOpen)}`);
+  // The title opens the scope sheet (its aria-label always said "Open session
+  // selection"); the quick switcher keeps the keyboard and the board's search.
+  const sheetOpen = await deepExists(desktopPage, "context-switcher-sheet");
+  check("desktop has a pointer path to the scope picker (B1)", desktopState === true && sheetOpen, `clicked=${String(desktopState)} sheet=${String(sheetOpen)}`);
   await desktopPage.screenshot({ path: "/tmp/shell-row-desktop.png" });
   await desktop.close();
 
