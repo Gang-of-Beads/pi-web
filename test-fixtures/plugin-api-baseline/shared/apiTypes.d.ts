@@ -739,7 +739,17 @@ export declare const EXTENSION_DIALOG_OPTION_LIMIT = 24;
 /** Length bound for the text a user types into an `input` dialog. */
 export declare const EXTENSION_DIALOG_INPUT_MAX_LENGTH = 4000;
 /** Which extension UI dialog primitive a pending dialog belongs to. */
-export type ExtensionDialogKind = "confirm" | "select" | "input";
+export type ExtensionDialogKind = "confirm" | "select" | "input" | "custom";
+/**
+ * How many lines of a `custom` screen are kept.
+ *
+ * A TUI component renders to lines and the browser shows them in a modal; the
+ * whole screen rides the status payload inside `pendingDialogs`, so it is bounded
+ * the way every other status string is.
+ */
+export declare const EXTENSION_DIALOG_SCREEN_MAX_LINES = 200;
+/** A forwarded keypress is a name ("escape", "ctrl+c") or one character. */
+export declare const EXTENSION_DIALOG_KEY_MAX_LENGTH = 32;
 /**
  * The value a user gave in an extension dialog: a boolean for `confirm`, the
  * chosen option for `select`, the typed text for `input`. Absent when the
@@ -771,6 +781,12 @@ export interface PendingExtensionDialog {
     options?: string[];
     /** Placeholder text of an `input` dialog. */
     placeholder?: string;
+    /**
+     * The rendered screen of a `custom` dialog: what the extension's TUI component
+     * drew, at the width the daemon asked it to draw for. Plain text, because the
+     * daemon hands the component a plain theme.
+     */
+    lines?: string[];
     askedAt: string;
     /**
      * When the dialog auto-cancels, as ISO: the sooner of the extension's own
