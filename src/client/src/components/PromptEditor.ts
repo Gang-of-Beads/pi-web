@@ -5,6 +5,7 @@ import type { ComposerEditorHandle } from "./composerEditorSetup";
 type ComposerEditorModule = typeof import("./composerEditorSetup");
 import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues } from "lit";
 import { pendingPromptActions } from "../pendingPromptActions";
+import { settleOutbox } from "../outboxSettlement";
 import { SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
@@ -519,6 +520,48 @@ export class PromptEditor extends LitElement {
   private pendingRevealTimer: ReturnType<typeof setTimeout> | undefined;
   /** The sends this composer is still waiting on, by client message id. */
   private readonly outboxInFlight = new Set<string>();
+
+  /**
+   * Whether storage holds anything for this session.
+   *
+   * Read from storage rather than the in-memory list: the caller uses it as the
+   * gate for walking the transcript, and an entry written by another tab (or by a
+   * restored record) has to be seen too. Cheap - a tiny array - so the render path
+   * can afford it, while the walk it guards cannot be done every render.
+   */
+  hasStoredOutbox(): boolean {
+    const key = this.outboxKey();
+    return key !== "" && loadPendingPrompts(key).length > 0;
+  }
+
+  /**
+   * Retire the rows the transcript already shows.
+   *
+   * Called with the settled identities rather than deciding here: the transcript
+   * belongs to the chat and the identity rule belongs to the register. A row
+   * dropped this way is not unsent any more, whatever the send call reported -
+   * the POST timing out while the daemon accepted is what put "Unsent / Retry"
+   * under a running turn, with the message visible in the transcript above it.
+   */
+  settleOutbox(delivered: ReadonlySet<string>): void {
+    if (delivered.size === 0) return;
+    const key = this.outboxKey();
+    if (key === "") return;
+    const stored = loadPendingPrompts(key);
+    if (stored.length === 0) return;
+    const ids = stored.map((prompt) => prompt.clientMessageId).filter((id): id is string => typeof id === "string" && id !== "");
+    const settlement = settleOutbox(ids, (id) => delivered.has(id));
+    if (settlement.drop.length === 0) return;
+    for (const id of settlement.drop) {
+      forgetPendingPrompt(key, id);
+      this.outboxInFlight.delete(id);
+    }
+    this.pendingPrompts = loadPendingPrompts(key);
+  }
+
+  private outboxKey(): string {
+    return machineSessionKey(this.machineId, this.sessionId ?? "");
+  }
 
   private renderPendingPrompts() {
     const now = Date.now();

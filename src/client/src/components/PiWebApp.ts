@@ -263,6 +263,7 @@ const WORKSPACE_ROUTE_NAMESPACE = queryNamespace("core:workspace");
 const MIN_RESIZABLE_CHAT_WIDTH_PX = 320;
 const PANEL_EDGE_COLUMNS_WIDTH_PX = 2;
 import { DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY } from "../breakpoints";
+import { deliveredClientMessageIds } from "../userMessageRegister";
 
 interface SessionCleanupDialogState {
   preview?: SessionCleanupPreviewResponse | undefined;
@@ -701,6 +702,13 @@ export class PiWebApp extends LitElement {
   }
 
   protected override updated(): void {
+    // A delivered message retires its outbox row even when the frame that would
+    // have said so never arrived: the transcript is the proof, and the row is
+    // what the reader sees contradicted by it. Gated on the outbox being
+    // non-empty so a long transcript is not walked on every render.
+    if (this.promptEditor?.hasStoredOutbox() === true) {
+      this.promptEditor.settleOutbox(deliveredClientMessageIds(this.state.messages));
+    }
     // Lit has now committed the selected chat and app-shell visibility state.
     // Recheck after every rendered transition; the unread controller
     // deduplicates acknowledgements for the observed completion order.

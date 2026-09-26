@@ -62,6 +62,21 @@ function identityOf(line: ChatLine, fallbackIndex: number): string {
 }
 
 /**
+ * Every identity the transcript itself proves, using the register's own rule.
+ *
+ * Exported so the outbox can settle against it: a caller re-deriving the three
+ * carriers would drift from `identityOf` the first time a fourth one appears.
+ */
+export function deliveredClientMessageIds(lines: readonly ChatLine[]): Set<string> {
+  const ids = new Set<string>();
+  for (const [index, line] of lines.entries()) {
+    const identity = identityOf(line, index);
+    if (!identity.startsWith("transcript:")) ids.add(identity);
+  }
+  return ids;
+}
+
+/**
  * Collect every source into one row per message.
  *
  * Order of contribution is deliberate. The transcript is written first because
