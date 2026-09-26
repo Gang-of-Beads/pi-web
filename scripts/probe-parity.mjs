@@ -29,12 +29,18 @@ try {
     await page.waitForTimeout(3000);
     const sizes = await page.evaluate((walkSource) => {
       const walk = new Function(`return ${walkSource}`)();
-      return walk(document, [], ".context-action-button").map((node) => {
+      // The context bar's own action buttons are gone; the sheet's row action
+      // toggles are the controls at this width now.
+      // .path-step is a text crumb on the 32px control scale; the action toggles
+      // are the controls this check is about.
+      const selector = ".context-action-button, .action-menu-toggle";
+      return walk(document, [], selector).map((node) => {
         const box = node.getBoundingClientRect();
-        return { w: Math.round(box.width), h: Math.round(box.height) };
+        return { w: Math.round(box.width), h: Math.round(box.height), cls: String(node.className).slice(0, 40) };
       });
     }, deepQueryAllSource());
     const below = sizes.filter((size) => size.w < 36 || size.h < 36);
+    if (below.length > 0) console.log("  below floor:", JSON.stringify(below));
     record(
       "430px: context actions hold the 36px floor",
       sizes.length > 0 && below.length === 0,
@@ -74,21 +80,30 @@ try {
       walk(document, [], "button").find((node) => (node.getAttribute("aria-label") ?? "") === "Show Actions")?.click();
     }, deepQueryAllSource());
     await page.waitForTimeout(1000);
+    await page.evaluate(() => { document.querySelector("pi-web-app")?.selectMainView?.("navigation"); });
+    await page.waitForTimeout(1200);
     const opened = await page.evaluate((walkSource) => {
       const walk = new Function(`return ${walkSource}`)();
-      const settings = walk(document, [], "button, [role='option'], [role='menuitem']").find((node) => /settings/i.test((node.textContent ?? "") + (node.getAttribute("aria-label") ?? "")));
+      // The board's own gear, by its aria-label: a text match found a hidden copy.
+      const gear = walk(document, [], "app-navigate-page").flatMap((board) => [...(board.shadowRoot?.querySelectorAll("button.settings") ?? [])])[0];
+      const settings = gear ?? walk(document, [], "button, [role='option'], [role='menuitem']").find((node) => /settings/i.test((node.textContent ?? "") + (node.getAttribute("aria-label") ?? "")));
       if (settings === undefined) return false;
       settings.click();
       return true;
     }, deepQueryAllSource());
     await page.waitForTimeout(1500);
+    if (opened) console.log("  after click:", JSON.stringify(await page.evaluate(() => { const app = document.querySelector("pi-web-app"); const walk = (r, out = []) => { for (const n of r.querySelectorAll("*")) { if (/dialog|sheet/i.test(n.localName + String(n.className))) out.push(n.localName + "." + String(n.className).slice(0, 24) + ":" + Math.round(n.getBoundingClientRect().width)); if (n.shadowRoot) walk(n.shadowRoot, out); } return out; }; return { view: app?.state?.mainView, dialogs: walk(document).slice(0, 6) }; })));
     if (!opened) {
+      console.log("  settings lookup:", JSON.stringify(await page.evaluate(() => { const app = document.querySelector("pi-web-app"); return { view: app?.state?.mainView, buttons: [...document.querySelectorAll("button")].length }; })));
       record("700px: dialog full-bleed at the shared line", false, "no settings control reached - proves nothing");
     } else {
       const width = await page.evaluate((walkSource) => {
         const walk = new Function(`return ${walkSource}`)();
-        const section = walk(document, [], "modal-surface section[role='dialog']")[0];
-        return section === undefined ? undefined : Math.round(section.getBoundingClientRect().width);
+        // The settings surface is its own element now (a full-height page on a
+        // narrow screen, a dialog on a wide one); the old inner section selector
+        // matched nothing, which read as "did not open".
+        const surface = walk(document, [], "settings-dialog, [role='dialog'], .modal-surface").find((node) => node.getBoundingClientRect().width > 0);
+        return surface === undefined ? undefined : Math.round(surface.getBoundingClientRect().width);
       }, deepQueryAllSource());
       record(
         "700px: dialog full-bleed at the shared 760 line",
