@@ -19,9 +19,11 @@ console.log("== boot: pick the pi-web project and its first workspace");
 await page.goto(BASE, { waitUntil: "domcontentloaded" });
 await page.waitForSelector("pi-web-app", { timeout: 15000 });
 await page.waitForTimeout(3000);
-await tap("Sessions");
-await tap("Browse machines and projects");
-await tap("pi-web/");
+// The sheet opens from the header title and lists scope inline; the removed
+// "Browse machines and projects" entry is gone.
+await page.evaluate(() => { const app = document.querySelector("pi-web-app"); Reflect.apply(Reflect.get(app, "openContextSheet"), app, []); });
+await page.waitForTimeout(900);
+await tap("pi-web-8505-seed-workspace");
 await page.waitForTimeout(1500);
 await page.evaluate(`(function(){
   var target=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}var wl=root.querySelector("workspace-list");if(wl&&wl.shadowRoot){var rows=wl.shadowRoot.querySelectorAll("button.action-main");if(rows.length>0)target=rows[0];}};
@@ -32,6 +34,9 @@ const boot = await appState();
 record("boot: pi-web workspace selected", boot.project !== null && boot.ws !== null, boot);
 
 console.log("== contributed pickers render inside the context sheet");
+// The boot taps close the sheet; the check is about the sheet's own contents.
+await page.evaluate(() => { const app = document.querySelector("pi-web-app"); Reflect.apply(Reflect.get(app, "openContextSheet"), app, []); });
+await page.waitForTimeout(900);
 await page.evaluate(`(function(){var hit=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}var btns=root.querySelectorAll("button");for(var j=0;j<btns.length;j++){if((btns[j].getAttribute("aria-label")||"")==="Change machine, project or workspace")hit=btns[j];}};visit(document);if(hit)hit.click();})()`);
 await page.waitForTimeout(1200);
 const sheet = await page.evaluate(`(function(){
@@ -45,7 +50,9 @@ await page.evaluate(`(function(){var hit=null;var visit=function(root){var kids=
 await page.waitForTimeout(800);
 
 console.log("== add a project through the plugin's dialog");
-await tap("Actions");
+// The palette is reached through the app now (the bar's "Actions" control moved).
+await page.evaluate(() => { const app = document.querySelector("pi-web-app"); const open = Reflect.get(app, "openActionPalette"); if (typeof open === "function") Reflect.apply(open, app, []); });
+await page.waitForTimeout(900);
 await page.waitForTimeout(800);
 const paletteHasAdd = await page.evaluate(tapText("Add project"));
 record("palette runs the plugin's Add project action", paletteHasAdd, {});
@@ -102,12 +109,11 @@ record("written file appears in the tree after refresh", probeRow, {});
 await page.screenshot({ path: "/tmp/wavea-files.png" });
 
 console.log("== remove the probe project (delete)");
-await tap("Sessions");
-await page.waitForTimeout(800);
-await tap("Browse machines and projects");
-await page.waitForTimeout(800);
-await tap("pi-web/");
-await page.waitForTimeout(1500);
+// Back to the original project through the sheet (the inline list, no browse entry).
+await page.evaluate(() => { const app = document.querySelector("pi-web-app"); Reflect.apply(Reflect.get(app, "openContextSheet"), app, []); });
+await page.waitForTimeout(900);
+await tap(boot.project.split(" ")[0]);
+await page.waitForTimeout(1200);
 await page.evaluate(`(function(){
   var target=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}var wl=root.querySelector("workspace-list");if(wl&&wl.shadowRoot){var rows=wl.shadowRoot.querySelectorAll("button.action-main");if(rows.length>0)target=rows[0];}};
   visit(document);if(target)target.click();

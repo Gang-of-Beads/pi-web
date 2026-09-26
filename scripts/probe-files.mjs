@@ -152,6 +152,11 @@ try {
   if (refreshed) check("the refresh button was clickable", true);
   else console.log("SKIP the refresh button was clickable — no refresh control is rendered (renderAppRefresh has no caller)");
 
+  // The refresh control is wired now, and clicking it *reloads the page*: the next
+  // evaluate lands after the context was replaced, so wait for the load.
+  if (refreshed) await page.waitForLoadState("domcontentloaded").catch(() => undefined);
+  await page.waitForTimeout(1_200);
+
   const clicked = await deepQuery(page, "pi-files-panel", `(panel) => {
     const root = panel.shadowRoot;
     const fileRow = Array.from(root.querySelectorAll(".tree button.row")).find((candidate) => candidate.textContent.includes("probe-files.md"));
