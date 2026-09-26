@@ -1,5 +1,28 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.16
+
+### Patch Changes
+
+- 2d5fc9f: An extension screen says who opened it and where the keys go.
+
+  The surface was a bare "Extension screen" over a raw block, which read as
+  something unannounced. It now names the extension that opened it (from the
+  factory's own stack frame), says that keys go to it and Esc closes, and draws the
+  lines on the terminal-dark pane they came from.
+
+- 12f0fd9: An offline send keeps its row, and the row offers Retry.
+
+  The composer decides between accepted, refused and "the link dropped, keep the
+  outbox row" from what the send settles to - and the host fired the send without
+  returning its promise, so every failure looked accepted and the outbox entry was
+  forgotten. What the reader saw was a normal-looking bubble for a message the
+  daemon never got, with no Retry under it.
+
+  The other half was the new reconcile: it counted the optimistic bubble as proof
+  of delivery, and then counted the client own "unverifiable" marking from the
+  failed send too. Only a state the daemon produced counts now.
+
 ## 2.202609.15
 
 ### Patch Changes
