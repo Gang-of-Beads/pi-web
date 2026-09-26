@@ -2629,6 +2629,7 @@ export class PiWebApp extends LitElement {
       .onAddProject=${this.hasAddProjectEntry() ? () => { this.closeNavigate(); this.openProjectDialog(); } : undefined}
       .machineSessions=${this.quickSwitcherSessions}
       .onOpenSettings=${() => { this.closeNavigate(); this.openSettings(); }}
+      .onReload=${() => { this.hardReloadApp(); }}
       .loadingSessions=${this.quickSwitcherLoading && this.quickSwitcherSessions.length === 0}
       .loadingChoices=${this.state.projectsLoad === "loading" || this.state.isLoadingWorkspaces}
       .loadError=${this.state.projectsLoad === "failed" ? "Couldn't read the projects on this machine." : undefined}
@@ -3976,6 +3977,8 @@ export class PiWebApp extends LitElement {
 
   private readonly handleCancelDialog = (dialogId: string): Promise<void> => this.sessions.cancelDialog(dialogId);
 
+  private readonly handleDialogKey = (dialogId: string, key: string): Promise<void> => this.sessions.sendDialogKey(dialogId, key);
+
   /**
    * Put a sent prompt back in the composer so a failed turn can be retried
    * without retyping it or re-picking its images.
@@ -4005,6 +4008,7 @@ export class PiWebApp extends LitElement {
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
       <chat-view .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk}
+        .onDialogKey=${this.handleDialogKey}
         .pendingAsks=${state.pendingAsks} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(state))} .onRunSectionCommand=${(command: string) => this.runGoalCommand(command)} .drawerMachineId=${selectedMachineId(state)} .drawerWorkspacePath=${state.selectedWorkspace?.path} .sessionCwd=${session.cwd}></chat-view>
     `;
   }
