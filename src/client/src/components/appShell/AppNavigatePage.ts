@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { SessionInfo } from "../../api";
 import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow, type NavigateSessionState } from "../../navigateModel";
 import { switcherBreadcrumb } from "../../switcherBreadcrumb";
+import "./AppRefreshControl";
 import { createStableRowOrder } from "../../stableRowOrder";
 import { renderChatIcon, renderChevronRightIcon, renderGearIcon, renderGridIcon, renderMachineIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
@@ -60,6 +61,15 @@ export class AppNavigatePage extends LitElement {
    * where you go to reach a place, and settings is a place.
    */
   @property({ attribute: false }) onOpenSettings?: () => void;
+  /**
+   * Full page reload, on the board's header.
+   *
+   * The host has had an AppRefreshControl and a renderAppRefresh() with no caller
+   * since the bar was reworked: the control rendered nowhere. The board header is
+   * where the reader already finds the shell's own actions (Settings), and a hard
+   * reload is the honest escape when a surface is stale.
+   */
+  @property({ attribute: false }) onReload?: () => void;
   /** What the row menu does; the page names the action, the host performs it. */
   @property({ attribute: false }) onRowAction?: (kind: NavigateRowKind, id: string, action: NavigateRowActionId) => void;
   @property({ attribute: false }) canRenameSession = false;
@@ -179,6 +189,7 @@ export class AppNavigatePage extends LitElement {
           </div>
           <div class="path-bar-actions">
             ${this.onOpenSettings === undefined ? nothing : html`<button type="button" class="settings" aria-label="Settings" title="Settings" @click=${() => { this.onOpenSettings?.(); }}>${renderGearIcon()}</button>`}
+            ${this.onReload === undefined ? nothing : html`<app-refresh-control .onReload=${this.onReload}></app-refresh-control>`}
             ${this.closable ? html`<button type="button" class="close" aria-label="Close navigation" @click=${() => { this.onClose?.(); }}>${renderChevronRightIcon()}</button>` : nothing}
           </div>
         </header>

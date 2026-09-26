@@ -1,5 +1,5 @@
 import type { EditorView } from "@codemirror/view";
-import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
+import { renderCrossIcon, renderUpIcon, uiIconStyle } from "./uiIcons.js";
 import type { ComposerEditorHandle } from "./composerEditorSetup";
 
 type ComposerEditorModule = typeof import("./composerEditorSetup");
@@ -260,6 +260,19 @@ export class PromptEditor extends LitElement {
    * Send handler. Resolving `false` means the message was not accepted, and the
    * composer puts its contents back rather than losing them.
    */
+  /**
+   * The composer as one line, for a reader who asked for the transcript.
+   *
+   * The styles and the up-arrow hint survived the wave that removed the property
+   * ("the composer no longer collapses while a question is answered"), so nothing
+   * could put the component in this state. Nothing sets it by default: the shell
+   * does, when it has a reason to, and the harness can.
+   */
+  @property({ type: Boolean, reflect: true }) collapsed = false;
+
+  /** Asked to come back, when the reader taps the collapsed composer. */
+  @property({ attribute: false }) onExpand?: () => void;
+
   @property({ attribute: false }) onSend?: (text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery?: PromptAttachmentDelivery, replay?: { clientMessageId?: string }) => Promise<boolean | undefined> | boolean | undefined;
   @property({ attribute: false }) onStop?: () => void;
   @property({ attribute: false }) composerContributions: readonly QualifiedComposerContribution[] = [];
@@ -410,7 +423,8 @@ export class PromptEditor extends LitElement {
         <input class="attachment-input" type="file" multiple hidden @change=${(event: Event) => { void this.handleFileInput(event); }} />
         ${this.renderPendingPrompts()}
         ${this.renderAttachments()}
-        <div class="editor-wrap">
+        ${this.collapsed ? this.renderCollapsedComposer() : null}
+        <div class="editor-wrap" ?hidden=${this.collapsed}>
           ${shellMode ? html`<div class="mode-hint">Shell command${shellInputMode.excludeFromContext ? " · excluded from context" : ""}</div>` : null}
           ${this.renderComposerContributionStatus()}
           ${this.isCompacting && !shellMode ? html`<div class="mode-hint">Compacting history · message will be queued</div>` : null}
@@ -440,6 +454,28 @@ export class PromptEditor extends LitElement {
 
 
   /** The start of the unsent draft, so a collapsed composer is not a black box. */
+  private renderCollapsedComposer() {
+    return html`
+      <button
+        type="button"
+        class="expand-composer"
+        aria-label="Message pi"
+        @click=${() => { this.expandComposer(); }}
+      >
+        <span class="expand-composer-label">Message pi…</span>
+        ${this.draftPreview === "" ? null : html`<span class="expand-composer-draft" dir="auto">${this.draftPreview}</span>`}
+        <span class="expand-composer-hint">${renderUpIcon()}</span>
+      </button>
+    `;
+  }
+
+  /** Back to the editor, caret where the reader was. */
+  private expandComposer(): void {
+    this.onExpand?.();
+    this.collapsed = false;
+    void this.updateComplete.then(() => { this.editor?.focus(); });
+  }
+
   private get draftPreview(): string {
     const text = (this.editor?.state.doc.toString() ?? this.draft).trim().replace(/\s+/gu, " ");
     return text.length > 60 ? `${text.slice(0, 59)}…` : text;
