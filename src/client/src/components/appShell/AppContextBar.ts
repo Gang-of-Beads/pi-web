@@ -32,6 +32,16 @@ export class AppContextBar extends LitElement {
   /** Opens the quick switcher. Absent where another control in this bar owns
    *  that menu, in which case the name is a label and not a target. */
   @property({ attribute: false }) onQuickSwitch?: () => void;
+  /**
+   * The scope picker, on the title's plain click.
+   *
+   * The title's aria-label has said "Open session selection" all along, and the
+   * context sheet - which lists projects and workspaces with the current one
+   * marked - had no opener at all: `openContextSheet()` was called by nothing, so
+   * the reader could not reach it. Falls back to the quick switcher for a host
+   * that has not provided one.
+   */
+  @property({ attribute: false }) onOpenContext?: () => void;
   /** Opens the Go to sheet; absent on layouts where the navigation panel lists the views itself. */
   @property({ attribute: false }) onOpenGoTo?: () => void;
   /** Holding the session name asks to rename it; absent where the shell offers no rename. */
@@ -63,7 +73,7 @@ export class AppContextBar extends LitElement {
               type="button"
               class="session-title empty"
               aria-label="No session selected. Open session selection."
-              @click=${() => { this.onQuickSwitch?.(); }}
+              @click=${() => { (this.onOpenContext ?? this.onQuickSwitch)?.(); }}
             ><span class="session-title-text">${this.activeSurface === "" ? "Sessions" : this.activeSurface}</span></button>`
           : this.onQuickSwitch === undefined
           ? html`<span
@@ -80,7 +90,7 @@ export class AppContextBar extends LitElement {
               class="session-title"
               title=${this.session.path}
               aria-label=${`Session: ${sessionContextLabel(this.session)}. Open session selection.${this.onRenameRequest === undefined ? "" : " Hold to rename."}`}
-              @click=${() => { if (this.titleHold.consumeSuppressedClick()) return; this.onQuickSwitch?.(); }}
+              @click=${() => { if (this.titleHold.consumeSuppressedClick()) return; (this.onOpenContext ?? this.onQuickSwitch)?.(); }}
               @pointerdown=${(event: PointerEvent) => { if (event.pointerType !== "mouse" && this.onRenameRequest !== undefined) this.titleHold.start(event); }}
               @pointermove=${(event: PointerEvent) => { this.titleHold.move(event); }}
               @pointerup=${() => { this.titleHold.cancel(); }}

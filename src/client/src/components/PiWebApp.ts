@@ -4175,6 +4175,7 @@ export class PiWebApp extends LitElement {
         .navigationTarget=${this.appShell.isMobileNavigationLayout ? "page" : "panel"}
         ?panelToggleHidden=${panelToggleHiddenState({ mobileLayout: this.appShell.isMobileNavigationLayout, displayView: this.displayMainView() })}
         .onTogglePanel=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? () => { this.openNavigate(); } : () => { this.toggleShellPanel(); }}
+        .onOpenContext=${() => { this.openContextSheet(); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
       ></app-context-bar>
     `;
