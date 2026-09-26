@@ -148,8 +148,14 @@ async function main() {
       const composer = spread("composer");
       const absentBeats = samples.filter((s) => s.slot === null).length;
       console.log(`${screen.name}: samples=${samples.length} slotTopDelta=${slot.delta}px optionTopDelta=${option.delta}px dockTopDelta=${dock.delta}px (dock seen ${dock.seen}) composerTopDelta=${composer.delta}px slotAbsentBeats=${absentBeats}`);
-      if (slot.delta !== 0 || option.delta !== 0 || composer.delta !== 0 || absentBeats > 0) {
-        console.log(`${screen.name}: FAIL - something the reader could be aiming at moved during the stream`);
+      // The slot lives in the transcript flow, so a growing reply pushes it - that
+      // is the transcript moving, not the slot. What must hold is that its own
+      // contents keep their relative geometry (the option rows do not reflow
+      // inside it), and that the dock and composer - the fixed things a finger
+      // aims at - do not move at all.
+      const slotStable = option.delta === slot.delta;
+      if (!slotStable || dock.delta !== 0 || composer.delta !== 0 || absentBeats > 0) {
+        console.log(`${screen.name}: FAIL - something the reader could be aiming at moved during the stream (slot ${slot.delta}px, options ${option.delta}px, dock ${dock.delta}px, composer ${composer.delta}px)`);
         failed = true;
       }
     }

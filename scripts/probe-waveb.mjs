@@ -36,6 +36,7 @@ const openSheet = async () => {
     Reflect.apply(open, app, []);
     return true;
   });
+  console.log("  openSheet via app:", String(opened));
   if (opened) { await page.waitForTimeout(1200); return; }
   await page.evaluate(`(function(){var hit=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}var btns=root.querySelectorAll("button");for(var j=0;j<btns.length;j++){if((btns[j].getAttribute("aria-label")||"")==="Change machine, project or workspace")hit=btns[j];}};visit(document);if(hit)hit.click();})()`);
   await page.waitForTimeout(1200);
@@ -86,6 +87,9 @@ record("sheet pick selects the remote machine", switched && afterSwitch.selected
 record("proxy projects load for the remote machine", afterSwitch.projects > 0, afterSwitch);
 
 console.log("== the palette carries the plugin's machine actions (remote selected)");
+// The bar's "Actions" control moved; the app opens the palette.
+await page.evaluate(() => { const app = document.querySelector("pi-web-app"); const open = Reflect.get(app, "openActionPalette"); if (typeof open === "function") Reflect.apply(open, app, []); });
+await page.waitForTimeout(900);
 await tapExact("Actions");
 await page.waitForTimeout(2200);
 const paletteTexts = await page.evaluate(`(function(){var out=[];var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}root.querySelectorAll("button").forEach(function(b){out.push(b.textContent.trim());});};visit(document);return out;})()`);
