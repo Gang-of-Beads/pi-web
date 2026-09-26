@@ -70,6 +70,12 @@ function identityOf(line: ChatLine, fallbackIndex: number): string {
 export function deliveredClientMessageIds(lines: readonly ChatLine[]): Set<string> {
   const ids = new Set<string>();
   for (const [index, line] of lines.entries()) {
+    // Only a state the daemon produced counts. "sending" is the browser's own
+    // optimism, and "unverifiable" is what the *client* writes after a failed
+    // send - counting either as delivered retired the outbox row for an offline
+    // message the daemon never saw.
+    const state = line.meta?.delivery?.state;
+    if (state !== undefined && state !== "queued" && state !== "received" && state !== "delivered") continue;
     const identity = identityOf(line, index);
     if (!identity.startsWith("transcript:")) ids.add(identity);
   }

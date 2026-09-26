@@ -707,7 +707,15 @@ export class PiWebApp extends LitElement {
     // what the reader sees contradicted by it. Gated on the outbox being
     // non-empty so a long transcript is not walked on every render.
     if (this.promptEditor?.hasStoredOutbox() === true) {
-      this.promptEditor.settleOutbox(deliveredClientMessageIds(this.state.messages));
+      // The optimistic bubbles are in `messages` too, and one of them is exactly
+      // what an offline send leaves behind: counting it as delivered retired the
+      // outbox row for a message the daemon never saw. Only the ids the queue no
+      // longer holds are proof.
+      const delivered = deliveredClientMessageIds(this.state.messages);
+      for (const optimistic of this.state.clientQueuedSessionMessages[this.state.selectedSession?.id ?? ""] ?? []) {
+        if (optimistic.clientMessageId !== undefined) delivered.delete(optimistic.clientMessageId);
+      }
+      this.promptEditor.settleOutbox(delivered);
     }
     // Lit has now committed the selected chat and app-shell visibility state.
     // Recheck after every rendered transition; the unread controller
@@ -3917,8 +3925,10 @@ export class PiWebApp extends LitElement {
   // Stable handler identities for child components. Inlined arrow closures
   // would be a fresh reference on every render, forcing Lit to re-commit the
   // bindings each time the app re-renders; bound class fields keep them constant.
-  private readonly handleSendPrompt = (text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery, replay?: { clientMessageId?: string }): Promise<boolean> =>
-    this.sendPrompt(text, streamingBehavior, attachments, delivery, replay);
+  private readonly handleSendPrompt = (text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery, replay?: { clientMessageId?: string }): Promise<boolean | undefined> => {
+    // Returned, not fired: the composer decides between accepted, refused and the link dropped (keep the outbox row, offer a retry) from what this settles to. Swallowing the promise made every failure look accepted.
+    return this.sendPrompt(text, streamingBehavior, attachments, delivery, replay);
+  };
 
   /**
    * Put messages that left the queue back where they can be edited and sent
