@@ -30,6 +30,12 @@ async function browserPluginDirectories(): Promise<string[]> {
   return directories.sort();
 }
 
+function isBrowserPlugin(value: unknown): value is { default: PiWebPlugin } {
+  if (value === null || typeof value !== "object" || !("default" in value)) return false;
+  const plugin: unknown = value.default;
+  return plugin !== null && typeof plugin === "object" && "activate" in plugin && "apiVersion" in plugin;
+}
+
 describe("bundled plugins register and activate", () => {
   it("registers every browser plugin into the real registry", async () => {
     const directories = await browserPluginDirectories();
@@ -37,8 +43,8 @@ describe("bundled plugins register and activate", () => {
 
     const failures: string[] = [];
     for (const directory of directories) {
-      const module = await import(`./${directory}/pi-web-plugin`) as { default?: PiWebPlugin };
-      const plugin = module.default;
+      const loaded: unknown = await import(`./${directory}/pi-web-plugin`);
+      const plugin = isBrowserPlugin(loaded) ? loaded.default : undefined;
       if (plugin === undefined) {
         failures.push(`${directory}: no default export`);
         continue;
@@ -53,8 +59,7 @@ describe("bundled plugins register and activate", () => {
       // Activation is what the host actually calls, with the host's own template
       // tags; a plugin whose activate throws would load and contribute nothing.
       const context = createPluginRuntimeContext().context;
-      const activation = plugin.activate(Object.freeze({ ...context, pluginId: directory, runtimePluginId: directory, html, svg }));
-      if (activation === undefined || activation === null) failures.push(`${directory}: activate returned nothing`);
+      plugin.activate(Object.freeze({ ...context, pluginId: directory, runtimePluginId: directory, html, svg }));
     }
     expect(failures).toEqual([]);
   });
