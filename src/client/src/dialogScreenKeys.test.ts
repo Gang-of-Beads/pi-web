@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSelectableLine, keysForLineTap, screenCursorLine, screenIsTappable } from "./dialogScreenKeys.js";
+import { isScreenHintLine, isSelectableLine, keysForLineTap, screenCursorLine, screenIsTappable } from "./dialogScreenKeys.js";
 
 const menu = ["Task list confirmation", "▸ Confirm task list", "  Replace the current list", "  Keep current tasks"];
 
@@ -32,5 +32,17 @@ describe("driving a TUI screen from touch", () => {
     expect(isSelectableLine("   ")).toBe(false);
     expect(isSelectableLine("Enter to select · ↑↓ to navigate")).toBe(false);
     expect(isSelectableLine("▸ Confirm task list")).toBe(true);
+  });
+});
+
+describe("the component's own key hint", () => {
+  it("recognises the row that repeats what the buttons now do", () => {
+    expect(isScreenHintLine("Enter to select · ↑↓ to navigate · Esc = back")).toBe(true);
+    expect(isScreenHintLine("press any key · esc to close")).toBe(true);
+  });
+
+  it("keeps a real menu row that merely mentions a key", () => {
+    expect(isScreenHintLine("▸ Confirm task list")).toBe(false);
+    expect(isScreenHintLine("Esc to leave everything alone")).toBe(false);
   });
 });

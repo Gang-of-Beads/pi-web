@@ -479,3 +479,27 @@ describe("answer controls that float over the choices they sit above", () => {
     expect(footer).not.toMatch(/box-shadow/u);
   });
 });
+
+describe("a screen the extension declared for the browser", () => {
+  it("renders the menu as a heading, text and real buttons", async () => {
+    const card = await mountOpenDialog(openDialog({
+      kind: "custom",
+      title: "Extension screen",
+      lines: ["│ Task list confirmation │", "│ ▸ Confirm │", "│   Keep    │"],
+      screen: {
+        kind: "menu",
+        title: "Task list confirmation",
+        body: ["[ ] task-1: filters"],
+        options: ["Confirm", "Keep"],
+        current: 0,
+      },
+    }), {});
+    const root = renderRoot(card);
+    const options = [...root.querySelectorAll(".screen-option")];
+    expect(root.querySelector(".screen-title")?.textContent).toBe("Task list confirmation");
+    expect(root.querySelector(".screen-text")?.textContent).toContain("task-1");
+    expect(options.map((option) => option.textContent)).toEqual(["Confirm", "Keep"]);
+    expect(options[0]?.classList.contains("current")).toBe(true);
+    expect(root.querySelector("div.dialog-screen")).toBeNull();
+  });
+});

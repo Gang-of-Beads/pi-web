@@ -11,6 +11,7 @@ import {
 import type { ClosedExtensionDialog } from "../appState";
 import { dialogScreenKey } from "../dialogScreenKey.js";
 import { isSelectableLine, keysForLineTap, screenIsTappable } from "../dialogScreenKeys.js";
+import { classifyScreen, lineForOption, shapeFromScreen } from "../dialogScreenShape.js";
 
 export type ExtensionDialogAnswerCallback = (dialogId: string, value: ExtensionDialogAnswer) => void | Promise<void>;
 export type ExtensionDialogCancelCallback = (dialogId: string) => void | Promise<void>;
@@ -231,19 +232,31 @@ export class ExtensionDialogCard extends LitElement {
    */
   private renderCustomBody(dialog: PendingExtensionDialog): TemplateResult {
     const lines = dialog.lines ?? [];
-    const tappable = screenIsTappable(lines);
+    const shape = dialog.screen === undefined ? classifyScreen(lines) : shapeFromScreen(dialog.screen, lines);
+    const tappable = shape.kind === "menu" || screenIsTappable(lines);
     return html`
       ${dialog.message === undefined ? null : html`<p class="dialog-screen-hint">${dialog.message}</p>`}
-      <div
-        class="dialog-screen"
-        role="group"
-        aria-label="Extension screen"
-        tabindex="0"
-        @keydown=${(event: KeyboardEvent) => { this.forwardScreenKey(event, dialog); }}
-      >${lines.map((line, index) => html`<div
-        class=${`screen-line${tappable && isSelectableLine(line) ? " selectable" : ""}`}
-        @click=${() => { void this.tapScreenLine(dialog, lines, index); }}
-      >${line === "" ? " " : line}</div>`)}</div>
+      ${shape.kind === "menu" && shape.title !== undefined ? html`<h3 class="screen-title">${shape.title}</h3>` : null}
+      ${shape.kind === "menu"
+        ? html`<div class="dialog-screen-menu" role="group" aria-label="Extension screen">
+            ${shape.body.length === 0 ? null : html`<pre class="screen-text">${shape.body.join("\n")}</pre>`}
+            ${shape.options.map((option, index) => html`<button
+              type="button"
+              class=${`screen-option${option.current ? " current" : ""}`}
+              aria-current=${option.current ? "true" : "false"}
+              @click=${() => { void this.tapScreenOption(dialog, lines, option.label, option.line, index); }}
+            >${option.label}</button>`)}
+          </div>`
+        : html`<div
+            class="dialog-screen"
+            role="group"
+            aria-label="Extension screen"
+            tabindex="0"
+            @keydown=${(event: KeyboardEvent) => { this.forwardScreenKey(event, dialog); }}
+          >${shape.body.map((line) => html`<div
+            class=${`screen-line${tappable && isSelectableLine(line) ? " selectable" : ""}`}
+            @click=${() => { void this.tapScreenLine(dialog, lines, lines.indexOf(line)); }}
+          >${line === "" ? " " : line}</div>`)}</div>`}
       <div class="dialog-screen-keys">
         ${SCREEN_KEYS.map((key) => html`<button
           type="button"
@@ -256,6 +269,21 @@ export class ExtensionDialogCard extends LitElement {
         <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Close</button>
       </footer>
     `;
+  }
+
+  /**
+   * A tap on a native option row: the component still owns its cursor, so the tap
+   * walks it there by content and then selects - same path as a tap on a line.
+   */
+  private async tapScreenOption(
+    dialog: PendingExtensionDialog,
+    lines: readonly string[],
+    label: string,
+    line: number,
+    index: number,
+  ): Promise<void> {
+    const target = dialog.screen === undefined ? line : lineForOption(lines, label, index);
+    await this.tapScreenLine(dialog, lines, target);
   }
 
   /**
@@ -514,6 +542,45 @@ export class ExtensionDialogCard extends LitElement {
   .screen-line { white-space: pre; }
   .screen-line.selectable { border-radius: var(--pi-radius-sm); cursor: pointer; }
   .screen-line.selectable:active { background: var(--pi-surface-hover); }
+  /* A declared screen renders as a card, not a terminal: proportional text for the
+     option rows (a real control with the touch floor), and the component's own text
+     kept pre-formatted, because it may be a column-aligned list. */
+  .dialog-screen-menu { display: grid; gap: var(--pi-space-2); }
+  .screen-title {
+      margin: 0;
+      font-size: var(--pi-text-md);
+      font-weight: 600;
+      color: var(--pi-text);
+  }
+  .screen-text {
+      box-sizing: border-box;
+      margin: 0;
+      padding: var(--pi-space-4) var(--pi-space-5);
+      border: 1px solid var(--pi-border);
+      border-radius: var(--pi-radius-sm);
+      background: var(--pi-surface-sunken, var(--pi-surface));
+      color: var(--pi-muted);
+      font-family: var(--pi-font-mono);
+      font-size: var(--pi-text-xs);
+      overflow: auto;
+      max-height: 34vh;
+      white-space: pre;
+  }
+  .screen-option {
+      box-sizing: border-box;
+      min-height: var(--pi-panel-header-control-height, 36px);
+      padding: var(--pi-space-3) var(--pi-space-5);
+      border: 1px solid var(--pi-border);
+      border-radius: var(--pi-radius-sm);
+      background: var(--pi-surface);
+      color: var(--pi-text);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+  }
+  .screen-option.current { border-color: var(--pi-accent); color: var(--pi-accent); font-weight: 600; }
+  .screen-option.current::before { content: "▸ "; }
+  .screen-option:active { background: var(--pi-surface-hover); }
   .dialog-screen-keys { display: flex; flex-wrap: wrap; gap: var(--pi-space-3); }
   .screen-key { box-sizing: border-box; min-width: var(--pi-panel-header-control-height, 36px); min-height: var(--pi-panel-header-control-height, 36px); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-family: inherit; font-size: var(--pi-text-sm); }
   .dialog-screen:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }

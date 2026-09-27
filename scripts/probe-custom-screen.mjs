@@ -40,21 +40,29 @@ try {
   await page.goto(`${BASE}/?project=991606fd-e498-4b93-a1ce-2af09efdb0e7&workspace=ef2cdf93e1ac&session=${sessionId}&view=chat`, { waitUntil: "domcontentloaded" });
   const screen = async () => page.evaluate(() => {
     const app = document.querySelector("pi-web-app");
-    const dialog = (app?.state?.pendingDialogs ?? []).find((candidate) => candidate.kind === "custom");
+    // The state may hold either the dialogs or rows wrapping them; assume neither.
+    const dialog = (app?.state?.pendingDialogs ?? [])
+      .map((candidate) => candidate.dialog ?? candidate)
+      .find((candidate) => candidate.kind === "custom");
     const card = (() => { const walk = (root) => { for (const node of root.querySelectorAll("*")) { if (node.localName === "extension-dialog-card") return node; if (node.shadowRoot !== null) { const hit = walk(node.shadowRoot); if (hit !== undefined) return hit; } } return undefined; }; return walk(document); })();
-    const rendered = card?.shadowRoot?.querySelector(".dialog-screen")?.textContent ?? undefined;
+    const rendered =
+    card?.shadowRoot?.querySelector(".dialog-screen-menu")?.textContent ??
+    card?.shadowRoot?.querySelector(".dialog-screen")?.textContent ??
+    undefined;
     return dialog === undefined ? undefined : { dialogId: dialog.dialogId, lines: dialog.lines ?? [], rendered };
   });
 
   let dialog;
-  for (let attempt = 0; attempt < 24; attempt += 1) {
+  // A cold session takes tens of seconds to reach `session_start` (model catalog
+  // first), and the screen opens from there.
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     dialog = await screen();
     if (dialog !== undefined) break;
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
   if (dialog === undefined) {
     fail("no custom dialog was opened - the factory did not run (or did not mount)");
-    console.log("state:", JSON.stringify(await page.evaluate(() => { const app = document.querySelector("pi-web-app"); return { dialogs: (app?.state?.pendingDialogs ?? []).length, view: app?.state?.mainView, session: app?.state?.selectedSession?.id }; })));
+    console.log("state:", JSON.stringify(await page.evaluate(() => { const app = document.querySelector("pi-web-app"); const pendingNow = app?.state?.pendingDialogs ?? []; const firstNow = (pendingNow[0]?.dialog ?? pendingNow[0]) ?? null; const walkNow = (root) => { for (const node of root.querySelectorAll("*")) { if (node.localName === "extension-dialog-card") return node; if (node.shadowRoot !== null) { const found = walkNow(node.shadowRoot); if (found !== undefined) return found; } } return undefined; }; return { firstKind: firstNow?.kind ?? null, firstKeys: firstNow === null ? [] : Object.keys(firstNow).slice(0, 12), card: walkNow(app?.shadowRoot ?? document) !== undefined, dialogs: (app?.state?.pendingDialogs ?? []).length, view: app?.state?.mainView, session: app?.state?.selectedSession?.id }; })));
   } else {
     const lines = dialog.lines ?? [];
     console.log("screen:", JSON.stringify(lines));
@@ -105,7 +113,9 @@ try {
     const readLog = () => { try { return readFileSync(logPath, "utf8"); } catch { return ""; } };
     const tapped = await page.evaluate(() => {
       const find = (root) => { for (const n of root.querySelectorAll("*")) { if (n.localName === "extension-dialog-card") return n; if (n.shadowRoot !== null) { const hit = find(n.shadowRoot); if (hit !== undefined) return hit; } } return undefined; };
-      const rows = [...(find(document)?.shadowRoot?.querySelectorAll(".screen-line") ?? [])];
+      const rows = [
+        ...(find(document)?.shadowRoot?.querySelectorAll(".screen-option, .screen-line") ?? []),
+      ];
       const row = rows.find((node) => (node.textContent ?? "").includes("third"));
       if (row === undefined) return "no row";
       row.click();

@@ -771,6 +771,15 @@ export type ExtensionDialogCloseReason = "answered" | "cancelled" | "timeout" | 
  * an independent blocking wait inside extension code, so opening never
  * supersedes an existing one.
  */
+export interface ExtensionDialogScreen {
+    kind: "menu" | "text";
+    title?: string;
+    body?: string[];
+    /** Options in the order the component lists them; the labels matched its lines. */
+    options?: string[];
+    /** Which option the component's cursor is on. */
+    current?: number;
+}
 export interface PendingExtensionDialog {
     dialogId: string;
     kind: ExtensionDialogKind;
@@ -787,6 +796,15 @@ export interface PendingExtensionDialog {
      * daemon hands the component a plain theme.
      */
     lines?: string[];
+    /**
+     * How the extension asked this screen to look in a browser.
+     *
+     * A component draws for a terminal; an extension that also knows what it *means*
+     * can say so (`ctx.ui.custom(factory, { web: { kind: "menu", ... } })`), and then
+     * the browser renders its own card - a heading, body text, real buttons - instead
+     * of a terminal dump. Absent for an extension that only draws.
+     */
+    screen?: ExtensionDialogScreen;
     askedAt: string;
     /**
      * When the dialog auto-cancels, as ISO: the sooner of the extension's own

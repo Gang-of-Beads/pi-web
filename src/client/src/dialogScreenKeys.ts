@@ -11,7 +11,9 @@
  * tapping a line walks the cursor to it and selects, and a key row covers
  * everything else (Esc, and screens whose choice is not a cursor).
  */
-const CURSOR_LINE = /^\s*[›>▸▪•*]\s/u;
+/** The frame a component may draw, before its own content. */
+const FRAME_PREFIX = /^[\s│┃|]*/u;
+const CURSOR_LINE = /^[\s│┃|]*[›>▸▪•*]\s/u;
 
 /** Which line the component's own cursor sits on, if the screen has one. */
 export function screenCursorLine(lines: readonly string[]): number | undefined {
@@ -39,4 +41,19 @@ export function isSelectableLine(line: string): boolean {
   if (text === "") return false;
   if (/^(enter|esc|↑|↓|space|tab)/iu.test(text)) return false;
   return true;
+}
+
+/**
+ * The component's own key-hint row, e.g. "Enter to select · ↑↓ to navigate · Esc =
+ * back".
+ *
+ * A TUI explains the keys because a terminal has them; the browser now shows real
+ * buttons under the screen, so the row is the one line that can go - and it is the
+ * line that made the screen read as a terminal dump rather than a menu.
+ */
+export function isScreenHintLine(line: string): boolean {
+  const text = line.replace(FRAME_PREFIX, "").replace(/[│┃|]\s*$/u, "").trim();
+  if (text === "") return false;
+  if (text.startsWith("|") || text.startsWith("│")) return false;
+  return /(enter|esc|space|tab|↑|↓|←|→)/iu.test(text) && /[·|,]|\s{2,}/u.test(text);
 }

@@ -57,6 +57,7 @@ import type {
   ExtensionDialogAnswer,
   ExtensionDialogCloseResponse,
   ExtensionDialogKind,
+  ExtensionDialogScreen,
   ExtensionDialogOutcome,
   QueuedSessionMessage,
   SavedPromptAttachment,
@@ -1168,13 +1169,64 @@ export interface PiSessionServiceDependencies {
 }
 
 /** The extension's own options, read defensively: it may pass nothing or junk. */
-function customScreenOptions(opts: unknown): { signal?: AbortSignal | undefined; timeout?: number | undefined } {
+function customScreenOptions(opts: unknown): {
+  signal?: AbortSignal | undefined;
+  timeout?: number | undefined;
+  screen?: ExtensionDialogScreen | undefined;
+} {
   if (opts === null || typeof opts !== "object") return {};
   const signal: unknown = Reflect.get(opts, "signal");
   const timeout: unknown = Reflect.get(opts, "timeout");
+  const screen = declaredScreen(Reflect.get(opts, "web"));
   return {
     ...(signal instanceof AbortSignal ? { signal } : {}),
     ...(typeof timeout === "number" ? { timeout } : {}),
+    ...(screen === undefined ? {} : { screen }),
+  };
+}
+
+const SCREEN_LINES_MAX = 40;
+const SCREEN_LINE_MAX = 200;
+const SCREEN_OPTIONS_MAX = 12;
+
+function screenText(value: unknown, max: number = SCREEN_LINE_MAX): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const text = value.replace(/\s+$/u, "");
+  return text === "" ? undefined : text.slice(0, max);
+}
+
+function screenLines(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const lines = value
+    .slice(0, SCREEN_LINES_MAX)
+    .map((line) => (typeof line === "string" ? line.replace(/\s+$/u, "") : undefined))
+    .filter((line): line is string => line !== undefined);
+  return lines.some((line) => line.trim() !== "") ? lines : undefined;
+}
+
+/**
+ * The pi-web rendering an extension declared for its own screen, read defensively.
+ *
+ * `ctx.ui.custom(factory, { web })` is pi-web's addition: pi ignores the unknown
+ * key and keeps calling the TUI factory, so an extension - an official one, at
+ * least - can hand the browser the meaning of what it drew without losing the
+ * terminal. Junk is not an error; a screen that does not parse falls back to lines.
+ */
+function declaredScreen(value: unknown): ExtensionDialogScreen | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  const kind: unknown = Reflect.get(value, "kind");
+  if (kind !== "menu" && kind !== "text") return undefined;
+  const title = screenText(Reflect.get(value, "title"));
+  const body = screenLines(Reflect.get(value, "body"));
+  const options = screenLines(Reflect.get(value, "options"))?.slice(0, SCREEN_OPTIONS_MAX);
+  const current: unknown = Reflect.get(value, "current");
+  if (kind === "menu" && (options === undefined || options.length === 0)) return undefined;
+  return {
+    kind,
+    ...(title === undefined ? {} : { title }),
+    ...(body === undefined ? {} : { body }),
+    ...(options === undefined ? {} : { options }),
+    ...(typeof current === "number" && Number.isInteger(current) && current >= 0 ? { current } : {}),
   };
 }
 
@@ -2030,7 +2082,7 @@ export class PiSessionService implements SessionRouteService {
     // same tick would flash an empty screen.
     if (lifecycle.settledBeforeMount) return await finished;
     const lines = renderCustomScreen(component);
-    dialogId = this.openCustomDialog(session, lines, customScreenOwner(this.customScreenStack));
+    dialogId = this.openCustomDialog(session, lines, customScreenOwner(this.customScreenStack), options.screen);
     const onKey = (key: string): void => {
       try {
         component.handleInput?.(key);
@@ -2076,7 +2128,12 @@ export class PiSessionService implements SessionRouteService {
     return value === undefined || value === "done" ? undefined : value;
   }
 
-  private openCustomDialog(session: PiAgentSession, lines: string[], openedBy: string | undefined): string {
+  private openCustomDialog(
+    session: PiAgentSession,
+    lines: string[],
+    openedBy: string | undefined,
+    screen?: ExtensionDialogScreen,
+  ): string {
     const dialog = this.pendingExtensionDialogStore.open({
       sessionId: session.sessionId,
       kind: "custom",
@@ -2085,6 +2142,7 @@ export class PiSessionService implements SessionRouteService {
       // "Extension screen" alone read as something unannounced.
       message: openedBy === undefined ? CUSTOM_SCREEN_HINT : `${openedBy} · ${CUSTOM_SCREEN_HINT}`,
       lines,
+      ...(screen === undefined ? {} : { screen }),
       runScoped: session.isStreaming,
     });
     const revision = this.nextDialogRevision(session.sessionId);
