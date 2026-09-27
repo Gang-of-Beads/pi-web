@@ -95,7 +95,13 @@ if (!hasRemote) console.log("note: only the local machine is registered; remote 
 
 console.log("== the context sheet renders the plugin's machines section");
 await openSheet();
-const sheet = await sheetMachineRows();
+// The section bodies are elements that render their own shadow DOM a moment after
+// the sheet appears; read until they have rows rather than once.
+let sheet = await sheetMachineRows();
+for (let attempt = 0; attempt < 12 && sheet.rows === 0; attempt += 1) {
+  await page.waitForTimeout(400);
+  sheet = await sheetMachineRows();
+}
 if (hasRemote) record("sheet machine group renders machine-list rows", sheet.sheet && sheet.machineList && sheet.rows >= 2, sheet);
 await page.screenshot({ path: "/tmp/waveb-sheet-machines.png" });
 
