@@ -68,16 +68,59 @@ try {
       body: JSON.stringify({ cwd: CWD, dialogId: dialog.dialogId, key }),
     }).then((response) => response.json());
 
-    const delivered = await sendKey("a");
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    const delivered = await sendKey("down");
+    await new Promise((resolve) => setTimeout(resolve, 900));
     const redrawn = await screen();
-    console.log("after a key:", JSON.stringify(redrawn?.lines ?? null), "· delivered:", JSON.stringify(delivered));
-    if (redrawn === undefined) fail("the screen closed on a key it should have counted");
-    else if (!(redrawn.lines ?? []).some((line) => line.includes("keys pressed: 1"))) fail("the key did not reach the component (no redraw)");
+    console.log("after a key:", JSON.stringify((redrawn?.lines ?? []).find((line) => line.includes("\u25b8")) ?? null), "· delivered:", JSON.stringify(delivered));
+    if (redrawn === undefined) fail("the screen closed on a key it should have handled");
+    else if (!(redrawn.lines ?? []).some((line) => line.includes("\u25b8 second"))) fail("the forwarded key did not reach the component (no redraw)");
 
     const logPath = process.env.PROBE_DAEMON_LOG ?? `${process.env.HOME}/.pi-web-8505/logs/sessiond.log`;
     const countReturns = () => { try { return (readFileSync(logPath, "utf8").match(/ui-custom-probe\] returned/gu) ?? []).length; } catch { return 0; } };
-    const before = countReturns();
+    const beforeTap = countReturns();
+    // Touch path, in the order a phone would use it: the key row first (a screen
+    // whose choice is not a cursor needs it), then a tap on a line, which must
+    // walk the component's cursor there and select it.
+    const keyRow = await page.evaluate(() => {
+      const find = (root) => { for (const n of root.querySelectorAll("*")) { if (n.localName === "extension-dialog-card") return n; if (n.shadowRoot !== null) { const hit = find(n.shadowRoot); if (hit !== undefined) return hit; } } return undefined; };
+      const card = find(document);
+      return [...(card?.shadowRoot?.querySelectorAll(".screen-key") ?? [])].map((node) => node.getAttribute("aria-label"));
+    });
+    console.log("key row:", JSON.stringify(keyRow));
+    if (!["Up", "Down", "Enter", "Escape"].every((label) => keyRow.includes(label))) fail(`the key row is incomplete: ${JSON.stringify(keyRow)}`);
+
+    const readCursor = async () => (await screen())?.lines?.find((line) => line.includes("\u25b8")) ?? "";
+    if (keyRow.includes("Down")) {
+      const cursorBefore = await readCursor();
+      await page.evaluate(() => {
+        const find = (root) => { for (const n of root.querySelectorAll("*")) { if (n.localName === "extension-dialog-card") return n; if (n.shadowRoot !== null) { const hit = find(n.shadowRoot); if (hit !== undefined) return hit; } } return undefined; };
+        [...(find(document)?.shadowRoot?.querySelectorAll(".screen-key") ?? [])].find((node) => node.getAttribute("aria-label") === "Down")?.click();
+      });
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      const moved = await readCursor();
+      console.log("after the Down button:", JSON.stringify(moved));
+      if (moved === cursorBefore || moved === "") fail(`the key row's Down button did not move the component's cursor (${JSON.stringify(cursorBefore)} -> ${JSON.stringify(moved)})`);
+    }
+
+    const readLog = () => { try { return readFileSync(logPath, "utf8"); } catch { return ""; } };
+    const tapped = await page.evaluate(() => {
+      const find = (root) => { for (const n of root.querySelectorAll("*")) { if (n.localName === "extension-dialog-card") return n; if (n.shadowRoot !== null) { const hit = find(n.shadowRoot); if (hit !== undefined) return hit; } } return undefined; };
+      const rows = [...(find(document)?.shadowRoot?.querySelectorAll(".screen-line") ?? [])];
+      const row = rows.find((node) => (node.textContent ?? "").includes("third"));
+      if (row === undefined) return "no row";
+      row.click();
+      return "tapped third";
+    });
+    console.log("tap:", tapped);
+    let selected = false;
+    for (let attempt = 0; attempt < 10 && !selected; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      selected = countReturns() > beforeTap && readLog().includes("returned third");
+    }
+    if (tapped === "no row") fail("the screen drew no tappable rows");
+    else if (!selected) fail(`tapping a line did not select it (log: ${readLog().split("ui-custom-probe] returned").slice(-1)[0]?.slice(0, 40)})`);
+    else console.log("tapping a line walked the cursor there and selected it");
+
     const escape = await sendKey("escape");
     await new Promise((resolve) => setTimeout(resolve, 1200));
     const gone = await screen();
@@ -85,19 +128,23 @@ try {
     // extension writes to stderr (the stack's daemon log). Its ctx.ui.notify rides
     // a command.output event into the notification store rather than the transcript,
     // so the log is the readable evidence.
+    const beforeEscape = countReturns();
     let returned = false;
     for (let attempt = 0; attempt < 8 && !returned; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 1200));
-      returned = countReturns() > before;
+      returned = countReturns() > beforeEscape;
     }
     console.log("after escape:", JSON.stringify(escape), "· dialog gone:", gone === undefined, "· result reached the extension:", returned);
-    if (gone !== undefined) fail("Escape did not close the screen");
+    // The tap already selected and closed the dialog, so the Escape phase is the
+    // informational one in that run; it is the assertion when the tap did nothing.
+    if (tapped === "tapped third") console.log("note: the dialog was already closed by the tap; Escape is informational here");
+    else if (gone !== undefined) fail("Escape did not close the screen");
     else if (!returned) {
       const tail = await fetch(`${BASE}/api/sessions/${sessionId}/messages?cwd=${encodeURIComponent(CWD)}`).then((response) => response.json()).catch(() => ({}));
       const status = await fetch(`${BASE}/api/sessions/${sessionId}/status?cwd=${encodeURIComponent(CWD)}`).then((response) => response.json()).catch(() => ({}));
       console.log("tail:", JSON.stringify((tail.messages ?? []).slice(-3)).slice(0, 400));
       console.log("activity:", JSON.stringify(status.activity ?? null).slice(0, 200), "warnings:", JSON.stringify(status.warnings ?? null).slice(0, 200));
-      console.log("log:", logPath, "counts", before, "->", countReturns());
+      console.log("log:", logPath, "counts", beforeEscape, "->", countReturns());
       fail("the extension never received the result of its own screen");
     }
     else console.log("PASS an extension screen renders, takes keys, and returns a result");

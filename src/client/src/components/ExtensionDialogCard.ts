@@ -10,11 +10,20 @@ import {
 } from "../../../shared/apiTypes";
 import type { ClosedExtensionDialog } from "../appState";
 import { dialogScreenKey } from "../dialogScreenKey.js";
+import { isSelectableLine, keysForLineTap, screenIsTappable } from "../dialogScreenKeys.js";
 
 export type ExtensionDialogAnswerCallback = (dialogId: string, value: ExtensionDialogAnswer) => void | Promise<void>;
 export type ExtensionDialogCancelCallback = (dialogId: string) => void | Promise<void>;
 /** A keypress for a `custom` screen's component. */
 export type ExtensionDialogKeyCallback = (dialogId: string, key: string) => void | Promise<void>;
+
+/** The keys any screen can need, as buttons: a phone raises no keyboard for a <pre>. */
+const SCREEN_KEYS = [
+  { key: "up", glyph: "\u25b2", label: "Up" },
+  { key: "down", glyph: "\u25bc", label: "Down" },
+  { key: "enter", glyph: "\u23ce", label: "Enter" },
+  { key: "escape", glyph: "Esc", label: "Escape" },
+] as const;
 
 const COUNTDOWN_TICK_MS = 1_000;
 
@@ -221,13 +230,44 @@ export class ExtensionDialogCard extends LitElement {
    * taller than the modal and the arrows belong to it either way.
    */
   private renderCustomBody(dialog: PendingExtensionDialog): TemplateResult {
+    const lines = dialog.lines ?? [];
+    const tappable = screenIsTappable(lines);
     return html`
       ${dialog.message === undefined ? null : html`<p class="dialog-screen-hint">${dialog.message}</p>`}
-      <pre class="dialog-screen" role="group" aria-label="Extension screen" tabindex="0" @keydown=${(event: KeyboardEvent) => { this.forwardScreenKey(event, dialog); }}>${(dialog.lines ?? []).join("\n")}</pre>
+      <div
+        class="dialog-screen"
+        role="group"
+        aria-label="Extension screen"
+        tabindex="0"
+        @keydown=${(event: KeyboardEvent) => { this.forwardScreenKey(event, dialog); }}
+      >${lines.map((line, index) => html`<div
+        class=${`screen-line${tappable && isSelectableLine(line) ? " selectable" : ""}`}
+        @click=${() => { void this.tapScreenLine(dialog, lines, index); }}
+      >${line === "" ? " " : line}</div>`)}</div>
+      <div class="dialog-screen-keys">
+        ${SCREEN_KEYS.map((key) => html`<button
+          type="button"
+          class="screen-key"
+          aria-label=${key.label}
+          @click=${() => { void this.onKey?.(dialog.dialogId, key.key); }}
+        >${key.glyph}</button>`)}
+      </div>
       <footer class="dialog-footer">
         <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Close</button>
       </footer>
     `;
+  }
+
+  /**
+   * A tap on a line: walk the component's cursor there, then select.
+   *
+   * Sent one key at a time because each key redraws the screen, and the walk is
+   * computed from the lines as they are: a component that re-orders between keys
+   * would otherwise take a stale step count.
+   */
+  private async tapScreenLine(dialog: PendingExtensionDialog, lines: readonly string[], index: number): Promise<void> {
+    if (!screenIsTappable(lines) || !isSelectableLine(lines[index] ?? "")) return;
+    for (const key of keysForLineTap(lines, index)) await this.onKey?.(dialog.dialogId, key);
   }
 
   private forwardScreenKey(event: KeyboardEvent, dialog: PendingExtensionDialog): void {
@@ -468,7 +508,14 @@ export class ExtensionDialogCard extends LitElement {
     .dialog-input-form { display: grid; }
     /* A terminal the reader can recognise: mono, its own darker pane, room for a
      tall menu, and a hint above it saying who is asking and where keys go. */
-  .dialog-screen { box-sizing: border-box; margin: 0; padding: var(--pi-space-4) var(--pi-space-5); max-height: 46vh; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font-family: var(--pi-font-mono); font-size: var(--pi-text-xs); line-height: 1.5; white-space: pre; tab-size: 2; }
+  .dialog-screen { box-sizing: border-box; margin: 0; padding: var(--pi-space-4) var(--pi-space-5); max-height: 46vh; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font-family: var(--pi-font-mono); font-size: var(--pi-text-xs); line-height: 1.5; tab-size: 2; }
+  /* One row per line, so a line can be tapped: monospace + pre keeps the columns
+     the component drew. */
+  .screen-line { white-space: pre; }
+  .screen-line.selectable { border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .screen-line.selectable:active { background: var(--pi-surface-hover); }
+  .dialog-screen-keys { display: flex; flex-wrap: wrap; gap: var(--pi-space-3); }
+  .screen-key { box-sizing: border-box; min-width: var(--pi-panel-header-control-height, 36px); min-height: var(--pi-panel-header-control-height, 36px); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-family: inherit; font-size: var(--pi-text-sm); }
   .dialog-screen:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
   .dialog-screen-hint { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   .dialog-input {
