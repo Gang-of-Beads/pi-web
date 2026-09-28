@@ -12,6 +12,7 @@ import { repeat } from "lit/directives/repeat.js";
 import { ChatDisclosureController } from "../chatDisclosure";
 import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type ChatGroup } from "../chatGroups";
 import { writeClipboardText } from "../clipboard";
+import { followScrollVerdict } from "../followScrollAdoption.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { shouldRequestNewerMessages, shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
@@ -1190,6 +1191,7 @@ if (this.heldWaitingClearTimer !== undefined) {
    * the answer. The move was ours; only a move the reader made may unpin.
    */
   private followScrollTarget: number | undefined;
+  private followScrollTargetAt = 0;
   private contentResizeObserver: ResizeObserver | undefined;
   private observedContent: string | undefined;
 
@@ -2489,8 +2491,16 @@ if (this.heldWaitingClearTimer !== undefined) {
   private updatePinnedToBottomFromScroll() {
     const chat = this.chat;
     if (!chat) return;
-    const aimed = this.followScrollTarget;
-    if (aimed !== undefined && Math.abs(chat.scrollTop - aimed) <= 2) {
+    // Our own follow scroll lands as a scroll event; adopting it as the reader's
+    // would be wrong twice over, so it is matched by target *and* freshness - and
+    // never against a pin the reader's own gesture already dropped, which is how a
+    // coincidental equality used to re-pin the view and drag them down ("回弹").
+    const verdict = followScrollVerdict({
+      target: this.followScrollTarget,
+      scrollTop: chat.scrollTop,
+      ageMs: Date.now() - this.followScrollTargetAt,
+    });
+    if (verdict === "our-scroll" && this.pinnedToBottom) {
       this.followScrollTarget = undefined;
       this.pinnedToBottom = true;
       this.setJumpToBottomVisible(showsJumpToBottom(chat));
@@ -2656,6 +2666,7 @@ if (this.heldWaitingClearTimer !== undefined) {
   private followBottom(chat: HTMLElement): void {
     chat.scrollTop = chat.scrollHeight;
     this.followScrollTarget = chat.scrollTop;
+    this.followScrollTargetAt = Date.now();
   }
 
   private holdBottomEdge(): void {
@@ -2684,6 +2695,7 @@ if (this.heldWaitingClearTimer !== undefined) {
       const chat = this.chat;
       if (!chat) return;
       this.followScrollTarget = chat.scrollHeight;
+      this.followScrollTargetAt = Date.now();
       if (!this.followGate.followsNewest(Date.now())) return;
       this.withSuppressedScrollSave(() => {
         chat.scrollTop = chat.scrollHeight;
@@ -2744,10 +2756,14 @@ if (this.heldWaitingClearTimer !== undefined) {
   }
 
   private shouldFallbackToBottomForMissingAnchor(): boolean {
-    // Only fall back to the bottom once the full history is loaded; while earlier
-    // pages can still load, a missing scroll anchor should keep retrying rather
-    // than jump the user to the bottom.
-    return !this.hasMore;
+    // While earlier pages can still load, a missing anchor retries by fetching them
+    // instead of jumping to the bottom - correct for a reader who was mid-history.
+    // But a reader who was *following the bottom* does not want history: retrying
+    // walked the view up to the top of the loaded window, which is mid-session on
+    // screen, and dropped the pin - the owner's "莫名其妙弹到 session 中部" plus a
+    // jump-to-bottom press to get back.
+    if (!this.hasMore) return true;
+    return this.pinnedToBottom;
   }
 
   private updatePinnedToBottomAfterRestore(status: Exclude<ChatScrollRestoreResult["status"], "missing">): void {
