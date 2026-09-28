@@ -1,0 +1,34 @@
+{
+  "phone": {
+    "messageBox": [
+      8,
+      385
+    ],
+    "messageLabelLeft": 15,
+    "eventSummaryTextLeft": 19,
+    "questionCardBox": [
+      8,
+      385
+    ],
+    "dialogCardBox": [
+      8,
+      385
+    ]
+  },
+  "desktop": {
+    "messageBox": [
+      357,
+      923
+    ],
+    "messageLabelLeft": 366,
+    "eventSummaryTextLeft": 370,
+    "questionCardBox": [
+      357,
+      923
+    ],
+    "dialogCardBox": [
+      357,
+      923
+    ]
+  }
+}
