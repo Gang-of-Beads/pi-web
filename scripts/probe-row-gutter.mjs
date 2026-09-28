@@ -50,7 +50,7 @@ const measure = async (width, height) => {
   const spread = (values) => Math.max(...values) - Math.min(...values);
   // Desktop aligns on one gutter; the phone keeps the insets it always had, so a phone
   // spread is a row's own card padding and not a regression.
-  const tolerance = width > 700 ? 1 : 20;
+  const tolerance = 1;
   const lefts = new Set(rows.map((row) => row.left));
   const rightEdges = new Set(rows.map((row) => row.right));
   const gaps = new Set(rows.filter((row) => row.kind !== "group-msg").map((row) => row.bottomGap));

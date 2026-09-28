@@ -258,7 +258,10 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      bottom reaches, and once answered the replies that follow push it up on
      their own. Nothing is pinned, so the transcript scrolls at any card
      height and the card covers none of its own rows. */
-  .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); padding-inline: var(--pi-row-inset); }
+  .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); }
+  /* One margin rule per group (see rowGroups.ts): a bare row adds the inset a card gets
+     from its own padding, so every kind of row starts its text on the same edge. */
+  .msg.event-group > summary, .group-msg, .session-activity, .waiting-slot { padding-inline: var(--pi-row-inset); }
   .runs { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); display: grid; gap: var(--pi-space-2); }
   .runs-chip { box-sizing: border-box; min-height: var(--pi-panel-header-control-height, 36px); display: inline-flex; align-items: center; gap: var(--pi-space-3); width: fit-content; padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
   .runs-chip.active { border-color: var(--pi-success-border); color: var(--pi-success); }
@@ -321,7 +324,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg { max-width: var(--pi-chat-measure); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-row-rhythm); padding: var(--pi-row-gutter); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface-card); overflow: hidden; overflow: clip; }
   /* The phone was already right: its rows sit on their own insets, so the aligning
      inset is a desktop-only addition rather than a loosening of the phone. */
-  @media (max-width: 640px) { .chat { --pi-row-gutter: var(--pi-space-5); --pi-row-inset: 0px; --pi-row-rhythm: var(--pi-space-5); } }
+  @media (max-width: 640px) { .chat { --pi-row-gutter: var(--pi-space-5); --pi-row-inset: var(--pi-space-5); --pi-row-rhythm: var(--pi-space-5); } }
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
   .custom-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-5); background: var(--pi-surface); overflow: hidden; overflow: clip; display: grid; gap: var(--pi-space-3); }
   .custom-card-unknown { color: var(--pi-muted); }
@@ -351,7 +354,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      other row on the screen. */
   .msg.event-group { padding: 0; border-color: var(--pi-border); background: var(--pi-bg); color: var(--pi-muted); }
   .msg.event-group.live { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
-  .msg.event-group > summary { position: sticky; top: var(--pi-chat-sticky-top); z-index: 5; display: flex; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-row-inset); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); }
+  .msg.event-group > summary { position: sticky; top: var(--pi-chat-sticky-top); z-index: 5; display: flex; align-items: center; gap: var(--pi-space-4); padding-block: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); }
   .msg.event-group.live > summary { border-bottom-color: var(--pi-success-border); background: var(--pi-success-bg); color: var(--pi-success); }
   .msg.event-group > summary .label { margin: 0; }
   .group-body { padding: 0 var(--pi-space-6) var(--pi-space-6); }
@@ -374,7 +377,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   /* A child's conversation, over the parent's. It borrows the output viewer's
      frame because it is the same kind of thing - something opened from an
      activity row - but its body is a message list rather than a log. */
-  .group-msg { max-width: 100%; min-width: 0; box-sizing: border-box; padding: var(--pi-space-5) var(--pi-row-inset); border-top: 1px solid var(--pi-border-muted); color: var(--pi-text); overflow: visible; }
+  .group-msg { max-width: 100%; min-width: 0; box-sizing: border-box; padding-block: var(--pi-space-5); border-top: 1px solid var(--pi-border-muted); color: var(--pi-text); overflow: visible; }
   .group-msg.tool { color: var(--pi-warning); }
   .group-msg.tool-execution-shell { color: var(--pi-text); }
   .group-msg.system { color: var(--pi-muted); }
@@ -410,7 +413,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .delivery-mark.received { color: var(--pi-muted); }
   .delivery-mark.delivered { color: var(--pi-success); }
   .delivery-mark.failed { color: var(--pi-danger); font-weight: var(--pi-weight-semibold); }
-  .session-activity { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: var(--pi-space-2); margin: 0 auto var(--pi-space-7); padding-inline: var(--pi-row-inset); padding-block: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); overflow: hidden; }
+  .session-activity { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: var(--pi-space-2); margin: 0 auto var(--pi-space-7); padding-block: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); overflow: hidden; }
   .session-activity.compacting { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
   .session-activity strong { color: var(--pi-purple); }
   .session-activity span, .session-activity small { color: var(--pi-muted); }
@@ -1703,10 +1706,18 @@ if (this.heldWaitingClearTimer !== undefined) {
     return panel.summary?.(context) ?? panel.badge?.(context);
   }
 
+  /**
+   * The strip above the transcript: one chip per contributed status that asked for the top.
+   *
+   * It sits in the chrome rather than the dock so it neither scrolls away nor eats
+   * transcript height, and only a chip whose plugin says it is running pulses - a stale
+   * branch is a fact, not an activity.
+   */
   private renderContributedRuns() {
     const context = this.panelContext;
     if (context === undefined) return null;
     const speaking = (this.panels ?? []).filter((panel: QualifiedWorkspacePanelContribution) => {
+      if (panel.topEntry !== true) return false;
       if (panel.visible !== undefined && !panel.visible(context)) return false;
       return this.panelEntry(panel, context) !== undefined;
     });
@@ -1723,7 +1734,7 @@ if (this.heldWaitingClearTimer !== undefined) {
               aria-expanded=${String(open)}
               aria-label=${`${panel.title}: ${typeof text === "string" ? text : "open"}`}
               @click=${() => { this.runsOpenPanel = open ? undefined : panel.id; }}
-            ><span class="dot"></span><span>${panel.title} · ${text}</span></button>
+            >${panel.running?.(context) === true ? html`<span class="dot"></span>` : null}<span>${panel.title} · ${text}</span></button>
             ${open ? html`<div class="runs-body">${panel.render(context)}</div>` : null}
           `;
         })}
