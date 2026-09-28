@@ -5,7 +5,7 @@
  * the activity row there - and the phone drifted out of line with the desktop. A row kind
  * now belongs to a group, the group carries the margin, and a new kind is classified once.
  */
-export type RowGroup = "card" | "bare";
+export type RowGroup = "card" | "bare" | "holder";
 
 export interface RowGroupMembership {
   readonly group: RowGroup;
@@ -18,8 +18,14 @@ export const ROW_GROUPS: Record<RowGroup, RowGroupMembership> = {
   /** Rows that draw no box: they must add the same inset the cards do. */
   bare: {
     group: "bare",
-    selectors: [".msg.event-group > summary", ".group-msg", ".session-activity", ".waiting-slot"],
+    selectors: [".msg.event-group > summary", ".group-msg", ".session-activity"],
   },
+  /**
+   * Rows that draw no box but hold cards that do (the open question and dialog cards).
+   * They add nothing: an inset here shrinks the held card's box inside the column, which
+   * is how the question card ended up a gutter narrower than every message on the phone.
+   */
+  holder: { group: "holder", selectors: [".waiting-slot", ".msg.ask-user-record-shell"] },
 };
 
 /** Every selector the groups claim, so a test can catch an unclassified row. */

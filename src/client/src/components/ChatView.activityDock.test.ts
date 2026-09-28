@@ -133,6 +133,29 @@ describe("contributed activity notes", () => {
   });
 });
 
+/**
+ * The owner's rule after the chip strip: between the transcript and the composer only the
+ * status line itself may appear. A second surface there ("Background · 407 finished")
+ * was reported twice; this pins the slot so no contribution can reopen it.
+ */
+describe("the slot between the transcript and the composer", () => {
+  it("holds nothing but the jump-to-newest button and the status line", async () => {
+    const view = new ChatView();
+    view.sessionId = "s";
+    view.status = status({ isStreaming: true });
+    view.activity = activity("active", "agent running");
+    view.activityNotes = [{ id: "p:n", pluginId: "p", localId: "n", note: () => "407 background runs" }];
+    document.body.append(view);
+    await view.updateComplete;
+    const scroller = view.renderRoot.querySelector(".chat");
+    const siblings = [...(scroller?.parentElement?.children ?? [])].filter((node) => node !== scroller);
+    const allowed = new Set(["jump-to-bottom", "activity-dock"]);
+    const strays = siblings.filter((node) => ![...node.classList].some((name) => allowed.has(name)));
+    expect(scroller).not.toBeNull();
+    expect(strays.map((node) => node.className)).toEqual([]);
+  });
+});
+
 describe("turnElapsedLabel", () => {
   const started = 1_000_000;
 

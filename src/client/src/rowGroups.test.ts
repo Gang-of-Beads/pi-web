@@ -24,4 +24,13 @@ describe("row margin groups", () => {
     expect(chatView).toContain("var(--pi-row-inset)");
     expect(chatView).toContain("var(--pi-row-gutter)");
   });
+
+  it("never pads a holder, so a held card keeps the column's full width", () => {
+    const holderRule = /\.waiting-slot, \.msg\.ask-user-record-shell \{ padding-inline: 0; \}/u;
+    expect(chatView).toMatch(holderRule);
+    const bareRule = /\.msg\.event-group > summary, \.group-msg, \.session-activity \{ padding-inline: var\(--pi-row-inset\); \}/u;
+    expect(chatView).toMatch(bareRule);
+    const askCard = readFileSync(join(here, "components/AskUserCard.ts"), "utf8");
+    expect(askCard).not.toContain("--pi-row-inset");
+  });
 });
