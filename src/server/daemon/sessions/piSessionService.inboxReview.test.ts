@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
+import { OwnedPromptQueue } from "./ownedPromptQueue.js";
 import { CapturingSessionEventHub, fakeRuntime, handedAs, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
 
 /**
@@ -30,7 +31,7 @@ async function inboxService(sessionId: string, options: { dataDir?: string; dir?
   fake.session.prompt = (text: string, promptOptions?: PromptOptions) => {
     fake.calls.prompt.push({ text, options: promptOptions });
     if (promptOptions?.streamingBehavior === "steer" && fake.session.isStreaming) lane.push(text);
-    else promptOptions?.preflightResult?.(true);
+    promptOptions?.preflightResult?.(true);
     return Promise.resolve();
   };
   const service = new PiSessionService(hub, {
@@ -144,6 +145,7 @@ describe("Stop waits for a steer batch in flight (O4)", () => {
       fake.calls.prompt.push({ text, options });
       await new Promise((resolve) => setTimeout(resolve, 20));
       if (options?.streamingBehavior === "steer" && fake.session.isStreaming) lane.push(text);
+      options?.preflightResult?.(true);
     };
     await service.prompt(ref, "X", undefined, undefined, { clientMessageId: "o4-x-0001" });
     await service.prompt(ref, "Y", undefined, undefined, { clientMessageId: "o4-y-0001" });
@@ -201,10 +203,12 @@ describe("pi takes every waiting steer at one gap (L2)", () => {
 describe("a slash command's run does not hold later messages until it ends (L3)", () => {
   it("steers a message sent during the command's run at the run's next gap", async () => {
     const { fake, service, ref, lane } = await inboxService("l3-command", { isStreaming: false });
+    fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "feynman_teach" }];
     fake.session.prompt = (text: string, options?: PromptOptions) => {
       fake.calls.prompt.push({ text, options });
       if (options?.streamingBehavior === "steer" && fake.session.isStreaming) {
         lane.push(text);
+        options.preflightResult?.(true);
         return Promise.resolve();
       }
       fake.session.isStreaming = true;
@@ -216,6 +220,118 @@ describe("a slash command's run does not hold later messages until it ends (L3)"
     await service.prompt(ref, "B during the command", undefined, undefined, { clientMessageId: "l3-b-0001" });
     fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect(lane).toEqual(["B during the command"]); });
+    await service.dispose();
+  });
+});
+
+describe("fresh-lane findings over the fixes", () => {
+  it("F1: keeps a steer that is still being handed pending, with its id, when another steer is read meanwhile", async () => {
+    const { fake, service, ref, lane, readSteer } = await inboxService("f1-inflight");
+    let releaseSecond = (): void => undefined;
+    const secondGate = new Promise<void>((resolve) => { releaseSecond = resolve; });
+    fake.session.prompt = async (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      if (text === "S2") await secondGate;
+      lane.push(text);
+      options?.preflightResult?.(true);
+    };
+    await service.prompt(ref, "S1", undefined, undefined, { clientMessageId: "f1-s1-0001" });
+    fake.emit({ type: "tool_execution_end" });
+    await vi.waitFor(() => { expect(lane).toEqual(["S1"]); });
+    await service.prompt(ref, "S2", undefined, undefined, { clientMessageId: "f1-s2-0001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["S1", "S2"]); });
+    readSteer("S1");
+    expect(service.operationOutcomes("f1-inflight", ["f1-s1-0001", "f1-s2-0001"])).toEqual({ "f1-s1-0001": "succeeded", "f1-s2-0001": "pending" });
+    releaseSecond();
+    await vi.waitFor(async () => { expect((await service.status(ref)).queuedMessages.map((entry) => entry.clientMessageId)).toEqual(["f1-s2-0001"]); });
+    await service.dispose();
+  });
+
+  it("F2: does not hand the rest of a steer batch into a run that stopped streaming meanwhile", async () => {
+    const { fake, service, ref, lane } = await inboxService("f2-batch");
+    await service.status(ref);
+    fake.emit({ type: "agent_start" });
+    fake.session.prompt = async (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      if (options?.streamingBehavior === "steer") {
+        lane.push(text);
+        fake.session.isStreaming = false;
+      }
+      options?.preflightResult?.(true);
+    };
+    await service.prompt(ref, "A", undefined, undefined, { clientMessageId: "f2-a-0001" });
+    await service.prompt(ref, "B", undefined, undefined, { clientMessageId: "f2-b-0001" });
+    fake.emit({ type: "agent_end" });
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A"]); });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(texts(fake.calls.prompt)).toEqual(["A"]);
+    fake.emit({ type: "agent_settled" });
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A", "A", "B"]); });
+    expect(fake.calls.prompt.map(handedAs)).toEqual(["steer", undefined, undefined]);
+    await service.dispose();
+  });
+
+  it("F2: never puts back a message the agent already read, whatever its promise says later", async () => {
+    const { fake, service, ref } = await inboxService("f2-committed", { isStreaming: false });
+    fake.session.prompt = (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      options?.preflightResult?.(true);
+      fake.emit({ type: "agent_start" });
+      fake.emit({ type: "message_start", message: { role: "user", content: text } });
+      return Promise.reject(new Error("Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion."));
+    };
+    await service.prompt(ref, "P", undefined, undefined, { clientMessageId: "f2-p-0001" });
+    await vi.waitFor(() => { expect(service.operationOutcomes("f2-committed", ["f2-p-0001"])).toEqual({ "f2-p-0001": "succeeded" }); });
+    fake.emit({ type: "agent_settled" });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect({ calls: texts(fake.calls.prompt), queued: (await service.status(ref)).queuedMessages }).toEqual({ calls: ["P"], queued: [] });
+    await service.dispose();
+  });
+
+  it("F3: does not announce withdrawn, or hand back, a message the agent read while Stop was clearing", async () => {
+    const { hub, fake, service, ref, lane, readSteer } = await inboxService("f3-stop");
+    await service.prompt(ref, "X", undefined, undefined, { clientMessageId: "f3-x-0001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(lane).toEqual(["X"]); });
+    const queue: unknown = Reflect.get(service, "ownedQueue");
+    if (!(queue instanceof OwnedPromptQueue)) throw new Error("ownedQueue unavailable");
+    const clear = queue.clear.bind(queue);
+    vi.spyOn(queue, "clear").mockImplementation((sessionId: string) => {
+      readSteer("X");
+      return clear(sessionId);
+    });
+    const { discarded } = await service.abort(ref);
+    const withdrawn = hub.sessionEvents.filter(({ event }) => event.type === "prompt.withdrawn").map(({ event }): unknown => Reflect.get(event, "clientMessageId"));
+    expect({ discarded: discarded.map((entry) => entry.clientMessageId), withdrawn, outcome: service.operationOutcomes("f3-stop", ["f3-x-0001"]) })
+      .toEqual({ discarded: [], withdrawn: [], outcome: { "f3-x-0001": "succeeded" } });
+    await service.dispose();
+  });
+
+  it("F4: a prompt whose preflight saw the agent's loop busy is not marked read by that other run's message", async () => {
+    const { fake, service, ref } = await inboxService("f4-busy-loop", { isStreaming: false });
+    const agentState = { isStreaming: false };
+    Reflect.set(fake.session.agent, "state", agentState);
+    let refuse = true;
+    fake.session.prompt = (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      if (!refuse) {
+        options?.preflightResult?.(true);
+        return Promise.resolve();
+      }
+      refuse = false;
+      agentState.isStreaming = true;
+      options?.preflightResult?.(true);
+      fake.emit({ type: "message_start", message: { role: "user", content: "another run's message" } });
+      agentState.isStreaming = false;
+      return Promise.reject(new Error("Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion."));
+    };
+    await service.prompt(ref, "Q", undefined, undefined, { clientMessageId: "f4-q-0001" });
+    await vi.waitFor(async () => { expect((await service.status(ref)).queuedMessages.map((entry) => entry.clientMessageId)).toEqual(["f4-q-0001"]); });
+    expect(service.operationOutcomes("f4-busy-loop", ["f4-q-0001"])).toEqual({ "f4-q-0001": "pending" });
+    fake.emit({ type: "agent_settled" });
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["Q", "Q"]); });
     await service.dispose();
   });
 });

@@ -46,6 +46,12 @@ export function runStateOf(facts: { isCompacting: boolean; isStreaming: boolean;
   return facts.settling ? "settling" : "idle";
 }
 
+/** The only run state each kind of handoff may enter: a steer joins a running agent, a direct prompt starts an idle one. */
+export const HANDOFF_RUN_STATE: Readonly<Record<"steer" | "direct", RunState>> = {
+  steer: "running",
+  direct: "idle",
+};
+
 /** How long a run may look finished without its `agent_settled` before the inbox stops waiting. */
 export const SETTLE_GRACE_MS = 5_000;
 

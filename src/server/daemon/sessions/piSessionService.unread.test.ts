@@ -889,6 +889,7 @@ function completeRuntimeWork(runtime: ReturnType<typeof fakeRuntime>): void {
   runtime.emit({ type: "agent_start" });
   runtime.session.isStreaming = false;
   runtime.emit({ type: "turn_end" });
+  runtime.emit({ type: "agent_settled" });
 }
 
 function completeStoreWork(store: SessionUnreadStore, sessionId: string, cwd: string): void {

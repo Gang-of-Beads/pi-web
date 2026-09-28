@@ -201,6 +201,8 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
     },
     prompt: (text: string, options: unknown) => {
       calls.prompt.push({ text, options });
+      const preflightResult: unknown = Reflect.get(Object(options), "preflightResult");
+      if (typeof preflightResult === "function") Reflect.apply(preflightResult, undefined, [true]);
       return Promise.resolve();
     },
     sendCustomMessage: (message: { customType: string; content: string; display: boolean; details?: unknown }, options: unknown) => {

@@ -994,6 +994,7 @@ describe("PiSessionService", () => {
       await service.start("/workspace");
       await service.spawnSubsession({ spawningCwd: "/workspace", parentSessionId: "parent-1", parentSessionFile: "/tmp/parent-1.jsonl", prompt: "first" });
       await service.spawnSubsession({ spawningCwd: "/workspace", parentSessionId: "parent-1", parentSessionFile: "/tmp/parent-1.jsonl", prompt: "second" });
+      await vi.waitFor(() => { expect(first.calls.prompt).toHaveLength(1); expect(second.calls.prompt).toHaveLength(1); });
 
       first.session.isStreaming = true;
       first.emit({ type: "agent_start" });
@@ -1028,6 +1029,7 @@ describe("PiSessionService", () => {
       const { parent, child, service } = subsessionService({ allowed: true, cwd: "/workspace" }, 10);
       await service.start("/workspace");
       await service.spawnSubsession({ spawningCwd: "/workspace", parentSessionId: "parent-1", parentSessionFile: "/tmp/parent-1.jsonl", prompt: "go" });
+      await vi.waitFor(() => { expect(child.calls.prompt).toHaveLength(1); });
       parent.calls.prompt.length = 0;
 
       // The child works, then settles silently: agent_end arrives while it still
