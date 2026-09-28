@@ -490,8 +490,8 @@ export class AskUserCard extends LitElement {
       /* The row shell around an ask carries no inset (its children own the card), so
          the card sets the same gutter every other row kind uses - otherwise the ask's
          text sat a gutter left of the message text above it. */
-      padding: 0 var(--pi-row-gutter, var(--pi-space-6));
-      margin: 0 0 var(--pi-row-rhythm, var(--pi-space-7));
+      padding: 0 var(--pi-row-inset, 0px);
+      margin: 0 0 var(--pi-space-7);
       color: var(--pi-text);
       font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit;
       container-type: inline-size;

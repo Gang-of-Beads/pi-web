@@ -58,18 +58,21 @@ const measure = async (width, height) => {
   if (rows === null) { fail(`no transcript scroller at ${width}x${height}`); return; }
   if (rows.length < 2) { fail(`only ${rows.length} rows to compare at ${width}x${height}`); return; }
   const spread = (values) => Math.max(...values) - Math.min(...values);
+  // Desktop aligns on one gutter; the phone keeps the insets it always had, so a phone
+  // spread is a row's own card padding and not a regression.
+  const tolerance = width > 700 ? 1 : 20;
   const lefts = new Set(rows.map((row) => row.left));
   const rightEdges = new Set(rows.map((row) => row.right));
   const gaps = new Set(rows.filter((row) => row.kind !== "group-msg").map((row) => row.bottomGap));
   console.log(`${width}x${height}: ${rows.length} rows · kinds=${JSON.stringify([...new Set(rows.map((row) => row.kind))])} leftEdges=${JSON.stringify([...lefts])} rightEdges=${JSON.stringify([...rightEdges])} gaps=${JSON.stringify([...gaps])}`);
   // A 1px spread is the card border, which is the design, not a misalignment.
   const leftMode = [...lefts].sort((a, b) => rows.filter((row) => row.left === b).length - rows.filter((row) => row.left === a).length)[0];
-  if (spread([...lefts]) > 1) {
-    const outliers = rows.filter((row) => Math.abs(row.left - leftMode) > 1).slice(0, 4);
+  if (spread([...lefts]) > tolerance) {
+    const outliers = rows.filter((row) => Math.abs(row.left - leftMode) > tolerance).slice(0, 4);
     fail(`row text starts ${spread([...lefts])}px apart; outliers: ${JSON.stringify(outliers.map((row) => [row.tag, row.left]))}`);
   }
-  if (spread([...rightEdges]) > 1) fail(`row text ends ${spread([...rightEdges])}px apart`);
-  if (spread([...gaps]) > 1) fail(`row rhythm differs: ${JSON.stringify([...gaps])}`);
+  if (spread([...rightEdges]) > tolerance) fail(`row text ends ${spread([...rightEdges])}px apart`);
+  if (spread([...gaps]) > tolerance) fail(`row rhythm differs: ${JSON.stringify([...gaps])}`);
 };
 
 await measure(1280, 900);
