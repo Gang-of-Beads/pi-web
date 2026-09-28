@@ -18,6 +18,7 @@ import type { ViewportAction, ViewportEvent, ViewportState } from "../chatViewpo
 import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { doesNotFillViewport, shouldRequestNewerMessages } from "../chatHistoryLoading";
+import type { QualifiedWorkspacePanelContribution, WorkspacePanelContext } from "../plugins/types";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
@@ -258,6 +259,11 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      their own. Nothing is pinned, so the transcript scrolls at any card
      height and the card covers none of its own rows. */
   .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); padding-inline: var(--pi-row-inset); }
+  .runs { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); display: grid; gap: var(--pi-space-2); }
+  .runs-chip { box-sizing: border-box; min-height: var(--pi-panel-header-control-height, 36px); display: inline-flex; align-items: center; gap: var(--pi-space-3); width: fit-content; padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
+  .runs-chip.active { border-color: var(--pi-success-border); color: var(--pi-success); }
+  .runs-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1s ease-in-out infinite; }
+  .runs-body { box-sizing: border-box; padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface-sunken, var(--pi-surface)); }
   .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); margin-top: calc(-1 * var(--pi-space-4)); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.
@@ -746,6 +752,8 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) subagents?: readonly SessionSubagentInfo[];
   /** Subagent-tool runs for this session, newest first, live ones first of all. */
   @property({ attribute: false }) subagentRuns?: readonly SessionSubagentRunInfo[];
+  @property({ attribute: false }) panelContext?: WorkspacePanelContext;
+  @property({ attribute: false }) panels?: readonly QualifiedWorkspacePanelContribution[];
   @property({ attribute: false }) backgroundTasks?: readonly SessionBackgroundTaskInfo[];
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
   /** Take one queued message back into the composer, leaving the rest queued. */
@@ -1196,6 +1204,8 @@ if (this.heldWaitingClearTimer !== undefined) {
    * one place instead of being re-derived at each call site.
    */
   private viewportState: ViewportState = { kind: "holding" };
+  /** Which contributed surface the reader opened under the transcript, if any. */
+  private runsOpenPanel: string | undefined;
   private readonly viewportExecutors: Record<ViewportAction, () => boolean> = {
     idle: () => true,
     "snap-bottom": () => { this.scrollToBottom(); return true; },
@@ -1341,6 +1351,7 @@ if (this.heldWaitingClearTimer !== undefined) {
           ${this.renderWaitingForYou()}
         </div>
         ${this.renderJumpToBottom()}
+        ${this.renderContributedRuns()}
         ${this.renderActivityDock()}
       </div>
       ${this.renderImageZoom()}
@@ -1675,6 +1686,48 @@ if (this.heldWaitingClearTimer !== undefined) {
     if (this.turnClockTimer === undefined) return;
     window.clearInterval(this.turnClockTimer);
     this.turnClockTimer = undefined;
+  }
+
+  /**
+   * The door to what this conversation is running.
+   *
+   * The rows were always there - children, background tasks - but they lived behind a
+   * tool panel, and the owner's phone has no room for one. The chip shows what the
+   * *plugins* say about their own surfaces (a badge and a summary they define), and
+   * opening it renders the plugin's own body inline, so the core knows nothing about
+   * subagents or background tasks beyond "a panel with something to say".
+   */
+  /** A panel's own words about its state: its summary, else its badge, both plugin-made. */
+  private panelEntry(panel: QualifiedWorkspacePanelContribution, context: WorkspacePanelContext) {
+    return panel.summary?.(context) ?? panel.badge?.(context);
+  }
+
+  private renderContributedRuns() {
+    const context = this.panelContext;
+    if (context === undefined) return null;
+    const speaking = (this.panels ?? []).filter((panel: QualifiedWorkspacePanelContribution) => {
+      if (panel.visible !== undefined && !panel.visible(context)) return false;
+      return this.panelEntry(panel, context) !== undefined;
+    });
+    if (speaking.length === 0) return null;
+    return html`
+      <div class="runs">
+        ${speaking.map((panel: QualifiedWorkspacePanelContribution) => {
+          const text = this.panelEntry(panel, context);
+          const open = this.runsOpenPanel === panel.id;
+          return html`
+            <button
+              class=${`runs-chip${open ? " active" : ""}`}
+              type="button"
+              aria-expanded=${String(open)}
+              aria-label=${`${panel.title}: ${typeof text === "string" ? text : "open"}`}
+              @click=${() => { this.runsOpenPanel = open ? undefined : panel.id; }}
+            ><span class="dot"></span><span>${panel.title} · ${text}</span></button>
+            ${open ? html`<div class="runs-body">${panel.render(context)}</div>` : null}
+          `;
+        })}
+      </div>
+    `;
   }
 
   private renderActivityDock() {
