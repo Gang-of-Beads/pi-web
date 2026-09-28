@@ -17,7 +17,7 @@ import { scrollDirection, viewportDecision } from "../chatViewport/viewportDecis
 import type { ViewportAction, ViewportEvent, ViewportState } from "../chatViewport/viewportDecision.js";
 import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
-import { shouldRequestNewerMessages } from "../chatHistoryLoading";
+import { doesNotFillViewport, shouldRequestNewerMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
@@ -1145,7 +1145,7 @@ if (this.heldWaitingClearTimer !== undefined) {
     else if (!changed.has("sessionId") && (changed.has("messages") || this.queueGrew(changed.get("status")) || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) && this.pinnedToBottom) this.scrollToBottom();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
-    if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestLoadMoreIfNeeded();
+    if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestPages(false);
     if (changed.has("messages") || changed.has("messageEnd") || changed.has("hasNewer")) {
       this.newerRequested = false;
       if (this.jumpToNewestPending) this.continueJumpToNewest();
@@ -1195,12 +1195,10 @@ if (this.heldWaitingClearTimer !== undefined) {
    * below reports an event and executes the action it answers, so the decision lives in
    * one place instead of being re-derived at each call site.
    */
-  private viewportState: ViewportState = { kind: "unknown" };
+  private viewportState: ViewportState = { kind: "holding" };
   private readonly viewportExecutors: Record<ViewportAction, () => boolean> = {
     idle: () => true,
     "snap-bottom": () => { this.scrollToBottom(); return true; },
-    "hold-bottom": () => true,
-    "hold-reading-anchor": () => true,
     "restore-anchor": () => true,
     "load-older": () => this.requestLoadMore(),
     "load-newest-page": () => this.startNewerPage(),
@@ -2374,7 +2372,7 @@ if (this.heldWaitingClearTimer !== undefined) {
     this.scrollThumb.noteScroll();
     if (this.quoteChip !== undefined) { this.quoteChip = undefined; this.requestUpdate(); }
     this.updatePinnedToBottomFromScroll();
-    this.requestLoadMoreIfNeeded();
+    this.requestPages(true);
     this.scheduleConversationRailUpdate();
     if (!this.suppressScrollSave) this.scheduleScrollPositionSave();
   }
@@ -2496,22 +2494,27 @@ if (this.heldWaitingClearTimer !== undefined) {
     return changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore");
   }
 
-  private requestLoadMoreIfNeeded(): void {
+  /** Both ends answer the same event; the frame coalesces a burst of scrolls into one. */
+  private requestPages(nextFrame: boolean): void {
+    const ask = (): void => {
+      const chat = this.chat ?? undefined;
+      if (chat === undefined) return;
+      this.runViewport({
+        kind: "scrolled",
+        direction: this.lastScrollDirection,
+        metrics: { scrollTop: chat.scrollTop, scrollHeight: chat.scrollHeight, clientHeight: chat.clientHeight },
+      });
+    };
+    if (!nextFrame) {
+      ask();
+      return;
+    }
     if (this.loadMoreCheckFrame !== undefined) return;
     this.loadMoreCheckFrame = requestAnimationFrame(() => {
       this.loadMoreCheckFrame = undefined;
       if (this.suppressLoadMoreRequests) return;
-      const chat = this.chat;
-      if (!chat) return;
-      this.runViewport({ kind: "scrolled", direction: this.lastScrollDirection, metrics: { scrollTop: chat.scrollTop, scrollHeight: chat.scrollHeight, clientHeight: chat.clientHeight } });
+      ask();
     });
-  }
-
-  /** The forward end of the same rule; see `renderNewerBoundary`. */
-  private requestNewerIfNeeded(): void {
-    const chat = this.chat;
-    if (chat === undefined) return;
-    this.runViewport({ kind: "scrolled", direction: this.lastScrollDirection, metrics: { scrollTop: chat.scrollTop, scrollHeight: chat.scrollHeight, clientHeight: chat.clientHeight } });
   }
 
   private startNewerPage(): boolean {
@@ -2649,11 +2652,7 @@ if (this.heldWaitingClearTimer !== undefined) {
     });
   }
 
-  /**
-   * The storage key for this view, carrying the machine: the same session id under two
-   * machines is two different transcripts, and the saved position had been shared
-   * between them (the AGENTS scope rule, applied to what the reader left behind).
-   */
+  /** One event in, its one action out, executed through `viewportExecutors`. */
   private dispatchViewport(event: ViewportEvent): ViewportAction {
     const chat = this.chat ?? undefined;
     const decision = viewportDecision({
@@ -2665,7 +2664,7 @@ if (this.heldWaitingClearTimer !== undefined) {
         loading: this.loadingMore || this.loadMoreRequested || this.newerRequested,
       },
       measured: chat !== undefined && chat.clientHeight > 0,
-      fillsViewport: chat !== undefined && chat.scrollHeight > chat.clientHeight + 1,
+      fillsViewport: chat !== undefined && !doesNotFillViewport(chat),
     });
     this.viewportState = decision.next;
     return decision.action;
@@ -2732,15 +2731,11 @@ if (this.heldWaitingClearTimer !== undefined) {
       return;
     }
 
-    const action = this.dispatchViewport({ kind: "anchorMissing", following: this.pinnedToBottom });
+    const action = this.dispatchViewport({ kind: "anchorMissing" });
     if (action === "snap-bottom") {
       this.pendingScrollRestoreSessionId = undefined;
       this.pendingScrollRestorePosition = undefined;
-      const pinned = this.chat;
-      if (pinned !== undefined) {
-        this.withSuppressedScrollSave(() => { pinned.scrollTop = pinned.scrollHeight; });
-        this.syncScrollMetrics();
-      }
+      this.scrollToBottom();
       return;
     }
     this.pinnedToBottom = false;
@@ -2764,7 +2759,7 @@ if (this.heldWaitingClearTimer !== undefined) {
       return;
     }
     this.viewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
-    if (this.isNearBottom()) this.requestNewerIfNeeded();
+    if (this.isNearBottom()) this.requestPages(false);
     else this.jumpToNewestPending = false;
   }
 

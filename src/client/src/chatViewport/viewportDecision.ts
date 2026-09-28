@@ -28,11 +28,10 @@ export type PageWant = "older" | "newer" | "newest";
 export type ViewportEvent =
   | { kind: "opened"; saved: SavedOpen }
   | { kind: "scrolled"; direction: "up" | "down" | "none"; metrics: ViewportMetrics }
-  | { kind: "grew"; aboveChanged: boolean; gesture: boolean }
   | { kind: "jumpNewest" }
   | { kind: "pageArrived"; want: PageWant }
   | { kind: "pageFailed" }
-  | { kind: "anchorMissing"; following: boolean };
+  | { kind: "anchorMissing" };
 
 export interface ViewportWindow {
   hasOlder: boolean;
@@ -41,7 +40,6 @@ export interface ViewportWindow {
 }
 
 export type ViewportState =
-  | { kind: "unknown" }
   | { kind: "restoring" }
   | { kind: "following" }
   | { kind: "holding" }
@@ -50,8 +48,6 @@ export type ViewportState =
 export type ViewportAction =
   | "idle"
   | "snap-bottom"
-  | "hold-bottom"
-  | "hold-reading-anchor"
   | "restore-anchor"
   | "load-older"
   | "load-newest-page"
@@ -71,8 +67,6 @@ export interface ViewportInput {
   fillsViewport: boolean;
 }
 
-export const FOLLOW_START: ViewportState = { kind: "following" };
-
 const NEAR_TOP = 600;
 
 const idle = (state: ViewportState): ViewportDecision => ({ action: "idle", next: state });
@@ -88,42 +82,32 @@ const load = (input: ViewportInput, want: PageWant, resume: ViewportState): View
     resume,
   });
 
-const wantOf = (state: ViewportState): PageWant => (state.kind === "awaitingPage" ? state.want : "older");
-
 type Handler = (input: ViewportInput, event: ViewportEvent) => ViewportDecision;
 
 /** Where a session opens: the stored mode decides, absence is not a stored bottom. */
 const onOpened: Handler = (input, event) => {
   if (event.kind !== "opened") return idle(input.state);
-  return event.saved === "anchor" ? decide("restore-anchor", { kind: "restoring" }) : decide("snap-bottom", FOLLOW_START);
+  return event.saved === "anchor" ? decide("restore-anchor", { kind: "restoring" }) : decide("snap-bottom", { kind: "following" });
 };
 
-/** The spot is above the loaded window: fetch its page and stay put, or land at the newest. */
+/** The spot is above the loaded window: fetch the page it lives in and stay put. */
 const onAnchorMissing: Handler = (input, event) => {
   if (event.kind !== "anchorMissing" || input.state.kind !== "restoring") return idle(input.state);
-  if (event.following) return decide("snap-bottom", FOLLOW_START);
   if (canLoad(input, "older")) return load(input, "older", { kind: "restoring" });
-  return decide("snap-bottom", FOLLOW_START);
-};
-
-/** Growth: the bottom moves down, and the bottom hold is its single writer. */
-const onGrew: Handler = (input, event) => {
-  if (event.kind !== "grew") return idle(input.state);
-  if (input.state.kind !== "following") return event.aboveChanged ? decide("hold-reading-anchor", input.state) : idle(input.state);
-  return event.gesture ? idle(input.state) : decide("hold-bottom", input.state);
+  return decide("snap-bottom", { kind: "following" });
 };
 
 /** The control loads the newest page directly rather than nudging to the boundary. */
 const onJumpNewest: Handler = (input, event) => {
   if (event.kind !== "jumpNewest") return idle(input.state);
-  if (input.state.kind === "awaitingPage") return idle({ kind: "awaitingPage", want: input.state.want, resume: FOLLOW_START });
-  if (input.window.hasNewer && canLoad(input, "newest")) return load(input, "newest", FOLLOW_START);
-  return decide("snap-bottom", FOLLOW_START);
+  if (input.state.kind === "awaitingPage") return idle({ kind: "awaitingPage", want: input.state.want, resume: { kind: "following" } });
+  if (canLoad(input, "newest")) return load(input, "newest", { kind: "following" });
+  return decide("snap-bottom", { kind: "following" });
 };
 
 const onPageArrived: Handler = (input, event) => {
   if (event.kind !== "pageArrived" || input.state.kind !== "awaitingPage") return idle(input.state);
-  return wantOf(input.state) === "older" ? decide("restore-anchor", { kind: "holding" }) : decide("snap-bottom", FOLLOW_START);
+  return input.state.want === "older" ? decide("restore-anchor", { kind: "holding" }) : decide("snap-bottom", { kind: "following" });
 };
 
 const onPageFailed: Handler = (input, event) => {
@@ -132,7 +116,7 @@ const onPageFailed: Handler = (input, event) => {
 };
 
 const nearTop = (metrics: ViewportMetrics): boolean =>
-  isNearTop({ scrollTop: metrics.scrollTop, clientHeight: metrics.clientHeight }) || metrics.scrollTop < NEAR_TOP / 4;
+  isNearTop({ scrollTop: metrics.scrollTop, clientHeight: metrics.clientHeight });
 
 const nearBottom = (metrics: ViewportMetrics): boolean =>
   metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight < Math.max(NEAR_TOP, metrics.clientHeight * 1.5);
@@ -149,7 +133,7 @@ const onScrolled: Handler = (input, event) => {
   if (input.state.kind === "following") {
     return event.direction === "up" ? decide("stop-following", { kind: "holding" }) : idle(input.state);
   }
-  if (input.state.kind !== "holding" && input.state.kind !== "unknown") return idle(input.state);
+  if (input.state.kind !== "holding") return idle(input.state);
   if (event.direction !== "up" && nearBottom(event.metrics) && canLoad(input, "newer")) {
     return load(input, "newer", { kind: "holding" });
   }
@@ -166,7 +150,6 @@ const onScrolled: Handler = (input, event) => {
 const EVENT_HANDLERS: Record<ViewportEvent["kind"], Handler> = {
   opened: onOpened,
   anchorMissing: onAnchorMissing,
-  grew: onGrew,
   jumpNewest: onJumpNewest,
   pageArrived: onPageArrived,
   pageFailed: onPageFailed,
@@ -174,7 +157,7 @@ const EVENT_HANDLERS: Record<ViewportEvent["kind"], Handler> = {
 };
 
 export function viewportDecision(input: ViewportInput): ViewportDecision {
-  if (!input.measured) return idle({ kind: "unknown" });
+  if (!input.measured) return idle(input.state);
   return EVENT_HANDLERS[input.event.kind](input, input.event);
 }
 

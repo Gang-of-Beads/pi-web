@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  FOLLOW_START,
   scrollDirection,
   viewportDecision,
   type PageWant,
@@ -22,84 +21,59 @@ const decide = (state: ViewportState, event: ViewportEvent, rest: Partial<Viewpo
 
 describe("where a session opens", () => {
   it("opens at the newest when it was closed at the bottom", () => {
-    expect(decide({ kind: "unknown" }, { kind: "opened", saved: "bottom" })).toEqual({ action: "snap-bottom", next: FOLLOW_START });
+    expect(decide({ kind: "holding" }, { kind: "opened", saved: "bottom" })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
   });
 
   it("opens at the stored spot when it was closed elsewhere, one page", () => {
-    expect(decide({ kind: "unknown" }, { kind: "opened", saved: "anchor" })).toEqual({ action: "restore-anchor", next: { kind: "restoring" } });
+    expect(decide({ kind: "holding" }, { kind: "opened", saved: "anchor" })).toEqual({ action: "restore-anchor", next: { kind: "restoring" } });
   });
 
   it("opens at the newest when nothing was stored - absence is not a spot", () => {
-    expect(decide({ kind: "unknown" }, { kind: "opened", saved: "absent" }).action).toBe("snap-bottom");
+    expect(decide({ kind: "holding" }, { kind: "opened", saved: "absent" }).action).toBe("snap-bottom");
   });
 
   it("has nothing to say without a scroller", () => {
-    expect(decide({ kind: "unknown" }, { kind: "opened", saved: "bottom" }, { measured: false }).action).toBe("idle");
-    expect(decide({ kind: "unknown" }, { kind: "scrolled", direction: "up", metrics }, { measured: false }).action).toBe("idle");
+    expect(decide({ kind: "holding" }, { kind: "opened", saved: "bottom" }, { measured: false }).action).toBe("idle");
+    expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "up", metrics }, { measured: false }).action).toBe("idle");
   });
 });
 
 describe("a stored spot whose row is not loaded", () => {
   it("fetches the page it lives in instead of jumping", () => {
-    const decision = decide({ kind: "restoring" }, { kind: "anchorMissing", following: false });
+    const decision = decide({ kind: "restoring" }, { kind: "anchorMissing" });
     expect(decision.action).toBe("load-older");
     expect(decision.next).toEqual({ kind: "awaitingPage", want: "older", resume: { kind: "restoring" } });
   });
 
   it("lands at the newest when there is no older page to fetch", () => {
-    expect(decide({ kind: "restoring" }, { kind: "anchorMissing", following: false }, { window: fullWindow })).toEqual({
+    expect(decide({ kind: "restoring" }, { kind: "anchorMissing" }, { window: fullWindow })).toEqual({
       action: "snap-bottom",
-      next: FOLLOW_START,
+      next: { kind: "following" },
     });
   });
 
   it("ignores the miss when it was not restoring", () => {
-    expect(decide(FOLLOW_START, { kind: "anchorMissing", following: false }).action).toBe("idle");
-  });
-
-  it("lands at the newest for a reader who was following the bottom", () => {
-    expect(decide({ kind: "restoring" }, { kind: "anchorMissing", following: true })).toEqual({ action: "snap-bottom", next: FOLLOW_START });
+    expect(decide({ kind: "following" }, { kind: "anchorMissing" }).action).toBe("idle");
   });
 
   it("owes history while the viewport cannot fill, whatever the direction", () => {
-    const decision = decide(FOLLOW_START, { kind: "scrolled", direction: "none", metrics }, { fillsViewport: false });
+    const decision = decide({ kind: "following" }, { kind: "scrolled", direction: "none", metrics }, { fillsViewport: false });
     expect(decision.action).toBe("load-older");
-    expect(decide(FOLLOW_START, { kind: "scrolled", direction: "none", metrics }).action).toBe("idle");
+    expect(decide({ kind: "following" }, { kind: "scrolled", direction: "none", metrics }).action).toBe("idle");
   });
 });
 
-describe("content growing", () => {
-  it("holds the bottom while the reader follows", () => {
-    expect(decide(FOLLOW_START, { kind: "grew", aboveChanged: false, gesture: false })).toEqual({ action: "hold-bottom", next: FOLLOW_START });
-  });
-
-  it("lets a finger own the scroll", () => {
-    expect(decide(FOLLOW_START, { kind: "grew", aboveChanged: false, gesture: true }).action).toBe("idle");
-  });
-
-  it("holds the reader's row when content above them moved", () => {
-    expect(decide({ kind: "holding" }, { kind: "grew", aboveChanged: true, gesture: false }).action).toBe("hold-reading-anchor");
-  });
-
-  it("does nothing while holding and nothing above moved", () => {
-    expect(decide({ kind: "holding" }, { kind: "grew", aboveChanged: false, gesture: false }).action).toBe("idle");
-  });
-
-  it("never fetches history just because content grew", () => {
-    expect(decide(FOLLOW_START, { kind: "grew", aboveChanged: true, gesture: false }).next.kind).toBe("following");
-  });
-});
 
 describe("only an upward scroll asks for history", () => {
   it("stops following on the first upward scroll", () => {
-    expect(decide(FOLLOW_START, { kind: "scrolled", direction: "up", metrics: atBottom })).toEqual({
+    expect(decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: atBottom })).toEqual({
       action: "stop-following",
       next: { kind: "holding" },
     });
   });
 
   it("does not fetch on the scroll that stops the follow", () => {
-    expect(decide(FOLLOW_START, { kind: "scrolled", direction: "up", metrics: atTop }).action).toBe("stop-following");
+    expect(decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: atTop }).action).toBe("stop-following");
   });
 
   it("fetches an older page when the reader reaches the top", () => {
@@ -119,13 +93,13 @@ describe("only an upward scroll asks for history", () => {
     expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "up", metrics: atBottom }).action).toBe("idle");
   });
 
-  it("fetches from an end even before a session opened", () => {
-    expect(decide({ kind: "unknown" }, { kind: "scrolled", direction: "down", metrics: atBottom }).action).toBe("load-newer-page");
-    expect(decide({ kind: "unknown" }, { kind: "scrolled", direction: "up", metrics: atTop }).action).toBe("load-older");
+  it("fetches from an end before anything opened, holding being the same as unknown", () => {
+    expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: atBottom }).action).toBe("load-newer-page");
+    expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "up", metrics: atTop }).action).toBe("load-older");
   });
 
   it("ignores a downward scroll while still following", () => {
-    expect(decide(FOLLOW_START, { kind: "scrolled", direction: "down", metrics: atBottom }).action).toBe("idle");
+    expect(decide({ kind: "following" }, { kind: "scrolled", direction: "down", metrics: atBottom }).action).toBe("idle");
   });
 });
 
@@ -133,13 +107,13 @@ describe("the jump-to-newest control", () => {
   it("jumps to the newest page rather than walking there", () => {
     const decision = decide({ kind: "holding" }, { kind: "jumpNewest" });
     expect(decision.action).toBe("load-newest-page");
-    expect(decision.next).toEqual({ kind: "awaitingPage", want: "newest", resume: FOLLOW_START });
+    expect(decision.next).toEqual({ kind: "awaitingPage", want: "newest", resume: { kind: "following" } });
   });
 
   it("just lands at the bottom when the newest is already loaded", () => {
     expect(decide({ kind: "holding" }, { kind: "jumpNewest" }, { window: { hasOlder: true, hasNewer: false, loading: false } })).toEqual({
       action: "snap-bottom",
-      next: FOLLOW_START,
+      next: { kind: "following" },
     });
   });
 });
@@ -154,7 +128,7 @@ describe("one page in flight at a time", () => {
   it("takes the newest landing from a jump pressed while a page is in flight, without a second fetch", () => {
     const decision = decide(awaiting, { kind: "jumpNewest" });
     expect(decision.action).toBe("idle");
-    expect(decision.next).toEqual({ kind: "awaitingPage", want: "older", resume: FOLLOW_START });
+    expect(decision.next).toEqual({ kind: "awaitingPage", want: "older", resume: { kind: "following" } });
   });
 
   it("does not start a second fetch while one is in flight", () => {
@@ -166,8 +140,8 @@ describe("one page in flight at a time", () => {
   });
 
   it("lands at the newest after a page that was asked for by a jump", () => {
-    const jumped: ViewportState = { kind: "awaitingPage", want: "newest", resume: FOLLOW_START };
-    expect(decide(jumped, { kind: "pageArrived", want: "newest" })).toEqual({ action: "snap-bottom", next: FOLLOW_START });
+    const jumped: ViewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
+    expect(decide(jumped, { kind: "pageArrived", want: "newest" })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
   });
 
   it("returns to the previous state when the page fails", () => {
@@ -177,11 +151,10 @@ describe("one page in flight at a time", () => {
 
 describe("every state answers every event", () => {
   const states: ViewportState[] = [
-    { kind: "unknown" },
     { kind: "restoring" },
-    FOLLOW_START,
+    { kind: "following" },
     { kind: "holding" },
-    { kind: "awaitingPage", want: "older", resume: FOLLOW_START },
+    { kind: "awaitingPage", want: "older", resume: { kind: "following" } },
   ];
   const wants: PageWant[] = ["older", "newer", "newest"];
   const events: ViewportEvent[] = [
@@ -191,13 +164,10 @@ describe("every state answers every event", () => {
     { kind: "scrolled", direction: "up", metrics: atTop },
     { kind: "scrolled", direction: "down", metrics: atBottom },
     { kind: "scrolled", direction: "none", metrics },
-    { kind: "grew", aboveChanged: true, gesture: false },
-    { kind: "grew", aboveChanged: false, gesture: true },
     { kind: "jumpNewest" },
     ...wants.map((want): ViewportEvent => ({ kind: "pageArrived", want })),
     { kind: "pageFailed" },
-    { kind: "anchorMissing", following: false },
-    { kind: "anchorMissing", following: true },
+    { kind: "anchorMissing" },
   ];
 
   it("returns an action and a next state for the whole cross product", () => {

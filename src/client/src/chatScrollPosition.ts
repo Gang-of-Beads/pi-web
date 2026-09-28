@@ -23,8 +23,7 @@ export interface ChatScrollElement {
 }
 
 export interface ChatScrollStorage {
-  /** Every key the storage holds, so a saved position can be evicted. */
-  keys?(): string[];
+  keys(): string[];
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
@@ -163,7 +162,7 @@ export class ChatScrollController {
    * which sessions exist; this knows which keys it wrote.
    */
   prune(knownKeys: ReadonlySet<string>, machineScope?: string): number {
-    const keys = this.storage.keys?.() ?? [];
+    const keys = this.storage.keys();
     const prefix = machineScope === undefined ? undefined : `${machineScope}:`;
     let removed = 0;
     for (const key of keys) {

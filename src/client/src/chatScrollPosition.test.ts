@@ -18,6 +18,10 @@ class MemoryScrollStorage implements ChatScrollStorage {
   removeItem(key: string): void {
     this.values.delete(key);
   }
+
+  keys(): string[] {
+    return [...this.values.keys()];
+  }
 }
 
 class ManualScheduler implements ChatScrollScheduler {
@@ -258,8 +262,5 @@ describe("saved positions are scoped and evicted", () => {
     expect([...storage.map.keys()]).toEqual([chatScrollStorageKey("home:other")]);
   });
 
-  it("prunes nothing when it cannot enumerate", () => {
-    const storage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
-    expect(new ChatScrollController(storage).prune(new Set())).toBe(0);
-  });
+
 });

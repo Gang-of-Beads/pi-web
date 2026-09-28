@@ -18,3 +18,20 @@ export async function openProbedSession(page, base = PROBE_BASE) {
   );
   await page.waitForTimeout(3000);
 }
+
+/** The first element with this selector, through every shadow root. */
+export async function deepQuery(page, selector) {
+  return await page.evaluate((wanted) => {
+    const walk = (root) => {
+      for (const node of root.querySelectorAll("*")) {
+        if (node.matches?.(wanted)) return node;
+        if (node.shadowRoot !== null && node.shadowRoot !== undefined) {
+          const found = walk(node.shadowRoot);
+          if (found !== null) return found;
+        }
+      }
+      return null;
+    };
+    return walk(document);
+  }, selector);
+}

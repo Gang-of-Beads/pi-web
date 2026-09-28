@@ -6,7 +6,7 @@
  * gutter, same rhythm, on desktop and on the phone.
  */
 import { chromium } from "playwright";
-import { PROBE_BASE, openProbedSession } from "./probeSession.mjs";
+import { PROBE_BASE, deepQuery, openProbedSession } from "./probeSession.mjs";
 
 const fails = [];
 const fail = (message) => { fails.push(message); console.log("FAIL", message); };
@@ -16,18 +16,8 @@ const measure = async (width, height) => {
   const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 700, isMobile: width < 700 });
   await openProbedSession(page, PROBE_BASE);
   await page.waitForTimeout(2500);
-  const rows = await page.evaluate(() => {
-    const chat = (() => {
-      let found = null;
-      const walk = (root) => {
-        for (const node of root.querySelectorAll("*")) {
-          if (node.localName === "chat-view") found = node;
-          if (node.shadowRoot !== null && node.shadowRoot !== undefined) walk(node.shadowRoot);
-        }
-      };
-      walk(document);
-      return found;
-    })();
+  const rows = await page.evaluate(async () => {
+    const chat = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("chat-view") ?? undefined;
     const scroller = chat?.shadowRoot?.querySelector(".chat");
     if (scroller === undefined || scroller === null) return null;
     const out = [];
@@ -66,7 +56,7 @@ const measure = async (width, height) => {
   const gaps = new Set(rows.filter((row) => row.kind !== "group-msg").map((row) => row.bottomGap));
   console.log(`${width}x${height}: ${rows.length} rows · kinds=${JSON.stringify([...new Set(rows.map((row) => row.kind))])} leftEdges=${JSON.stringify([...lefts])} rightEdges=${JSON.stringify([...rightEdges])} gaps=${JSON.stringify([...gaps])}`);
   // A 1px spread is the card border, which is the design, not a misalignment.
-  const leftMode = [...lefts].sort((a, b) => rows.filter((row) => row.left === b).length - rows.filter((row) => row.left === a).length)[0];
+  const leftMode = Math.min(...lefts);
   if (spread([...lefts]) > tolerance) {
     const outliers = rows.filter((row) => Math.abs(row.left - leftMode) > tolerance).slice(0, 4);
     fail(`row text starts ${spread([...lefts])}px apart; outliers: ${JSON.stringify(outliers.map((row) => [row.tag, row.left]))}`);
