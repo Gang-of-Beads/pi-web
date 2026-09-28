@@ -88,16 +88,13 @@ unverified row says so and offers nothing that would double-send.
 - Reconnect reconciliation is a single pass over `unverified` records, one probe each, and
   it is idempotent (the same answer twice is the same state).
 
-## The top strip's membership
+## Where running work is shown (superseded)
 
-Only surfaces where "is it running" is the question:
-
-- subagents (a child is running) - already opted in.
-- background tasks (a command is running).
-- goals (the focused goal is being driven).
-
-`git` and `files` stay in the navigation menu: a branch and a folder have a *content* state,
-not an activity state, which is why a pulsing git chip read as noise.
+The top strip this section once specified was removed in 9ce89824: the owner rejected any
+surface between the transcript and the composer other than the status line. A plugin now
+says what it is running through an activity note on the dock line, and shows its details
+as its own panel in the ≡ menu. Today only background-runs contributes a note; subagents and
+goals show their state as menu badges only.
 
 ## Work order
 

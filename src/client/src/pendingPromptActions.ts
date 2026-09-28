@@ -19,11 +19,14 @@ export interface PendingPromptActions {
   label: string;
   /** Retry belongs to a send that stopped; one on its way cannot be re-sent. */
   retry: boolean;
-  /** Discard is always available: it drops the local record, retried or not. */
-  discard: true;
+  /**
+   * Discard only once the send has stopped: a local delete cannot stop a request in flight,
+   * so offering it there would claim an outcome the request can overturn.
+   */
+  discard: boolean;
 }
 
 export function pendingPromptActions(state: PendingPromptState): PendingPromptActions {
-  if (state === "in-flight") return { state, label: "Sending", retry: false, discard: true };
+  if (state === "in-flight") return { state, label: "Sending", retry: false, discard: false };
   return { state, label: "Unsent", retry: true, discard: true };
 }

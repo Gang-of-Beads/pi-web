@@ -159,9 +159,10 @@ describe("what else is running, while a question holds the reader", () => {
     expect(view.renderRoot.querySelector(".activity-dock")).toBeNull();
   });
 
-  it("keeps the note out of the shrinking label, so a long label cannot ellipsize it away", () => {
+  it("lets label and note give way together, and clips the dock, so nothing spills past its border", () => {
     const sheet = String(ChatView.styles);
-    expect(sheet).toMatch(/\.activity-note\s*\{[^}]*flex:\s*0 0 auto/u);
+    expect(sheet).toMatch(/\.activity-note\s*\{[^}]*text-overflow:\s*ellipsis/u);
+    expect(sheet).toMatch(/\.activity-dock\s*\{\s*overflow:\s*hidden/u);
   });
 });
 

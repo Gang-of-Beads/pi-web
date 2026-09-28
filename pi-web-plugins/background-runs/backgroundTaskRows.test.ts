@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backgroundTaskList, durationLabel, taskPresentation, type TaskInput } from "./backgroundTaskRows";
+import { backgroundTaskList, durationLabel, listNote, taskPresentation, type TaskInput, type TasksRead } from "./backgroundTaskRows";
 
 const task = (id: string, status: string, startedAt: string, extra: Partial<TaskInput> = {}): TaskInput => ({ id, name: `task ${id}`, status, startedAt, ...extra });
 
@@ -56,5 +56,19 @@ describe("durationLabel", () => {
     expect(durationLabel(3_720_000)).toBe("1h 2m");
     expect(durationLabel(undefined)).toBeUndefined();
     expect(durationLabel(-1)).toBeUndefined();
+  });
+});
+
+describe("listNote", () => {
+  it("says none only once the session was read, and says unknown when the read failed", () => {
+    const cases: [TasksRead, number, string | undefined][] = [
+      ["unread", 0, "Reading this session's background runs…"],
+      ["read", 0, "This session has started no background runs."],
+      ["failed", 0, "This machine could not read the background runs."],
+      ["unread", 3, undefined],
+      ["read", 3, undefined],
+      ["failed", 3, "Could not refresh - showing the last read."],
+    ];
+    for (const [read, count, expected] of cases) expect(listNote(read, count)).toBe(expected);
   });
 });

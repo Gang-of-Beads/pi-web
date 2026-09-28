@@ -23,11 +23,12 @@ export const ROW_GROUPS: Record<RowGroup, RowGroupMembership> = {
   /**
    * Rows whose inset is already paid by what holds them or what they hold: the open
    * question and dialog cards draw their own box, and a live-events row sits inside
-   * .group-body, which carries the group's inset. They add nothing. An inset here is paid
+   * .group-body, which carries the group's inset. They add nothing. (The answered-question
+   * shell zeroes all its padding in its own rule, so it needs no entry here.) An inset here is paid
    * twice - how the question card ended up a gutter narrower than every message, and how
    * tool boxes inside live events went from 12px to 22px (phone) and 24px (desktop) in.
    */
-  holder: { group: "holder", selectors: [".waiting-slot", ".msg.ask-user-record-shell", ".group-msg"] },
+  holder: { group: "holder", selectors: [".waiting-slot", ".group-msg"] },
 };
 
 /** Every selector the groups claim, so a test can catch an unclassified row. */

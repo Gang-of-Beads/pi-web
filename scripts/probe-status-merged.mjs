@@ -4,9 +4,11 @@
  * The owner rejected a strip of chips above the dock ("Background · 404 finished" that
  * opened a raw dump over the transcript): background work is part of the session's status,
  * so it rides the dock's own line in every state and no chip strip exists at all. The review
- * then measured the merged line overflowing the screen at 320px and a long label ellipsizing
- * the note away, and the dock vanishing with its note while a question card was open. Each
- * state is set on the real chat view and measured at phone widths.
+ * then measured the merged line overflowing the screen at 320px, notes from two plugins
+ * spilling past the dock's border, and the dock vanishing with its note while a question
+ * card was open. Each state is set on the real chat view with a two-plugin note and measured
+ * at phone widths: nothing may leave the dock or the screen, and neither the state nor the
+ * note may be squeezed to nothing.
  */
 import { chromium } from "playwright";
 import { PROBE_BASE, openProbedSession } from "./probeSession.mjs";
@@ -14,7 +16,7 @@ import { PROBE_BASE, openProbedSession } from "./probeSession.mjs";
 const fails = [];
 const fail = (message) => { fails.push(message); console.log("FAIL", message); };
 
-const NOTE = "407 background runs";
+const NOTE = "407 background runs · 4 subagents running · 2 goals being driven";
 const STATES = [
   { name: "working-long", status: { isStreaming: true }, activity: { phase: "active", label: "receiving response from the model with a long label" } },
   { name: "asking-dialog", dialog: true },
@@ -58,6 +60,7 @@ for (const width of [320, 393]) {
       await new Promise((resolve) => setTimeout(resolve, 200));
       const dock = view.shadowRoot.querySelector(".activity-dock");
       const noteNode = dock?.querySelector(".activity-note");
+      const labelNode = dock?.querySelector(".activity-text");
       const rect = dock?.getBoundingClientRect();
       const noteRect = noteNode?.getBoundingClientRect();
       const measured = {
@@ -66,7 +69,8 @@ for (const width of [320, 393]) {
         text: dock?.textContent?.replace(/\s+/gu, " ").trim() ?? null,
         dockRight: rect === undefined ? null : Math.round(rect.right),
         noteRight: noteRect === undefined ? null : Math.round(noteRect.right),
-        noteWhole: noteNode === null || noteNode === undefined ? null : noteNode.scrollWidth <= noteNode.clientWidth + 1,
+        noteWidth: noteRect === undefined ? null : Math.round(noteRect.width),
+        labelWidth: labelNode === null || labelNode === undefined ? null : Math.round(labelNode.getBoundingClientRect().width),
         viewport: window.innerWidth,
       };
       for (const name of Object.keys(pinned)) Reflect.deleteProperty(view, name);
@@ -79,8 +83,9 @@ for (const width of [320, 393]) {
     if (result.error !== undefined) { fail(`${where}: precondition missing - ${result.error}`); continue; }
     if (result.strip !== 0) fail(`${where}: a chip strip renders`);
     if (result.text === null) { fail(`${where}: no dock, so the note is not shown`); continue; }
-    if (!result.text.includes(NOTE)) fail(`${where}: the dock does not carry the note: ${result.text}`);
-    if (result.noteWhole !== true) fail(`${where}: the note is clipped`);
+    if (!result.text.includes("407 background runs")) fail(`${where}: the dock does not carry the note: ${result.text}`);
+    if (result.noteWidth === null || result.noteWidth < 24) fail(`${where}: the note was squeezed to nothing (${String(result.noteWidth)}px)`);
+    if (result.labelWidth !== null && result.labelWidth < 24) fail(`${where}: the state label was squeezed to nothing (${String(result.labelWidth)}px)`);
     if (result.dockRight !== null && result.dockRight > result.viewport) fail(`${where}: the dock overflows the screen (${String(result.dockRight)} > ${String(result.viewport)})`);
     if (result.noteRight !== null && result.dockRight !== null && result.noteRight > result.dockRight) fail(`${where}: the note spills out of the dock (${String(result.noteRight)} > ${String(result.dockRight)})`);
   }

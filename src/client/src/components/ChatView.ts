@@ -32,7 +32,6 @@ const WHEEL_ZOOM_STEP = 300;
 import type { ClosedExtensionDialog } from "../appState";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { isWaitingForUser } from "../../../shared/sessionActivityState";
-import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import type { DrawerSectionContext, QualifiedActivityNoteContribution, QualifiedDrawerSectionContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";
 import { selectedDrawerTab, type DrawerTab } from "../drawerTabSelection";
@@ -261,8 +260,8 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   /* One margin rule per group (see rowGroups.ts): a bare row adds the inset a card gets
      from its own padding, so every kind of row starts its text on the same edge. */
   .msg.event-group > summary, .session-activity { padding-inline: var(--pi-row-inset); }
-  .waiting-slot, .msg.ask-user-record-shell, .group-msg { padding-inline: 0; }
-  .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); margin-top: calc(-1 * var(--pi-space-4)); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
+  .waiting-slot, .group-msg { padding-inline: 0; }
+  .activity-dock { overflow: hidden; flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); margin-top: calc(-1 * var(--pi-space-4)); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.
 
@@ -297,7 +296,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .activity-dock.asking { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-surface); }
   .activity-dock.error { border-color: var(--pi-danger); color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
   .activity-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .activity-note { flex: 0 0 auto; white-space: nowrap; }
+  .activity-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* A state mark carries meaning: it is drawn at full strength and the state's
      own colour says which state it is. An opacity layer put idle, asking and
      error under the 3:1 non-text floor while working and background were not. */
@@ -481,7 +480,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg:focus-within > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
   @media (hover: hover) { .msg:hover > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions { opacity: 1; } }
   .msg-actions:has(.msg-action[data-action="retry"]), .msg-actions:has(.msg-action[data-action="discard"]) { opacity: 1; }
-  .msg.user .msg-action[data-action="discard"] { color: var(--pi-danger); }
+  .msg.user .msg-action[data-action="retry"] { color: var(--pi-accent); border-color: var(--pi-accent); }
   .label { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); line-height: inherit; }
   .msg-header .label { margin: 0; }
   /* Quiet, but never below the non-text contrast floor: .28 measured 1.37:1
@@ -756,11 +755,6 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onDiscardMessage?: (clientMessageId: string) => void;
   /** Replay this one message from the outbox under its own identity. */
   @property({ attribute: false }) onRetryMessage?: (clientMessageId: string) => void;
-  /** Child sessions (subagents) spawned by this session, most urgent first. */
-  @property({ attribute: false }) subagents?: readonly SessionSubagentInfo[];
-  /** Subagent-tool runs for this session, newest first, live ones first of all. */
-  @property({ attribute: false }) subagentRuns?: readonly SessionSubagentRunInfo[];
-  @property({ attribute: false }) backgroundTasks?: readonly SessionBackgroundTaskInfo[];
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
   /** Take one queued message back into the composer, leaving the rest queued. */
   @property({ attribute: false }) onRecallQueuedMessage?: (message: QueuedSessionMessage) => void;
@@ -1533,21 +1527,6 @@ if (this.heldWaitingClearTimer !== undefined) {
    * what is this conversation running that is not the reply on screen - and a
    * browser had no other way to see them at all.
    */
-  /**
-   * Kind filter for the activity list.
-   *
-   * A long-running chat accumulates dozens of rows of three different kinds,
-   * and "what are my subagents doing" and "did that build finish" are separate
-   * questions. Kinds with nothing in them are not offered.
-   */
-  private activityPanelState(): ActivityPanelState | undefined {
-    const total = (this.subagents?.length ?? 0) + (this.subagentRuns?.length ?? 0) + (this.backgroundTasks?.length ?? 0);
-    if (total === 0) return undefined;
-    const working = [...this.subagents ?? [], ...this.subagentRuns ?? [], ...this.backgroundTasks ?? []]
-      .filter((row) => row.status === "working" || row.status === "running").length;
-    return { working };
-  }
-
   private renderImageZoom() {
     return html`
       <dialog class="image-zoom" tabindex="-1" aria-label="Image, tap to close" @click=${this.onImageZoomDialogClick} @close=${this.closeImageZoom} @cancel=${this.closeImageZoom} @pointerdown=${this.onImageZoomPointerDown} @pointermove=${this.onImageZoomPointerMove} @pointerup=${this.onImageZoomPointerUp} @pointercancel=${this.onImageZoomPointerUp} @wheel=${this.onImageZoomWheel}>
@@ -1693,13 +1672,13 @@ if (this.heldWaitingClearTimer !== undefined) {
   }
 
   private renderActivityDock() {
-    if (this.pendingAsk !== undefined) return this.renderNotesDock(this.contributedActivityNote(false));
+    if (this.pendingAsk !== undefined) return this.renderNotesDock(this.contributedActivityNote(this.turnIdle()));
     if (this.isSendingPrompt) {
       return html`
         <div class="activity-dock sending" aria-live="polite">
           <span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>
           <span class="activity-text">Sending your message…</span>
-          ${renderActivityNote(this.contributedActivityNote(false))}
+          ${renderActivityNote(this.contributedActivityNote(this.turnIdle()))}
         </div>
       `;
     }
@@ -1728,6 +1707,14 @@ if (this.heldWaitingClearTimer !== undefined) {
         ${elapsed === undefined ? null : html`<span class="activity-elapsed" aria-hidden="true">${elapsed.text}</span>`}
       </div>
     `;
+  }
+
+  /** Whether the assistant's turn is over, the fact a plugin note is told as `idle`. */
+  private turnIdle(): boolean {
+    const state = this.activityState();
+    if (state === undefined) return true;
+    const category = this.activityCategory(state);
+    return category === "idle" || category === undefined;
   }
 
   /**
@@ -2270,7 +2257,8 @@ if (this.heldWaitingClearTimer !== undefined) {
   }
 
   private renderMessageActions(message: ChatLine, key: string) {
-    const resendable = this.onResendMessage !== undefined && isResendableLine(message);
+    const pendingDecision = retryableDeliveryId(message) !== undefined || discardAction(message) !== undefined;
+    const resendable = this.onResendMessage !== undefined && isResendableLine(message) && !pendingDecision;
     const recall = this.renderQueuedBubbleRecall(message);
     const discard = this.onDiscardMessage === undefined ? undefined : discardAction(message);
     const retryId = this.onRetryMessage === undefined ? undefined : retryableDeliveryId(message);
@@ -2282,7 +2270,7 @@ if (this.heldWaitingClearTimer !== undefined) {
         ${retryId === undefined
           ? null
           : html`<button type="button" class="msg-action" data-action="retry" title="Retry: send this message again" aria-label="Retry sending this message" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onRetryMessage?.(retryId); }}>
-              ${renderRunIcon()}
+              ${renderResendIcon()}
             </button>`}
         ${discard === undefined
           ? null
@@ -2981,11 +2969,6 @@ function sectionBadgeMark(section: QualifiedDrawerSectionContribution, context: 
   if (badge === undefined || badge === "") return nothing;
   const label = `${section.title}: ${String(badge)} open`;
   return html`<span class="drawer-tab-badge" title=${label} aria-label=${label}>${String(badge)}</span>`;
-}
-
-interface ActivityPanelState {
-  /** How many pieces of this chat's background work are happening now. */
-  working: number;
 }
 
 export function activityDockLabel(category: string | undefined, state: string, text: string): string {

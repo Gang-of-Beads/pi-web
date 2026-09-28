@@ -10,6 +10,8 @@
 
 export type TaskTone = "running" | "done" | "problem" | "unknown";
 
+export type TasksRead = "unread" | "read" | "failed";
+
 export interface TaskInput {
   readonly id: string;
   readonly name: string;
@@ -75,4 +77,20 @@ export function backgroundTaskList(tasks: readonly TaskInput[], shown = FINISHED
     finished: finished.slice(0, shown).map(row),
     hiddenFinished: Math.max(0, finished.length - shown),
   };
+}
+
+/**
+ * What the list says besides its rows, per read state. An empty list is "none" only once
+ * the session was read; before that it is still reading, and after a failed read it is
+ * unknown - with any rows from an earlier read kept and marked as possibly stale.
+ */
+const LIST_NOTE: Record<TasksRead, { empty: string; withRows: string | undefined }> = {
+  unread: { empty: "Reading this session's background runs…", withRows: undefined },
+  read: { empty: "This session has started no background runs.", withRows: undefined },
+  failed: { empty: "This machine could not read the background runs.", withRows: "Could not refresh - showing the last read." },
+};
+
+export function listNote(read: TasksRead, taskCount: number): string | undefined {
+  const note = LIST_NOTE[read];
+  return taskCount === 0 ? note.empty : note.withRows;
 }

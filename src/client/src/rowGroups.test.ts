@@ -26,7 +26,7 @@ describe("row margin groups", () => {
   });
 
   it("never pads a holder, so a held card keeps the column's full width", () => {
-    const holderRule = /\.waiting-slot, \.msg\.ask-user-record-shell, \.group-msg \{ padding-inline: 0; \}/u;
+    const holderRule = /\.waiting-slot, \.group-msg \{ padding-inline: 0; \}/u;
     expect(chatView).toMatch(holderRule);
     const bareRule = /\.msg\.event-group > summary, \.session-activity \{ padding-inline: var\(--pi-row-inset\); \}/u;
     expect(chatView).toMatch(bareRule);

@@ -38,15 +38,15 @@ describe("PiWebApp queued-message clear wiring", () => {
     setAppState(app, state);
     const controller = appSessionController(app);
     const clearServerQueue = vi.spyOn(controller, "clearServerQueue").mockResolvedValue(undefined);
-    const replaceText = vi.fn();
-    Object.defineProperty(app, "promptEditor", { get: () => ({ replaceText, focusInput: vi.fn() }), configurable: true });
+    const takeBack = vi.fn();
+    Object.defineProperty(app, "promptEditor", { get: () => ({ takeBack, focusInput: vi.fn() }), configurable: true });
 
     const render = renderChatView(app, state);
     const callback = templateCallbackAfterMarker(render, ".onClearServerQueue=");
 
     callback([{ kind: "steer", text: "first queued" }, { kind: "followUp", text: "second queued" }]);
 
-    expect(replaceText).toHaveBeenCalledWith("first queued\n\nsecond queued");
+    expect(takeBack).toHaveBeenCalledWith({ text: "first queued\n\nsecond queued", attachments: [] });
     expect(clearServerQueue).toHaveBeenCalledOnce();
   });
 });

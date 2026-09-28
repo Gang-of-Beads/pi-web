@@ -5,6 +5,7 @@ import type { ComposerEditorHandle } from "./composerEditorSetup";
 type ComposerEditorModule = typeof import("./composerEditorSetup");
 import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues } from "lit";
 import { pendingPromptActions } from "../pendingPromptActions";
+import { joinTakenBack } from "../composerTakeBack";
 import { settleOutbox } from "../outboxSettlement";
 import { SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
 import { customElement, property, query, state } from "lit/decorators.js";
@@ -497,15 +498,22 @@ export class PromptEditor extends LitElement {
   }
 
   /**
-   * Restore a previously sent prompt: its text, plus its images as fresh
-   * pending attachments.
+   * Take a message back into the composer: its text, plus its images as fresh pending
+   * attachments, without losing anything the reader already has there.
    *
-   * Replaces rather than appends, because this is a retry of one message and
-   * merging it into whatever is half-typed would silently mix two prompts.
+   * Every "put it back" path - Discard, recall, stop, edit and send again - lands here, so
+   * none of them can overwrite a half-typed draft (see composerTakeBack).
    */
-  restorePrompt(prompt: { text: string; attachments: readonly PromptAttachment[] }): void {
+  takeBack(prompt: { text: string; attachments: readonly PromptAttachment[] }): void {
+    const current = this.editor?.state.doc.toString() ?? this.draft;
     this.attachmentError = undefined;
-    this.attachments = prompt.attachments
+    this.attachments = [...this.attachments, ...this.restoredImages(prompt.attachments)];
+    this.replaceText(joinTakenBack(current, prompt.text));
+    this.focusInput();
+  }
+
+  private restoredImages(attachments: readonly PromptAttachment[]) {
+    return attachments
       .filter((attachment): attachment is Extract<PromptAttachment, { kind: "image" }> => attachment.kind === "image")
       .map((attachment, index) => {
         this.attachmentSeq += 1;
@@ -515,13 +523,9 @@ export class PromptEditor extends LitElement {
           name: attachment.name ?? `image-${String(index + 1)}`,
           mimeType: attachment.mimeType,
           data: attachment.data,
-          // Recomputed from the payload: the original byte size is not carried
-          // in the transcript, and the previews size themselves from it.
           size: Math.floor((attachment.data.length * 3) / 4),
         };
       });
-    this.replaceText(prompt.text);
-    this.focusInput();
   }
 
   replaceText(text: string): void {
@@ -630,8 +634,8 @@ export class PromptEditor extends LitElement {
             <div class="pending-prompt">
               <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>
               <span class="pending-prompt-state">${actions.label}</span>
-              ${actions.retry ? html`<button type="button" @click=${() => { this.flushPendingPrompts(); }}>Retry</button>` : nothing}
-              <button type="button" class="pending-prompt-discard" @click=${() => { this.discardPendingPrompt(prompt); }}>Discard</button>
+              ${actions.retry ? html`<button type="button" @click=${() => { this.retryOutbox(prompt.clientMessageId ?? ""); }}>Retry</button>` : nothing}
+              ${actions.discard ? html`<button type="button" class="pending-prompt-discard" @click=${() => { this.discardPendingPrompt(prompt); }}>Discard</button>` : nothing}
             </div>
           `;
         })}
@@ -644,6 +648,7 @@ export class PromptEditor extends LitElement {
     if (key === "" || prompt.clientMessageId === undefined) return;
     forgetPendingPrompt(key, prompt.clientMessageId);
     this.pendingPrompts = loadPendingPrompts(key);
+    this.takeBack({ text: prompt.text, attachments: prompt.attachments ?? [] });
   }
 
   private renderAttachments() {
@@ -1149,12 +1154,15 @@ export class PromptEditor extends LitElement {
    */
   /**
    * Replay one message from the outbox under its own identity, as its row's Retry asks.
-   * Offline, the replay cannot start; saying so beats a button that silently does nothing,
-   * and the online listener sends it the moment the link returns.
+   * When the replay cannot start - offline, another replay still running, or the message no
+   * longer held - the reader is told which, instead of pressing a button that does nothing.
    */
   retryOutbox(clientMessageId: string): void {
-    if (!navigator.onLine) {
-      this.onPluginNotice?.("You are offline - this message sends itself when the connection is back.", "warning");
+    const key = this.outboxKey();
+    const held = loadPendingPrompts(key).some((prompt) => prompt.clientMessageId === clientMessageId);
+    const blocked = retryBlocked(navigator.onLine, this.flushInFlight, held);
+    if (blocked !== undefined) {
+      this.onPluginNotice?.(RETRY_BLOCKED_NOTICE[blocked], "warning");
       return;
     }
     this.replayOutbox(clientMessageId);
@@ -1407,4 +1415,18 @@ export function composerPlaceholder(): HTMLElement {
   hints.textContent = "/ @ #";
   wrap.append(label, hints);
   return wrap;
+}
+
+type RetryBlock = "offline" | "busy" | "gone";
+
+const RETRY_BLOCKED_NOTICE: Record<RetryBlock, string> = {
+  offline: "You are offline - this message sends itself when the connection is back.",
+  busy: "Another message is being resent - retry this one when it finishes.",
+  gone: "This message is no longer held for a retry - it may already have been delivered.",
+};
+
+export function retryBlocked(online: boolean, replaying: boolean, held: boolean): RetryBlock | undefined {
+  if (!online) return "offline";
+  if (replaying) return "busy";
+  return held ? undefined : "gone";
 }

@@ -1,4 +1,4 @@
-import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
+import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, BackgroundTasksRead, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
 import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
 import type { StopCause } from "./stopCause";
@@ -64,6 +64,7 @@ export interface AppState {
   /** Subagents (child sessions) of the selected session, most urgent first. */
   subagents: readonly SessionSubagentInfo[];
   backgroundTasks: readonly SessionBackgroundTaskInfo[];
+  backgroundTasksRead: BackgroundTasksRead;
   /**
    * The selected session's transcript read failed, with the daemon's own words.
    * An empty transcript after a failed read must render this, never the empty
@@ -258,6 +259,7 @@ export function initialAppState(): AppState {
     selectedSession: undefined,
     subagents: [],
     backgroundTasks: [],
+    backgroundTasksRead: "unread",
     transcriptFailed: undefined,
     subagentRuns: [],
     status: undefined,

@@ -30,7 +30,7 @@ describe("prompt-editor send failure", () => {
   it("restores the attachments too", async () => {
     const onSend = vi.fn(() => Promise.resolve(false));
     const editor = await mount(onSend);
-    editor.restorePrompt({
+    editor.takeBack({
       text: "look at this",
       attachments: [{ kind: "image", mimeType: "image/png", data: "AAAA", name: "shot.png" }],
     });

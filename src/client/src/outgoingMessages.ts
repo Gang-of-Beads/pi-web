@@ -131,22 +131,6 @@ export function outgoingVerdict(state: OutgoingState, event: OutgoingEvent): Out
   return TABLE[state][event];
 }
 
-/** What the row for this state offers, so a renderer never asks two questions. */
-export type OutgoingRow = "none" | "pending" | "retry" | "unverified";
-
-const ROWS: Record<OutgoingState, OutgoingRow> = {
-  stored: "pending",
-  sending: "pending",
-  accepted: "none",
-  delivered: "none",
-  unverified: "unverified",
-  failed: "retry",
-};
-
-export function outgoingRow(state: OutgoingState): OutgoingRow {
-  return ROWS[state];
-}
-
 export const OUTGOING_STATES: OutgoingState[] = ["stored", "sending", "accepted", "delivered", "unverified", "failed"];
 
 export const OUTGOING_EVENTS: OutgoingEvent[] = [

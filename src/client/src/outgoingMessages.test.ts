@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OUTGOING_EVENTS, OUTGOING_STATES, outgoingRow, outgoingVerdict, type OutgoingState } from "./outgoingMessages.js";
+import { OUTGOING_EVENTS, OUTGOING_STATES, outgoingVerdict, type OutgoingState } from "./outgoingMessages.js";
 
 const apply = (state: OutgoingState, event: (typeof OUTGOING_EVENTS)[number]): OutgoingState | "dropped" => {
   const verdict = outgoingVerdict(state, event);
@@ -14,12 +14,6 @@ describe("every state answers every event", () => {
       for (const event of OUTGOING_EVENTS) {
         expect(outgoingVerdict(state, event).kind, `${state} x ${event}`).toBeTypeOf("string");
       }
-    }
-  });
-
-  it("classifies every state for rendering", () => {
-    for (const state of OUTGOING_STATES) {
-      expect(["none", "pending", "retry", "unverified"]).toContain(outgoingRow(state));
     }
   });
 });
@@ -38,12 +32,10 @@ describe("a send's own life", () => {
 
   it("calls a network refusal a failure the reader can retry", () => {
     expect(apply("sending", "send-refused-network")).toBe("failed");
-    expect(outgoingRow("failed")).toBe("retry");
   });
 
   it("calls a lost answer unverified rather than failed, because it may have landed", () => {
     expect(apply("sending", "send-timeout")).toBe("unverified");
-    expect(outgoingRow("unverified")).toBe("unverified");
     expect(apply("unverified", "daemon-queued")).toBe("accepted");
   });
 
@@ -65,11 +57,5 @@ describe("a send's own life", () => {
     for (const state of OUTGOING_STATES) {
       expect(apply(state, "scope-gone"), `${state} with a gone scope`).toBe("dropped");
     }
-  });
-
-  it("shows a row only while there is something to say", () => {
-    expect(outgoingRow("sending")).toBe("pending");
-    expect(outgoingRow("accepted")).toBe("none");
-    expect(outgoingRow("delivered")).toBe("none");
   });
 });

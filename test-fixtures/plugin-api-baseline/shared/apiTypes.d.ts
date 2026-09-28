@@ -1513,6 +1513,11 @@ export interface SessionSubagentsSnapshot {
  * process: ownership comes from the session transcript, which records the
  * task's output path when it starts.
  */
+/**
+ * Whether this session's background runs have been read. An empty list alone cannot say
+ * "none" - it is also what an unread or failed read looks like - so the read carries its state.
+ */
+export type BackgroundTasksRead = "unread" | "read" | "failed";
 export interface SessionBackgroundTaskInfo {
     readonly id: string;
     readonly name: string;

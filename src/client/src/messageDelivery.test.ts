@@ -68,10 +68,15 @@ describe("restartDelivery", () => {
   // The retry is a fresh attempt, so it must survive the same way the first
   // send did: a bubble already in flight is left alone, and an unknown id
   // changes nothing.
-  it("only restarts a message that actually failed", () => {
+  it("only restarts a message that failed or never got an answer", () => {
     expect(restartDelivery([tracked("sending")], ID)[0]?.meta?.delivery?.state).toBe("sending");
     expect(restartDelivery([tracked("received")], ID)[0]?.meta?.delivery?.state).toBe("received");
     expect(restartDelivery([tracked("failed")], "other-id")[0]?.meta?.delivery?.state).toBe("failed");
+  });
+
+  it("shows a retry of an unanswered send as in flight, so the row stops offering Discard", () => {
+    const line: ChatLine = { role: "user", parts: [{ type: "text", text: "hello" }], meta: { delivery: { clientMessageId: ID, state: "unverifiable" } } };
+    expect(restartDelivery([line], ID)[0]?.meta?.delivery?.state).toBe("sending");
   });
 });
 

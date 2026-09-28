@@ -1,11 +1,19 @@
 import type { PiWebPlugin } from "@gang-of-beads/pi-web/plugin-api";
 import { backgroundRunCountOf, backgroundRunNote } from "./backgroundRunNote.js";
 import { noticeLabel, taskNotice } from "./taskNotice.js";
-import type { TaskInput } from "./backgroundTaskRows.js";
+import type { TaskInput, TasksRead } from "./backgroundTaskRows.js";
 import "./backgroundTasksElement.js";
 
-function tasksOf(context: { state?: { backgroundTasks?: readonly TaskInput[] | undefined } | undefined }): readonly TaskInput[] {
+interface TasksContext {
+  state?: { backgroundTasks?: readonly TaskInput[] | undefined; backgroundTasksRead?: TasksRead | undefined; selectedSession?: unknown } | undefined;
+}
+
+function tasksOf(context: TasksContext): readonly TaskInput[] {
   return context.state?.backgroundTasks ?? [];
+}
+
+function readOf(context: TasksContext): TasksRead {
+  return context.state?.backgroundTasksRead ?? "unread";
 }
 
 function runningCount(context: Parameters<typeof tasksOf>[0]): number {
@@ -22,16 +30,18 @@ const plugin: PiWebPlugin = {
           id: "workspace.background",
           title: "Background",
           order: 65,
-          visible: (context) => tasksOf(context).length > 0,
+          visible: (context) => context.state?.selectedSession !== undefined,
           badge: (context) => {
             const running = runningCount(context);
             return running === 0 ? undefined : running;
           },
           summary: (context) => {
             const running = runningCount(context);
-            return running > 0 ? `${String(running)} running` : `${String(tasksOf(context).length)} finished`;
+            if (running > 0) return `${String(running)} running`;
+            const total = tasksOf(context).length;
+            return total > 0 ? `${String(total)} finished` : undefined;
           },
-          render: (context) => html`<pi-web-background-tasks .tasks=${tasksOf(context)}></pi-web-background-tasks>`,
+          render: (context) => html`<pi-web-background-tasks .tasks=${tasksOf(context)} .read=${readOf(context)}></pi-web-background-tasks>`,
         },
       ],
       messageRenderers: [

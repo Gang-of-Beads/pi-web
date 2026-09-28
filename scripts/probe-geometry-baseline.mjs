@@ -20,7 +20,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const baselinePath = join(here, "geometry-baseline.json");
 const update = process.argv.includes("--update");
 const TOLERANCE = 1;
-const WIDTHS = { phone: { width: 393, height: 850, mobile: true }, desktop: { width: 1280, height: 900, mobile: false } };
+const WIDTHS = { narrow: { width: 320, height: 700, mobile: true }, phone: { width: 393, height: 850, mobile: true }, desktop: { width: 1280, height: 900, mobile: false } };
 
 const fails = [];
 const fail = (message) => { fails.push(message); console.log("FAIL", message); };
@@ -122,6 +122,10 @@ if (update) {
 }
 
 const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
+const keysOf = (value) => Object.keys(value ?? {}).filter((key) => key !== "error").sort().join(",");
+for (const name of new Set([...Object.keys(baseline), ...Object.keys(measured)])) {
+  if (keysOf(baseline[name]) !== keysOf(measured[name])) fail(`${name}: measured keys [${keysOf(measured[name])}] differ from the baseline [${keysOf(baseline[name])}] - record a deliberate change with --update`);
+}
 const differs = (a, b) => (Array.isArray(a) ? a.some((value, index) => Math.abs(value - b[index]) > TOLERANCE) : Math.abs(a - b) > TOLERANCE);
 for (const [name, numbers] of Object.entries(baseline)) {
   for (const [key, expected] of Object.entries(numbers)) {

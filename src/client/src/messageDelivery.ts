@@ -185,12 +185,27 @@ function advancesDelivery(current: MessageDeliveryState, next: MessageDeliverySt
  * the outbox is acting on the message again, so the bubble goes through
  * sending/received itself rather than being jumped to a result.
  */
+/**
+ * Which rows a deliberate retry sends back to "sending". A failed send and one whose answer
+ * never came are both replayed from the outbox under their identity, and both must show the
+ * attempt: a row left reading "No answer yet" while its retry is in flight still offered
+ * Discard for a request that could land a moment later.
+ */
+const RESTARTABLE: Record<MessageDeliveryState, boolean> = {
+  failed: true,
+  unverifiable: true,
+  sending: false,
+  received: false,
+  queued: false,
+  delivered: false,
+};
+
 export function restartDelivery(messages: readonly ChatLine[], clientMessageId: string): ChatLine[] {
   const index = findDeliveryLineIndex(messages, clientMessageId);
   if (index === -1) return [...messages];
   const line = messages[index];
-  if (line?.meta?.delivery?.state !== "failed") return [...messages];
-  const current = line.meta.delivery;
+  const current = line?.meta?.delivery;
+  if (line === undefined || current === undefined || !RESTARTABLE[current.state]) return [...messages];
   const next = [...messages];
   next[index] = {
     ...line,

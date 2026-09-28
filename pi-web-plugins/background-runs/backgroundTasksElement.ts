@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { backgroundTaskList, type TaskInput, type TaskRow } from "./backgroundTaskRows.js";
+import { backgroundTaskList, listNote, type TaskInput, type TaskRow, type TasksRead } from "./backgroundTaskRows.js";
 
 /**
  * This session's background runs, as the plugin's own list in the ≡ menu.
@@ -11,6 +11,7 @@ import { backgroundTaskList, type TaskInput, type TaskRow } from "./backgroundTa
 @customElement("pi-web-background-tasks")
 export class BackgroundTasksList extends LitElement {
   @property({ attribute: false }) tasks: readonly TaskInput[] = [];
+  @property({ attribute: false }) read: TasksRead = "unread";
 
   static override styles = css`
     :host { display: contents; }
@@ -21,20 +22,23 @@ export class BackgroundTasksList extends LitElement {
     .task { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; column-gap: var(--pi-space-3); row-gap: var(--pi-space-1); padding: var(--pi-space-3) 0; border-top: 1px solid var(--pi-border-muted); }
     .task:first-child { border-top: 0; }
     .dot { width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; align-self: center; }
-    .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .name { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
     .status { font-size: var(--pi-text-xs); white-space: nowrap; }
     .detail { grid-column: 2 / 4; color: var(--pi-muted); font-size: var(--pi-text-xs); font-variant-numeric: tabular-nums; }
-    .running { color: var(--pi-accent); }
+    .running { color: var(--pi-purple); }
     .done { color: var(--pi-success); }
     .problem { color: var(--pi-danger); }
     .unknown { color: var(--pi-muted); }
     .task .name { color: var(--pi-text); }
     .more { margin: var(--pi-space-3) 0 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
+    .note { margin: 0 0 var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); }
   `;
 
   override render() {
     const list = backgroundTaskList(this.tasks);
+    const note = listNote(this.read, this.tasks.length);
     return html`<div class="viewer">
+      ${note === undefined ? null : html`<p class="note" role="status">${note}</p>`}
       ${list.running.length === 0 ? null : html`
         <p class="heading">Running</p>
         <ul class="group">${list.running.map((task) => this.renderTask(task))}</ul>

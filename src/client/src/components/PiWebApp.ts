@@ -17,7 +17,7 @@ import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
 import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
-import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
+import type { BackgroundTasksRead, PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
 import type { AppAction } from "../actions";
 import { composerCwd, initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
@@ -744,8 +744,8 @@ export class PiWebApp extends LitElement {
       // A failed activity read keeps the rows it last saw, but those rows are
       // facts about the chat they were read for: carrying them under another
       // selection would render one chat's frozen work on another's dock.
-      if (this.state.subagents.length > 0 || this.state.subagentRuns.length > 0 || this.state.backgroundTasks.length > 0) {
-        this.setState({ subagents: [], subagentRuns: [], backgroundTasks: [] });
+      if (this.state.subagents.length > 0 || this.state.subagentRuns.length > 0 || this.state.backgroundTasks.length > 0 || this.state.backgroundTasksRead !== "unread") {
+        this.setState({ subagents: [], subagentRuns: [], backgroundTasks: [], backgroundTasksRead: "unread" });
       }
     }
     this.committedChatIdentity = chatIdentity;
@@ -893,26 +893,23 @@ export class PiWebApp extends LitElement {
   private async readSubagents(): Promise<void> {
     const session = this.state.selectedSession;
     if (session === undefined) return;
-    try {
-      const machineId = selectedMachineId(this.state);
-      // Both reads on the same tick: they refresh together and the strip never
-      // shows a half-updated mix of the two.
-      const [snapshot, tasks] = await Promise.all([
-        sessionsApi.subsessions(session, machineId),
-        sessionsApi.backgroundTasks(session, machineId).catch(() => this.state.backgroundTasks),
-      ]);
-      if (this.state.selectedSession?.id !== session.id || selectedMachineId(this.state) !== machineId) return;
-      const subagentsChanged = !sameSubagents(snapshot.subsessions, this.state.subagents);
-      const runsChanged = !sameSubagentRuns(snapshot.toolRuns, this.state.subagentRuns);
-      const tasksChanged = !sameBackgroundTasks(tasks, this.state.backgroundTasks);
-      if (!subagentsChanged && !runsChanged && !tasksChanged) return;
-      this.setState({ subagents: snapshot.subsessions, subagentRuns: snapshot.toolRuns, backgroundTasks: tasks });
-    } catch {
-      // A failed read keeps the previously read rows: the dock pill keeps
-      // showing the work it last saw instead of answering a failure with a
-      // claim of absence.
+    const machineId = selectedMachineId(this.state);
+    const [snapshot, tasks] = await Promise.allSettled([
+      sessionsApi.subsessions(session, machineId),
+      sessionsApi.backgroundTasks(session, machineId),
+    ]);
+    if (this.state.selectedSession?.id !== session.id || selectedMachineId(this.state) !== machineId) return;
+    const patch: Partial<AppState> = {};
+    if (snapshot.status === "fulfilled") {
+      if (!sameSubagents(snapshot.value.subsessions, this.state.subagents)) patch.subagents = snapshot.value.subsessions;
+      if (!sameSubagentRuns(snapshot.value.toolRuns, this.state.subagentRuns)) patch.subagentRuns = snapshot.value.toolRuns;
     }
+    if (tasks.status === "fulfilled" && !sameBackgroundTasks(tasks.value, this.state.backgroundTasks)) patch.backgroundTasks = tasks.value;
+    const read: BackgroundTasksRead = tasks.status === "fulfilled" ? "read" : "failed";
+    if (read !== this.state.backgroundTasksRead) patch.backgroundTasksRead = read;
+    if (Object.keys(patch).length > 0) this.setState(patch);
   }
+
 
   /**
    * Interactive self-update: check the fork remote (cheap, daemon-cached) and
@@ -3974,7 +3971,7 @@ export class PiWebApp extends LitElement {
     });
     const texts = unique.map((message) => message.text).filter((text) => text.trim() !== "");
     if (texts.length === 0) return;
-    this.promptEditor?.replaceText(texts.join("\n\n"));
+    this.promptEditor?.takeBack({ text: texts.join("\n\n"), attachments: [] });
     if (this.shouldAutoFocusPrompt()) this.promptEditor?.focusInput();
   }
 
@@ -4018,7 +4015,7 @@ export class PiWebApp extends LitElement {
    * without retyping it or re-picking its images.
    */
   private readonly handleResendMessage = (prompt: RecoveredPrompt): void => {
-    this.promptEditor?.restorePrompt(prompt);
+    this.promptEditor?.takeBack(prompt);
   };
 
   /**
@@ -4030,7 +4027,7 @@ export class PiWebApp extends LitElement {
     const line = this.state.messages.find((message) => message.meta?.delivery?.clientMessageId === clientMessageId);
     const recovered = line === undefined ? undefined : recoverPromptFromLine(line);
     this.sessions.discardOutgoing(clientMessageId);
-    if (recovered !== undefined) this.promptEditor?.restorePrompt(recovered);
+    if (recovered !== undefined) this.promptEditor?.takeBack(recovered);
   };
 
   private readonly handleSelectModel = (): void => {
@@ -4055,7 +4052,7 @@ export class PiWebApp extends LitElement {
     return html`
       <chat-view .onRetryMessage=${(clientMessageId: string) => { this.promptEditor?.retryOutbox(clientMessageId); }} .onDiscardMessage=${this.handleDiscardMessage} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk}
         .onDialogKey=${this.handleDialogKey}
-        .pendingAsks=${state.pendingAsks} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(state))} .onRunSectionCommand=${(command: string) => this.runGoalCommand(command)} .drawerMachineId=${selectedMachineId(state)} .drawerWorkspacePath=${state.selectedWorkspace?.path} .sessionCwd=${session.cwd}></chat-view>
+        .pendingAsks=${state.pendingAsks} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(state))} .onRunSectionCommand=${(command: string) => this.runGoalCommand(command)} .drawerMachineId=${selectedMachineId(state)} .drawerWorkspacePath=${state.selectedWorkspace?.path} .sessionCwd=${session.cwd}></chat-view>
     `;
   }
 

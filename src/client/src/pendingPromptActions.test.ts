@@ -8,7 +8,7 @@ import { pendingPromptActions, type PendingPromptState } from "./pendingPromptAc
  */
 describe("what an undelivered prompt offers", () => {
   it("offers only a withdrawal while the message is on its way", () => {
-    expect(pendingPromptActions("in-flight")).toEqual({ state: "in-flight", label: "Sending", retry: false, discard: true });
+    expect(pendingPromptActions("in-flight")).toEqual({ state: "in-flight", label: "Sending", retry: false, discard: false });
   });
 
   it("offers a retry once the send has stopped", () => {
