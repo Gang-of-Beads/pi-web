@@ -218,7 +218,11 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      below the scroller now, so the transcript ends with the room it had before
      the dock existed: one space-7 of padding on top of the message rhythm's own
      16px margin, i.e. 32px from the last message to the dock. */
-  .chat { scrollbar-width: thin; scrollbar-gutter: stable; scrollbar-color: transparent transparent; flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box;
+  /* Every row kind insets its text by the same gutter and separates by the same
+     rhythm: the transcript read as a table of unrelated widths before, with the
+     events row flush left against an inset message. Desktop and phone differ only in
+     how much room the gutter gets, never in whether the rows line up. */
+  .chat { --pi-row-gutter: var(--pi-space-6); --pi-row-rhythm: var(--pi-space-7); scrollbar-width: thin; scrollbar-gutter: stable; scrollbar-color: transparent transparent; flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box;
   /* The top edge cuts scrolled lines mid-glyph with no card boundary to the
      left or right (assistant surfaces are border-less), which read as stray
      text. A short fade makes the same clip read as intentional depth. */
@@ -251,7 +255,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      bottom reaches, and once answered the replies that follow push it up on
      their own. Nothing is pinned, so the transcript scrolls at any card
      height and the card covers none of its own rows. */
-  .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); }
+  .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); padding-inline: var(--pi-row-gutter); }
   .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); margin-top: calc(-1 * var(--pi-space-4)); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.
@@ -306,8 +310,8 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      (the five reports of broken corners) is wrong at some device pixel ratio
      no matter which radius it picks, because two rasterizations of "the same"
      arc need not agree. The parent clips; children paint square. */
-  .msg { max-width: var(--pi-chat-measure); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface-card); overflow: hidden; overflow: clip; }
-  @media (max-width: 640px) { .msg { margin-bottom: var(--pi-space-5); padding: var(--pi-space-5); } }
+  .msg { max-width: var(--pi-chat-measure); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-row-rhythm); padding: var(--pi-row-gutter); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface-card); overflow: hidden; overflow: clip; }
+  @media (max-width: 640px) { .chat { --pi-row-gutter: var(--pi-space-5); --pi-row-rhythm: var(--pi-space-5); } }
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
   .custom-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-5); background: var(--pi-surface); overflow: hidden; overflow: clip; display: grid; gap: var(--pi-space-3); }
   .custom-card-unknown { color: var(--pi-muted); }
@@ -332,9 +336,12 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg.system > .msg-header .label { color: var(--pi-text-secondary); }
   .msg.bash { border-color: var(--pi-success); background: var(--pi-success-bg); }
   .msg.skill { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
+  /* Its own summary carries the inset, so the row itself must not double it - but the
+     summary's inset is the same gutter, or this row's text sat 12px left of every
+     other row on the screen. */
   .msg.event-group { padding: 0; border-color: var(--pi-border); background: var(--pi-bg); color: var(--pi-muted); }
   .msg.event-group.live { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
-  .msg.event-group > summary { position: sticky; top: var(--pi-chat-sticky-top); z-index: 5; display: flex; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); }
+  .msg.event-group > summary { position: sticky; top: var(--pi-chat-sticky-top); z-index: 5; display: flex; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-row-gutter); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); }
   .msg.event-group.live > summary { border-bottom-color: var(--pi-success-border); background: var(--pi-success-bg); color: var(--pi-success); }
   .msg.event-group > summary .label { margin: 0; }
   .group-body { padding: 0 var(--pi-space-6) var(--pi-space-6); }
@@ -357,7 +364,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   /* A child's conversation, over the parent's. It borrows the output viewer's
      frame because it is the same kind of thing - something opened from an
      activity row - but its body is a message list rather than a log. */
-  .group-msg { max-width: 100%; min-width: 0; box-sizing: border-box; padding: var(--pi-space-5) 0; border-top: 1px solid var(--pi-border-muted); color: var(--pi-text); overflow: visible; }
+  .group-msg { max-width: 100%; min-width: 0; box-sizing: border-box; padding: var(--pi-space-5) var(--pi-row-gutter); border-top: 1px solid var(--pi-border-muted); color: var(--pi-text); overflow: visible; }
   .group-msg.tool { color: var(--pi-warning); }
   .group-msg.tool-execution-shell { color: var(--pi-text); }
   .group-msg.system { color: var(--pi-muted); }
@@ -393,7 +400,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .delivery-mark.received { color: var(--pi-muted); }
   .delivery-mark.delivered { color: var(--pi-success); }
   .delivery-mark.failed { color: var(--pi-danger); font-weight: var(--pi-weight-semibold); }
-  .session-activity { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: var(--pi-space-2); margin: 0 auto var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); overflow: hidden; }
+  .session-activity { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: var(--pi-space-2); margin: 0 auto var(--pi-row-rhythm); padding-inline: var(--pi-row-gutter); padding-block: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); overflow: hidden; }
   .session-activity.compacting { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
   .session-activity strong { color: var(--pi-purple); }
   .session-activity span, .session-activity small { color: var(--pi-muted); }
