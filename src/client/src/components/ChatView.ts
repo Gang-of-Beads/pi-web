@@ -13,6 +13,7 @@ import { ChatDisclosureController } from "../chatDisclosure";
 import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type ChatGroup } from "../chatGroups";
 import { writeClipboardText } from "../clipboard";
 import { followScrollVerdict } from "../followScrollAdoption.js";
+import { scrollDirection } from "../chatViewport/viewportDecision.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { shouldRequestNewerMessages, shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
@@ -1155,7 +1156,7 @@ if (this.heldWaitingClearTimer !== undefined) {
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestLoadMoreIfNeeded();
     if (changed.has("messages") || changed.has("messageEnd") || changed.has("hasNewer")) {
       this.newerRequested = false;
-      this.requestNewerIfNeeded();
+      if (this.jumpToNewestPending) this.continueJumpToNewest();
     }
     this.drawerTabEdgeTracker.observe(this.drawerTabs ?? undefined);
     this.publishScrollbarWidth();
@@ -1192,6 +1193,14 @@ if (this.heldWaitingClearTimer !== undefined) {
    */
   private followScrollTarget: number | undefined;
   private followScrollTargetAt = 0;
+  /**
+   * Which way the reader last moved, because the two ends load for different
+   * reasons: history answers an upward scroll, the forward end answers a downward
+   * one. A predicate that ignored direction fetched history at the bottom, where
+   * nothing above had changed - the owner's jitter.
+   */
+  private lastScrollDirection: "up" | "down" | "none" = "none";
+  private jumpToNewestPending = false;
   private contentResizeObserver: ResizeObserver | undefined;
   private observedContent: string | undefined;
 
@@ -1351,6 +1360,23 @@ if (this.heldWaitingClearTimer !== undefined) {
    * the button would be covering the transcript to offer a scroll the reader
    * can make by flicking once, so it is not shown there.
    */
+  /**
+   * The reader asked for the newest: fetch the pages between here and there back to
+   * back rather than landing on the boundary of the loaded window. Each step is still
+   * one page, so nothing ever holds a half-loaded transcript.
+   */
+  private jumpToNewest(): void {
+    this.pinnedToBottom = true;
+    this.jumpToNewestPending = this.hasNewer;
+    this.jumpToBottomVisible = false;
+    if (this.jumpToNewestPending) {
+      this.newerRequested = false;
+      this.requestNewerIfNeeded();
+      return;
+    }
+    this.scrollToBottom();
+  }
+
   private renderJumpToBottom() {
     if (!this.jumpToBottomVisible) return null;
     return html`
@@ -1359,7 +1385,7 @@ if (this.heldWaitingClearTimer !== undefined) {
         type="button"
         title="Jump to the newest message"
         aria-label="Jump to the newest message"
-        @click=${() => { this.pinnedToBottom = true; this.scrollToBottom(); this.jumpToBottomVisible = false; }}
+        @click=${() => { this.jumpToNewest(); }}
       ><svg class="jump-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="m6 13 6 6 6-6"></path></svg></button>
     `;
   }
@@ -2491,6 +2517,7 @@ if (this.heldWaitingClearTimer !== undefined) {
   private updatePinnedToBottomFromScroll() {
     const chat = this.chat;
     if (!chat) return;
+    this.lastScrollDirection = scrollDirection(this.lastScrollTop, chat.scrollTop);
     // Our own follow scroll lands as a scroll event; adopting it as the reader's
     // would be wrong twice over, so it is matched by target *and* freshness - and
     // never against a pin the reader's own gesture already dropped, which is how a
@@ -2560,6 +2587,12 @@ if (this.heldWaitingClearTimer !== undefined) {
       if (this.suppressLoadMoreRequests) return;
       const chat = this.chat;
       if (!chat) return;
+      const unfilled = chat.scrollHeight <= chat.clientHeight + 1;
+      // Following the bottom means the reader is at the newest end: an older page is
+      // only owed when the viewport cannot be filled at all. Holding position means
+      // the reader walked up, and only then does history answer to it.
+      if (this.pinnedToBottom && !unfilled) return;
+      if (!this.pinnedToBottom && this.lastScrollDirection !== "up") return;
       if (shouldRequestEarlierMessages({
         hasMore: this.hasMore,
         loadingMore: this.loadingMore || this.loadMoreRequested,
@@ -2750,9 +2783,24 @@ if (this.heldWaitingClearTimer !== undefined) {
     this.pendingScrollRestorePosition = result.position;
     const chat = this.chat;
     if (chat === undefined || !this.hasMore || this.loadingMore) return;
-    chat.scrollTop = 0;
-    this.syncScrollMetrics();
+    // Fetching the page the missing row lives in is enough: the prepend anchor holds
+    // the reader's own row, so the page arrives without slamming the view to the top
+    // of the loaded window - which reads as the middle of the session.
     this.requestLoadMore();
+  }
+
+  /** Keep the promised landing: one page at a time until the newest is loaded. */
+  private continueJumpToNewest(): void {
+    if (!this.pinnedToBottom) return;
+    if (!this.hasNewer) {
+      this.jumpToNewestPending = false;
+      this.scrollToBottom();
+      return;
+    }
+    // The scroll position is still the newest end of the loaded window, so ask for
+    // the next page straight away instead of waiting for a scroll that has no room.
+    if (this.isNearBottom()) this.requestNewerIfNeeded();
+    else this.jumpToNewestPending = false;
   }
 
   private shouldFallbackToBottomForMissingAnchor(): boolean {
