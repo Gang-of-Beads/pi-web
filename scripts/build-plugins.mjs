@@ -4,6 +4,7 @@ import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promi
 import { dirname, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import * as esbuild from "esbuild";
+import { isRelativeSpecifier, moduleSpecifiers } from "./pluginModuleSpecifiers.mjs";
 
 const rootDir = resolve("pi-web-plugins");
 const outDir = resolve("dist/pi-web-plugins");
@@ -135,14 +136,9 @@ async function needsBundling(entryPath) {
     } catch {
       continue;
     }
-    for (const match of source.matchAll(/(?:^|\n)\s*(?:import|export)\s(?:[^;"]*from\s+)?"([^"]+)"/gu)) {
-      const specifier = match[1] ?? "";
-      if (!specifier.startsWith(".")) return true;
+    for (const specifier of moduleSpecifiers(source)) {
+      if (!isRelativeSpecifier(specifier)) return true;
       queue.push(resolve(dirname(current), specifier));
-    }
-    for (const match of source.matchAll(/import\("([^"]+)"\)/gu)) {
-      const specifier = match[1] ?? "";
-      if (!specifier.startsWith(".")) return true;
     }
   }
   return false;

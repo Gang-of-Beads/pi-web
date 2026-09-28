@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { isRelativeSpecifier, moduleSpecifiers } from "../scripts/pluginModuleSpecifiers.mjs";
 
 const npm = npmInvocation();
 
@@ -20,7 +21,6 @@ const npm = npmInvocation();
  */
 
 const distRoot = resolve("dist", "pi-web-plugins");
-const moduleSpecifier = /(?:^|\n)\s*(?:import|export)\s(?:[^;"]*from\s+)?"([^"]+)"/gu;
 
 async function browserEntries(): Promise<string[]> {
   const entries: string[] = [];
@@ -70,9 +70,8 @@ describe("shipped browser plugin entries", () => {
         unresolvable.push(`${file}: missing module`);
         continue;
       }
-      for (const match of source.matchAll(new RegExp(moduleSpecifier.source, "gu"))) {
-        const specifier = match[1] ?? "";
-        if (!specifier.startsWith("./") && !specifier.startsWith("../")) {
+      for (const specifier of moduleSpecifiers(source)) {
+        if (!isRelativeSpecifier(specifier)) {
           unresolvable.push(`${file}: ${specifier}`);
           continue;
         }
