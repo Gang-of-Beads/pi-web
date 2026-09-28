@@ -216,14 +216,15 @@ export function removeDeliveryLine(messages: readonly ChatLine[], clientMessageI
  * Which delivery states the reader may throw away from the row itself.
  *
  * One message has one row (docs/design/one-message-one-row.md), so the row carries every
- * action its state allows. Only a settled failure can be dropped here: a send still in
- * flight lands regardless of a local delete, so offering Discard there would claim an
- * outcome the request can overturn a moment later. A message the daemon holds is
- * recalled instead, and one the transcript holds is history.
+ * action its state allows. Only a settled failure can be discarded here, and discarding
+ * hands the words back to the composer: a send still in flight lands regardless of a local
+ * delete, so offering Discard there would claim an outcome the request can overturn a
+ * moment later. A message the daemon holds is recalled instead, and one the transcript
+ * holds is history.
  */
 const DISCARD_LABELS: Record<MessageDeliveryState, string | undefined> = {
-  failed: "Discard: drop this unsent message",
-  unverifiable: "Discard: stop tracking this message here - it may already have arrived",
+  failed: "Discard: take this unsent message back into the composer",
+  unverifiable: "Discard: stop tracking this here and take the text back - it may already have arrived",
   sending: undefined,
   received: undefined,
   queued: undefined,

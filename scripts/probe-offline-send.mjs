@@ -11,7 +11,7 @@
  *   1. two sends refused at the network layer -> two rows, no tray, each row Retry + Discard
  *   2. Retry while the browser is offline -> no request, and the reader is told why
  *   3. back online, Retry on A only -> exactly A is sent; B keeps its row and its outbox entry
- *   4. Discard on B -> B's row and outbox entry are gone
+ *   4. Discard on B -> B's row and outbox entry are gone, and its text is back in the composer
  *
  * The prompt request is aborted at the network layer (patching window.fetch is not enough -
  * the api layer may have captured it), then reopened so Retry's own send can land.
@@ -141,9 +141,14 @@ try {
   if (!(await clickRowAction(B, "discard"))) fail("could not find B's Discard");
   await page.waitForTimeout(1500);
   const discarded = await rows();
-  console.log("4 Discard on B:", JSON.stringify({ b: discarded.b, outboxB: discarded.outboxB }));
+  const draft = await page.evaluate(() => {
+    const editor = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("prompt-editor");
+    return editor === null || editor === undefined ? null : String(Reflect.get(editor, "draft") ?? "");
+  });
+  console.log("4 Discard on B:", JSON.stringify({ b: discarded.b, outboxB: discarded.outboxB, draftHasB: draft?.includes(B) ?? null }));
   if (discarded.b.length !== 0) fail("B's row survived its Discard");
   if (discarded.outboxB) fail("B's outbox entry survived its Discard");
+  if (draft === null || !draft.includes(B)) fail(`Discard did not hand B's text back to the composer (draft: ${JSON.stringify(draft)})`);
 } catch (error) {
   fail(String(error));
 } finally {
