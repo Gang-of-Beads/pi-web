@@ -2074,14 +2074,21 @@ export class PiSessionService implements SessionRouteService {
     try {
       component = await this.buildCustomScreen(factory, harness, done);
     } catch (error) {
-      console.error("[trap-debug] failed", String(error));
+      console.error("[extension-screen] factory failed", String(error));
       this.publishActivity(session, `extension screen failed: ${String(error)}`, "idle");
       return undefined;
     }
     // A component that calls done() while being built (a capability probe does
     // exactly that) never mounts: opening a modal for it and closing it in the
     // same tick would flash an empty screen.
-    console.error("[trap-debug] mounted", { settledBeforeMount: lifecycle.settledBeforeMount, hasScreen: options.screen !== undefined });
+    // The two ways a screen never reaches the browser - a factory that called `done`
+    // while being built, and a declaration that did not parse - look the same from
+    // the client, so the daemon says which one it was.
+    console.error("[extension-screen] mounted", {
+      session: session.sessionId,
+      settledBeforeMount: lifecycle.settledBeforeMount,
+      declaredScreen: options.screen !== undefined,
+    });
     if (lifecycle.settledBeforeMount) return await finished;
     const lines = renderCustomScreen(component);
     dialogId = this.openCustomDialog(session, lines, customScreenOwner(this.customScreenStack), options.screen);
