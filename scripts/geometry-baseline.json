@@ -13,6 +13,10 @@
     "dialogCardBox": [
       8,
       385
+    ],
+    "groupContentInset": [
+      13,
+      13
     ]
   },
   "desktop": {
@@ -29,6 +33,10 @@
     "dialogCardBox": [
       357,
       923
+    ],
+    "groupContentInset": [
+      13,
+      13
     ]
   }
 }

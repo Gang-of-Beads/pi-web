@@ -4,7 +4,8 @@
  * The owner, after the question card lost 20px a side on his phone: "手机版之前都调好的，你为了
  * 改desktop全给变了 ... 手机端和desktop端要么分开改，要么你就保证别互相影响". This measures the
  * surfaces a reader lines up by eye - message box and label inset, the event summary, the
- * open question card and the extension dialog card - at a
+ * rows (and so the tool boxes) inside a live-events group, the open question card and the
+ * extension dialog card - at a
  * phone and a desktop width, and compares each number with the committed baseline. Any drift
  * fails. A deliberate change is recorded with `--update`, which makes it a reviewed diff of
  * scripts/geometry-baseline.json instead of a side effect.
@@ -70,12 +71,26 @@ async function measure({ width, height, mobile }) {
       return edges(bordered ?? host);
     };
     const message = [...root.querySelectorAll(".msg.assistant, .msg.user")].find((node) => node.getBoundingClientRect().width > 0);
+    const groups = [...root.querySelectorAll("details.msg.event-group")].filter((node) => node.getBoundingClientRect().width > 0);
+    let group = groups.find((node) => node.querySelector(".group-msg") !== null);
+    if (group === undefined && groups.length > 0) {
+      group = groups[groups.length - 1];
+      group.querySelector(":scope > summary")?.click();
+      await view.updateComplete;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    const groupRow = group?.querySelector(".group-msg");
+    const groupRect = group?.getBoundingClientRect();
+    const rowRect = groupRow?.getBoundingClientRect();
     const result = {
       messageBox: edges(message),
       messageLabelLeft: edges(message?.querySelector(".msg-header .label"))?.[0] ?? null,
       eventSummaryTextLeft: textLeft(root.querySelector(".msg.event-group > summary")),
       questionCardBox: await boxedChild(root.querySelector(".waiting-slot ask-user-card")),
       dialogCardBox: await boxedChild(root.querySelector(".waiting-slot extension-dialog-card")),
+      groupContentInset: groupRect === undefined || rowRect === undefined || rowRect.width === 0 || groupRow === null || groupRow === undefined
+        ? null
+        : [Math.round(rowRect.left + parseFloat(getComputedStyle(groupRow).paddingLeft) - groupRect.left), Math.round(groupRect.right - rowRect.right + parseFloat(getComputedStyle(groupRow).paddingRight))],
     };
     for (const name of Object.keys(pinned)) Reflect.deleteProperty(view, name);
     view.requestUpdate();

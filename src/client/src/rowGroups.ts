@@ -18,14 +18,16 @@ export const ROW_GROUPS: Record<RowGroup, RowGroupMembership> = {
   /** Rows that draw no box: they must add the same inset the cards do. */
   bare: {
     group: "bare",
-    selectors: [".msg.event-group > summary", ".group-msg", ".session-activity"],
+    selectors: [".msg.event-group > summary", ".session-activity"],
   },
   /**
-   * Rows that draw no box but hold cards that do (the open question and dialog cards).
-   * They add nothing: an inset here shrinks the held card's box inside the column, which
-   * is how the question card ended up a gutter narrower than every message on the phone.
+   * Rows whose inset is already paid by what holds them or what they hold: the open
+   * question and dialog cards draw their own box, and a live-events row sits inside
+   * .group-body, which carries the group's inset. They add nothing. An inset here is paid
+   * twice - how the question card ended up a gutter narrower than every message, and how
+   * tool boxes inside live events went from 12px to 22px (phone) and 24px (desktop) in.
    */
-  holder: { group: "holder", selectors: [".waiting-slot", ".msg.ask-user-record-shell"] },
+  holder: { group: "holder", selectors: [".waiting-slot", ".msg.ask-user-record-shell", ".group-msg"] },
 };
 
 /** Every selector the groups claim, so a test can catch an unclassified row. */

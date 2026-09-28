@@ -260,8 +260,8 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); }
   /* One margin rule per group (see rowGroups.ts): a bare row adds the inset a card gets
      from its own padding, so every kind of row starts its text on the same edge. */
-  .msg.event-group > summary, .group-msg, .session-activity { padding-inline: var(--pi-row-inset); }
-  .waiting-slot, .msg.ask-user-record-shell { padding-inline: 0; }
+  .msg.event-group > summary, .session-activity { padding-inline: var(--pi-row-inset); }
+  .waiting-slot, .msg.ask-user-record-shell, .group-msg { padding-inline: 0; }
   .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); margin-top: calc(-1 * var(--pi-space-4)); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.
