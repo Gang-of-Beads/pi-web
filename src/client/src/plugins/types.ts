@@ -441,6 +441,10 @@ export interface DrawerSectionContribution {
   order?: number;
   available?: (context: DrawerSectionContext) => boolean | undefined;
   badge?: (context: DrawerSectionContext) => string | number | undefined;
+  /** Surface this section's status in the transcript's top strip instead of the menu. */
+  topEntry?: boolean;
+  /** Whether the thing this status is about is running now; only a running chip pulses. */
+  running?: (context: DrawerSectionContext) => boolean;
   render: (context: DrawerSectionContext) => TemplateResult;
 }
 

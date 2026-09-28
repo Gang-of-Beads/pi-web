@@ -757,6 +757,7 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) subagentRuns?: readonly SessionSubagentRunInfo[];
   @property({ attribute: false }) panelContext?: WorkspacePanelContext;
   @property({ attribute: false }) panels?: readonly QualifiedWorkspacePanelContribution[];
+  @property({ attribute: false }) sections?: readonly QualifiedDrawerSectionContribution[];
   @property({ attribute: false }) backgroundTasks?: readonly SessionBackgroundTaskInfo[];
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
   /** Take one queued message back into the composer, leaving the rest queued. */
@@ -1713,18 +1714,49 @@ if (this.heldWaitingClearTimer !== undefined) {
    * transcript height, and only a chip whose plugin says it is running pulses - a stale
    * branch is a fact, not an activity.
    */
+  /** Sections read a narrower context; everything in it is derivable from the panel one. */
+  private sectionContext(context: WorkspacePanelContext): DrawerSectionContext {
+    const session = context.state.selectedSession;
+    return {
+      sessionId: session?.id ?? "",
+      machineId: context.machine.id,
+      workspacePath: context.workspace.path,
+      sessionCwd: session?.cwd,
+      requestUpdate: () => { context.host.requestRender(); },
+    };
+  }
+
   private renderContributedRuns() {
     const context = this.panelContext;
     if (context === undefined) return null;
-    const speaking = (this.panels ?? []).filter((panel: QualifiedWorkspacePanelContribution) => {
+    const sections = this.sectionContext(context);
+    const panels = (this.panels ?? []).filter((panel: QualifiedWorkspacePanelContribution) => {
       if (panel.topEntry !== true) return false;
       if (panel.visible !== undefined && !panel.visible(context)) return false;
       return this.panelEntry(panel, context) !== undefined;
     });
-    if (speaking.length === 0) return null;
+    const speaking = (this.sections ?? []).filter((section: QualifiedDrawerSectionContribution) => {
+      if (section.topEntry !== true) return false;
+      return section.available?.(sections) !== false;
+    });
+    if (panels.length === 0 && speaking.length === 0) return null;
     return html`
       <div class="runs">
-        ${speaking.map((panel: QualifiedWorkspacePanelContribution) => {
+        ${speaking.map((section: QualifiedDrawerSectionContribution) => {
+          const text = section.badge?.(sections);
+          const open = this.runsOpenPanel === section.id;
+          return html`
+            <button
+              class=${`runs-chip${open ? " active" : ""}`}
+              type="button"
+              aria-expanded=${String(open)}
+              aria-label=${`${section.title}: ${text === undefined ? "open" : String(text)}`}
+              @click=${() => { this.runsOpenPanel = open ? undefined : section.id; }}
+            >${section.running?.(sections) === true ? html`<span class="dot"></span>` : null}<span>${section.title}${text === undefined ? null : html` · ${text}`}</span></button>
+            ${open ? html`<div class="runs-body">${section.render(sections)}</div>` : null}
+          `;
+        })}
+        ${panels.map((panel: QualifiedWorkspacePanelContribution) => {
           const text = this.panelEntry(panel, context);
           const open = this.runsOpenPanel === panel.id;
           return html`

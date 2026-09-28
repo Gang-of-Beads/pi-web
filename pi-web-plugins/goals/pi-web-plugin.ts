@@ -70,6 +70,9 @@ const plugin: PiWebPlugin = {
             id: "goals",
             title: "Goals",
             order: 30,
+            topEntry: true,
+            running: (section: { workspacePath?: string | undefined }) =>
+              cache?.key === section.workspacePath && cache?.answer?.goals.some((goal) => goal.status === "active") === true,
             available: (section) => {
               if (section.workspacePath === undefined) return false;
               if (cache?.key === section.workspacePath) return (cache.answer?.goals.length ?? 0) > 0;

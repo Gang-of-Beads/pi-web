@@ -1,4 +1,6 @@
 import type { PromptAttachment } from "./api";
+import type { OutgoingEvent, OutgoingState } from "./outgoingMessages";
+import { outgoingVerdict } from "./outgoingMessages";
 /**
  * Pending-message outbox: survives network drops so a send is never silently
  * lost. When a prompt fails with a network error, its contents are persisted
@@ -11,6 +13,11 @@ import type { PromptAttachment } from "./api";
 const outboxPrefix = "pi-web:pending-prompt:";
 
 export interface PendingPrompt {
+  /**
+   * Where this record is in its own life. Carried on the record, not in a component, so a
+   * late answer for a session the reader has left cannot rewrite what another one shows.
+   */
+  state?: OutgoingState;
   text: string;
   behavior?: "steer" | "followUp";
   /** The bubble's correlation id, so the retry lands on the same tracking. */
@@ -37,9 +44,26 @@ function outboxKey(sessionKey: string): string {
   return `${outboxPrefix}${sessionKey}`;
 }
 
+/** Move one record along its own life, if the verdict says so, and persist it. */
+export function advancePendingPrompt(sessionKey: string, clientMessageId: string, event: OutgoingEvent): OutgoingState | undefined {
+  const prompts = loadPendingPrompts(sessionKey);
+  const target = prompts.find((prompt) => prompt.clientMessageId === clientMessageId);
+  if (target === undefined) return undefined;
+  const verdict = outgoingVerdict(target.state ?? "stored", event);
+  if (verdict.kind === "ignore" || verdict.kind === "stay") return target.state ?? "stored";
+  if (verdict.kind === "drop") {
+    forgetPendingPrompt(sessionKey, clientMessageId);
+    return undefined;
+  }
+  savePendingPrompt(sessionKey, { ...target, state: verdict.to });
+  return verdict.to;
+}
+
 /** Whether an error looks like connectivity loss rather than a server verdict. */
 function isPendingPrompt(value: unknown): value is PendingPrompt {
-  return value !== null && typeof value === "object" && typeof Reflect.get(value, "text") === "string";
+  if (value === null || typeof value !== "object" || typeof Reflect.get(value, "text") !== "string") return false;
+  const state: unknown = Reflect.get(value, "state");
+  return state === undefined || typeof state === "string";
 }
 
 export function isNetworkFailure(error: unknown): boolean {

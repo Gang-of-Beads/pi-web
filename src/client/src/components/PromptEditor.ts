@@ -16,7 +16,7 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
-import { isNetworkFailure, loadPendingPrompts, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, type PendingPrompt } from "../pendingOutbox";
+import { advancePendingPrompt, isNetworkFailure, loadPendingPrompts, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, type PendingPrompt } from "../pendingOutbox";
 import { classifySubmission, handleOutcome } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { newClientMessageId } from "../messageDelivery";
@@ -1160,8 +1160,7 @@ export class PromptEditor extends LitElement {
         }
       } finally {
         this.flushInFlight = false;
-        const currentKey = machineSessionKey(this.machineId, this.sessionId ?? "");
-        this.pendingPrompts = currentKey === "" ? [] : loadPendingPrompts(currentKey);
+        this.pendingPrompts = this.pendingPromptsForSession();
       }
     })();
   };
@@ -1227,18 +1226,22 @@ export class PromptEditor extends LitElement {
     if (accepted !== false) {
       if (outboxKey !== "") {
         forgetPendingPrompt(outboxKey, outboxId);
-        this.pendingPrompts = loadPendingPrompts(outboxKey);
+        this.pendingPrompts = this.pendingPromptsForSession();
       }
       return;
     }
     if (handleOutcome(classifySubmission(failure, (value) => !isNetworkFailure(value) && !isRequestTimeout(value))).keepInOutbox) {
-      if (outboxKey !== "") this.pendingPrompts = loadPendingPrompts(outboxKey);
+      if (outboxKey !== "") {
+        advancePendingPrompt(outboxKey, outboxId, isRequestTimeout(failure) ? "send-timeout" : "send-refused-network");
+        this.pendingPrompts = this.pendingPromptsForSession();
+      }
       return;
     }
     if (outboxKey !== "") {
       forgetPendingPrompt(outboxKey, outboxId);
-      this.pendingPrompts = loadPendingPrompts(outboxKey);
+      this.pendingPrompts = this.pendingPromptsForSession();
     }
+    if (this.outboxKey() !== outboxKey) return;
     const current = this.editor?.state.doc.toString() ?? this.draft;
     if (current.trim() !== "") return;
     // The send is async: a session switch while it runs hands the failure
