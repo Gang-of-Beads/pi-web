@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * A failed send keeps it in the outbox, and only that.
+ * A failed send keeps it in the outbox, and shows it once.
  *
  * Owner report: "已经确认开始处理的消息，还怎么还可能有 retry/discard 呢？有些状态
  * 就不可能一起存在". Retry belongs to a send that stopped; a message still on its
@@ -26,6 +26,7 @@ function fail(message) {
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 393, height: 850 }, isMobile: true, hasTouch: true });
 let broken = true;
+const MARKER = `offline-probe ${String(Date.now())}`;
 try {
   const seen = [];
   await page.route("**/prompt*", (route) => {
@@ -40,7 +41,7 @@ try {
     return [...(editor?.shadowRoot?.querySelectorAll(".pending-prompt") ?? [])].map((row) => (row.textContent ?? "").replace(/\s+/gu, " ").trim());
   });
 
-  const opened = await page.evaluate(async () => {
+  const opened = await page.evaluate(async (marker) => {
     const app = document.querySelector("pi-web-app");
     const board = [...app.shadowRoot.querySelectorAll("app-navigate-page")].find((surface) => surface.getBoundingClientRect().width > 0);
     if (board !== undefined) {
@@ -62,34 +63,73 @@ try {
     });
     // Through the composer, not the controller: only the composer writes the
     // outbox entry this probe is about.
-    Reflect.set(editor, "draft", "offline-probe message");
+    Reflect.set(editor, "draft", marker);
     Reflect.apply(Reflect.get(editor, "requestUpdate"), editor, []);
     await new Promise((resolve) => setTimeout(resolve, 300));
     Reflect.apply(Reflect.get(editor, "send"), editor, ["followUp"]);
     await new Promise((resolve) => setTimeout(resolve, 8000));
     return "ok";
-  });
+  }, MARKER);
+  const bubbleRows = () => page.evaluate((marker) => {
+    const deepText = (node) => {
+      let text = node.textContent ?? "";
+      for (const child of node.querySelectorAll("*")) {
+        if (child.shadowRoot) text += ` ${deepText(child.shadowRoot)}`;
+      }
+      return text;
+    };
+    const view = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("chat-view");
+    return [...(view?.shadowRoot?.querySelectorAll(".msg.user") ?? [])]
+      .filter((row) => deepText(row).includes(marker))
+      .map((row) => ({
+        mark: (row.querySelector(".delivery-mark")?.getAttribute("aria-label") ?? "").trim(),
+        actions: [...row.querySelectorAll(".msg-action[data-action]")].map((button) => button.getAttribute("data-action")),
+      }));
+  }, MARKER);
   if (opened !== "ok") {
     fail(`${opened} (routes seen: ${JSON.stringify(seen)})`);
   } else {
-    const failed = await outboxRows();
-    if (!failed.some((row) => row.includes("Unsent") && row.includes("Retry"))) {
-      const diag = await page.evaluate(() => {
-        const editor = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("prompt-editor");
-        return { send: Reflect.get(window, "probeSend"), keys: Object.keys(localStorage).filter((k) => k.includes("pending-prompt")), sessionId: Reflect.get(editor, "sessionId"), machineId: Reflect.get(editor, "machineId"), pending: (Reflect.get(editor, "pendingPrompts") ?? []).length, sending: Reflect.get(editor, "sending"), inFlight: [...(Reflect.get(editor, "outboxInFlight") ?? [])].length, rows: editor?.shadowRoot?.querySelectorAll(".pending-prompt").length ?? -1, failure: Reflect.get(editor, "sendFailure") };
-      });
-      fail(`no unsent row offering Retry: ${JSON.stringify(failed)} (routes seen: ${JSON.stringify(seen)}) diag=${JSON.stringify(diag)}`);
-    } else {
+    const tray = await outboxRows();
+    const bubbles = await bubbleRows();
+    await page.screenshot({ path: "/tmp/offline-one-row.png" });
+    console.log("after the failed send:", JSON.stringify({ tray, bubbles }));
+    const diag = await page.evaluate(() => {
+      const app = document.querySelector("pi-web-app");
+      const editor = app?.shadowRoot?.querySelector("prompt-editor");
+      const view = app?.shadowRoot?.querySelector("chat-view");
+      const state = app?.state;
+      const tail = (state?.messages ?? []).slice(-3).map((line) => ({ role: line.role, delivery: line.meta?.delivery, text: JSON.stringify(line.parts).slice(0, 60) }));
+      return {
+        send: Reflect.get(window, "probeSend"),
+        outbox: Object.keys(localStorage).filter((key) => key.includes("pending-prompt")).map((key) => [key, (localStorage.getItem(key) ?? "").slice(0, 160)]),
+        selected: state?.selectedSession?.id,
+        editorSession: editor === null || editor === undefined ? null : Reflect.get(editor, "sessionId"),
+        chatView: view !== null && view !== undefined,
+        tail,
+        userRows: view?.shadowRoot?.querySelectorAll(".msg.user").length ?? null,
+      };
+    });
+    console.log("diag:", JSON.stringify(diag));
+    if (bubbles.length !== 1) fail(`the unsent message has ${String(bubbles.length)} transcript rows, not one`);
+    else if (tray.length !== 0) fail(`the composer tray repeats a message the transcript already draws: ${JSON.stringify(tray)}`);
+    else if (!bubbles[0].actions.includes("retry") || !bubbles[0].actions.includes("discard")) fail(`the one row does not carry Retry and Discard: ${JSON.stringify(bubbles[0].actions)}`);
+    else {
       broken = false;
       await page.evaluate(() => {
-        const editor = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("prompt-editor");
-        const retry = [...(editor?.shadowRoot?.querySelectorAll(".pending-prompt button") ?? [])].find((button) => (button.textContent ?? "").trim() === "Retry");
-        retry?.click();
+        const view = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("chat-view");
+        const retries = [...(view?.shadowRoot?.querySelectorAll(".msg.user .msg-action[data-action='retry']") ?? [])];
+        if (retries.length === 1) retries[0].click();
+        Reflect.set(window, "probeRetryButtons", retries.length);
       });
       await page.waitForTimeout(7000);
-      const after = await outboxRows();
-      if (after.length > 0) fail(`the row survived a successful retry: ${JSON.stringify(after)}`);
-      else console.log("PASS an unsent row offers Retry, and Retry clears it");
+      const keys = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.includes("pending-prompt")).map((key) => [key, localStorage.getItem(key)]));
+      const leftover = keys.filter(([, value]) => value !== null && value.includes(MARKER));
+      const afterBubbles = await bubbleRows();
+      console.log("after row Retry:", JSON.stringify({ leftover: leftover.length, bubbles: afterBubbles }));
+      if (leftover.length > 0) fail("the outbox still holds the message after a successful row Retry");
+      else if (afterBubbles.length !== 1) fail(`row Retry left ${String(afterBubbles.length)} rows for one message`);
+      else if (afterBubbles[0].actions.includes("retry")) fail("the row still offers Retry after the retry landed");
+      else console.log("PASS one row per unsent message; its own Retry lands it and clears the outbox");
     }
   }
 } finally {

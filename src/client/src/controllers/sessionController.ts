@@ -1575,6 +1575,20 @@ export class SessionController {
   }
 
   /**
+   * Drop a send nobody confirmed, from its own row: the outbox entry and the bubble go
+   * together, the same terminal step a withdrawal frame takes, so no surface keeps
+   * offering it.
+   */
+  discardOutgoing(clientMessageId: string): void {
+    const current = this.getState();
+    const selected = current.selectedSession;
+    if (selected === undefined) return;
+    forgetPendingPrompt(machineSessionKey(selectedMachineId(current), selected.id), clientMessageId);
+    const messages = withdrawDeliveryLine(current.messages, clientMessageId);
+    if (messages.length !== current.messages.length) this.setState({ messages });
+  }
+
+  /**
    * Stop the current work. Anything that was queued comes back rather than
    * being deleted: those messages were typed for the turn being cancelled, so
    * the sender gets them back the same way a recall returns one.

@@ -40,7 +40,7 @@ import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback } from "./ExtensionDialogCard";
-import { deliveryTaken } from "../messageDelivery";
+import { deliveryTaken, discardableDeliveryId, retryableDeliveryId } from "../messageDelivery";
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./FormattedText";
@@ -749,6 +749,10 @@ export class ChatView extends LitElement {
    * the only remaining copy of what was sent.
    */
   @property({ attribute: false }) onResendMessage?: (prompt: RecoveredPrompt) => void | Promise<void>;
+  /** Throw away a send nobody confirmed, from its own row. */
+  @property({ attribute: false }) onDiscardMessage?: (clientMessageId: string) => void;
+  /** Replay the outbox under the same identity, from the row whose answer never came. */
+  @property({ attribute: false }) onRetryMessage?: () => void;
   /** Child sessions (subagents) spawned by this session, most urgent first. */
   @property({ attribute: false }) subagents?: readonly SessionSubagentInfo[];
   /** Subagent-tool runs for this session, newest first, live ones first of all. */
@@ -2248,11 +2252,23 @@ if (this.heldWaitingClearTimer !== undefined) {
   private renderMessageActions(message: ChatLine, key: string) {
     const resendable = this.onResendMessage !== undefined && isResendableLine(message);
     const recall = this.renderQueuedBubbleRecall(message);
-    if (!this.isCopyableMessage(message) && !resendable && recall === null) return null;
+    const discardId = this.onDiscardMessage === undefined ? undefined : discardableDeliveryId(message);
+    const retryId = this.onRetryMessage === undefined ? undefined : retryableDeliveryId(message);
+    if (!this.isCopyableMessage(message) && !resendable && recall === null && discardId === undefined && retryId === undefined) return null;
     const copied = this.copiedMessageKey === key;
     return html`
       <div class="msg-actions" aria-label="Message actions">
         ${recall}
+        ${retryId === undefined
+          ? null
+          : html`<button type="button" class="msg-action" data-action="retry" title="Retry: send this message again" aria-label="Retry sending this message" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onRetryMessage?.(); }}>
+              ${renderRunIcon()}
+            </button>`}
+        ${discardId === undefined
+          ? null
+          : html`<button type="button" class="msg-action" data-action="discard" title="Discard: drop this unsent message" aria-label="Discard this unsent message" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onDiscardMessage?.(discardId); }}>
+              ${renderCrossIcon()}
+            </button>`}
         ${resendable
           ? html`<button type="button" class="msg-action" title="Edit and send again" aria-label="Put this message back in the composer to send again" @click=${(event: MouseEvent) => { this.resendMessage(message, event); }}>
               ${renderResendIcon()}

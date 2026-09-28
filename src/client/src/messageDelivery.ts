@@ -213,6 +213,60 @@ export function removeDeliveryLine(messages: readonly ChatLine[], clientMessageI
 }
 
 /**
+ * Which delivery states the reader may throw away from the row itself.
+ *
+ * One message has one row (docs/design/one-message-one-row.md), so the row carries every
+ * action its state allows: a send nobody has confirmed can be dropped here, while a
+ * message the daemon holds is recalled instead and one the transcript holds is history.
+ */
+const DISCARDABLE: Record<MessageDeliveryState, boolean> = {
+  sending: true,
+  failed: true,
+  unverifiable: true,
+  received: false,
+  queued: false,
+  delivered: false,
+};
+
+export function discardableDeliveryId(line: Pick<ChatLine, "meta">): string | undefined {
+  const delivery = line.meta?.delivery;
+  if (delivery === undefined || !DISCARDABLE[delivery.state]) return undefined;
+  return delivery.clientMessageId;
+}
+
+/**
+ * Which states offer Retry on the row: only a send whose answer never came, which the
+ * outbox kept under its identity so a replay is deduplicated rather than doubled.
+ */
+const RETRYABLE: Record<MessageDeliveryState, boolean> = {
+  unverifiable: true,
+  sending: false,
+  failed: false,
+  received: false,
+  queued: false,
+  delivered: false,
+};
+
+export function retryableDeliveryId(line: Pick<ChatLine, "meta">): string | undefined {
+  const delivery = line.meta?.delivery;
+  if (delivery === undefined || !RETRYABLE[delivery.state]) return undefined;
+  return delivery.clientMessageId;
+}
+
+/** Identities that already have a row in this transcript, so no other surface draws them. */
+export function rowedClientMessageIds(messages: readonly ChatLine[], queued: readonly QueuedSessionMessage[]): Set<string> {
+  const ids = new Set<string>();
+  for (const line of messages) {
+    const id = line.meta?.delivery?.clientMessageId ?? (line.meta?.echo === true ? line.meta.echoClientMessageId : undefined);
+    if (id !== undefined) ids.add(id);
+  }
+  for (const entry of queued) {
+    if (entry.clientMessageId !== undefined) ids.add(entry.clientMessageId);
+  }
+  return ids;
+}
+
+/**
  * Remove the withdrawn message's lines - and only those.
  *
  * A delivered line is the transcript's, not the queue's: a withdrawal frame

@@ -305,6 +305,12 @@ export class PromptEditor extends LitElement {
   /** This session's own user prompts: history that reached the server, so the
    * picker works on a device that never typed here. Most recent first. */
   @property({ attribute: false }) sessionPrompts: string[] = [];
+  /**
+   * Identities the transcript already draws. One message has one row, so the tray here
+   * only speaks for an outbox entry nothing else shows - a message recovered after a
+   * reload - and never repeats the bubble that is already saying "Sending".
+   */
+  @property({ attribute: false }) rowedMessageIds: ReadonlySet<string> = new Set();
   @state() private zoomedAttachment?: { src: string; alt: string } | undefined;
   @state() private attachments: PendingAttachment[] = [];
   @state() private attachmentError: string | undefined = undefined;
@@ -606,7 +612,7 @@ export class PromptEditor extends LitElement {
 
   private renderPendingPrompts() {
     const now = Date.now();
-    const lingering = this.pendingPrompts.filter((prompt) => now - Date.parse(prompt.at) > 4000);
+    const lingering = this.pendingPrompts.filter((prompt) => now - Date.parse(prompt.at) > 4000 && !this.rowedMessageIds.has(prompt.clientMessageId ?? ""));
     if (lingering.length === 0) {
       if (this.pendingPrompts.length > 0 && this.pendingRevealTimer === undefined) {
         this.pendingRevealTimer = setTimeout(() => { this.pendingRevealTimer = undefined; this.requestUpdate(); }, 4200);
@@ -1140,6 +1146,11 @@ export class PromptEditor extends LitElement {
    * send honors a Discard that happened mid-flight. Acceptance uses the same
    * contract as the direct path: only an explicit false is a refusal.
    */
+  /** Replay this session's outbox under each entry's own identity, as the row's Retry asks. */
+  retryOutbox(): void {
+    this.flushPendingPrompts();
+  }
+
   private readonly flushPendingPrompts = (): void => {
     if (!navigator.onLine || this.flushInFlight) return;
     const send = this.onSend;
