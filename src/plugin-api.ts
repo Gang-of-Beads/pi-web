@@ -1,3 +1,4 @@
+import type { SessionBackgroundTaskInfo } from "./shared/apiTypes.js";
 import type { CSSResultGroup, TemplateResult } from "lit";
 import type { FileSuggestion, ForegroundToken, LegacyThemeToken, MachineStatus, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
 
@@ -530,6 +531,8 @@ export interface PluginSelectedSession {
 }
 
 export interface PluginRuntimeState {
+  /** Background shell tasks the selected session started, newest first, for a plugin that lists them. */
+  backgroundTasks?: readonly SessionBackgroundTaskInfo[] | undefined;
   /** Identity of the currently selected machine. Undefined only on older hosts or before machines load. */
   selectedMachine?: PluginMachine | undefined;
   selectedWorkspace?: Workspace | undefined;
