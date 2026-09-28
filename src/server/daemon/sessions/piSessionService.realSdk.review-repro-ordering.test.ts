@@ -90,6 +90,23 @@ describe("SDK behaviour the daemon works around", () => {
   });
 });
 
+/**
+ * SDK state the daemon inbox reads directly. An upgrade that renames or removes any of it must
+ * fail here, not silently re-open the windows the inbox closes with it.
+ */
+describe("SDK state the daemon reads", () => {
+  it("exposes the agent_settled deferral flag, the agent loop's own flag, and the in-memory steering mode", async () => {
+    const { session } = await realSession(200);
+    session.agent.steeringMode = "all";
+    const emittingSettled: unknown = Reflect.get(session, "_isEmittingAgentSettled");
+    expect({
+      emittingSettled,
+      loopStreaming: session.agent.state.isStreaming,
+      steeringMode: session.agent.steeringMode,
+    }).toEqual({ emittingSettled: false, loopStreaming: false, steeringMode: "all" });
+  });
+});
+
 describe("daemon over the real SDK: idle session, sequential sends (outbox replay awaits each answer)", () => {
   it("D1: photo then text, fast model: consumed in acceptance order", async () => {
     const { svc, consumed, session, ref, accepted, errors } = await daemonOverRealSdk("real-photo-fast", 200);

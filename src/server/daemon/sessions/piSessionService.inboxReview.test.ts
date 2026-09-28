@@ -335,3 +335,95 @@ describe("fresh-lane findings over the fixes", () => {
     await service.dispose();
   });
 });
+
+describe("second fresh-lane findings", () => {
+  it("A: Stop discards a message a batch put back after meeting a finished run, instead of withdrawing it and running it", async () => {
+    const { fake, service, ref, lane } = await inboxService("a-late-restore");
+    fake.session.prompt = async (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      if (options?.streamingBehavior === "steer") lane.push(text);
+      options?.preflightResult?.(true);
+      fake.session.isStreaming = false;
+    };
+    await service.prompt(ref, "X", undefined, undefined, { clientMessageId: "a-x-00001" });
+    await service.prompt(ref, "Y", undefined, undefined, { clientMessageId: "a-y-00001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(1); }, { interval: 1 });
+    const { discarded } = await service.abort(ref);
+    fake.emit({ type: "agent_settled" });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect({ discarded: discarded.map((entry) => entry.clientMessageId).sort(), calls: texts(fake.calls.prompt), queued: (await service.status(ref)).queuedMessages })
+      .toEqual({ discarded: ["a-x-00001", "a-y-00001"], calls: ["X"], queued: [] });
+    await service.dispose();
+  });
+
+  it("B: a direct prompt the SDK queued as a steer stays pending, and keeps its id when taken back", async () => {
+    const { fake, service, ref, lane } = await inboxService("b-direct-to-lane", { isStreaming: false });
+    let first = true;
+    fake.session.prompt = (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      if (first) {
+        first = false;
+        fake.session.isStreaming = true;
+        lane.push(text);
+      }
+      options?.preflightResult?.(true);
+      return Promise.resolve();
+    };
+    await service.prompt(ref, "Q", undefined, undefined, { clientMessageId: "b-q-00001" });
+    await vi.waitFor(() => { expect(lane).toEqual(["Q"]); });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(service.operationOutcomes("b-direct-to-lane", ["b-q-00001"])).toEqual({ "b-q-00001": "pending" });
+    fake.session.isStreaming = false;
+    fake.emit({ type: "agent_settled" });
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["Q", "Q"]); });
+    expect(service.operationOutcomes("b-direct-to-lane", ["b-q-00001"])).toEqual({ "b-q-00001": "succeeded" });
+    await service.dispose();
+  });
+
+  it("B: a steer the SDK ran as a new prompt is never put back once the agent read it", async () => {
+    const { fake, service, ref } = await inboxService("b-lane-to-run");
+    fake.session.prompt = (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      fake.session.isStreaming = false;
+      options?.preflightResult?.(true);
+      fake.emit({ type: "agent_start" });
+      fake.emit({ type: "message_start", message: { role: "user", content: text } });
+      return Promise.reject(new Error("Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion."));
+    };
+    await service.prompt(ref, "S", undefined, undefined, { clientMessageId: "b-s-00001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(service.operationOutcomes("b-lane-to-run", ["b-s-00001"])).toEqual({ "b-s-00001": "succeeded" }); });
+    fake.emit({ type: "agent_settled" });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect({ calls: texts(fake.calls.prompt), queued: (await service.status(ref)).queuedMessages }).toEqual({ calls: ["S"], queued: [] });
+    await service.dispose();
+  });
+
+  it("C: hands nothing while the SDK is emitting agent_settled, then hands it once that is over", async () => {
+    const { fake, service, ref } = await inboxService("c-deferral", { isStreaming: false });
+    await service.status(ref);
+    Reflect.set(fake.session, "_isEmittingAgentSettled", true);
+    await service.prompt(ref, "D", undefined, undefined, { clientMessageId: "c-d-00001" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fake.calls.prompt).toHaveLength(0);
+    Reflect.set(fake.session, "_isEmittingAgentSettled", false);
+    fake.emit({ type: "agent_settled" });
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["D"]); });
+    await service.dispose();
+  });
+
+  it("C: a prompt that returns without ever reaching preflight is not reported as read", async () => {
+    const { fake, service, ref } = await inboxService("c-no-preflight", { isStreaming: false });
+    fake.session.prompt = (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      return Promise.resolve();
+    };
+    await service.prompt(ref, "E", undefined, undefined, { clientMessageId: "c-e-00001" });
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["E"]); });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(service.operationOutcomes("c-no-preflight", ["c-e-00001"])).toEqual({ "c-e-00001": "pending" });
+    await service.dispose();
+  });
+});
