@@ -21,11 +21,22 @@ async function inboxService(sessionId: string, options: { dataDir?: string; dir?
   Reflect.set(fake.runtime, "cwd", dir);
   fake.session.sessionManager.getCwd = () => dir;
   const lane: string[] = [];
+  const reportLane = () => { fake.emit({ type: "queue_update", steering: [...lane], followUp: [] }); };
+  const pushLane = lane.push.bind(lane);
+  Object.defineProperty(lane, "push", {
+    enumerable: false,
+    value: (...texts: string[]) => {
+      const size = pushLane(...texts);
+      reportLane();
+      return size;
+    },
+  });
   fake.session.getSteeringMessages = () => [...lane];
   fake.session.clearQueue = () => {
     fake.calls.clearQueue += 1;
     const steering = [...lane];
     lane.length = 0;
+    reportLane();
     return { steering, followUp: [] };
   };
   fake.session.prompt = (text: string, promptOptions?: PromptOptions) => {
@@ -45,6 +56,7 @@ async function inboxService(sessionId: string, options: { dataDir?: string; dir?
   const ref = sessionRef(sessionId, dir);
   const readSteer = (committedText: string) => {
     lane.shift();
+    reportLane();
     fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "text", text: committedText }] } });
   };
   return { hub, fake, service, ref, dir, dataDir, lane, readSteer };
@@ -424,6 +436,69 @@ describe("second fresh-lane findings", () => {
     await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["E"]); });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(service.operationOutcomes("c-no-preflight", ["c-e-00001"])).toEqual({ "c-e-00001": "pending" });
+    await service.dispose();
+  });
+});
+
+describe("gate-lane findings", () => {
+  it("P1-1: a command handled while the agent runs is not recorded as a steer, so ids do not shift and Stop withdraws the right message", async () => {
+    const { hub, fake, service, ref, lane } = await inboxService("p11-command");
+    fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "goal-pause" }];
+    fake.session.prompt = (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      if (!text.startsWith("/")) lane.push(text);
+      options?.preflightResult?.(true);
+      return Promise.resolve();
+    };
+    await service.prompt(ref, "S1", undefined, undefined, { clientMessageId: "p11-s1-001" });
+    await service.prompt(ref, "/goal-pause", undefined, undefined, { clientMessageId: "p11-cmd-01" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["S1", "/goal-pause"]); });
+    await vi.waitFor(() => { expect(service.operationOutcomes("p11-command", ["p11-cmd-01"])).toEqual({ "p11-cmd-01": "succeeded" }); });
+    expect((await service.status(ref)).queuedMessages.map((entry) => entry.clientMessageId)).toEqual(["p11-s1-001"]);
+    const { discarded } = await service.abort(ref);
+    const withdrawn = hub.sessionEvents.filter(({ event }) => event.type === "prompt.withdrawn").map(({ event }): unknown => Reflect.get(event, "clientMessageId"));
+    expect({ discarded: discarded.map((entry) => entry.clientMessageId), withdrawn, outcomes: service.operationOutcomes("p11-command", ["p11-s1-001", "p11-cmd-01"]) })
+      .toEqual({ discarded: ["p11-s1-001"], withdrawn: ["p11-s1-001"], outcomes: { "p11-s1-001": "withdrawn", "p11-cmd-01": "succeeded" } });
+    await service.dispose();
+  });
+
+  it("P2-1: hands no steer while the SDK emits agent_settled, even with the agent loop flag set", async () => {
+    const { fake, service, ref } = await inboxService("p21-deferral");
+    await service.status(ref);
+    const agentState = { isStreaming: true };
+    Reflect.set(fake.session.agent, "state", agentState);
+    Reflect.set(fake.session, "_isEmittingAgentSettled", true);
+    await service.prompt(ref, "T", undefined, undefined, { clientMessageId: "p21-t-0001" });
+    fake.emit({ type: "turn_end" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fake.calls.prompt).toHaveLength(0);
+    Reflect.set(fake.session, "_isEmittingAgentSettled", false);
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["T"]); });
+    await service.dispose();
+  });
+
+  it("P2-2: recalling a message pi still holds after its run ended does not replay the rest as runs under the lock", async () => {
+    const { fake, service, ref, lane } = await inboxService("p22-recall");
+    await service.prompt(ref, "S1", undefined, undefined, { clientMessageId: "p22-s1-001" });
+    await service.prompt(ref, "S2", undefined, undefined, { clientMessageId: "p22-s2-001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["S1", "S2"]); });
+    fake.session.isStreaming = false;
+    fake.session.prompt = (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      options?.preflightResult?.(true);
+      fake.emit({ type: "agent_start" });
+      fake.emit({ type: "message_start", message: { role: "user", content: text } });
+      return new Promise<void>(() => undefined);
+    };
+    const recall = service.recallQueuedMessage(ref, { kind: "steer", text: "S1", clientMessageId: "p22-s1-001" });
+    const answered = await Promise.race([recall.then((result) => result.recalled), new Promise((resolve) => setTimeout(() => { resolve("recall still waiting on the survivor's run"); }, 500))]);
+    expect(answered).toBe(true);
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["S1", "S2", "S2"]); });
+    expect(fake.calls.prompt.map(handedAs)).toEqual(["steer", "steer", undefined]);
+    expect(service.operationOutcomes("p22-recall", ["p22-s1-001", "p22-s2-001"])).toEqual({ "p22-s1-001": "withdrawn", "p22-s2-001": "succeeded" });
     await service.dispose();
   });
 });

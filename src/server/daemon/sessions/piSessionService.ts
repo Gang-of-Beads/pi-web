@@ -221,14 +221,31 @@ interface HeldSteerRecord {
  * start of a run. The SDK chooses after its own input-handler await, so the daemon's request
  * (steer or direct) is not the answer.
  */
-type HandoffLanding = "lane" | "run";
+type HandoffLanding = "lane" | "run" | "handled";
 
 /**
- * The SDK calls preflight right after `_queueSteer` on the lane path (its run flag is set) and
- * right before `_runAgentPrompt` on the run path (the flag is not yet set).
+ * The SDK calls preflight right after `_queueSteer` pushed the message (having emitted
+ * `queue_update` synchronously), right before `_runAgentPrompt` on the run path, and without
+ * queueing anything when an extension command or an input handler took the message. So pi's
+ * lanes growing during the handoff means it is queued; otherwise the run flag, not yet set on
+ * the run path, tells a new run from a handled message.
  */
-function landingAtPreflight(session: PiAgentSession): HandoffLanding {
-  return session.isStreaming ? "lane" : "run";
+function landingAtPreflight(session: PiAgentSession, lanesGrew: boolean): HandoffLanding {
+  if (lanesGrew) return "lane";
+  return session.isStreaming ? "handled" : "run";
+}
+
+/**
+ * Whether a handoff's prompt resolving means the agent has taken the message: a run has, and so
+ * has a command or input handler that consumed it. A message in pi's lane has not been read yet.
+ */
+const READ_WHEN_RESOLVED: Readonly<Record<HandoffLanding, boolean>> = { lane: false, run: true, handled: true };
+
+/** How many messages pi's lanes hold, per a `queue_update` event. */
+function queueUpdateSize(event: unknown): number {
+  const steering = getProperty(event, "steering");
+  const followUp = getProperty(event, "followUp");
+  return (Array.isArray(steering) ? steering.length : 0) + (Array.isArray(followUp) ? followUp.length : 0);
 }
 
 /**
@@ -1338,6 +1355,8 @@ export class PiSessionService implements SessionRouteService {
   private readonly steerBatches = new Map<string, Promise<void>>();
   private readonly replayingLanes = new Set<string>();
   private readonly emptying = new Set<string>();
+  private readonly laneSizes = new Map<string, number>();
+  private readonly laneGrowth = new Map<string, number>();
   /**
    * Images that queued prompts carried, keyed by session and matched on text.
    *
@@ -3102,10 +3121,11 @@ export class PiSessionService implements SessionRouteService {
    */
   private runStateFor(session: PiAgentSession): RunState {
     const sessionId = session.sessionId;
-    const running = session.isStreaming || session.agent.state?.isStreaming === true;
+    const emittingSettled = isEmittingAgentSettled(session);
+    const running = !emittingSettled && (session.isStreaming || session.agent.state?.isStreaming === true);
     const open = this.openRuns.get(sessionId);
     if (open !== undefined) open.quietSince = running ? undefined : open.quietSince ?? Date.now();
-    const settling = isSettling(open, Date.now()) || isEmittingAgentSettled(session);
+    const settling = isSettling(open, Date.now()) || emittingSettled;
     return runStateOf({ isCompacting: session.isCompacting, isStreaming: running, handing: this.handing.has(sessionId), settling });
   }
 
@@ -3172,6 +3192,7 @@ export class PiSessionService implements SessionRouteService {
     if (behavior === "steer") this.publishActivity(session, "steering queued", "active");
     let committed = false;
     let landed: HandoffLanding | undefined;
+    const growthAtCall = this.laneGrowth.get(sessionId) ?? 0;
     let markHanded = (): void => undefined;
     const handed = new Promise<"handed">((resolve) => { markHanded = () => { resolve("handed"); }; });
     const onCommit = (): void => {
@@ -3181,9 +3202,9 @@ export class PiSessionService implements SessionRouteService {
     };
     const preflightResult = (success: boolean): void => {
       if (!success) return;
-      landed = landingAtPreflight(session);
-      if (landed === "lane") {
-        this.holdSteer(sessionId, entry, images);
+      landed = landingAtPreflight(session, (this.laneGrowth.get(sessionId) ?? 0) > growthAtCall);
+      if (landed === "lane") this.holdSteer(sessionId, entry, images);
+      if (landed !== "run") {
         markHanded();
         return;
       }
@@ -3243,7 +3264,7 @@ export class PiSessionService implements SessionRouteService {
     const sessionId = session.sessionId;
     this.forgetHandoffWatchers(sessionId, watchers);
     if (result.verdict === "handed") {
-      if (result.landed === "run") this.settleSucceeded(sessionId, entry.clientMessageId);
+      if (result.landed !== undefined && READ_WHEN_RESOLVED[result.landed]) this.settleSucceeded(sessionId, entry.clientMessageId);
       return;
     }
     if (result.verdict === "transient" && !result.committed) {
@@ -3293,6 +3314,11 @@ export class PiSessionService implements SessionRouteService {
       onRunStart?.();
     }
     if (eventType === "agent_settled") this.openRuns.delete(sessionId);
+    if (eventType === "queue_update") {
+      const size = queueUpdateSize(event);
+      if (size > (this.laneSizes.get(sessionId) ?? 0)) this.laneGrowth.set(sessionId, (this.laneGrowth.get(sessionId) ?? 0) + 1);
+      this.laneSizes.set(sessionId, size);
+    }
     if (eventType !== "message_start" || getProperty(getProperty(event, "message"), "role") !== "user") return;
     const onCommit = this.directCommitWatchers.get(sessionId);
     this.directCommitWatchers.delete(sessionId);
@@ -3971,24 +3997,42 @@ export class PiSessionService implements SessionRouteService {
     // replay would either be pushed behind messages that were queued before it
     // or be dropped by the replay's own writes. Everything else that touches
     // session entries is serialized the same way.
-    const removed = await this.withQueueLock(session, async () => {
-      this.replayingLanes.add(session.sessionId);
-      try {
-        return await this.replayLanesWithout(session, target);
-      } finally {
-        this.replayingLanes.delete(session.sessionId);
-      }
-    });
-    if (removed) this.withdraw(session.sessionId, this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId, target.kind) ?? target.clientMessageId);
+    const recalled = await this.withQueueLock(session, () => this.recallFromRuntime(session, target));
+    const removed = recalled.removed;
+    if (removed) this.withdraw(session.sessionId, recalled.clientMessageId);
     this.settleConsumedSteers(session);
     this.publishActivity(session, removed ? "queued message recalled" : "queued message already gone", "active");
     this.publishStatus(session);
+    this.pumpInbox(session, "nudge");
     // Whether anything was actually taken back is the caller's business: the
     // agent can read a message between the click and this request, and a client
     // that assumes success would delete a bubble the conversation already
     // contains - the message would vanish from the transcript and reappear in
     // the composer, ready to be sent a second time.
     return { recalled: removed, status: this.statusFromSession(session) };
+  }
+
+  /**
+   * Take one message out of what pi holds. While the agent runs, pi's lanes are rewritten
+   * without it. Once the run is over, replaying the survivors would start each as a new run
+   * under the queue lock, so everything pi holds goes back to the inbox first and the message
+   * is recalled from there.
+   */
+  private async recallFromRuntime(session: PiAgentSession, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }): Promise<{ removed: boolean; clientMessageId?: string }> {
+    const sessionId = session.sessionId;
+    if (this.runStateFor(session) !== "running") {
+      await this.takeBackHeldMessages(session);
+      const owned = await this.ownedQueue.recall(sessionId, { ...(target.clientMessageId === undefined ? {} : { clientMessageId: target.clientMessageId }), text: target.text });
+      return owned === undefined ? { removed: false } : { removed: true, ...(owned.clientMessageId === undefined ? {} : { clientMessageId: owned.clientMessageId }) };
+    }
+    this.replayingLanes.add(sessionId);
+    try {
+      if (!await this.replayLanesWithout(session, target)) return { removed: false };
+      const clientMessageId = this.forgetQueuedPromptClientId(sessionId, target.text, target.clientMessageId, target.kind) ?? target.clientMessageId;
+      return { removed: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) };
+    } finally {
+      this.replayingLanes.delete(sessionId);
+    }
   }
 
   /**
@@ -4337,6 +4381,8 @@ export class PiSessionService implements SessionRouteService {
     await this.steerBatches.get(sessionId);
     await this.takeBackHeldMessages(active.runtime.session);
     this.openRuns.delete(sessionId);
+    this.laneSizes.delete(sessionId);
+    this.laneGrowth.delete(sessionId);
     this.directCommitWatchers.delete(sessionId);
     this.runStartWatchers.delete(sessionId);
     this.committedExpectations.forgetSession(sessionId);

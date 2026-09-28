@@ -153,6 +153,12 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
   const listeners: ((event: unknown) => void)[] = [];
   let extensionUiContext = testExtensionUiContext;
   const calls = { abort: 0, bindExtensions: bindExtensionCalls, clearQueue: 0, dispose: 0, prompt: promptCalls, reload: 0, sendCustomMessage: customMessageCalls };
+  /**
+   * Messages this fake accepted into a lane. They are reported with `queue_update` the way the
+   * SDK reports every lane push, but `getSteeringMessages` stays empty: tests that need pi's
+   * lanes to hold and release messages model them themselves.
+   */
+  const reportedQueue: string[] = [];
   const session: TestSession = {
     sessionId,
     sessionFile: `/tmp/${sessionId}.jsonl`,
@@ -201,6 +207,11 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
     },
     prompt: (text: string, options: unknown) => {
       calls.prompt.push({ text, options });
+      const streamingBehavior: unknown = Reflect.get(Object(options), "streamingBehavior");
+      if (session.isStreaming && (streamingBehavior === "steer" || streamingBehavior === "followUp")) {
+        reportedQueue.push(text);
+        for (const listener of [...listeners]) listener({ type: "queue_update", steering: [...reportedQueue], followUp: [] });
+      }
       const preflightResult: unknown = Reflect.get(Object(options), "preflightResult");
       if (typeof preflightResult === "function") Reflect.apply(preflightResult, undefined, [true]);
       return Promise.resolve();

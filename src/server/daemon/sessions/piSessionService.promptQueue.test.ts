@@ -449,9 +449,11 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
 
     await service.recallQueuedMessage(sessionRef("recall-idle-session"), { kind: "steer", text: "an old steer" });
 
-    expect(fake.calls.prompt).toEqual([
-      { text: "an old follow up", options: undefined },
-    ]);
+    await vi.waitFor(() => {
+      expect(fake.calls.prompt).toEqual([
+        { text: "an old follow up", options: directHandoffOptions() },
+      ]);
+    });
     await service.dispose();
   });
 
@@ -556,7 +558,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     const originalPrompt = fake.session.prompt.bind(fake.session);
     type PromptOptions = Parameters<typeof originalPrompt>[1];
     fake.session.prompt = vi.fn(async (text: string, options?: PromptOptions) => {
-      if (options?.streamingBehavior === "steer") steeringMessages.push(text);
+      if (options?.streamingBehavior === "steer") { steeringMessages.push(text); fake.emit({ type: "queue_update", steering: [...steeringMessages], followUp: [] }); }
       return originalPrompt(text, options);
     });
     // A real 1x1 PNG: the attachment pipeline decodes and re-encodes, and
