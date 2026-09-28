@@ -605,9 +605,6 @@ function composedContains(host: Element, node: Node | null): boolean {
 export function chatDeliveryPresentation(delivery: MessageDelivery, queuePosition?: number): DeliveryPresentation {
   if (delivery.state === "sending") return { glyph: "pending", text: "Sending", label: "Sending", tone: "pending" };
   if (delivery.state === "failed") return { glyph: "failed", text: "Not sent", label: "Not sent - the server never received this message", tone: "failed" };
-  // The state a flaky link produces most often, and the one that must not read
-  // as "gone": the message may be running. It stays open until an answer or a
-  // reconnect closes it, and the row offers the check rather than the page.
   if (delivery.state === "unverifiable") {
     return { glyph: "pending", text: "No answer yet", label: "Sent, no answer yet - this may already be running; checking again is safe", tone: "pending" };
   }
@@ -615,13 +612,6 @@ export function chatDeliveryPresentation(delivery: MessageDelivery, queuePositio
     const place = queuePosition === undefined ? "" : ` · ${String(queuePosition)}`;
     return { glyph: "single", text: `Queued${place}`, label: "Queued - the server has this message and the agent will take it next", tone: "received" };
   }
-  // "Sent" is a transport receipt and nothing more: the server's HTTP answer
-  // arrived. It is not a promise that anything will happen, and a message can
-  // sit here while the session is idle. Saying "Sent" and meaning "queued" is
-  // what made a stalled message indistinguishable from a running one.
-  // An accepted message is a queued message: the daemon owns it the moment
-  // the HTTP answer lands, so the transport receipt earns no mark of its own
-  // and reads exactly like the queue state it becomes.
   if (delivery.state === "received") return { glyph: "single", text: "Queued", label: "Queued - the server has this message and the agent will take it next", tone: "received" };
   return { glyph: "double", text: "Read", label: "Read - the agent took this message into the conversation", tone: "delivered" };
 }
@@ -900,8 +890,6 @@ export class ChatView extends LitElement {
   }
 
   private readonly onImageLoad = (event: Event): void => {
-    // Following the bottom needs no measurement, so it must not be reached
-    // through one: an unrendered scroller would otherwise swallow the pin.
     if (this.pinnedToBottom) { this.scrollToBottom(); return; }
     const chat = this.chat;
     const target = event.target;
@@ -1065,21 +1053,14 @@ export class ChatView extends LitElement {
 
   private savePreviousSessionScrollPosition(previousSessionId: unknown, previousMachineId?: unknown): void {
     if (typeof previousSessionId !== "string" || previousSessionId === "" || previousSessionId === this.sessionId) return;
-    // The machine may have changed in the same batch as the session: the reader was in
-    // the previous session *on the previous machine*, so save it under that pair.
     const machineId = typeof previousMachineId === "string" && previousMachineId !== "" ? previousMachineId : this.drawerMachineId;
     this.saveScrollPosition(machineSessionKey(machineId, previousSessionId));
   }
 
   private prepareSessionUiState(): void {
-    // Per-session intent, or it leaks: a direction left from the last session gated the
-    // next one's first history fetch, and a pending jump paged a session the reader had
-    // only just opened.
     this.lastScrollDirection = "none";
     this.jumpToNewestPending = false;
     this.lastScrollTop = this.chat?.scrollTop ?? 0;
-    // The clock measures this session's turn; carrying it across a switch would
-    // date the new session's work from the old one's start.
     this.turnStartedAtMs = undefined;
     this.disclosures.syncSession(this.sessionId);
     this.scrollController.clearScheduledSave();
@@ -1088,8 +1069,6 @@ export class ChatView extends LitElement {
     this.pendingScrollRestoreSessionId = undefined;
     this.pendingScrollRestorePosition = undefined;
     this.heldWaiting = undefined;
-    // A held quote is session-scoped like every other projection: tapping it
-    // after a switch would write session A's words into session B's composer.
     this.quoteChip = undefined;
 if (this.heldWaitingClearTimer !== undefined) {
       clearTimeout(this.heldWaitingClearTimer);
@@ -1116,18 +1095,6 @@ if (this.heldWaitingClearTimer !== undefined) {
       pinnedToBottom: this.pinnedToBottom,
     });
     const prependAnchor = decision === "prepend" ? this.capturePrependScrollAnchor() : undefined;
-    // A reader who has scrolled up is reading something. Whatever grows above
-    // them - a streaming reply, an activity row, a queued message - would slide
-    // it out from under their eyes, because this scroller turns the browser's
-    // own anchoring off so the prepend anchor can own the scroll position.
-    // This is the same measure-and-restore, without the prepend's multi-frame
-    // settle: an append shifts by a line, not by a page, and the settle also
-    // suppresses load-more, which must keep working while reading.
-    // Measuring the reader's place costs a walk over every message row and a
-    // forced layout, so it only runs when content above them can have moved.
-    // A reply streaming below the fold moves nothing above; a reader whose
-    // gesture is in flight owns the scroll outright. Doing it on every render
-    // made a long transcript crawl and snapped the view back under the thumb.
     const readingAnchor = decision === "hold-reading-position" && shouldHoldReadingPosition({
       pinnedToBottom: this.pinnedToBottom,
       contentAboveChanged: this.didContentAboveChange(changed),
@@ -1167,10 +1134,6 @@ if (this.heldWaitingClearTimer !== undefined) {
         this.runViewport({ kind: "pageFailed" });
       }
     }
-    // A page landed (rows changed) or the forward request closed: either way the state
-    // must leave `awaitingPage`, or the policy answers idle forever. A failed page also
-    // arrives here - `loadingMore` drops and the rows do not change - so the state is
-    // never left holding an in-flight request that nobody made.
     if (changed.has("messages") && this.viewportState.kind === "awaitingPage") {
       this.runViewport({ kind: "pageArrived", want: this.viewportState.want });
     }
@@ -1179,12 +1142,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     }
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
     if (changed.has("sessionId")) this.restoreScrollPosition();
-    // A question no longer uses the transcript scroller, so opening one scrolls
-    // nothing: it appears in its own row, already in view. The scroll that used
-    // to bring it into view was itself moving the page under the reader.
-    // A message queued from elsewhere grows the transcript from the bottom. It
-    // arrives via the status (status.queuedMessages), not via `messages`, so it
-    // would otherwise appear below the fold while the view stays put.
     else if (!changed.has("sessionId") && (changed.has("messages") || this.queueGrew(changed.get("status")) || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) && this.pinnedToBottom) this.scrollToBottom();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
@@ -1196,9 +1153,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     this.drawerTabEdgeTracker.observe(this.drawerTabs ?? undefined);
     this.publishScrollbarWidth();
     this.observeDock();
-    // A reply that grows the transcript fires no scroll event, so deciding this
-    // only while scrolling left a reader who stopped following four screens
-    // from the newest message with no way back.
     const chat = this.chat;
     if (chat !== undefined) this.setJumpToBottomVisible(showsJumpToBottom(chat));
     if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
@@ -1270,10 +1224,6 @@ if (this.heldWaitingClearTimer !== undefined) {
   private observeStreamingContent(): void {
     if (typeof ResizeObserver === "undefined") return;
     const rows = [...(this.chat?.children ?? [])];
-    // Any row can grow while an answer streams - a tool result fills in inside
-    // an earlier group, a formatted block gains a line - so all of them are
-    // watched, not just the last one. The signature keeps this from re-attaching
-    // on every render.
     const signature = `${String(rows.length)}:${rows[0]?.id ?? ""}:${rows.at(-1)?.id ?? ""}`;
     if (this.observedContent === signature) return;
     this.observedContent = signature;
@@ -1296,9 +1246,6 @@ if (this.heldWaitingClearTimer !== undefined) {
   }
 
   private observeDock(): void {
-    // A4: the dock room used to be measured on every render, forcing a
-    // synchronous layout per update. The observer publishes when the dock
-    // actually resizes (pill ↔ row ↔ touch height).
     const dock = this.renderRoot.querySelector(".activity-dock");
     const dockEl = dock instanceof HTMLElement ? dock : undefined;
     if (this.observedDock === dockEl) return;
@@ -1370,8 +1317,6 @@ if (this.heldWaitingClearTimer !== undefined) {
 
   override render() {
     const groups = this.groupedMessages();
-    // A command bubble belongs where it was issued; only one newer than
-    // everything on screen stays in the tail. See commandPlacement.ts.
     const commands = placeCommands(this.commandLedger, groups.map((group) => this.groupTimestamp(group)));
     return html`
       ${this.renderTopNotices()}
@@ -1428,8 +1373,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     }
     this.jumpToNewestPending = true;
     this.newerRequested = false;
-    // The jump already dispatched the intent; the scroll-driven request would re-enter
-    // the state it just set, so this one runs the page directly.
     this.startNewerPage();
   }
 
@@ -1586,8 +1529,6 @@ if (this.heldWaitingClearTimer !== undefined) {
    * questions. Kinds with nothing in them are not offered.
    */
   private activityPanelState(): ActivityPanelState | undefined {
-    // The dock pill counts live work; the per-row presentation shapes retired
-    // with the activity panel they were built for.
     const total = (this.subagents?.length ?? 0) + (this.subagentRuns?.length ?? 0) + (this.backgroundTasks?.length ?? 0);
     if (total === 0) return undefined;
     const working = [...this.subagents ?? [], ...this.subagentRuns ?? [], ...this.backgroundTasks ?? []]
@@ -1628,11 +1569,6 @@ if (this.heldWaitingClearTimer !== undefined) {
    * back to listing only what has no bubble here.
    */
   private transcriptMessages(): ChatLine[] {
-    // Every queued message is drawn in the transcript - the server's, and the
-    // ones this browser held while its session was still starting. Both carry
-    // the same "queued" mark, so there is one home for a message in every
-    // state. A separate panel used to repeat some of them and hide others,
-    // which read as duplicate entries and missing ones on the same screen.
     return this.transcriptSplit().settled;
   }
 
@@ -1654,8 +1590,6 @@ if (this.heldWaitingClearTimer !== undefined) {
       queued: this.status?.queuedMessages ?? [],
       synthesise: (message, position) => queuedUserLine(message, position),
     });
-    // Settled rows go back to their transcript positions; a sparse slot means
-    // that message is pending, so the holes are closed rather than filled.
     const byPosition = new Map<number, ChatLine>();
     const pending: ChatLine[] = [];
     for (const row of rows) {
@@ -1684,9 +1618,6 @@ if (this.heldWaitingClearTimer !== undefined) {
   private groupedMessages(): ChatGroup[] {
     const source = this.transcriptMessages();
     if (this.groupedMessagesInput === source && this.groupedMessagesStart === this.messageStart) return this.groupedMessagesCache;
-    // Streaming fast path: a pure append reuses the prefix group objects
-    // (Lit skips re-templating them, the metadata cache keeps hitting) and
-    // only re-groups the tail. Falls back to a full grouping otherwise.
     const previous = this.groupedMessagesInput;
     if (this.groupedMessagesStart === this.messageStart && previous !== undefined) {
       const appended = tryAppendGroupChatMessage(previous, this.groupedMessagesCache, source);
@@ -1739,8 +1670,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     else this.turnStartedAtMs ??= Date.now();
     this.turnNowMs = Date.now();
     if (this.turnClockTimer !== undefined) return;
-    // Surface backed up: the turn-elapsed readout. A 1s display tick, not a
-    // server poll - it only re-renders the clock already in the DOM.
     this.turnClockTimer = window.setInterval(() => { this.turnNowMs = Date.now(); }, 1000);
   }
 
@@ -1751,8 +1680,6 @@ if (this.heldWaitingClearTimer !== undefined) {
   }
 
   private renderActivityDock() {
-    // An open question form owns the bottom of the screen; a floating status
-    // pill there covers the field being typed into.
     if (this.pendingAsk !== undefined) return null;
     if (this.isSendingPrompt) {
       return html`
@@ -1765,14 +1692,8 @@ if (this.heldWaitingClearTimer !== undefined) {
     const state = this.activityState();
     if (state === undefined) return null;
     const category = this.activityCategory(state);
-    // "idle" is about the assistant's own turn, and saying it while this chat's
-    // subagents and background tasks are still running reads as "nothing is
-    // happening" when something is.
     const background = this.contributedActivityNote(category === "idle" || category === undefined);
     const showBackground = background !== undefined;
-    // The named work has no drawer page to open any more: the dock states it
-    // and stays a pill, because a control that looks actionable and is inert
-    // is worse than a state line.
     if (showBackground) {
       return html`
         <div class="activity-dock background" aria-live="polite">
@@ -1803,8 +1724,6 @@ if (this.heldWaitingClearTimer !== undefined) {
   private renderDeliveryMark(message: ChatLine) {
     const delivery = message.meta?.delivery;
     if (!chatDeliveryMarkerVisible(delivery) || delivery === undefined) return null;
-    // Where this message sits in the server's queue, so the card carries its own
-    // count instead of a second surface counting them all again.
     const queued = this.status?.queuedMessages ?? [];
     const index = queued.findIndex((entry) => entry.clientMessageId === delivery.clientMessageId);
     const presentation = chatDeliveryPresentation(delivery, index === -1 ? undefined : index + 1);
@@ -1838,26 +1757,11 @@ if (this.heldWaitingClearTimer !== undefined) {
   private renderPendingMessages() {
     const pending = this.transcriptSplit().pending;
     if (pending.length === 0) return null;
-    // Keys are absolute positions in the conversation, not offsets into the
-    // loaded window: settled rows are keyed messageStart + i, so pending rows
-    // that ignored messageStart collided with history rows as soon as earlier
-    // messages had been loaded, and changed key on the way to settled - which
-    // makes lit replace the element instead of updating it.
     const base = this.messageStart + this.messages.length;
     return html`${repeat(pending, (line, index) => this.messageAnchorKey(base + index), (line, index) => this.renderMessage(line, base + index))}`;
   }
 
   private renderQueuedMessages() {
-    // Every queued message is drawn in the transcript, marked gold, so the only
-    // thing a panel could add is a second listing of the same text. One action
-    // still needs a home: clearing the whole server queue without stopping the
-    // work it is waiting behind. A slim strip carries that, nothing more.
-    // The cards above are the queue: each one is gold, says its own state, and
-    // carries its own Recall. Counting them again here was a second listing of
-    // what the reader can already see, in a second visual language, and the two
-    // read from different facts and disagreed. Only the action that has no
-    // other home is left - clearing the whole server queue without stopping the
-    // work it waits behind.
     const serverQueued = this.status?.queuedMessages ?? [];
     if (serverQueued.length === 0 || this.onClearServerQueue === undefined) return null;
     return html`
@@ -1887,12 +1791,6 @@ if (this.heldWaitingClearTimer !== undefined) {
       this.heldWaiting = { ask: this.pendingAsk, dialog, queuedCount: this.pendingDialogs.length - 1 };
       return this.renderWaitingSlot(this.pendingAsk, dialog, this.pendingDialogs.length - 1);
     }
-    // The outcome settled, but a finger may be standing on the row: removing it
-    // at that instant retargets the imminent click to whatever slides
-    // underneath - the theft this row exists to end, reintroduced at its exit.
-    // The last content is held through the press and the release grace; a tap
-    // on a settled dialog is answered as stale by the daemon, which is honest
-    // and harmless where a retargeted tap is neither.
     const held = this.heldWaiting;
     if (held !== undefined && this.followGate.holdsOrSettling(Date.now())) {
       return this.renderWaitingSlot(held.ask, held.dialog, held.queuedCount);
@@ -1921,8 +1819,6 @@ if (this.heldWaitingClearTimer !== undefined) {
   }
 
   private renderWaitingSlot(ask: PendingAskUser | undefined, dialog: PendingExtensionDialog | undefined, queuedCount: number) {
-    // Every open form is drawn, oldest first: a second `ask_user` used to close
-    // the first and leave it unanswerable.
     const forms = this.pendingAsks.length > 0 ? this.pendingAsks : (ask === undefined ? [] : [ask]);
     return html`
       <div class="waiting-slot" role="region" aria-label="Waiting for your answer">
@@ -2155,10 +2051,6 @@ if (this.heldWaitingClearTimer !== undefined) {
         </div>
       `;
     }
-    // A failed read is the third state, and the one that must never claim
-    // emptiness: a session whose working directory is gone renders identically
-    // to a fresh one otherwise, and the empty claim invites writing into it.
-    // The daemon's own words are the most precise thing on offer.
     if (this.transcriptFailed !== undefined) {
       return html`
         <div class="empty-session transcript-failed" role="alert">
@@ -2234,11 +2126,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     const toolOnly = this.isToolExecutionOnlyMessage(message);
     const askUserRecordOnly = this.isAskUserRecordOnlyMessage(message);
     const shellClass = toolOnly ? "msg tool-execution-shell" : "msg ask-user-record-shell";
-    // A message the server is still holding is not part of the conversation
-    // yet, and it should not look like one that is. It carries the pending
-    // colour until the agent takes it, then becomes an ordinary user message -
-    // which is also the moment the recall action stops being offered, so the
-    // colour and the affordance say the same thing.
     const queuedClass = this.isQueuedLine(message) ? " queued" : "";
     return html`
       ${this.renderScrollMarker(this.messageScrollMarkerId(index))}
@@ -2332,10 +2219,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     const queued = this.status?.queuedMessages ?? [];
     const byId = queued.find((message) => message.clientMessageId === clientMessageId);
     if (byId !== undefined) return byId;
-    // A message queued by another client or a non-browser caller has no id, so
-    // the synthesized row keys itself as `queued:kind:text`. The server recalls
-    // such entries by kind+text, so match the same way instead of treating the
-    // row as an ordinary user message.
     const fallback = /^queued:([^:]+):(.*)$/.exec(clientMessageId);
     if (fallback === null) return undefined;
     const [, kind, text] = fallback;
@@ -2351,8 +2234,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     if (this.onRecallQueuedMessage === undefined) return null;
     const queued = this.queueEntryFor(line);
     if (queued === undefined) return null;
-    // data-action, not a styling class: the hook has to survive the button
-    // being restyled, which is exactly what broke its test once already.
     return html`<button type="button" class="msg-action" data-action="recall" title="Recall: take this message back and put it in the composer" aria-label="Recall this queued message into the composer" @click=${() => { this.onRecallQueuedMessage?.(queued); }}>
       ${renderRecallIcon()}
     </button>`;
@@ -2492,12 +2373,7 @@ if (this.heldWaitingClearTimer !== undefined) {
   private onScroll() {
     this.scrollThumb.noteScroll();
     if (this.quoteChip !== undefined) { this.quoteChip = undefined; this.requestUpdate(); }
-    // The direction and the pin verdict are computed first: the two requests below ask
-    // the policy, and asking it with last event's direction made it answer the previous
-    // scroll.
     this.updatePinnedToBottomFromScroll();
-    // One dispatch per scroll event: the executors already route both ends, and the
-    // second dispatch used to find the state `awaitingPage` and answer idle.
     this.requestLoadMoreIfNeeded();
     this.scheduleConversationRailUpdate();
     if (!this.suppressScrollSave) this.scheduleScrollPositionSave();
@@ -2525,8 +2401,6 @@ if (this.heldWaitingClearTimer !== undefined) {
    */
   private releasePointer(): void {
     this.followGate.notePointerUp(Date.now());
-    // A ghost row held for this press has no data change left to re-render it
-    // away; nudge an update once the release grace expires.
     if (this.heldWaiting !== undefined) {
       if (this.heldWaitingClearTimer !== undefined) clearTimeout(this.heldWaitingClearTimer);
       this.heldWaitingClearTimer = setTimeout(() => {
@@ -2534,11 +2408,7 @@ if (this.heldWaitingClearTimer !== undefined) {
         this.requestUpdate();
       }, TOUCH_SETTLE_MS + 1);
     }
-    // A reader who scrolled away during the press is no longer pinned, so the
-    // suppressed follow is dropped rather than dragging them back down.
     if (!this.followGate.takeSuppressedFollow() || !this.pinnedToBottom) return;
-    // The settle grace still refuses following, which is what lets the tap land;
-    // the catch-up therefore waits for it to expire instead of being dropped.
     if (this.catchUpFollowTimer !== undefined) clearTimeout(this.catchUpFollowTimer);
     this.catchUpFollowTimer = setTimeout(() => {
       this.catchUpFollowTimer = undefined;
@@ -2548,11 +2418,6 @@ if (this.heldWaitingClearTimer !== undefined) {
   }
 
   private notePressStart(): void {
-    // A catch-up scheduled by the previous release belongs to that press. Left
-    // running it can fire up to TOUCH_SETTLE_MS into this press, scrolling the
-    // transcript between the new press and its click, so the click lands on
-    // whatever moved into the tap's place. Symmetric with the deferral above;
-    // the new press's own release schedules its own catch-up.
     if (this.catchUpFollowTimer !== undefined) {
       clearTimeout(this.catchUpFollowTimer);
       this.catchUpFollowTimer = undefined;
@@ -2578,10 +2443,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     const chat = this.chat;
     if (!chat) return;
     this.lastScrollDirection = scrollDirection(this.lastScrollTop, chat.scrollTop);
-    // Our own follow scroll lands as a scroll event; adopting it as the reader's
-    // would be wrong twice over, so it is matched by target *and* freshness - and
-    // never against a pin the reader's own gesture already dropped, which is how a
-    // coincidental equality used to re-pin the view and drag them down ("回弹").
     const verdict = followScrollVerdict({
       target: this.followScrollTarget,
       scrollTop: chat.scrollTop,
@@ -2606,11 +2467,6 @@ if (this.heldWaitingClearTimer !== undefined) {
       return;
     }
     if (this.isAtBottom()) this.pinnedToBottom = true;
-    // A scroll event that did not move the reader is the *content* changing, not
-    // the reader: a row above folding, a strip leaving. Deciding "near bottom"
-    // from that demoted a pinned reader for the rest of a long answer, and every
-    // later line landed below them - reported as the view flinging itself far
-    // up while they were using it. Only an actual move can unpin.
     else if (moved) this.pinnedToBottom = scrollingUp ? false : this.isNearBottom();
     else this.pinnedToBottom = wasPinnedToBottom;
     this.jumpToBottomVisible = showsJumpToBottom(chat);
@@ -2825,9 +2681,6 @@ if (this.heldWaitingClearTimer !== undefined) {
   private runViewport(event: ViewportEvent): void {
     const action = this.dispatchViewport(event);
     if (this.viewportExecutors[action]()) return;
-    // The executor declined (nothing left to fetch, a request already in flight): hand
-    // the state back, or the policy sits in `awaitingPage` forever and every later
-    // scroll answers idle while nothing is loading.
     this.dispatchViewport({ kind: "pageFailed" });
   }
 
@@ -2843,17 +2696,12 @@ if (this.heldWaitingClearTimer !== undefined) {
 
   restoreScrollPosition() {
     const sessionId = this.sessionId;
-    // The stored mode is the owner's contract for where a session opens; announcing it
-    // also sets the state the rest of the policy reads.
     this.dispatchViewport({ kind: "opened", saved: this.openViewportEvent() });
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
     this.restoreScrollFrame = requestAnimationFrame(() => {
       this.restoreScrollFrame = undefined;
       if (this.sessionId !== sessionId) return;
       this.withSuppressedScrollSave(() => {
-        // A pending question no longer lives in the scroller, so a session with
-        // one restores like any other: the question is already in view in its
-        // own row, whatever the transcript position.
         const result = this.scrollController.restorePosition(this.scrollScopeKey, this.chat, this.scrollAnchorElements(), { fallbackToBottom: this.shouldFallbackToBottomForMissingAnchor() });
         this.handleScrollRestoreResult(sessionId, result);
       });
@@ -2900,16 +2748,12 @@ if (this.heldWaitingClearTimer !== undefined) {
     this.pendingScrollRestorePosition = result.position;
     const chat = this.chat;
     if (chat === undefined || !this.hasMore || this.loadingMore) return;
-    // Fetching the page the missing row lives in is enough: the prepend anchor holds
-    // the reader's own row, so the page arrives without slamming the view to the top
-    // of the loaded window - which reads as the middle of the session.
     this.requestLoadMore();
   }
 
   /** Keep the promised landing: one page at a time until the newest is loaded. */
   private continueJumpToNewest(): void {
     if (!this.pinnedToBottom) {
-      // The reader took over: the promise is void, not deferred to their next session.
       this.jumpToNewestPending = false;
       return;
     }
@@ -2920,19 +2764,11 @@ if (this.heldWaitingClearTimer !== undefined) {
       return;
     }
     this.viewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
-    // The scroll position is still the newest end of the loaded window, so ask for
-    // the next page straight away instead of waiting for a scroll that has no room.
     if (this.isNearBottom()) this.requestNewerIfNeeded();
     else this.jumpToNewestPending = false;
   }
 
   private shouldFallbackToBottomForMissingAnchor(): boolean {
-    // While earlier pages can still load, a missing anchor retries by fetching them
-    // instead of jumping to the bottom - correct for a reader who was mid-history.
-    // But a reader who was *following the bottom* does not want history: retrying
-    // walked the view up to the top of the loaded window, which is mid-session on
-    // screen, and dropped the pin - the owner's "莫名其妙弹到 session 中部" plus a
-    // jump-to-bottom press to get back.
     if (!this.hasMore) return true;
     return this.pinnedToBottom;
   }
@@ -2980,9 +2816,6 @@ if (this.heldWaitingClearTimer !== undefined) {
       restorePrependScrollAnchor(chat, anchor, anchor.markerId === undefined ? undefined : this.scrollMarkerAt(anchor.markerId));
       this.lastScrollTop = chat.scrollTop;
       frames += 1;
-      // Formatted markdown/code layout can settle after Lit's first render. Re-apply
-      // the marker anchor briefly so late height changes above the viewport do not
-      // move the user's reading position.
       if (frames < PREPEND_RESTORE_SETTLE_FRAMES) {
         requestAnimationFrame(settle);
         return;
@@ -3102,8 +2935,6 @@ export function topDrawerStartsOpen(): boolean {
 function sectionBadgeMark(section: QualifiedDrawerSectionContribution, context: DrawerSectionContext): TemplateResult | typeof nothing {
   const badge = section.badge?.(context);
   if (badge === undefined || badge === "") return nothing;
-  // A bare number reads as noise (the owner: "what is this 1?"). The badge
-  // says what it counts: "<section> · <n> open".
   const label = `${section.title}: ${String(badge)} open`;
   return html`<span class="drawer-tab-badge" title=${label} aria-label=${label}>${String(badge)}</span>`;
 }

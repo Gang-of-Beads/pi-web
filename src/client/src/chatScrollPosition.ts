@@ -169,9 +169,6 @@ export class ChatScrollController {
     for (const key of keys) {
       if (!key.startsWith(SCROLL_STORAGE_PREFIX)) continue;
       const scope = key.slice(SCROLL_STORAGE_PREFIX.length);
-      // Only this machine's keys: the caller lists the sessions *this* machine has, so
-      // pruning across machines deleted every other machine's saved position the first
-      // time a session list loaded here.
       if (prefix !== undefined && !scope.startsWith(prefix)) continue;
       if (knownKeys.has(scope)) continue;
       this.storage.removeItem(key);

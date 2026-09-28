@@ -59,8 +59,16 @@ describe("ChatView newer-messages boundary", () => {
     Object.defineProperty(chat, "clientHeight", { value: 800, configurable: true });
     chat.scrollTop = 3000;
     chat.dispatchEvent(new Event("scroll"));
+    // The scroll handler defers one decision per event to a frame (the older end must
+    // not measure layout inside the event, and one dispatch serves both ends), so the
+    // host is asked on the next frame rather than synchronously.
+    await nextFrame();
     await view.updateComplete;
     expect(asks).toBe(1);
   });
 
 });
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => { requestAnimationFrame(() => { resolve(); }); });
+}

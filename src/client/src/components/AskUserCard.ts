@@ -255,9 +255,6 @@ export class AskUserCard extends LitElement {
   }
 
   private renderRecord(outcome: AskUserOutcome): TemplateResult {
-    // A close the reader did not perform must say who performed it: a bare
-    // "Cancelled" on a form the reader never touched reads as a bug, and the
-    // owner reported it as one.
     const recordLabel = outcome.reason === "submitted"
       ? "Answers sent"
       : outcome.reason === "superseded"
@@ -382,10 +379,7 @@ export class AskUserCard extends LitElement {
     const askId = ask.askId;
     void Promise.resolve()
       .then(() => callback(askId, toSubmission(ask.questions, this.answers)))
-      .catch(() => {
-        // The parent controller owns the visible transport error. Keeping this
-        // card and its draft intact is the only recovery needed at this boundary.
-      })
+      .catch(() => undefined)
       .finally(() => {
         if (this.ask?.askId === askId) this.submitting = false;
       });
