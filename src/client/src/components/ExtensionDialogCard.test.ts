@@ -498,7 +498,7 @@ describe("a screen the extension declared for the browser", () => {
     const options = [...root.querySelectorAll(".screen-option")];
     expect(root.querySelector(".screen-title")?.textContent).toBe("Task list confirmation");
     expect(root.querySelector(".screen-text")?.textContent).toContain("task-1");
-    expect(options.map((option) => option.textContent)).toEqual(["Confirm", "Keep"]);
+    expect(options.map((option) => option.textContent.trim())).toEqual(["Confirm", "Keep"]);
     expect(options[0]?.classList.contains("current")).toBe(true);
     expect(root.querySelector("div.dialog-screen")).toBeNull();
   });

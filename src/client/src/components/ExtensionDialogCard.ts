@@ -1,4 +1,4 @@
-import { LitElement, css, html, type PropertyValues, type TemplateResult } from "lit";
+import { LitElement, css, html, unsafeCSS, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { dialogCardNeedsRender } from "../askCardIdentity";
 import { ifDefined } from "lit/directives/if-defined.js";
@@ -12,6 +12,7 @@ import type { ClosedExtensionDialog } from "../appState";
 import { dialogScreenKey } from "../dialogScreenKey.js";
 import { isSelectableLine, keysForLineTap, screenIsTappable } from "../dialogScreenKeys.js";
 import { classifyScreen, lineForOption, shapeFromScreen } from "../dialogScreenShape.js";
+import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
 
 export type ExtensionDialogAnswerCallback = (dialogId: string, value: ExtensionDialogAnswer) => void | Promise<void>;
 export type ExtensionDialogCancelCallback = (dialogId: string) => void | Promise<void>;
@@ -245,7 +246,7 @@ export class ExtensionDialogCard extends LitElement {
               class=${`screen-option${option.current ? " current" : ""}`}
               aria-current=${option.current ? "true" : "false"}
               @click=${() => { void this.tapScreenOption(dialog, lines, option.label, option.line, index); }}
-            >${option.label}</button>`)}
+            >${option.current ? renderDisclosureIcon(true) : null}${option.label}</button>`)}
           </div>`
         : html`<div
             class="dialog-screen"
@@ -430,7 +431,7 @@ export class ExtensionDialogCard extends LitElement {
     this.countdownTimer = undefined;
   }
 
-  static override styles = css`
+  static override styles = [css`${unsafeCSS(disclosureIconStyle)}`, css`
     /* This card is its own shadow root, so the transcript's tap rules do not
        reach it: without these, the option buttons stay eligible for the
        browser's double-tap-zoom click delay and paint the platform's rectangular
@@ -549,7 +550,7 @@ export class ExtensionDialogCard extends LitElement {
   .screen-title {
       margin: 0;
       font-size: var(--pi-text-md);
-      font-weight: 600;
+      font-weight: var(--pi-weight-semibold);
       color: var(--pi-text);
   }
   .screen-text {
@@ -578,8 +579,8 @@ export class ExtensionDialogCard extends LitElement {
       text-align: left;
       cursor: pointer;
   }
-  .screen-option.current { border-color: var(--pi-accent); color: var(--pi-accent); font-weight: 600; }
-  .screen-option.current::before { content: "▸ "; }
+  .screen-option.current { border-color: var(--pi-accent); color: var(--pi-accent); font-weight: var(--pi-weight-semibold); }
+  .screen-option { display: flex; align-items: center; gap: var(--pi-space-2); }
   .screen-option:active { background: var(--pi-surface-hover); }
   .dialog-screen-keys { display: flex; flex-wrap: wrap; gap: var(--pi-space-3); }
   .screen-key { box-sizing: border-box; min-width: var(--pi-panel-header-control-height, 36px); min-height: var(--pi-panel-header-control-height, 36px); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-family: inherit; font-size: var(--pi-text-sm); }
@@ -682,7 +683,7 @@ export class ExtensionDialogCard extends LitElement {
          does not fit. */
       .dialog-detail { max-height: min(40vh, 320px); overflow-y: auto; overscroll-behavior: contain; }
     }
-  `;
+  `];
 }
 
 declare global {
