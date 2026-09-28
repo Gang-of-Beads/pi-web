@@ -262,7 +262,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .runs { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); display: grid; gap: var(--pi-space-2); }
   .runs-chip { box-sizing: border-box; min-height: var(--pi-panel-header-control-height, 36px); display: inline-flex; align-items: center; gap: var(--pi-space-3); width: fit-content; padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
   .runs-chip.active { border-color: var(--pi-success-border); color: var(--pi-success); }
-  .runs-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1s ease-in-out infinite; }
+  .runs-chip .dot { width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; animation: pulse 1s ease-in-out infinite; }
   .runs-body { box-sizing: border-box; padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface-sunken, var(--pi-surface)); }
   .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); margin-top: calc(-1 * var(--pi-space-4)); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
@@ -1679,6 +1679,7 @@ if (this.heldWaitingClearTimer !== undefined) {
     else this.turnStartedAtMs ??= Date.now();
     this.turnNowMs = Date.now();
     if (this.turnClockTimer !== undefined) return;
+    // Surface backed up: the turn clock, which nothing else ticks while a turn runs.
     this.turnClockTimer = window.setInterval(() => { this.turnNowMs = Date.now(); }, 1000);
   }
 
