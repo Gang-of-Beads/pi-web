@@ -118,6 +118,19 @@ describe("contributed activity notes", () => {
     await view.updateComplete;
     expect(view.renderRoot.textContent).not.toContain("background runs");
   });
+
+  it("rides the working line too, so the session reads as one status rather than a dock plus a strip", async () => {
+    const view = new ChatView();
+    view.status = status({ isStreaming: true });
+    view.activity = activity("active", "receiving response");
+    view.activityNotes = [{ id: "p:n", pluginId: "p", localId: "n", note: () => "1 background run" }];
+    document.body.append(view);
+    await view.updateComplete;
+    const dock = view.renderRoot.querySelector(".activity-dock");
+    expect(dock?.getAttribute("class")).toContain("working");
+    expect(dock?.querySelector(".activity-text")?.textContent).toContain(" · 1 background run");
+    expect(view.renderRoot.querySelectorAll(".runs, .runs-chip")).toHaveLength(0);
+  });
 });
 
 describe("turnElapsedLabel", () => {

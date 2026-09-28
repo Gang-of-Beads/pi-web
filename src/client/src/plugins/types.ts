@@ -441,10 +441,6 @@ export interface DrawerSectionContribution {
   order?: number;
   available?: (context: DrawerSectionContext) => boolean | undefined;
   badge?: (context: DrawerSectionContext) => string | number | undefined;
-  /** Surface this section's status in the transcript's top strip instead of the menu. */
-  topEntry?: boolean;
-  /** Whether the thing this status is about is running now; only a running chip pulses. */
-  running?: (context: DrawerSectionContext) => boolean;
   render: (context: DrawerSectionContext) => TemplateResult;
 }
 
@@ -814,10 +810,6 @@ export interface WorkspacePanelContribution {
   onInvalidate?: (context: WorkspacePanelContext) => void | Promise<void>;
   /** A short status shown beside the title in the host's panel header. */
   summary?: (context: WorkspacePanelContext) => string | undefined;
-  /** Surface this panel's status in the transcript's top strip (else it stays in the menu). */
-  topEntry?: boolean;
-  /** Whether the thing this status is about is running now; only a running chip pulses. */
-  running?: (context: WorkspacePanelContext) => boolean;
   /** The panel's controls, placed by the host in its fold under the header. */
   toolbar?: (context: WorkspacePanelContext) => TemplateResult;
   render: (context: WorkspacePanelContext) => TemplateResult;

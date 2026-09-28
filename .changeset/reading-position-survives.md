@@ -1,5 +1,5 @@
 ---
-"@vincenthanxiao/pi-web": patch
+"@gang-of-beads/pi-web": patch
 ---
 
 The transcript stops bouncing and stop losing the reader.

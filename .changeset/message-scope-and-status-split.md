@@ -1,5 +1,5 @@
 ---
-"@vincenthanxiao/pi-web": patch
+"@gang-of-beads/pi-web": patch
 ---
 
 A failed send stays in the session it was sent from, and a plugin's status says where it

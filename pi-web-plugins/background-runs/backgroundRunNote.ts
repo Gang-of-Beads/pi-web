@@ -7,8 +7,7 @@
  * word for it belongs here - the shell should not learn a domain it does not
  * own.
  */
-export function backgroundRunNote(count: unknown, idle: boolean): string | undefined {
-  if (!idle) return undefined;
+export function backgroundRunNote(count: unknown): string | undefined {
   if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) return undefined;
   return count === 1 ? "1 background run" : `${String(count)} background runs`;
 }

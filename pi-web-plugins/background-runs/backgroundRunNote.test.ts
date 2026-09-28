@@ -2,19 +2,19 @@ import { describe, expect, it } from "vitest";
 import { backgroundRunCountOf, backgroundRunNote } from "./backgroundRunNote";
 
 describe("backgroundRunNote", () => {
-  it("says nothing while the assistant's own turn is running", () => {
-    expect(backgroundRunNote(3, false)).toBeUndefined();
+  it("speaks while the assistant's own turn is running too, so the dock carries one merged state", () => {
+    expect(backgroundRunNote(3)).toBe("3 background runs");
   });
 
   it("says nothing when no background work is running", () => {
-    expect(backgroundRunNote(0, true)).toBeUndefined();
-    expect(backgroundRunNote(undefined, true)).toBeUndefined();
-    expect(backgroundRunNote("2", true)).toBeUndefined();
+    expect(backgroundRunNote(0)).toBeUndefined();
+    expect(backgroundRunNote(undefined)).toBeUndefined();
+    expect(backgroundRunNote("2")).toBeUndefined();
   });
 
   it("counts in the reader's words", () => {
-    expect(backgroundRunNote(1, true)).toBe("1 background run");
-    expect(backgroundRunNote(4, true)).toBe("4 background runs");
+    expect(backgroundRunNote(1)).toBe("1 background run");
+    expect(backgroundRunNote(4)).toBe("4 background runs");
   });
 });
 

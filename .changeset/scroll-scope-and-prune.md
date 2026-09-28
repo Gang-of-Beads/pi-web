@@ -1,5 +1,5 @@
 ---
-"@vincenthanxiao/pi-web": patch
+"@gang-of-beads/pi-web": patch
 ---
 
 A saved reading position carries its machine, and the ones for sessions that are gone

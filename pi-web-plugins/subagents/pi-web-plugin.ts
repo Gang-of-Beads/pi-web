@@ -124,11 +124,6 @@ const plugin: PiWebPlugin = {
             id: "workspace.subagents",
             title: "Subagents",
             order: 60,
-            topEntry: true,
-            running: (panel) => {
-              const state = cache?.sessionFile === sessionFileOf(panel) ? cache?.state : undefined;
-              return state?.kind === "rows" && state.running > 0;
-            },
             badge: (panel) => {
               const state = cache?.sessionFile === sessionFileOf(panel) ? cache?.state : undefined;
               return state?.kind === "rows" && state.running > 0 ? state.running : undefined;

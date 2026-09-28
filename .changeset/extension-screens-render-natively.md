@@ -1,5 +1,5 @@
 ---
-"@vincenthanxiao/pi-web": patch
+"@gang-of-beads/pi-web": patch
 ---
 
 An extension screen renders as a card, not as a terminal frame.

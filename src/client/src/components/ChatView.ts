@@ -18,7 +18,6 @@ import type { ViewportAction, ViewportEvent, ViewportState } from "../chatViewpo
 import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { doesNotFillViewport, shouldRequestNewerMessages } from "../chatHistoryLoading";
-import type { QualifiedWorkspacePanelContribution, WorkspacePanelContext } from "../plugins/types";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
@@ -262,11 +261,6 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   /* One margin rule per group (see rowGroups.ts): a bare row adds the inset a card gets
      from its own padding, so every kind of row starts its text on the same edge. */
   .msg.event-group > summary, .group-msg, .session-activity, .waiting-slot { padding-inline: var(--pi-row-inset); }
-  .runs { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); display: grid; gap: var(--pi-space-2); }
-  .runs-chip { box-sizing: border-box; min-height: var(--pi-panel-header-control-height, 36px); display: inline-flex; align-items: center; gap: var(--pi-space-3); width: fit-content; padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
-  .runs-chip.active { border-color: var(--pi-success-border); color: var(--pi-success); }
-  .runs-chip .dot { width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; animation: pulse 1s ease-in-out infinite; }
-  .runs-body { box-sizing: border-box; padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface-sunken, var(--pi-surface)); }
   .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); margin-top: calc(-1 * var(--pi-space-4)); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.
@@ -284,7 +278,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      1223px of empty bar is the same empty card in a different colour. Only the
      working state keeps the full row, because it carries the elapsed clock at
      the far end and needs the distance between the two. */
-  .activity-dock.asking { width: fit-content; max-width: min(80%, 420px); }
+  .activity-dock.asking { width: fit-content; max-width: min(100%, 420px); }
   /* Idle turn, live children: readable as "waiting on something", not as the
      assistant working. */
   /* The named work has no drawer page to open: the pill states it and stays a
@@ -758,9 +752,6 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) subagents?: readonly SessionSubagentInfo[];
   /** Subagent-tool runs for this session, newest first, live ones first of all. */
   @property({ attribute: false }) subagentRuns?: readonly SessionSubagentRunInfo[];
-  @property({ attribute: false }) panelContext?: WorkspacePanelContext;
-  @property({ attribute: false }) panels?: readonly QualifiedWorkspacePanelContribution[];
-  @property({ attribute: false }) sections?: readonly QualifiedDrawerSectionContribution[];
   @property({ attribute: false }) backgroundTasks?: readonly SessionBackgroundTaskInfo[];
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
   /** Take one queued message back into the composer, leaving the rest queued. */
@@ -1211,8 +1202,6 @@ if (this.heldWaitingClearTimer !== undefined) {
    * one place instead of being re-derived at each call site.
    */
   private viewportState: ViewportState = { kind: "holding" };
-  /** Which contributed surface the reader opened under the transcript, if any. */
-  private runsOpenPanel: string | undefined;
   private readonly viewportExecutors: Record<ViewportAction, () => boolean> = {
     idle: () => true,
     "snap-bottom": () => { this.scrollToBottom(); return true; },
@@ -1358,7 +1347,6 @@ if (this.heldWaitingClearTimer !== undefined) {
           ${this.renderWaitingForYou()}
         </div>
         ${this.renderJumpToBottom()}
-        ${this.renderContributedRuns()}
         ${this.renderActivityDock()}
       </div>
       ${this.renderImageZoom()}
@@ -1696,87 +1684,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     this.turnClockTimer = undefined;
   }
 
-  /**
-   * The door to what this conversation is running.
-   *
-   * The rows were always there - children, background tasks - but they lived behind a
-   * tool panel, and the owner's phone has no room for one. The chip shows what the
-   * *plugins* say about their own surfaces (a badge and a summary they define), and
-   * opening it renders the plugin's own body inline, so the core knows nothing about
-   * subagents or background tasks beyond "a panel with something to say".
-   */
-  /** A panel's own words about its state: its summary, else its badge, both plugin-made. */
-  private panelEntry(panel: QualifiedWorkspacePanelContribution, context: WorkspacePanelContext) {
-    return panel.summary?.(context) ?? panel.badge?.(context);
-  }
-
-  /**
-   * The strip above the transcript: one chip per contributed status that asked for the top.
-   *
-   * It sits in the chrome rather than the dock so it neither scrolls away nor eats
-   * transcript height, and only a chip whose plugin says it is running pulses - a stale
-   * branch is a fact, not an activity.
-   */
-  /** Sections read a narrower context; everything in it is derivable from the panel one. */
-  private sectionContext(context: WorkspacePanelContext): DrawerSectionContext {
-    const session = context.state.selectedSession;
-    return {
-      sessionId: session?.id ?? "",
-      machineId: context.machine.id,
-      workspacePath: context.workspace.path,
-      sessionCwd: session?.cwd,
-      requestUpdate: () => { context.host.requestRender(); },
-    };
-  }
-
-  private renderContributedRuns() {
-    const context = this.panelContext;
-    if (context === undefined) return null;
-    const sections = this.sectionContext(context);
-    const panels = (this.panels ?? []).filter((panel: QualifiedWorkspacePanelContribution) => {
-      if (panel.topEntry !== true) return false;
-      if (panel.visible !== undefined && !panel.visible(context)) return false;
-      return this.panelEntry(panel, context) !== undefined;
-    });
-    const speaking = (this.sections ?? []).filter((section: QualifiedDrawerSectionContribution) => {
-      if (section.topEntry !== true) return false;
-      return section.available?.(sections) !== false;
-    });
-    if (panels.length === 0 && speaking.length === 0) return null;
-    return html`
-      <div class="runs">
-        ${speaking.map((section: QualifiedDrawerSectionContribution) => {
-          const text = section.badge?.(sections);
-          const open = this.runsOpenPanel === section.id;
-          return html`
-            <button
-              class=${`runs-chip${open ? " active" : ""}`}
-              type="button"
-              aria-expanded=${String(open)}
-              aria-label=${`${section.title}: ${text === undefined ? "open" : String(text)}`}
-              @click=${() => { this.runsOpenPanel = open ? undefined : section.id; }}
-            >${section.running?.(sections) === true ? html`<span class="dot"></span>` : null}<span>${section.title}${text === undefined ? null : html` · ${text}`}</span></button>
-            ${open ? html`<div class="runs-body">${section.render(sections)}</div>` : null}
-          `;
-        })}
-        ${panels.map((panel: QualifiedWorkspacePanelContribution) => {
-          const text = this.panelEntry(panel, context);
-          const open = this.runsOpenPanel === panel.id;
-          return html`
-            <button
-              class=${`runs-chip${open ? " active" : ""}`}
-              type="button"
-              aria-expanded=${String(open)}
-              aria-label=${`${panel.title}: ${typeof text === "string" ? text : "open"}`}
-              @click=${() => { this.runsOpenPanel = open ? undefined : panel.id; }}
-            >${panel.running?.(context) === true ? html`<span class="dot"></span>` : null}<span>${panel.title} · ${text}</span></button>
-            ${open ? html`<div class="runs-body">${panel.render(context)}</div>` : null}
-          `;
-        })}
-      </div>
-    `;
-  }
-
   private renderActivityDock() {
     if (this.pendingAsk !== undefined) return null;
     if (this.isSendingPrompt) {
@@ -1790,13 +1697,13 @@ if (this.heldWaitingClearTimer !== undefined) {
     const state = this.activityState();
     if (state === undefined) return null;
     const category = this.activityCategory(state);
-    const background = this.contributedActivityNote(category === "idle" || category === undefined);
-    const showBackground = background !== undefined;
-    if (showBackground) {
+    const idle = category === "idle" || category === undefined;
+    const notes = this.contributedActivityNote(idle);
+    if (idle && notes !== undefined) {
       return html`
         <div class="activity-dock background" aria-live="polite">
           <span class="dot"></span>
-          <span class="activity-text">${background}</span>
+          <span class="activity-text">idle · ${notes}</span>
         </div>
       `;
     }
@@ -1806,7 +1713,7 @@ if (this.heldWaitingClearTimer !== undefined) {
         ${category === "working"
           ? html`<span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>`
           : html`<span class="dot"></span>`}
-        <span class="activity-text">${activityDockLabel(category, state, this.activityText(state))}</span>
+        <span class="activity-text">${activityDockLabel(category, state, this.activityText(state))}${notes === undefined ? "" : ` · ${notes}`}</span>
         ${elapsed === undefined ? null : html`<span class="activity-elapsed" aria-hidden="true">${elapsed.text}</span>`}
       </div>
     `;
@@ -1913,7 +1820,7 @@ if (this.heldWaitingClearTimer !== undefined) {
       }))
       .filter((note): note is string => note !== undefined && note !== "");
     if (notes.length === 0) return undefined;
-    return ["idle", ...notes].join(" · ");
+    return notes.join(" · ");
   }
 
   private renderWaitingSlot(ask: PendingAskUser | undefined, dialog: PendingExtensionDialog | undefined, queuedCount: number) {

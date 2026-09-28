@@ -1,5 +1,4 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { SessionBackgroundTaskInfo } from "./shared/apiTypes.js";
 import type { FileSuggestion, ForegroundToken, LegacyThemeToken, MachineStatus, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
@@ -531,8 +530,6 @@ export interface PluginSelectedSession {
 }
 
 export interface PluginRuntimeState {
-  /** Background shell tasks the selected session started, newest first. */
-  backgroundTasks?: readonly SessionBackgroundTaskInfo[] | undefined;
   /** Identity of the currently selected machine. Undefined only on older hosts or before machines load. */
   selectedMachine?: PluginMachine | undefined;
   selectedWorkspace?: Workspace | undefined;
@@ -760,16 +757,6 @@ export interface WorkspacePanelContribution {
   badge?: (context: WorkspacePanelContext) => string | number | TemplateResult | undefined;
   /** Called when the host invalidates workspace-panel data. */
   onInvalidate?: (context: WorkspacePanelContext) => void | Promise<void>;
-  /**
-   * Ask the host to surface this panel's status in the transcript's top strip.
-   *
-   * The owner's split: a plugin chooses whether its status belongs in the chrome above
-   * the transcript (this flag) or in the navigation menu (a drawer section), and the core
-   * renders whichever it asked for. Nothing appears uninvited.
-   */
-  topEntry?: boolean;
-  /** Whether the thing this status is about is running now, which is what pulses. */
-  running?: (context: WorkspacePanelContext) => boolean;
   /** A short status shown beside the title in the host's panel header
    *  (a branch name, a count); undefined shows the title alone. */
   summary?: (context: WorkspacePanelContext) => string | undefined;
