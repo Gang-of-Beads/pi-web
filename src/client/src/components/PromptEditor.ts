@@ -81,6 +81,11 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
      hints above the field too, and on a short viewport with the keyboard up it
      stood taller than the 40px field and spilled over the border. */
   .editor-box { position: relative; min-width: 0; display: grid; }
+  /* One height for everything in the row: a control that brings its own box (the model
+     chip, a plugin's control) used to sit taller than the icon buttons beside it. The
+     button selector is specific enough not to depend on where a plugin's own sheet lands. */
+  .actions > * { box-sizing: border-box; align-self: center; }
+  .actions button { box-sizing: border-box; height: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); }
   .actions { display: flex; gap: var(--pi-space-4); align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
   .actions button { line-height: var(--pi-panel-header-control-height); }
   .compact-status { display: flex; min-width: 0; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); flex: 1 1 0; }

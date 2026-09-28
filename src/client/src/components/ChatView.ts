@@ -444,6 +444,9 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      (the clipped "…dden." line the owner screenshotted). Same fill as the
      card so the header reads as the card's own top strip. */
   .msg.assistant > .msg-header, .msg.tool-image-output > .msg-header { background: var(--pi-surface); box-shadow: none; }
+  /* Inside a group the row is not a card of its own: the header inherits the group's fill
+     so it reads as the group's top strip instead of an opaque band in its middle. */
+  .msg.event-group .msg-header { background: inherit; box-shadow: none; }
   .msg.assistant > .msg-header .label, .msg.tool-image-output > .msg-header .label { color: var(--pi-text-secondary); }
   /* The role label sits on the selection fill; accent-on-selection measured
      3.93:1, the weakest of the three roles, on the one that says "you". */
