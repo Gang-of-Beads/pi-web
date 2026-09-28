@@ -6,8 +6,9 @@ const payload = {
   runId: "run-1",
   agent: "design-reviewer-d",
   childTarget: "subagent-design-reviewer-d-1",
-  reason: "question",
+  reason: "need_decision",
   expectsReply: true,
+  requestBody: "OK to edit both config files (3 lines each)?",
 };
 
 describe("supervisorRequest", () => {
@@ -17,9 +18,20 @@ describe("supervisorRequest", () => {
       runId: "run-1",
       agent: "design-reviewer-d",
       childTarget: "subagent-design-reviewer-d-1",
-      reason: "question",
+      reason: "need_decision",
       expectsReply: true,
+      body: "OK to edit both config files (3 lines each)?",
     });
+  });
+
+  it("names every reason pi-subagents sends, so a decision request never reads as a bare message", () => {
+    const titles = ["need_decision", "interview_request", "progress_update"].map((reason) => supervisorTitle(supervisorRequest({ agent: "delegate", reason })));
+    expect(titles).toEqual(["Decision request from delegate", "Interview request from delegate", "Progress update from delegate"]);
+  });
+
+  it("carries what the child asked, from the field pi-subagents writes it to", () => {
+    expect(supervisorRequest({ requestBody: "OK to edit?" }).body).toBe("OK to edit?");
+    expect(supervisorRequest({}).body).toBeUndefined();
   });
 
   it("does not invent a reason it was not given", () => {

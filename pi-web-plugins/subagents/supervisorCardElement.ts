@@ -22,6 +22,7 @@ export class SubagentSupervisorCard extends LitElement {
     return html`
       <strong>${supervisorTitle(request)}</strong>
       ${request.runId === undefined ? null : html`<small class="run">Run ${request.runId}</small>`}
+      ${request.body === undefined ? null : html`<p class="body">${request.body}</p>`}
       ${offersReply(request) ? this.renderReply(request) : html`<small class="quiet">No reply expected.</small>`}
     `;
   }
@@ -59,6 +60,7 @@ export class SubagentSupervisorCard extends LitElement {
     strong { display: block; color: var(--pi-text); }
     small { display: block; color: var(--pi-muted); font-size: var(--pi-text-xs); }
     .run { font-family: var(--pi-font-mono); }
+    .body { margin: var(--pi-space-3) 0 0; color: var(--pi-text); white-space: pre-wrap; overflow-wrap: anywhere; }
     .reply { display: flex; flex-direction: column; gap: var(--pi-space-3); margin-top: var(--pi-space-3); }
     .reply-input { box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: inherit; }
     .reply-actions { display: flex; gap: var(--pi-space-3); }

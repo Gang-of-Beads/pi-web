@@ -8,7 +8,12 @@
  * supervisor tool, and the card says exactly that.
  */
 
-export type SupervisorReason = "progress_update" | "question" | "blocked" | "contact" | "unknown";
+/**
+ * The reasons pi-subagents' contact_supervisor tool sends (native-supervisor-channel.ts:
+ * need_decision, interview_request, progress_update). The table once held invented reasons,
+ * so every decision request rendered as a generic "Message" with its question missing.
+ */
+export type SupervisorReason = "need_decision" | "interview_request" | "progress_update" | "unknown";
 
 export interface SupervisorRequest {
   requestId: string | undefined;
@@ -17,20 +22,20 @@ export interface SupervisorRequest {
   childTarget: string | undefined;
   reason: SupervisorReason;
   expectsReply: boolean;
+  /** What the child actually asked or reported: the reason a person opens the card. */
+  body: string | undefined;
 }
 
 const REASONS: Record<string, SupervisorReason> = {
+  need_decision: "need_decision",
+  interview_request: "interview_request",
   progress_update: "progress_update",
-  question: "question",
-  blocked: "blocked",
-  contact: "contact",
 };
 
 const REASON_LABEL: Record<SupervisorReason, string> = {
+  need_decision: "Decision request",
+  interview_request: "Interview request",
   progress_update: "Progress update",
-  question: "Question",
-  blocked: "Blocked",
-  contact: "Contact",
   unknown: "Message",
 };
 
@@ -49,6 +54,7 @@ export function supervisorRequest(payload: unknown): SupervisorRequest {
     childTarget: readString(payload, "childTarget"),
     reason: REASONS[readString(payload, "reason") ?? ""] ?? "unknown",
     expectsReply: expects === true,
+    body: readString(payload, "requestBody") ?? readString(payload, "message"),
   };
 }
 
