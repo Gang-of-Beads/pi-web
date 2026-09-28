@@ -216,3 +216,40 @@ describe("when the button to reach the newest message is decided", () => {
     expect(updated).toMatch(/showsJumpToBottom|refreshJumpToBottom/u);
   });
 });
+
+describe("saved positions are scoped and evicted", () => {
+  const makeStorage = (initial: Record<string, string> = {}) => {
+    const map = new Map(Object.entries(initial));
+    return {
+      map,
+      getItem: (key: string) => map.get(key) ?? null,
+      setItem: (key: string, value: string) => { map.set(key, value); },
+      removeItem: (key: string) => { map.delete(key); },
+      keys: () => [...map.keys()],
+    };
+  };
+
+  it("keys a position by the scope it was saved under", () => {
+    const storage = makeStorage();
+    const controller = new ChatScrollController(storage);
+    controller.savePosition("work:s1", new FakeScroller(0, 800, 3000, 0, 300), [new FakeArticle(200, 260, "m1")]);
+    expect([...storage.map.keys()]).toEqual([chatScrollStorageKey("work:s1")]);
+    expect(controller.readPosition("home:s1")).toBeUndefined();
+  });
+
+  it("drops positions for sessions that no longer exist", () => {
+    const storage = makeStorage({
+      [chatScrollStorageKey("work:gone")]: JSON.stringify({ mode: "bottom" }),
+      [chatScrollStorageKey("work:kept")]: JSON.stringify({ mode: "bottom" }),
+      "unrelated:key": "1",
+    });
+    const removed = new ChatScrollController(storage).prune(new Set(["work:kept"]));
+    expect(removed).toBe(1);
+    expect([...storage.map.keys()].sort()).toEqual(["unrelated:key", chatScrollStorageKey("work:kept")].sort());
+  });
+
+  it("prunes nothing when it cannot enumerate", () => {
+    const storage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
+    expect(new ChatScrollController(storage).prune(new Set())).toBe(0);
+  });
+});

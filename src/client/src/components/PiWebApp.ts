@@ -286,6 +286,7 @@ export class PiWebApp extends LitElement {
   private settingsLoadAnnounced = false;
   @state() private workspacePanelFullscreen = false;
   @query("chat-view") private chatView?: ChatView;
+  private prunedSessionsSignature = "";
   @query("prompt-editor") private promptEditor?: PromptEditor;
   @query("app-navigate-page") private navigatePage?: AppNavigatePage;
   @query("#navigation-panel") private navigationPanelFrame?: HTMLElement;
@@ -702,6 +703,17 @@ export class PiWebApp extends LitElement {
   }
 
   protected override updated(): void {
+    // Saved reading positions were never evicted, and they were keyed by bare session
+    // id across machines. Prune against the sessions this machine actually lists, once
+    // a list exists: a pruned position only costs a landing at the newest, a stale one
+    // costs a landing on another transcript's row.
+    if (this.state.sessions.length > 0) {
+      const listed = this.state.sessions.map((session) => session.id).join("\n");
+      if (listed !== this.prunedSessionsSignature) {
+        this.prunedSessionsSignature = listed;
+        this.chatView?.pruneScrollPositions(this.state.sessions.map((session) => session.id));
+      }
+    }
     // A delivered message retires its outbox row even when the frame that would
     // have said so never arrived: the transcript is the proof, and the row is
     // what the reader sees contradicted by it. Gated on the outbox being

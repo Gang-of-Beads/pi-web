@@ -23,6 +23,8 @@ export interface ChatScrollElement {
 }
 
 export interface ChatScrollStorage {
+  /** Every key the storage holds, so a saved position can be evicted. */
+  keys?(): string[];
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
@@ -66,6 +68,15 @@ const browserScrollStorage: ChatScrollStorage = {
   removeItem(key: string): void {
     if (typeof localStorage === "undefined") return;
     localStorage.removeItem(key);
+  },
+  keys(): string[] {
+    if (typeof localStorage === "undefined") return [];
+    const found: string[] = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key !== null) found.push(key);
+    }
+    return found;
   },
 };
 
@@ -142,6 +153,25 @@ export class ChatScrollController {
     const currentOffset = anchor.getBoundingClientRect().top - scrollerTop;
     scroller.scrollTop += currentOffset - position.offset;
     return { status: "restored" };
+  }
+
+  /**
+   * Drop saved positions for sessions that no longer exist.
+   *
+   * Nothing evicted these before: `removeItem` was defined and never called, so a
+   * deleted or renamed session left its key in localStorage forever. The caller knows
+   * which sessions exist; this knows which keys it wrote.
+   */
+  prune(knownKeys: ReadonlySet<string>): number {
+    const keys = this.storage.keys?.() ?? [];
+    let removed = 0;
+    for (const key of keys) {
+      if (!key.startsWith(SCROLL_STORAGE_PREFIX)) continue;
+      if (knownKeys.has(key.slice(SCROLL_STORAGE_PREFIX.length))) continue;
+      this.storage.removeItem(key);
+      removed += 1;
+    }
+    return removed;
   }
 
   readPosition(sessionId: string): ChatScrollPosition | undefined {

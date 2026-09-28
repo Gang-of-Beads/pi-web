@@ -14,6 +14,7 @@ import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type 
 import { writeClipboardText } from "../clipboard";
 import { followScrollVerdict } from "../followScrollAdoption.js";
 import { scrollDirection } from "../chatViewport/viewportDecision.js";
+import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { shouldRequestNewerMessages, shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
@@ -1061,7 +1062,7 @@ export class ChatView extends LitElement {
 
   private savePreviousSessionScrollPosition(previousSessionId: unknown): void {
     if (typeof previousSessionId !== "string" || previousSessionId === "" || previousSessionId === this.sessionId) return;
-    this.saveScrollPosition(previousSessionId);
+    this.saveScrollPosition(machineSessionKey(this.drawerMachineId, previousSessionId));
   }
 
   private prepareSessionUiState(): void {
@@ -2745,6 +2746,21 @@ if (this.heldWaitingClearTimer !== undefined) {
     });
   }
 
+  /**
+   * The storage key for this view, carrying the machine: the same session id under two
+   * machines is two different transcripts, and the saved position had been shared
+   * between them (the AGENTS scope rule, applied to what the reader left behind).
+   */
+  private get scrollScopeKey(): string {
+    return machineSessionKey(this.drawerMachineId, this.sessionId);
+  }
+
+  pruneScrollPositions(sessionIds: Iterable<string>): number {
+    const known = new Set<string>();
+    for (const id of sessionIds) known.add(machineSessionKey(this.drawerMachineId, id));
+    return this.scrollController.prune(known);
+  }
+
   restoreScrollPosition() {
     const sessionId = this.sessionId;
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
@@ -2755,7 +2771,7 @@ if (this.heldWaitingClearTimer !== undefined) {
         // A pending question no longer lives in the scroller, so a session with
         // one restores like any other: the question is already in view in its
         // own row, whatever the transcript position.
-        const result = this.scrollController.restorePosition(sessionId, this.chat, this.scrollAnchorElements(), { fallbackToBottom: this.shouldFallbackToBottomForMissingAnchor() });
+        const result = this.scrollController.restorePosition(this.scrollScopeKey, this.chat, this.scrollAnchorElements(), { fallbackToBottom: this.shouldFallbackToBottomForMissingAnchor() });
         this.handleScrollRestoreResult(sessionId, result);
       });
     });
@@ -2873,15 +2889,15 @@ if (this.heldWaitingClearTimer !== undefined) {
     settle();
   }
 
-  saveScrollPosition(sessionId = this.sessionId) {
-    if (!sessionId) return;
-    this.scrollController.savePosition(sessionId, this.chat, this.scrollAnchorElements());
+  saveScrollPosition(scopeKey = this.scrollScopeKey) {
+    if (this.sessionId === "") return;
+    this.scrollController.savePosition(scopeKey, this.chat, this.scrollAnchorElements());
   }
 
   private scheduleScrollPositionSave() {
-    const sessionId = this.sessionId;
-    this.scrollController.scheduleSave(sessionId, (scheduledSessionId) => {
-      if (this.sessionId === scheduledSessionId) this.saveScrollPosition(scheduledSessionId);
+    const scopeKey = this.scrollScopeKey;
+    this.scrollController.scheduleSave(scopeKey, (scheduledKey) => {
+      if (this.scrollScopeKey === scheduledKey) this.saveScrollPosition(scheduledKey);
     });
   }
 
