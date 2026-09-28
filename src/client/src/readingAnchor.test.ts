@@ -14,8 +14,10 @@ describe("what the transcript does with the scroll position on an update", () =>
     expect(readingAnchorDecision({ prepending: false, pinnedToBottom: false })).toBe("hold-reading-position");
   });
 
-  it("uses the prepend anchor when earlier history arrives while following", () => {
-    expect(readingAnchorDecision({ prepending: true, pinnedToBottom: true })).toBe("prepend");
+  it("follows the bottom when earlier history arrives while following", () => {
+    // The bottom moved down, and the bottom hold is the single writer for it: running
+    // the prepend settle alongside the follow loop made them fight for 30 frames.
+    expect(readingAnchorDecision({ prepending: true, pinnedToBottom: true })).toBe("follow-tail");
   });
 
   it("uses the prepend anchor when earlier history arrives while reading", () => {

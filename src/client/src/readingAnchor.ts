@@ -24,8 +24,14 @@ export interface ReadingAnchorInput {
 }
 
 export function readingAnchorDecision(input: ReadingAnchorInput): ReadingAnchorDecision {
+  // Pinned first, even for a prepend. A reader at the bottom wants the bottom, and the
+  // bottom just moved down; the prepend's 30-frame settle aims at a marker instead, so
+  // for half a second the settle and the streaming follow loop wrote scrollTop at each
+  // other - the flicker. Arriving history is only the reader's problem when they are
+  // actually reading in it.
+  if (input.pinnedToBottom) return "follow-tail";
   if (input.prepending) return "prepend";
-  return input.pinnedToBottom ? "follow-tail" : "hold-reading-position";
+  return "hold-reading-position";
 }
 
 /**
