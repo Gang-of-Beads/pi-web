@@ -3,7 +3,9 @@
  *
  * Leg 1: while the agent runs a tool, three messages sent in order (no kind, steer, follow-up)
  * wait in the inbox in that order, and reach the transcript once each, in that order.
- * Leg 2: a message waiting when the daemon dies is handed after restart by the daemon itself -
+ * Leg 2: Stop while two messages wait hands both back, the ledger says withdrawn, the inbox
+ * file empties, and neither ever reaches the transcript.
+ * Leg 3: a message waiting when the daemon dies is handed after restart by the daemon itself -
  * the inbox file empties and the daemon logs the resume before this probe touches the session.
  */
 import { execSync } from "node:child_process";
@@ -46,6 +48,15 @@ async function status() {
   const answer = await fetch(`${BASE}/api/sessions/${SESSION}/status?cwd=${encodeURIComponent(CWD)}`);
   if (!answer.ok) throw new Error(`status ${String(answer.status)}`);
   return await answer.json();
+}
+
+async function post(endpoint, body) {
+  const answer = await fetch(`${BASE}/api/sessions/${SESSION}/${endpoint}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cwd: CWD, ...body }),
+  });
+  return { status: answer.status, body: answer.ok ? await answer.json() : undefined };
 }
 
 async function transcriptText() {
@@ -104,7 +115,27 @@ if (delivered !== undefined) {
   record("each delivered once", legOne.every((message) => occurrences(delivered, `"${message.text}"`) <= 1), legOne.map((message) => occurrences(delivered, `"${message.text}"`)).join(","));
 }
 
-await until("agent idle before leg 2", async () => (await status()).isStreaming === false, 120_000, 2000);
+await until("agent idle before the stop leg", async () => (await status()).isStreaming === false, 120_000, 2000);
+await startBusyRun("busy-stop");
+const stopped = [
+  { id: `${MARK}-s1`, text: `Reply with exactly: ${MARK}-S1` },
+  { id: `${MARK}-s2`, text: `Reply with exactly: ${MARK}-S2` },
+];
+for (const message of stopped) {
+  const code = await prompt(message.text, message.id);
+  record(`accepted ${message.id} before stop`, code === 200, `status=${String(code)}`);
+}
+const abort = await post("abort", {});
+const handedBack = (abort.body?.discarded ?? []).map((entry) => entry.clientMessageId);
+record("stop hands both waiting messages back", abort.status === 200 && stopped.every((message) => handedBack.includes(message.id)), JSON.stringify(handedBack));
+const stopOutcomes = (await post("operations", { operationIds: stopped.map((message) => message.id) })).body?.outcomes ?? {};
+record("ledger says withdrawn for both", stopped.every((message) => stopOutcomes[message.id] === "withdrawn"), JSON.stringify(stopOutcomes));
+record("inbox file no longer holds them", !existsSync(INBOX_FILE) || stopped.every((message) => !readFileSync(INBOX_FILE, "utf8").includes(message.id)), INBOX_FILE);
+await until("agent idle after stop", async () => (await status()).isStreaming === false, 60_000, 2000);
+await sleep(8000);
+const afterStop = await transcriptText();
+record("stopped messages never reach the transcript", stopped.every((message) => !afterStop.includes(message.text)), "checked 8 s after idle");
+
 await startBusyRun("busy-2");
 const parked = { id: `${MARK}-d`, text: `Reply with exactly: ${MARK}-D` };
 const parkedCode = await prompt(parked.text, parked.id);
