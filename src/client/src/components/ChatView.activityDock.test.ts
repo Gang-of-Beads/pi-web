@@ -112,7 +112,7 @@ describe("contributed activity notes", () => {
     view.activityNotes = [{ id: "p:n", pluginId: "p", localId: "n", note: () => "2 background runs" }];
     host.append(view);
     await view.updateComplete;
-    expect(view.renderRoot.textContent).toContain("idle · 2 background runs");
+    expect(view.renderRoot.textContent.replace(/\s+/gu, " ")).toContain("idle · 2 background runs");
 
     view.activityNotes = [{ id: "p:n", pluginId: "p", localId: "n", note: () => undefined }];
     await view.updateComplete;
@@ -128,8 +128,40 @@ describe("contributed activity notes", () => {
     await view.updateComplete;
     const dock = view.renderRoot.querySelector(".activity-dock");
     expect(dock?.getAttribute("class")).toContain("working");
-    expect(dock?.querySelector(".activity-text")?.textContent).toContain(" · 1 background run");
+    expect(dock?.textContent.replace(/\s+/gu, " ")).toContain("receiving response · 1 background run");
+    expect(dock?.querySelector(".activity-note")?.textContent).toContain("1 background run");
     expect(view.renderRoot.querySelectorAll(".runs, .runs-chip")).toHaveLength(0);
+  });
+});
+
+describe("what else is running, while a question holds the reader", () => {
+  it("keeps the plugin's note on the dock instead of dropping it with the dock", async () => {
+    const view = new ChatView();
+    view.sessionId = "s";
+    view.status = status({ isStreaming: true });
+    view.activity = activity("active", "agent running");
+    view.pendingAsk = { askId: "a", askedAt: "", questions: [{ id: "q", question: "Ship?", options: [] }] };
+    view.activityNotes = [{ id: "p:n", pluginId: "p", localId: "n", note: () => "3 background runs" }];
+    document.body.append(view);
+    await view.updateComplete;
+    const dock = view.renderRoot.querySelector(".activity-dock");
+    expect(dock?.getAttribute("class")).toContain("background");
+    expect(dock?.textContent).toContain("3 background runs");
+  });
+
+  it("shows no dock at all during a question when no plugin has anything to say", async () => {
+    const view = new ChatView();
+    view.sessionId = "s";
+    view.status = status({ isStreaming: true });
+    view.pendingAsk = { askId: "a", askedAt: "", questions: [{ id: "q", question: "Ship?", options: [] }] };
+    document.body.append(view);
+    await view.updateComplete;
+    expect(view.renderRoot.querySelector(".activity-dock")).toBeNull();
+  });
+
+  it("keeps the note out of the shrinking label, so a long label cannot ellipsize it away", () => {
+    const sheet = String(ChatView.styles);
+    expect(sheet).toMatch(/\.activity-note\s*\{[^}]*flex:\s*0 0 auto/u);
   });
 });
 

@@ -614,7 +614,8 @@ export class PromptEditor extends LitElement {
     const now = Date.now();
     const lingering = this.pendingPrompts.filter((prompt) => now - Date.parse(prompt.at) > 4000 && !this.rowedMessageIds.has(prompt.clientMessageId ?? ""));
     if (lingering.length === 0) {
-      if (this.pendingPrompts.length > 0 && this.pendingRevealTimer === undefined) {
+      const rowless = this.pendingPrompts.some((prompt) => !this.rowedMessageIds.has(prompt.clientMessageId ?? ""));
+      if (rowless && this.pendingRevealTimer === undefined) {
         this.pendingRevealTimer = setTimeout(() => { this.pendingRevealTimer = undefined; this.requestUpdate(); }, 4200);
       }
       return null;
@@ -1146,18 +1147,30 @@ export class PromptEditor extends LitElement {
    * send honors a Discard that happened mid-flight. Acceptance uses the same
    * contract as the direct path: only an explicit false is a refusal.
    */
-  /** Replay this session's outbox under each entry's own identity, as the row's Retry asks. */
-  retryOutbox(): void {
-    this.flushPendingPrompts();
+  /**
+   * Replay one message from the outbox under its own identity, as its row's Retry asks.
+   * Offline, the replay cannot start; saying so beats a button that silently does nothing,
+   * and the online listener sends it the moment the link returns.
+   */
+  retryOutbox(clientMessageId: string): void {
+    if (!navigator.onLine) {
+      this.onPluginNotice?.("You are offline - this message sends itself when the connection is back.", "warning");
+      return;
+    }
+    this.replayOutbox(clientMessageId);
   }
 
   private readonly flushPendingPrompts = (): void => {
+    this.replayOutbox(undefined);
+  };
+
+  private replayOutbox(only: string | undefined): void {
     if (!navigator.onLine || this.flushInFlight) return;
     const send = this.onSend;
     if (send === undefined) return;
     const key = machineSessionKey(this.machineId, this.sessionId ?? "");
     if (key === "") return;
-    const pending = loadPendingPrompts(key);
+    const pending = loadPendingPrompts(key).filter((prompt) => only === undefined || prompt.clientMessageId === only);
     if (pending.length === 0) return;
     this.flushInFlight = true;
     void (async () => {
@@ -1179,7 +1192,7 @@ export class PromptEditor extends LitElement {
         this.pendingPrompts = this.pendingPromptsForSession();
       }
     })();
-  };
+  }
 
   private send(streamingBehavior?: "steer" | "followUp") {
     if (this.disabled || this.sending) return;

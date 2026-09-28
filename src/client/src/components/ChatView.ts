@@ -40,7 +40,7 @@ import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback } from "./ExtensionDialogCard";
-import { deliveryTaken, discardableDeliveryId, retryableDeliveryId } from "../messageDelivery";
+import { deliveryTaken, discardAction, retryableDeliveryId } from "../messageDelivery";
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./FormattedText";
@@ -279,13 +279,13 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      1223px of empty bar is the same empty card in a different colour. Only the
      working state keeps the full row, because it carries the elapsed clock at
      the far end and needs the distance between the two. */
-  .activity-dock.asking { width: fit-content; max-width: min(100%, 420px); }
+  .activity-dock.asking { width: fit-content; max-width: min(calc(100% - 2 * var(--pi-chat-gutter)), 420px); }
   /* Idle turn, live children: readable as "waiting on something", not as the
      assistant working. */
   /* The named work has no drawer page to open: the pill states it and stays a
      state line - no pointer affordance, because a control that looks
      actionable and is inert is worse than a sentence. */
-  .activity-dock.background { width: fit-content; max-width: min(70%, 300px); border-color: var(--pi-purple-border); color: var(--pi-purple); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); }
+  .activity-dock.background { width: fit-content; max-width: min(calc(100% - 2 * var(--pi-chat-gutter)), 420px); border-color: var(--pi-purple-border); color: var(--pi-purple); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); }
   .activity-dock { transition: color var(--pi-motion-base) var(--pi-ease), background-color var(--pi-motion-base) var(--pi-ease), border-color var(--pi-motion-base) var(--pi-ease); }
   .activity-dock.background .dot { background: currentColor; opacity: 1; animation: pulse 1s ease-in-out infinite; }
   .activity-elapsed { flex: 0 0 auto; margin-left: auto; color: inherit; font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; opacity: .85; }
@@ -297,6 +297,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .activity-dock.asking { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-surface); }
   .activity-dock.error { border-color: var(--pi-danger); color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
   .activity-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .activity-note { flex: 0 0 auto; white-space: nowrap; }
   /* A state mark carries meaning: it is drawn at full strength and the state's
      own colour says which state it is. An opacity layer put idle, asking and
      error under the 3:1 non-text floor while working and background were not. */
@@ -479,6 +480,8 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   @media (hover: hover) { .msg-action:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
   .msg:focus-within > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
   @media (hover: hover) { .msg:hover > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions { opacity: 1; } }
+  .msg-actions:has(.msg-action[data-action="retry"]), .msg-actions:has(.msg-action[data-action="discard"]) { opacity: 1; }
+  .msg.user .msg-action[data-action="discard"] { color: var(--pi-danger); }
   .label { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); line-height: inherit; }
   .msg-header .label { margin: 0; }
   /* Quiet, but never below the non-text contrast floor: .28 measured 1.37:1
@@ -751,8 +754,8 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onResendMessage?: (prompt: RecoveredPrompt) => void | Promise<void>;
   /** Throw away a send nobody confirmed, from its own row. */
   @property({ attribute: false }) onDiscardMessage?: (clientMessageId: string) => void;
-  /** Replay the outbox under the same identity, from the row whose answer never came. */
-  @property({ attribute: false }) onRetryMessage?: () => void;
+  /** Replay this one message from the outbox under its own identity. */
+  @property({ attribute: false }) onRetryMessage?: (clientMessageId: string) => void;
   /** Child sessions (subagents) spawned by this session, most urgent first. */
   @property({ attribute: false }) subagents?: readonly SessionSubagentInfo[];
   /** Subagent-tool runs for this session, newest first, live ones first of all. */
@@ -1690,12 +1693,13 @@ if (this.heldWaitingClearTimer !== undefined) {
   }
 
   private renderActivityDock() {
-    if (this.pendingAsk !== undefined) return null;
+    if (this.pendingAsk !== undefined) return this.renderNotesDock(this.contributedActivityNote(false));
     if (this.isSendingPrompt) {
       return html`
         <div class="activity-dock sending" aria-live="polite">
           <span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>
           <span class="activity-text">Sending your message…</span>
+          ${renderActivityNote(this.contributedActivityNote(false))}
         </div>
       `;
     }
@@ -1708,7 +1712,8 @@ if (this.heldWaitingClearTimer !== undefined) {
       return html`
         <div class="activity-dock background" aria-live="polite">
           <span class="dot"></span>
-          <span class="activity-text">idle · ${notes}</span>
+          <span class="activity-text">idle</span>
+          ${renderActivityNote(notes)}
         </div>
       `;
     }
@@ -1718,8 +1723,23 @@ if (this.heldWaitingClearTimer !== undefined) {
         ${category === "working"
           ? html`<span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>`
           : html`<span class="dot"></span>`}
-        <span class="activity-text">${activityDockLabel(category, state, this.activityText(state))}${notes === undefined ? "" : ` · ${notes}`}</span>
+        <span class="activity-text">${activityDockLabel(category, state, this.activityText(state))}</span>
+        ${renderActivityNote(notes)}
         ${elapsed === undefined ? null : html`<span class="activity-elapsed" aria-hidden="true">${elapsed.text}</span>`}
+      </div>
+    `;
+  }
+
+  /**
+   * While a question card holds the reader, the card is the session's state; what else is
+   * running still has to be said somewhere, and the dock is the only place allowed to say it.
+   */
+  private renderNotesDock(notes: string | undefined) {
+    if (notes === undefined) return null;
+    return html`
+      <div class="activity-dock background" aria-live="polite">
+        <span class="dot"></span>
+        <span class="activity-note">${notes}</span>
       </div>
     `;
   }
@@ -2252,21 +2272,21 @@ if (this.heldWaitingClearTimer !== undefined) {
   private renderMessageActions(message: ChatLine, key: string) {
     const resendable = this.onResendMessage !== undefined && isResendableLine(message);
     const recall = this.renderQueuedBubbleRecall(message);
-    const discardId = this.onDiscardMessage === undefined ? undefined : discardableDeliveryId(message);
+    const discard = this.onDiscardMessage === undefined ? undefined : discardAction(message);
     const retryId = this.onRetryMessage === undefined ? undefined : retryableDeliveryId(message);
-    if (!this.isCopyableMessage(message) && !resendable && recall === null && discardId === undefined && retryId === undefined) return null;
+    if (!this.isCopyableMessage(message) && !resendable && recall === null && discard === undefined && retryId === undefined) return null;
     const copied = this.copiedMessageKey === key;
     return html`
       <div class="msg-actions" aria-label="Message actions">
         ${recall}
         ${retryId === undefined
           ? null
-          : html`<button type="button" class="msg-action" data-action="retry" title="Retry: send this message again" aria-label="Retry sending this message" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onRetryMessage?.(); }}>
+          : html`<button type="button" class="msg-action" data-action="retry" title="Retry: send this message again" aria-label="Retry sending this message" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onRetryMessage?.(retryId); }}>
               ${renderRunIcon()}
             </button>`}
-        ${discardId === undefined
+        ${discard === undefined
           ? null
-          : html`<button type="button" class="msg-action" data-action="discard" title="Discard: drop this unsent message" aria-label="Discard this unsent message" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onDiscardMessage?.(discardId); }}>
+          : html`<button type="button" class="msg-action" data-action="discard" title=${discard.label} aria-label=${discard.label} @click=${(event: MouseEvent) => { event.stopPropagation(); this.onDiscardMessage?.(discard.clientMessageId); }}>
               ${renderCrossIcon()}
             </button>`}
         ${resendable
@@ -2949,6 +2969,11 @@ if (this.heldWaitingClearTimer !== undefined) {
 
 export function topDrawerStartsOpen(): boolean {
   return false;
+}
+
+/** A plugin's words about what else is running, kept whole while the state label gives way. */
+function renderActivityNote(notes: string | undefined): TemplateResult | null {
+  return notes === undefined ? null : html`<span class="activity-note"> · ${notes}</span>`;
 }
 
 function sectionBadgeMark(section: QualifiedDrawerSectionContribution, context: DrawerSectionContext): TemplateResult | typeof nothing {

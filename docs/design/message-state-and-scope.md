@@ -105,6 +105,7 @@ not an activity state, which is why a pulsing git chip read as noise.
    live defect.
 2. `unverified` + reconnect reconciliation folded into the same table.
 3. Row rendering table; delete `pendingPrompts` as assigned state.
-4. `topEntry` on background-runs and goals.
+4. ~~`topEntry` on background-runs and goals.~~ Dropped in 9ce89824: the owner rejected
+   any strip above the dock; plugin notes ride the dock line instead.
 
 No release until the design is agreed.
