@@ -264,6 +264,7 @@ const MIN_RESIZABLE_CHAT_WIDTH_PX = 320;
 const PANEL_EDGE_COLUMNS_WIDTH_PX = 2;
 import { DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY } from "../breakpoints";
 import { deliveredClientMessageIds } from "../userMessageRegister";
+import { OUTBOX_CHANGED_EVENT, sessionsWithFailedSends } from "../pendingOutbox";
 
 interface SessionCleanupDialogState {
   preview?: SessionCleanupPreviewResponse | undefined;
@@ -308,8 +309,13 @@ export class PiWebApp extends LitElement {
    * own record was already spent by its boot read. */
   private interruptedRunsByMachine = new Map<string, ReadonlySet<string>>();
   private interruptedRunsBootReadByMachine = new Set<string>();
+  @state() private failedSendSessionIds: ReadonlySet<string> = sessionsWithFailedSends();
   @state() private unreadSessionIds: ReadonlySet<string> = this.sessionUnread.unreadSessionIds(selectedMachineId(this.state), this.state.sessions);
   private unreadConnected = false;
+  private readonly onOutboxChanged = (): void => {
+    const next = sessionsWithFailedSends();
+    if (!sameStringSet(next, this.failedSendSessionIds)) this.failedSendSessionIds = next;
+  };
   private committedChatIdentity: string | undefined;
   private readyChatIdentity: string | undefined;
 
@@ -1056,6 +1062,10 @@ export class PiWebApp extends LitElement {
     // not the one that failed; the realtime socket alone was leaving a banner
     // on screen until the page was reloaded by hand.
     observeTransportRecovery((machineId) => { this.clearTransientError(machineId); });
+    // A failed send is a fact about a session the reader may not be looking at, so the
+    // list must learn about it from the outbox rather than from a visit.
+    window.addEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
+    this.failedSendSessionIds = sessionsWithFailedSends();
     this.unreadConnected = true;
     // The navigation page is mounted, not opened: the desktop rail always is,
     // and the phone boots straight into it. Nothing called openNavigate in
@@ -1170,6 +1180,7 @@ export class PiWebApp extends LitElement {
     if (this.transientErrorTimer !== undefined) window.clearTimeout(this.transientErrorTimer);
     if (this.bannerHoldTimer !== undefined) window.clearTimeout(this.bannerHoldTimer);
     if (this.transientGraceTimer !== undefined) window.clearTimeout(this.transientGraceTimer);
+    window.removeEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
     window.removeEventListener("resize", this.onVisualViewportChange);
     window.removeEventListener("orientationchange", this.onVisualViewportChange);
     window.visualViewport?.removeEventListener("resize", this.onVisualViewportChange);
@@ -4316,6 +4327,7 @@ export class PiWebApp extends LitElement {
           .sessionStates=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_STATE_MAP : this.sessionStateKinds()}
           .waitingSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.waitingSessionIds()}
           .unreadSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.unreadSessionIds}
+          .failedSendSessionIds=${this.failedSendSessionIds}
           .interruptedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.interruptedRunsByMachine.get(selectedMachineId(state)) ?? EMPTY_ID_SET}
           .errorSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.errorSessionIds()}
           .pinnedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.pinnedSessionIds}

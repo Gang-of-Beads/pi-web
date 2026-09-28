@@ -101,6 +101,26 @@ function announceOutboxChange(sessionKey: string): void {
   window.dispatchEvent(new CustomEvent(OUTBOX_CHANGED_EVENT, { detail: sessionKey }));
 }
 
+/**
+ * The sessions holding a send that failed, so the session list can mark them.
+ *
+ * The failure's record already carries its scope; this reads the marks back out for the
+ * list, so the reader can see that a session needs attention before opening it.
+ */
+export function sessionsWithFailedSends(storage = browserStorage()): Set<string> {
+  const marked = new Set<string>();
+  if (storage === undefined) return marked;
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index) ?? "";
+    if (!key.startsWith(outboxPrefix)) continue;
+    const prompts = loadPendingPrompts(key.slice(outboxPrefix.length), storage);
+    if (!prompts.some((prompt) => prompt.state === "failed")) continue;
+    const scope = key.slice(outboxPrefix.length);
+    marked.add(scope.slice(scope.indexOf(":") + 1));
+  }
+  return marked;
+}
+
 export function loadPendingPrompts(sessionKey: string, storage = browserStorage()): PendingPrompt[] {
   try {
     const raw = storage?.getItem(outboxKey(sessionKey));

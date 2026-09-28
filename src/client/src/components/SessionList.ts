@@ -55,6 +55,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   @property({ attribute: false }) activities: Record<string, SessionActivity> = {};
   @property({ attribute: false }) sending: Record<string, true> = {};
   @property({ attribute: false }) unreadSessionIds: ReadonlySet<string> = new Set();
+  /** Sessions holding a send that failed, so the reader sees it before opening one. */
+  @property({ attribute: false }) failedSendSessionIds: ReadonlySet<string> = new Set();
   @property({ attribute: false }) selected?: SessionInfo;
   @property({ type: Number }) startingCount = 0;
   @property({ type: Boolean }) canStart = false;
@@ -430,7 +432,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
           ? html`
           <div class="action-main cwd-missing-row ${selectionActive ? "selecting" : ""}" title=${session.path}>
             <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span></span><small><span class="cwd-gone" title="This session's folder no longer exists">folder gone</span> · ${this.renderSessionMetaPrefix(session, status, activity)}${this.renderSessionMetaPrefixDetail(session)}${String(session.messageCount)} messages</small>
-            ${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread))}
+            ${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread, this.failedSendSessionIds.has(session.id)))}
           </div>
           `
           : html`
@@ -453,7 +455,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
           }}
         >
           <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span>${this.renderRowBadges(row)}</span><small>${this.renderSessionMetaPrefix(session, status, activity)}${this.renderSessionMetaPrefixDetail(session)}${String(session.messageCount)} messages</small>
-          ${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread))}
+          ${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread, this.failedSendSessionIds.has(session.id)))}
         </button>
         `}
         <div class="action-menu">
