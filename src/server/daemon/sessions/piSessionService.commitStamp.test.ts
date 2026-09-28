@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
 import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
 
@@ -48,6 +48,7 @@ describe("the committed copy carries its sender's id", () => {
   it("stamps the runtime's committed user message before publishing it", async () => {
     const { hub, fake, service } = idleService("stamp-commit");
     await service.prompt(sessionRef("stamp-commit"), "hello there", undefined, undefined, { clientMessageId: "c-stamp" });
+    await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(1); });
 
     fake.emit({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "hello there" }] } });
 

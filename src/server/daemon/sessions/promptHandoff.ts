@@ -13,7 +13,13 @@
  * runtime, and the decision is a pure function of what the runtime is doing.
  */
 
-export type RunState = "compacting" | "handing" | "running" | "idle";
+/**
+ * `settling`: the SDK has cleared its run flag but pi-web has not yet seen `agent_settled`.
+ * The SDK clears the flag before it awaits extension `agent_settled` handlers, and a prompt
+ * handed in that window is deferred by the SDK - invisible, unrecallable, and run after
+ * whatever is steered meanwhile. Nothing is handed until the run has visibly settled.
+ */
+export type RunState = "compacting" | "handing" | "running" | "settling" | "idle";
 
 /**
  * `gap`: a point where pi polls its steering queue (a tool finished, a turn ended, compaction
@@ -33,10 +39,20 @@ export interface HandoffFacts {
   trigger: HandoffTrigger;
 }
 
-export function runStateOf(facts: { isCompacting: boolean; isStreaming: boolean; handing: boolean }): RunState {
+export function runStateOf(facts: { isCompacting: boolean; isStreaming: boolean; handing: boolean; settling: boolean }): RunState {
   if (facts.isCompacting) return "compacting";
   if (facts.handing) return "handing";
-  return facts.isStreaming ? "running" : "idle";
+  if (facts.isStreaming) return "running";
+  return facts.settling ? "settling" : "idle";
+}
+
+/** How long a run may look finished without its `agent_settled` before the inbox stops waiting. */
+export const SETTLE_GRACE_MS = 5_000;
+
+/** Whether a run the SDK has stopped streaming still counts as settling. */
+export function isSettling(run: { quietSince?: number | undefined } | undefined, now: number): boolean {
+  if (run === undefined) return false;
+  return run.quietSince === undefined || now - run.quietSince < SETTLE_GRACE_MS;
 }
 
 const WAIT: Handoff = { kind: "wait" };
@@ -44,6 +60,7 @@ const WAIT: Handoff = { kind: "wait" };
 const BY_RUN_STATE: Record<RunState, (facts: HandoffFacts) => Handoff> = {
   compacting: () => WAIT,
   handing: () => WAIT,
+  settling: () => WAIT,
   running: (facts) => facts.trigger === "gap" ? { kind: "steer", count: facts.waiting } : WAIT,
   idle: () => ({ kind: "direct" }),
 };
@@ -73,6 +90,7 @@ export type HandoffVerdict = "handed" | RefusalKind;
 const TRANSIENT_REFUSALS: readonly RegExp[] = [
   /already processing/i,
   /compaction is in progress/i,
+  /session tree navigation is active/i,
 ];
 
 export function refusalKind(message: string): RefusalKind {

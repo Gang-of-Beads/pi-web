@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { nextHandoff, refusalKind, runStateOf, type HandoffTrigger, type RunState } from "./promptHandoff.js";
+import { SETTLE_GRACE_MS, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffTrigger, type RunState } from "./promptHandoff.js";
 
-const RUN_STATES: RunState[] = ["compacting", "handing", "running", "idle"];
+const RUN_STATES: RunState[] = ["compacting", "handing", "running", "settling", "idle"];
 const TRIGGERS: HandoffTrigger[] = ["gap", "settled", "nudge"];
 
 describe("nextHandoff", () => {
@@ -17,6 +17,7 @@ describe("nextHandoff", () => {
       compacting: { gap: "wait", settled: "wait", nudge: "wait" },
       handing: { gap: "wait", settled: "wait", nudge: "wait" },
       running: { gap: "steer", settled: "wait", nudge: "wait" },
+      settling: { gap: "wait", settled: "wait", nudge: "wait" },
       idle: { gap: "direct", settled: "direct", nudge: "direct" },
     });
   });
@@ -27,18 +28,33 @@ describe("nextHandoff", () => {
 });
 
 describe("runStateOf", () => {
-  it("ranks compaction over a handoff over streaming", () => {
-    expect(runStateOf({ isCompacting: true, isStreaming: true, handing: true })).toBe("compacting");
-    expect(runStateOf({ isCompacting: false, isStreaming: true, handing: true })).toBe("handing");
-    expect(runStateOf({ isCompacting: false, isStreaming: true, handing: false })).toBe("running");
-    expect(runStateOf({ isCompacting: false, isStreaming: false, handing: false })).toBe("idle");
+  it("ranks compaction over a handoff over streaming over settling", () => {
+    expect(runStateOf({ isCompacting: true, isStreaming: true, handing: true, settling: true })).toBe("compacting");
+    expect(runStateOf({ isCompacting: false, isStreaming: true, handing: true, settling: true })).toBe("handing");
+    expect(runStateOf({ isCompacting: false, isStreaming: true, handing: false, settling: true })).toBe("running");
+    expect(runStateOf({ isCompacting: false, isStreaming: false, handing: false, settling: true })).toBe("settling");
+    expect(runStateOf({ isCompacting: false, isStreaming: false, handing: false, settling: false })).toBe("idle");
+  });
+});
+
+describe("isSettling", () => {
+  it("is not settling with no open run", () => {
+    expect(isSettling(undefined, 0)).toBe(false);
+  });
+
+  it("settles a quiet open run until the grace runs out, so a lost agent_settled cannot stall the inbox", () => {
+    expect(isSettling({}, 1_000)).toBe(true);
+    expect(isSettling({ quietSince: 1_000 }, 1_000 + SETTLE_GRACE_MS - 1)).toBe(true);
+    expect(isSettling({ quietSince: 1_000 }, 1_000 + SETTLE_GRACE_MS)).toBe(false);
   });
 });
 
 describe("refusalKind", () => {
   it("keeps a message whose refusal is the runtime being busy", () => {
     expect(refusalKind("Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.")).toBe("transient");
+    expect(refusalKind("Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion.")).toBe("transient");
     expect(refusalKind("Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry.")).toBe("transient");
+    expect(refusalKind("Cannot send a prompt while session tree navigation is active")).toBe("transient");
   });
 
   it("releases a message the runtime will never take", () => {

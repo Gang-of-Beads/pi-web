@@ -268,6 +268,8 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       if (options?.streamingBehavior === undefined) {
         fake.session.isStreaming = true;
         options?.preflightResult?.(true);
+        fake.emit({ type: "agent_start" });
+        fake.emit({ type: "message_start", message: { role: "user", content: text } });
         return new Promise<void>((resolve) => { resolveFirstPrompt = resolve; });
       }
       return Promise.resolve();

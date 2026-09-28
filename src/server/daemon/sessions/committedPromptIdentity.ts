@@ -30,6 +30,7 @@ export class CommittedPromptExpectations {
 
   expect(sessionId: string, commit: ExpectedCommit): void {
     const list = this.perSession.get(sessionId) ?? [];
+    if (list.some((entry) => entry.clientMessageId === commit.clientMessageId)) return;
     list.push(commit);
     if (list.length > MAX_PENDING_PER_SESSION) list.shift();
     this.perSession.set(sessionId, list);

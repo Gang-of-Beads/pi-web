@@ -230,10 +230,12 @@ Each phase merges only when all of these hold:
 - The compaction queue is gone; compaction is a run state the consumer waits on.
 - `takeBackStrandedMessages` on `agent_settled`; `steeringMode = "all"` at bind.
 - Ledger: rows are never deleted (stop, close, recall and refusal used to delete); capacity
-  512 → 10 000 as a safety net with age expiry doing the work; outcomes `pending → succeeded`
-  (stamped at `message_start`) `| failed | withdrawn`. `withdrawn` answers a retry as a
-  duplicate; `failed` and `unknown` re-admit it (see `READMITTED`).
-- The commit expectation is recorded at acceptance, so it exists before any handoff.
+  512 → 10 000 as a safety net with age expiry doing the work; outcomes `pending → succeeded
+  | failed | withdrawn`. `withdrawn` answers a retry as a duplicate; `failed` and `unknown`
+  re-admit it (see `READMITTED`). Succeeded is settled from runtime facts, not from the commit
+  stamp (see triage O1).
+- The commit expectation is recorded when a message is handed, and withdrawn whenever it comes
+  back (see triage O5).
 - Startup drain: `resumeWaitingInboxes()` opens every session with a waiting inbox.
 
 **Moved to later phases, with their consumers.**
@@ -256,3 +258,25 @@ Each phase merges only when all of these hold:
 - Tests that asserted a handoff synchronously after `await prompt()` now wait for it:
   `prompt()` resolves at acceptance, and the handoff follows on the consumer.
 
+
+## Phase 1 review triage (lanes: ordering / Opus 5.5, lifecycle / DeepSeek 4.1 max)
+
+Each claim was checked against `piSessionService.ts` and the SDK sources before it was sorted.
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| O1 | "succeeded" came only from the commit stamp, which matches on text; a photo (resize hints), a template, an input handler or an extension command commits under other text or none, so the row stayed pending, and after a restart `unknown` re-admitted a retry that runs twice | TRUE | Fixed: rows settle from facts. Direct: the first user `message_start` after preflight, or the prompt resolving. Steer: its lane in pi shrinks past it at a user `message_start` (`_queueSteer` stores the committed text, and the SDK removes it before emitting). The stamp only carries the id |
+| O2 | The SDK clears its run flag before awaiting extension `agent_settled` handlers; a nudge in that window hands a direct prompt (deferred by the SDK, invisible, reordered) or starts a run ahead of a stranded steer | TRUE | Fixed: a `settling` run state from `agent_start` until pi-web sees `agent_settled` (bounded by a 5 s grace so a missing event cannot stall the inbox); stranded steers are taken back on every idle decision, not only on `agent_settled` |
+| O3 | An idle handoff that races another run (ask answer, subsession notice) passes preflight, then `agent.prompt` throws "already processing a prompt"; the entry was gone | TRUE | Fixed: a transient rejection after the handoff puts the entry back at the head, and waits for the next fact. "Running" now also reads `agent.state.isStreaming`, because the refused prompt's `finally` clears the session flag and emits a spurious `agent_settled` while the other run streams (the S2 SDK behaviour) |
+| O4 | Clear and Stop were not serialised with an in-flight steer batch; a steer mid-handoff could land after Stop as a new run, or after Clear as a message reported withdrawn | TRUE | Fixed: Clear and Stop wait for the in-flight steer batch (steer handoffs are short) before they snapshot and clear |
+| O5 | Recording the commit expectation at acceptance let another source's commit with the same text claim a waiting message's id | TRUE | Fixed: the expectation is recorded when the message is handed and withdrawn whenever it comes back (refusal, take-back) |
+| O6 | A rebind registered waiting messages' expectations twice | TRUE, narrow | Fixed: moot after O5; `expect` also ignores an id it already holds |
+| L1 | Close (`stop`) cleared pi's lanes; steers handed but unread were destroyed, and their pending rows answered the retry as a duplicate | TRUE | Fixed: close takes pi-held messages back into the inbox, with their ids, before the runtime goes; the next open hands them |
+| L2 | `/reload` re-syncs queue modes from settings and reverts `steeringMode` to one-at-a-time | TRUE | Fixed: `steeringMode = "all"` is re-applied before every steer batch |
+| L3 | An extension command's handoff holds the consumer for the command's whole run, so messages sent meanwhile wait for its end instead of steering at its gaps | TRUE | Fixed for slash commands: a slash-prefixed direct handoff counts as handed once a run starts. Not applied to plain text, where the same signal would let a later message overtake a refused one (O3) |
+| L4 | A tree navigation starting while a message is being accepted makes the handoff throw, classified terminal, and the message was dropped | TRUE, narrow | Fixed: that refusal is transient |
+| L5 | The client's unverifiable-row check ignores the new `withdrawn` outcome | TRUE | Phase 2 (client disposition) |
+| L-note | `takeBack` uses `clearQueue`, which also drops custom messages queued with `deliverAs` (ask answers, subsession notices) stranded at the same instant | TRUE, very narrow (both must miss pi's final poll together) | Not fixed: the SDK has no string-lanes-only clear. Recorded as a known limitation |
+| L-note | `handing → wait` is effectively unreachable because handoffs are chained | TRUE observation | Kept: harmless, and it states the rule if the chain ever changes |
+
+**Fixture adjustment.** I4 now waits for the handoff before emitting `message_start`: the expectation is recorded at handoff (O5), and a real commit always follows its handoff. Assertion unchanged.

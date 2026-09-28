@@ -90,6 +90,7 @@ describe("ordering lane repros", () => {
     await svc.prompt(ref("stale-stamp"), "continue", undefined, undefined, { clientMessageId: "x-refused" });
     await settle(50);
     await svc.prompt(ref("stale-stamp"), "continue", undefined, undefined, { clientMessageId: "y-delivered" });
+    await settle(50);
     const committed: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "continue" }] };
     fake.emit({ type: "message_start", message: committed });
     expect(committed["clientMessageId"]).toBe("y-delivered");
