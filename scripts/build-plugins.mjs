@@ -135,7 +135,7 @@ async function needsBundling(entryPath) {
     } catch {
       continue;
     }
-    for (const match of source.matchAll(/(?:^|\n)\s*(?:import|export)\s[^;]*from\s+"([^"]+)"/gu)) {
+    for (const match of source.matchAll(/(?:^|\n)\s*(?:import|export)\s(?:[^;"]*from\s+)?"([^"]+)"/gu)) {
       const specifier = match[1] ?? "";
       if (!specifier.startsWith(".")) return true;
       queue.push(resolve(dirname(current), specifier));

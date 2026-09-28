@@ -14,11 +14,13 @@ const npm = npmInvocation();
  * why. The build bundles any entry whose graph reaches a package; this pins
  * that the shipped entries carry nothing unresolvable - walking the whole
  * graph, because an extensionless relative import resolves for a bundler and
- * 404s for a browser, which is how the voice plugin shipped unloadable.
+ * 404s for a browser, which is how the voice plugin shipped unloadable. Side-effect
+ * imports count too: `import "./element.js"` pulling in "lit" left the background-runs
+ * entry unbundled, and the plugin never activated while this test passed.
  */
 
 const distRoot = resolve("dist", "pi-web-plugins");
-const bareImport = /(?:^|\n)\s*(?:import|export)\s[^;]*from\s+"(?!\.)([^"]+)"/gu;
+const moduleSpecifier = /(?:^|\n)\s*(?:import|export)\s(?:[^;"]*from\s+)?"([^"]+)"/gu;
 
 async function browserEntries(): Promise<string[]> {
   const entries: string[] = [];
@@ -68,7 +70,7 @@ describe("shipped browser plugin entries", () => {
         unresolvable.push(`${file}: missing module`);
         continue;
       }
-      for (const match of source.matchAll(new RegExp(bareImport.source, "gu"))) {
+      for (const match of source.matchAll(new RegExp(moduleSpecifier.source, "gu"))) {
         const specifier = match[1] ?? "";
         if (!specifier.startsWith("./") && !specifier.startsWith("../")) {
           unresolvable.push(`${file}: ${specifier}`);
