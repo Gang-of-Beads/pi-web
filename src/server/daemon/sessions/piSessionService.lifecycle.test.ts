@@ -1355,7 +1355,7 @@ describe("prompt submission for extension-injected user messages", () => {
         JSON.stringify({ role: "user", content: "/feynman_teach What is NAT?" }),
         JSON.stringify({ role: "user", content: "Let's learn NAT together." }),
       ]);
-      expect(prompts).toEqual(["/feynman_teach What is NAT?", "Let's learn NAT together."]);
+      await vi.waitFor(() => { expect(prompts).toEqual(["/feynman_teach What is NAT?", "Let's learn NAT together."]); });
     } finally {
       await service.dispose();
     }

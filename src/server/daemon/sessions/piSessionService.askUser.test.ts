@@ -277,7 +277,7 @@ describe("PiSessionService.prompt with an open ask", () => {
     ]);
     expect(askRevisions(events)).toEqual([1]);
     expect(fake.calls.sendCustomMessage).toEqual([]);
-    expect(fake.calls.prompt.map((call) => call.text)).toEqual(["Use DuckDB"]);
+    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["Use DuckDB"]); });
     await service.dispose();
   });
 
@@ -404,7 +404,7 @@ describe("PiSessionService.prompt with an open ask", () => {
     await service.prompt(sessionRef(ACTIVE_SESSION_ID), "hello");
 
     expect(fake.calls.sendCustomMessage).toEqual([]);
-    expect(fake.calls.prompt.map((call) => call.text)).toEqual(["hello"]);
+    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["hello"]); });
     expect(askEvents(events)).toEqual([]);
     await service.dispose();
   });

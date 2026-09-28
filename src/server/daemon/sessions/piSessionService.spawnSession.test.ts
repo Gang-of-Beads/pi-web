@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PiSessionService, type PiAgentSession } from "./piSessionService.js";
 import type { SpawnTargetDecision } from "./spawnTargetResolver.js";
-import { CapturingSessionEventHub, fakeRuntime, fakeSessionManager, runtimeCreator, sessionGateway, testModel, testModelRuntime, type RuntimeCreator } from "./piSessionService.testSupport.js";
+import { CapturingSessionEventHub, fakeRuntime, fakeSessionManager, runtimeCreator, sessionGateway, testModel, testModelRuntime, type RuntimeCreator, directHandoffOptions } from "./piSessionService.testSupport.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 const TEST_MODEL_SPEC = "anthropic/claude-sonnet-4-5-20250929";
@@ -29,7 +29,7 @@ describe("PiSessionService", () => {
       const result = await service.spawnSession({ spawningCwd: "/workspace", spawningSessionId: "spawner-1", prompt: "continue the plan", cwd: "/workspace-feature" });
 
       expect(result).toEqual({ sessionId: "spawned-1", cwd: "/workspace-feature" });
-      expect(fake.calls.prompt).toEqual([{ text: "continue the plan", options: undefined }]);
+      await vi.waitFor(() => { expect(fake.calls.prompt).toEqual([{ text: "continue the plan", options: directHandoffOptions() }]); });
       expect(log).toEqual([{ details: { spawningCwd: "/workspace", sessionId: "spawned-1", cwd: "/workspace-feature", promptLength: 17 }, message: "spawn_session started a new session" }]);
       await service.dispose();
     });
@@ -263,7 +263,7 @@ describe("PiSessionService", () => {
         const result = await service.spawnSession({ spawningCwd: "/workspace", spawningSessionId: "ghost", prompt: "go", cwd: "/workspace-feature" });
 
         expect(result).toEqual({ sessionId: "spawned-2", cwd: "/workspace-feature", model: TEST_MODEL_SPEC });
-        expect(spawned.calls.prompt).toEqual([{ text: "go", options: undefined }]);
+        await vi.waitFor(() => { expect(spawned.calls.prompt).toEqual([{ text: "go", options: directHandoffOptions() }]); });
         await service.dispose();
       });
     });

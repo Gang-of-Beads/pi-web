@@ -16,7 +16,7 @@ import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, 
  * four messages after it, while bb91254c stayed on disk.
  */
 describe("message order", () => {
-  it.fails("hands a later steer to the runtime only after an earlier message accepted while busy", async () => {
+  it("hands a later steer to the runtime only after an earlier message accepted while busy", async () => {
     const dir = await mkdtemp(join(tmpdir(), "fifo-"));
     const fake = fakeRuntime("fifo", { isStreaming: true });
     Reflect.set(fake.runtime, "cwd", dir);

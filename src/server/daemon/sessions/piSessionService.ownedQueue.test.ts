@@ -4,15 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
-import { OwnedPromptQueue, queueFilePath } from "./ownedPromptQueue.js";
-import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
+import { OwnedPromptQueue, dataDirInboxLocation, inboxDirectory } from "./ownedPromptQueue.js";
+import { CapturingSessionEventHub, fakeRuntime, handedAs, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 
-async function busyService(sessionId: string, cwd?: string) {
-  const dir = cwd ?? await mkdtemp(join(tmpdir(), "ownedq-"));
+function inboxFile(dataDir: string, sessionId: string): string {
+  return dataDirInboxLocation(dataDir)(sessionId, "") ?? "";
+}
+
+async function busyService(sessionId: string, options: { dataDir?: string; isStreaming?: boolean } = {}) {
+  const dir = await mkdtemp(join(tmpdir(), "ownedq-"));
+  const dataDir = options.dataDir ?? await mkdtemp(join(tmpdir(), "ownedq-data-"));
   const hub = new CapturingSessionEventHub();
-  const fake = fakeRuntime(sessionId, { isStreaming: true });
+  const fake = fakeRuntime(sessionId, { isStreaming: options.isStreaming ?? true });
   Reflect.set(fake.runtime, "cwd", dir);
   fake.session.sessionManager.getCwd = () => dir;
   const service = new PiSessionService(hub, {
@@ -21,25 +26,26 @@ async function busyService(sessionId: string, cwd?: string) {
     createAgentRuntime: runtimeCreator(fake.runtime),
     sessionManager: sessionGateway([sessionRecord(sessionId)]),
     heartbeatIntervalMs: 60_000,
+    operationLedgerDir: dataDir,
   });
-  return { hub, fake, service, dir };
+  return { hub, fake, service, dir, dataDir };
 }
 
 describe("the daemon owns the queue", () => {
-  it("parks a busy follow-up durably instead of handing it to the runtime", async () => {
-    const { fake, service, dir } = await busyService("own-park");
+  it("holds a message sent while the agent runs durably instead of handing it to the runtime", async () => {
+    const { fake, service, dataDir } = await busyService("own-park");
     await service.prompt(sessionRef("own-park"), "later please", "followUp", undefined, { clientMessageId: "c-park" });
 
     expect(fake.calls.prompt).toHaveLength(0);
-    expect(existsSync(queueFilePath(dir, "own-park"))).toBe(true);
+    expect(existsSync(inboxFile(dataDir, "own-park"))).toBe(true);
     const status = await service.status(sessionRef("own-park"));
     expect(status.queuedMessages.map((entry) => entry.clientMessageId)).toEqual(["c-park"]);
     await service.dispose();
   });
 
-  it("does not accept or echo a parked prompt that failed its durable write", async () => {
-    const { fake, hub, service, dir } = await busyService("own-persist-failure");
-    await writeFile(join(dir, ".pi"), "not a directory");
+  it("does not accept or echo a message whose durable write failed", async () => {
+    const { fake, hub, service, dataDir } = await busyService("own-persist-failure");
+    await writeFile(inboxDirectory(dataDir), "not a directory");
 
     await expect(service.prompt(sessionRef("own-persist-failure"), "must remain in the outbox", "followUp", undefined, { clientMessageId: "c-fail" }))
       .rejects.toThrow();
@@ -51,33 +57,41 @@ describe("the daemon owns the queue", () => {
     await service.dispose();
   });
 
-  it("drains the parked prompt when the runtime settles, as a direct send", async () => {
+  it("does not need the workspace to be writable", async () => {
+    const { fake, service, dir } = await busyService("own-readonly-workspace", { isStreaming: false });
+    await writeFile(join(dir, ".pi"), "not a directory");
+
+    await service.prompt(sessionRef("own-readonly-workspace"), "still accepted", undefined, undefined, { clientMessageId: "c-ro" });
+
+    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["still accepted"]); });
+    await service.dispose();
+  });
+
+  it("hands the held message as a direct send when the runtime settles", async () => {
     const { fake, service } = await busyService("own-drain");
     await service.prompt(sessionRef("own-drain"), "later please", "followUp", undefined, { clientMessageId: "c-drain" });
 
     fake.session.isStreaming = false;
-    fake.emit({ type: "agent_end" });
-    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["later please"]); });
-    await service.dispose();
-  });
-
-  it("drains even though agent_end fires while isStreaming is still true, via agent_settled", async () => {
-    // The real SDK re-broadcasts agent_end from inside the running loop and
-    // clears isStreaming only afterwards, with agent_settled; a drain gated on
-    // the flag at agent_end time never fires. The reviewers proved the old
-    // test passed only because the fake flipped the flag by hand first.
-    const { fake, service } = await busyService("own-settle");
-    await service.prompt(sessionRef("own-settle"), "after the settle", "followUp", undefined, { clientMessageId: "c-settle" });
-
-    fake.emit({ type: "agent_end" });
-    expect(fake.calls.prompt).toHaveLength(0);
-    fake.session.isStreaming = false;
     fake.emit({ type: "agent_settled" });
-    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["after the settle"]); });
+    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["later please"]); });
+    expect(fake.calls.prompt[0]?.options).not.toHaveProperty("streamingBehavior");
     await service.dispose();
   });
 
-  it("drains queued entries one settle at a time, re-arming while entries remain", async () => {
+  it("hands everything waiting at a gap, in order, as steers", async () => {
+    const { fake, service, dataDir } = await busyService("own-steer");
+    await service.prompt(sessionRef("own-steer"), "first", "followUp", undefined, { clientMessageId: "c-steer-1" });
+    await service.prompt(sessionRef("own-steer"), "turn left", "steer", undefined, { clientMessageId: "c-steer-2" });
+    expect(fake.calls.prompt).toHaveLength(0);
+
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["first", "turn left"]); });
+    expect(fake.calls.prompt.map(handedAs)).toEqual(["steer", "steer"]);
+    expect(existsSync(inboxFile(dataDir, "own-steer"))).toBe(false);
+    await service.dispose();
+  });
+
+  it("hands the next held message once the previous direct send is the runtime's", async () => {
     const { fake, service } = await busyService("own-two");
     await service.prompt(sessionRef("own-two"), "first parked", "followUp", undefined, { clientMessageId: "c-two-1" });
     await service.prompt(sessionRef("own-two"), "second parked", "followUp", undefined, { clientMessageId: "c-two-2" });
@@ -88,8 +102,8 @@ describe("the daemon owns the queue", () => {
     await service.dispose();
   });
 
-  it("restores the entry when the runtime refuses the drained submission", async () => {
-    const { fake, service, dir } = await busyService("own-refuse");
+  it("keeps the entry at the head when the runtime is momentarily busy", async () => {
+    const { fake, service, dataDir } = await busyService("own-refuse");
     await service.prompt(sessionRef("own-refuse"), "refused once", "followUp", undefined, { clientMessageId: "c-refuse" });
 
     fake.session.prompt = () => { throw new Error("Agent is already processing"); };
@@ -99,7 +113,7 @@ describe("the daemon owns the queue", () => {
       const status = await service.status(sessionRef("own-refuse"));
       expect(status.queuedMessages.map((entry) => entry.clientMessageId)).toEqual(["c-refuse"]);
     });
-    await vi.waitFor(() => { expect(existsSync(queueFilePath(dir, "own-refuse"))).toBe(true); });
+    await vi.waitFor(() => { expect(existsSync(inboxFile(dataDir, "own-refuse"))).toBe(true); });
     await service.dispose();
   });
 
@@ -114,22 +128,13 @@ describe("the daemon owns the queue", () => {
     await service.dispose();
   });
 
-  it("delivers a busy steer immediately rather than parking it", async () => {
-    const { fake, service, dir } = await busyService("own-steer");
-    await service.prompt(sessionRef("own-steer"), "turn left", "steer", undefined, { clientMessageId: "c-steer" });
-
-    expect(fake.calls.prompt.map((call) => call.text)).toEqual(["turn left"]);
-    expect(existsSync(queueFilePath(dir, "own-steer"))).toBe(false);
-    await service.dispose();
-  });
-
-  it("recalls a parked prompt by id and publishes the withdrawal", async () => {
-    const { hub, service, dir } = await busyService("own-recall");
+  it("recalls a held message by id and publishes the withdrawal", async () => {
+    const { hub, service, dataDir } = await busyService("own-recall");
     await service.prompt(sessionRef("own-recall"), "take me back", "followUp", undefined, { clientMessageId: "c-back" });
 
     await service.recallQueuedMessage(sessionRef("own-recall"), { kind: "followUp", text: "take me back", clientMessageId: "c-back" });
 
-    expect(existsSync(queueFilePath(dir, "own-recall"))).toBe(false);
+    expect(existsSync(inboxFile(dataDir, "own-recall"))).toBe(false);
     const withdrawn = hub.sessionEvents.filter(({ event }) => Reflect.get(event, "type") === "prompt.withdrawn");
     expect(withdrawn).toHaveLength(1);
     await service.dispose();
@@ -140,17 +145,7 @@ describe("the daemon owns the queue", () => {
     await first.service.prompt(sessionRef("own-idem"), "only once", "followUp", undefined, { clientMessageId: "c-idem" });
     await first.service.dispose();
 
-    const hub = new CapturingSessionEventHub();
-    const fake = fakeRuntime("own-idem", { isStreaming: true });
-    Reflect.set(fake.runtime, "cwd", first.dir);
-    fake.session.sessionManager.getCwd = () => first.dir;
-    const service = new PiSessionService(hub, {
-      agentDir: TEST_AGENT_DIR,
-      modelRuntime: testModelRuntime,
-      createAgentRuntime: runtimeCreator(fake.runtime),
-      sessionManager: sessionGateway([sessionRecord("own-idem")]),
-      heartbeatIntervalMs: 60_000,
-    });
+    const { fake, service } = await busyService("own-idem", { dataDir: first.dataDir });
     // Opening the session does not return until its durable queue has restored
     // the acceptance ledger, so a retry in the first request after restart is
     // still a duplicate rather than a second execution.
@@ -162,22 +157,32 @@ describe("the daemon owns the queue", () => {
     await service.dispose();
   });
 
-  it("survives a daemon restart: the parked prompt reloads and drains", async () => {
+  it("hands a waiting message after a restart without anyone opening the session", async () => {
+    const first = await busyService("own-startup");
+    await first.service.prompt(sessionRef("own-startup"), "nobody is watching", undefined, undefined, { clientMessageId: "c-startup" });
+    await first.service.dispose();
+
+    const { fake, service } = await busyService("own-startup", { dataDir: first.dataDir, isStreaming: false });
+    Reflect.set(fake.runtime, "cwd", first.dir);
+    fake.session.sessionManager.getCwd = () => first.dir;
+    await expect(service.resumeWaitingInboxes()).resolves.toEqual(["own-startup"]);
+    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["nobody is watching"]); });
+    await service.dispose();
+  });
+
+  it("lets pi take every waiting steer at one gap", async () => {
+    const { fake, service } = await busyService("own-steering-mode");
+    await service.status(sessionRef("own-steering-mode"));
+    expect(fake.session.agent.steeringMode).toBe("all");
+    await service.dispose();
+  });
+
+  it("survives a daemon restart: the held message reloads and is handed", async () => {
     const first = await busyService("own-restart");
     await first.service.prompt(sessionRef("own-restart"), "after the crash", "followUp", undefined, { clientMessageId: "c-crash" });
     await first.service.dispose();
 
-    const hub = new CapturingSessionEventHub();
-    const fake = fakeRuntime("own-restart");
-    Reflect.set(fake.runtime, "cwd", first.dir);
-    fake.session.sessionManager.getCwd = () => first.dir;
-    const service = new PiSessionService(hub, {
-      agentDir: TEST_AGENT_DIR,
-      modelRuntime: testModelRuntime,
-      createAgentRuntime: runtimeCreator(fake.runtime),
-      sessionManager: sessionGateway([sessionRecord("own-restart")]),
-      heartbeatIntervalMs: 60_000,
-    });
+    const { fake, service } = await busyService("own-restart", { dataDir: first.dataDir, isStreaming: false });
     await service.status(sessionRef("own-restart"));
     await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["after the crash"]); });
     await service.dispose();

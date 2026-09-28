@@ -1,8 +1,20 @@
+import { expect } from "vitest";
 import { ModelRuntime, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { InMemoryCredentialStore, type Credential, type CredentialStore } from "@earendil-works/pi-ai";
 import type { GlobalSessionEvent, SessionNotificationSummaryEvent, SessionUiEvent } from "../../../shared/apiTypes.js";
 import { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { PiAgentSession, PiSessionListEntry, PiSessionManager, PiSessionRuntime, PiSessionServiceDependencies, ResolvedSessionFile } from "./piSessionService.js";
+
+/** The options a direct handoff carries: the SDK's preflight callback and nothing else. */
+export function directHandoffOptions(): unknown {
+  const preflightResult: unknown = expect.any(Function);
+  return { preflightResult };
+}
+
+/** The delivery kind a recorded prompt call was handed with, if any. */
+export function handedAs(call: { options: unknown }): unknown {
+  return Reflect.get(Object(call.options), "streamingBehavior");
+}
 
 export class CapturingSessionEventHub extends SessionEventHub {
   readonly sessionEvents: { sessionId: string; event: SessionUiEvent }[] = [];

@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
 import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
-import { AcceptanceLedger } from "./acceptanceLedger.js";
+import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 
@@ -58,7 +58,7 @@ describe("a repeated identity answers instead of running twice", () => {
     await service.prompt(sessionRef("ledger-fresh"), "continue", undefined, undefined, { clientMessageId: "c-1" });
     await service.prompt(sessionRef("ledger-fresh"), "continue", undefined, undefined, { clientMessageId: "c-2" });
 
-    expect(fake.calls.prompt).toHaveLength(2);
+    await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(2); });
   });
 
   it("leaves id-less prompts alone", async () => {
@@ -67,7 +67,7 @@ describe("a repeated identity answers instead of running twice", () => {
     await service.prompt(sessionRef("ledger-anonymous"), "hello");
     await service.prompt(sessionRef("ledger-anonymous"), "hello");
 
-    expect(fake.calls.prompt).toHaveLength(2);
+    await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(2); });
   });
 });
 
@@ -91,38 +91,41 @@ describe("a submission the runtime refused gives its acceptance back", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await service.prompt(sessionRef("ledger-refused"), "hello", undefined, undefined, { clientMessageId: "c-1" });
 
-    expect(fake.calls.prompt).toHaveLength(2);
+    await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(2); });
   });
 });
 
-describe("the ledger itself", () => {
-  it("stays bounded, dropping the oldest identity past the limit", () => {
-    const ledger = new AcceptanceLedger(3);
-    for (const id of ["a", "b", "c", "d"]) ledger.record("s", id);
-    expect(ledger.has("s", "a")).toBe(false);
-    expect(ledger.has("s", "b")).toBe(true);
-    expect(ledger.has("s", "d")).toBe(true);
-  });
 
+describe("the ledger itself", () => {
   it("keeps sessions apart", () => {
-    const ledger = new AcceptanceLedger();
+    const ledger = createInMemoryAcceptanceLedger();
     ledger.record("s1", "a");
     expect(ledger.has("s2", "a")).toBe(false);
   });
 
-  it("forgets a removed session entirely", () => {
-    const ledger = new AcceptanceLedger();
-    ledger.record("s1", "a");
-    ledger.forgetSession("s1");
-    expect(ledger.has("s1", "a")).toBe(false);
+  it("moves a row forward only, and never forgets one", () => {
+    const ledger = createInMemoryAcceptanceLedger();
+    ledger.record("s", "a");
+    ledger.settle("s", "a", "succeeded");
+    ledger.settle("s", "a", "failed");
+    expect(ledger.outcomesFor("s", ["a"])).toEqual({ a: "succeeded" });
+    expect(ledger.has("s", "a")).toBe(true);
   });
 
-  it("gives back one acceptance without touching the rest", () => {
-    const ledger = new AcceptanceLedger();
-    ledger.record("s1", "a");
-    ledger.record("s1", "b");
-    ledger.forget("s1", "a");
-    expect(ledger.has("s1", "a")).toBe(false);
-    expect(ledger.has("s1", "b")).toBe(true);
+  it("answers a withdrawn identity as a duplicate, so a retry cannot resurrect it", () => {
+    const ledger = createInMemoryAcceptanceLedger();
+    ledger.record("s", "w");
+    ledger.settle("s", "w", "withdrawn");
+    ledger.record("s", "w");
+    expect({ has: ledger.has("s", "w"), outcome: ledger.outcomesFor("s", ["w"]) }).toEqual({ has: true, outcome: { w: "withdrawn" } });
+  });
+
+  it("admits a refused identity again, so the sender's retry can run it", () => {
+    const ledger = createInMemoryAcceptanceLedger();
+    ledger.record("s", "r");
+    ledger.settle("s", "r", "failed");
+    expect(ledger.has("s", "r")).toBe(false);
+    ledger.record("s", "r");
+    expect(ledger.outcomesFor("s", ["r"])).toEqual({ r: "pending" });
   });
 });

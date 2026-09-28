@@ -31,7 +31,11 @@ export class OperationLedger {
     private readonly limits: LedgerLimits,
     loaded: StoredRow[],
   ) {
-    for (const row of loaded) this.put(row.sessionId, afterRestart(row));
+    const now = Date.now();
+    for (const row of loaded) {
+      if (now - row.updatedAt > limits.retentionMs) continue;
+      this.put(row.sessionId, afterRestart(row));
+    }
   }
 
   /**
@@ -74,20 +78,14 @@ export class OperationLedger {
     return [...(this.rows.get(sessionId)?.values() ?? [])].filter((row) => row.outcome === "pending" || row.outcome === "unknown");
   }
 
-  forgetSession(sessionId: string, now: number = Date.now()): void {
-    if (!this.rows.delete(sessionId)) return;
-    this.write({ sessionId, operationId: `session-forgotten-${String(now)}`, fingerprint: "-", outcome: "failed", recordedAt: now, updatedAt: now }, false);
-    this.compact();
-  }
-
   private put(sessionId: string, row: OperationRow): void {
     const bySession = this.rows.get(sessionId) ?? new Map<string, OperationRow>();
     bySession.set(row.operationId, row);
     this.rows.set(sessionId, bySession);
   }
 
-  private write(row: StoredRow, remember = true): void {
-    if (remember) this.put(row.sessionId, row);
+  private write(row: StoredRow): void {
+    this.put(row.sessionId, row);
     mkdirSync(dirname(this.filePath), { recursive: true });
     appendFileSync(this.filePath, `${JSON.stringify(row)}\n`, "utf8");
   }
@@ -133,21 +131,26 @@ function isStoredRow(value: unknown): value is StoredRow {
 }
 
 function isOutcome(value: unknown): value is OperationOutcome {
-  return value === "pending" || value === "succeeded" || value === "failed" || value === "unknown";
+  return value === "pending" || value === "succeeded" || value === "failed" || value === "withdrawn" || value === "unknown";
 }
 
 /**
- * The acceptance face the session service already uses, backed by durable rows.
+ * The session service's view of accepted prompts, by sender identity.
  *
- * Keeping the old four methods means the call sites do not change shape while
- * the durability underneath them does; the difference a user can feel is that
- * a retry after a daemon restart is now answered instead of run again.
+ * A row is written when a prompt is accepted and moves forward only: pending until the agent
+ * consumes it, then succeeded; failed when the runtime refuses it for good; withdrawn when the
+ * reader takes it back. Nothing deletes a row - stopping a session, recalling a message or a
+ * refused handoff used to, and each deletion turned an outbox retry of that identity into a
+ * second run. Rows leave only by age, past the retention window.
  */
+export type SettledOutcome = "succeeded" | "failed" | "withdrawn";
+
 export interface AcceptanceFace {
+  /** Whether a request carrying this identity repeats one already accepted, so must not run again. */
   has(sessionId: string, clientMessageId: string): boolean;
+  /** Record an acceptance. Only a row whose earlier attempt failed is admitted again. */
   record(sessionId: string, clientMessageId: string): void;
-  forget(sessionId: string, clientMessageId: string): void;
-  forgetSession(sessionId: string): void;
+  settle(sessionId: string, clientMessageId: string, outcome: SettledOutcome): void;
   /**
    * What the daemon can say about identities a client could not settle. An
    * identity it has never seen is absent from the answer rather than reported
@@ -156,24 +159,55 @@ export interface AcceptanceFace {
   outcomesFor(sessionId: string, operationIds: readonly string[]): Record<string, OperationOutcome>;
 }
 
+/**
+ * Which recorded outcomes let the same identity run again.
+ *
+ * `unknown` does: a row is settled `succeeded` synchronously in the event where the agent reads
+ * the message, so a row a restart found still pending is one the agent never read. Its message
+ * was in the runtime's memory and died with it; answering the sender's retry as a duplicate
+ * would lose it for good. A message the restart did preserve - still in the inbox - is recorded
+ * again when the inbox is restored, so its retry stays a duplicate.
+ */
+export const READMITTED: Record<OperationOutcome, boolean> = {
+  pending: false,
+  succeeded: false,
+  withdrawn: false,
+  failed: true,
+  unknown: true,
+};
+
+/** Which recorded outcomes a later fact may still settle. A settled row never moves back. */
+export const SETTLEABLE: Record<OperationOutcome, boolean> = {
+  pending: true,
+  unknown: true,
+  succeeded: false,
+  failed: false,
+  withdrawn: false,
+};
+
 export function createDurableAcceptanceLedger(dataDir: string): AcceptanceFace {
   const ledger = OperationLedger.open(dataDir);
   return {
     has(sessionId, clientMessageId) {
-      const row = ledger.rowFor(sessionId, clientMessageId);
-      return row !== undefined && row.outcome !== "failed";
+      const existing = ledger.rowFor(sessionId, clientMessageId);
+      return existing !== undefined && !READMITTED[existing.outcome];
     },
     record(sessionId, clientMessageId) {
-      const decision = ledger.decide(sessionId, clientMessageId, "prompt");
-      if (decision.kind === "admit") ledger.begin(sessionId, clientMessageId, "prompt");
-      ledger.settle(sessionId, clientMessageId, "succeeded");
+      const existing = ledger.rowFor(sessionId, clientMessageId);
+      if (existing !== undefined && !READMITTED[existing.outcome]) return;
+      if (existing === undefined) {
+        const decision = ledger.decide(sessionId, clientMessageId, "prompt");
+        if (decision.kind !== "admit") {
+          console.warn(`[operationLedger] acceptance of ${clientMessageId} in ${sessionId} not recorded: ${decision.kind === "refuse" ? decision.code : decision.kind}`);
+          return;
+        }
+      }
+      ledger.begin(sessionId, clientMessageId, "prompt");
     },
-    forget(sessionId, clientMessageId) {
-      if (ledger.rowFor(sessionId, clientMessageId) === undefined) return;
-      ledger.settle(sessionId, clientMessageId, "failed");
-    },
-    forgetSession(sessionId) {
-      ledger.forgetSession(sessionId);
+    settle(sessionId, clientMessageId, outcome) {
+      const existing = ledger.rowFor(sessionId, clientMessageId);
+      if (existing === undefined || !SETTLEABLE[existing.outcome]) return;
+      ledger.settle(sessionId, clientMessageId, outcome);
     },
     outcomesFor(sessionId, operationIds) {
       const answer: Record<string, OperationOutcome> = {};

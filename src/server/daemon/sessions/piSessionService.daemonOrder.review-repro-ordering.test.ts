@@ -47,7 +47,7 @@ describe("ordering lane repros", () => {
     await svc.dispose();
   });
 
-  it.fails("I1: a refused drain does not let the next idle prompt jump the parked queue", async () => {
+  it("I1: a refused drain does not let the next idle prompt jump the parked queue", async () => {
     const { fake, svc } = await service("refused-drain");
     await svc.prompt(ref("refused-drain"), "P1 parked", undefined, undefined, { clientMessageId: "p1" });
     let refuseOnce = true;
@@ -66,7 +66,7 @@ describe("ordering lane repros", () => {
     await svc.dispose();
   });
 
-  it.fails("I1: a prompt accepted during compaction does not reach the runtime before a prompt parked before the compaction", async () => {
+  it("I1: a prompt accepted during compaction does not reach the runtime before a prompt parked before the compaction", async () => {
     const { fake, svc } = await service("compaction-overtake");
     await svc.prompt(ref("compaction-overtake"), "P1 parked before compaction", undefined, undefined, { clientMessageId: "p1" });
     fake.session.isCompacting = true;
@@ -80,11 +80,11 @@ describe("ordering lane repros", () => {
     await svc.dispose();
   });
 
-  it.fails("I4: a refused submission leaves no identity behind for a later message with the same text to inherit", async () => {
+  it("I4: a refused submission leaves no identity behind for a later message with the same text to inherit", async () => {
     const { fake, svc } = await service("stale-stamp", { isStreaming: false });
     let refuseOnce = true;
     fake.session.prompt = () => {
-      if (refuseOnce) { refuseOnce = false; return Promise.reject(new Error("Agent is already processing a prompt.")); }
+      if (refuseOnce) { refuseOnce = false; return Promise.reject(new Error("No model selected.")); }
       return Promise.resolve();
     };
     await svc.prompt(ref("stale-stamp"), "continue", undefined, undefined, { clientMessageId: "x-refused" });
@@ -96,11 +96,13 @@ describe("ordering lane repros", () => {
     await svc.dispose();
   });
 
-  it.fails("I3: an accepted steer held only in the runtime queue survives a daemon restart, or is not reported succeeded", async () => {
+  it("I3: an accepted steer held only in the runtime queue survives a daemon restart, or is not reported succeeded", async () => {
     const dir = await mkdtemp(join(tmpdir(), "order-restart-"));
     const ledgerDir = await mkdtemp(join(tmpdir(), "order-ledger-"));
     const first = await service("restart", { dir, ledgerDir });
     await first.svc.prompt(ref("restart"), "S1 steer while running", "steer", undefined, { clientMessageId: "steer-0001" });
+    first.fake.emit({ type: "turn_end" });
+    await settle(50);
     expect(first.fake.calls.prompt.map((call) => call.text)).toEqual(["S1 steer while running"]);
     await first.svc.dispose();
 
@@ -114,7 +116,7 @@ describe("ordering lane repros", () => {
     await second.svc.dispose();
   });
 
-  it.fails("I3: a message withdrawn by recall is not resurrected by an outbox retry of its id", async () => {
+  it("I3: a message withdrawn by recall is not resurrected by an outbox retry of its id", async () => {
     const { fake, svc } = await service("recall-retry");
     await svc.prompt(ref("recall-retry"), "withdraw me", undefined, undefined, { clientMessageId: "w1" });
     const recalled = await svc.recallQueuedMessage(ref("recall-retry"), { text: "withdraw me", clientMessageId: "w1" });
@@ -127,18 +129,18 @@ describe("ordering lane repros", () => {
     expect({ handed: fake.calls.prompt.map((call) => call.text), queued }).toEqual({ handed: [], queued: [] });
     await svc.dispose();
   });
-  it.fails("I1: the first prompt after a daemon restart does not overtake the prompts parked before it", async () => {
+  it("I1: the first prompt after a daemon restart does not overtake the prompts parked before it", async () => {
     const dir = await mkdtemp(join(tmpdir(), "order-restore-"));
     const before = new OwnedPromptQueue();
     await before.open("restore-first", dir);
     await before.push("restore-first", dir, { clientMessageId: "parked-0001", lane: "followUp", text: "P1 parked before the restart", images: [], acceptedAt: new Date().toISOString(), echoUserMessage: true });
-    const { fake, svc } = await service("restore-first", { dir, isStreaming: false });
+    const { fake, svc } = await service("restore-first", { dir, isStreaming: false, ledgerDir: await mkdtemp(join(tmpdir(), "order-restore-data-")) });
     await svc.prompt(ref("restore-first"), "P3 first message after the restart", undefined, undefined, { clientMessageId: "fresh-0003" });
     await settle();
     expect(fake.calls.prompt.map((call) => call.text)).toEqual(["P1 parked before the restart", "P3 first message after the restart"]);
     await svc.dispose();
   });
-  it.fails("I2: two requests that reach the daemon in order are accepted in that order", async () => {
+  it("I2: two requests that reach the daemon in order are accepted in that order", async () => {
     const { svc, hub } = await service("arrival-order");
     const png = (await readFile("docs/assets/pi-web-banner.png")).toString("base64");
     const first = svc.prompt(ref("arrival-order"), "A arrives first, with a photo", undefined, [{ kind: "image", mimeType: "image/png", data: png }], { clientMessageId: "arrive-0001" });
@@ -149,7 +151,7 @@ describe("ordering lane repros", () => {
     expect({ acceptedOrder, queuedOrder }).toEqual({ acceptedOrder: ["arrive-0001", "arrive-0002"], queuedOrder: ["arrive-0001", "arrive-0002"] });
     await svc.dispose();
   });
-  it.fails("I1: a steer that arrives while recall rewrites the runtime queue does not land ahead of the older survivors", async () => {
+  it("I1: a steer that arrives while recall rewrites the runtime queue does not land ahead of the older survivors", async () => {
     const { fake, svc } = await service("recall-window");
     const steering: string[] = [];
     let cleared!: () => void;
@@ -163,16 +165,18 @@ describe("ordering lane repros", () => {
     await svc.prompt(ref("recall-window"), "S1 oldest", "steer", undefined, { clientMessageId: "steer-0001" });
     await svc.prompt(ref("recall-window"), "S2 older", "steer", undefined, { clientMessageId: "steer-0002" });
     await svc.prompt(ref("recall-window"), "S3 old", "steer", undefined, { clientMessageId: "steer-0003" });
+    fake.emit({ type: "turn_end" });
     await settle(100);
     const recall = svc.recallQueuedMessage(ref("recall-window"), { kind: "steer", text: "S1 oldest", clientMessageId: "steer-0001" });
     await clearedSignal;
     await svc.prompt(ref("recall-window"), "S4 newest", "steer", undefined, { clientMessageId: "steer-0004" });
     await recall;
+    fake.emit({ type: "turn_end" });
     await settle(100);
     expect(steering).toEqual(["S2 older", "S3 old", "S4 newest"]);
     await svc.dispose();
   });
-  it.fails("I6: a parked message whose text was sent once before is still reported as queued", async () => {
+  it("I6: a parked message whose text was sent once before is still reported as queued", async () => {
     const { fake, svc } = await service("repeat-text");
     Reflect.set(fake.session, "messages", [...fake.session.messages, { role: "user", content: [{ type: "text", text: "continue" }] }]);
     await svc.prompt(ref("repeat-text"), "continue", undefined, undefined, { clientMessageId: "again-0002" });
@@ -180,7 +184,7 @@ describe("ordering lane repros", () => {
     expect({ queued: status.queuedMessages.map((entry) => entry.clientMessageId), pending: status.pendingMessageCount }).toEqual({ queued: ["again-0002"], pending: 1 });
     await svc.dispose();
   });
-  it.fails("I3: a parked prompt whose drain was refused and restored is not run a second time by an outbox retry of its id", async () => {
+  it("I3: a parked prompt whose drain was refused and restored is not run a second time by an outbox retry of its id", async () => {
     const { fake, svc } = await service("restored-retry");
     await svc.prompt(ref("restored-retry"), "P1 parked", undefined, undefined, { clientMessageId: "parked-0001" });
     let refuseOnce = true;

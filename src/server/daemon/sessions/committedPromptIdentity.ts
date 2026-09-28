@@ -44,6 +44,19 @@ export class CommittedPromptExpectations {
     return entry?.clientMessageId;
   }
 
+  /**
+   * Drop the expectation for a message that will not be committed under this handoff: it was
+   * refused, recalled, or taken back to be handed again. Left behind, it would stamp a later
+   * message with the same text with this message's identity.
+   */
+  withdraw(sessionId: string, clientMessageId: string): void {
+    const list = this.perSession.get(sessionId);
+    if (list === undefined) return;
+    const remaining = list.filter((entry) => entry.clientMessageId !== clientMessageId);
+    if (remaining.length === 0) this.perSession.delete(sessionId);
+    else this.perSession.set(sessionId, remaining);
+  }
+
   forgetSession(sessionId: string): void {
     this.perSession.delete(sessionId);
   }

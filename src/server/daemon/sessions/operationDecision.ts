@@ -19,13 +19,21 @@
  *   it with the first outcome would silently drop what the caller asked for.
  * - Capacity refuses rather than evicting. Dropping a row to make space turns a
  *   later replay back into a second execution, which is the one outcome the
- *   ledger exists to prevent.
+ *   ledger exists to prevent. Rows age out after the retention window instead, so
+ *   the bound is a safety net that a working session never reaches (512 was
+ *   reached by the owner's own session inside a week).
  * - A restart cannot claim an operation succeeded or failed; every row still
  *   pending becomes `unknown`, which is honest and lets the client close it by
  *   asking rather than by resending blind.
  */
 
-export type OperationOutcome = "pending" | "succeeded" | "failed" | "unknown";
+/**
+ * `pending`: accepted and not yet consumed by the agent. `succeeded`: consumed. `failed`: the
+ * runtime refused it for good, so a retry may run it. `withdrawn`: the reader took it back, so
+ * a retry of the same identity must not resurrect it. `unknown`: a restart lost the process
+ * that could have said which.
+ */
+export type OperationOutcome = "pending" | "succeeded" | "failed" | "withdrawn" | "unknown";
 
 export type OperationRefusalCode = "invalid" | "conflict" | "expired" | "capacity";
 
@@ -60,7 +68,7 @@ export interface LedgerLimits {
 }
 
 export const DEFAULT_LEDGER_LIMITS: LedgerLimits = {
-  capacity: 512,
+  capacity: 10_000,
   retentionMs: 24 * 60 * 60 * 1000,
   pendingStaleMs: 10 * 60 * 1000,
 };

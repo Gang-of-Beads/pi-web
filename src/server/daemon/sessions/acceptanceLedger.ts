@@ -1,71 +1,45 @@
+import type { OperationOutcome } from "./operationDecision.js";
+import { READMITTED, SETTLEABLE, type AcceptanceFace } from "./operationLedger.js";
+
 /**
- * The daemon's memory of prompts it has already accepted, by sender identity.
- *
- * The browser retries from its outbox with the same clientMessageId whenever a
- * response was lost - going back online, reloading mid-send. Whether the first
- * attempt arrived is exactly what the sender cannot know, so the daemon must
- * answer the repeat instead of running it twice. The queue records cannot do
- * this: they forget an id the moment the prompt is consumed, which is the
- * common case for a prompt accepted while the session was idle.
- *
- * One id is one message: the composer mints a fresh id for every send, so a
- * deliberate second "continue" carries a different id and is never swallowed.
- *
- * Process-scoped and bounded. A daemon restart forgets the ledger - the same
- * volatility as the queue it protects; making both durable is the message-sync
- * design's work.
+ * The same acceptance rules as the durable ledger, held in memory: for a daemon started
+ * without a data directory, and for tests. Rows move forward only and are never deleted
+ * (see createDurableAcceptanceLedger), so a retry is answered the same way by either.
  */
-export class AcceptanceLedger {
-  private readonly acceptedBySession = new Map<string, Set<string>>();
-
-  constructor(private readonly perSessionLimit = 200) {}
-
-  /** Whether this identity was already accepted for this session. */
-  has(sessionId: string, clientMessageId: string): boolean {
-    return this.acceptedBySession.get(sessionId)?.has(clientMessageId) ?? false;
-  }
-
-  /** Record an acceptance. Oldest entries fall off past the bound. */
-  record(sessionId: string, clientMessageId: string): void {
-    const accepted = this.acceptedBySession.get(sessionId) ?? new Set<string>();
-    accepted.delete(clientMessageId);
-    accepted.add(clientMessageId);
-    while (accepted.size > this.perSessionLimit) {
-      const oldest = accepted.values().next().value;
-      if (oldest === undefined) break;
-      accepted.delete(oldest);
-    }
-    this.acceptedBySession.set(sessionId, accepted);
-  }
-
-  /**
-   * Take one acceptance back: the runtime refused the submission after the
-   * ledger recorded it. Leaving the record would answer every retry with a
-   * repeated acceptance for a prompt that never ran - the silent loss the
-   * honesty reviewer proved with an interleaving.
-   */
-  forget(sessionId: string, clientMessageId: string): void {
-    const accepted = this.acceptedBySession.get(sessionId);
-    if (accepted === undefined) return;
-    accepted.delete(clientMessageId);
-    if (accepted.size === 0) this.acceptedBySession.delete(sessionId);
-  }
-
-  /** Forget a session that no longer exists. */
-  forgetSession(sessionId: string): void {
-    this.acceptedBySession.delete(sessionId);
-  }
-
-  /**
-   * What this ledger can say about identities a client could not settle. It
-   * only ever saw acceptances, so it answers "succeeded" for those and stays
-   * silent about the rest: silence means "no row", not "it failed".
-   */
-  outcomesFor(sessionId: string, operationIds: readonly string[]): Record<"succeeded", never> | Record<string, "succeeded"> {
-    const answer: Record<string, "succeeded"> = {};
-    for (const operationId of operationIds) {
-      if (this.has(sessionId, operationId)) answer[operationId] = "succeeded";
-    }
-    return answer;
-  }
+export function createInMemoryAcceptanceLedger(): AcceptanceFace {
+  const rows = new Map<string, Map<string, OperationOutcome>>();
+  const bySession = (sessionId: string): Map<string, OperationOutcome> => {
+    const existing = rows.get(sessionId);
+    if (existing !== undefined) return existing;
+    const created = new Map<string, OperationOutcome>();
+    rows.set(sessionId, created);
+    return created;
+  };
+  return {
+    has(sessionId, clientMessageId) {
+      const existing = rows.get(sessionId)?.get(clientMessageId);
+      return existing !== undefined && !READMITTED[existing];
+    },
+    record(sessionId, clientMessageId) {
+      const session = bySession(sessionId);
+      const existing = session.get(clientMessageId);
+      if (existing !== undefined && !READMITTED[existing]) return;
+      session.set(clientMessageId, "pending");
+    },
+    settle(sessionId, clientMessageId, outcome) {
+      const session = rows.get(sessionId);
+      const existing = session?.get(clientMessageId);
+      if (session === undefined || existing === undefined || !SETTLEABLE[existing]) return;
+      session.set(clientMessageId, outcome);
+    },
+    outcomesFor(sessionId, operationIds) {
+      const answer: Record<string, OperationOutcome> = {};
+      const session = rows.get(sessionId);
+      for (const operationId of operationIds) {
+        const outcome = session?.get(operationId);
+        if (outcome !== undefined) answer[operationId] = outcome;
+      }
+      return answer;
+    },
+  };
 }

@@ -158,3 +158,101 @@ Each phase merges only when all of these hold:
    "No answer yet" goes away.
 3. **Release cadence.** Ship after phases 1+2, which cover loss, duplicates, order and stuck
    sends, or after all five.
+
+## Owner decisions (2026-09-29)
+
+1. **Steer.** While the agent runs, every message is a steer. pi-web's queue holds them,
+   visible and recallable, and at the next gap hands everything waiting to pi together, in
+   order. Each message stays its own transcript row with its own identity.
+2. **Words.** Sending… / Receiving… / Received / Not received · Retry.
+3. **Release.** One release after all five phases.
+
+## Phase 1 implementation notes
+
+**SDK facts (read from agent-session.js and pi-agent-core).**
+- `preflightResult(true)` is called synchronously just before `_runAgentPrompt`, whose first
+  line sets `_isAgentRunActive = true`. From the next microtask on, `isStreaming` is true.
+- `prompt()` called while the SDK emits `agent_settled` is deferred and returns without
+  calling `preflightResult`.
+- After a run, `_runAgentPrompt` loops on `agent.hasQueuedMessages()`. A steer queued before
+  that final check is delivered in the same run.
+- `session.prompt(text, {streamingBehavior: "steer"})` while not streaming runs as a normal
+  prompt.
+- `agent.steeringMode` is an in-memory setter, separate from the saved pi setting. `"all"`
+  drains every queued steer at one gap.
+
+**The consumer (one per session, on one serial chain).**
+- **Accept.** A synchronous step at request entry assigns `seq` and appends to the inbox. The
+  ledger records `accepted`.
+- **Hand.** `nextHandoff(inbox, runState)` decides:
+  - inbox empty → nothing;
+  - compacting → wait;
+  - a direct prompt is being handed → wait;
+  - running → at a gap (`turn_end`, `tool_execution_end`), hand every waiting entry, in
+    order, as a steer;
+  - idle → hand the head as a direct prompt.
+- **Handed.** A direct prompt counts as handed at the first of `preflightResult(true)` and the
+  prompt promise settling. The latter covers the fake runtime and the deferred path.
+- **Refused.** A transient refusal (compaction in progress, "already processing") keeps the
+  entry at the head and waits for the next fact. A terminal refusal (no model, no auth)
+  publishes `prompt.refused`, records `refused` in the ledger, and withdraws the entry's
+  commit expectation.
+- **Settle safety net.** On `agent_settled`, anything pi still holds in its steering queue is
+  taken back (`clearQueue`) to the head of the inbox, keeping identities.
+- **Steering mode.** Set to `"all"` on pi-web-hosted sessions only, in memory.
+
+**Repro fixture adjustments (the assertions themselves are unchanged).**
+- S1 and S2 assert behaviour of the raw SDK (`session.prompt` with no daemon). pi-web cannot
+  change it. They stay `it.fails`, renamed "SDK behaviour the daemon works around": they fail
+  for as long as the SDK behaves this way, and an upgrade that changes it turns them red.
+- I4 used "already processing" as its refusal. That is transient under the new consumer, so
+  the fixture now uses a terminal refusal ("No model selected."). The invariant (a refused
+  id's identity is not inherited) is asserted as before.
+- I3-restart and I1-recall-window were written when a steer went to pi at once. Under the
+  owner's rule it waits for a gap, so each fixture emits `turn_end` where it needs the steer
+  to be in pi's queue (I3-restart before its first check; recall-window after S3 and again
+  after the recall).
+- I1-restore-first gives its service a data directory, because the inbox now lives there;
+  the parked prompt is still written to the old workspace location, so the test also covers
+  the migration.
+
+## Phase 1 as landed
+
+**Done.**
+- One inbox per session in `$PI_WEB_DATA_DIR/inbox/<sessionId>.json` (`{cwd, entries}`),
+  written before `prompt.accepted`. Every prompt passes through it, so a read-only workspace no
+  longer refuses prompts. A legacy `<cwd>/.pi/queued-prompts` file is merged in and deleted on
+  open.
+- Acceptance runs on a per-session chain joined synchronously at request entry (I2).
+- `nextHandoff` and `refusalKind` in `promptHandoff.ts`, enumerated in its test. The consumer
+  runs one decision at a time per session under the queue lock, so a recall's replay and a
+  handoff cannot interleave.
+- The compaction queue is gone; compaction is a run state the consumer waits on.
+- `takeBackStrandedMessages` on `agent_settled`; `steeringMode = "all"` at bind.
+- Ledger: rows are never deleted (stop, close, recall and refusal used to delete); capacity
+  512 → 10 000 as a safety net with age expiry doing the work; outcomes `pending → succeeded`
+  (stamped at `message_start`) `| failed | withdrawn`. `withdrawn` answers a retry as a
+  duplicate; `failed` and `unknown` re-admit it (see `READMITTED`).
+- The commit expectation is recorded at acceptance, so it exists before any handoff.
+- Startup drain: `resumeWaitingInboxes()` opens every session with a waiting inbox.
+
+**Moved to later phases, with their consumers.**
+- Status `{epoch, revision}` and the session join frame → Phase 3. Only the browser store
+  consumes them, and the repros that prove them (`sessionEventHub`, `sessionController`
+  realtime) are Phase 3's.
+- `prompt.refused` per-id frame → Phase 2. The browser parser rejects unknown frame types, so
+  the frame lands with the client disposition that uses it. Until then a terminal refusal
+  publishes `session.error` as before and the ledger answers `failed`.
+
+**Existing tests changed because the owner's rule changed the behaviour they pinned.**
+- `ownedQueue.test`: "delivers a busy steer immediately" becomes "hands everything waiting at
+  a gap, in order, as steers"; queue files are checked in the data directory.
+- `compactionIdentity.test`: a message waiting through compaction into a running agent is
+  handed as a steer, not a follow-up.
+- `promptQueue.test`: messages sent during compaction are echoed at acceptance and listed as
+  steers; the second is handed at the next gap, not at `agent_start`.
+- `acceptanceLedger.test`: the eviction and forget-on-close tests pinned the two ledger bugs
+  the review proved; they are replaced by forward-only tests.
+- Tests that asserted a handoff synchronously after `await prompt()` now wait for it:
+  `prompt()` resolves at acceptance, and the handoff follows on the consumer.
+

@@ -89,10 +89,10 @@ describe("a prompt parked by a compaction", () => {
     fake.emit({ type: "compaction_end" });
     await vi.waitFor(() => { expect(fake.calls.prompt.length).toBe(1); });
 
-    expect(fake.calls.prompt[0]?.options).toBeUndefined();
+    expect(fake.calls.prompt[0]?.options).not.toHaveProperty("streamingBehavior");
   });
 
-  it("keeps a parked follow-up queued when the runtime is busy again at drain time", async () => {
+  it("hands a held message as a steer when the runtime is running again when compaction ends", async () => {
     const { fake, service } = compactingService("compaction-drain-busy");
 
     await service.prompt(sessionRef("compaction-drain-busy"), "hello", "followUp", undefined, { clientMessageId: "c-1" });
@@ -101,6 +101,6 @@ describe("a prompt parked by a compaction", () => {
     fake.emit({ type: "compaction_end" });
     await vi.waitFor(() => { expect(fake.calls.prompt.length).toBe(1); });
 
-    expect(fake.calls.prompt[0]?.options).toMatchObject({ streamingBehavior: "followUp" });
+    expect(fake.calls.prompt[0]?.options).toMatchObject({ streamingBehavior: "steer" });
   });
 });

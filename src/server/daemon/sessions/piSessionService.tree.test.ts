@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SessionTreeNavigateRequest, SessionTreeSummaryChoice } from "../../../shared/apiTypes.js";
 import { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
 import { PiSessionService, type PiAgentSession, type PiSessionManager, type PiSessionServiceDependencies } from "./piSessionService.js";
-import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, fakeSessionManager, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModel, testModelRuntime, type TestSession } from "./piSessionService.testSupport.js";
+import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, fakeSessionManager, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModel, testModelRuntime, type TestSession, directHandoffOptions } from "./piSessionService.testSupport.js";
 import type { ProjectableSessionTreeNode } from "./sessionTreeProjection.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
@@ -184,7 +184,7 @@ describe("PiSessionService session-tree behavior", () => {
     navigation.resolve({ cancelled: false });
     await expect(firstNavigation).resolves.toEqual({ cancelled: false });
     await service.prompt(sessionRef(SESSION_ID), "now append");
-    expect(fake.calls.prompt).toEqual([{ text: "now append", options: undefined }]);
+    await vi.waitFor(() => { expect(fake.calls.prompt).toEqual([{ text: "now append", options: directHandoffOptions() }]); });
 
     await service.dispose();
   });

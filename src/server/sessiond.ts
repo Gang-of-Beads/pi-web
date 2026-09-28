@@ -306,6 +306,7 @@ async function createSessionDaemonRuntime() {
       }),
     }));
     transcriptReader = { list: (cwd) => sessions.listPassive(cwd), messages: (ref, page) => sessions.messagesPassive(ref, page) };
+    void sessions.resumeWaitingInboxes().catch((error: unknown) => { app.log.warn({ err: error }, "resuming waiting inboxes failed"); });
     auth.subscribe((change) => { sessions.applyAuthChange(change); });
     const terminals = new TerminalService(eventHub, workspaceActivity);
     const workspaceRemovals = new WorkspaceRemovalService(workspaceProviders, terminals);

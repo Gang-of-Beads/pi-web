@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PiSessionService, type PiAgentSession } from "./piSessionService.js";
 import type { SpawnTargetDecision } from "./spawnTargetResolver.js";
-import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, fakeSessionManager, resolveSessionFileFromList, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModel, testModelRuntime, type RuntimeCreator } from "./piSessionService.testSupport.js";
+import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, fakeSessionManager, resolveSessionFileFromList, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModel, testModelRuntime, type RuntimeCreator, directHandoffOptions } from "./piSessionService.testSupport.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 
@@ -57,7 +57,7 @@ describe("PiSessionService", () => {
       const result = await service.spawnSubsession({ spawningCwd: "/workspace", parentSessionId: "parent-1", parentSessionFile: "/tmp/parent-1.jsonl", prompt: "do the slice" });
 
       expect(result).toEqual({ sessionId: "child-1", cwd: "/workspace" });
-      expect(child.calls.prompt).toEqual([{ text: "do the slice", options: undefined }]);
+      await vi.waitFor(() => { expect(child.calls.prompt).toEqual([{ text: "do the slice", options: directHandoffOptions() }]); });
       await expect(service.listSubsessions("parent-1")).resolves.toEqual([
         { sessionId: "child-1", cwd: "/workspace", status: "idle" },
       ]);
@@ -935,6 +935,7 @@ describe("PiSessionService", () => {
       ];
       await service.start("/workspace");
       await service.spawnSubsession({ spawningCwd: "/workspace", parentSessionId: "parent-1", parentSessionFile: "/tmp/parent-1.jsonl", prompt: "go" });
+      await vi.waitFor(() => { expect(child.calls.prompt).toHaveLength(1); });
       parent.calls.prompt.length = 0; // ignore the spawn prompt to the child; focus on the parent notification
 
       child.session.isStreaming = true;
@@ -963,6 +964,7 @@ describe("PiSessionService", () => {
       ];
       await service.start("/workspace");
       await service.spawnSubsession({ spawningCwd: "/workspace", parentSessionId: "parent-1", parentSessionFile: "/tmp/parent-1.jsonl", prompt: "go" });
+      await vi.waitFor(() => { expect(child.calls.prompt).toHaveLength(1); });
 
       child.session.isStreaming = true;
       child.emit({ type: "agent_start" });

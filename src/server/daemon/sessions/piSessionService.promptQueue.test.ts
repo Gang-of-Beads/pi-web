@@ -6,7 +6,7 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
-import { CapturingSessionEventHub, createTestModelRuntime, fakeRuntime, runtimeCreator, seedCredential, sessionGateway, sessionRecord, sessionRef, TEST_MODEL_ID, TEST_MODEL_PROVIDER, testModel, testModelRuntime, type RuntimeCreator } from "./piSessionService.testSupport.js";
+import { CapturingSessionEventHub, createTestModelRuntime, fakeRuntime, runtimeCreator, seedCredential, sessionGateway, sessionRecord, sessionRef, TEST_MODEL_ID, TEST_MODEL_PROVIDER, testModel, testModelRuntime, type RuntimeCreator, directHandoffOptions, handedAs } from "./piSessionService.testSupport.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 
@@ -40,7 +40,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
 
     await service.prompt(sessionRef("prompt-session"), "Build the thing");
 
-    expect(fake.calls.prompt).toEqual([{ text: "Build the thing", options: undefined }]);
+    await vi.waitFor(() => { expect(fake.calls.prompt).toEqual([{ text: "Build the thing", options: directHandoffOptions() }]); });
     await service.dispose();
   });
 
@@ -64,10 +64,12 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     // so the server must not publish a second copy via message.append.
     await service.runCommand(sessionRef("echo-session"), "/skill:skill-creator");
     expect(hub.sessionEvents.filter(({ event }) => event.type === "message.append")).toHaveLength(1);
-    expect(fake.calls.prompt).toEqual([
-      { text: "Build the thing", options: undefined },
-      { text: "/skill:skill-creator", options: undefined },
-    ]);
+    await vi.waitFor(() => {
+      expect(fake.calls.prompt).toEqual([
+        { text: "Build the thing", options: directHandoffOptions() },
+        { text: "/skill:skill-creator", options: directHandoffOptions() },
+      ]);
+    });
 
     await service.dispose();
   });
@@ -261,10 +263,11 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     const hub = new CapturingSessionEventHub();
     const fake = fakeRuntime("compacting-session", { isCompacting: true });
     let resolveFirstPrompt: (() => void) | undefined;
-    fake.session.prompt = (text: string, options?: { streamingBehavior?: "steer" | "followUp" }) => {
+    fake.session.prompt = (text: string, options?: { streamingBehavior?: "steer" | "followUp"; preflightResult?: (success: boolean) => void }) => {
       fake.calls.prompt.push({ text, options });
-      if (options === undefined) {
+      if (options?.streamingBehavior === undefined) {
         fake.session.isStreaming = true;
+        options?.preflightResult?.(true);
         return new Promise<void>((resolve) => { resolveFirstPrompt = resolve; });
       }
       return Promise.resolve();
@@ -281,33 +284,27 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     await service.prompt(sessionRef("compacting-session"), "Then task 2", "followUp");
 
     expect(fake.calls.prompt).toEqual([]);
-    expect(hub.sessionEvents.some(({ event }) => event.type === "message.append")).toBe(false);
+    expect(hub.sessionEvents.filter(({ event }) => event.type === "message.append")).toHaveLength(2);
     await expect(service.status(sessionRef("compacting-session"))).resolves.toMatchObject({
       pendingMessageCount: 2,
-      queuedMessages: [{ kind: "followUp", text: "Start task 1" }, { kind: "followUp", text: "Then task 2" }],
+      queuedMessages: [{ kind: "steer", text: "Start task 1" }, { kind: "steer", text: "Then task 2" }],
     });
 
     fake.session.isCompacting = false;
     fake.emit({ type: "compaction_end" });
-    // compaction_end drains the held queue on a scheduled timer; wait for the
-    // first prompt to be delivered rather than sleeping a fixed interval.
     await vi.waitFor(() => {
-      expect(fake.calls.prompt).toEqual([{ text: "Start task 1", options: undefined }]);
+      expect(fake.calls.prompt.map((call) => call.text)).toEqual(["Start task 1"]);
     });
-
-    expect(hub.sessionEvents.some(({ event }) => event.type === "message.append" && JSON.stringify(event.message).includes("Start task 1"))).toBe(true);
     await expect(service.status(sessionRef("compacting-session"))).resolves.toMatchObject({
       pendingMessageCount: 1,
-      queuedMessages: [{ kind: "followUp", text: "Then task 2" }],
+      queuedMessages: [{ kind: "steer", text: "Then task 2" }],
     });
 
-    fake.emit({ type: "agent_start" });
-    // agent_start drains the next queued prompt asynchronously; wait for both
-    // prompts to have been delivered rather than sleeping.
+    fake.emit({ type: "turn_end" });
     await vi.waitFor(() => {
-      expect(fake.calls.prompt).toEqual([
-        { text: "Start task 1", options: undefined },
-        { text: "Then task 2", options: { streamingBehavior: "followUp" } },
+      expect(fake.calls.prompt.map((call) => [call.text, handedAs(call)])).toEqual([
+        ["Start task 1", undefined],
+        ["Then task 2", "steer"],
       ]);
     });
     await expect(service.status(sessionRef("compacting-session"))).resolves.toMatchObject({
@@ -355,7 +352,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       queuedMessages: [
         { kind: "steer", text: "adjust this turn" },
         { kind: "followUp", text: "then do this" },
-        { kind: "followUp", text: "queued during compaction" },
+        { kind: "steer", text: "queued during compaction" },
       ],
     });
 
@@ -564,6 +561,8 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     // silently drops anything it cannot read as an image.
     const attachment = { kind: "image" as const, data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", mimeType: "image/png" };
     await service.prompt(sessionRef("recall-images-session"), "look at this", "steer", [attachment]);
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(steeringMessages).toContain("look at this"); });
     fake.calls.prompt.length = 0;
 
     await service.recallQueuedMessage(sessionRef("recall-images-session"), { text: "and this" });

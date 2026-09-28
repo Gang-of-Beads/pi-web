@@ -62,7 +62,13 @@ async function photo() {
   return (await readFile("docs/assets/pi-web-banner.png")).toString("base64");
 }
 
-describe("SDK facts the daemon relies on", () => {
+/**
+ * Pinned SDK behaviour the daemon's inbox works around: the SDK refuses a second prompt handed
+ * to a session whose first run has not passed preflight, and a refused concurrent prompt clears
+ * `isStreaming` mid-run. These stay `it.fails` on purpose - they fail as long as the SDK behaves
+ * this way, and an upgrade that changes it turns them red so the workaround gets re-examined.
+ */
+describe("SDK behaviour the daemon works around", () => {
   it.fails("S1: two prompts handed to an idle session with no delivery kind are both consumed", async () => {
     const { session, consumed } = await realSession(200);
     const outcomes: string[] = [];
@@ -85,7 +91,7 @@ describe("SDK facts the daemon relies on", () => {
 });
 
 describe("daemon over the real SDK: idle session, sequential sends (outbox replay awaits each answer)", () => {
-  it.fails("D1: photo then text, fast model: consumed in acceptance order", async () => {
+  it("D1: photo then text, fast model: consumed in acceptance order", async () => {
     const { svc, consumed, session, ref, accepted, errors } = await daemonOverRealSdk("real-photo-fast", 200);
     await svc.prompt(ref, "A with photo", undefined, [{ kind: "image", mimeType: "image/png", data: await photo() }], { clientMessageId: "aaaa-0001" });
     await svc.prompt(ref, "B text", undefined, undefined, { clientMessageId: "bbbb-0002" });
@@ -94,7 +100,7 @@ describe("daemon over the real SDK: idle session, sequential sends (outbox repla
     await svc.dispose();
   });
 
-  it.fails("D2: photo then text, slow model: the photo is not refused after it was accepted, and the session does not read idle mid-run", async () => {
+  it("D2: photo then text, slow model: the photo is not refused after it was accepted, and the session does not read idle mid-run", async () => {
     const { svc, hub, consumed, session, ref, accepted, errors } = await daemonOverRealSdk("real-photo-slow", 4);
     await svc.prompt(ref, "A with photo", undefined, [{ kind: "image", mimeType: "image/png", data: await photo() }], { clientMessageId: "aaaa-0001" });
     await svc.prompt(ref, "B text", undefined, undefined, { clientMessageId: "bbbb-0002" });

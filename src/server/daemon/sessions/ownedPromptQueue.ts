@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export interface OwnedQueueEntry {
@@ -10,8 +10,58 @@ export interface OwnedQueueEntry {
   echoUserMessage: boolean;
 }
 
+/** Where daemons before the inbox kept a session's parked prompts: inside the workspace. */
 export function queueFilePath(cwd: string, sessionId: string): string {
   return join(cwd, ".pi", "queued-prompts", `${sessionId}.json`);
+}
+
+/**
+ * Where a session's inbox file lives, or undefined to keep it in memory only.
+ *
+ * The inbox belongs to the daemon, not the workspace: every prompt passes through it, so a
+ * read-only or missing workspace must not refuse prompts, and a startup scan must find every
+ * waiting session without knowing its project first (ordering F8, F9).
+ */
+export type InboxLocation = (sessionId: string, cwd: string) => string | undefined;
+
+export const legacyInboxLocation: InboxLocation = (sessionId, cwd) => queueFilePath(cwd, sessionId);
+export const memoryInboxLocation: InboxLocation = () => undefined;
+
+export function inboxDirectory(dataDir: string): string {
+  return join(dataDir, "inbox");
+}
+
+export function dataDirInboxLocation(dataDir: string): InboxLocation {
+  return (sessionId) => join(inboxDirectory(dataDir), `${sessionId}.json`);
+}
+
+export interface WaitingInbox {
+  sessionId: string;
+  cwd: string;
+}
+
+/** Sessions whose inbox file still holds prompts, for the daemon's startup drain. */
+export async function listWaitingInboxes(dataDir: string): Promise<WaitingInbox[]> {
+  const directory = inboxDirectory(dataDir);
+  let names: string[];
+  try { names = await readdir(directory); } catch { return []; }
+  const waiting: WaitingInbox[] = [];
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue;
+    const stored = await readInboxFile(join(directory, name)).catch(() => undefined);
+    if (stored?.cwd !== undefined && stored.entries.length > 0) waiting.push({ sessionId: name.slice(0, -".json".length), cwd: stored.cwd });
+  }
+  return waiting;
+}
+
+async function readInboxFile(path: string): Promise<{ cwd?: string; entries: OwnedQueueEntry[] } | undefined> {
+  let raw: string;
+  try { raw = await readFile(path, "utf8"); } catch { return undefined; }
+  const parsed: unknown = JSON.parse(raw);
+  if (Array.isArray(parsed)) return { entries: parseEntries(parsed) };
+  if (typeof parsed !== "object" || parsed === null) return { entries: [] };
+  const cwd = field(parsed, "cwd");
+  return { ...(typeof cwd === "string" ? { cwd } : {}), entries: parseEntries(field(parsed, "entries")) };
 }
 
 let stagedCounter = 0;
@@ -27,7 +77,10 @@ let stagedCounter = 0;
 export class OwnedPromptQueue {
   private readonly perSession = new Map<string, OwnedQueueEntry[]>();
   private readonly filePaths = new Map<string, string>();
+  private readonly cwds = new Map<string, string>();
   private readonly chains = new Map<string, Promise<unknown>>();
+
+  constructor(private readonly location: InboxLocation = legacyInboxLocation) {}
 
   private serialize<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
     const previous = this.chains.get(sessionId) ?? Promise.resolve();
@@ -38,35 +91,18 @@ export class OwnedPromptQueue {
 
   async open(sessionId: string, cwd: string): Promise<OwnedQueueEntry[]> {
     return this.serialize(sessionId, async () => {
-      const path = queueFilePath(cwd, sessionId);
-      this.filePaths.set(sessionId, path);
-      let loaded: OwnedQueueEntry[] = [];
-      let raw: string | undefined;
-      try {
-        raw = await readFile(path, "utf8");
-      } catch {
-        raw = undefined;
-      }
-      if (raw !== undefined) {
-        try {
-          loaded = parseEntries(JSON.parse(raw));
-        } catch {
-          // A file that exists but cannot be parsed is evidence of parked
-          // prompts, not an empty queue; absence is not negation. Keep the
-          // bytes for the operator and say so in the log.
-          await rename(path, `${path}.corrupt`).catch(() => undefined);
-          console.warn(`[ownedPromptQueue] corrupt queue file quarantined: ${path}.corrupt (session ${sessionId})`);
-          loaded = [];
-        }
-      }
-      const inMemory = this.perSession.get(sessionId) ?? [];
-      const knownIds = new Set(inMemory.map((entry) => entry.clientMessageId).filter((id) => id !== undefined));
-      const knownAnonymous = new Set(inMemory.filter((entry) => entry.clientMessageId === undefined).map((entry) => anonymousKey(entry)));
-      const merged = [
-        ...loaded.filter((entry) => entry.clientMessageId === undefined ? !knownAnonymous.has(anonymousKey(entry)) : !knownIds.has(entry.clientMessageId)),
-        ...inMemory,
-      ];
+      const path = this.location(sessionId, cwd);
+      this.cwds.set(sessionId, cwd);
+      if (path !== undefined) this.filePaths.set(sessionId, path);
+      const legacyPath = queueFilePath(cwd, sessionId);
+      const loaded = path === undefined ? [] : await loadQuarantiningCorruption(path, sessionId);
+      const migrated = path === undefined || path === legacyPath ? [] : await loadQuarantiningCorruption(legacyPath, sessionId);
+      const merged = [...migrated, ...loaded, ...(this.perSession.get(sessionId) ?? [])].reduce<OwnedQueueEntry[]>(
+        (kept, entry) => kept.some((known) => sameEntry(known, entry)) ? kept : [...kept, entry],
+        [],
+      );
       if (merged.length !== loaded.length) await this.persist(sessionId, merged);
+      if (migrated.length > 0) await unlink(legacyPath).catch(() => undefined);
       this.perSession.set(sessionId, merged);
       return [...merged];
     });
@@ -78,7 +114,9 @@ export class OwnedPromptQueue {
 
   async push(sessionId: string, cwd: string, entry: OwnedQueueEntry): Promise<void> {
     return this.serialize(sessionId, async () => {
-      if (!this.filePaths.has(sessionId)) this.filePaths.set(sessionId, queueFilePath(cwd, sessionId));
+      this.cwds.set(sessionId, cwd);
+      const path = this.filePaths.get(sessionId) ?? this.location(sessionId, cwd);
+      if (path !== undefined) this.filePaths.set(sessionId, path);
       const list = this.perSession.get(sessionId) ?? [];
       if (entry.clientMessageId !== undefined && list.some((queued) => queued.clientMessageId === entry.clientMessageId)) return;
       const next = [...list, entry];
@@ -87,25 +125,29 @@ export class OwnedPromptQueue {
     });
   }
 
-  async takeNext(sessionId: string): Promise<OwnedQueueEntry | undefined> {
+  /** Take the oldest `count` entries, in acceptance order. */
+  async take(sessionId: string, count: number): Promise<OwnedQueueEntry[]> {
     return this.serialize(sessionId, async () => {
       const list = this.perSession.get(sessionId) ?? [];
-      const at = list.findIndex((entry) => entry.lane === "steer");
-      if (at === -1 && list.length === 0) return undefined;
-      const index = at === -1 ? 0 : at;
-      const taken = list[index];
-      const next = [...list.slice(0, index), ...list.slice(index + 1)];
+      const taken = list.slice(0, count);
+      if (taken.length === 0) return [];
+      const next = list.slice(taken.length);
       await this.persist(sessionId, next);
       this.perSession.set(sessionId, next);
       return taken;
     });
   }
 
-  /** Put a taken entry back at the head: the runtime refused its submission. */
-  async restore(sessionId: string, entry: OwnedQueueEntry): Promise<void> {
+  /**
+   * Put entries back ahead of everything waiting: the runtime was momentarily busy, or they
+   * were taken back out of the runtime's own queue. They were accepted before anything still
+   * here, so the head is where acceptance order puts them.
+   */
+  async restoreFront(sessionId: string, entries: readonly OwnedQueueEntry[]): Promise<void> {
+    if (entries.length === 0) return;
     return this.serialize(sessionId, async () => {
       const list = this.perSession.get(sessionId) ?? [];
-      const next = [entry, ...list];
+      const next = [...entries, ...list];
       await this.persist(sessionId, next);
       this.perSession.set(sessionId, next);
     });
@@ -139,12 +181,13 @@ export class OwnedPromptQueue {
   forgetSession(sessionId: string): void {
     this.perSession.delete(sessionId);
     this.filePaths.delete(sessionId);
+    this.cwds.delete(sessionId);
     this.chains.delete(sessionId);
   }
 
   private async persist(sessionId: string, entries: readonly OwnedQueueEntry[]): Promise<void> {
     const path = this.filePaths.get(sessionId);
-    if (path === undefined) throw new Error(`No queue path registered for session ${sessionId}`);
+    if (path === undefined) return;
     if (entries.length === 0) {
       try {
         await unlink(path);
@@ -157,7 +200,7 @@ export class OwnedPromptQueue {
     stagedCounter += 1;
     const staged = `${path}.${String(process.pid)}.${String(stagedCounter)}.tmp`;
     try {
-      await writeFile(staged, JSON.stringify(entries));
+      await writeFile(staged, JSON.stringify({ cwd: this.cwds.get(sessionId), entries }));
       await rename(staged, path);
     } catch (error) {
       await unlink(staged).catch(() => undefined);
@@ -172,6 +215,25 @@ function isMissingFileError(error: unknown): boolean {
 
 function anonymousKey(entry: OwnedQueueEntry): string {
   return `${entry.lane}\u0000${entry.text}\u0000${entry.acceptedAt}`;
+}
+
+function sameEntry(a: OwnedQueueEntry, b: OwnedQueueEntry): boolean {
+  if (a.clientMessageId !== undefined || b.clientMessageId !== undefined) return a.clientMessageId === b.clientMessageId;
+  return anonymousKey(a) === anonymousKey(b);
+}
+
+/**
+ * A file that exists but cannot be parsed is evidence of parked prompts, not an empty queue;
+ * absence is not negation. Keep the bytes for the operator and say so in the log.
+ */
+async function loadQuarantiningCorruption(path: string, sessionId: string): Promise<OwnedQueueEntry[]> {
+  try {
+    return (await readInboxFile(path))?.entries ?? [];
+  } catch {
+    await rename(path, `${path}.corrupt`).catch(() => undefined);
+    console.warn(`[ownedPromptQueue] corrupt queue file quarantined: ${path}.corrupt (session ${sessionId})`);
+    return [];
+  }
 }
 
 function field(value: object, name: string): unknown {
