@@ -162,12 +162,18 @@ export class ChatScrollController {
    * deleted or renamed session left its key in localStorage forever. The caller knows
    * which sessions exist; this knows which keys it wrote.
    */
-  prune(knownKeys: ReadonlySet<string>): number {
+  prune(knownKeys: ReadonlySet<string>, machineScope?: string): number {
     const keys = this.storage.keys?.() ?? [];
+    const prefix = machineScope === undefined ? undefined : `${machineScope}:`;
     let removed = 0;
     for (const key of keys) {
       if (!key.startsWith(SCROLL_STORAGE_PREFIX)) continue;
-      if (knownKeys.has(key.slice(SCROLL_STORAGE_PREFIX.length))) continue;
+      const scope = key.slice(SCROLL_STORAGE_PREFIX.length);
+      // Only this machine's keys: the caller lists the sessions *this* machine has, so
+      // pruning across machines deleted every other machine's saved position the first
+      // time a session list loaded here.
+      if (prefix !== undefined && !scope.startsWith(prefix)) continue;
+      if (knownKeys.has(scope)) continue;
       this.storage.removeItem(key);
       removed += 1;
     }

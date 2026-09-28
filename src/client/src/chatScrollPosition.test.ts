@@ -248,6 +248,16 @@ describe("saved positions are scoped and evicted", () => {
     expect([...storage.map.keys()].sort()).toEqual(["unrelated:key", chatScrollStorageKey("work:kept")].sort());
   });
 
+  it("leaves another machine's positions alone", () => {
+    const storage = makeStorage({
+      [chatScrollStorageKey("work:gone")]: JSON.stringify({ mode: "bottom" }),
+      [chatScrollStorageKey("home:other")]: JSON.stringify({ mode: "bottom" }),
+    });
+    const removed = new ChatScrollController(storage).prune(new Set(), "work");
+    expect(removed).toBe(1);
+    expect([...storage.map.keys()]).toEqual([chatScrollStorageKey("home:other")]);
+  });
+
   it("prunes nothing when it cannot enumerate", () => {
     const storage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
     expect(new ChatScrollController(storage).prune(new Set())).toBe(0);

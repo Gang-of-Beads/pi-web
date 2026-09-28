@@ -18,7 +18,7 @@ const window: ViewportWindow = { hasOlder: true, hasNewer: true, loading: false 
 const fullWindow: ViewportWindow = { hasOlder: false, hasNewer: false, loading: false };
 
 const decide = (state: ViewportState, event: ViewportEvent, rest: Partial<ViewportInput> = {}) =>
-  viewportDecision({ state, event, window, measured: true, ...rest });
+  viewportDecision({ state, event, window, measured: true, fillsViewport: true, ...rest });
 
 describe("where a session opens", () => {
   it("opens at the newest when it was closed at the bottom", () => {
@@ -41,20 +41,30 @@ describe("where a session opens", () => {
 
 describe("a stored spot whose row is not loaded", () => {
   it("fetches the page it lives in instead of jumping", () => {
-    const decision = decide({ kind: "restoring" }, { kind: "anchorMissing" });
+    const decision = decide({ kind: "restoring" }, { kind: "anchorMissing", following: false });
     expect(decision.action).toBe("load-older");
     expect(decision.next).toEqual({ kind: "awaitingPage", want: "older", resume: { kind: "restoring" } });
   });
 
   it("lands at the newest when there is no older page to fetch", () => {
-    expect(decide({ kind: "restoring" }, { kind: "anchorMissing" }, { window: fullWindow })).toEqual({
+    expect(decide({ kind: "restoring" }, { kind: "anchorMissing", following: false }, { window: fullWindow })).toEqual({
       action: "snap-bottom",
       next: FOLLOW_START,
     });
   });
 
   it("ignores the miss when it was not restoring", () => {
-    expect(decide(FOLLOW_START, { kind: "anchorMissing" }).action).toBe("idle");
+    expect(decide(FOLLOW_START, { kind: "anchorMissing", following: false }).action).toBe("idle");
+  });
+
+  it("lands at the newest for a reader who was following the bottom", () => {
+    expect(decide({ kind: "restoring" }, { kind: "anchorMissing", following: true })).toEqual({ action: "snap-bottom", next: FOLLOW_START });
+  });
+
+  it("owes history while the viewport cannot fill, whatever the direction", () => {
+    const decision = decide(FOLLOW_START, { kind: "scrolled", direction: "none", metrics }, { fillsViewport: false });
+    expect(decision.action).toBe("load-older");
+    expect(decide(FOLLOW_START, { kind: "scrolled", direction: "none", metrics }).action).toBe("idle");
   });
 });
 
@@ -102,9 +112,16 @@ describe("only an upward scroll asks for history", () => {
     expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "up", metrics: { scrollTop: 20_000, scrollHeight: 40_000, clientHeight: 800 } }).action).toBe("idle");
   });
 
-  it("fetches a newer page only when the reader scrolls back down to the boundary", () => {
+  it("fetches a newer page when the reader is at the boundary, however they got there", () => {
+    expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "none", metrics: atBottom }).action).toBe("load-newer-page");
     expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: atBottom }).action).toBe("load-newer-page");
     expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: { scrollTop: 1000, scrollHeight: 40_000, clientHeight: 800 } }).action).toBe("idle");
+    expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "up", metrics: atBottom }).action).toBe("idle");
+  });
+
+  it("fetches from an end even before a session opened", () => {
+    expect(decide({ kind: "unknown" }, { kind: "scrolled", direction: "down", metrics: atBottom }).action).toBe("load-newer-page");
+    expect(decide({ kind: "unknown" }, { kind: "scrolled", direction: "up", metrics: atTop }).action).toBe("load-older");
   });
 
   it("ignores a downward scroll while still following", () => {
@@ -179,7 +196,8 @@ describe("every state answers every event", () => {
     { kind: "jumpNewest" },
     ...wants.map((want): ViewportEvent => ({ kind: "pageArrived", want })),
     { kind: "pageFailed" },
-    { kind: "anchorMissing" },
+    { kind: "anchorMissing", following: false },
+    { kind: "anchorMissing", following: true },
   ];
 
   it("returns an action and a next state for the whole cross product", () => {

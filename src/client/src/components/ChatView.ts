@@ -13,7 +13,8 @@ import { ChatDisclosureController } from "../chatDisclosure";
 import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type ChatGroup } from "../chatGroups";
 import { writeClipboardText } from "../clipboard";
 import { followScrollVerdict } from "../followScrollAdoption.js";
-import { scrollDirection } from "../chatViewport/viewportDecision.js";
+import { scrollDirection, viewportDecision } from "../chatViewport/viewportDecision.js";
+import type { ViewportAction, ViewportEvent, ViewportState } from "../chatViewport/viewportDecision.js";
 import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { shouldRequestNewerMessages, shouldRequestEarlierMessages } from "../chatHistoryLoading";
@@ -1060,12 +1061,21 @@ export class ChatView extends LitElement {
     super.disconnectedCallback();
   }
 
-  private savePreviousSessionScrollPosition(previousSessionId: unknown): void {
+  private savePreviousSessionScrollPosition(previousSessionId: unknown, previousMachineId?: unknown): void {
     if (typeof previousSessionId !== "string" || previousSessionId === "" || previousSessionId === this.sessionId) return;
-    this.saveScrollPosition(machineSessionKey(this.drawerMachineId, previousSessionId));
+    // The machine may have changed in the same batch as the session: the reader was in
+    // the previous session *on the previous machine*, so save it under that pair.
+    const machineId = typeof previousMachineId === "string" && previousMachineId !== "" ? previousMachineId : this.drawerMachineId;
+    this.saveScrollPosition(machineSessionKey(machineId, previousSessionId));
   }
 
   private prepareSessionUiState(): void {
+    // Per-session intent, or it leaks: a direction left from the last session gated the
+    // next one's first history fetch, and a pending jump paged a session the reader had
+    // only just opened.
+    this.lastScrollDirection = "none";
+    this.jumpToNewestPending = false;
+    this.lastScrollTop = this.chat?.scrollTop ?? 0;
     // The clock measures this session's turn; carrying it across a switch would
     // date the new session's work from the old one's start.
     this.turnStartedAtMs = undefined;
@@ -1092,7 +1102,7 @@ if (this.heldWaitingClearTimer !== undefined) {
 
   protected override willUpdate(changed: Map<string, unknown>): void {
     if (changed.has("sessionId")) {
-      this.savePreviousSessionScrollPosition(changed.get("sessionId"));
+      this.savePreviousSessionScrollPosition(changed.get("sessionId"), changed.get("drawerMachineId"));
       this.prepareSessionUiState();
     }
     if (changed.has("messages") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
@@ -1149,7 +1159,14 @@ if (this.heldWaitingClearTimer !== undefined) {
     this.holdBottomEdge();
     this.watchStreamingGrowth();
     this.observeStreamingContent();
-    if (changed.has("loadingMore") && !this.loadingMore) this.loadMoreRequested = false;
+    if (changed.has("loadingMore") && !this.loadingMore) {
+      this.loadMoreRequested = false;
+      // The page landed: leave `awaitingPage` or the policy would answer idle forever.
+      this.dispatchViewport({ kind: "pageArrived", want: this.viewportState.kind === "awaitingPage" ? this.viewportState.want : "older" });
+    }
+    if (changed.has("hasNewer") && !this.hasNewer && this.viewportState.kind === "awaitingPage") {
+      this.dispatchViewport({ kind: "pageArrived", want: this.viewportState.want });
+    }
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
     if (changed.has("sessionId")) this.restoreScrollPosition();
     // A question no longer uses the transcript scroller, so opening one scrolls
@@ -1209,6 +1226,12 @@ if (this.heldWaitingClearTimer !== undefined) {
    */
   private lastScrollDirection: "up" | "down" | "none" = "none";
   private jumpToNewestPending = false;
+  /**
+   * Where the reader is and which page is owed, per the one policy table. Every writer
+   * below reports an event and executes the action it answers, so the decision lives in
+   * one place instead of being re-derived at each call site.
+   */
+  private viewportState: ViewportState = { kind: "unknown" };
   private contentResizeObserver: ResizeObserver | undefined;
   private observedContent: string | undefined;
 
@@ -1375,14 +1398,18 @@ if (this.heldWaitingClearTimer !== undefined) {
    */
   private jumpToNewest(): void {
     this.pinnedToBottom = true;
-    this.jumpToNewestPending = this.hasNewer;
     this.jumpToBottomVisible = false;
-    if (this.jumpToNewestPending) {
-      this.newerRequested = false;
-      this.requestNewerIfNeeded();
+    const action = this.dispatchViewport({ kind: "jumpNewest" });
+    if (action !== "load-newest-page") {
+      this.jumpToNewestPending = false;
+      this.scrollToBottom();
       return;
     }
-    this.scrollToBottom();
+    this.jumpToNewestPending = true;
+    this.newerRequested = false;
+    // The jump already dispatched the intent; the scroll-driven request would find the
+    // state in flight, so this one executes the page directly.
+    this.startNewerPage();
   }
 
   private renderJumpToBottom() {
@@ -2444,9 +2471,12 @@ if (this.heldWaitingClearTimer !== undefined) {
   private onScroll() {
     this.scrollThumb.noteScroll();
     if (this.quoteChip !== undefined) { this.quoteChip = undefined; this.requestUpdate(); }
+    // The direction and the pin verdict are computed first: the two requests below ask
+    // the policy, and asking it with last event's direction made it answer the previous
+    // scroll.
+    this.updatePinnedToBottomFromScroll();
     this.requestLoadMoreIfNeeded();
     this.requestNewerIfNeeded();
-    this.updatePinnedToBottomFromScroll();
     this.scheduleConversationRailUpdate();
     if (!this.suppressScrollSave) this.scheduleScrollPositionSave();
   }
@@ -2595,25 +2625,28 @@ if (this.heldWaitingClearTimer !== undefined) {
       if (this.suppressLoadMoreRequests) return;
       const chat = this.chat;
       if (!chat) return;
-      const unfilled = chat.scrollHeight <= chat.clientHeight + 1;
-      // Following the bottom means the reader is at the newest end: an older page is
-      // only owed when the viewport cannot be filled at all. Holding position means
-      // the reader walked up, and only then does history answer to it.
-      if (this.pinnedToBottom && !unfilled) return;
-      if (!this.pinnedToBottom && this.lastScrollDirection !== "up") return;
-      if (shouldRequestEarlierMessages({
+      const metrics = { scrollTop: chat.scrollTop, scrollHeight: chat.scrollHeight, clientHeight: chat.clientHeight };
+      const action = this.dispatchViewport({ kind: "scrolled", direction: this.lastScrollDirection, metrics });
+      if (action === "load-older" && shouldRequestEarlierMessages({
         hasMore: this.hasMore,
         loadingMore: this.loadingMore || this.loadMoreRequested,
         canRequest: this.onLoadMore !== undefined,
-        scrollTop: chat.scrollTop,
-        scrollHeight: chat.scrollHeight,
-        clientHeight: chat.clientHeight,
+        ...metrics,
       })) this.requestLoadMore();
     });
   }
 
   /** The forward end of the same rule; see `renderNewerBoundary`. */
   private requestNewerIfNeeded(): void {
+    const chat = this.chat;
+    if (chat === undefined) return;
+    const metrics = { scrollTop: chat.scrollTop, scrollHeight: chat.scrollHeight, clientHeight: chat.clientHeight };
+    const action = this.dispatchViewport({ kind: "scrolled", direction: this.lastScrollDirection, metrics });
+    if (action !== "load-newer-page" && action !== "load-newest-page") return;
+    this.startNewerPage();
+  }
+
+  private startNewerPage(): void {
     const chat = this.chat;
     if (chat === undefined) return;
     if (!shouldRequestNewerMessages({
@@ -2751,6 +2784,23 @@ if (this.heldWaitingClearTimer !== undefined) {
    * machines is two different transcripts, and the saved position had been shared
    * between them (the AGENTS scope rule, applied to what the reader left behind).
    */
+  private dispatchViewport(event: ViewportEvent): ViewportAction {
+    const chat = this.chat ?? undefined;
+    const decision = viewportDecision({
+      state: this.viewportState,
+      event,
+      window: {
+        hasOlder: this.hasMore,
+        hasNewer: this.hasNewer,
+        loading: this.loadingMore || this.loadMoreRequested || this.newerRequested,
+      },
+      measured: chat !== undefined && chat.clientHeight > 0,
+      fillsViewport: chat !== undefined && chat.scrollHeight > chat.clientHeight + 1,
+    });
+    this.viewportState = decision.next;
+    return decision.action;
+  }
+
   private get scrollScopeKey(): string {
     return machineSessionKey(this.drawerMachineId, this.sessionId);
   }
@@ -2758,11 +2808,14 @@ if (this.heldWaitingClearTimer !== undefined) {
   pruneScrollPositions(sessionIds: Iterable<string>): number {
     const known = new Set<string>();
     for (const id of sessionIds) known.add(machineSessionKey(this.drawerMachineId, id));
-    return this.scrollController.prune(known);
+    return this.scrollController.prune(known, this.drawerMachineId);
   }
 
   restoreScrollPosition() {
     const sessionId = this.sessionId;
+    // The stored mode is the owner's contract for where a session opens; announcing it
+    // also sets the state the rest of the policy reads.
+    this.dispatchViewport({ kind: "opened", saved: this.openViewportEvent() });
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
     this.restoreScrollFrame = requestAnimationFrame(() => {
       this.restoreScrollFrame = undefined;
@@ -2801,6 +2854,17 @@ if (this.heldWaitingClearTimer !== undefined) {
       return;
     }
 
+    const action = this.dispatchViewport({ kind: "anchorMissing", following: this.pinnedToBottom });
+    if (action === "snap-bottom") {
+      this.pendingScrollRestoreSessionId = undefined;
+      this.pendingScrollRestorePosition = undefined;
+      const pinned = this.chat;
+      if (pinned !== undefined) {
+        this.withSuppressedScrollSave(() => { pinned.scrollTop = pinned.scrollHeight; });
+        this.syncScrollMetrics();
+      }
+      return;
+    }
     this.pinnedToBottom = false;
     this.pendingScrollRestoreSessionId = sessionId;
     this.pendingScrollRestorePosition = result.position;
@@ -2814,12 +2878,18 @@ if (this.heldWaitingClearTimer !== undefined) {
 
   /** Keep the promised landing: one page at a time until the newest is loaded. */
   private continueJumpToNewest(): void {
-    if (!this.pinnedToBottom) return;
+    if (!this.pinnedToBottom) {
+      // The reader took over: the promise is void, not deferred to their next session.
+      this.jumpToNewestPending = false;
+      return;
+    }
     if (!this.hasNewer) {
       this.jumpToNewestPending = false;
+      this.viewportState = { kind: "following" };
       this.scrollToBottom();
       return;
     }
+    this.viewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
     // The scroll position is still the newest end of the loaded window, so ask for
     // the next page straight away instead of waiting for a scroll that has no room.
     if (this.isNearBottom()) this.requestNewerIfNeeded();
@@ -2835,6 +2905,13 @@ if (this.heldWaitingClearTimer !== undefined) {
     // jump-to-bottom press to get back.
     if (!this.hasMore) return true;
     return this.pinnedToBottom;
+  }
+
+  /** The stored mode decides the landing; the event carries it so the state is set. */
+  private openViewportEvent(): "bottom" | "anchor" | "absent" {
+    const stored = this.scrollController.readPosition(this.scrollScopeKey);
+    if (stored === undefined) return "absent";
+    return stored.mode === "bottom" ? "bottom" : "anchor";
   }
 
   private updatePinnedToBottomAfterRestore(status: Exclude<ChatScrollRestoreResult["status"], "missing">): void {

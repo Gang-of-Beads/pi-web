@@ -35,7 +35,7 @@ export type ViewportEvent =
   | { kind: "jumpNewest" }
   | { kind: "pageArrived"; want: PageWant }
   | { kind: "pageFailed" }
-  | { kind: "anchorMissing" };
+  | { kind: "anchorMissing"; following: boolean };
 
 export interface ViewportWindow {
   hasOlder: boolean;
@@ -72,6 +72,8 @@ export interface ViewportInput {
   window: ViewportWindow;
   /** No scroller (or no height yet): absence is not "at the bottom". */
   measured: boolean;
+  /** The loaded window is shorter than the viewport, so history is owed either way. */
+  fillsViewport: boolean;
 }
 
 export const FOLLOW_START: ViewportState = { kind: "following" };
@@ -118,6 +120,9 @@ export function viewportDecision(input: ViewportInput): ViewportDecision {
       if (input.state.kind !== "restoring") return idle(input.state);
       // The spot is above the loaded window. Fetch the page it lives in and stay put -
       // the prepend anchor holds the reader's row, so the page arrives without a jump.
+      // A reader who was following the bottom wants no history at all: walking up to
+      // find their row is what put them in the middle of the session.
+      if (input.event.following) return decide("snap-bottom", FOLLOW_START);
       if (canLoad("older")) return loading("older", { kind: "restoring" });
       return decide("snap-bottom", FOLLOW_START);
 
@@ -143,13 +148,21 @@ export function viewportDecision(input: ViewportInput): ViewportDecision {
       return idle(input.state.kind === "awaitingPage" ? input.state.resume : input.state);
 
     case "scrolled": {
+      // An unfilled viewport owes history whatever the reader is doing: there is not
+      // enough on screen to read, so "only an upward scroll" would leave it empty.
+      if (!input.fillsViewport && canLoad("older")) return loading("older", input.state);
       if (input.state.kind === "restoring") return idle(input.state);
       if (input.state.kind === "following") {
         if (input.event.direction !== "up") return idle(input.state);
         return decide("stop-following", { kind: "holding" });
       }
-      if (input.state.kind !== "holding") return idle(input.state);
-      if (input.event.direction === "down" && nearBottom(input.event.metrics) && canLoad("newer")) {
+      // Before anything opened, a scroll is a reader scrolling: treat it as holding, so
+      // reaching an end still fetches rather than doing nothing until a restore ran.
+      if (input.state.kind !== "holding" && input.state.kind !== "unknown") return idle(input.state);
+      // The forward end answers nearness, not only a downward scroll: `hasNewer` means
+      // the newest is not loaded, so being near the end is reason enough. The older end
+      // is the one that needs the direction gate - that is where the jitter came from.
+      if (input.event.direction !== "up" && nearBottom(input.event.metrics) && canLoad("newer")) {
         return loading("newer", { kind: "holding" });
       }
       if (input.event.direction === "up" && nearTop(input.event.metrics) && canLoad("older")) {

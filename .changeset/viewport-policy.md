@@ -17,6 +17,14 @@ fetches the page its row lives in and stays put. The jump-to-newest control fetc
 pages between here and there back to back, so it lands on the newest instead of on the
 boundary of the loaded window.
 
+The verification wave then found four defects the author had missed, now fixed: the
+policy module was never wired in (only its direction helper was imported) and now runs
+the open, the miss, the growth, the jump and both load ends; a pending jump survived a
+session switch and a machine change saved the old session under the new machine's key;
+`prune` deleted every other machine's saved positions because it judged keys by the
+current machine's session list; and the scroll handler asked the policy *before*
+computing the direction, so it always answered the previous event.
+
 The policy itself is one pure classifier (`chatViewport/viewportDecision.ts`) over
 (stored open, scroll, growth, jump, page arrival) with an exhaustive cross-product test,
 so the states the owner described - bottom opens at the newest page, a stored spot opens
