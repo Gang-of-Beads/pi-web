@@ -4,7 +4,7 @@ import type { ComposerEditorHandle } from "./composerEditorSetup";
 
 type ComposerEditorModule = typeof import("./composerEditorSetup");
 import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues } from "lit";
-import { pendingPromptActions } from "../pendingPromptActions";
+import { pendingPromptActions, trayState } from "../pendingPromptActions";
 import { joinTakenBack } from "../composerTakeBack";
 import { settleOutbox } from "../outboxSettlement";
 import { SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
@@ -18,8 +18,8 @@ import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { addToHeldComposerAttachments, holdComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
-import { advancePendingPrompt, isNetworkFailure, loadPendingPrompts, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
-import { classifySubmission, handleOutcome } from "../messageLifecycle";
+import { advancePendingPrompt, isNetworkFailure, linkReportedOffline, loadPendingPrompts, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
+import { classifySubmission, handleOutcome, transportFactsFor } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { newClientMessageId } from "../messageDelivery";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
@@ -642,7 +642,7 @@ export class PromptEditor extends LitElement {
         ${lingering.map((prompt) => {
           // Per message, not the composer's global flag: an in-flight row and a
           // failed one sit side by side and must not borrow each other's state.
-          const actions = pendingPromptActions(this.outboxInFlight.has(prompt.clientMessageId ?? "") ? "in-flight" : "unsent");
+          const actions = pendingPromptActions(trayState(prompt, this.outboxInFlight.has(prompt.clientMessageId ?? "")));
           return html`
             <div class="pending-prompt">
               <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>
@@ -1368,7 +1368,8 @@ export class PromptEditor extends LitElement {
     }
     if (handleOutcome(classifySubmission(failure, (value) => !isNetworkFailure(value) && !isRequestTimeout(value))).keepInOutbox) {
       if (outboxKey !== "") {
-        advancePendingPrompt(outboxKey, outboxId, isRequestTimeout(failure) ? "send-timeout" : "send-refused-network");
+        const left = transportFactsFor(failure, { isTimeout: isRequestTimeout(failure), linkOffline: linkReportedOffline(failure) }).bytesHandedToTransport;
+        advancePendingPrompt(outboxKey, outboxId, left ? "send-timeout" : "send-refused-network");
         this.pendingPrompts = this.pendingPromptsForSession();
       }
       return;

@@ -5,8 +5,8 @@ describe("an unanswered send, asked about", () => {
   it.each([
     ["pending", { kind: "mark", state: "received", retireOutbox: true }],
     ["succeeded", { kind: "mark", state: "received", retireOutbox: true }],
-    ["failed", { kind: "mark", state: "failed", retireOutbox: false }],
-    ["unknown", { kind: "mark", state: "failed", retireOutbox: false }],
+    ["failed", { kind: "fail", cause: "not-sent" }],
+    ["unknown", { kind: "fail", cause: "not-received" }],
     ["withdrawn", { kind: "withdraw" }],
   ])("takes the ledger's %s at its word on any ask", (outcome, step) => {
     expect({ early: verificationStep(outcome, false), last: verificationStep(outcome, true) }).toEqual({ early: step, last: step });
@@ -17,12 +17,12 @@ describe("an unanswered send, asked about", () => {
   });
 
   it("calls it not received on the last ask, so the row can be retried under its identity", () => {
-    expect(verificationStep(undefined, true)).toEqual({ kind: "mark", state: "failed", retireOutbox: false });
+    expect(verificationStep(undefined, true)).toEqual({ kind: "fail", cause: "not-received" });
   });
 
   it("reads an outcome this build does not know as no row, never as a verdict", () => {
     expect({ early: verificationStep("committed-in-2027", false), last: verificationStep("committed-in-2027", true) })
-      .toEqual({ early: { kind: "wait" }, last: { kind: "mark", state: "failed", retireOutbox: false } });
+      .toEqual({ early: { kind: "wait" }, last: { kind: "fail", cause: "not-received" } });
   });
 
   it("acts on a row a server fact proved only with a terminal fact it missed", () => {
@@ -34,8 +34,8 @@ describe("an unanswered send, asked about", () => {
       succeeded: provenRowStep("succeeded"),
       noRow: provenRowStep(undefined),
     }).toEqual({
-      failed: { kind: "mark", state: "failed", retireOutbox: false },
-      unknown: { kind: "mark", state: "failed", retireOutbox: false },
+      failed: { kind: "fail", cause: "not-sent" },
+      unknown: { kind: "fail", cause: "not-received" },
       withdrawn: { kind: "withdraw" },
       pending: { kind: "wait" },
       succeeded: { kind: "wait" },

@@ -730,3 +730,72 @@ Owed, not in phase 4's scope:
 - F6's stale probe legs.
 - F7's dead `pluginSurfaces` field.
 - A Subagents poll that stops while the tab count is not shown (gate 1 finding 2).
+
+## Phase 5 design: one vocabulary (owner decisions 2026-09-30)
+
+**The words.** One table (`deliveryWords.ts`) answers for every surface that names a sent message's state: the bubble, the composer tray, and the command bubble. Two surfaces can no longer word the same state differently.
+
+| State | Bubble and tray | Actions |
+|---|---|---|
+| `sending` | Sending… | none |
+| `unverifiable` (the bytes left and no answer came) | Receiving… | Retry and Discard in the tray |
+| `failed`, cause `not-sent` (the bytes never left, or the runtime refused it) | Not sent | Retry, Discard |
+| `failed`, cause `not-received` (the daemon has no record of it) | Not received | Retry, Discard |
+| `received` (the daemon has it) | Received | none |
+| `queued` (held in the steering queue) | Queued · n | none |
+| `delivered` (the agent took it) | no mark: it is an ordinary input message | none |
+
+The owner's words were "Received / Queued, and no Read: from the point the agent takes it, it is an input message". A command that ran therefore loses its "Read" mark too, and its result line remains.
+
+**One state set.** The outbox record uses the bubble's six states, plus the failure cause. Reading storage back:
+- `stored` becomes `sending`;
+- `accepted` becomes `received`;
+- `unverified` becomes `unverifiable`;
+- any other unknown state is read as `sending`.
+
+Two phase 2 tests pinned the outbox's own spelling (`unverified`). The owner delegated this internal name, so they now read `unverifiable`: the repros asked for one spelling, and those two pinned the other.
+
+**Behaviour.**
+- A send whose bytes never left (the link was down) is `failed`/`not-sent`, not `unverifiable`. It can no longer read "may already be running".
+- Owner: "if the session is gone it is a send failure". The daemon refuses at two levels:
+  - An HTTP 4xx (for example, the session is gone) hands the words back to the composer with the reason. This is unchanged.
+  - The runtime refusing a message the inbox accepted (`prompt.refused`) makes the row `failed`/`not-sent`. Retry resends under the same identity, which the ledger admits after a failure. For that to work, the outbox keeps a record until the agent takes the message (`received` and `queued` stay on file) instead of retiring it on acceptance. That early retirement was P2-1's cause.
+- **Receiving… keeps asking.** The ledger is asked 5, 15 and 45 s after the send gives up; the last ask can conclude `not-received`. An ask that fails because the link is down no longer ends the checks:
+  - it raises the existing connection banner ("Reconnecting to update message status…");
+  - it asks again every 15 s while the link stays down, and a failed ask never counts as the last one;
+  - the banner is withdrawn when an ask succeeds.
+- **Goals.** A workspace with no goals says so ("No goals in this workspace"), with a refresh, instead of dropping the section.
+- **Icons.** Every row in the ≡ menu has an icon, and each plugin draws its own: Subagents and Background gain theirs. A plugin that declares none gets a neutral plugin glyph drawn by the host, so no row has a blank slot.
+
+**Interpretations to confirm:**
+- Runtime refusal reads "Not sent", from the owner's "send failure".
+- The queue keeps its position, as "Queued · 2".
+- The host draws a fallback glyph for plugins without an icon.
+
+### Phase 5a as landed: the words
+
+- `deliveryWords.ts` is the one table.
+  - The bubble (`chatDeliveryPresentation`) and the composer tray (`pendingPromptActions`) read it.
+  - The tray now names its states in the bubble's vocabulary (`sending`, `unverifiable`, `not-sent`, `not-received`) instead of `in-flight`/`unsent`.
+  - A command that ran has no mark: `commandDeliveryPresentation` returns nothing for `ok`.
+- A failed delivery carries its cause, set by `markDeliveryFailed`:
+  - `prompt.refused` and a replayed runtime refusal: `not-sent`;
+  - the ledger's `failed` (the runtime refused it): `not-sent`;
+  - the ledger's `unknown`, or no row on the last ask: `not-received`;
+  - a send the browser reports offline: `not-sent`, with no verification scheduled.
+- `deliveryAfterUnanswered(settlement)` names the last case.
+- `linkReportedOffline` treats the link as down only on an explicit `navigator.onLine === false`, and only for a failure that carried no answer. Before this, `!navigator.onLine` also read an environment that does not report the link as offline. A gateway's 504 proves the bytes left.
+- The tray record's event follows the same fact: `send-refused-network` only when the bytes never left, otherwise `send-timeout`.
+
+**Repro changes, by owner decision:**
+- "gives the reader words for who is being waited on": `No answer yet` becomes `Receiving…` (owner's word).
+- "does not read the same as a message a queue actually holds": `received: "Queued"` becomes `"Received"` (owner: "received / queued"). Its second expect is unchanged.
+- "does not claim it may be running when the bytes never left": the fixture builds its bubble from the offline outcome through `deliveryAfterUnanswered`, where it used a literal `unverifiable` state. The `expect` line is unchanged.
+- "is not called something else by the tray under the composer": the fixture asks the tray for `unverifiable` instead of its old name `unsent`. The `expect` line is unchanged.
+
+Three of these flip to `it`. "spells the state it waits in the same way" waits for 5b.
+
+**Other tests changed deliberately:**
+- the delivery words (`ChatView.test.ts`, `pendingPromptActions.test.ts`, `PromptEditor.sendFailure.test.ts`);
+- the command's Read (`commandLedger.test.ts`, `ChatView.commandBubbles.test.ts`);
+- the verification step's shape (`sendVerification.test.ts`: a failure is now `{ kind: "fail", cause }`).

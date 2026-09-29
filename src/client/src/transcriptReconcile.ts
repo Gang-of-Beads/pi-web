@@ -1,5 +1,5 @@
 import type { ChatLine } from "./components/shared";
-import { carryDeliveryForward, deliveryWaiting, markDelivery, withdrawDeliveryLine } from "./messageDelivery";
+import { carryDeliveryForward, deliveryWaiting, markDeliveryFailed, withdrawDeliveryLine } from "./messageDelivery";
 
 /** Terminal outcomes a replay carried for messages it did not commit: taken back, or refused. */
 export interface ReplayedOutcomes {
@@ -14,7 +14,7 @@ export interface ReplayedOutcomes {
  */
 export function applyReplayedOutcomes(lines: ChatLine[], outcomes: ReplayedOutcomes): ChatLine[] {
   const kept = outcomes.withdrawn.reduce((next, clientMessageId) => withdrawDeliveryLine(next, clientMessageId), lines);
-  return outcomes.refused.reduce((next, clientMessageId) => markDelivery(next, clientMessageId, "failed"), kept);
+  return outcomes.refused.reduce((next, clientMessageId) => markDeliveryFailed(next, clientMessageId, "not-sent"), kept);
 }
 
 /** A row a rebuild must not lose: one still waiting, and one that failed and still offers Retry. */

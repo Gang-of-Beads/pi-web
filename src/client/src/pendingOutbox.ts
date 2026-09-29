@@ -94,6 +94,19 @@ export function isNetworkFailure(error: unknown): boolean {
   return false;
 }
 
+/**
+ * Whether the browser says the link was down for this failure, so the bytes never left. Only a
+ * failure that carried no answer can have been stopped by a dead link, and only an explicit
+ * `navigator.onLine === false` says so: an HTTP answer, even a gateway's 504, proves the bytes
+ * left, and an environment that does not report the link proves nothing. This decides whether a
+ * row reads "Not sent" instead of "Receiving…", so it may not guess.
+ */
+export function linkReportedOffline(error: unknown): boolean {
+  if (!isNetworkFailure(error) || typeof navigator === "undefined") return false;
+  const onLine: unknown = Reflect.get(navigator, "onLine");
+  return onLine === false;
+}
+
 /** The machine and session a message was composed for. */
 export interface SendScope {
   machineId: string;

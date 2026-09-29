@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { initialAppState } from "../appState";
 import { SessionController } from "./sessionController";
 import { defaultApi, FakeSocket, oldSession, status, workspace, type AppState } from "./sessionController.testSupport";
@@ -90,6 +90,22 @@ describe("SessionController send failure", () => {
     // The composer restores this one, so the transcript must not also hold it.
     expect(read().messages.filter((line) => line.role === "user")).toHaveLength(0);
     expect(read().error).toMatch(/400 Bad Request/u);
+  });
+
+  it("calls a send the browser says never left Not sent, and a gateway's answer while offline still unverifiable", async () => {
+    vi.stubGlobal("navigator", { onLine: false });
+    try {
+      const offline = controllerWith({ ...defaultApi, prompt: () => Promise.reject(new TypeError("Failed to fetch")) });
+      await expect(offline.controller.send("typed on a train")).rejects.toBeInstanceOf(NetworkSendError);
+      const answered = controllerWith({ ...defaultApi, prompt: () => Promise.reject(new HttpError("Remote machine timeout", 504, "prod")) });
+      await expect(answered.controller.send("maybe running already")).rejects.toBeInstanceOf(NetworkSendError);
+
+      const delivery = (read: () => AppState) => read().messages.find((line) => line.role === "user")?.meta?.delivery;
+      expect({ offline: delivery(offline.read), answered: delivery(answered.read)?.state })
+        .toMatchObject({ offline: { state: "failed", cause: "not-sent" }, answered: "unverifiable" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("keeps the row unverifiable on a gateway's 5xx, which names no verdict", async () => {

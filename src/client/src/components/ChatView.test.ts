@@ -11,14 +11,16 @@ import {
   chatMessageGroupClassName,
   chatMessageGroupLabel,
   chatMessageMetadataLabel,
+  chatDeliveryMarkerVisible,
   chatDeliveryPresentation,
 } from "./ChatView";
 import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker, templateText } from "../templateInspection.testSupport";
 
 describe("chatDeliveryPresentation", () => {
-  it("reads as one mark for received and two for taken into the turn", () => {
-    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "received" })).toMatchObject({ glyph: "single", text: "Queued", tone: "received" });
-    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "delivered" })).toMatchObject({ glyph: "double", text: "Read", tone: "delivered" });
+  it("reads Received once the server has it, and has no words once the agent took it", () => {
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "received" })).toMatchObject({ glyph: "single", text: "Received", tone: "received" });
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "delivered" }).text).toBe("");
+    expect(chatDeliveryMarkerVisible({ clientMessageId: "cm-1", state: "delivered" })).toBe(false);
   });
 
   it("names the lane a queued message waits in", () => {
@@ -26,14 +28,17 @@ describe("chatDeliveryPresentation", () => {
     expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "queued", kind: "followUp" }).text).toBe("Queued");
   });
 
-  it("says plainly when a message never reached the server", () => {
-    const failed = chatDeliveryPresentation({ clientMessageId: "cm-1", state: "failed" });
-    expect(failed).toMatchObject({ text: "Not sent", tone: "failed" });
-    expect(failed.label).toContain("never received");
+  it("names why a message failed: never sent, or never received", () => {
+    expect({
+      notSent: chatDeliveryPresentation({ clientMessageId: "cm-1", state: "failed", cause: "not-sent" }).text,
+      notReceived: chatDeliveryPresentation({ clientMessageId: "cm-1", state: "failed", cause: "not-received" }).text,
+      unrecorded: chatDeliveryPresentation({ clientMessageId: "cm-1", state: "failed" }).text,
+    }).toEqual({ notSent: "Not sent", notReceived: "Not received", unrecorded: "Not received" });
   });
 
   it("shows work in flight while the request is unconfirmed", () => {
-    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "sending" })).toMatchObject({ text: "Sending", tone: "pending" });
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "sending" })).toMatchObject({ text: "Sending…", tone: "pending" });
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "unverifiable" })).toMatchObject({ text: "Receiving…", tone: "pending" });
   });
 });
 

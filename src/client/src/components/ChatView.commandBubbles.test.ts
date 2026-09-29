@@ -35,13 +35,13 @@ function bubble(view: ChatView): Element {
 afterEach(() => { document.body.replaceChildren(); });
 
 describe("a command renders as a user bubble with a delivery mark", () => {
-  it("shows the command, its result and Read once it ran, with nothing to dismiss", async () => {
+  it("shows the command and its result once it ran, with no mark and nothing to dismiss", async () => {
     const view = await mount([row({ state: "ok", resultText: "Session name: opus-b" })]);
     const article = bubble(view);
 
     expect(article.querySelector(".command-text")?.textContent).toBe("/session");
     expect(article.querySelector(".command-result")?.textContent).toBe("Session name: opus-b");
-    expect(article.querySelector(".delivery-text")?.textContent).toBe("Read");
+    expect(article.querySelector(".delivery-mark")).toBeNull();
     expect(article.querySelector("button")).toBeNull();
   });
 

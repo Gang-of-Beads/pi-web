@@ -108,6 +108,8 @@ export interface MessageDelivery {
   state: MessageDeliveryState;
   /** How the agent will take the message when it is still queued. */
   kind?: "steer" | "followUp";
+  /** Why a failed message failed; see deliveryWords.ts. Only a failed delivery carries one. */
+  cause?: "not-sent" | "not-received";
 }
 
 export interface ChatLine {

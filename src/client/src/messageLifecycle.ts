@@ -59,6 +59,17 @@ export function handleOutcome(outcome: MessageOutcome): OutcomeHandling {
 }
 
 /**
+ * What the row of a send nobody answered for becomes. Bytes that never left cannot have
+ * arrived: that message is not sent, and asking the daemon about it would learn nothing. Bytes
+ * that left may be running already: the row is receiving until the daemon says.
+ */
+export function deliveryAfterUnanswered(
+  settlement: Extract<OperationSettlement, { outcome: "unverifiable" }>,
+): { state: "failed"; cause: "not-sent" } | { state: "unverifiable" } {
+  return settlement.bytesHandedToTransport ? { state: "unverifiable" } : { state: "failed", cause: "not-sent" };
+}
+
+/**
  * Classify what came back from a submission.
  *
  * Anything that is not a definite answer from the daemon is unanswered. That

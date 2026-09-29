@@ -65,7 +65,7 @@ describe("the browser's record of an issued command", () => {
     expect(commandDeliveryPresentation({ state: "pending" }, true)).toMatchObject({ text: "Queued", tone: "received", glyph: "single" });
     expect(commandDeliveryPresentation({ state: "pending" }, false)).toMatchObject({ text: "Running", tone: "pending", glyph: "pending" });
     expect(commandDeliveryPresentation({ state: "accepted" }, false)).toMatchObject({ text: "Queued", tone: "received", glyph: "single" });
-    expect(commandDeliveryPresentation({ state: "ok" }, false)).toMatchObject({ text: "Read", tone: "delivered", glyph: "double" });
+    expect(commandDeliveryPresentation({ state: "ok" }, false)).toBeUndefined();
     expect(commandDeliveryPresentation({ state: "failed" }, false)).toMatchObject({ text: "Not sent", tone: "failed", glyph: "failed" });
   });
 

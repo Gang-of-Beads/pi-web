@@ -1,3 +1,5 @@
+import type { DeliveryFailureCause } from "./deliveryWords";
+
 /**
  * What a send nobody answered for becomes when the daemon's ledger is asked about it.
  *
@@ -13,12 +15,15 @@
 export const VERIFY_AFTER_MS: readonly number[] = [5_000, 15_000, 45_000];
 
 export type VerificationStep =
-  | { kind: "mark"; state: "received" | "failed"; retireOutbox: boolean }
+  | { kind: "mark"; state: "received"; retireOutbox: boolean }
+  | { kind: "fail"; cause: DeliveryFailureCause }
   | { kind: "withdraw" }
   | { kind: "wait" };
 
 const RECEIVED: VerificationStep = { kind: "mark", state: "received", retireOutbox: true };
-const NOT_RECEIVED: VerificationStep = { kind: "mark", state: "failed", retireOutbox: false };
+const NOT_RECEIVED: VerificationStep = { kind: "fail", cause: "not-received" };
+/** The runtime refused it after the inbox took it: it never became part of the conversation. */
+const REFUSED: VerificationStep = { kind: "fail", cause: "not-sent" };
 
 /**
  * The ledger's word, by outcome.
@@ -31,7 +36,7 @@ const NOT_RECEIVED: VerificationStep = { kind: "mark", state: "failed", retireOu
 const STEP_FOR_OUTCOME: Readonly<Record<string, VerificationStep>> = {
   pending: RECEIVED,
   succeeded: RECEIVED,
-  failed: NOT_RECEIVED,
+  failed: REFUSED,
   unknown: NOT_RECEIVED,
   withdrawn: { kind: "withdraw" },
 };
@@ -56,7 +61,7 @@ const WAIT: VerificationStep = { kind: "wait" };
  * the row does not already know; the transcript settles a read one.
  */
 const PROVEN_ROW_STEP: Readonly<Record<string, VerificationStep>> = {
-  failed: NOT_RECEIVED,
+  failed: REFUSED,
   unknown: NOT_RECEIVED,
   withdrawn: { kind: "withdraw" },
 };

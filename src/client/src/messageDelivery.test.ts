@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyQueueToDelivery, deliveryProvenByServer, deliverySettled, deliveryTaken, deliveryWaiting, splitTranscriptAndPending, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, withdrawDeliveryLine, restartDelivery } from "./messageDelivery";
+import { applyQueueToDelivery, deliveryProvenByServer, deliverySettled, deliveryTaken, deliveryWaiting, splitTranscriptAndPending, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, withdrawDeliveryLine, restartDelivery } from "./messageDelivery";
 import type { ChatLine, MessageDeliveryState } from "./components/shared";
 
 const ID = "cm-1";
@@ -406,5 +406,18 @@ describe("queue reconciliation against runtime state", () => {
   it("keeps a row the queue still holds", () => {
     const out = applyQueueToDelivery([queuedRow], [{ kind: "steer", text: "steer me", clientMessageId: "c-q" }], true);
     expect(out[0]?.meta?.delivery?.state).toBe("queued");
+  });
+});
+
+describe("a failure that says why", () => {
+  it("records the cause, and loses it when a later server fact overturns the failure", () => {
+    const sent: ChatLine = { role: "user", parts: [{ type: "text", text: "hi" }], meta: { delivery: { clientMessageId: "cm-1", state: "sending" } } };
+    const failed = markDeliveryFailed([sent], "cm-1", "not-sent");
+    const overturned = markDelivery(failed, "cm-1", "received");
+
+    expect({ failed: failed[0]?.meta?.delivery, overturned: overturned[0]?.meta?.delivery }).toEqual({
+      failed: { clientMessageId: "cm-1", state: "failed", cause: "not-sent" },
+      overturned: { clientMessageId: "cm-1", state: "received" },
+    });
   });
 });

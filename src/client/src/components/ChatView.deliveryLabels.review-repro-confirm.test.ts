@@ -6,7 +6,7 @@ import { chatDeliveryPresentation } from "./ChatView";
 import { applyQueueToDelivery, removeDeliveryLine } from "../messageDelivery";
 import { advancePendingPrompt, isNetworkFailure, loadPendingPrompts, savePendingPrompt, sessionsWithFailedSends } from "../pendingOutbox";
 import { pendingPromptActions } from "../pendingPromptActions";
-import { classifySubmission, handleOutcome, transportFactsFor } from "../messageLifecycle";
+import { classifySubmission, deliveryAfterUnanswered, handleOutcome, transportFactsFor } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { HttpError } from "../api/http";
 import { settlementSentence } from "../../../shared/operationSettlement";
@@ -52,10 +52,10 @@ describe("an answer that names no verdict", () => {
 });
 
 describe("the words for a message nobody answered for", () => {
-  it.fails("does not claim it may be running when the bytes never left", () => {
+  it("does not claim it may be running when the bytes never left", () => {
     const offline = new TypeError("Failed to fetch");
     const outcome = classifySubmission(offline, isDefiniteRefusal, transportFactsFor(offline, { isTimeout: false, linkOffline: true }));
-    const bubble = chatDeliveryPresentation({ clientMessageId: "cm-1", state: "unverifiable" });
+    const bubble = chatDeliveryPresentation({ clientMessageId: "cm-1", ...(outcome.settlement.outcome === "unverifiable" ? deliveryAfterUnanswered(outcome.settlement) : { state: "unverifiable" as const }) });
 
     // The shared vocabulary already has the sentence for this settlement
     // ("Not sent: the link was down.") and the fact that proves it
@@ -70,9 +70,9 @@ describe("the words for a message nobody answered for", () => {
     }).toMatchObject({ bubbleText: "Not sent" });
   });
 
-  it.fails("is not called something else by the tray under the composer", () => {
+  it("is not called something else by the tray under the composer", () => {
     const bubble = chatDeliveryPresentation({ clientMessageId: "cm-1", state: "unverifiable" });
-    const tray = pendingPromptActions("unsent");
+    const tray = pendingPromptActions("unverifiable");
     // Two vocabularies for one message: "No answer yet" has Retry/Discard on the
     // bubble, "Unsent" + Retry/Discard in the tray. settlementSentence was
     // written so "two surfaces cannot describe the same state differently".
@@ -81,7 +81,7 @@ describe("the words for a message nobody answered for", () => {
 
   it("gives the reader words for who is being waited on", () => {
     const bubble = chatDeliveryPresentation({ clientMessageId: "cm-1", state: "unverifiable" });
-    expect({ text: bubble.text, label: bubble.label }).toMatchObject({ text: "No answer yet" });
+    expect({ text: bubble.text, label: bubble.label }).toMatchObject({ text: "Receiving…" });
   });
 });
 
@@ -169,13 +169,13 @@ describe("where a row can wait forever", () => {
 });
 
 describe("the label of a confirmation that is not a queue", () => {
-  it.fails("does not read the same as a message a queue actually holds", () => {
+  it("does not read the same as a message a queue actually holds", () => {
     const byHttpAnswer = chatDeliveryPresentation({ clientMessageId: "cm-1", state: "received" });
     const byQueue = chatDeliveryPresentation({ clientMessageId: "cm-1", state: "queued" }, undefined);
     // "received" is the 2xx answer (deliverPromptToSession marks it before
     // returning); "queued" is a queue entry. A steer accepted into a running
     // turn is neither in a queue nor waiting for the next turn.
-    expect({ received: byHttpAnswer.text, queued: byQueue.text }).toMatchObject({ received: "Queued" });
+    expect({ received: byHttpAnswer.text, queued: byQueue.text }).toMatchObject({ received: "Received" });
     expect(byHttpAnswer.text).not.toBe(byQueue.text);
   });
 });

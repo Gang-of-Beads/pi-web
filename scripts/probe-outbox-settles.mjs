@@ -81,7 +81,7 @@ try {
       return { inTranscript, rows, streaming: app.state.status?.isStreaming === true };
     }, { mark });
     if (attempt < 8) console.log(`  poll ${String(attempt)}: ${JSON.stringify(last)}`);
-    if (last.rows.some((row) => row.state === "Unsent")) sawUnsent = true;
+    if (last.rows.some((row) => ["Receiving…", "Not sent", "Not received"].includes(row.state))) sawUnsent = true;
     if (last.inTranscript && last.rows.length === 0) break;
   }
   console.log("final:", JSON.stringify(last), `· posts held: ${String(held)} · saw it unsent: ${String(sawUnsent)}`);

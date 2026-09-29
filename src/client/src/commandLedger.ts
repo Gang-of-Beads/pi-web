@@ -147,11 +147,15 @@ export interface CommandDeliveryPresentation {
  */
 const QUEUED: CommandDeliveryPresentation = { glyph: "single", text: "Queued", label: "Queued - the daemon has this command and runs it after the current reply", tone: "received" };
 
-export function commandDeliveryPresentation(entry: Pick<CommandLedgerEntry, "state">, streaming: boolean): CommandDeliveryPresentation {
+/**
+ * A command that ran carries no mark, like a message the agent took: its result line says what
+ * happened, and "Read" was a status the owner ruled out (2026-09-30).
+ */
+export function commandDeliveryPresentation(entry: Pick<CommandLedgerEntry, "state">, streaming: boolean): CommandDeliveryPresentation | undefined {
   if (entry.state === "pending" && streaming) return QUEUED;
   if (entry.state === "pending") return { glyph: "pending", text: "Running", label: "Running - sent to the daemon, which has not answered yet", tone: "pending" };
   if (entry.state === "accepted") return QUEUED;
-  if (entry.state === "ok") return { glyph: "double", text: "Read", label: "Read - the daemon ran this command", tone: "delivered" };
+  if (entry.state === "ok") return undefined;
   return { glyph: "failed", text: "Not sent", label: "Not sent - the daemon did not take this command", tone: "failed" };
 }
 

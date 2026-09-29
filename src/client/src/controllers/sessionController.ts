@@ -19,8 +19,8 @@ import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessio
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
-import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
-import { forgetPendingPrompt, isNetworkFailure, moveOutbox, NetworkSendError, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
+import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
+import { forgetPendingPrompt, isNetworkFailure, linkReportedOffline, moveOutbox, NetworkSendError, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
 import { provenRowStep, VERIFY_AFTER_MS, verificationStep } from "../sendVerification";
 import { statusReadVerdict, type StatusPosition } from "../statusOrder";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
@@ -29,7 +29,8 @@ import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, parseSessionSocketEvent, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { transcriptLoadingAfter } from "../transcriptLoadingOwnership";
-import { classifySubmission, handleOutcome, transportFactsFor } from "../messageLifecycle";
+import { classifySubmission, deliveryAfterUnanswered, handleOutcome, transportFactsFor } from "../messageLifecycle";
+import type { DeliveryFailureCause } from "../deliveryWords";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
 import type { PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
@@ -673,13 +674,17 @@ export class SessionController {
       const outcome = classifySubmission(
         error,
         (value) => !isNetworkFailure(value) && !isRequestTimeout(value),
-        transportFactsFor(error, { isTimeout: isRequestTimeout(error), linkOffline: !navigator.onLine }),
+        transportFactsFor(error, { isTimeout: isRequestTimeout(error), linkOffline: linkReportedOffline(error) }),
       );
       const handling = handleOutcome(outcome);
       if (handling.keepInOutbox) {
         // Unverifiable is not failed: the daemon may hold this message. The row says
-        // so, and the outbox keeps it for a retry the identity makes safe.
-        if (clientMessageId !== undefined) {
+        // so, and the outbox keeps it for a retry the identity makes safe. Bytes that
+        // never left cannot have arrived: that one is not sent, and there is nothing to ask.
+        const row = outcome.settlement.outcome === "unverifiable" ? deliveryAfterUnanswered(outcome.settlement) : undefined;
+        if (clientMessageId !== undefined && row?.state === "failed") {
+          this.markDeliveryFailed(session.id, clientMessageId, row.cause);
+        } else if (clientMessageId !== undefined) {
           this.markDelivery(session.id, clientMessageId, "unverifiable");
           this.scheduleSendVerification(session, machineId);
         }
@@ -2258,6 +2263,10 @@ export class SessionController {
         this.setState({ messages: withdrawDeliveryLine(this.getState().messages, clientMessageId) });
         continue;
       }
+      if (step.kind === "fail") {
+        this.markDeliveryFailed(session.id, clientMessageId, step.cause);
+        continue;
+      }
       this.markDelivery(session.id, clientMessageId, step.state);
       if (step.retireOutbox) forgetPendingPrompt(outboxKey, clientMessageId);
     }
@@ -2267,6 +2276,13 @@ export class SessionController {
     const current = this.getState();
     if (current.selectedSession?.id !== sessionId) return;
     const messages = markDelivery(current.messages, clientMessageId, state);
+    if (messages !== current.messages) this.setState({ messages });
+  }
+
+  private markDeliveryFailed(sessionId: string, clientMessageId: string, cause: DeliveryFailureCause): void {
+    const current = this.getState();
+    if (current.selectedSession?.id !== sessionId) return;
+    const messages = markDeliveryFailed(current.messages, clientMessageId, cause);
     if (messages !== current.messages) this.setState({ messages });
   }
 
@@ -2507,7 +2523,7 @@ export class SessionController {
     }
     if (event.type === "prompt.refused") {
       const selected = this.getState().selectedSession;
-      if (selected !== undefined) this.markDelivery(selected.id, event.clientMessageId, "failed");
+      if (selected !== undefined) this.markDeliveryFailed(selected.id, event.clientMessageId, "not-sent");
       return;
     }
     if (event.type === "prompt.accepted") {

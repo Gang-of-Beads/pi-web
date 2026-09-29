@@ -1,5 +1,6 @@
 import type { PromptAttachment, QueuedSessionMessage } from "./api";
 import type { ChatLine, ChatPart, MessageDeliveryState } from "./components/shared";
+import type { DeliveryFailureCause } from "./deliveryWords";
 
 /**
  * Delivery marks for messages this browser sent.
@@ -146,6 +147,22 @@ export function markDelivery(
     ...line,
     meta: { ...line.meta, delivery: { clientMessageId, state: nextState, ...(nextKind === undefined ? {} : { kind: nextKind }) } },
   };
+  return next;
+}
+
+/**
+ * Mark a row failed and record why, so it reads "Not sent" or "Not received" (deliveryWords.ts).
+ * A row that stays where it is keeps its words: `markDelivery` decides whether a failure may land,
+ * and a later fact that overturns it rebuilds the delivery without a cause.
+ */
+export function markDeliveryFailed(messages: ChatLine[], clientMessageId: string, cause: DeliveryFailureCause): ChatLine[] {
+  const marked = markDelivery(messages, clientMessageId, "failed");
+  const index = findDeliveryLineIndex(marked, clientMessageId);
+  const line = marked[index];
+  const delivery = line?.meta?.delivery;
+  if (line === undefined || delivery?.state !== "failed" || delivery.cause === cause) return marked;
+  const next = [...marked];
+  next[index] = { ...line, meta: { ...line.meta, delivery: { ...delivery, cause } } };
   return next;
 }
 

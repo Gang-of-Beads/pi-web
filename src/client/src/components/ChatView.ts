@@ -21,6 +21,7 @@ import { doesNotFillViewport, shouldRequestNewerMessages } from "../chatHistoryL
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
+import { deliveryWordKey, deliveryWords } from "../deliveryWords";
 import { commandDeliveryPresentation, commandResultLine, type CommandLedgerEntry } from "../commandLedger";
 import { placeCommands } from "../commandPlacement";
 import { IDENTITY_ZOOM, pinchZoom, panZoom, wheelZoom, type PinchPoint, type PinchStart, type ZoomTransform } from "../imageZoomGesture";
@@ -619,18 +620,19 @@ function composedContains(host: Element, node: Node | null): boolean {
   return false;
 }
 
+/**
+ * A delivered message carries no words: the agent took it, and it is an ordinary input message.
+ * `chatDeliveryMarkerVisible` keeps this from ever being drawn.
+ */
+const NO_MARK: DeliveryPresentation = { glyph: "double", text: "", label: "", tone: "delivered" };
+
+/** The bubble's words for a delivery, from the one table every surface reads. */
 export function chatDeliveryPresentation(delivery: MessageDelivery, queuePosition?: number): DeliveryPresentation {
-  if (delivery.state === "sending") return { glyph: "pending", text: "Sending", label: "Sending", tone: "pending" };
-  if (delivery.state === "failed") return { glyph: "failed", text: "Not sent", label: "Not sent - the server never received this message", tone: "failed" };
-  if (delivery.state === "unverifiable") {
-    return { glyph: "pending", text: "No answer yet", label: "Sent, no answer yet - this may already be running; checking again is safe", tone: "pending" };
-  }
-  if (delivery.state === "queued") {
-    const place = queuePosition === undefined ? "" : ` · ${String(queuePosition)}`;
-    return { glyph: "single", text: `Queued${place}`, label: "Queued - the server has this message and the agent will take it next", tone: "received" };
-  }
-  if (delivery.state === "received") return { glyph: "single", text: "Queued", label: "Queued - the server has this message and the agent will take it next", tone: "received" };
-  return { glyph: "double", text: "Read", label: "Read - the agent took this message into the conversation", tone: "delivered" };
+  const key = deliveryWordKey(delivery.state, delivery.cause);
+  if (key === undefined) return NO_MARK;
+  const words = deliveryWords(key);
+  const place = key === "queued" && queuePosition !== undefined ? ` · ${String(queuePosition)}` : "";
+  return { glyph: words.glyph, text: `${words.text}${place}`, label: words.label, tone: words.tone };
 }
 
 export type ChatImagePart = Extract<ChatPart, { type: "image" }>;
@@ -1897,10 +1899,10 @@ if (this.heldWaitingClearTimer !== undefined) {
           <article class=${`msg user command ${entry.state}`} data-command-id=${entry.id}>
             <p class="command-text">${entry.text}</p>
             ${result === undefined ? null : html`<p class="command-result">${result}</p>`}
-            <div class=${`delivery-mark ${presentation.tone}`} role="status" aria-label=${presentation.label}>
+            ${presentation === undefined ? null : html`<div class=${`delivery-mark ${presentation.tone}`} role="status" aria-label=${presentation.label}>
               <span class="delivery-glyph" aria-hidden="true">${renderDeliveryGlyph(presentation.glyph)}</span>
               <span class="delivery-text">${presentation.text}</span>
-            </div>
+            </div>`}
           </article>
         `;
       })}
