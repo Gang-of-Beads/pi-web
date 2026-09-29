@@ -1,5 +1,5 @@
 import { css, LitElement, html, type TemplateResult, unsafeCSS } from "lit";
-import { uiIconStyle, renderChatIcon, renderListIcon } from "./uiIcons.js";
+import { uiIconStyle, renderChatIcon, renderListIcon, renderPluginIcon } from "./uiIcons.js";
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
@@ -4277,7 +4277,7 @@ export class PiWebApp extends LitElement {
       return {
         id: panel.id,
         label: panel.title,
-        icon: panel.icon,
+        icon: panel.icon ?? renderPluginIcon(),
         ...(usableBadge === undefined ? {} : { badge: usableBadge }),
         selected: this.state.mainView === panel.id,
       };

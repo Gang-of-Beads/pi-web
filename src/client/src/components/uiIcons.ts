@@ -90,6 +90,14 @@ export function renderListIcon(): TemplateResult {
   return html`<svg class="ui-icon" viewBox=${ATTRIBUTES.viewBox} aria-hidden="true" focusable="false" fill=${ATTRIBUTES.fill} stroke=${ATTRIBUTES.stroke} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12"></path><path d="M8 12h12"></path><path d="M8 18h12"></path><path d="M4 6h.01"></path><path d="M4 12h.01"></path><path d="M4 18h.01"></path></svg>`;
 }
 
+/**
+ * A plugin's panel that brought no icon of its own. Each plugin draws its own mark; this neutral
+ * piece only keeps a third-party row from reading as a blank slot in the Go to menu.
+ */
+export function renderPluginIcon(): TemplateResult {
+  return html`<svg class="ui-icon" viewBox=${ATTRIBUTES.viewBox} aria-hidden="true" focusable="false" fill=${ATTRIBUTES.fill} stroke=${ATTRIBUTES.stroke} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6v3a2 2 0 1 0 4 0V4h1v16H4V4h5"></path><path d="M4 12h3a2 2 0 1 1 0 4H4"></path></svg>`;
+}
+
 /** The conversation view. */
 export function renderChatIcon(): TemplateResult {
   return html`<svg class="ui-icon" viewBox=${ATTRIBUTES.viewBox} aria-hidden="true" focusable="false" fill=${ATTRIBUTES.fill} stroke=${ATTRIBUTES.stroke} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;

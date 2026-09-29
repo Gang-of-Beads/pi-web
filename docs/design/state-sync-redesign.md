@@ -850,3 +850,7 @@ The client suite has no expected failure left.
 ### Phase 5e as landed: goals say none
 
 Owner: "just say there are no goals". A known-empty answer keeps the section available, and it says "No goals in this workspace." with its refresh. Phase 4 gate-2 F3 is closed by this. New test in `goals/pi-web-plugin.review-repro-reads.test.ts` (fails on 41d02fca).
+
+### Phase 5f as landed: icons
+
+Checked in source first: Git already draws its own icon inside its plugin (`git/browser/git-panel.ts`), and the host passes `panel.icon` through unchanged, so the boundary held for Git. Subagents and Background declared no icon; each now draws its own through the activation context's `svg`. The host's `renderPluginIcon` fills in only for a panel that brought none. `bundledRegistration.test.ts` requires an icon on every bundled workspace panel (it fails on the previous commit, naming exactly those two).

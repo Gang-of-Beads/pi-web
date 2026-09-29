@@ -23,12 +23,13 @@ function runningCount(context: Parameters<typeof tasksOf>[0]): number {
 const plugin: PiWebPlugin = {
   apiVersion: 2,
   name: "Background Runs",
-  activate: ({ html }) => ({
+  activate: ({ html, svg }) => ({
     contributions: {
       workspacePanels: [
         {
           id: "workspace.background",
           title: "Background",
+          icon: svg`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>`,
           order: 65,
           visible: (context) => context.state?.selectedSession !== undefined,
           badge: (context) => {

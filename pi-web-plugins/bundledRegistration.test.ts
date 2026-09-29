@@ -64,6 +64,31 @@ describe("bundled plugins register and activate", () => {
     expect(failures).toEqual([]);
   });
 
+  /**
+   * Owner, 2026-09-30: every row of the Go to menu has an icon, and a plugin draws its own - the
+   * host only fills in for a third-party panel that brought none. Subagents and Background
+   * shipped without one, so their rows read as a blank slot.
+   */
+  it("draws its own icon for every workspace panel it contributes", async () => {
+    const entries = [
+      ...(await browserPluginDirectories()).map((directory) => ({ id: directory, path: `./${directory}/pi-web-plugin` })),
+      ...["git", "machines", "workspaces"].map((directory) => ({ id: directory, path: `./${directory}/browser/pi-web-plugin` })),
+    ];
+    const iconless: string[] = [];
+    let panels = 0;
+    for (const entry of entries) {
+      const loaded: unknown = await import(entry.path);
+      if (!isBrowserPlugin(loaded)) continue;
+      const context = createPluginRuntimeContext().context;
+      const activation = loaded.default.activate(Object.freeze({ ...context, apiVersion: 2, pluginId: entry.id, runtimePluginId: entry.id, html, svg }));
+      for (const panel of activation.contributions.workspacePanels ?? []) {
+        panels += 1;
+        if (panel.icon === undefined) iconless.push(`${entry.id}:${panel.id}`);
+      }
+    }
+    expect({ some: panels > 5, iconless }).toEqual({ some: true, iconless: [] });
+  });
+
   it("gives every bundled plugin an id the registry accepts", async () => {
     const directories = await browserPluginDirectories();
     for (const directory of directories) expect(directory).toMatch(/^[a-z][a-z0-9-]*$/u);
