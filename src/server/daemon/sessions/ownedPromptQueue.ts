@@ -178,14 +178,6 @@ export class OwnedPromptQueue {
     });
   }
 
-  /**
-   * Drop a closed session's entries from memory; the next `open` reads them back from disk. Its
-   * file path and write chain stay, so a restore still queued when the session closed (a handoff
-   * refused during the close) is written where the next open will find it, in order.
-   */
-  forgetSession(sessionId: string): void {
-    this.perSession.delete(sessionId);
-  }
 
   private async persist(sessionId: string, entries: readonly OwnedQueueEntry[]): Promise<void> {
     const path = this.filePaths.get(sessionId);

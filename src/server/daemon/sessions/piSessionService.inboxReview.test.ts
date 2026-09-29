@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
 import { OwnedPromptQueue, dataDirInboxLocation } from "./ownedPromptQueue.js";
-import { CapturingSessionEventHub, fakeRuntime, handedAs, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
+import { CapturingSessionEventHub, fakeRuntime, fakeSessionManager, handedAs, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
 
 /**
  * Pins the fixes from the phase 1 review of the daemon inbox (docs/design/state-sync-redesign.md,
@@ -793,17 +793,21 @@ describe("fifth gate-lane findings", () => {
 });
 
 describe("sixth gate-lane findings", () => {
-  it("P2-1: a restore that lands after the session closed is still written to the inbox file", async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), "inbox-review-p21-"));
-    const queue = new OwnedPromptQueue(dataDirInboxLocation(dataDir));
-    const entry = { clientMessageId: "g6p21-e-001", lane: "steer" as const, text: "refused during close", images: [], acceptedAt: "", echoUserMessage: false };
-    await queue.open("p21-late", "/workspace");
-    await queue.push("p21-late", "/workspace", entry);
-    await queue.take("p21-late", 1);
-    queue.forgetSession("p21-late");
-    await queue.restoreFront("p21-late", [entry]);
+  it("P2-1 / gate 7 P1-B: a restore landing after the session's close is written to its file without erasing what else waits", async () => {
+    const { service, ref, dir, dataDir } = await inboxService("p21-late");
+    await service.prompt(ref, "A taken by a batch", undefined, undefined, { clientMessageId: "g6p21-a-001" });
+    await service.prompt(ref, "B accepted meanwhile", undefined, undefined, { clientMessageId: "g6p21-b-001" });
+    const queue: unknown = Reflect.get(service, "ownedQueue");
+    if (!(queue instanceof OwnedPromptQueue)) throw new Error("ownedQueue unavailable");
+    const [taken] = await queue.take("p21-late", 1);
+    if (taken === undefined) throw new Error("nothing taken");
+    const forgetInboxState: unknown = Reflect.get(service, "forgetInboxState");
+    if (typeof forgetInboxState !== "function") throw new Error("forgetInboxState unavailable");
+    Reflect.apply(forgetInboxState, service, ["p21-late"]);
+    await queue.restoreFront("p21-late", [taken]);
     const reopened = new OwnedPromptQueue(dataDirInboxLocation(dataDir));
-    expect((await reopened.open("p21-late", "/workspace")).map((waiting) => waiting.clientMessageId)).toEqual(["g6p21-e-001"]);
+    expect((await reopened.open("p21-late", dir)).map((waiting) => waiting.clientMessageId)).toEqual(["g6p21-a-001", "g6p21-b-001"]);
+    await service.dispose();
   });
 
   it("P2-2: a take-back that fails at close does not skip the runtime's abort and disposal", async () => {
@@ -816,6 +820,96 @@ describe("sixth gate-lane findings", () => {
     vi.spyOn(queue, "restoreFront").mockRejectedValue(new Error("disk full"));
     await service.stop(ref);
     expect({ aborted: fake.calls.abort, disposed: fake.calls.dispose }).toEqual({ aborted: 1, disposed: 1 });
+    await service.dispose();
+  });
+});
+
+describe("seventh gate-lane findings", () => {
+  async function twoRuntimes(sessionId: string, options: { freshStreaming?: boolean } = {}) {
+    const dir = await mkdtemp(join(tmpdir(), `inbox-review-${sessionId}-`));
+    const dataDir = await mkdtemp(join(tmpdir(), `inbox-review-${sessionId}-data-`));
+    const old = fakeRuntime(sessionId, { isStreaming: false });
+    const fresh = fakeRuntime(sessionId, { isStreaming: options.freshStreaming ?? false });
+    for (const fake of [old, fresh]) {
+      Reflect.set(fake.runtime, "cwd", dir);
+      fake.session.sessionManager.getCwd = () => dir;
+    }
+    const runtimes = [old.runtime, fresh.runtime];
+    let created = 0;
+    const gateway = sessionGateway([sessionRecord(sessionId, dir)]);
+    gateway.open = () => fakeSessionManager(dir, { getSessionId: () => sessionId });
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: "/tmp/pi-web-test-agent",
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: () => Promise.resolve(runtimes[created++] ?? fresh.runtime),
+      sessionManager: gateway,
+      heartbeatIntervalMs: 60_000,
+      operationLedgerDir: dataDir,
+    });
+    return { old, fresh, service, ref: sessionRef(sessionId, dir), created: () => created };
+  }
+
+  it("P1-A: a second close that finds a reopen waiting on the first close does not deadlock", async () => {
+    const { old, service, ref } = await twoRuntimes("p1a-two-closes");
+    let releaseAbort = (): void => undefined;
+    old.session.abort = () => new Promise<void>((resolve) => { releaseAbort = resolve; });
+    await service.status(ref);
+    const firstClose = service.stop(ref);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const reopen = service.status(ref);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const closeActive: unknown = Reflect.get(service, "closeActive");
+    if (typeof closeActive !== "function") throw new Error("closeActive unavailable");
+    const secondCloseResult: unknown = Reflect.apply(closeActive, service, ["p1a-two-closes"]);
+    const secondClose = Promise.resolve(secondCloseResult);
+    releaseAbort();
+    const settled = await Promise.race([
+      Promise.all([firstClose, reopen, secondClose]).then(() => "all settled"),
+      new Promise((resolve) => setTimeout(() => { resolve("deadlocked"); }, 1_000)),
+    ]);
+    expect(settled).toBe("all settled");
+    await service.dispose();
+  });
+
+  it("P2-A: late work of a replaced runtime leaves the reopened runtime's steers alone", async () => {
+    const { old, fresh, service, ref } = await twoRuntimes("p2a-late-work", { freshStreaming: true });
+    await service.status(ref);
+    await service.stop(ref);
+    const lane: string[] = [];
+    fresh.session.getSteeringMessages = () => [...lane];
+    fresh.session.prompt = (text: string, options?: PromptOptions) => {
+      fresh.calls.prompt.push({ text, options });
+      lane.push(text);
+      fresh.emit({ type: "queue_update", steering: [...lane], followUp: [] });
+      options?.preflightResult?.(true);
+      return Promise.resolve();
+    };
+    await service.prompt(ref, "steer for the new runtime", undefined, undefined, { clientMessageId: "g7p2a-s-001" });
+    fresh.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(lane).toEqual(["steer for the new runtime"]); });
+    const takeBack: unknown = Reflect.get(service, "takeBackHeldMessages");
+    if (typeof takeBack !== "function") throw new Error("takeBackHeldMessages unavailable");
+    await Reflect.apply(takeBack, service, [old.session]);
+    expect({ outcome: service.operationOutcomes("p2a-late-work", ["g7p2a-s-001"]), queued: (await service.status(ref)).queuedMessages.map((entry) => entry.clientMessageId) })
+      .toEqual({ outcome: { "g7p2a-s-001": "pending" }, queued: ["g7p2a-s-001"] });
+    await service.dispose();
+  });
+
+  it("P2-B: a close that never finishes stops holding its session id after the ceiling", async () => {
+    const { service } = await twoRuntimes("p2b-ceiling");
+    vi.useFakeTimers();
+    try {
+      const markClosing: unknown = Reflect.get(service, "markClosing");
+      if (typeof markClosing !== "function") throw new Error("markClosing unavailable");
+      Reflect.apply(markClosing, service, ["p2b-ceiling"]);
+      const closing: unknown = Reflect.get(service, "closingSessions");
+      if (!(closing instanceof Map)) throw new Error("closingSessions unavailable");
+      expect(closing.has("p2b-ceiling")).toBe(true);
+      vi.advanceTimersByTime(10_000);
+      expect(closing.has("p2b-ceiling")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
     await service.dispose();
   });
 });

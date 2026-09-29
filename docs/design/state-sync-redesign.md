@@ -373,6 +373,18 @@ Verdict PASS with notes: no P0, no invariant failure its tests can see. The tear
 | P2-2 | Closing and shutdown awaited the take-back without a bound or a catch; a handoff that never settles held them open, and a failing write skipped the runtime's abort | TRUE | Fixed: the take-back is bounded (5 s) and never throws; the abort and disposal always follow |
 | P2-3 | A handoff counted as handed and then refused as busy goes back to the head while a younger message may already be in pi's lane | TRUE, narrow trigger | Known limitation 6 |
 
+
+## Phase 1 seventh gate-lane triage (Opus 5.5, over 94bf871e)
+
+Two P1 problems, both introduced by the sixth-gate fixes, and two P2.
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| P1-A | A reopen waiting on close 1 re-read the lock in `create()` and found it combined with close 2, which itself waited for that reopen: deadlock, and the id could never reopen | TRUE | Fixed: an open waits only for the close it saw when it was requested, and never re-reads the lock |
+| P1-B | `forgetSession` dropped the queue's memory but kept its path, so a late restore wrote its entry over everything else in the file | TRUE | Fixed: a close no longer drops the queue's memory at all; every mutation persists before it updates memory, so memory already matches the file |
+| P2-A | After the take-back gave up at 5 s and the id reopened, the old runtime's late batch and take-back cleared the new runtime's batch marker, settled its unread steers as read, and deleted its steer records | TRUE | Fixed: late work of a runtime that no longer owns its session id records, settles and takes back nothing, and a batch clears only its own marker |
+| P2-B | The closing lock was held through the abort; an abort that never finishes blocked the id's reopen forever and daemon shutdown with it | TRUE | Fixed: the lock releases when the close finishes or after 10 s, whichever is first |
+
 ## Phase 1 known limitations
 
 Each was found by a review lane, checked against the source, and left unfixed for the reason given.
@@ -384,3 +396,4 @@ Each was found by a review lane, checked against the source, and left unfixed fo
 5. **A throw inside the SDK's `prepareNextTurn` loses the steers the loop just drained (gate 4 P2-1).** The run fails before it commits them, and they were settled read when Stop or close met them held by the loop. pi-web's own listener can no longer cause this; an SDK-side failure there still can.
 6. **A late busy refusal can put a message behind a younger one (gate 6 P2-3).** A handoff already counted as handed (a slash command released at run start) that is then refused as busy goes back to the head of the inbox, while a younger message may already sit in pi's lane and be read first.
 7. **A take-back bounded at teardown can give up (gate 6 P2-2).** If a handoff does not settle within 5 s of a close or shutdown (an extension input handler that never returns), what pi still holds goes with the runtime; its rows stay pending, so after a restart a retry runs it.
+8. **The closing lock has a 10 s ceiling (gate 7 P2-B).** A close whose abort never returns stops holding its session id after 10 s, so the id can reopen while the old runtime still winds down. The old runtime's late work leaves the new one's state alone, but both can then write the same session file.

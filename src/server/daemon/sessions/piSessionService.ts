@@ -142,6 +142,12 @@ const DEFAULT_UNREAD_PUBLICATION_RETRY_MS = 1_000;
  */
 const TEARDOWN_TAKE_BACK_MS = 5_000;
 /**
+ * The longest a closing session holds back its reopen. A close normally finishes within its
+ * abort; an abort that never returns (a tool ignoring the signal) must not lock the session id
+ * - and the daemon's shutdown, which awaits pending opens - forever.
+ */
+const CLOSE_LOCK_MAX_MS = 10_000;
+/**
  * User-facing names for the two phases of session startup PI WEB can prove it
  * is inside: it awaits exactly one call for each, so the phase is a fact rather
  * than a guess. Deliberately free of internal symbol names and file paths.
@@ -3195,7 +3201,8 @@ export class PiSessionService implements SessionRouteService {
     const sessionId = session.sessionId;
     session.agent.steeringMode = "all";
     let finished = (): void => undefined;
-    this.steerBatches.set(sessionId, new Promise<void>((resolve) => { finished = resolve; }));
+    const batch = new Promise<void>((resolve) => { finished = resolve; });
+    this.steerBatches.set(sessionId, batch);
     try {
       const entries = await this.ownedQueue.take(sessionId, count);
       for (const [index, entry] of entries.entries()) {
@@ -3205,7 +3212,7 @@ export class PiSessionService implements SessionRouteService {
         }
       }
     } finally {
-      this.steerBatches.delete(sessionId);
+      if (this.steerBatches.get(sessionId) === batch) this.steerBatches.delete(sessionId);
       finished();
       this.publishStatus(session);
     }
@@ -3262,7 +3269,7 @@ export class PiSessionService implements SessionRouteService {
     const preflightResult = (success: boolean): void => {
       if (!success) return;
       landed = landingAtPreflight(session, { isCommand, steeringGrew: (this.laneGrowth.get(sessionId) ?? 0) > growthAtCall });
-      if (landed === "lane") this.holdSteer(sessionId, entry, images);
+      if (landed === "lane" && this.ownsSessionId(session)) this.holdSteer(sessionId, entry, images);
       if (landed === "handled" && clientMessageId !== undefined) this.committedExpectations.withdraw(sessionId, clientMessageId);
       if (landed !== "run") {
         markHanded();
@@ -3345,6 +3352,16 @@ export class PiSessionService implements SessionRouteService {
     if (this.runStartWatchers.get(sessionId) === watchers.markHanded) this.runStartWatchers.delete(sessionId);
   }
 
+  /**
+   * Whether this runtime still owns its session id. Steer records, lane accounting and take-back
+   * are kept per session id; a runtime closed and replaced (its bounded teardown gave up, and the
+   * id reopened) must not touch the new runtime's with late work of its own.
+   */
+  private ownsSessionId(session: PiAgentSession): boolean {
+    const current = this.active.get(session.sessionId)?.runtime.session;
+    return current === undefined || current === session;
+  }
+
   /** A steer is pi's once `_queueSteer` has pushed it, which is when the SDK calls its preflight. */
   private holdSteer(sessionId: string, entry: OwnedQueueEntry, images: ImageContent[]): void {
     if (entry.clientMessageId !== undefined) this.recordQueuedPromptClientId(sessionId, entry.clientMessageId, entry.text, "steer", entry);
@@ -3396,7 +3413,7 @@ export class PiSessionService implements SessionRouteService {
    */
   private settleConsumedSteers(session: PiAgentSession): void {
     const sessionId = session.sessionId;
-    if (this.replayingLanes.has(sessionId)) return;
+    if (this.replayingLanes.has(sessionId) || !this.ownsSessionId(session)) return;
     const records = this.queuedPromptClientIds.get(sessionId);
     if (records === undefined || records.length === 0) return;
     const held = new Set(correlateQueuedPromptIds(runtimeLanes(session), records).map((entry) => entry.clientMessageId));
@@ -3418,6 +3435,7 @@ export class PiSessionService implements SessionRouteService {
    */
   private async takeBackHeldMessages(session: PiAgentSession): Promise<void> {
     const sessionId = session.sessionId;
+    if (!this.ownsSessionId(session)) return;
     this.settleConsumedSteers(session);
     const records = this.queuedPromptClientIds.get(sessionId) ?? [];
     const { loopHeld, waiting } = partitionLanes(session, records);
@@ -4465,10 +4483,13 @@ export class PiSessionService implements SessionRouteService {
     const earlier = this.closingSessions.get(sessionId);
     const pending = earlier === undefined ? closing : Promise.all([earlier, closing]).then(() => undefined);
     this.closingSessions.set(sessionId, pending);
-    return () => {
+    const release = (): void => {
+      clearTimeout(ceiling);
       finish();
       if (this.closingSessions.get(sessionId) === pending) this.closingSessions.delete(sessionId);
     };
+    const ceiling = setTimeout(release, CLOSE_LOCK_MAX_MS);
+    return release;
   }
 
   private async closeActiveRuntime(sessionId: string, notificationPolicy: NotificationClosePolicy, pendingOpens: readonly Promise<unknown>[]): Promise<void> {
@@ -4544,7 +4565,6 @@ export class PiSessionService implements SessionRouteService {
     this.laneGrowth.delete(sessionId);
     this.directCommitWatchers.delete(sessionId);
     this.runStartWatchers.delete(sessionId);
-    this.ownedQueue.forgetSession(sessionId);
   }
 
   /**
@@ -4634,8 +4654,8 @@ export class PiSessionService implements SessionRouteService {
     const pending: PendingSessionOpen = {
       sessionId,
       promise: closing === undefined
-        ? this.create(openSessionManager(), cwd, options)
-        : closing.then(() => this.create(openSessionManager(), cwd, options)),
+        ? this.createUnlocked(openSessionManager(), cwd, options)
+        : closing.then(() => this.createUnlocked(openSessionManager(), cwd, options)),
     };
     pending.promise = pending.promise.finally(() => {
       if (this.pendingSessionOpens.get(key) === pending) this.pendingSessionOpens.delete(key);
@@ -4732,6 +4752,19 @@ export class PiSessionService implements SessionRouteService {
   ): Promise<ActiveSession<PiSessionRuntime>> {
     const closing = this.closingSessions.get(sessionManager.getSessionId());
     if (closing !== undefined) await closing;
+    return this.createUnlocked(sessionManager, cwd, options);
+  }
+
+  /**
+   * Create a runtime without consulting the closing lock. An open waits only for the close it
+   * saw when it was requested: re-reading the lock later could find it combined with a newer
+   * close that is itself waiting for this open, and neither would ever finish.
+   */
+  private async createUnlocked(
+    sessionManager: PiSessionManager,
+    cwd: string,
+    options: CreateSessionRuntimeOptions = {},
+  ): Promise<ActiveSession<PiSessionRuntime>> {
     const startup = this.startupProgress(sessionManager, options.startupIntent ?? "open", options.startupToken);
     try {
       return await this.createSessionRuntime(sessionManager, cwd, options, startup);
