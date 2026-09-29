@@ -4,7 +4,7 @@ import { initialAppState } from "../appState";
 import { SessionController } from "./sessionController";
 import { defaultApi, FakeSocket, oldSession, status, workspace, type AppState } from "./sessionController.testSupport";
 import { loadPendingPrompts, savePendingPrompt } from "../pendingOutbox";
-import { VERIFY_AFTER_MS } from "../sendVerification";
+import { VERIFY_AFTER_MS, VERIFY_RECONNECTING, VERIFY_RETRY_MS } from "../sendVerification";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -48,10 +48,31 @@ async function unansweredSend(answer: LedgerAnswers, overrides: Partial<typeof d
     asked,
     rows: () => state.messages.filter((line) => line.role === "user").map((line) => line.meta?.delivery?.state),
     outbox: () => loadPendingPrompts(outboxKey).map((prompt) => prompt.clientMessageId),
+    notice: () => state.error,
   };
 }
 
 const each = (outcome: string): LedgerAnswers => (ids) => Object.fromEntries(ids.map((id) => [id, outcome]));
+
+describe("an unanswered send whose ledger cannot be reached", () => {
+  it("keeps asking past the last scheduled ask, says it is reconnecting, and settles once an ask gets through", async () => {
+    const send = await unansweredSend((ids, ask) => (ask <= 5 ? undefined : {}));
+    await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
+    const afterFirst = { asked: send.asked.length, notice: send.notice(), rows: send.rows() };
+    await vi.advanceTimersByTimeAsync((VERIFY_AFTER_MS[2] ?? 0) - (VERIFY_AFTER_MS[0] ?? 0));
+    const atTheLast = { asked: send.asked.length, rows: send.rows() };
+    await vi.advanceTimersByTimeAsync(VERIFY_RETRY_MS);
+    const through = { asked: send.asked.length, rows: send.rows(), notice: send.notice() };
+    await vi.advanceTimersByTimeAsync(VERIFY_RETRY_MS * 4);
+
+    expect({ afterFirst, atTheLast, through, afterSettling: send.asked.length }).toEqual({
+      afterFirst: { asked: 1, notice: VERIFY_RECONNECTING, rows: ["unverifiable"] },
+      atTheLast: { asked: 5, rows: ["unverifiable"] },
+      through: { asked: 6, rows: ["failed"], notice: "" },
+      afterSettling: 6,
+    });
+  });
+});
 
 describe("an unanswered send asks the daemon's ledger on its own", () => {
   it("asks nothing at once, then five seconds after the send gave up", async () => {
@@ -152,9 +173,9 @@ describe("an unanswered send asks the daemon's ledger on its own", () => {
     expect(state.messages.map((line) => line.meta?.delivery?.state)).toEqual(["failed", "queued"]);
   });
 
-  it("leaves the row open and honest when asking fails too", async () => {
+  it("leaves the row open and honest when asking fails too, and keeps asking", async () => {
     const send = await unansweredSend(() => undefined);
     await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[2] ?? 0);
-    expect({ asked: send.asked.length, rows: send.rows() }).toEqual({ asked: 3, rows: ["unverifiable"] });
+    expect({ asked: send.asked.length, rows: send.rows() }).toEqual({ asked: 5, rows: ["unverifiable"] });
   });
 });

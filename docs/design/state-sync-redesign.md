@@ -833,3 +833,16 @@ The client suite has no expected failure left.
 - New: a message the daemon took and the runtime refused returns to the outbox, with its words, failed and not sent (fails on 81ede09d).
 - New: the reserve's refusal, taken, a day old, and a session move.
 - Changed deliberately: the verification step for `pending` no longer retires the outbox record; it reserves it.
+
+### Phase 5d as landed: Receiving… keeps asking
+
+- The ledger is still asked 5, 15 and 45 s after a send gives up.
+- An ask the link cannot carry is not an answer. By `isTransientRefreshError`, that is a non-HTTP failure or a 5xx. Such an ask:
+  - raises "Reconnecting to update message status…" at the top;
+  - starts one retry chain per session, asking every 15 s (`VERIFY_RETRY_MS`) until an ask gets through, the rows settle, or the reader leaves.
+- An ask after the 45 s point is a last ask, so once the daemon can say it has no row, the row reads "Not received".
+- Only an ask that got through withdraws the words. A reply-retired transport notice would fall to any reply, and the web answers 503 while the daemon is down, which withdrew the words seconds after they rose. The notice is the controller's own, and it replaces only an empty banner or a transport complaint.
+
+**Tests:**
+- New: unreachable asks keep going past 45 s, the words rise, and the first answered ask settles the row and withdraws them (fails on aa0b9d9b).
+- Changed deliberately: "leaves the row open and honest when asking fails too" now expects 5 asks by 45 s, not 3. The row stays open; the retry chain is the owner's "keep trying".

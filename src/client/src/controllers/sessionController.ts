@@ -4,7 +4,7 @@ import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair, type StreamFrontier } from "../sessionGapRepair";
-import { describeError, noticeForReader } from "../notice";
+import { describeError, noticeForReader, RetiredBy } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
@@ -21,7 +21,7 @@ import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import { advancePendingPrompt, forgetPendingPrompt, forgetReservedPrompt, isNetworkFailure, linkReportedOffline, moveOutbox, NetworkSendError, reserveAcceptedPrompt, restoreRefusedPrompt, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
-import { provenRowStep, VERIFY_AFTER_MS, verificationStep } from "../sendVerification";
+import { provenRowStep, VERIFY_AFTER_MS, VERIFY_RECONNECTING, VERIFY_RETRY_MS, verificationStep } from "../sendVerification";
 import { statusReadVerdict, type StatusPosition } from "../statusOrder";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
@@ -281,6 +281,8 @@ export class SessionController {
     this.selectionSeq += 1;
     this.socket.close();
     this.clearPendingUpdates();
+    for (const timer of this.verificationRetries.values()) clearTimeout(timer);
+    this.verificationRetries.clear();
   }
 
   clearActiveSession() {
@@ -2231,13 +2233,48 @@ export class SessionController {
   private scheduleSendVerification(session: SessionRef, machineId: string): void {
     const key = machineSessionKey(machineId, session.id);
     for (const timer of this.sendVerificationTimers.get(key) ?? []) clearTimeout(timer);
+    clearTimeout(this.verificationRetries.get(key));
+    this.verificationRetries.delete(key);
+    this.verificationPastLastAsk.delete(key);
     const last = VERIFY_AFTER_MS.length - 1;
-    const onScreen = (): boolean => this.getState().selectedSession?.id === session.id && selectedMachineId(this.getState()) === machineId;
     this.sendVerificationTimers.set(key, VERIFY_AFTER_MS.map((delay, index) => setTimeout(() => {
-      if (index === last) this.sendVerificationTimers.delete(key);
-      if (!onScreen()) return;
-      void this.selectedSessionRefreshes.settled(key).then(() => (onScreen() ? this.closeUnverifiedOperations(session, index === last) : undefined));
+      if (index === last) {
+        this.sendVerificationTimers.delete(key);
+        this.verificationPastLastAsk.add(key);
+      }
+      void this.askLedgerAbout(session, machineId);
     }, delay)));
+  }
+
+  private readonly verificationRetries = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly verificationPastLastAsk = new Set<string>();
+
+  /**
+   * One ask of the ledger for the rows on screen. An ask the link could not carry is not an
+   * answer: the top of the page says the status is being updated, and one retry chain per session
+   * asks again every `VERIFY_RETRY_MS` until an ask gets through, the rows settle, or the reader
+   * leaves. Only an ask that got through withdraws the words: any reply at all retires a transport
+   * notice, and the web answers 503 while the daemon is down, which withdrew them seconds after
+   * they rose.
+   */
+  private async askLedgerAbout(session: SessionRef, machineId: string): Promise<void> {
+    const key = machineSessionKey(machineId, session.id);
+    const onScreen = (): boolean => this.getState().selectedSession?.id === session.id && selectedMachineId(this.getState()) === machineId;
+    if (!onScreen()) return;
+    await this.selectedSessionRefreshes.settled(key);
+    if (!onScreen()) return;
+    const asked = await this.closeUnverifiedOperations(session, this.verificationPastLastAsk.has(key));
+    const state = this.getState();
+    if (asked !== "unreachable") {
+      if (state.error === VERIFY_RECONNECTING) this.setState(clearErrorPatch());
+      return;
+    }
+    if (this.verificationRetries.has(key)) return;
+    if (state.error === "" || state.errorRetiredBy === RetiredBy.reply) this.setState(noticePatch(noticeForReader(VERIFY_RECONNECTING)));
+    this.verificationRetries.set(key, setTimeout(() => {
+      this.verificationRetries.delete(key);
+      void this.askLedgerAbout(session, machineId);
+    }, VERIFY_RETRY_MS));
   }
 
   /**
@@ -2260,23 +2297,22 @@ export class SessionController {
    * learns what became of it, and one a server fact already proved learns of a terminal fact
    * whose frame went to a socket the reader had left - a refusal, a loss, a withdrawal.
    */
-  private async closeUnverifiedOperations(session: SessionRef, lastAsk = false): Promise<void> {
+  private async closeUnverifiedOperations(session: SessionRef, lastAsk = false): Promise<"nothing-open" | "unreachable" | "answered"> {
     const askedAbout = new Map<string, MessageDeliveryState>();
     for (const line of this.getState().messages) {
       const delivery = line.meta?.delivery;
       if (delivery !== undefined && ASKED_ABOUT[delivery.state]) askedAbout.set(delivery.clientMessageId, delivery.state);
     }
     const open = [...askedAbout.keys()];
-    if (open.length === 0) return;
+    if (open.length === 0) return "nothing-open";
     const machineId = selectedMachineId(this.getState());
     let outcomes: Record<string, string>;
     try {
       outcomes = await this.api.operationOutcomes(session, open, machineId);
-    } catch {
-      // Asking failed too; the rows stay open and honest.
-      return;
+    } catch (error) {
+      return isTransientRefreshError(error) ? "unreachable" : "answered";
     }
-    if (this.getState().selectedSession?.id !== session.id || selectedMachineId(this.getState()) !== machineId) return;
+    if (this.getState().selectedSession?.id !== session.id || selectedMachineId(this.getState()) !== machineId) return "answered";
     const outboxKey = machineSessionKey(machineId, session.id);
     for (const [clientMessageId, askedState] of askedAbout) {
       if (rowState(this.getState().messages, clientMessageId) !== askedState) continue;
@@ -2301,6 +2337,7 @@ export class SessionController {
         reserveAcceptedPrompt(outboxKey, clientMessageId);
       }
     }
+    return "answered";
   }
 
   private markDelivery(sessionId: string, clientMessageId: string, state: MessageDeliveryState): void {

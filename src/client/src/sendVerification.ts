@@ -14,6 +14,17 @@ import type { DeliveryFailureCause } from "./deliveryWords";
 /** When to ask the ledger, counted from the moment the send gave up. */
 export const VERIFY_AFTER_MS: readonly number[] = [5_000, 15_000, 45_000];
 
+/**
+ * How often a row keeps asking while the ledger cannot be reached. An ask that fails because the
+ * link is down is not an answer, so it never ends the checks (owner, 2026-09-30: "keep trying,
+ * and say it is reconnecting until it is through"); an ask after the last scheduled one is a last
+ * ask, so a daemon with no row for the message calls it not received once it can say so.
+ */
+export const VERIFY_RETRY_MS = 15_000;
+
+/** The words at the top while the ledger cannot be reached; a reply from that machine withdraws them. */
+export const VERIFY_RECONNECTING = "Reconnecting to update message status…";
+
 export type VerificationStep =
   | { kind: "mark"; state: "received"; retireOutbox: boolean }
   | { kind: "fail"; cause: DeliveryFailureCause }
