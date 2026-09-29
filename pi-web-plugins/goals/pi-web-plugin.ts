@@ -100,8 +100,7 @@ const plugin: PiWebPlugin = {
               const known = cacheFor(section.workspacePath, section.sessionCwd);
               if (known === undefined) return undefined;
               if (known.read === "failed") return true;
-              if (known.answer === undefined) return undefined;
-              return known.answer.goals.length > 0;
+              return known.answer === undefined ? undefined : true;
             },
             badge: (section) => (section.workspacePath === undefined ? undefined : badgeFor(cacheFor(section.workspacePath, section.sessionCwd)?.answer)),
             render: (section) => {

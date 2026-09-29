@@ -846,3 +846,7 @@ The client suite has no expected failure left.
 **Tests:**
 - New: unreachable asks keep going past 45 s, the words rise, and the first answered ask settles the row and withdraws them (fails on aa0b9d9b).
 - Changed deliberately: "leaves the row open and honest when asking fails too" now expects 5 asks by 45 s, not 3. The row stays open; the retry chain is the owner's "keep trying".
+
+### Phase 5e as landed: goals say none
+
+Owner: "just say there are no goals". A known-empty answer keeps the section available, and it says "No goals in this workspace." with its refresh. Phase 4 gate-2 F3 is closed by this. New test in `goals/pi-web-plugin.review-repro-reads.test.ts` (fails on 41d02fca).

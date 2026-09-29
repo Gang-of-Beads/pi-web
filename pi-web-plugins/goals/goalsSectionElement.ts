@@ -88,7 +88,8 @@ export class PiWebGoalsSection extends LitElement {
     const goal = activeGoal(this.state);
     if (goal === undefined) {
       if (this.failed) return html`<div class="goal-row"><p class="pending goal-main" role="status">Goal records could not be read on this machine.</p>${this.renderRefresh()}</div>`;
-      return this.state === undefined ? html`<p class="pending">Reading goal records…</p>` : nothing;
+      if (this.state === undefined) return html`<p class="pending">Reading goal records…</p>`;
+      return html`<div class="goal-row"><p class="pending goal-main" role="status">No goals in this workspace.</p>${this.renderRefresh()}</div>`;
     }
     const progress = progressLabel(goal);
     return html`

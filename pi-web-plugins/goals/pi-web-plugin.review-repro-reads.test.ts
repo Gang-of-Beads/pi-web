@@ -127,6 +127,25 @@ describe("the goals section read", () => {
     expect(section.available?.(harness.context)).toBe(true);
   });
 
+  /**
+   * Owner, 2026-09-30: "就说没有goal啊". A workspace with no goals says so and keeps its refresh; the
+   * section used to leave the drawer, and nothing read it again, so a goal created later in the
+   * same session never appeared.
+   */
+  it("says there are no goals, and stays in the drawer to be refreshed", async () => {
+    const callOperation = vi.fn(async () => ({ goals: [], brokenFiles: 0 }));
+    const section = sectionOf(callOperation);
+    const harness = harnessFor(section, "/w/session-a");
+    harness.draw();
+    await flush();
+
+    expect({
+      text: await shownText(harness.container),
+      available: section.available?.(harness.context),
+      refresh: harness.container.querySelector("pi-web-goals-section")?.shadowRoot?.querySelector("button.refresh") !== null,
+    }).toEqual({ text: expect.stringContaining("No goals in this workspace.") as unknown, available: true, refresh: true });
+  });
+
   /** Phase 4's read identity: a refresh's answer only replaces an older one. */
   it("keeps a newer refresh's answer when an earlier read answers late", async () => {
     const answers: ((value: unknown) => void)[] = [];
