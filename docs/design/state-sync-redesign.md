@@ -350,6 +350,17 @@ Verified A's premise, the recall order, close's early return, and the command-na
 | P2-2 | At close the loop commits loop-held messages during the abort, after pi-web unsubscribed and forgot the commit expectations, so the committed copy had no id | TRUE | Fixed: a stamp-only listener stays attached through the abort, and expectations are forgotten after it |
 | P2-3 | `queuedMessagesWithClientIds` lost its only caller | TRUE | Removed |
 
+
+## Phase 1 fifth gate-lane triage (Opus 5.5, over 77464ecc)
+
+No P0 or P1. The previous round's three fixes were verified against the SDK (agent-core awaits every listener, so the stamp-only listener sees the loop's commits before the abort returns). Seven hunt items adjudicated FALSE.
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| F1 | Close forgot the whole session's commit expectations after its abort; a runtime reopened under the same session id meanwhile lost its own, and its commits went unstamped | TRUE, widened by 77464ecc | Fixed: close forgets only the expectations its runtime left, and drops per-session inbox state only when no newer runtime has taken the id |
+| F2 | Daemon shutdown (`dispose`) did none of what close does: unread steers pi held died with the runtime, and loop-held steers were committed unstamped with their rows pending, so after the restart a retry ran them again | TRUE | Fixed: shutdown takes pi's unread messages back into the inbox file (the next daemon hands them) and stamps what the loop commits during the abort |
+| F3 | A ledger write failing when a direct prompt was read threw before the handoff was marked handed, so the consumer stayed "handing" for the whole run and nothing was steered | TRUE, narrow | Fixed: the handoff is marked handed before the ledger write |
+
 ## Phase 1 known limitations
 
 Each was found by a review lane, checked against the source, and left unfixed for the reason given.

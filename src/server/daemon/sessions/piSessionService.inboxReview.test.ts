@@ -686,3 +686,105 @@ describe("fourth gate-lane findings", () => {
     await service.dispose();
   });
 });
+
+describe("fifth gate-lane findings", () => {
+  it("F1: closing an old runtime does not forget the commit expectations of one reopened under the same session id", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "inbox-review-f1-"));
+    const dataDir = await mkdtemp(join(tmpdir(), "inbox-review-f1-data-"));
+    const old = fakeRuntime("f1-reopen", { isStreaming: false });
+    const fresh = fakeRuntime("f1-reopen", { isStreaming: false });
+    for (const fake of [old, fresh]) {
+      Reflect.set(fake.runtime, "cwd", dir);
+      fake.session.sessionManager.getCwd = () => dir;
+    }
+    let releaseAbort = (): void => undefined;
+    const abortGate = new Promise<void>((resolve) => { releaseAbort = resolve; });
+    old.session.abort = () => abortGate;
+    const runtimes = [old.runtime, fresh.runtime];
+    let created = 0;
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: "/tmp/pi-web-test-agent",
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: () => Promise.resolve(runtimes[created++] ?? fresh.runtime),
+      sessionManager: sessionGateway([sessionRecord("f1-reopen", dir)]),
+      heartbeatIntervalMs: 60_000,
+      operationLedgerDir: dataDir,
+    });
+    const ref = sessionRef("f1-reopen", dir);
+    await service.status(ref);
+    const closing = service.stop(ref);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await service.prompt(ref, "hello again", undefined, undefined, { clientMessageId: "g5f1-x-0001" });
+    await vi.waitFor(() => { expect(texts(fresh.calls.prompt)).toEqual(["hello again"]); });
+    releaseAbort();
+    await closing;
+    const committed: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "hello again" }] };
+    fresh.emit({ type: "message_start", message: committed });
+    expect(committed["clientMessageId"]).toBe("g5f1-x-0001");
+    await service.dispose();
+  });
+
+  it("F2: daemon shutdown keeps a steer pi held unread, and the next daemon hands it", async () => {
+    const first = await inboxService("f2-shutdown");
+    await first.service.prompt(first.ref, "unread at shutdown", undefined, undefined, { clientMessageId: "g5f2-s-001" });
+    first.fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect([...first.lane]).toEqual(["unread at shutdown"]); });
+    await first.service.dispose();
+
+    const second = await inboxService("f2-shutdown", { dir: first.dir, dataDir: first.dataDir, isStreaming: false });
+    await expect(second.service.resumeWaitingInboxes()).resolves.toEqual(["f2-shutdown"]);
+    await vi.waitFor(() => { expect(texts(second.fake.calls.prompt)).toEqual(["unread at shutdown"]); });
+    await second.service.dispose();
+  });
+
+  it("F2: daemon shutdown still stamps and settles a steer the loop commits during the abort", async () => {
+    const { fake, service, ref, lane } = await inboxService("f2-shutdown-held");
+    await service.prompt(ref, "committed at shutdown", undefined, undefined, { clientMessageId: "g5f2-h-001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["committed at shutdown"]); });
+    drainAgentQueues(fake.session.agent);
+    const committed: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "committed at shutdown" }] };
+    fake.session.abort = () => {
+      fake.emit({ type: "message_start", message: committed });
+      return Promise.resolve();
+    };
+    await service.dispose();
+    expect({ stamped: committed["clientMessageId"], outcome: service.operationOutcomes("f2-shutdown-held", ["g5f2-h-001"]) })
+      .toEqual({ stamped: "g5f2-h-001", outcome: { "g5f2-h-001": "succeeded" } });
+  });
+
+  it("F3: a failed ledger write when a direct prompt is read does not keep the consumer handing for the whole run", async () => {
+    const { fake, service, ref, lane } = await inboxService("f3-ledger-fault", { isStreaming: false });
+    const ledger: unknown = Reflect.get(service, "acceptanceLedger");
+    if (typeof ledger !== "object" || ledger === null) throw new Error("acceptanceLedger unavailable");
+    const settle: unknown = Reflect.get(ledger, "settle");
+    let failOnce = true;
+    Reflect.set(ledger, "settle", (...args: unknown[]): unknown => {
+      if (failOnce && args[2] === "succeeded") {
+        failOnce = false;
+        throw new Error("disk full");
+      }
+      const result: unknown = typeof settle === "function" ? Reflect.apply(settle, ledger, args) : undefined;
+      return result;
+    });
+    fake.session.prompt = (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      if (options?.streamingBehavior === "steer" && fake.session.isStreaming) {
+        lane.push(text);
+        options.preflightResult?.(true);
+        return Promise.resolve();
+      }
+      options?.preflightResult?.(true);
+      fake.session.isStreaming = true;
+      fake.emit({ type: "agent_start" });
+      fake.emit({ type: "message_start", message: { role: "user", content: text } });
+      return new Promise<void>(() => undefined);
+    };
+    await service.prompt(ref, "long run", undefined, undefined, { clientMessageId: "g5f3-d-001" });
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["long run"]); });
+    await service.prompt(ref, "steer during it", undefined, undefined, { clientMessageId: "g5f3-s-001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["steer during it"]); });
+    await service.dispose();
+  });
+});

@@ -168,6 +168,7 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
 
     const [messages, status] = await Promise.all([messagesPromise, statusPromise]);
     const activeCount = service.activeCount();
+    const winnerBindings = winnerSubscribe.mock.calls.length;
     await service.dispose();
 
     expect(callsWhileOpening).toBe(1);
@@ -176,8 +177,8 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     expect(activeCount).toBe(1);
     expect(messages).toEqual({ messages: [{ role: "user", content: "shared runtime" }], start: 0, total: 1 });
     expect(status).toMatchObject({ sessionId });
-    expect(winnerSubscribe).toHaveBeenCalledOnce();
-    expect(winnerUnsubscribe).toHaveBeenCalledOnce();
+    expect(winnerBindings).toBe(1);
+    expect(winnerUnsubscribe).toHaveBeenCalledTimes(winnerSubscribe.mock.calls.length);
     expect(winner.calls.dispose).toBe(1);
     expect(loserSubscribe).not.toHaveBeenCalled();
     expect(loserUnsubscribe).not.toHaveBeenCalled();

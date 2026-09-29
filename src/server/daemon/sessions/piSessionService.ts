@@ -1741,11 +1741,12 @@ export class PiSessionService implements SessionRouteService {
     this.subsessionNotifyArmed.clear();
     this.notificationStore.clearAll("service-dispose");
     await Promise.all(activeSessions.map(async (active) => {
+      await this.keepWhatThePiHolds(active.runtime.session);
       active.unsubscribe();
       active.runtime.setRebindSession(undefined);
       this.workspaceActivity?.removeSession(active.runtime.session.sessionId, active.runtime.session.sessionManager.getCwd());
       try {
-        await this.abortSessionOperations(active.runtime.session);
+        await this.abortStampingCommits(active.runtime.session);
       } finally {
         await active.runtime.dispose();
       }
@@ -3247,8 +3248,8 @@ export class PiSessionService implements SessionRouteService {
     const handed = new Promise<"handed">((resolve) => { markHanded = () => { resolve("handed"); }; });
     const onCommit = (): void => {
       committed = true;
-      this.settleSucceeded(sessionId, clientMessageId);
       markHanded();
+      this.settleSucceeded(sessionId, clientMessageId);
     };
     const isCommand = this.isExtensionCommand(session, text);
     const preflightResult = (success: boolean): void => {
@@ -4459,14 +4460,8 @@ export class PiSessionService implements SessionRouteService {
     this.activities.delete(sessionId);
     this.workspaceActivity?.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
     this.clearAuthLossWarningsForSession(sessionId);
-    await this.steerBatches.get(sessionId);
-    await this.takeBackHeldMessages(active.runtime.session);
-    this.openRuns.delete(sessionId);
-    this.laneSizes.delete(sessionId);
-    this.laneGrowth.delete(sessionId);
-    this.directCommitWatchers.delete(sessionId);
-    this.runStartWatchers.delete(sessionId);
-    this.ownedQueue.forgetSession(sessionId);
+    await this.keepWhatThePiHolds(active.runtime.session);
+    if (this.active.get(sessionId) === undefined) this.forgetInboxState(sessionId);
     // A reload queued against a session that is going away has nothing left to
     // reload; saying so beats leaving the person waiting for it.
     this.commandService.cancelQueuedReload(sessionId);
@@ -4476,16 +4471,49 @@ export class PiSessionService implements SessionRouteService {
     if (this.subsessionLinkForActiveChild(active.runtime.session) !== undefined) this.subsessionNotifyArmed.delete(sessionId);
     clearSessionQueue(active.runtime.session);
     active.unsubscribe();
-    const session = active.runtime.session;
-    const stampOnly = session.subscribe((event) => { this.stampCommittedUserMessage(session, event); });
     active.runtime.setRebindSession(undefined);
     try {
       this.events.publish(sessionId, { type: "session.stopped", cause: "closed" });
+      await this.abortStampingCommits(active.runtime.session);
+    } finally {
+      await active.runtime.dispose();
+    }
+  }
+
+  /**
+   * Before a runtime goes away: let a steer batch in flight land, then take back what pi holds
+   * unread into the inbox file, where the next runtime - or the next daemon - hands it again.
+   * Steers the agent loop already holds stay; the abort lets the loop commit them.
+   */
+  private async keepWhatThePiHolds(session: PiAgentSession): Promise<void> {
+    await this.steerBatches.get(session.sessionId);
+    await this.takeBackHeldMessages(session);
+  }
+
+  /** Per-session inbox state, dropped only when no newer runtime has taken the session id. */
+  private forgetInboxState(sessionId: string): void {
+    this.openRuns.delete(sessionId);
+    this.laneSizes.delete(sessionId);
+    this.laneGrowth.delete(sessionId);
+    this.directCommitWatchers.delete(sessionId);
+    this.runStartWatchers.delete(sessionId);
+    this.ownedQueue.forgetSession(sessionId);
+  }
+
+  /**
+   * Abort a runtime whose main listener is already gone, still stamping the commits the abort
+   * lets its loop make (steers it had drained), then forget the commit expectations this runtime
+   * left - and only those: a runtime reopened under the same session id meanwhile has its own.
+   */
+  private async abortStampingCommits(session: PiAgentSession): Promise<void> {
+    const sessionId = session.sessionId;
+    const leftBehind = this.committedExpectations.expectedIds(sessionId);
+    const stampOnly = session.subscribe((event) => { this.stampCommittedUserMessage(session, event); });
+    try {
       await this.abortSessionOperations(session);
     } finally {
       stampOnly();
-      this.committedExpectations.forgetSession(sessionId);
-      await active.runtime.dispose();
+      for (const clientMessageId of leftBehind) this.committedExpectations.withdraw(sessionId, clientMessageId);
     }
   }
 

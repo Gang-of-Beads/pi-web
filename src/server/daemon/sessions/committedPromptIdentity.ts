@@ -58,6 +58,11 @@ export class CommittedPromptExpectations {
     else this.perSession.set(sessionId, remaining);
   }
 
+  /** The ids still expected in a session, so a closing runtime can forget only its own. */
+  expectedIds(sessionId: string): string[] {
+    return (this.perSession.get(sessionId) ?? []).map((entry) => entry.clientMessageId);
+  }
+
   forgetSession(sessionId: string): void {
     this.perSession.delete(sessionId);
   }

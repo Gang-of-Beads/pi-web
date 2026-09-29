@@ -101,6 +101,7 @@ describe("ordering lane repros", () => {
     const dir = await mkdtemp(join(tmpdir(), "order-restart-"));
     const ledgerDir = await mkdtemp(join(tmpdir(), "order-ledger-"));
     const first = await service("restart", { dir, ledgerDir });
+    first.fake.session.getSteeringMessages = () => first.fake.calls.prompt.filter((call) => Reflect.get(Object(call.options), "streamingBehavior") === "steer").map((call) => call.text);
     await first.svc.prompt(ref("restart"), "S1 steer while running", "steer", undefined, { clientMessageId: "steer-0001" });
     first.fake.emit({ type: "turn_end" });
     await settle(50);
