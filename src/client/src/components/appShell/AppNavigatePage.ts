@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionInfo } from "../../api";
 import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow, type NavigateSessionState } from "../../navigateModel";
-import { switcherBreadcrumb } from "../../switcherBreadcrumb";
+import { switcherBreadcrumb, type BreadcrumbLevel } from "../../switcherBreadcrumb";
 import "./AppRefreshControl";
 import { createStableRowOrder } from "../../stableRowOrder";
 import { renderChatIcon, renderChevronRightIcon, renderGearIcon, renderGridIcon, renderMachineIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
@@ -135,6 +135,20 @@ export class AppNavigatePage extends LitElement {
     if (steppedIn) this.onWiden?.("project");
   }
 
+  /**
+   * A path level steps the page up to it, and every level above a project lists the machine
+   * again; the list under the path is always the sessions there. Like the grid key, a project
+   * level widens through the app only from a project the reader stepped into: on the
+   * machine-wide page the tap changed nothing visible and dropped the session behind the page.
+   */
+  private pathStepPressed(level: BreadcrumbLevel): void {
+    if (level === "folder") return;
+    const steppedIn = this.pathProjectId !== undefined;
+    this.pathProjectId = undefined;
+    this.kind = "sessions";
+    if (level !== "project" || steppedIn) this.onWiden?.(level);
+  }
+
   private showsEverything(): boolean {
     return this.pathProjectId === undefined && this.kind === "sessions";
   }
@@ -179,17 +193,7 @@ export class AppNavigatePage extends LitElement {
                 type="button"
                 class=${segment.chosen ? "path-step chosen" : "path-step"}
                 title=${segment.label}
-                @click=${() => {
-                  if (segment.level === "folder") return;
-                  // Tapping any level of the path steps up to it, and every
-                  // level above a project lists the machine again.
-                  this.pathProjectId = undefined;
-                  // The path says where; the list under it is always the
-                  // sessions there. Stepping up used to switch the page to
-                  // listing projects, which is a different question.
-                  this.kind = "sessions";
-                  this.onWiden?.(segment.level);
-                }}
+                @click=${() => { this.pathStepPressed(segment.level); }}
               >${segment.label}</button>
             `)}
           </div>
@@ -269,7 +273,7 @@ export class AppNavigatePage extends LitElement {
       loading: this.loadingSessions,
       matchCount,
       query: this.query,
-      scoped: this.input?.scope.projectId !== undefined,
+      scoped: this.pathProjectId !== undefined,
     });
     if (meaning.kind === "none") return nothing;
     return html`<p class="empty" role="status">${meaning.message}</p>`;

@@ -291,7 +291,7 @@ export class PiWebApp extends LitElement {
   @query("chat-view") private chatView?: ChatView;
   private prunedSessionsSignature = "";
   @query("prompt-editor") private promptEditor?: PromptEditor;
-  @query("app-navigate-page") private navigatePage?: AppNavigatePage;
+  @query(".navigate-overlay app-navigate-page") private navigatePage?: AppNavigatePage;
   @query("#navigation-panel") private navigationPanelFrame?: HTMLElement;
   @query("#workspace-panel") private workspacePanelFrame?: HTMLElement;
 

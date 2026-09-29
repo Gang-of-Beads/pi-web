@@ -74,9 +74,11 @@ describe("app-navigate-page", () => {
     expect(onChoose).toHaveBeenCalledWith("project", "p1");
   });
 
-  it("widens by tapping the level on the path", async () => {
+  it("widens by tapping the level on the path above a project stepped into", async () => {
     const onWiden = vi.fn<(level: NavigateLevel) => void>();
     const page = await mount({ onWiden });
+    Reflect.set(page, "pathProjectId", "p1");
+    await page.updateComplete;
     page.renderRoot.querySelector<HTMLButtonElement>(".path-step")?.click();
     expect(onWiden).toHaveBeenCalledWith("project");
   });
@@ -193,6 +195,33 @@ describe("the quick-access key over an open session", () => {
     page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
 
     expect({ fromTab, fromProject: widened }).toEqual({ fromTab: { widened: [], closes: 1 }, fromProject: ["project"] });
+    page.remove();
+  });
+});
+
+describe("the path steps over an open session", () => {
+  it("widen through the app only from a project stepped into, and the empty list speaks for the page's own scope", async () => {
+    const widened: string[] = [];
+    const page = await mount({ returnable: true, onWiden: (level: string) => { widened.push(level); } });
+    const projectStep = (): HTMLButtonElement | undefined => [...page.renderRoot.querySelectorAll<HTMLButtonElement>(".path-step")].at(-1);
+    projectStep()?.click();
+    await page.updateComplete;
+    const onTheMachine = [...widened];
+    Reflect.set(page, "pathProjectId", "project-1");
+    await page.updateComplete;
+    projectStep()?.click();
+
+    expect({ onTheMachine, fromAProject: widened }).toEqual({ onTheMachine: [], fromAProject: ["project"] });
+    page.remove();
+  });
+
+  it("says the machine has no sessions, not a narrower part of the path, when it lists the machine", async () => {
+    const machineWide = input();
+    const page = await mount({ machineSessions: [] }, { ...machineWide, scope: { ...machineWide.scope, projectId: "p1" }, sessions: [] });
+    page.machineSessions = [];
+    await page.updateComplete;
+
+    expect(page.renderRoot.textContent).toContain("No sessions yet.");
     page.remove();
   });
 });

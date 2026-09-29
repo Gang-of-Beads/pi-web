@@ -71,10 +71,32 @@ try {
   const back = await page.evaluate(() => ({ session: document.querySelector("pi-web-app")?.state?.selectedSession?.id ?? null, view: document.querySelector("pi-web-app")?.state?.mainView ?? null }));
   const reopened = await pageKeys(page);
   record("from the Projects tab the grid key goes back to the same session", !reopened.open && back.session === SESSION && back.view === "chat", JSON.stringify({ open: reopened.open, ...back }));
+
+  await opener.tap();
+  await page.waitForTimeout(1200);
+  const steps = page.locator("pi-web-app .navigate-overlay app-navigate-page .path-step");
+  if ((await steps.count()) === 0) throw new Error("precondition: the reopened navigation page shows no path step");
+  await steps.last().tap();
+  await page.waitForTimeout(800);
+  await grid.tap();
+  await page.waitForTimeout(1200);
+  const afterStep = await page.evaluate(() => ({ session: document.querySelector("pi-web-app")?.state?.selectedSession?.id ?? null, view: document.querySelector("pi-web-app")?.state?.mainView ?? null }));
+  record("a path step on the machine-wide page keeps the session behind it", afterStep.session === SESSION && afterStep.view === "chat", JSON.stringify(afterStep));
+
+  await page.evaluate(() => {
+    const app = document.querySelector("pi-web-app");
+    Reflect.apply(Reflect.get(app, "openNavigateOn"), app, ["project"]);
+  });
+  await page.waitForTimeout(1200);
+  const shownKind = await page.evaluate(() => {
+    const root = document.querySelector("pi-web-app")?.shadowRoot?.querySelector(".navigate-overlay app-navigate-page")?.shadowRoot;
+    return (root?.querySelector(".kind.current")?.textContent ?? "").trim();
+  });
+  record("going to projects opens the overlay on its Projects tab", shownKind === "Projects", `current tab ${JSON.stringify(shownKind)}`);
   await context.close();
 } finally {
   await browser.close();
 }
 const failed = results.filter((result) => !result.ok);
 console.log(`RECORDS=${String(results.length)} FAILED=${String(failed.length)}`);
-process.exit(failed.length === 0 && results.length === 4 ? 0 : 1);
+process.exit(failed.length === 0 && results.length === 6 ? 0 : 1);

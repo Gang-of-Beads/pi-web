@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from "vitest";
 import { PromptEditor, recordedDelivery } from "./PromptEditor";
-import { loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, SendScopeChangedError } from "../pendingOutbox";
+import { forgetPendingPrompt, loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, SendScopeChangedError } from "../pendingOutbox";
 import { HttpError } from "../api/http";
 
 afterEach(() => {
@@ -376,5 +376,20 @@ describe("phase 5 gate 2: a refused message the reader retried", () => {
     await flush();
 
     expect({ sent, refused: loadPendingPrompts("local:session-1")[0]?.refused }).toEqual({ sent: ["refused twice"], refused: true });
+  });
+
+  it("does not bring back a record that left the outbox while its retry was in flight", async () => {
+    savePendingPrompt("local:session-1", { text: "withdrawn meanwhile", clientMessageId: "cm-gone", at: new Date(Date.now() - 60_000).toISOString(), state: "failed", failure: "not-sent", refused: true });
+    const element = await composer();
+    const answer = deferred();
+    element.onSend = () => answer.promise;
+    element.retryOutbox("cm-gone");
+    await flush();
+    forgetPendingPrompt("local:session-1", "cm-gone");
+    answer.resolve(false);
+    await flush();
+    await flush();
+
+    expect(loadPendingPrompts("local:session-1")).toEqual([]);
   });
 });

@@ -908,3 +908,18 @@ The lane was Opus on 71cb0103 and 9cbe9b71 (the navigation page's close key remo
 Recorded for the owner, and not changed: the desktop navigation overlay (reached by the Go to shortcuts) has no Escape key. Browser Back and the grid key close it.
 
 **Live.** `scripts/probe-navigate-close.mjs` on a 393x850 touch phone: 71cb0103 fails "from the Projects tab the grid key goes back to the same session" (session null, view navigation); this build passes 4/4. `probe-navigate`, `probe-vocabulary` (6/6) and the geometry baseline pass on the same build.
+
+### Phase 5 gate lane 4 triage
+
+The lane was DeepSeek on 9cbe9b71 and c85abb89, reading source only. Verdict: BLOCK, on one P1, with three P2s. It confirmed that lane 3's fixes hold and that every navigation surface has an exit. Each finding was checked in source, and each fix has a test that fails on c85abb89.
+
+| # | Finding | Outcome |
+|---|---|---|
+| P1-1 | On the machine-wide page, the project path step ("All projects") still widened through the app, dropping the project, the workspace and the session behind the page, while nothing on the page visibly changed. Grid key back then landed on the picker. Same end state as lane 3's P1, reached from the path. | **Fixed** by the same rule: `pathStepPressed` widens through the app only from a project the reader stepped into. The older unit test "widens by tapping the level on the path" pinned the dropping tap; it now steps into a project first, deliberately. Unit test for both cases. Live leg 5: c85abb89 fails it (session null, view navigation). |
+| P2-1 | `@query("app-navigate-page")` found the rail or the hidden phone panel first, never the overlay, so "Go to projects/machines" set the kind on a hidden page and the overlay opened on Sessions. | **Fixed:** the query names the overlay's page, which is the only thing `navigatePage` is used for. Live leg 6: c85abb89 opens on "Sessions", and this build opens on "Projects". |
+| P2-2 | The empty-state wording read the app's project while the list is machine-wide, so an empty machine said "No sessions in this part of the path." | **Fixed:** it reads the page's own step (`pathProjectId`). Unit test. |
+| P2-3 | The refused-retry re-save wrote the snapshot taken before the send, so it could bring back a record withdrawn or settled during the send. | **Fixed:** it re-saves only if the record is still there. Unit test. |
+
+**Live.** `scripts/probe-navigate-close.mjs` (393x850 touch) scores c85abb89 4/6 (legs 5 and 6 fail as described) and this build 6/6. `probe-navigate` and the geometry baseline pass.
+
+Report-only, for the owner: the machine-wide page's "+ New session" still creates in the app's selected project. A partial `moveOutbox` leaves a copy under the old key, which nothing reads.
