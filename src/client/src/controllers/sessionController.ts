@@ -22,6 +22,7 @@ import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import { forgetPendingPrompt, isNetworkFailure, moveOutbox, NetworkSendError, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
 import { VERIFY_AFTER_MS, verificationStep } from "../sendVerification";
+import { statusReadVerdict, type StatusPosition } from "../statusOrder";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
@@ -206,6 +207,10 @@ export class SessionController {
   private gapRepair: SessionGapRepair | undefined;
   private pendingTranscriptEvents: SessionUiEvent[] = [];
   private pendingStatusBySession = new Map<string, SessionStatus>();
+  private readonly pendingStatusPositions = new Map<string, StatusPosition>();
+  /** The stream position of the last status applied for the selected session, frame or read. */
+  private statusPosition: (StatusPosition & { sessionId: string }) | undefined;
+  private statusFramesApplied = 0;
   private pendingActivityBySession = new Map<string, SessionActivity>();
   private pendingFrame: number | undefined;
   private pendingFlushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -383,8 +388,9 @@ export class SessionController {
     // status. Selecting such a session showed no dialog at all while the daemon
     // held one open.
     if (this.getState().sessionStatuses[session.id] === undefined && !isClientPendingStartSessionInfo(session)) {
+      const framesAtRequest = this.statusFramesApplied;
       void this.api.status(session, machineId)
-        .then((status) => { if (this.isCurrentSessionSelection(session.id, machineId, seq)) this.applyStatus(status); })
+        .then((status) => { if (this.isCurrentSessionSelection(session.id, machineId, seq) && !this.statusReadIsStale(status, framesAtRequest)) this.applyStatusRead(status); })
         .catch(() => undefined);
     }
     let buffered: SessionUiEvent[] | undefined;
@@ -1657,8 +1663,10 @@ export class SessionController {
       const sync = await this.api.streamSync(target.session, watermark.seq, target.machineId, watermark.epoch).catch(() => undefined);
       if (!this.isCurrentRefreshTarget(target)) return true;
       if (sync?.kind !== "replay") return false;
+      const framesAtRequest = this.statusFramesApplied;
       const status = await this.api.status(target.session, target.machineId);
       if (!this.isCurrentRefreshTarget(target)) return true;
+      const statusIsFresh = !this.statusReadIsStale(status, framesAtRequest);
       let messages = cached.messages;
       let lastSeq = watermark.seq;
       for (const raw of sync.frames) {
@@ -1677,12 +1685,12 @@ export class SessionController {
       this.streamWatermark = { sessionId: target.session.id, seq: lastSeq, ...(watermark.epoch === undefined ? {} : { epoch: watermark.epoch }) };
       this.gapRepair?.seed(this.streamWatermark);
       this.setState({
-        messages,
-        status,
+        messages: carryUnsettledForward(this.getState().messages, messages),
+        ...(statusIsFresh ? { status } : {}),
         activity: this.getState().sessionActivities[target.session.id],
         newerPendingCount: 0,
       });
-      this.applyStatus(status);
+      if (statusIsFresh) this.applyStatusRead(status);
       return true;
     } catch {
       return false;
@@ -1695,6 +1703,7 @@ export class SessionController {
       if (!this.isCurrentRefreshTarget(target)) return;
       this.flushPendingUpdates();
       if (this.transcripts.watermark(key) !== undefined && await this.refreshByDeltaReplay(target, key)) return;
+      const framesAtRequest = this.statusFramesApplied;
       const [page, status, streamSnapshot] = await Promise.all([
         this.api.messages(target.session, { limit: MESSAGE_PAGE_SIZE }, target.machineId),
         this.api.status(target.session, target.machineId),
@@ -1718,13 +1727,14 @@ export class SessionController {
       // The page just read is current through this seq: a later reload can
       // replay frames after it instead of re-fetching the page.
       this.transcripts.setWatermark(key, snapshotWatermark);
+      const statusIsFresh = !this.statusReadIsStale(status, framesAtRequest);
       this.setState({
         ...history,
         messages,
-        status,
+        ...(statusIsFresh ? { status } : {}),
         activity: this.getState().sessionActivities[target.session.id],
       });
-      this.applyStatus(status);
+      if (statusIsFresh) this.applyStatusRead(status);
     });
   }
 
@@ -2407,7 +2417,7 @@ export class SessionController {
     // editor's DOM stable during streaming, so in-progress touch gestures (e.g.
     // the iOS long-press edit/paste callout) are not interrupted by a re-render.
     if (event.type === "status.update") {
-      this.queueStatusUpdate(event.status);
+      this.queueStatusUpdate(event.status, event.seq === undefined ? undefined : { seq: event.seq, ...(event.epoch === undefined ? {} : { epoch: event.epoch }) });
       return;
     }
     if (event.type === "activity.update") {
@@ -2510,9 +2520,38 @@ export class SessionController {
     this.schedulePendingFlush();
   }
 
-  private queueStatusUpdate(status: SessionStatus): void {
+  private queueStatusUpdate(status: SessionStatus, position?: StatusPosition): void {
     this.pendingStatusBySession.set(status.sessionId, status);
+    if (position === undefined) this.pendingStatusPositions.delete(status.sessionId);
+    else this.pendingStatusPositions.set(status.sessionId, position);
     this.schedulePendingFlush();
+  }
+
+  /**
+   * Apply one status frame unless a read already applied for this session is at least as new.
+   * Every applied status frame for the selected session is counted, so a read that carries no
+   * position can tell whether one landed while it was in flight.
+   */
+  private applyStatusFrame(status: SessionStatus, position: StatusPosition | undefined): void {
+    const selected = this.getState().selectedSession?.id === status.sessionId;
+    const known = this.statusPosition?.sessionId === status.sessionId ? this.statusPosition : undefined;
+    if (selected && position !== undefined && known !== undefined && known.epoch === position.epoch && position.seq <= known.seq) return;
+    this.applyStatus(status);
+    if (!selected) return;
+    this.statusFramesApplied += 1;
+    if (position !== undefined) this.statusPosition = { sessionId: status.sessionId, ...position };
+  }
+
+  /** Whether a status read of the selected session lost the race to a newer status fact. */
+  private statusReadIsStale(status: SessionStatus, framesAtRequest: number): boolean {
+    const known = this.statusPosition?.sessionId === status.sessionId ? this.statusPosition : undefined;
+    return statusReadVerdict({ position: status.streamPosition, frameAppliedWhileReading: this.statusFramesApplied !== framesAtRequest }, known) === "stale";
+  }
+
+  /** Apply a status read that is not stale, and remember the position it was computed at. */
+  private applyStatusRead(status: SessionStatus): void {
+    this.applyStatus(status);
+    if (status.streamPosition !== undefined) this.statusPosition = { sessionId: status.sessionId, ...status.streamPosition };
   }
 
   private queueActivityUpdate(activity: SessionActivity): void {
@@ -2690,14 +2729,17 @@ export class SessionController {
     }
     if (this.pendingStatusBySession.size > 0) {
       const statuses = Array.from(this.pendingStatusBySession.values());
+      const positions = new Map(this.pendingStatusPositions);
       this.pendingStatusBySession.clear();
-      for (const status of statuses) this.applyStatus(status);
+      this.pendingStatusPositions.clear();
+      for (const status of statuses) this.applyStatusFrame(status, positions.get(status.sessionId));
     }
   }
 
   private clearPendingUpdates(): void {
     this.pendingTranscriptEvents = [];
     this.pendingStatusBySession.clear();
+    this.pendingStatusPositions.clear();
     this.pendingActivityBySession.clear();
     this.cancelScheduledFlush();
   }

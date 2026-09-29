@@ -1051,6 +1051,15 @@ export interface PluginSurfacePresence {
 export interface SessionStatus {
     sessionId: string;
     /**
+     * The session stream's position when a status read was computed: its seq and the epoch of
+     * that seq space. A browser drops a read computed before a status frame it already applied.
+     * Present on the answer to a status read, not on status frames, which carry their own stamp.
+     */
+    streamPosition?: {
+        seq: number;
+        epoch: string;
+    };
+    /**
      * Which plugin-backed surfaces have something behind them in this session.
      *
      * A panel for an extension nobody installed used to look exactly like an

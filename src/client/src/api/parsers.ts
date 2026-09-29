@@ -641,7 +641,15 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     ...optionalPendingAsk(record["pendingAsk"]),
     ...optionalPendingAsks(record["pendingAsks"]),
     ...optionalPendingDialogs(record["pendingDialogs"]),
+    ...optionalStreamPosition(record["streamPosition"]),
   };
+}
+
+function optionalStreamPosition(value: unknown): { streamPosition?: { seq: number; epoch: string } } {
+  if (typeof value !== "object" || value === null) return {};
+  const seq: unknown = Reflect.get(value, "seq");
+  const epoch: unknown = Reflect.get(value, "epoch");
+  return typeof seq === "number" && Number.isFinite(seq) && typeof epoch === "string" ? { streamPosition: { seq, epoch } } : {};
 }
 
 export function parseSessionStreamSnapshot(value: unknown): SessionStreamSnapshot {

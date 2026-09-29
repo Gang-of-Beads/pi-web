@@ -35,7 +35,7 @@ function streaming(sessionId: string): SessionStatus {
 }
 
 describe("review-repro realtime: status facts carry no order", () => {
-  it.fails("an HTTP status read before a socket frame, answered after it, overwrites the newer fact", async () => {
+  it("an HTTP status read before a socket frame, answered after it, overwrites the newer fact", async () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
     const socket = new EmitSocket();
     let statusCalls = 0;
@@ -122,7 +122,7 @@ describe("review-repro realtime: the join window and the gap monitor", () => {
 });
 
 describe("review-repro realtime: delta replay rebuilds from the cache and drops live rows", () => {
-  it.fails("a queued bubble the full refresh carries forward disappears on the delta path", async () => {
+  it("a queued bubble the full refresh carries forward disappears on the delta path", async () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
     const socket = new EmitSocket();
     let messagesCalls = 0;

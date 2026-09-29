@@ -2769,8 +2769,14 @@ export class PiSessionService implements SessionRouteService {
     return pageMessagesAtSafeBoundary(historyMessages(session), page);
   }
 
+  /**
+   * A status read, stamped with the session stream's position in the same tick it is computed,
+   * so a browser can tell it from a status frame published after it.
+   */
   async status(ref: PiSessionRef): Promise<ClientSessionStatus> {
-    return this.statusFromSession(await this.sessionForStatusOrDialogClose(ref));
+    const session = await this.sessionForStatusOrDialogClose(ref);
+    const streamPosition = { seq: this.events.currentSeq(session.sessionId), epoch: this.events.currentEpoch(session.sessionId) };
+    return { ...this.statusFromSession(session), streamPosition };
   }
 
   /**
