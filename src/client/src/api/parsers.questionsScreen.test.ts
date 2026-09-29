@@ -9,7 +9,7 @@ describe("a custom dialog declared as questions", () => {
   const screen = {
     kind: "questions",
     title: "Confirm Goal Draft",
-    questions: [{ id: "confirm", question: "Confirm Goal Draft", detail: "x".repeat(3_000), options: [{ value: "0", label: "Confirm" }], custom: false }],
+    questions: [{ id: "confirm", question: "Confirm Goal Draft", detail: "x".repeat(20_000), options: [{ value: "0", label: "Confirm" }], custom: false }],
   };
   const dialog = { dialogId: "dialog-1", kind: "custom", title: "Confirm Goal Draft", lines: [], screen, askedAt: "2026-09-30T10:00:00.000Z", runScoped: true };
 

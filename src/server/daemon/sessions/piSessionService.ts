@@ -2363,7 +2363,7 @@ export class PiSessionService implements SessionRouteService {
     if (generation === undefined) return;
     const title = pending.title.replace(/\s+/gu, " ").trim();
     const answer = dialogAnswerText(pending.screen, value);
-    const added = this.notificationStore.addNotification(generation, `Answered "${title}": ${answer === "" ? "nothing" : answer}`, "info");
+    const added = this.notificationStore.addNotification(generation, `Answered "${title}": ${answer === "" ? (typeof value === "string" ? "an empty response" : "no answers") : answer}`, "info");
     this.publishNotificationMutations(added.mutations);
   }
 

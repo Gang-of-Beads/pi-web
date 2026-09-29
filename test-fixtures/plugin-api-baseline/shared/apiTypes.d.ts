@@ -736,6 +736,14 @@ export declare const EXTENSION_DIALOG_TEXT_MAX_LENGTH = 1000;
  * so the tighter label bound was rejecting content the UI was built to show.
  */
 export declare const EXTENSION_DIALOG_PROSE_MAX_LENGTH = 8000;
+/**
+ * Longest detail a question on a declared extension screen may carry. A goal draft
+ * puts its whole proposal (objective, task tree, contracts) in one detail; at the
+ * 8000-character prose bound a large draft was refused and drew the terminal frame
+ * the declaration exists to replace. The detail rides the status payload only while
+ * the dialog is open.
+ */
+export declare const EXTENSION_SCREEN_DETAIL_MAX_LENGTH = 32000;
 /** Largest option list one `select` dialog may offer. */
 export declare const EXTENSION_DIALOG_OPTION_LIMIT = 24;
 /** Length bound for the text a user types into an `input` dialog. */

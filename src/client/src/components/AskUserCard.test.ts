@@ -416,4 +416,17 @@ describe("a new question set", () => {
 
     expect(renderRoot(card).querySelector("legend")?.textContent).toContain("Third?");
   });
+
+  it("starts clean even when it asks exactly what the previous set asked", async () => {
+    const questions = [question("a", "First?", [option("x", "X")]), question("b", "Second?", [option("y", "Y")])];
+    const card = await mountOpenAsk(openAsk(questions));
+    inputWithValue(renderRoot(card), "x").click();
+    buttonWithText(renderRoot(card), "Next").click();
+    await card.updateComplete;
+    card.ask = { ...openAsk(questions), askId: "ask-2" };
+    await card.updateComplete;
+
+    expect(renderRoot(card).querySelector("legend")?.textContent).toContain("First?");
+    expect(inputWithValue(renderRoot(card), "x").checked).toBe(false);
+  });
 });

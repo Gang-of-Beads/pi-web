@@ -14,7 +14,7 @@ import {
   ASK_USER_OPTION_LIMIT,
   ASK_USER_QUESTION_LIMIT,
   ASK_USER_TEXT_MAX_LENGTH,
-  EXTENSION_DIALOG_PROSE_MAX_LENGTH,
+  EXTENSION_SCREEN_DETAIL_MAX_LENGTH,
   type AskUserQuestion,
   type AskUserQuestionOption,
   type ExtensionDialogScreen,
@@ -63,7 +63,7 @@ function declaredQuestion(value: unknown): AskUserQuestion | undefined {
   const options = listOf(value["options"] ?? [], ASK_USER_OPTION_LIMIT, declaredOption);
   if (id === undefined || question === undefined || options === undefined || !unique(options.map((option) => option.value))) return undefined;
   if (options.length === 0 && value["custom"] === false) return undefined;
-  const detail = optionalText(value["detail"], EXTENSION_DIALOG_PROSE_MAX_LENGTH);
+  const detail = optionalText(value["detail"], EXTENSION_SCREEN_DETAIL_MAX_LENGTH);
   if (detail === null) return undefined;
   return {
     id,

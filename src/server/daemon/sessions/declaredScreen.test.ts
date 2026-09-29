@@ -12,8 +12,8 @@ describe("declaredScreen", () => {
     });
   });
 
-  it("lets a question's detail carry a whole proposal", () => {
-    expect(declaredScreen({ kind: "questions", questions: [{ ...question, detail: "x".repeat(8_000) }] })?.questions[0]?.detail).toHaveLength(8_000);
+  it("lets a question's detail carry a whole proposal, far past the 8000-character prose bound", () => {
+    expect(declaredScreen({ kind: "questions", questions: [{ ...question, detail: "x".repeat(32_000) }] })?.questions[0]?.detail).toHaveLength(32_000);
   });
 
   it.each([
@@ -24,7 +24,7 @@ describe("declaredScreen", () => {
     ["duplicate option values", { kind: "questions", questions: [{ ...question, options: [{ value: "a", label: "A" }, { value: "a", label: "B" }] }] }],
     ["a blank label", { kind: "questions", questions: [{ ...question, options: [{ value: "a", label: " " }] }] }],
     ["a junk question", { kind: "questions", questions: [question, "q2"] }],
-    ["an oversized detail", { kind: "questions", questions: [{ ...question, detail: "x".repeat(8_001) }] }],
+    ["an oversized detail", { kind: "questions", questions: [{ ...question, detail: "x".repeat(32_001) }] }],
     ["a question that can be answered neither by option nor by text", { kind: "questions", questions: [{ ...question, options: [], custom: false }] }],
   ])("reads %s as undeclared, so the drawn screen stands", (_name, value) => {
     expect(declaredScreen(value)).toBeUndefined();

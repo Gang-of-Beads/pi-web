@@ -8,22 +8,24 @@
  * identity and the questions it asks; anything else in the frame is the same
  * question said again.
  */
+import type { PendingAskUser, PendingExtensionDialog } from "../../shared/apiTypes";
 
-interface AskLike {
-  id?: string;
-  requestId?: string;
-  questions?: readonly { id?: string; question?: string; options?: readonly unknown[]; multiple?: boolean }[];
-}
+/**
+ * Picked from the wire types, not restated: a hand-written shape read `id` while the
+ * ask carries `askId`, so two sets asking the same questions looked like one and the
+ * second opened on the first one's step and answers. The compiler now owns the names.
+ */
+type AskLike = Pick<PendingAskUser, "askId" | "questions">;
 
 export function askCardFingerprint(ask: AskLike | undefined): string {
   if (ask === undefined) return "";
-  const identity = ask.id ?? ask.requestId ?? "";
-  const questions = (ask.questions ?? []).map((question) => [
-    question.id ?? "",
-    question.question ?? "",
+  const questions = ask.questions.map((question) => [
+    question.id,
+    question.question,
     String(question.multiple === true),
-    String((question.options ?? []).length),
+    String(question.options.length),
   ].join("|"));
+  const identity = ask.askId;
   return [identity, ...questions].join("\n");
 }
 
@@ -31,15 +33,7 @@ export function askCardNeedsRender(previous: AskLike | undefined, next: AskLike 
   return askCardFingerprint(previous) !== askCardFingerprint(next);
 }
 
-interface DialogLike {
-  dialogId?: string;
-  kind?: string;
-  title?: string;
-  message?: string;
-  placeholder?: string;
-  options?: readonly string[];
-  expiresAt?: string;
-}
+type DialogLike = Pick<PendingExtensionDialog, "dialogId" | "kind" | "title" | "message" | "placeholder" | "options" | "timeoutAt">;
 
 /**
  * The same reasoning for the extension dialog card, which sits in the same
@@ -49,12 +43,12 @@ interface DialogLike {
 export function dialogCardFingerprint(dialog: DialogLike | undefined): string {
   if (dialog === undefined) return "";
   return [
-    dialog.dialogId ?? "",
-    dialog.kind ?? "",
-    dialog.title ?? "",
+    dialog.dialogId,
+    dialog.kind,
+    dialog.title,
     dialog.message ?? "",
     dialog.placeholder ?? "",
-    dialog.expiresAt ?? "",
+    dialog.timeoutAt ?? "",
     (dialog.options ?? []).join("\u0001"),
   ].join("\n");
 }

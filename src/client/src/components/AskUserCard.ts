@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { acceptsOptionChange } from "../askStepGuard";
 import { askCardNeedsRender } from "../askCardIdentity";
 import { ifDefined } from "lit/directives/if-defined.js";
+import { live } from "lit/directives/live.js";
 import {
   ASK_USER_OTHER_TEXT_MAX_LENGTH,
   type AskUserOutcome,
@@ -158,7 +159,7 @@ export class AskUserCard extends LitElement {
                 type=${inputType}
                 name=${this.questionGroupName(ask, question)}
                 value=${option.value}
-                .checked=${answer?.values.includes(option.value) === true}
+                .checked=${live(answer?.values.includes(option.value) === true)}
                 @change=${(event: Event) => { this.changeOption(question, option.value, event); }}
               />
               <span class="option-copy">
@@ -173,7 +174,7 @@ export class AskUserCard extends LitElement {
                 type=${inputType}
                 name=${this.questionGroupName(ask, question)}
                 value="__pi_web_other__"
-                .checked=${customSelected}
+                .checked=${live(customSelected)}
                 @change=${(event: Event) => { this.changeOther(question, index, event); }}
               />
               <span class="option-copy"><span class="option-label">Custom</span></span>
@@ -186,7 +187,7 @@ export class AskUserCard extends LitElement {
                 id=${this.otherInputId(index)}
                 rows="2"
                 maxlength=${String(ASK_USER_OTHER_TEXT_MAX_LENGTH)}
-                .value=${answer?.otherText ?? ""}
+                .value=${live(answer?.otherText ?? "")}
                 @input=${(event: Event) => { this.changeOtherText(question, event); }}
               ></textarea>
             </label>

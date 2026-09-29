@@ -76,3 +76,19 @@ Verdict: no P0 or P1. Each finding was checked against the source.
 | A queued second question set opened on the previous set's step (P3, `ask_user` too) | TRUE | Fixed. A new set opens on its first question. |
 | One malformed dialog fails the whole session status (P3) | TRUE | Not fixed. Dropping the dialog alone would leave its extension waiting on a card nobody sees, and it is reachable only through a future screen kind. |
 | A tab from before 74b74112 draws an empty frame for a questions dialog (P3) | TRUE | Not fixed. Only during a rolling upgrade, and updates now restart both processes. |
+
+## Gate lane 2 (DeepSeek, reviewer) on 163e9fff..83cc4d83 + pi-goal f431278..9070b9b: PASS
+
+Verdict: no P0 or P1. The first attempt timed out searching the whole home directory; the retry was limited to the two repos. Each finding was checked against the source.
+
+| Finding | Verdict | Disposition |
+|---|---|---|
+| P2: a new question set asking exactly the previous questions kept the previous step and answers. `askCardFingerprint` read `id`/`requestId`, while the ask carries `askId`; its test built `{ id }` and hid this. | TRUE | Fixed. Both fingerprint shapes are picked from the wire types, so a renamed field is a compile error. The dialog fingerprint had the same flaw (`expiresAt` for `timeoutAt`). The radio and text bindings use `live()`, so a stale DOM value cannot survive a reset. |
+| P3: pi-goal could send duplicate question ids or option values, which pi-web refuses. | TRUE | Fixed in pi-goal e689dd0. |
+| P3: a draft proposal over 8000 characters was not declared, so it drew the terminal frame again. | TRUE | Fixed. A declared detail may be up to 32000 characters (`EXTENSION_SCREEN_DETAIL_MAX_LENGTH`), on both sides. |
+| P3: `boundedArrayOf` passed the index as a parser's second argument. | TRUE (latent) | Fixed. It passes the item alone. |
+| P3: the notification read "nothing" where the transcript says otherwise. | TRUE | Fixed: "an empty response" for an input dialog, "no answers" for a questions screen. |
+| P3: no countdown on a questions card. | TRUE | Not fixed. Only an extension-passed timeout shows one, and pi-goal passes none. |
+| P3: the probe's fixture lives outside the repo (`~/.pi/agent/extensions/ui-custom-probe.ts`). | TRUE | Not fixed. It is shared with probe-custom-screen, and the probe fails loudly at leg 1 without it. |
+| P3: `custom: false` with a stale `otherText` draft is refused only by the daemon. | TRUE | Not fixed. The card offers no Custom choice for such a question, so only a hand-edited draft reaches it. |
+| P3: Cancel and "Send anyway" with nothing both read as cancelled in pi-goal. | TRUE | Kept. Sending nothing is declining. The daemon record still tells them apart ("Cancelled" vs "Sent without answering"). |
