@@ -1242,6 +1242,7 @@ export class PromptEditor extends LitElement {
         try {
           const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: id, scope });
           if (accepted !== false) reserveAcceptedPrompt(key, id);
+          else if (prompt.refused === true) savePendingPrompt(key, prompt);
         } catch {
           continue;
         } finally {

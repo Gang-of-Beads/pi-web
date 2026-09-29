@@ -397,8 +397,8 @@ export function moveOutbox(fromSessionKey: string, toSessionKey: string, storage
   }
   const moving = loadPendingPrompts(fromSessionKey, storage);
   if (moving.length === 0) return;
-  for (const prompt of moving) savePendingPrompt(toSessionKey, prompt, storage);
-  clearPendingPrompts(fromSessionKey, storage);
+  const landed = moving.map((prompt) => savePendingPrompt(toSessionKey, prompt, storage)).every(Boolean);
+  if (landed) clearPendingPrompts(fromSessionKey, storage);
 }
 
 export function clearPendingPrompts(sessionKey: string, storage = browserStorage()): void {

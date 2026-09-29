@@ -362,4 +362,19 @@ describe("phase 5 gate 2: a refused message the reader retried", () => {
 
     expect(loadPendingPrompts("local:session-1").map((prompt) => prompt.clientMessageId)).toEqual([]);
   });
+
+  it("stays for the reader's Retry when the retry itself is refused outright", async () => {
+    savePendingPrompt("local:session-1", { text: "refused twice", clientMessageId: "cm-twice", at: new Date(Date.now() - 60_000).toISOString(), state: "failed", failure: "not-sent", refused: true });
+    const element = await composer();
+    const sent: string[] = [];
+    element.onSend = (text: string) => { sent.push(text); return Promise.resolve(false); };
+    element.retryOutbox("cm-twice");
+    await flush();
+    await flush();
+    window.dispatchEvent(new Event("online"));
+    await flush();
+    await flush();
+
+    expect({ sent, refused: loadPendingPrompts("local:session-1")[0]?.refused }).toEqual({ sent: ["refused twice"], refused: true });
+  });
 });

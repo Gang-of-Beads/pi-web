@@ -24,7 +24,7 @@ const standalone = await page.evaluate(`(function(){
     kinds: [...(root?.querySelectorAll(".kind") ?? [])].map((node) => node.textContent.trim()),
     sections: [...(root?.querySelectorAll(".section-title") ?? [])].map((node) => node.textContent.trim()),
     creates: [...(root?.querySelectorAll(".create") ?? [])].map((node) => node.textContent.trim()),
-    closable: root?.querySelector(".close") !== null && root?.querySelector(".close") !== undefined,
+    closable: root?.querySelector(".quick-access")?.getAttribute("aria-label") === "Close navigation",
   };
 })()`);
 
@@ -63,7 +63,7 @@ const overlay = await page.evaluate(`(function(){
   const root = app.shadowRoot.querySelector(".navigate-overlay app-navigate-page")?.shadowRoot;
   return {
     open: root !== null && root !== undefined,
-    closable: root?.querySelector(".close") !== null && root?.querySelector(".close") !== undefined,
+    closable: root?.querySelector(".quick-access")?.getAttribute("aria-label") === "Close navigation",
     path: [...(root?.querySelectorAll(".path-step") ?? [])].map((node) => node.textContent.trim()),
     kinds: [...(root?.querySelectorAll(".kind") ?? [])].map((node) => node.textContent.trim()),
     sections: [...(root?.querySelectorAll(".section-title") ?? [])].map((node) => node.textContent.trim()),
@@ -108,9 +108,12 @@ if (tagged.restored === 0) fail("clearing the search did not bring the sessions 
 
 await page.screenshot({ path: "/tmp/journeys/navigate.png" });
 
-await page.evaluate(`(function(){
+await page.evaluate(`(async function(){
   const app = document.querySelector("pi-web-app");
-  app.shadowRoot.querySelector(".navigate-overlay app-navigate-page").shadowRoot.querySelector(".close").click();
+  const key = () => app.shadowRoot.querySelector(".navigate-overlay app-navigate-page")?.shadowRoot?.querySelector(".quick-access");
+  key()?.click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  if (key()?.getAttribute("aria-label") === "Close navigation") key()?.click();
 })()`);
 await page.waitForTimeout(700);
 

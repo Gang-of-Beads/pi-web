@@ -177,6 +177,26 @@ describe("app-navigate-page", () => {
   });
 });
 
+describe("the quick-access key over an open session", () => {
+  it("returns from a Projects tab without touching the selection, and widens through the app only from a project stepped into", async () => {
+    const widened: string[] = [];
+    const closes: number[] = [];
+    const page = await mount({ returnable: true, onClose: () => { closes.push(1); }, onWiden: (level: string) => { widened.push(level); } });
+    Reflect.set(page, "kind", "project");
+    await page.updateComplete;
+    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+    await page.updateComplete;
+    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+    const fromTab = { widened: [...widened], closes: closes.length };
+    Reflect.set(page, "pathProjectId", "project-1");
+    await page.updateComplete;
+    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+
+    expect({ fromTab, fromProject: widened }).toEqual({ fromTab: { widened: [], closes: 1 }, fromProject: ["project"] });
+    page.remove();
+  });
+});
+
 describe("the quick-access key", () => {
   it("widens to everything first and closes the page when there is nothing left to widen", async () => {
     const closes: number[] = [];

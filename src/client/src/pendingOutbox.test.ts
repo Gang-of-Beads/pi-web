@@ -209,4 +209,17 @@ describe("phase 5 gate 2: a reserve the storage cannot take", () => {
 
     expect(loadPendingPrompts("m:s", storage).map((prompt) => prompt.text)).toEqual(["kept"]);
   });
+
+  it("keeps a session's outbox where it was when the move to its new identity cannot be written", () => {
+    const storage = memoryStorage();
+    const write = (key: string, value: string): void => { storage.data.set(key, value); };
+    savePendingPrompt("m:old", { text: "not lost", clientMessageId: "cm-move", at: "2026-09-30T00:00:00.000Z" }, storage);
+    storage.setItem = (key: string, value: string) => {
+      if (key.endsWith("m:new")) throw new DOMException("quota", "QuotaExceededError");
+      write(key, value);
+    };
+    moveOutbox("m:old", "m:new", storage);
+
+    expect(loadPendingPrompts("m:old", storage).map((prompt) => prompt.text)).toEqual(["not lost"]);
+  });
 });

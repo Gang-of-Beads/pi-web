@@ -893,3 +893,18 @@ The lane was DeepSeek (`botim-bllm/deepseek-v4.1-flash:max`) on 4fa133ef..8d06ae
 | F (P2, report) | "One table answers for every surface" was not true of the command bubble, which keeps its own "Running", "Queued" and "Not sent", and "Running" is outside the owner's set. The session list's indicator labels an unverifiable record "A message failed to send". | **Recorded for the owner.** The design section's claim is corrected below. Changing the command's "Running" or the indicator's words is a vocabulary decision, so neither is changed here. |
 
 **Correction to "Phase 5 design".** The words table answers for the message bubble and the composer tray. The command bubble keeps its own words (Running / Queued / Not sent); phase 5 removed only its "Read".
+
+### Phase 5 gate lane 3 triage
+
+The lane was Opus on 71cb0103 and 9cbe9b71 (the navigation page's close key removal), reading source only. Verdict: BLOCK, on one P1 in the removal, with three P2s. It found no P0 or P1 in the gate-2 fixes. Each finding was checked in source, and each fix has a test that fails on 71cb0103.
+
+| # | Finding | Outcome |
+|---|---|---|
+| P1-1 | With a session open and the page narrowed by a kind tab (Projects or Machines), the grid key's first press called `onWiden("project")`. That cleared the app's selection, the session included, so the key meant as the way back dropped the session it was going back to. The removed close key had been the non-destructive exit. | **Fixed.** The page lists the machine-wide sessions whenever no project was stepped into (`listedInput`), so widening through the app is needed only from a project the reader stepped into. The grid key now calls `onWiden` only then. From a kind tab it resets the page's own view, and the next press closes. Unit test: a Projects tab, then two presses: no widen, one close; from a project stepped into, one widen. Live: `probe-navigate-close.mjs` leg 4. |
+| P2-1 | `moveOutbox` still cleared the source outbox after a failed target write. | **Fixed:** it clears only when every record landed. Test: a quota-refused move keeps the source. |
+| P2-2 | A Retry of a refused message that was itself refused outright (the send returned `false`) left the record failed without its mark, so `online` replayed it. | **Fixed:** the mark is put back. Test: a refused retry, then `online`: one send only, still marked. |
+| P2-3 | `scripts/probe-navigate.mjs` still looked for `.close`. | **Fixed:** it reads the grid key's "Close navigation" and leaves through it. |
+
+Recorded for the owner, and not changed: the desktop navigation overlay (reached by the Go to shortcuts) has no Escape key. Browser Back and the grid key close it.
+
+**Live.** `scripts/probe-navigate-close.mjs` on a 393x850 touch phone: 71cb0103 fails "from the Projects tab the grid key goes back to the same session" (session null, view navigation); this build passes 4/4. `probe-navigate`, `probe-vocabulary` (6/6) and the geometry baseline pass on the same build.

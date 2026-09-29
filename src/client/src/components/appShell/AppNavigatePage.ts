@@ -121,10 +121,18 @@ export class AppNavigatePage extends LitElement {
    * session on the machine, pressed again - already showing everything -
    * there is nothing left to widen to, so it goes back where it came from.
    */
+  /**
+   * The grid key widens to every session here, and closes the page once there is nothing left to
+   * widen and somewhere to return to. Only a project the reader stepped into is widened through
+   * the app: the machine-wide list needs no selection change, and widening there cleared the
+   * session behind the page - with the close key gone, the key meant as the way back dropped the
+   * very session it was going back to.
+   */
   private quickAccessPressed(): void {
     if (this.returnable && this.showsEverything()) { this.onClose?.(); return; }
+    const steppedIn = this.pathProjectId !== undefined;
     this.showEverything();
-    this.onWiden?.("project");
+    if (steppedIn) this.onWiden?.("project");
   }
 
   private showsEverything(): boolean {
