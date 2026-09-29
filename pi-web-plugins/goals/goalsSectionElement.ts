@@ -59,6 +59,8 @@ export class PiWebGoalsSection extends LitElement {
   }
 
   @property({ attribute: false }) state: GoalsSectionState | undefined = undefined;
+  /** The latest read failed; `state` is then the last answer that arrived, if any. */
+  @property({ attribute: false }) failed = false;
   @property({ attribute: false }) onRefresh?: () => void;
   @state() private refreshing = false;
 
@@ -72,26 +74,32 @@ export class PiWebGoalsSection extends LitElement {
     }
   };
 
+  private renderRefresh() {
+    return html`<button
+      class="refresh"
+      type="button"
+      title="Re-read goal records from the workspace"
+      aria-label="Refresh goals"
+      @click=${this.handleRefresh}
+    ><svg class="goal-refresh-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg></button>`;
+  }
+
   override render() {
     const goal = activeGoal(this.state);
     if (goal === undefined) {
+      if (this.failed) return html`<div class="goal-row"><p class="pending goal-main" role="status">Goal records could not be read on this machine.</p>${this.renderRefresh()}</div>`;
       return this.state === undefined ? html`<p class="pending">Reading goal records…</p>` : nothing;
     }
     const progress = progressLabel(goal);
     return html`
+      ${this.failed ? html`<p class="pending" role="status">Could not refresh - showing the last read.</p>` : nothing}
       <div class="goal-row" data-status=${goal.status}>
         <span class="dot" aria-hidden="true"></span>
         <div class="goal-main">
           <p class="objective">${goal.objective}</p>
           ${progress === undefined ? nothing : html`<p class="progress">${progress}</p>`}
         </div>
-        <button
-          class="refresh"
-          type="button"
-          title="Re-read goal records from the workspace"
-          aria-label="Refresh goals"
-          @click=${this.handleRefresh}
-        ><svg class="goal-refresh-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg></button>
+        ${this.renderRefresh()}
       </div>
     `;
   }

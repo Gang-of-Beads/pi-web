@@ -12,6 +12,8 @@ export class SubagentSupervisorCard extends LitElement {
   @property({ attribute: false }) request?: SupervisorRequest;
   @property({ attribute: false }) onSend?: (text: string) => void | Promise<void>;
   @property({ attribute: false }) onInsert?: (text: string) => void;
+  /** The reply the transcript shows the reader already sent, if any. */
+  @property({ attribute: false }) answered?: string;
 
   @state() private draft = "";
   @state() private sent = false;
@@ -28,6 +30,7 @@ export class SubagentSupervisorCard extends LitElement {
   }
 
   private renderReply(request: SupervisorRequest) {
+    if (this.answered !== undefined) return html`<small class="quiet">Answered: ${this.answered}</small>`;
     if (this.sent) return html`<small class="quiet">Reply sent to this session, which relays it to the child.</small>`;
     return html`
       <div class="reply">

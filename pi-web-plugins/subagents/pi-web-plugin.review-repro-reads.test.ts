@@ -72,9 +72,9 @@ describe("the subagents panel read", () => {
    * later, so its answer is newer: the boot answer landing afterwards must not
    * put the older list back on screen.
    */
-  it.fails("does not let a late answer for an older read overwrite a newer answer", async () => {
+  it("does not let a late answer for an older read overwrite a newer answer", async () => {
     const harnessed = harness();
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(21_000);
     expect(harnessed.pending).toHaveLength(2);
     harnessed.pending[1]?.(answer("newer-run"));
     await settle();
@@ -91,7 +91,7 @@ describe("the subagents panel read", () => {
    * refresh failed - the shape the background-runs plugin already uses
    * (`LIST_NOTE` in pi-web-plugins/background-runs/backgroundTaskRows.ts).
    */
-  it.fails("keeps the rows it already showed when a later read fails", async () => {
+  it("keeps the rows it already showed when a later read fails", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const pending: ((value: unknown) => void)[] = [];
@@ -117,7 +117,7 @@ describe("the subagents panel read", () => {
    * is still unanswered; the shell already owns a one-read-at-a-time helper
    * for exactly this (src/client/src/sessionActivityPolling.ts).
    */
-  it.fails("keeps one read in flight for the same session", async () => {
+  it("keeps one read in flight for the same session", async () => {
     const harnessed = harness();
     await vi.advanceTimersByTimeAsync(9000);
     expect(harnessed.callOperation).toHaveBeenCalledTimes(1);
@@ -125,13 +125,38 @@ describe("the subagents panel read", () => {
 
   it("keeps polling after the panel stops being rendered, and pins the last session it drew", async () => {
     const harnessed = harness();
-    await vi.advanceTimersByTimeAsync(12_000);
+    for (let tick = 0; tick < 4; tick += 1) {
+      for (const resolve of harnessed.pending.splice(0)) resolve(answer("run"));
+      await vi.advanceTimersByTimeAsync(3000);
+    }
     expect(harnessed.callOperation).toHaveBeenCalledTimes(5);
-    for (const resolve of harnessed.pending.splice(0)) resolve(answer("run"));
-    await settle();
-    await vi.advanceTimersByTimeAsync(6000);
+    for (let tick = 0; tick < 2; tick += 1) {
+      for (const resolve of harnessed.pending.splice(0)) resolve(answer("run"));
+      await settle();
+      await vi.advanceTimersByTimeAsync(3000);
+    }
     expect(harnessed.callOperation).toHaveBeenCalledTimes(7);
     expect(harnessed.panelText()).toContain("run");
+  });
+
+  /** Reads F7: the poll stayed on the last session the panel drew. The tab's badge now moves it. */
+  it("follows the selected session through the tab badge while the panel is closed", async () => {
+    const pending: ((value: unknown) => void)[] = [];
+    const callOperation = vi.fn((_operation: string, _input: unknown) => new Promise<unknown>((resolve) => { pending.push(resolve); }));
+    const contribution = plugin.activate({ apiVersion: 2, pluginId: "subagents", runtimePluginId: "subagents", html: litHtml, svg: litSvg, callOperation } as unknown as PluginActivationContext).contributions.workspacePanels?.[0];
+    if (contribution === undefined) throw new Error("no panel");
+    const panelFor = (path: string) => ({ machine: { id: "local" }, workspace: { id: "w", projectId: "p", path: "/w" }, state: { selectedSession: { path } }, host: { requestRender: () => undefined } } as unknown as WorkspacePanelContext);
+    litRender(contribution.render(panelFor(SESSION)), document.createElement("div"));
+    pending[0]?.(answer("from-a"));
+    await settle();
+
+    contribution.badge?.(panelFor("/sessions/session-b.jsonl"));
+    for (const resolve of pending.splice(0)) resolve(answer("from-b"));
+    await settle();
+    await vi.advanceTimersByTimeAsync(3000);
+
+    const asked = callOperation.mock.calls.map((call) => (call[1] as { sessionFile: string }).sessionFile);
+    expect(asked.slice(1)).toEqual(["/sessions/session-b.jsonl", "/sessions/session-b.jsonl"]);
   });
 
   it("reads nothing at all while no session is selected, and never starts a poller", async () => {

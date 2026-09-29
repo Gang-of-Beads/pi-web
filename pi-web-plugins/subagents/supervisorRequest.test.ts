@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { offersReply, replyMessage, supervisorRequest, supervisorTitle } from "./supervisorRequest";
+import { answeredReply, offersReply, replyMessage, supervisorRequest, supervisorTitle } from "./supervisorRequest";
 
 const payload = {
   requestId: "r1",
@@ -53,5 +53,18 @@ describe("supervisorRequest", () => {
   it("still addresses a child whose target is unknown", () => {
     expect(replyMessage(supervisorRequest({ agent: "reviewer" }), "stop")).toBe("Reply to reviewer: stop");
     expect(replyMessage(supervisorRequest({}), "stop")).toBe("Reply to the subagent: stop");
+  });
+
+  it("finds the reply the reader sent to this request in what they said after it, and nothing else", () => {
+    const request = supervisorRequest(payload);
+    const other = supervisorRequest({ ...payload, runId: "run-2" });
+    const said = ["thanks", replyMessage(other, "no"), replyMessage(request, "yes, both")];
+
+    expect({
+      answered: answeredReply(request, said),
+      otherRun: answeredReply(other, said.slice(0, 2)),
+      notYet: answeredReply(request, said.slice(0, 2)),
+      noReplyExpected: answeredReply(supervisorRequest({ ...payload, expectsReply: false }), said),
+    }).toEqual({ answered: "yes, both", otherRun: "no", notYet: undefined, noReplyExpected: undefined });
   });
 });

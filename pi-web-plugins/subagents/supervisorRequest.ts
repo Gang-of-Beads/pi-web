@@ -73,8 +73,24 @@ export function offersReply(request: SupervisorRequest): boolean {
  * agent relays it to the right run rather than guessing from context.
  */
 export function replyMessage(request: SupervisorRequest, text: string): string {
-  const trimmed = text.trim();
+  return `${replyPrefix(request)}${text.trim()}`;
+}
+
+function replyPrefix(request: SupervisorRequest): string {
   const target = request.childTarget ?? request.agent ?? "the subagent";
   const run = request.runId === undefined ? "" : ` (run ${request.runId})`;
-  return `Reply to ${target}${run}: ${trimmed}`;
+  return `Reply to ${target}${run}: `;
+}
+
+/**
+ * The reply the reader already sent to this request, found in what they said after it: the
+ * first later message written the way `replyMessage` writes one for this request. The card
+ * remembered a sent reply only in its own state, so a reload or a session switch offered the
+ * form again and invited a second reply.
+ */
+export function answeredReply(request: SupervisorRequest, followingUserTexts: readonly string[]): string | undefined {
+  if (!offersReply(request)) return undefined;
+  const prefix = replyPrefix(request);
+  const reply = followingUserTexts.find((text) => text.startsWith(prefix) && text.length > prefix.length);
+  return reply?.slice(prefix.length);
 }

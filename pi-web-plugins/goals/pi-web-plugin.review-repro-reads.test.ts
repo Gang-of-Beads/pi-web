@@ -85,7 +85,7 @@ describe("the goals section read", () => {
    * the section shows one session's goals while the other is selected and
    * never asks again.
    */
-  it.fails("re-reads when the selected session moves inside the same workspace", async () => {
+  it("re-reads when the selected session moves inside the same workspace", async () => {
     const callOperation = vi.fn(async (_operation: string, input: unknown) => {
       const cwd = (input as { sessionCwd?: string }).sessionCwd;
       return { goals: [goal(cwd === "/w/session-b" ? "from-b" : "from-a")], brokenFiles: 0 };
@@ -108,7 +108,7 @@ describe("the goals section read", () => {
    * workspace with no goals answers. The drawer then hides the section, so a
    * machine that could not be read looks like a workspace with nothing in it.
    */
-  it.fails("says a failed read could not be read instead of showing an empty workspace", async () => {
+  it("says a failed read could not be read instead of showing an empty workspace", async () => {
     const callOperation = vi.fn(async () => { throw new Error("machine down"); });
     const section = sectionOf(callOperation);
     const harness = harnessFor(section, "/w/session-a");
@@ -118,12 +118,29 @@ describe("the goals section read", () => {
   });
 
   /** The drawer decides whether the section exists at all from the same cache. */
-  it.fails("keeps the failed section in the drawer instead of hiding it", async () => {
+  it("keeps the failed section in the drawer instead of hiding it", async () => {
     const callOperation = vi.fn(async () => { throw new Error("machine down"); });
     const section = sectionOf(callOperation);
     const harness = harnessFor(section, "/w/session-a");
     harness.draw();
     await flush();
     expect(section.available?.(harness.context)).toBe(true);
+  });
+
+  /** Phase 4's read identity: a refresh's answer only replaces an older one. */
+  it("keeps a newer refresh's answer when an earlier read answers late", async () => {
+    const answers: ((value: unknown) => void)[] = [];
+    const callOperation = vi.fn(() => new Promise<unknown>((resolve) => { answers.push(resolve); }));
+    const section = sectionOf(callOperation);
+    const harness = harnessFor(section, "/w/session-a");
+    harness.draw();
+    const element = harness.container.querySelector("pi-web-goals-section") as (HTMLElement & { onRefresh?: () => void }) | null;
+    element?.onRefresh?.();
+    answers[1]?.({ goals: [goal("newer")], brokenFiles: 0 });
+    await flush();
+    answers[0]?.({ goals: [goal("older")], brokenFiles: 0 });
+    await flush();
+
+    expect(await shownText(harness.container)).toContain("goal newer");
   });
 });
