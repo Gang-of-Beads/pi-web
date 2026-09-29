@@ -75,6 +75,35 @@ configuration, and operational details in docs/, then link from here. -->
 
 For more install options, including one-line install, Pi package install, WSL/manual usage, and remote access, see the [installation guide](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/install.html).
 
+## Install with Nix
+
+Every release is built for `x86_64-linux`, `aarch64-linux` and Apple Silicon macOS and pushed to the public binary cache [gang-of-beads.cachix.org](https://app.cachix.org/cache/gang-of-beads). A Nix install of a release downloads PI WEB instead of compiling it. Pin a release tag, replacing `<version>` with one from the [releases page](https://github.com/Gang-of-Beads/pi-web/releases). Any other commit builds locally.
+
+```bash
+nix profile install github:Gang-of-Beads/pi-web/v<version> --accept-flake-config
+```
+
+The flake declares the cache, and Nix honours that declaration only for trusted users. If Nix warns that it ignored the substituter, add the cache once, system-wide, with `cachix use gang-of-beads` or these `nix.conf` lines, then restart the Nix daemon:
+
+```text
+extra-substituters = https://gang-of-beads.cachix.org
+extra-trusted-public-keys = gang-of-beads.cachix.org-1:oeKLfGX21CJJ8AUAhGoesrIy2i8vlXCEn6yT4x1hqX0=
+```
+
+With Home Manager, use the flake's own package. The module's default package, and `inputs.pi-web.inputs.nixpkgs.follows`, both build PI WEB against your nixpkgs, which is a different build from the one in the cache.
+
+```nix
+inputs.pi-web.url = "github:Gang-of-Beads/pi-web/v<version>";
+
+# In your Home Manager modules, with inputs.pi-web.homeManagerModules.default imported:
+programs.pi-web = {
+  enable = true;
+  package = inputs.pi-web.packages.${pkgs.stdenv.hostPlatform.system}.pi-web;
+};
+```
+
+Service management and settings are in the installation guide's [NixOS and nix-darwin section](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/install.html#nix).
+
 ## Core model
 
 PI WEB organizes work like this:

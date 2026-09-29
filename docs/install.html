@@ -162,15 +162,17 @@
 
             <section id="nix">
         <h2>NixOS and nix-darwin</h2>
-        <p>PI WEB's flake supports <code>x86_64-linux</code>, <code>aarch64-linux</code>, and Apple Silicon <code>aarch64-darwin</code>. Install the package directly with <code>nix profile install github:Gang-of-Beads/pi-web</code>, or import its Home Manager module for declarative user services.</p>
+        <p>PI WEB's flake supports <code>x86_64-linux</code>, <code>aarch64-linux</code>, and Apple Silicon <code>aarch64-darwin</code>. Install the package directly with <code>nix profile install github:Gang-of-Beads/pi-web/v&lt;version&gt; --accept-flake-config</code>, or import its Home Manager module for declarative user services.</p>
+        <p>Every release is pushed to the public binary cache <code>gang-of-beads.cachix.org</code>, so pinning a release tag downloads PI WEB instead of compiling it. The README's <a href="https://github.com/Gang-of-Beads/pi-web#install-with-nix">Install with Nix</a> section covers trusting the cache and why the module needs the flake's own package.</p>
         <p>The Home Manager module works from either a NixOS or nix-darwin configuration. It manages separate <code>pi-web-sessiond</code> and <code>pi-web</code> services, so restarting the web service does not stop active sessions owned by the daemon.</p>
-        <pre><code>inputs.pi-web.url = "github:Gang-of-Beads/pi-web";
+        <pre><code>inputs.pi-web.url = "github:Gang-of-Beads/pi-web/v&lt;version&gt;";
 
 # In your Home Manager modules:
 inputs.pi-web.homeManagerModules.default
 
 programs.pi-web = {
   enable = true;
+  package = inputs.pi-web.packages.${pkgs.stdenv.hostPlatform.system}.pi-web;
   # settings = { host = "127.0.0.1"; port = 8504; };
 };</code></pre>
         <p>State defaults to <code>~/.pi-web</code>; configuration defaults to <code>~/.config/pi-web/config.json</code>. Set <code>dataDir</code>, <code>configPath</code>, or <code>environment</code> in <code>programs.pi-web</code> to override them. If <code>settings</code> is set, Home Manager owns the JSON file and Settings UI/API edits are replaced on activation; leave it unset for a writable user-managed configuration file.</p>
