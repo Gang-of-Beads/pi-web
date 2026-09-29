@@ -419,6 +419,22 @@ Verdict: **PASS: no P0 or P1.** The lane verified that no local hold id leaks fr
 | P2-2 | A Stop during a direct slash command whose handler parks waited out the 5 s bound, then stopped nothing | TRUE | Fixed: Stop does not wait for a command handoff, the same rule gate 2's G2 set for a command inside a steer batch. Teardown still waits within its own 5 s bound (limitation 7) |
 | Notes | (a) A direct handoff put back transiently while Stop clears is not announced; it waits and runs later. (b) `hasQueuedPromptClientId` was dead code. (c) `getArchived` compares cwd exactly, now also for the startup resume skip | (a) TRUE (b) TRUE (c) not reproduced | (a) Recorded as limitation 9. (b) Removed. (c) Pre-existing. A mismatch opens the session through the live path, which fails because the file is archived, so the messages keep waiting. Nothing is lost or run in the archive |
 
+## Phase 1 acceptance (2026-09-29, at 2d214b0e)
+
+All four merge conditions hold:
+- **Repros:** the 18 ordering repros pass with their assertions unchanged. S1 and S2 stay `it.fails` as SDK behaviour the daemon works around. The status revision and join frame moved to phase 3, and the refusal frame to phase 2.
+- **Suite:** the full suite is green (5748 passed, 32 expected fail for later phases, 5 skipped), and tsc, eslint and knip are clean.
+- **Live:** `scripts/probe-inbox-order.mjs` passes 29/29 on 8505. It covers:
+  - order under a running tool;
+  - Stop hands messages back;
+  - photo-only, id-less and named messages read mid-run;
+  - daemon restart with a message waiting.
+
+  The photo leg fails on a build of 0380b287: the named message's row stays pending for the whole run. So the check proves the fix, not just the path.
+- **Review:** the tenth fresh gate lane passed with no P0 or P1, and every P2 it reported is fixed or recorded below.
+
+Ten gate lanes found 13 P1s in all; each is fixed and pinned by a test that fails on the commit before its fix.
+
 ## Phase 1 known limitations
 
 Each was found by a review lane, checked against the source, and left unfixed for the reason given.

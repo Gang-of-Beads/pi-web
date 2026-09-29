@@ -5,7 +5,13 @@
  * wait in the inbox in that order, and reach the transcript once each, in that order.
  * Leg 2: Stop while two messages wait hands both back, the ledger says withdrawn, the inbox
  * file empties, and neither ever reaches the transcript.
- * Leg 3: a message waiting when the daemon dies is handed after restart by the daemon itself -
+ * Leg 3: a photo-only message, a message without an id and one with an id, all sent while the
+ * first of two tools runs, are read by the real SDK at the next turn. Both ids settle succeeded
+ * while the second tool still runs - the SDK does not remove a read message without text from its
+ * lane, and before the daemon did, the empty entry it left shifted the lane's identities so the
+ * named message's row stayed pending until the run ended - and nothing read lingers in pi's lanes
+ * afterwards.
+ * Leg 4: a message waiting when the daemon dies is handed after restart by the daemon itself -
  * the inbox file empties and the daemon logs the resume before this probe touches the session.
  */
 import { execSync } from "node:child_process";
@@ -35,11 +41,19 @@ function finish() {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function prompt(text, clientMessageId, streamingBehavior) {
+const PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+async function prompt(text, clientMessageId, streamingBehavior, attachments) {
   const answer = await fetch(`${BASE}/api/sessions/${SESSION}/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cwd: CWD, text, clientMessageId, ...(streamingBehavior === undefined ? {} : { streamingBehavior }) }),
+    body: JSON.stringify({
+      cwd: CWD,
+      text,
+      ...(clientMessageId === undefined ? {} : { clientMessageId }),
+      ...(streamingBehavior === undefined ? {} : { streamingBehavior }),
+      ...(attachments === undefined ? {} : { attachments }),
+    }),
   });
   return answer.status;
 }
@@ -135,6 +149,37 @@ await until("agent idle after stop", async () => (await status()).isStreaming ==
 await sleep(8000);
 const afterStop = await transcriptText();
 record("stopped messages never reach the transcript", stopped.every((message) => !afterStop.includes(message.text)), "checked 8 s after idle");
+
+const twoTools = await prompt("Run the bash tool with exactly: sleep 12. After it finishes, run the bash tool with exactly: sleep 40. Then reply done.", `${MARK}-busy-photo`);
+record("busy-photo: two-tool prompt accepted", twoTools === 200, `status=${String(twoTools)}`);
+if (await until("busy-photo: agent is running the first tool", async () => (await status()).isStreaming === true, 30_000) === undefined) finish();
+await sleep(3000);
+const photo = { id: `${MARK}-p` };
+const anonymous = { text: `Reply with exactly: ${MARK}-N` };
+const named = { id: `${MARK}-m`, text: `Reply with exactly: ${MARK}-M` };
+const photoCode = await prompt("", photo.id, undefined, [{ kind: "image", data: PNG_1X1, mimeType: "image/png" }]);
+record("accepted a photo-only message while busy", photoCode === 200, `status=${String(photoCode)}`);
+const anonymousCode = await prompt(anonymous.text, undefined);
+record("accepted a message without an id while busy", anonymousCode === 200, `status=${String(anonymousCode)}`);
+const namedCode = await prompt(named.text, named.id);
+record("accepted a message with an id while busy", namedCode === 200, `status=${String(namedCode)}`);
+const midRun = await until("photo and named message settle succeeded while the run continues", async () => {
+  const current = await status();
+  const outcomes = (await post("operations", { operationIds: [photo.id, named.id] })).body?.outcomes ?? {};
+  if (outcomes[photo.id] === "succeeded" && outcomes[named.id] === "succeeded") return { streaming: current.isStreaming, outcomes };
+  return current.isStreaming === true ? undefined : { streaming: false, outcomes };
+}, 90_000, 1000);
+if (midRun !== undefined) record("photo and named message settle succeeded while the run continues", midRun.streaming === true, JSON.stringify(midRun));
+const read = await until("photo and named message settle succeeded", async () => {
+  const outcomes = (await post("operations", { operationIds: [photo.id, named.id] })).body?.outcomes ?? {};
+  return outcomes[photo.id] === "succeeded" && outcomes[named.id] === "succeeded" ? outcomes : undefined;
+}, 120_000, 3000);
+if (read !== undefined) record("photo and named message settle succeeded", true, JSON.stringify(read));
+await until("agent idle after the photo leg", async () => (await status()).isStreaming === false, 120_000, 2000);
+const photoTranscript = await transcriptText();
+record("message without an id and message with an id each reached the transcript once", occurrences(photoTranscript, `"${anonymous.text}"`) === 1 && occurrences(photoTranscript, `"${named.text}"`) === 1, [anonymous.text, named.text].map((text) => occurrences(photoTranscript, `"${text}"`)).join(","));
+const lanesAfter = (await status()).queuedMessages ?? [];
+record("no read message lingers in pi's lanes", lanesAfter.length === 0, JSON.stringify(lanesAfter));
 
 await startBusyRun("busy-2");
 const parked = { id: `${MARK}-d`, text: `Reply with exactly: ${MARK}-D` };
