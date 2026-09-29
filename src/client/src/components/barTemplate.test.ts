@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
  * The producers are enumerated here because the drift lived across files:
  * a fixed producer never protects its siblings.
  */
-const read = (path: string): string => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
+const read = (path: string): string => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8").replace(/\r\n/gu, "\n");
 const rule = (css: string, selector: string): string => {
   const start = css.indexOf(selector);
   if (start === -1) throw new Error(`${selector} not found`);
