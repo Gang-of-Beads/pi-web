@@ -154,7 +154,7 @@ describe("chat message normalization", () => {
 
   it("shows assistant model errors as system chat messages", () => {
     expect(normalizeMessage({ role: "assistant", content: [], stopReason: "error", errorMessage: "429 rate limit", timestamp: "2026-05-09T12:00:00.000Z", provider: "openai", model: "gpt-4.1" })).toEqual([
-      { role: "system", parts: [{ type: "text", text: "Model response failed: 429 rate limit" }], meta: { timestamp: "2026-05-09T12:00:00.000Z", model: { provider: "openai", id: "gpt-4.1" } } },
+      { role: "system", parts: [{ type: "text", text: "Model response failed: 429 rate limit" }], meta: { timestamp: "2026-05-09T12:00:00.000Z", model: { provider: "openai", id: "gpt-4.1" }, failedAttempt: true } },
     ]);
   });
 
@@ -176,8 +176,8 @@ describe("chat message normalization", () => {
 
   it("keeps partial assistant content and adds a visible error line", () => {
     expect(normalizeMessage({ role: "assistant", content: [{ type: "text", text: "partial answer" }], stopReason: "error", errorMessage: "connection lost" })).toEqual([
-      textMessage("assistant", "partial answer"),
-      textMessage("system", "Model response failed: connection lost"),
+      { ...textMessage("assistant", "partial answer"), meta: { failedAttempt: true } },
+      { ...textMessage("system", "Model response failed: connection lost"), meta: { failedAttempt: true } },
     ]);
   });
 

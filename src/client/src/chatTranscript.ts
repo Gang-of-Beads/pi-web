@@ -2,6 +2,7 @@ import { appendText, appendThinking, askUserRecordFromToolDetails, normalizeMess
 import { deliverySettled } from "./messageDelivery";
 import { resolveArrival } from "./transcriptArrival";
 import { placeByTimestamp } from "./transcriptOrder";
+import { withoutRetriedAttempt } from "./retriedAttempt";
 import type { ChatLine, ToolExecutionPart } from "./components/shared";
 import { carryDeliveryForward, findTrackedUserLineIndex, isEchoOfTrackedMessage } from "./messageDelivery";
 import { appendShellChunk, finalizeShellMessage, shellStartMessage } from "./shellMessages";
@@ -69,6 +70,7 @@ export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent
   if (event.type === "command.output") return [...messages, textMessage("system", event.message)];
   if (event.type === "session.error") return [...messages, textMessage("system", event.message)];
   if (event.type === "message.end") return event.message === undefined ? undefined : applyFinalMessage(messages, event.message);
+  if (event.type === "pi.event" && event.eventType === "auto_retry_start") return withoutRetriedAttempt(messages);
   return undefined;
 }
 

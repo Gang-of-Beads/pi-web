@@ -120,6 +120,8 @@ export interface ChatLine {
     timestamp?: string;
     /** The provider's id for the reply this line belongs to; see messageIdentity.ts. */
     responseId?: string;
+    /** Built from an assistant reply that ended in an error; see retriedAttempt.ts. */
+    failedAttempt?: true;
     /** Present only on messages this browser sent; see MessageDelivery. */
     delivery?: MessageDelivery;
     clientMessageId?: string;

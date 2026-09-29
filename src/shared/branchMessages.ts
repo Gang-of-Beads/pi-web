@@ -16,6 +16,32 @@
  * places each decided for themselves what counted as a message.
  */
 
+/**
+ * The failed attempts pi retried: an assistant message that ended in an error and
+ * that a `context_edit` then removed with no replacement. That pair is pi's own
+ * recovery signature (`auto_retry_start`, then `_omitRecoveryAttempt`), so nothing
+ * else an extension edits out of the model's context is hidden by it.
+ *
+ * Owner, 2026-09-30: "完全重试失败之前的错误不要显示出来" - a failure the retry then
+ * replaced is not the turn's outcome; only the attempt nobody retried is.
+ */
+export function retriedAttemptIds(entries: readonly unknown[]): Set<string> {
+  const errored = new Set<string>();
+  const retried = new Set<string>();
+  for (const entry of entries) {
+    if (!isRecord(entry)) continue;
+    const id = getString(entry, "id");
+    if (id !== undefined && entry["type"] === "message" && isErroredAssistant(entry["message"])) errored.add(id);
+    const target = getString(entry, "targetId");
+    if (entry["type"] === "context_edit" && entry["replacement"] === null && target !== undefined && errored.has(target)) retried.add(target);
+  }
+  return retried;
+}
+
+function isErroredAssistant(message: unknown): boolean {
+  return isRecord(message) && message["role"] === "assistant" && message["stopReason"] === "error";
+}
+
 /** Whether the transcript renders this entry, and so whether it is counted. */
 export function isReadableBranchEntry(entry: unknown): boolean {
   if (!isRecord(entry)) return false;
@@ -31,11 +57,15 @@ export function isReadableBranchEntry(entry: unknown): boolean {
  * message.
  */
 export function branchMessages(entries: Iterable<unknown>): unknown[] {
+  const branch = [...entries];
+  const retried = retriedAttemptIds(branch);
   const messages: unknown[] = [];
   let thinkingLevel: string | undefined;
-  for (const entry of entries) {
+  for (const entry of branch) {
     if (!isRecord(entry)) continue;
-    if (entry["type"] === "message") messages.push(annotateAssistantThinkingLevel(entry["message"], thinkingLevel));
+    if (entry["type"] === "message") {
+      if (!retried.has(getString(entry, "id") ?? "")) messages.push(annotateAssistantThinkingLevel(entry["message"], thinkingLevel));
+    }
     else if (entry["type"] === "thinking_level_change") {
       const level = getString(entry, "thinkingLevel");
       if (level !== undefined) thinkingLevel = level;

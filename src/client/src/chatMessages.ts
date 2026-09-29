@@ -88,7 +88,13 @@ export function normalizeMessage(message: unknown): ChatLine[] {
   const displayRole = role === "assistant" && visible.length > 0 && visible.every((part) => part.type === "skillRead") ? "skill" : role;
   const lines = visible.length > 0 ? [withMessageMeta({ role: displayRole, parts: visible, ...(source === undefined ? {} : { source }) }, message)] : [];
   const errorLine = assistantErrorLine(message);
-  return errorLine === undefined ? lines : [...lines, withMessageMeta(errorLine, message)];
+  if (errorLine === undefined) return lines;
+  return [...lines, withMessageMeta(errorLine, message)].map(asFailedAttempt);
+}
+
+/** Rows of an assistant reply that ended in an error: pi may retry it, and then they go. */
+function asFailedAttempt(line: ChatLine): ChatLine {
+  return { ...line, meta: { ...line.meta, failedAttempt: true } };
 }
 
 function assistantErrorLine(message: unknown): ChatLine | undefined {
