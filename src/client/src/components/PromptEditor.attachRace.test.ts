@@ -85,6 +85,42 @@ describe("sending while a file is still being read", () => {
     expect(Reflect.get(editor, "draft")).toBe("");
   });
 
+  it("gives a session its attached image back when the reader returns to it", async () => {
+    const editor = await mount("hold-return");
+    await attachFile(editor);
+
+    editor.sessionId = "hold-other";
+    await editor.updateComplete;
+    const elsewhere = attachmentsOf(editor).length;
+    editor.sessionId = "hold-return";
+    await editor.updateComplete;
+
+    expect({ elsewhere, back: attachmentsOf(editor).length }).toEqual({ elsewhere: 0, back: 1 });
+  });
+
+  it("keeps a file that finished reading after the switch for the session it was attached in", async () => {
+    const editor = await mount("hold-late");
+    const attaching = attachFile(editor);
+    editor.sessionId = "hold-late-other";
+    await editor.updateComplete;
+    await attaching;
+
+    editor.sessionId = "hold-late";
+    await editor.updateComplete;
+
+    expect(attachmentsOf(editor)).toHaveLength(1);
+  });
+
+  it("gives the image back to a new composer for the same session", async () => {
+    const first = await mount("hold-remount");
+    await attachFile(first);
+    first.remove();
+
+    const second = await mount("hold-remount");
+
+    expect(attachmentsOf(second)).toHaveLength(1);
+  });
+
   it("restores a failed send when the session is unchanged", async () => {
     const editor = await mount();
     editor.onSend = () => Promise.resolve(false);
@@ -96,9 +132,9 @@ describe("sending while a file is still being read", () => {
   });
 });
 
-async function mount(): Promise<PromptEditor> {
+async function mount(sessionId = "s"): Promise<PromptEditor> {
   const editor = new PromptEditor();
-  editor.sessionId = "s";
+  editor.sessionId = sessionId;
   editor.machineId = "local";
   document.body.append(editor);
   await editor.updateComplete;

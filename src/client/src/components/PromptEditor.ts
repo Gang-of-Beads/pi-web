@@ -17,6 +17,7 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
+import { addToHeldComposerAttachments, holdComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
 import { advancePendingPrompt, isNetworkFailure, loadPendingPrompts, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
 import { classifySubmission, handleOutcome } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
@@ -349,11 +350,13 @@ export class PromptEditor extends LitElement {
     this.currentInputMode = inputModeForDraft(this.draft);
     this.completions = [];
     this.selectedIndex = 0;
-    // Attachments belong to the session they were captured in: carried across
-    // a switch they would deliver session A's image into session B's send.
-    // First render restores, it does not clear.
-    if (hadRendered && (sessionChanged || machineChanged)) {
-      this.attachments = [];
+    const switched = hadRendered && (sessionChanged || machineChanged);
+    if (switched && previousKey !== undefined) holdComposerAttachments(previousKey, this.attachments);
+    if (switched || !hadRendered) {
+      const returning = currentKey === undefined ? [] : takeHeldComposerAttachments(currentKey).map((attachment) => this.withAttachmentId(attachment));
+      this.attachments = [...returning, ...(switched ? [] : this.attachments)];
+    }
+    if (switched) {
       this.attachmentError = undefined;
       this.zoomedAttachment = undefined;
     }
@@ -414,6 +417,8 @@ export class PromptEditor extends LitElement {
   }
 
   override disconnectedCallback(): void {
+    const key = draftStorageKey(this.machineId, this.sessionId);
+    if (key !== undefined) holdComposerAttachments(key, this.attachments);
     window.removeEventListener("online", this.flushPendingPrompts);
     window.removeEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
     if (this.pendingRevealTimer !== undefined) {
@@ -781,15 +786,22 @@ export class PromptEditor extends LitElement {
     } finally {
       this.attachingCount -= 1;
     }
-    // Capture is async: a session switch while it runs clears the composer
-    // per the willUpdate rule, and the late result must not re-enter the
-    // session it no longer belongs to.
-    if (machineSessionKey(this.machineId, this.sessionId ?? "") !== scopeKey) return;
+    // Capture is async: after a session switch the result belongs to the
+    // session it was attached in, not the composer now showing another.
+    if (machineSessionKey(this.machineId, this.sessionId ?? "") !== scopeKey) {
+      addToHeldComposerAttachments(scopeKey, captured.attachments);
+      return;
+    }
     const { attachments, error } = captured;
     if (attachments.length > 0) {
-      this.attachments = [...this.attachments, ...attachments.map((attachment) => ({ id: `attachment-${String(++this.attachmentSeq)}`, ...attachment }))];
+      this.attachments = [...this.attachments, ...attachments.map((attachment) => this.withAttachmentId(attachment))];
     }
     if (error !== undefined) this.attachmentError = error;
+  }
+
+  /** A fresh id from this composer: held attachments may come from an earlier composer whose ids collide. */
+  private withAttachmentId(attachment: CapturedAttachment): PendingAttachment {
+    return { ...attachment, id: `attachment-${String(++this.attachmentSeq)}` };
   }
 
   private currentAttachments(): PromptAttachment[] {

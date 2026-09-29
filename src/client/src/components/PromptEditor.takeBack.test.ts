@@ -66,9 +66,12 @@ describe("prompt-editor takeBack", () => {
   });
 });
 
+let mounted = 0;
+
+/** A fresh session per test: a removed composer holds its images for its session, as the app wants. */
 async function mountEditor(): Promise<PromptEditor> {
   const editor = new PromptEditor();
-  editor.sessionId = "session-1";
+  editor.sessionId = `session-${String(++mounted)}`;
   editor.cwd = "/repo";
   document.body.append(editor);
   await editor.updateComplete;
