@@ -7,7 +7,7 @@ function frame(seq: number): SessionUiEvent {
 }
 
 describe("review-repro realtime: a repair flushes held frames in arrival order, not seq order", () => {
-  it.fails("two frames that arrive swapped during a repair are applied swapped", async () => {
+  it("two frames that arrive swapped during a repair are applied swapped", async () => {
     const applied: number[] = [];
     const repair = new SessionGapRepair({
       apply: (event) => { applied.push(Number(Reflect.get(event, "seq"))); },
@@ -22,7 +22,7 @@ describe("review-repro realtime: a repair flushes held frames in arrival order, 
     expect(applied, "the replay itself carried 10 then 11; the held copies win and keep the wire arrival order").toEqual([9, 10, 11]);
   });
 
-  it.fails("applied seqs survive a reconnect into a restarted seq space, so the new instance replay is discarded as already seen", async () => {
+  it("applied seqs survive a reconnect into a restarted seq space, so the new instance replay is discarded as already seen", async () => {
     const applied: string[] = [];
     const replayFrames: SessionUiEvent[] = [2, 3].map((seq) => ({ type: "assistant.delta", text: `new-${String(seq)}`, seq }));
     const repair = new SessionGapRepair({

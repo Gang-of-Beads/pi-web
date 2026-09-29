@@ -91,7 +91,7 @@ describe("SessionController stream seed + watermark reconciliation", () => {
     const selecting = controller.selectSession(oldSession, { updateUrl: false });
     // Events arriving during the join fetch are buffered by selectSession.
     socket.emit({ type: "assistant.delta", text: "STALE", seq: 2 });
-    socket.emit({ type: "assistant.delta", text: " live", seq: 6 });
+    socket.emit({ type: "assistant.delta", text: " live", seq: 5 });
 
     page.resolve({ messages: [{ role: "user", content: "question" }], start: 0, total: 1 });
     statusResult.resolve({ ...status(oldSession.id), isStreaming: true });

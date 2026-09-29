@@ -405,8 +405,8 @@ export class SessionController {
       // falls back to the same full refresh a reconnect takes.
       this.gapRepair = new SessionGapRepair({
         apply: (event) => { this.applyEvent(event); },
-        request: async (sinceSeq) => {
-          const sync = await this.api.streamSync(session, sinceSeq, machineId, this.streamWatermark?.epoch);
+        request: async (sinceSeq, epoch) => {
+          const sync = await this.api.streamSync(session, sinceSeq, machineId, epoch ?? this.streamWatermark?.epoch);
           if (sync.kind !== "replay") return { ok: false };
           const frames: SessionUiEvent[] = [];
           for (const raw of sync.frames) {
@@ -433,12 +433,12 @@ export class SessionController {
           void this.closeUnverifiedOperations(session);
         },
         onMalformed: () => { this.dialogScope.requestResync(); },
-        onGap: (lastSeen: number) => { void this.gapRepair?.onGap(lastSeen); },
+        onGap: gapsSeenByTheRepair,
       });
       await this.requestSelectedSessionRefresh({ session, machineId, selectionSeq: seq });
       if (!this.isCurrentRefreshTarget({ session, machineId, selectionSeq: seq })) return;
       void this.refreshAvailableThinkingLevels();
-      for (const event of socketBuffer) this.applyEvent(event);
+      for (const event of socketBuffer) this.routeLiveEvent(event);
       this.socket.setHandler((event) => { this.routeLiveEvent(event); });
       this.onSelectedSessionReady?.({ machineId, session });
       if (options?.updateUrl !== false) this.updateUrl();
@@ -1675,6 +1675,7 @@ export class SessionController {
         if (frame.seq !== undefined) lastSeq = Math.max(lastSeq, frame.seq);
       }
       this.streamWatermark = { sessionId: target.session.id, seq: lastSeq, ...(watermark.epoch === undefined ? {} : { epoch: watermark.epoch }) };
+      this.gapRepair?.seed(this.streamWatermark);
       this.setState({
         messages,
         status,
@@ -1713,6 +1714,7 @@ export class SessionController {
       const messages = this.transcripts.seedStreamingPartial(carried, streamSnapshot.partial);
       const snapshotWatermark = { seq: streamSnapshot.seq, ...(streamSnapshot.epoch === undefined ? {} : { epoch: streamSnapshot.epoch }) };
       this.streamWatermark = { sessionId: target.session.id, ...snapshotWatermark };
+      this.gapRepair?.seed(snapshotWatermark);
       // The page just read is current through this seq: a later reload can
       // replay frames after it instead of re-fetching the page.
       this.transcripts.setWatermark(key, snapshotWatermark);
@@ -2382,11 +2384,10 @@ export class SessionController {
   }
 
   /**
-   * Live frames flow through the gap repair once the join flush is done: the
-   * machine applies them straight through while idle and holds them while a
-   * replay is in flight. The join flush itself bypasses the machine on
-   * purpose - the snapshot watermark already dedups it, and the monitor's
-   * watermark starts at or above the flushed range.
+   * Every live frame, the join buffer's included, flows through the gap repair: seeded with
+   * the snapshot's watermark, it applies frames in seq order exactly once and fetches any
+   * range it sees missing, including frames published between the snapshot and the
+   * subscription.
    */
   private routeLiveEvent(event: SessionUiEvent): void {
     const seq: unknown = Reflect.get(event, "seq");
@@ -2903,6 +2904,16 @@ function sessionMessageCountPatch(state: AppState, sessionId: string, messageCou
 
 function isHighFrequencyTranscriptEvent(event: SessionUiEvent): boolean {
   return event.type === "assistant.delta" || event.type === "assistant.thinking.delta" || event.type === "shell.chunk";
+}
+
+/**
+ * The selected session's socket reports gaps to nobody: the gap repair, seeded with the
+ * snapshot's watermark, sees every jump itself - including one before the first live frame,
+ * which the socket's own monitor cannot see - and a report from the socket during the join
+ * would start a repair before the repair knows where the stream stands.
+ */
+function gapsSeenByTheRepair(): void {
+  return undefined;
 }
 
 function isSessionNotFoundError(error: unknown): boolean {

@@ -93,9 +93,8 @@ describe("SessionGapRepair", () => {
 
     await settled;
     expect(requests).toEqual([1]);
-    // The transcript's timestamp placement puts the late-applying held frame
-    // back in its right position; the apply sequence here is the machine's.
-    expect(applied).toEqual(["before@1", "two@2", "tail@9", "revealing@4"]);
+    // Replayed and held frames apply merged by seq, one copy each.
+    expect(applied).toEqual(["before@1", "two@2", "revealing@4", "tail@9"]);
   });
 
   it("falls back to one resync on the resync verdict, applying held frames first", async () => {
@@ -125,5 +124,50 @@ describe("SessionGapRepair", () => {
     });
     await repair.onGap(1);
     expect(resync).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SessionGapRepair seeded from a snapshot", () => {
+  function seeded(frames: SessionUiEvent[] = []) {
+    const applied: string[] = [];
+    const requests: { sinceSeq: number; epoch: string | undefined }[] = [];
+    const repair = new SessionGapRepair({
+      apply: (event) => { applied.push(("text" in event ? event.text : event.type) + seqSuffix(event)); },
+      request: (sinceSeq, epoch) => {
+        requests.push({ sinceSeq, epoch });
+        return Promise.resolve({ ok: true, frames });
+      },
+      resync: vi.fn(),
+    });
+    repair.seed({ seq: 5, epoch: "daemon-a.1" });
+    return { repair, applied, requests };
+  }
+  const settle = async (): Promise<void> => { for (let index = 0; index < 5; index += 1) await Promise.resolve(); };
+  const inEpoch = (text: string, seq: number, epoch: string): SessionUiEvent => ({ type: "assistant.delta", text, seq, epoch });
+
+  it("drops frames the snapshot already reflects, and applies the next one", () => {
+    const { repair, applied, requests } = seeded();
+    repair.onLiveFrame(inEpoch("reflected", 5, "daemon-a.1"), 5);
+    repair.onLiveFrame(inEpoch("next", 6, "daemon-a.1"), 6);
+    expect({ applied, requests }).toEqual({ applied: ["next@6"], requests: [] });
+  });
+
+  it("sees a jump past the snapshot itself and fetches the missed range in the snapshot's epoch", async () => {
+    const { repair, applied, requests } = seeded([inEpoch("missed", 6, "daemon-a.1")]);
+    repair.onLiveFrame(inEpoch("revealing", 7, "daemon-a.1"), 7);
+    await settle();
+    expect({ applied, requests }).toEqual({ applied: ["missed@6", "revealing@7"], requests: [{ sinceSeq: 5, epoch: "daemon-a.1" }] });
+  });
+
+  it("starts over in a new epoch: its seqs are not the old space's, and its gaps are fetched in it", async () => {
+    const { repair, applied, requests } = seeded([inEpoch("new two", 2, "daemon-b.1")]);
+    repair.onLiveFrame(inEpoch("old six", 6, "daemon-a.1"), 6);
+    repair.onLiveFrame(inEpoch("new one", 1, "daemon-b.1"), 1);
+    repair.onLiveFrame(inEpoch("new three", 3, "daemon-b.1"), 3);
+    await settle();
+    expect({ applied, requests }).toEqual({
+      applied: ["old six@6", "new one@1", "new two@2", "new three@3"],
+      requests: [{ sinceSeq: 1, epoch: "daemon-b.1" }],
+    });
   });
 });

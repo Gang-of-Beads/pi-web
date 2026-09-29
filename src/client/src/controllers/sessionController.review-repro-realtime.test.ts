@@ -72,7 +72,7 @@ describe("review-repro realtime: the join window and the gap monitor", () => {
   });
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it.fails("a frame published between the snapshot watermark and the first live frame is never repaired", async () => {
+  it("a frame published between the snapshot watermark and the first live frame is never repaired", async () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
     const syncCalls: number[] = [];
     const api: typeof defaultApi = {
@@ -93,7 +93,7 @@ describe("review-repro realtime: the join window and the gap monitor", () => {
     expect(state.status?.isStreaming).toBe(false);
   });
 
-  it.fails("a gap seen during the join is replayed on top of frames the join flush already applied", async () => {
+  it("a gap seen during the join is replayed on top of frames the join flush already applied", async () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
     const snapshot = deferred<{ seq: number; partial: null }>();
     const replay = deferred<{ kind: "replay"; sinceSeq: number; frames: string[] }>();

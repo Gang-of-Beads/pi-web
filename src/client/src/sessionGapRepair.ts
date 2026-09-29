@@ -1,25 +1,23 @@
 /**
- * Repairing a counted gap in the live session stream.
+ * Ordered application of one session's live stream: every frame applies once, in seq order,
+ * with nothing missing.
  *
- * TCP keeps the socket ordered, so a seq jump means frames were never sent
- * (the hub skips serialization when nobody listened), lost across a reconnect,
- * or dropped by a validator. "Highest seq seen" is not "set of frames
- * applied": the revealing frame and its live successors may already be in
- * hand while older frames are gone. The machine holds the live frames, puts
- * the missed range back in front of them, flushes, and is done - the replay
- * answers up to the ring's current, which is everything the server ever
- * stamped; anything beyond it does not exist yet and arrives live.
+ * TCP keeps the socket ordered, so a seq jump means frames were never sent (the hub skips
+ * serialization when nobody listened), lost across a reconnect, or dropped by a validator -
+ * or were published between the snapshot's watermark and the subscription. The machine is
+ * seeded with the snapshot's watermark, sees the jump itself, holds the revealing frame and
+ * its successors, fetches the missed range, and applies the replayed and held frames merged
+ * by seq. Held frames used to flush in arrival order after the replay, and the join flush
+ * bypassed the machine, so a frame could apply out of order or twice.
  *
- * The dedup invariant is structural, not bookkeeping: a frame applies iff its
- * seq was never applied and is not held in the buffer. Replayed frames below
- * the held frontier are the missing ones; replayed frames at or above it are
- * duplicates of held frames; held frames flush only if the replay did not
- * already cover them. Everything else - the resync verdict, a failed
- * request - falls back to the full read, exactly once.
+ * A seq space is one epoch of the daemon's numbering. A frame from another epoch - the
+ * daemon restarted or evicted the ring - starts a new space; so does a lower seq on a frame
+ * that carries no epoch, from a daemon too old to stamp one. Applied seqs of an old space
+ * say nothing about the new one.
  *
- * States: `idle` (frames apply as they arrive), `repairing` (a gap was seen;
- * live frames are held while one replay is fetched and flushed). The request
- * coalesces: gaps seen while a repair runs join it.
+ * States: `idle` (frames apply as they arrive), `repairing` (a gap was seen; live frames are
+ * held while one replay is fetched and flushed). Anything that cannot be replayed - a resync
+ * verdict, a failed request - falls back to the full read, exactly once.
  */
 
 import type { SessionUiEvent } from "../../shared/apiTypes";
@@ -32,19 +30,29 @@ export type GapReplayResult =
 export interface GapRepairOptions {
   /** Apply one frame to the transcript, in order. */
   apply: (event: SessionUiEvent) => void;
-  /** Fetch the frames after `sinceSeq`; resync verdict and failures resolve `{ ok: false }`. */
-  request: (sinceSeq: number) => Promise<GapReplayResult>;
+  /** Fetch the frames after `sinceSeq` in `epoch`; resync verdict and failures resolve `{ ok: false }`. */
+  request: (sinceSeq: number, epoch: string | undefined) => Promise<GapReplayResult>;
   /** Give up on replay and rebuild from the authoritative read, once. */
   resync: () => void;
+}
+
+/** Where the stream stands: the last seq applied or reflected, and the epoch it belongs to. */
+export interface StreamFrontier {
+  seq: number;
+  epoch?: string;
 }
 
 export class SessionGapRepair {
   private state: "idle" | "repairing" = "idle";
   /** Live frames held since the gap was seen, in arrival order. */
   private buffer: SessionUiEvent[] = [];
-  private readonly heldSeqs = new Set<number>();
-  /** Every seq this machine has applied. A set, not a watermark: repairs apply out of seq order (the held frontier flushes after the tail), so "9 applied" must not imply "4 applied". One number per applied frame - bounded by the transcript it mirrors. */
+  /** Every seq applied in the current space; with repairs out of order, "9 applied" must not imply "4 applied". */
   private readonly appliedSeqs = new Set<number>();
+  /** The snapshot's seq: everything at or below it is reflected without having been applied here. */
+  private reflectedThrough: number | undefined;
+  /** The highest seq reflected or applied in the current space. */
+  private frontier: number | undefined;
+  private epoch: string | undefined;
 
   constructor(private readonly options: GapRepairOptions) {}
 
@@ -54,88 +62,120 @@ export class SessionGapRepair {
   }
 
   /**
-   * A live frame. During a repair it is held - applying it now would put it
-   * ahead of the older frames the replay is about to bring back.
+   * Start from a snapshot: everything at or below its seq is already reflected, and the next
+   * frame is expected right after it. A frame published between the snapshot and the
+   * subscription is then a gap like any other, not a silent loss.
+   */
+  seed(watermark: StreamFrontier): void {
+    this.appliedSeqs.clear();
+    this.reflectedThrough = watermark.seq;
+    this.frontier = watermark.seq;
+    this.epoch = watermark.epoch;
+  }
+
+  /**
+   * A live frame. In order, it applies; beyond a gap, it is held and the missed range is
+   * fetched; during a repair, it is held until the replay is in.
    */
   onLiveFrame(event: SessionUiEvent, seq: number | undefined): void {
-    if (this.state === "idle") {
-      this.markApplied(seq);
+    if (this.state !== "idle") {
+      this.buffer.push(event);
+      return;
+    }
+    if (seq === undefined) {
       this.options.apply(event);
       return;
     }
-    if (seq !== undefined) this.heldSeqs.add(seq);
-    this.buffer.push(event);
+    if (this.startsNewSpace(event, seq)) this.enterSpace(frameEpoch(event));
+    if (this.alreadyApplied(seq)) return;
+    const frontier = this.frontier;
+    if (frontier !== undefined && seq > frontier + 1) {
+      this.buffer.push(event);
+      void this.repair(frontier);
+      return;
+    }
+    this.applyFrame(event, seq);
   }
+
   /**
-   * The socket saw a seq jump: everything between the old watermark and this
-   * point is missing. Starts exactly one repair; further gaps join it.
-   * `lastSeen` is the watermark before the jump - the last seq applied.
-   * Returns the repair's promise: production ignores it, tests await it.
+   * A gap seen elsewhere: everything after `lastSeen` is missing. Starts exactly one repair;
+   * further gaps join it. Returns the repair's promise: production ignores it, tests await it.
    */
   onGap(lastSeen: number): Promise<void> {
     if (this.state !== "idle") return Promise.resolve();
+    return this.repair(lastSeen);
+  }
+
+  private repair(sinceSeq: number): Promise<void> {
     this.state = "repairing";
-    return this.runRepair(lastSeen);
+    return this.runRepair(sinceSeq);
   }
 
   private async runRepair(sinceSeq: number): Promise<void> {
     let result: GapReplayResult;
     try {
-      result = await this.options.request(sinceSeq);
+      result = await this.options.request(sinceSeq, this.epoch);
     } catch {
       result = { ok: false };
     }
-    if (!result.ok) {
-      this.fallBackToResync();
-      return;
-    }
-    for (const frame of result.frames) {
-      if (this.alreadyCovered(frame)) continue;
-      this.applyFrame(frame);
-    }
-    // Held frames the replay did not already cover are real arrivals: they
-    // apply now, after everything older than them has been put back.
     const held = this.buffer;
     this.buffer = [];
-    this.heldSeqs.clear();
-    for (const event of held) {
-      if (this.alreadyCovered(event)) continue;
-      this.applyFrame(event);
-    }
     this.state = "idle";
-  }
-
-  private alreadyCovered(event: SessionUiEvent): boolean {
-    const seq = frameSeq(event);
-    if (seq === undefined) return false;
-    return this.appliedSeqs.has(seq) || this.heldSeqs.has(seq);
-  }
-
-  private applyFrame(event: SessionUiEvent): void {
-    this.markApplied(frameSeq(event));
-    this.options.apply(event);
-  }
-
-  private markApplied(seq: number | undefined): void {
-    if (seq !== undefined) this.appliedSeqs.add(seq);
+    if (!result.ok) {
+      this.applyInSeqOrder(held);
+      this.options.resync();
+      return;
+    }
+    this.applyInSeqOrder([...result.frames, ...held]);
   }
 
   /**
-   * The replay is not servable. The buffer's frames are real arrivals - they
-   * apply, in order - and the missing range is rebuilt by the full read,
-   * which also re-syncs every other surface at once. Exactly once: the
-   * caller's resync replaces state wholesale, so this machine retires.
+   * Apply frames merged by seq: one copy per seq, lowest first, none already applied. Frames
+   * without a seq keep their arrival order after the sequenced ones.
    */
-  private fallBackToResync(): void {
-    const held = this.buffer;
-    this.buffer = [];
-    this.heldSeqs.clear();
-    for (const event of held) {
-      if (this.alreadyCovered(event)) continue;
-      this.applyFrame(event);
+  private applyInSeqOrder(frames: readonly SessionUiEvent[]): void {
+    const bySeq = new Map<number, SessionUiEvent>();
+    const unsequenced: SessionUiEvent[] = [];
+    for (const frame of frames) {
+      const seq = frameSeq(frame);
+      if (seq === undefined) unsequenced.push(frame);
+      else if (!bySeq.has(seq)) bySeq.set(seq, frame);
     }
-    this.state = "idle";
-    this.options.resync();
+    for (const seq of [...bySeq.keys()].sort((left, right) => left - right)) {
+      const frame = bySeq.get(seq);
+      if (frame !== undefined && !this.alreadyApplied(seq)) this.applyFrame(frame, seq);
+    }
+    for (const frame of unsequenced) this.options.apply(frame);
+  }
+
+  /**
+   * Whether a frame belongs to another seq space than the one applied so far: another epoch,
+   * or - for a frame without an epoch - a live seq that went back below what this space has
+   * already applied, which an ordered socket only delivers when the numbering restarted.
+   */
+  private startsNewSpace(event: SessionUiEvent, seq: number): boolean {
+    const epoch = frameEpoch(event);
+    if (epoch !== undefined) return this.epoch !== undefined && epoch !== this.epoch;
+    return this.appliedSeqs.size > 0 && this.frontier !== undefined && seq < this.frontier;
+  }
+
+  private enterSpace(epoch: string | undefined): void {
+    this.appliedSeqs.clear();
+    this.reflectedThrough = undefined;
+    this.frontier = undefined;
+    this.epoch = epoch;
+  }
+
+  /** Reflected by the snapshot, or applied since. */
+  private alreadyApplied(seq: number): boolean {
+    return this.appliedSeqs.has(seq) || (this.reflectedThrough !== undefined && seq <= this.reflectedThrough);
+  }
+
+  private applyFrame(event: SessionUiEvent, seq: number): void {
+    this.appliedSeqs.add(seq);
+    this.frontier = this.frontier === undefined ? seq : Math.max(this.frontier, seq);
+    this.epoch ??= frameEpoch(event);
+    this.options.apply(event);
   }
 }
 
@@ -143,4 +183,9 @@ export class SessionGapRepair {
 function frameSeq(event: SessionUiEvent): number | undefined {
   const seq: unknown = Reflect.get(event, "seq");
   return typeof seq === "number" && Number.isFinite(seq) ? seq : undefined;
+}
+
+function frameEpoch(event: SessionUiEvent): string | undefined {
+  const epoch: unknown = Reflect.get(event, "epoch");
+  return typeof epoch === "string" ? epoch : undefined;
 }
