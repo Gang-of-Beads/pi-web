@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
-import { OwnedPromptQueue } from "./ownedPromptQueue.js";
+import { OwnedPromptQueue, dataDirInboxLocation } from "./ownedPromptQueue.js";
 import { CapturingSessionEventHub, fakeRuntime, handedAs, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
 
 /**
@@ -688,7 +688,7 @@ describe("fourth gate-lane findings", () => {
 });
 
 describe("fifth gate-lane findings", () => {
-  it("F1: closing an old runtime does not forget the commit expectations of one reopened under the same session id", async () => {
+  it("F1 / gate 6 P1-1: a session is not reopened while its old runtime is closing, and the message sent meanwhile lands stamped", async () => {
     const dir = await mkdtemp(join(tmpdir(), "inbox-review-f1-"));
     const dataDir = await mkdtemp(join(tmpdir(), "inbox-review-f1-data-"));
     const old = fakeRuntime("f1-reopen", { isStreaming: false });
@@ -714,10 +714,13 @@ describe("fifth gate-lane findings", () => {
     await service.status(ref);
     const closing = service.stop(ref);
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await service.prompt(ref, "hello again", undefined, undefined, { clientMessageId: "g5f1-x-0001" });
-    await vi.waitFor(() => { expect(texts(fresh.calls.prompt)).toEqual(["hello again"]); });
+    const sending = service.prompt(ref, "hello again", undefined, undefined, { clientMessageId: "g5f1-x-0001" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect({ runtimesCreated: created, handedToFresh: fresh.calls.prompt.length }).toEqual({ runtimesCreated: 1, handedToFresh: 0 });
     releaseAbort();
     await closing;
+    await sending;
+    await vi.waitFor(() => { expect(texts(fresh.calls.prompt)).toEqual(["hello again"]); });
     const committed: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "hello again" }] };
     fresh.emit({ type: "message_start", message: committed });
     expect(committed["clientMessageId"]).toBe("g5f1-x-0001");
@@ -785,6 +788,34 @@ describe("fifth gate-lane findings", () => {
     await service.prompt(ref, "steer during it", undefined, undefined, { clientMessageId: "g5f3-s-001" });
     fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect([...lane]).toEqual(["steer during it"]); });
+    await service.dispose();
+  });
+});
+
+describe("sixth gate-lane findings", () => {
+  it("P2-1: a restore that lands after the session closed is still written to the inbox file", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "inbox-review-p21-"));
+    const queue = new OwnedPromptQueue(dataDirInboxLocation(dataDir));
+    const entry = { clientMessageId: "g6p21-e-001", lane: "steer" as const, text: "refused during close", images: [], acceptedAt: "", echoUserMessage: false };
+    await queue.open("p21-late", "/workspace");
+    await queue.push("p21-late", "/workspace", entry);
+    await queue.take("p21-late", 1);
+    queue.forgetSession("p21-late");
+    await queue.restoreFront("p21-late", [entry]);
+    const reopened = new OwnedPromptQueue(dataDirInboxLocation(dataDir));
+    expect((await reopened.open("p21-late", "/workspace")).map((waiting) => waiting.clientMessageId)).toEqual(["g6p21-e-001"]);
+  });
+
+  it("P2-2: a take-back that fails at close does not skip the runtime's abort and disposal", async () => {
+    const { fake, service, ref, lane } = await inboxService("p22-takeback-fault");
+    await service.prompt(ref, "unread", undefined, undefined, { clientMessageId: "g6p22-s-001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["unread"]); });
+    const queue: unknown = Reflect.get(service, "ownedQueue");
+    if (!(queue instanceof OwnedPromptQueue)) throw new Error("ownedQueue unavailable");
+    vi.spyOn(queue, "restoreFront").mockRejectedValue(new Error("disk full"));
+    await service.stop(ref);
+    expect({ aborted: fake.calls.abort, disposed: fake.calls.dispose }).toEqual({ aborted: 1, disposed: 1 });
     await service.dispose();
   });
 });

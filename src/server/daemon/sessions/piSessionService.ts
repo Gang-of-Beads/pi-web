@@ -136,6 +136,12 @@ export interface PiSessionLogger {
 const noopLogger: PiSessionLogger = { info() { /* no-op */ } };
 const DEFAULT_UNREAD_PUBLICATION_RETRY_MS = 1_000;
 /**
+ * How long closing or shutting down waits for a steer batch in flight before taking back what pi
+ * holds. A batch settles within milliseconds unless an extension input handler never returns;
+ * the bound keeps that from holding a close or a daemon shutdown open.
+ */
+const TEARDOWN_TAKE_BACK_MS = 5_000;
+/**
  * User-facing names for the two phases of session startup PI WEB can prove it
  * is inside: it awaits exactly one call for each, so the phase is a fact rather
  * than a guess. Deliberately free of internal symbol names and file paths.
@@ -1405,6 +1411,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly steerBatches = new Map<string, Promise<void>>();
   private readonly replayingLanes = new Set<string>();
   private readonly emptying = new Set<string>();
+  private readonly closingSessions = new Map<string, Promise<void>>();
   private readonly laneSizes = new Map<string, number>();
   private readonly laneGrowth = new Map<string, number>();
   /**
@@ -4437,6 +4444,34 @@ export class PiSessionService implements SessionRouteService {
     // block behind the dialog timeout (which `0` makes infinite).
     if (this.startupSessions.has(sessionId)) this.endSessionExtensionDialogs(sessionId);
     const pendingOpens = this.pendingSessionOpenPromises(sessionId);
+    const closed = this.markClosing(sessionId);
+    try {
+      await this.closeActiveRuntime(sessionId, notificationPolicy, pendingOpens);
+    } finally {
+      closed();
+    }
+  }
+
+  /**
+   * Hold back any reopen of this session id until its close finishes. Everything the inbox keeps
+   * per session - lane accounting, handoff watchers, commit expectations, the queue's memory - is
+   * keyed by session id, and a runtime reopened while the old one aborts would share it: the old
+   * close would forget the new runtime's state, or leave its own stale state for the new one.
+   * Opens already pending when the close began are awaited by the close, not held back.
+   */
+  private markClosing(sessionId: string): () => void {
+    let finish = (): void => undefined;
+    const closing = new Promise<void>((resolve) => { finish = resolve; });
+    const earlier = this.closingSessions.get(sessionId);
+    const pending = earlier === undefined ? closing : Promise.all([earlier, closing]).then(() => undefined);
+    this.closingSessions.set(sessionId, pending);
+    return () => {
+      finish();
+      if (this.closingSessions.get(sessionId) === pending) this.closingSessions.delete(sessionId);
+    };
+  }
+
+  private async closeActiveRuntime(sessionId: string, notificationPolicy: NotificationClosePolicy, pendingOpens: readonly Promise<unknown>[]): Promise<void> {
     if (pendingOpens.length > 0) await Promise.allSettled(pendingOpens);
     const active = this.active.get(sessionId);
     if (notificationPolicy.kind === "clear") {
@@ -4461,7 +4496,7 @@ export class PiSessionService implements SessionRouteService {
     this.workspaceActivity?.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
     this.clearAuthLossWarningsForSession(sessionId);
     await this.keepWhatThePiHolds(active.runtime.session);
-    if (this.active.get(sessionId) === undefined) this.forgetInboxState(sessionId);
+    this.forgetInboxState(sessionId);
     // A reload queued against a session that is going away has nothing left to
     // reload; saying so beats leaving the person waiting for it.
     this.commandService.cancelQueuedReload(sessionId);
@@ -4486,11 +4521,23 @@ export class PiSessionService implements SessionRouteService {
    * Steers the agent loop already holds stay; the abort lets the loop commit them.
    */
   private async keepWhatThePiHolds(session: PiAgentSession): Promise<void> {
-    await this.steerBatches.get(session.sessionId);
-    await this.takeBackHeldMessages(session);
+    const takeBack = (async () => {
+      await this.steerBatches.get(session.sessionId);
+      await this.takeBackHeldMessages(session);
+    })();
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<"timed out">((resolve) => { timer = setTimeout(() => { resolve("timed out"); }, TEARDOWN_TAKE_BACK_MS); });
+    try {
+      const outcome = await Promise.race([takeBack.then(() => "kept" as const), deadline]);
+      if (outcome === "timed out") console.warn(`[inbox] ${session.sessionId}: a handoff did not settle within ${String(TEARDOWN_TAKE_BACK_MS)} ms; messages pi still holds go with the runtime`);
+    } catch (error: unknown) {
+      console.warn(`[inbox] ${session.sessionId}: keeping pi's unread messages failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
-  /** Per-session inbox state, dropped only when no newer runtime has taken the session id. */
+  /** Per-session inbox state. Safe to drop at close: no runtime can reopen the id until the close ends. */
   private forgetInboxState(sessionId: string): void {
     this.openRuns.delete(sessionId);
     this.laneSizes.delete(sessionId);
@@ -4583,9 +4630,12 @@ export class PiSessionService implements SessionRouteService {
     const existing = this.pendingSessionOpens.get(key);
     if (existing !== undefined) return existing.promise;
 
+    const closing = this.closingSessions.get(sessionId);
     const pending: PendingSessionOpen = {
       sessionId,
-      promise: this.create(openSessionManager(), cwd, options),
+      promise: closing === undefined
+        ? this.create(openSessionManager(), cwd, options)
+        : closing.then(() => this.create(openSessionManager(), cwd, options)),
     };
     pending.promise = pending.promise.finally(() => {
       if (this.pendingSessionOpens.get(key) === pending) this.pendingSessionOpens.delete(key);
@@ -4680,6 +4730,8 @@ export class PiSessionService implements SessionRouteService {
     cwd: string,
     options: CreateSessionRuntimeOptions = {},
   ): Promise<ActiveSession<PiSessionRuntime>> {
+    const closing = this.closingSessions.get(sessionManager.getSessionId());
+    if (closing !== undefined) await closing;
     const startup = this.startupProgress(sessionManager, options.startupIntent ?? "open", options.startupToken);
     try {
       return await this.createSessionRuntime(sessionManager, cwd, options, startup);

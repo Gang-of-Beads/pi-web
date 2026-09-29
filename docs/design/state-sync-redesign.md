@@ -361,6 +361,18 @@ No P0 or P1. The previous round's three fixes were verified against the SDK (age
 | F2 | Daemon shutdown (`dispose`) did none of what close does: unread steers pi held died with the runtime, and loop-held steers were committed unstamped with their rows pending, so after the restart a retry ran them again | TRUE | Fixed: shutdown takes pi's unread messages back into the inbox file (the next daemon hands them) and stamps what the loop commits during the abort |
 | F3 | A ledger write failing when a direct prompt was read threw before the handoff was marked handed, so the consumer stayed "handing" for the whole run and nothing was steered | TRUE, narrow | Fixed: the handoff is marked handed before the ledger write |
 
+
+## Phase 1 sixth gate-lane triage (DeepSeek 4.1 max, over f0689d7d)
+
+Verdict PASS with notes: no P0, no invariant failure its tests can see. The teardown ordering, the atomic take-back, restart re-recording and the take-back order were verified; nine hunt items adjudicated.
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| P1-1 | A session reopened while its old runtime was still closing shared state keyed by session id: the old close could forget the new runtime's queue memory or commit expectations, or leave its own open-run state to stall the new one's handoffs | TRUE, a race | Fixed at the root: a reopen of a session id waits until that id's close has finished (opens already pending when the close began are awaited by the close instead). The gate 5 F1 test is rewritten to pin this: a prompt sent during a close opens nothing until the close ends, then lands stamped |
+| P2-1 | A restore landing after a session closed found no file path and wrote to memory only | TRUE | Fixed: closing drops the queue's entries from memory but keeps its file path and write chain |
+| P2-2 | Closing and shutdown awaited the take-back without a bound or a catch; a handoff that never settles held them open, and a failing write skipped the runtime's abort | TRUE | Fixed: the take-back is bounded (5 s) and never throws; the abort and disposal always follow |
+| P2-3 | A handoff counted as handed and then refused as busy goes back to the head while a younger message may already be in pi's lane | TRUE, narrow trigger | Known limitation 6 |
+
 ## Phase 1 known limitations
 
 Each was found by a review lane, checked against the source, and left unfixed for the reason given.
@@ -370,3 +382,5 @@ Each was found by a review lane, checked against the source, and left unfixed fo
 3. **A steer that becomes a new run inside the SDK's own awaits keeps its batch open through `_checkCompaction` (F2-note),** so Stop waits for that compaction. It needs the agent to go idle during the few milliseconds of a steer's preflight.
 4. **A command's derived steer can follow later steers in the same batch (gate 3 E).** Inside a steer batch a command counts as handed once invoked, so a steer its handler injects after an await can land after the batch's later steers. No accepted message is reordered. Waiting for handlers again would bring back Stop blocking on a handler parked on a dialog (G2). **Owner decision.**
 5. **A throw inside the SDK's `prepareNextTurn` loses the steers the loop just drained (gate 4 P2-1).** The run fails before it commits them, and they were settled read when Stop or close met them held by the loop. pi-web's own listener can no longer cause this; an SDK-side failure there still can.
+6. **A late busy refusal can put a message behind a younger one (gate 6 P2-3).** A handoff already counted as handed (a slash command released at run start) that is then refused as busy goes back to the head of the inbox, while a younger message may already sit in pi's lane and be read first.
+7. **A take-back bounded at teardown can give up (gate 6 P2-2).** If a handoff does not settle within 5 s of a close or shutdown (an extension input handler that never returns), what pi still holds goes with the runtime; its rows stay pending, so after a restart a retry runs it.
