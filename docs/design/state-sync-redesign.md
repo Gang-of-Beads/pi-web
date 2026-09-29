@@ -854,3 +854,5 @@ Owner: "just say there are no goals". A known-empty answer keeps the section ava
 ### Phase 5f as landed: icons
 
 Checked in source first: Git already draws its own icon inside its plugin (`git/browser/git-panel.ts`), and the host passes `panel.icon` through unchanged, so the boundary held for Git. Subagents and Background declared no icon; each now draws its own through the activation context's `svg`. The host's `renderPluginIcon` fills in only for a panel that brought none. `bundledRegistration.test.ts` requires an icon on every bundled workspace panel (it fails on the previous commit, naming exactly those two).
+
+**Live (phase 5).** `scripts/probe-vocabulary.mjs` on the 8505 stack scores 4fa133ef 0/6 and the phase 5 tree 6/6: Go to icons on desktop and phone, "No goals", offline "Not sent", and Receiving… with the reconnecting words that go once an ask gets through past the last one (the old build stopped after three asks and read "No answer yet" throughout).
