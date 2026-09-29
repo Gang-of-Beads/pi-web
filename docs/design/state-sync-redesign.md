@@ -338,6 +338,18 @@ Verified against the SDK: after `prepareNextTurn` the agent loop emits `message_
 
 The G4 test's Stop assertion pinned the wrong behaviour (its fake had no loop); it now expects Stop to leave loop-held steers alone.
 
+
+## Phase 1 fourth gate-lane triage (DeepSeek 4.1 max, over 0695b7e6)
+
+Verified A's premise, the recall order, close's early return, and the command-name parse against the SDK; eight hunt items adjudicated FALSE.
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| P1-1 | The loop-held count read `peek()`, which is the next drain: in one-at-a-time mode (agent-core's default for both queues, and the steering lane after a `/reload`) only the head, so still-queued messages counted as taken, were settled read, cleared by Stop, and lost. Latent on the owner's machine because its pi settings set both modes to `all` | TRUE | Fixed: the count reads the queue's own `messages` array; the real-SDK test pins that field |
+| P2-1 | pi calls listeners inside the agent loop without a catch; a throw in pi-web's listener between a drain and the commit fails the run and loses the drained messages, which the loop-held rule has settled read | TRUE | Fixed for pi-web's listener: its handling is wrapped and a fault is logged. A throw inside the SDK's own `prepareNextTurn` stays a known limitation |
+| P2-2 | At close the loop commits loop-held messages during the abort, after pi-web unsubscribed and forgot the commit expectations, so the committed copy had no id | TRUE | Fixed: a stamp-only listener stays attached through the abort, and expectations are forgotten after it |
+| P2-3 | `queuedMessagesWithClientIds` lost its only caller | TRUE | Removed |
+
 ## Phase 1 known limitations
 
 Each was found by a review lane, checked against the source, and left unfixed for the reason given.
@@ -346,3 +358,4 @@ Each was found by a review lane, checked against the source, and left unfixed fo
 2. **`clearQueue` also drops agent-core's custom messages (L-note).** Taking pi-held messages back uses the SDK's only clear, which also drops a custom message (ask answer, subsession notice) queued at the same instant. It needs both to miss the loop's final poll together.
 3. **A steer that becomes a new run inside the SDK's own awaits keeps its batch open through `_checkCompaction` (F2-note),** so Stop waits for that compaction. It needs the agent to go idle during the few milliseconds of a steer's preflight.
 4. **A command's derived steer can follow later steers in the same batch (gate 3 E).** Inside a steer batch a command counts as handed once invoked, so a steer its handler injects after an await can land after the batch's later steers. No accepted message is reordered. Waiting for handlers again would bring back Stop blocking on a handler parked on a dialog (G2). **Owner decision.**
+5. **A throw inside the SDK's `prepareNextTurn` loses the steers the loop just drained (gate 4 P2-1).** The run fails before it commits them, and they were settled read when Stop or close met them held by the loop. pi-web's own listener can no longer cause this; an SDK-side failure there still can.

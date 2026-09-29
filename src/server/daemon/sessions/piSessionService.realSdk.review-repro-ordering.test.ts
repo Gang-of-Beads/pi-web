@@ -99,12 +99,11 @@ describe("SDK state the daemon reads", () => {
     const { session } = await realSession(200);
     session.agent.steeringMode = "all";
     const emittingSettled: unknown = Reflect.get(session, "_isEmittingAgentSettled");
-    const queuePeeks = ["steeringQueue", "followUpQueue"].map((name): unknown => {
+    const queueArrays = ["steeringQueue", "followUpQueue"].map((name): unknown => {
       const queue: unknown = Reflect.get(session.agent, name);
-      const peek: unknown = typeof queue === "object" && queue !== null ? Reflect.get(queue, "peek") : undefined;
-      return typeof peek === "function" ? Reflect.apply(peek, queue, []) : "missing";
+      return typeof queue === "object" && queue !== null ? Reflect.get(queue, "messages") : "missing";
     });
-    expect(queuePeeks).toEqual([[], []]);
+    expect(queueArrays).toEqual([[], []]);
     expect({
       emittingSettled,
       loopStreaming: session.agent.state.isStreaming,

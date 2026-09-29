@@ -258,11 +258,15 @@ function loopHeldCounts(session: PiAgentSession): Record<QueuedPromptKind, numbe
   };
 }
 
+/**
+ * The queue's own array, not `peek()`: `peek()` is the next drain, which in one-at-a-time mode
+ * (agent-core's default, and every lane after a `/reload` until pi-web re-arms it) is the head
+ * alone, and would count every other still-queued message as taken.
+ */
 function heldBeyondQueue(shown: number, queue: unknown): number {
-  const peek: unknown = typeof queue === "object" && queue !== null ? Reflect.get(queue, "peek") : undefined;
-  if (typeof peek !== "function") return 0;
-  const pending: unknown = Reflect.apply(peek, queue, []);
-  const queuedUsers = Array.isArray(pending) ? pending.filter((message: unknown) => getProperty(message, "role") === "user").length : 0;
+  const pending: unknown = typeof queue === "object" && queue !== null ? Reflect.get(queue, "messages") : undefined;
+  if (!Array.isArray(pending)) return 0;
+  const queuedUsers = pending.filter((message: unknown) => getProperty(message, "role") === "user").length;
   return Math.max(0, shown - queuedUsers);
 }
 
@@ -4204,7 +4208,8 @@ export class PiSessionService implements SessionRouteService {
 
   /**
    * Settle messages the agent loop holds as read. Their commit expectation stays, so the commit
-   * that follows is still stamped with its sender's id.
+   * that follows is still stamped with its sender's id - at close too, where a stamp-only
+   * listener stays attached through the abort that lets the loop commit them.
    */
   private settleLoopHeld(sessionId: string, loopHeld: readonly LaneEntry[]): void {
     for (const entry of loopHeld) this.settleSucceeded(sessionId, entry.clientMessageId);
@@ -4461,7 +4466,6 @@ export class PiSessionService implements SessionRouteService {
     this.laneGrowth.delete(sessionId);
     this.directCommitWatchers.delete(sessionId);
     this.runStartWatchers.delete(sessionId);
-    this.committedExpectations.forgetSession(sessionId);
     this.ownedQueue.forgetSession(sessionId);
     // A reload queued against a session that is going away has nothing left to
     // reload; saying so beats leaving the person waiting for it.
@@ -4472,11 +4476,15 @@ export class PiSessionService implements SessionRouteService {
     if (this.subsessionLinkForActiveChild(active.runtime.session) !== undefined) this.subsessionNotifyArmed.delete(sessionId);
     clearSessionQueue(active.runtime.session);
     active.unsubscribe();
+    const session = active.runtime.session;
+    const stampOnly = session.subscribe((event) => { this.stampCommittedUserMessage(session, event); });
     active.runtime.setRebindSession(undefined);
     try {
       this.events.publish(sessionId, { type: "session.stopped", cause: "closed" });
-      await this.abortSessionOperations(active.runtime.session);
+      await this.abortSessionOperations(session);
     } finally {
+      stampOnly();
+      this.committedExpectations.forgetSession(sessionId);
       await active.runtime.dispose();
     }
   }
@@ -5027,34 +5035,49 @@ export class PiSessionService implements SessionRouteService {
     // runtime events before this session has a client event bridge.
     const restoredQueue = await this.restoreOwnedQueue(session, active.runtime.cwd);
     session.agent.steeringMode = "all";
-    active.unsubscribe = session.subscribe((event) => {
-      this.stampCommittedUserMessage(session, event);
-      this.observeInboxFacts(session, event);
-      this.publishActivityChangeForToolEvent(session, event);
-      this.events.publish(session.sessionId, toClientEvent(event, session.thinkingLevel));
-      this.publishActivityForEvent(session, event);
-      const eventType = getString(event, "type");
-      if (eventType === "agent_end") this.abortRunScopedExtensionDialogs(session.sessionId);
-      if (isDeliveredUserMessageEvent(event)) this.voidOpenAskForDeliveredMessage(session, event);
-      const handoffTrigger = eventType === undefined ? undefined : HANDOFF_TRIGGER_BY_EVENT[eventType];
-      if (handoffTrigger !== undefined) this.pumpInbox(session, handoffTrigger);
-      // A /reload issued mid-turn waits here. agent_end can fire while the turn
-      // is still winding down, so runQueuedReload re-checks for active work and
-      // simply returns if it is early; the heartbeat below is what makes sure a
-      // session that goes quiet without another event still gets its reload.
-      if (eventType === "agent_end" || eventType === "turn_end") this.commandService.runQueuedReload(session);
-      this.commandService.observeSessionEvent(session.sessionId, event);
-      // Delta-only events (streaming text/thinking) carry no status change:
-      // publishing the full status for every token would synchronously
-      // re-serialize and broadcast the session state on the agent's own event
-      // loop, which measurably slows streaming relative to the TUI. Status is
-      // published on structural events below and on a trailing throttle timer
-      // so a burst of deltas still settles into a fresh status.
-      if (!isStreamingDeltaEvent(event)) this.publishStatus(session);
-      this.updateSubsessionTracking(session);
-    });
+    active.unsubscribe = session.subscribe((event) => { this.observeRuntimeEvent(session, event); });
     this.active.set(session.sessionId, active);
     if (restoredQueue.length > 0) this.pumpInbox(session, "nudge");
+  }
+
+  /**
+   * Everything pi-web does with a runtime event. A fault here is logged and contained: pi calls
+   * its listeners inside the agent loop without a catch, so a throw would fail the run between
+   * draining the waiting messages and committing them, and they would be lost.
+   */
+  private observeRuntimeEvent(session: PiAgentSession, event: unknown): void {
+    try {
+      this.handleRuntimeEvent(session, event);
+    } catch (error: unknown) {
+      console.warn(`[session ${session.sessionId}] runtime event ${getString(event, "type") ?? "unknown"} handling failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private handleRuntimeEvent(session: PiAgentSession, event: unknown): void {
+    this.stampCommittedUserMessage(session, event);
+    this.observeInboxFacts(session, event);
+    this.publishActivityChangeForToolEvent(session, event);
+    this.events.publish(session.sessionId, toClientEvent(event, session.thinkingLevel));
+    this.publishActivityForEvent(session, event);
+    const eventType = getString(event, "type");
+    if (eventType === "agent_end") this.abortRunScopedExtensionDialogs(session.sessionId);
+    if (isDeliveredUserMessageEvent(event)) this.voidOpenAskForDeliveredMessage(session, event);
+    const handoffTrigger = eventType === undefined ? undefined : HANDOFF_TRIGGER_BY_EVENT[eventType];
+    if (handoffTrigger !== undefined) this.pumpInbox(session, handoffTrigger);
+    // A /reload issued mid-turn waits here. agent_end can fire while the turn
+    // is still winding down, so runQueuedReload re-checks for active work and
+    // simply returns if it is early; the heartbeat below is what makes sure a
+    // session that goes quiet without another event still gets its reload.
+    if (eventType === "agent_end" || eventType === "turn_end") this.commandService.runQueuedReload(session);
+    this.commandService.observeSessionEvent(session.sessionId, event);
+    // Delta-only events (streaming text/thinking) carry no status change:
+    // publishing the full status for every token would synchronously
+    // re-serialize and broadcast the session state on the agent's own event
+    // loop, which measurably slows streaming relative to the TUI. Status is
+    // published on structural events below and on a trailing throttle timer
+    // so a burst of deltas still settles into a fresh status.
+    if (!isStreamingDeltaEvent(event)) this.publishStatus(session);
+    this.updateSubsessionTracking(session);
   }
 
   private maybeGenerateSessionName(session: PiAgentSession, firstMessage: string): void {
@@ -5646,12 +5669,6 @@ export class PiSessionService implements SessionRouteService {
     } finally {
       release();
     }
-  }
-
-  private queuedMessagesWithClientIds(session: PiAgentSession): QueuedSessionMessage[] {
-    const queued = queuedMessagesFromSession(session, this.ownedQueue.entries(session.sessionId));
-    this.attachQueuedPromptClientIds(session.sessionId, queued);
-    return queued;
   }
 
   private pendingMessageCount(session: PiAgentSession): number {

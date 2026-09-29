@@ -69,9 +69,14 @@ const texts = (calls: { text: string }[]) => calls.map((call) => call.text);
  * entries (it removes them only at `message_start`), but agent-core holds no user messages.
  * Custom messages (ask answers, subsession notices) may remain queued.
  */
-function drainAgentQueues(agent: object, remaining: { steer?: unknown[]; followUp?: unknown[] } = {}): void {
-  Reflect.set(agent, "steeringQueue", { peek: () => remaining.steer ?? [] });
-  Reflect.set(agent, "followUpQueue", { peek: () => remaining.followUp ?? [] });
+function drainAgentQueues(agent: object, remaining: { steer?: unknown[]; followUp?: unknown[] } = {}, mode: "all" | "one-at-a-time" = "all"): void {
+  Reflect.set(agent, "steeringQueue", agentQueue(remaining.steer ?? [], mode));
+  Reflect.set(agent, "followUpQueue", agentQueue(remaining.followUp ?? [], mode));
+}
+
+/** agent-core's PendingMessageQueue shape: `messages` is the queue, `peek()` the next drain. */
+function agentQueue(messages: unknown[], mode: "all" | "one-at-a-time") {
+  return { messages, peek: () => mode === "all" ? [...messages] : messages.slice(0, 1) };
 }
 
 describe("the inbox settles each message from what the agent did (O1)", () => {
@@ -636,6 +641,48 @@ describe("third gate-lane findings", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect({ outcome: service.operationOutcomes("d-newline", ["gd-s-00001"]), queued: (await service.status(ref)).queuedMessages.map((entry) => entry.clientMessageId) })
       .toEqual({ outcome: { "gd-s-00001": "pending" }, queued: ["gd-s-00001"] });
+    await service.dispose();
+  });
+});
+
+describe("fourth gate-lane findings", () => {
+  it("P1-1: in one-at-a-time mode, still-queued steers are not counted as taken by the loop, so Stop hands them back", async () => {
+    const { fake, service, ref, lane } = await inboxService("p11-one-at-a-time");
+    await service.prompt(ref, "T1", undefined, undefined, { clientMessageId: "g4p-t1-001" });
+    await service.prompt(ref, "T2", undefined, undefined, { clientMessageId: "g4p-t2-001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["T1", "T2"]); });
+    drainAgentQueues(fake.session.agent, { steer: [{ role: "user", content: "T1" }, { role: "user", content: "T2" }] }, "one-at-a-time");
+    const { discarded } = await service.abort(ref);
+    expect({ discarded: discarded.map((entry) => entry.clientMessageId), outcomes: service.operationOutcomes("p11-one-at-a-time", ["g4p-t1-001", "g4p-t2-001"]) })
+      .toEqual({ discarded: ["g4p-t1-001", "g4p-t2-001"], outcomes: { "g4p-t1-001": "withdrawn", "g4p-t2-001": "withdrawn" } });
+    await service.dispose();
+  });
+
+  it("P2-1: a fault in pi-web's own event handling does not escape into the agent loop", async () => {
+    const { fake, service, ref } = await inboxService("p21-listener");
+    await service.status(ref);
+    const broken: unknown = Reflect.get(service, "publishStatus");
+    Reflect.set(service, "publishStatus", () => { throw new Error("status publication failed"); });
+    expect(() => { fake.emit({ type: "turn_end" }); }).not.toThrow();
+    Reflect.set(service, "publishStatus", broken);
+    await service.dispose();
+  });
+
+  it("P2-2: a loop-held steer committed during close still carries its sender's id", async () => {
+    const { fake, service, ref, lane } = await inboxService("p22-close-stamp");
+    await service.prompt(ref, "committed during close", undefined, undefined, { clientMessageId: "g4p-c-0001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["committed during close"]); });
+    drainAgentQueues(fake.session.agent);
+    fake.session.isCompacting = true;
+    const committed: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "committed during close" }] };
+    fake.session.abort = () => {
+      fake.emit({ type: "message_start", message: committed });
+      return Promise.resolve();
+    };
+    await service.stop(ref);
+    expect(committed["clientMessageId"]).toBe("g4p-c-0001");
     await service.dispose();
   });
 });
