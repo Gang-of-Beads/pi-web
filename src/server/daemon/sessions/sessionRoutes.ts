@@ -823,7 +823,8 @@ function extensionDialogAnswerFromBody(body: Record<string, unknown>): Extension
     if (value.length > EXTENSION_DIALOG_INPUT_MAX_LENGTH) throw new Error("value field is too long");
     return { dialogId, value };
   }
-  throw new Error("value field must be a string or a boolean");
+  if (isRecord(value)) return { dialogId, value: askUserSubmissionFromBody(value) };
+  throw new Error("value field must be a string, a boolean, or answers");
 }
 
 function extensionDialogCancelFromBody(body: Record<string, unknown>): ExtensionDialogCancelRequest {

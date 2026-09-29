@@ -113,6 +113,8 @@ import {
 } from "./sessionNotificationStore.js";
 import { plainTextTheme } from "./plainTextTheme.js";
 import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
+import { DECLARABLE_SCREENS, declaredScreen } from "./declaredScreen.js";
+import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
 import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
 import { deferToolResultImages, findToolResultImage } from "./toolResultImages.js";
@@ -1310,51 +1312,6 @@ function customScreenOptions(opts: unknown): {
   };
 }
 
-const SCREEN_LINES_MAX = 40;
-const SCREEN_LINE_MAX = 200;
-const SCREEN_OPTIONS_MAX = 12;
-
-function screenText(value: unknown, max: number = SCREEN_LINE_MAX): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const text = value.replace(/\s+$/u, "");
-  return text === "" ? undefined : text.slice(0, max);
-}
-
-function screenLines(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const lines = value
-    .slice(0, SCREEN_LINES_MAX)
-    .map((line) => (typeof line === "string" ? line.replace(/\s+$/u, "") : undefined))
-    .filter((line): line is string => line !== undefined);
-  return lines.some((line) => line.trim() !== "") ? lines : undefined;
-}
-
-/**
- * The pi-web rendering an extension declared for its own screen, read defensively.
- *
- * `ctx.ui.custom(factory, { web })` is pi-web's addition: pi ignores the unknown
- * key and keeps calling the TUI factory, so an extension - an official one, at
- * least - can hand the browser the meaning of what it drew without losing the
- * terminal. Junk is not an error; a screen that does not parse falls back to lines.
- */
-function declaredScreen(value: unknown): ExtensionDialogScreen | undefined {
-  if (value === null || typeof value !== "object") return undefined;
-  const kind: unknown = Reflect.get(value, "kind");
-  if (kind !== "menu" && kind !== "text") return undefined;
-  const title = screenText(Reflect.get(value, "title"));
-  const body = screenLines(Reflect.get(value, "body"));
-  const options = screenLines(Reflect.get(value, "options"))?.slice(0, SCREEN_OPTIONS_MAX);
-  const current: unknown = Reflect.get(value, "current");
-  if (kind === "menu" && (options === undefined || options.length === 0)) return undefined;
-  return {
-    kind,
-    ...(title === undefined ? {} : { title }),
-    ...(body === undefined ? {} : { body }),
-    ...(options === undefined ? {} : { options }),
-    ...(typeof current === "number" && Number.isInteger(current) && current >= 0 ? { current } : {}),
-  };
-}
-
 /** Run the extension's factory, which arrives as `unknown` like everything else from it. */
 function applyFactory(factory: unknown, args: unknown[]): unknown {
   if (typeof factory !== "function") return undefined;
@@ -2112,10 +2069,10 @@ export class PiSessionService implements SessionRouteService {
     const result = this.pendingExtensionDialogStore.answer(session.sessionId, dialogId, value);
     if (result.status === "stale") return { result: "stale", sessionStatus: this.statusFromSession(session) };
     const { outcome } = result;
-    this.recordAnsweredDialogNotification(session, pending, value);
+    const answer = outcome.answer ?? value;
+    this.recordAnsweredDialogNotification(session, pending, answer);
     this.publishDialogClosed(session.sessionId, outcome);
-    // `value` is what the store validated and recorded as the outcome's answer.
-    this.dialogWaiters.settleWithAnswer(dialogId, value);
+    this.dialogWaiters.settleWithAnswer(dialogId, answer);
     this.publishStatus(session);
     return { result: "closed", outcome, sessionStatus: this.statusFromSession(session) };
   }
@@ -2147,7 +2104,7 @@ export class PiSessionService implements SessionRouteService {
     session: PiAgentSession,
     request: { kind: ExtensionDialogKind; title: string; message?: string | undefined; options?: string[] | undefined; placeholder?: string | undefined },
     opts: ExtensionUIDialogOptions | undefined,
-  ): Promise<boolean | string | undefined> {
+  ): Promise<ExtensionDialogAnswer | undefined> {
     const signal = opts?.signal;
     // A pre-aborted signal dismisses the dialog before it ever opens.
     if (signal?.aborted === true) return extensionDialogCancelValue(request.kind);
@@ -2188,6 +2145,10 @@ export class PiSessionService implements SessionRouteService {
     const options = customScreenOptions(opts);
     // Captured before the factory runs so the frame belongs to the extension.
     this.customScreenStack = new Error().stack;
+    if (options.screen !== undefined) {
+      const questionsId = this.openCustomDialog(session, [], customScreenOwner(this.customScreenStack), options.screen);
+      return await this.customDialogClosed(session, questionsId, options);
+    }
     const harness = customScreenHarness();
     let settle: (result: unknown) => void = () => undefined;
     const finished = new Promise<unknown>((resolve) => { settle = resolve; });
@@ -2222,13 +2183,9 @@ export class PiSessionService implements SessionRouteService {
     // A component that calls done() while being built (a capability probe does
     // exactly that) never mounts: opening a modal for it and closing it in the
     // same tick would flash an empty screen.
-    // The two ways a screen never reaches the browser - a factory that called `done`
-    // while being built, and a declaration that did not parse - look the same from
-    // the client, so the daemon says which one it was.
     console.error("[extension-screen] mounted", {
       session: session.sessionId,
       settledBeforeMount: lifecycle.settledBeforeMount,
-      declaredScreen: options.screen !== undefined,
     });
     if (lifecycle.settledBeforeMount) return await finished;
     const lines = renderCustomScreen(component);
@@ -2287,7 +2244,7 @@ export class PiSessionService implements SessionRouteService {
     const dialog = this.pendingExtensionDialogStore.open({
       sessionId: session.sessionId,
       kind: "custom",
-      title: "Extension screen",
+      title: screen === undefined ? "Extension screen" : screen.title ?? "Questions",
       // Who and what, in one line: the surface carried no title of its own and
       // "Extension screen" alone read as something unannounced.
       message: openedBy === undefined ? CUSTOM_SCREEN_HINT : `${openedBy} · ${CUSTOM_SCREEN_HINT}`,
@@ -2403,8 +2360,8 @@ export class PiSessionService implements SessionRouteService {
     const generation = this.notificationGenerationBySession.get(session);
     if (generation === undefined) return;
     const title = pending.title.replace(/\s+/gu, " ").trim();
-    const answer = typeof value === "boolean" ? (value ? "Yes" : "No") : value;
-    const added = this.notificationStore.addNotification(generation, `Answered "${title}": ${answer}`, "info");
+    const answer = dialogAnswerText(pending.screen, value);
+    const added = this.notificationStore.addNotification(generation, `Answered "${title}": ${answer === "" ? "nothing" : answer}`, "info");
     this.publishNotificationMutations(added.mutations);
   }
 
@@ -5066,6 +5023,7 @@ export class PiSessionService implements SessionRouteService {
       get: (target, property, receiver): unknown => {
         if (property === "notify") return notify;
         if (property === "theme") return plainTextTheme;
+        if (property === "piWebScreens") return DECLARABLE_SCREENS;
         // The headless default resolves `custom` to undefined without a word,
         // so an extension waiting on an answer - the updater's version prompt,
         // for instance - believed the user chose nothing and asked again next

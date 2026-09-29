@@ -1,5 +1,5 @@
 import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, ASK_USER_TEXT_MAX_LENGTH, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, EXTENSION_DIALOG_OPTION_LIMIT,
-  EXTENSION_DIALOG_SCREEN_MAX_LINES, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserCloseReason, type AskUserCloseResponse, type AskUserOutcome, type AskUserQuestion, type AskUserQuestionOption, type AskUserQuestionRecord, type PendingAskUser, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type SessionBackgroundTaskInfo, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SessionWarning, type SessionWarningSeverity, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type WorkspaceChangedUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
+  EXTENSION_DIALOG_SCREEN_MAX_LINES, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserAnswer, type AskUserCloseReason, type AskUserCloseResponse, type AskUserOutcome, type AskUserQuestion, type AskUserQuestionOption, type AskUserQuestionRecord, type PendingAskUser, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type ExtensionDialogScreen, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type SessionBackgroundTaskInfo, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SessionWarning, type SessionWarningSeverity, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type WorkspaceChangedUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
 import { parseMachineStatusSnapshot, type MachineStatusSnapshot, type MachineStatusUiEvent } from "../../../shared/machineStatus";
 import type { JsonValue, PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionsRevisionResponse, SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot, WorkspaceProviderDiagnostic, WorkspaceProviderDiagnosticCode, WorkspaceProviderResolution, WorkspaceProviderResolutionStatus, WorkspaceProviderTier } from "../../../shared/apiTypes";
 import type { PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport, PiWebSelfUpdateStatus } from "../../../shared/apiTypes";
@@ -325,17 +325,19 @@ function parseAskUserQuestionOption(value: unknown): AskUserQuestionOption {
   };
 }
 
-function parseAskUserQuestion(value: unknown): AskUserQuestion {
+function parseAskUserQuestion(value: unknown, detailMax: number = ASK_USER_TEXT_MAX_LENGTH): AskUserQuestion {
   const record = requireRecord(value);
   const options = boundedArrayOf(record["options"], parseAskUserQuestionOption, ASK_USER_OPTION_LIMIT, "options");
   assertUniqueStrings(options.map((option) => option.value), "ask option value");
   const multiple = parseOptionalBoolean(record["multiple"], "multiple");
+  const custom = parseOptionalBoolean(record["custom"], "custom");
   return {
     id: requireBoundedNonEmptyString(record, "id", ASK_USER_ID_MAX_LENGTH),
     question: requireBoundedNonEmptyString(record, "question", ASK_USER_TEXT_MAX_LENGTH),
-    ...optionalField("detail", optionalBoundedNonEmptyString(record, "detail", ASK_USER_TEXT_MAX_LENGTH)),
+    ...optionalField("detail", optionalBoundedNonEmptyString(record, "detail", detailMax)),
     options,
     ...(multiple === undefined ? {} : { multiple }),
+    ...(custom === false ? { custom } : {}),
   };
 }
 
@@ -346,7 +348,7 @@ function parseAskUserQuestion(value: unknown): AskUserQuestion {
  */
 function parsePendingAskUser(value: unknown): PendingAskUser {
   const record = requireRecord(value);
-  const questions = boundedArrayOf(record["questions"], parseAskUserQuestion, ASK_USER_QUESTION_LIMIT, "questions");
+  const questions = boundedArrayOf(record["questions"], (entry) => parseAskUserQuestion(entry), ASK_USER_QUESTION_LIMIT, "questions");
   if (questions.length === 0) throw new Error("Pending ask has no questions");
   assertUniqueStrings(questions.map((question) => question.id), "ask question id");
   return {
@@ -495,7 +497,32 @@ function parseExtensionDialogCloseReason(value: unknown): ExtensionDialogCloseRe
 function parseExtensionDialogAnswer(value: unknown): ExtensionDialogAnswer {
   if (typeof value === "boolean") return value;
   if (typeof value === "string" && value.length <= EXTENSION_DIALOG_INPUT_MAX_LENGTH) return value;
+  if (isRecord(value)) return { answers: boundedArrayOf(value["answers"], parseSubmittedAnswer, ASK_USER_QUESTION_LIMIT, "answers") };
   throw new Error("Invalid extension dialog answer");
+}
+
+function parseSubmittedAnswer(value: unknown): AskUserAnswer {
+  const record = requireRecord(value);
+  const otherText = optionalBoundedNonEmptyString(record, "otherText", ASK_USER_OTHER_TEXT_MAX_LENGTH);
+  return {
+    id: requireBoundedNonEmptyString(record, "id", ASK_USER_ID_MAX_LENGTH),
+    values: boundedArrayOf(record["values"], parseNonEmptyString, ASK_USER_OPTION_LIMIT, "values"),
+    ...(otherText === undefined ? {} : { otherText }),
+  };
+}
+
+/** A declared questions screen; anything else the daemon sent under `screen` is not one this browser draws. */
+function parseExtensionDialogScreen(value: unknown): ExtensionDialogScreen {
+  const record = requireRecord(value);
+  if (record["kind"] !== "questions") throw new Error("Invalid extension dialog screen kind");
+  const questions = boundedArrayOf(record["questions"], (entry) => parseAskUserQuestion(entry, EXTENSION_DIALOG_PROSE_MAX_LENGTH), ASK_USER_QUESTION_LIMIT, "questions");
+  if (questions.length === 0) throw new Error("Questions screen has no questions");
+  assertUniqueStrings(questions.map((question) => question.id), "screen question id");
+  return {
+    kind: "questions",
+    ...optionalField("title", optionalBoundedNonEmptyString(record, "title", ASK_USER_TEXT_MAX_LENGTH)),
+    questions,
+  };
 }
 
 function parseDialogScreenLine(value: unknown): string {
@@ -534,6 +561,7 @@ function parsePendingExtensionDialog(value: unknown): PendingExtensionDialog {
     // rides the status payload, so an unbounded array would be a payload nobody
     // checked.
     ...(record["lines"] === undefined ? {} : { lines: boundedArrayOf(record["lines"], parseDialogScreenLine, EXTENSION_DIALOG_SCREEN_MAX_LINES, "lines") }),
+    ...(record["screen"] === undefined ? {} : { screen: parseExtensionDialogScreen(record["screen"]) }),
     askedAt: requireNonEmptyString(record, "askedAt"),
     ...optionalField("timeoutAt", optionalNonEmptyString(record, "timeoutAt")),
     runScoped: requireBoolean(record, "runScoped"),

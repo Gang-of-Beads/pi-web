@@ -20,7 +20,7 @@ export interface ExtensionDialogWaiterTriggers {
 interface ParkedExtensionDialog {
   /** The value the extension's Promise resolves with when the dialog closes without an answer. */
   cancelValue: boolean | undefined;
-  resolve: (value: boolean | string | undefined) => void;
+  resolve: (value: ExtensionDialogAnswer | undefined) => void;
   cancelArmedTimeout?: (() => void) | undefined;
   removeSignalListener?: (() => void) | undefined;
 }
@@ -64,7 +64,7 @@ export class ExtensionDialogWaiters {
    * the timeout and signal triggers; both are disarmed when the wait settles,
    * so a settled wait can never be triggered (nor trigger twice).
    */
-  park(dialog: PendingExtensionDialog, triggers: ExtensionDialogWaiterTriggers = {}): Promise<boolean | string | undefined> {
+  park(dialog: PendingExtensionDialog, triggers: ExtensionDialogWaiterTriggers = {}): Promise<ExtensionDialogAnswer | undefined> {
     return new Promise((resolve) => {
       const parked: ParkedExtensionDialog = { cancelValue: extensionDialogCancelValue(dialog.kind), resolve };
       if (triggers.timeoutMs !== undefined) {

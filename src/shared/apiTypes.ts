@@ -783,6 +783,8 @@ export interface AskUserQuestion {
   options: AskUserQuestionOption[];
   /** When true, several options may be selected at once. */
   multiple?: boolean;
+  /** When false, the browser offers no Custom choice and a typed answer is refused. */
+  custom?: boolean;
 }
 
 /**
@@ -909,10 +911,11 @@ export const EXTENSION_DIALOG_KEY_MAX_LENGTH = 32;
 
 /**
  * The value a user gave in an extension dialog: a boolean for `confirm`, the
- * chosen option for `select`, the typed text for `input`. Absent when the
- * dialog closed without an answer.
+ * chosen option for `select`, the typed text for `input`, the answers of a
+ * `custom` screen declared as questions. Absent when the dialog closed without
+ * an answer.
  */
-export type ExtensionDialogAnswer = boolean | string;
+export type ExtensionDialogAnswer = boolean | string | AskUserSubmission;
 
 /**
  * Why a dialog stopped being open. `"answered"` carries an
@@ -931,13 +934,9 @@ export type ExtensionDialogCloseReason = "answered" | "cancelled" | "timeout" | 
  * supersedes an existing one.
  */
 export interface ExtensionDialogScreen {
-  kind: "menu" | "text";
+  kind: "questions";
   title?: string;
-  body?: string[];
-  /** Options in the order the component lists them; the labels matched its lines. */
-  options?: string[];
-  /** Which option the component's cursor is on. */
-  current?: number;
+  questions: AskUserQuestion[];
 }
 
 export interface PendingExtensionDialog {
@@ -957,12 +956,13 @@ export interface PendingExtensionDialog {
    */
   lines?: string[];
   /**
-   * How the extension asked this screen to look in a browser.
+   * What the extension declared this screen to be, for the browser to draw natively.
    *
-   * A component draws for a terminal; an extension that also knows what it *means*
-   * can say so (`ctx.ui.custom(factory, { web: { kind: "menu", ... } })`), and then
-   * the browser renders its own card - a heading, body text, real buttons - instead
-   * of a terminal dump. Absent for an extension that only draws.
+   * `ctx.ui.custom(factory, { web: { kind: "questions", questions } })` makes the
+   * screen the Questions card `ask_user` uses: the daemon never mounts the terminal
+   * component, so the reader sees one native card instead of a terminal dump, and
+   * `custom()` resolves with the {@link AskUserSubmission}. Absent for an extension
+   * that only draws.
    */
   screen?: ExtensionDialogScreen;
   askedAt: string;

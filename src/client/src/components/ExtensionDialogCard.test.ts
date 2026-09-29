@@ -12,6 +12,7 @@ import {
   type ExtensionDialogAnswerCallback,
   type ExtensionDialogCancelCallback,
 } from "./ExtensionDialogCard";
+import { AskUserCard } from "./AskUserCard";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -377,6 +378,13 @@ async function mountOpenDialog(
   return card;
 }
 
+async function questionsCard(card: ExtensionDialogCard): Promise<{ questions: AskUserCard; inner: ShadowRoot }> {
+  const questions = renderRoot(card).querySelector("ask-user-card");
+  if (!(questions instanceof AskUserCard)) throw new Error("no Questions card");
+  await questions.updateComplete;
+  return { questions, inner: requiredElement(questions.shadowRoot, "questions card root") };
+}
+
 function renderRoot(card: ExtensionDialogCard): ShadowRoot {
   return requiredElement(card.shadowRoot, "extension-dialog-card shadow root");
 }
@@ -480,26 +488,51 @@ describe("answer controls that float over the choices they sit above", () => {
   });
 });
 
-describe("a screen the extension declared for the browser", () => {
-  it("renders the menu as a heading, text and real buttons", async () => {
-    const card = await mountOpenDialog(openDialog({
-      kind: "custom",
-      title: "Extension screen",
-      lines: ["│ Task list confirmation │", "│ ▸ Confirm │", "│   Keep    │"],
-      screen: {
-        kind: "menu",
-        title: "Task list confirmation",
-        body: ["[ ] task-1: filters"],
-        options: ["Confirm", "Keep"],
-        current: 0,
-      },
-    }), {});
+describe("a screen the extension declared as questions", () => {
+  const declared = openDialog({
+    dialogId: "dlg-q",
+    kind: "custom",
+    title: "Confirm Goal Draft",
+    lines: [],
+    screen: {
+      kind: "questions",
+      title: "Confirm Goal Draft",
+      questions: [{
+        id: "confirm",
+        question: "Confirm Goal Draft",
+        detail: "Objective: ship the filters",
+        options: [{ value: "0", label: "Confirm" }, { value: "1", label: "Continue chatting" }],
+        custom: false,
+      }],
+    },
+  });
+
+  it("is the Questions card, with no terminal frame or key row", async () => {
+    const card = await mountOpenDialog(declared);
     const root = renderRoot(card);
-    const options = [...root.querySelectorAll(".screen-option")];
-    expect(root.querySelector(".screen-title")?.textContent).toBe("Task list confirmation");
-    expect(root.querySelector(".screen-text")?.textContent).toContain("task-1");
-    expect(options.map((option) => option.textContent.trim())).toEqual(["Confirm", "Keep"]);
-    expect(options[0]?.classList.contains("current")).toBe(true);
-    expect(root.querySelector("div.dialog-screen")).toBeNull();
+    const { inner } = await questionsCard(card);
+
+    expect(root.querySelector(".dialog-screen, .dialog-screen-keys, .dialog-screen-menu")).toBeNull();
+    expect(inner.querySelector(".question-detail")?.textContent).toBe("Objective: ship the filters");
+    expect([...inner.querySelectorAll(".option-label")].map((label) => label.textContent)).toEqual(["Confirm", "Continue chatting"]);
+  });
+
+  it("answers the dialog with what the reader chose", async () => {
+    const onAnswer = vi.fn<ExtensionDialogAnswerCallback>();
+    const card = await mountOpenDialog(declared, { onAnswer });
+    const { questions, inner } = await questionsCard(card);
+
+    requiredElement(inner.querySelector<HTMLInputElement>("input[value='0']"), "Confirm option").click();
+    await questions.updateComplete;
+    buttonWithText(inner, "Send answers").click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onAnswer).toHaveBeenCalledWith("dlg-q", { answers: [{ id: "confirm", values: ["0"] }] });
+  });
+
+  it("records the answer by its label", () => {
+    expect(extensionDialogCloseSummary({ ...closedDialog("answered", { answers: [{ id: "confirm", values: ["0"] }] }), dialog: declared })).toBe("Answered: Confirm");
+    expect(extensionDialogCloseSummary({ ...closedDialog("answered", { answers: [] }), dialog: declared })).toBe("Sent without answering.");
   });
 });

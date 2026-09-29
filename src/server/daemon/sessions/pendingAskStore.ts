@@ -143,7 +143,7 @@ export class PendingAskStore {
     if (ask === undefined) return { status: "stale" };
     // Validate before closing so a submission that does not fit its questions
     // leaves the ask open for the browser to correct.
-    const answers = validateSubmission(ask, submission);
+    const answers = validateSubmission(ask.questions, submission);
     return { status: "closed", outcome: this.requireClose(key, askId, "submitted", answers) };
   }
 
@@ -323,6 +323,7 @@ function validateQuestion(question: AskUserQuestion, id: string): AskUserQuestio
     ...(detail === undefined ? {} : { detail: requireText(detail, `detail of question ${id}`) }),
     options,
     ...(question.multiple === true ? { multiple: true } : {}),
+    ...(question.custom === false ? { custom: false } : {}),
   };
 }
 
@@ -335,8 +336,9 @@ function validateOption(option: AskUserQuestionOption, value: string, questionId
   };
 }
 
-function validateSubmission(ask: PendingAskUser, submission: AskUserSubmission): Map<string, AskUserAnswer> {
-  const questionsById = new Map(ask.questions.map((question) => [question.id, question]));
+/** The answers that fit `questions`, keyed by question id; untouched questions are absent. Throws on any that do not fit. */
+export function validateSubmission(questions: readonly AskUserQuestion[], submission: AskUserSubmission): Map<string, AskUserAnswer> {
+  const questionsById = new Map(questions.map((question) => [question.id, question]));
   const answers = new Map<string, AskUserAnswer>();
   for (const answer of submission.answers) {
     const question = questionsById.get(answer.id);
@@ -369,6 +371,7 @@ function validateAnswer(question: AskUserQuestion, answer: AskUserAnswer): AskUs
 
 function normalizeOtherText(question: AskUserQuestion, otherText: string | undefined): string | undefined {
   if (otherText === undefined) return undefined;
+  if (question.custom === false) throw new PendingAskValidationError(`Question ${question.id} takes no typed answer`);
   if (otherText.length > ASK_USER_OTHER_TEXT_MAX_LENGTH) {
     throw new PendingAskValidationError(`Other text of question ${question.id} exceeds its length limit`);
   }

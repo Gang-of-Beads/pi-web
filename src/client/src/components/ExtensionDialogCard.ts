@@ -6,12 +6,17 @@ import {
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   type ExtensionDialogAnswer,
   type ExtensionDialogCloseReason,
+  type AskUserSubmission,
+  type ExtensionDialogScreen,
+  type PendingAskUser,
   type PendingExtensionDialog,
 } from "../../../shared/apiTypes";
+import { dialogAnswerText } from "../../../shared/dialogAnswerText";
 import type { ClosedExtensionDialog } from "../appState";
 import { dialogScreenKey } from "../dialogScreenKey.js";
 import { isSelectableLine, keysForLineTap, screenIsTappable } from "../dialogScreenKeys.js";
-import { classifyScreen, lineForOption, shapeFromScreen } from "../dialogScreenShape.js";
+import { classifyScreen } from "../dialogScreenShape.js";
+import "./AskUserCard";
 import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
 
 export type ExtensionDialogAnswerCallback = (dialogId: string, value: ExtensionDialogAnswer) => void | Promise<void>;
@@ -93,8 +98,9 @@ export function extensionDialogCloseSummary(closed: ClosedExtensionDialog): stri
       // An answered close without an answer value breaks the wire contract;
       // the card still renders rather than crashing the transcript.
       if (answer === undefined) return "Closed without an answer.";
-      if (typeof answer === "boolean") return `Answered: ${answer ? "Yes" : "No"}`;
-      return answer === "" ? "Answered with an empty response." : `Answered: ${answer}`;
+      const text = dialogAnswerText(closed.dialog.screen, answer);
+      if (text !== "") return `Answered: ${text}`;
+      return typeof answer === "string" ? "Answered with an empty response." : "Sent without answering.";
     }
     case "cancelled": return "Dismissed without an answer.";
     case "timeout": return "No answer was given before the dialog timed out.";
@@ -188,8 +194,22 @@ export class ExtensionDialogCard extends LitElement {
 
   override render(): TemplateResult | null {
     if (this.outcome !== undefined) return this.renderClosed(this.outcome);
+    if (this.dialog?.screen !== undefined) return this.renderQuestions(this.dialog, this.dialog.screen);
     if (this.dialog !== undefined) return this.renderOpen(this.dialog);
     return null;
+  }
+
+  /**
+   * A screen the extension declared as questions is the Questions card `ask_user`
+   * uses, not a terminal frame: the daemon never mounted the component, so this is
+   * the only place the dialog appears.
+   */
+  private renderQuestions(dialog: PendingExtensionDialog, screen: ExtensionDialogScreen): TemplateResult {
+    const ask: PendingAskUser = { askId: dialog.dialogId, askedAt: dialog.askedAt, questions: screen.questions };
+    return html`<ask-user-card
+      .ask=${ask}
+      .onSubmit=${(_askId: string, submission: AskUserSubmission) => { this.answerDialog(dialog, submission); }}
+    ></ask-user-card>`;
   }
 
   private renderOpen(dialog: PendingExtensionDialog): TemplateResult {
@@ -233,7 +253,7 @@ export class ExtensionDialogCard extends LitElement {
    */
   private renderCustomBody(dialog: PendingExtensionDialog): TemplateResult {
     const lines = dialog.lines ?? [];
-    const shape = dialog.screen === undefined ? classifyScreen(lines) : shapeFromScreen(dialog.screen, lines);
+    const shape = classifyScreen(lines);
     const tappable = shape.kind === "menu" || screenIsTappable(lines);
     return html`
       ${dialog.message === undefined ? null : html`<p class="dialog-screen-hint">${dialog.message}</p>`}
@@ -241,11 +261,11 @@ export class ExtensionDialogCard extends LitElement {
       ${shape.kind === "menu"
         ? html`<div class="dialog-screen-menu" role="group" aria-label="Extension screen">
             ${shape.body.length === 0 ? null : html`<pre class="screen-text">${shape.body.join("\n")}</pre>`}
-            ${shape.options.map((option, index) => html`<button
+            ${shape.options.map((option) => html`<button
               type="button"
               class=${`screen-option${option.current ? " current" : ""}`}
               aria-current=${option.current ? "true" : "false"}
-              @click=${() => { void this.tapScreenOption(dialog, lines, option.label, option.line, index); }}
+              @click=${() => { void this.tapScreenLine(dialog, lines, option.line); }}
             >${option.current ? renderDisclosureIcon(true) : null}${option.label}</button>`)}
           </div>`
         : html`<div
@@ -270,21 +290,6 @@ export class ExtensionDialogCard extends LitElement {
         <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Close</button>
       </footer>
     `;
-  }
-
-  /**
-   * A tap on a native option row: the component still owns its cursor, so the tap
-   * walks it there by content and then selects - same path as a tap on a line.
-   */
-  private async tapScreenOption(
-    dialog: PendingExtensionDialog,
-    lines: readonly string[],
-    label: string,
-    line: number,
-    index: number,
-  ): Promise<void> {
-    const target = dialog.screen === undefined ? line : lineForOption(lines, label, index);
-    await this.tapScreenLine(dialog, lines, target);
   }
 
   /**

@@ -14,7 +14,7 @@ function dialog(patch: Partial<PendingExtensionDialog> = {}): PendingExtensionDi
 }
 
 /** Observe a parked wait without hanging the test when it never settles. */
-async function settledValue(promise: Promise<boolean | string | undefined>): Promise<{ settled: true; value: boolean | string | undefined } | { settled: false }> {
+async function settledValue(promise: Promise<unknown>): Promise<{ settled: true; value: unknown } | { settled: false }> {
   return await Promise.race([
     promise.then((value) => ({ settled: true as const, value })),
     Promise.resolve({ settled: false as const }),

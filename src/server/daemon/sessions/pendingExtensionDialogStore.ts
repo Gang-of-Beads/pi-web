@@ -10,8 +10,10 @@ import {
   type ExtensionDialogCloseReason,
   type ExtensionDialogKind,
   type ExtensionDialogOutcome,
+  type ExtensionDialogScreen,
   type PendingExtensionDialog,
 } from "../../../shared/apiTypes.js";
+import { validateSubmission } from "./pendingAskStore.js";
 
 export interface PendingExtensionDialogStoreOptions {
   now?: (() => Date) | undefined;
@@ -30,6 +32,8 @@ export interface PendingExtensionDialogOpenInput {
   title: string;
   /** Rendered lines of a `custom` screen. */
   lines?: string[] | undefined;
+  /** What a `custom` screen was declared to be; see {@link PendingExtensionDialog.screen}. */
+  screen?: ExtensionDialogScreen | undefined;
   message?: string | undefined;
   options?: string[] | undefined;
   placeholder?: string | undefined;
@@ -193,12 +197,11 @@ function validateAnswer(dialog: PendingExtensionDialog, value: ExtensionDialogAn
       return value;
     case "select":
       if (typeof value !== "string" || dialog.options?.includes(value) !== true) {
-        throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} has no option ${String(value)}`);
+        throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} has no option ${typeof value === "string" ? value : JSON.stringify(value)}`);
       }
       return value;
     case "custom":
-      if (typeof value !== "string") throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} expects the extension's result as text`);
-      return value;
+      return validateCustomAnswer(dialog, value);
     case "input":
       if (typeof value !== "string") throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} expects a text answer`);
       if (value.length > EXTENSION_DIALOG_INPUT_MAX_LENGTH) {
@@ -212,7 +215,7 @@ function validateAnswer(dialog: PendingExtensionDialog, value: ExtensionDialogAn
 function kindFields(
   kind: ExtensionDialogKind,
   input: PendingExtensionDialogOpenInput,
-): Pick<PendingExtensionDialog, "message" | "options" | "placeholder" | "lines"> {
+): Pick<PendingExtensionDialog, "message" | "options" | "placeholder" | "lines" | "screen"> {
   switch (kind) {
     case "confirm": {
       const message = optionalProse(input.message, "dialog message");
@@ -225,7 +228,22 @@ function kindFields(
       return placeholder === undefined ? {} : { placeholder };
     }
     case "custom":
-      return { lines: validateLines(input.lines) };
+      return { lines: validateLines(input.lines), ...(input.screen === undefined ? {} : { screen: input.screen }) };
+  }
+}
+
+/** A declared questions screen takes the Questions card's submission; a drawn screen takes text. */
+function validateCustomAnswer(dialog: PendingExtensionDialog, value: ExtensionDialogAnswer): ExtensionDialogAnswer {
+  const questions = dialog.screen?.questions;
+  if (questions === undefined) {
+    if (typeof value !== "string") throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} expects the extension's result as text`);
+    return value;
+  }
+  if (typeof value !== "object") throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} expects answers to its questions`);
+  try {
+    return { answers: [...validateSubmission(questions, value).values()] };
+  } catch (error) {
+    throw new PendingExtensionDialogValidationError(error instanceof Error ? error.message : String(error));
   }
 }
 

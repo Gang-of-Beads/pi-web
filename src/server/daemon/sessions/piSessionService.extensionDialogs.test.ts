@@ -706,3 +706,48 @@ describe("PiSessionService session_start dialog startup reachability", () => {
     await service.dispose();
   });
 });
+
+describe("a custom screen declared as questions", () => {
+  const web = {
+    kind: "questions",
+    title: "Confirm Goal Draft",
+    questions: [{ id: "confirm", question: "Confirm Goal Draft", detail: "Objective: ship", options: [{ value: "0", label: "Confirm" }, { value: "1", label: "Cancel" }], custom: false }],
+  };
+  /** pi types `custom` options without `web`; a variable escapes the literal check the way an extension's does. */
+  const declaring = { overlay: false, web };
+
+  it("tells the extension which declarations this host draws", async () => {
+    const { service, fake } = dialogService();
+    const ui = await boundUiContext(service, fake);
+
+    expect(Reflect.get(ui, "piWebScreens")).toEqual(["questions"]);
+    await service.dispose();
+  });
+
+  it("never mounts the terminal component, so the reader sees the dialog once", async () => {
+    const { service, store, fake } = dialogService();
+    const ui = await boundUiContext(service, fake);
+    const factory = vi.fn();
+
+    const parked = ui.custom(factory, declaring);
+    await Promise.resolve();
+
+    expect(factory).not.toHaveBeenCalled();
+    expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toMatchObject([{ dialogId: "dialog-1", kind: "custom", title: "Confirm Goal Draft", lines: [], screen: web }]);
+    await service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-1", { answers: [{ id: "confirm", values: ["0"] }] });
+    await expect(parked).resolves.toEqual({ answers: [{ id: "confirm", values: ["0"] }] });
+    await service.dispose();
+  });
+
+  it("refuses an answer that does not fit its questions and keeps the dialog open", async () => {
+    const { service, store, fake } = dialogService();
+    const ui = await boundUiContext(service, fake);
+    void ui.custom(vi.fn(), declaring);
+    await Promise.resolve();
+
+    await expect(service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-1", "Confirm")).rejects.toBeInstanceOf(PendingExtensionDialogValidationError);
+    await expect(service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-1", { answers: [{ id: "confirm", values: [], otherText: "maybe" }] })).rejects.toBeInstanceOf(PendingExtensionDialogValidationError);
+    expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toHaveLength(1);
+    await service.dispose();
+  });
+});

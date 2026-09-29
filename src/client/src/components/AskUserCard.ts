@@ -159,7 +159,7 @@ export class AskUserCard extends LitElement {
               </span>
             </label>
           `)}
-          ${freeTextOnly ? null : html`
+          ${freeTextOnly || question.custom === false ? null : html`
             <label class="option other-option">
               <input
                 type=${inputType}
