@@ -913,3 +913,44 @@ describe("seventh gate-lane findings", () => {
     await service.dispose();
   });
 });
+
+describe("eighth gate-lane findings", () => {
+  it("P1-1: a direct handoff in flight when the session closes goes back to the inbox instead of running on the closed runtime", async () => {
+    const { fake, service, ref, dir, dataDir } = await inboxService("g8-in-flight", { isStreaming: false });
+    await service.status(ref);
+    const queue: unknown = Reflect.get(service, "ownedQueue");
+    if (!(queue instanceof OwnedPromptQueue)) throw new Error("ownedQueue unavailable");
+    const take = queue.take.bind(queue);
+    let releaseTake = (): void => undefined;
+    const takeGate = new Promise<void>((resolve) => { releaseTake = resolve; });
+    vi.spyOn(queue, "take").mockImplementation(async (sessionId: string, count: number) => {
+      await takeGate;
+      return take(sessionId, count);
+    });
+    await service.prompt(ref, "sent just before stop", undefined, undefined, { clientMessageId: "g8p1-d-0001" });
+    const closing = service.stop(ref);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    releaseTake();
+    await closing;
+    const reopened = new OwnedPromptQueue(dataDirInboxLocation(dataDir));
+    expect({
+      handedToClosedRuntime: fake.calls.prompt.length,
+      waiting: (await reopened.open("g8-in-flight", dir)).map((entry) => entry.clientMessageId),
+      outcome: service.operationOutcomes("g8-in-flight", ["g8p1-d-0001"]),
+    }).toEqual({ handedToClosedRuntime: 0, waiting: ["g8p1-d-0001"], outcome: { "g8p1-d-0001": "pending" } });
+    await service.dispose();
+  });
+
+  it("P2-1: reopening a session's inbox keeps two waiting messages without ids even when they look alike", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "inbox-review-g8p21-"));
+    const twin = { lane: "steer" as const, text: "continue", images: [], acceptedAt: "2026-09-29T00:00:00.000Z", echoUserMessage: false };
+    const writer = new OwnedPromptQueue(dataDirInboxLocation(dataDir));
+    await writer.open("g8-twins", "/workspace");
+    await writer.push("g8-twins", "/workspace", { ...twin });
+    await writer.push("g8-twins", "/workspace", { ...twin });
+    const reader = new OwnedPromptQueue(dataDirInboxLocation(dataDir));
+    expect((await reader.open("g8-twins", "/workspace")).length).toBe(2);
+    const again = new OwnedPromptQueue(dataDirInboxLocation(dataDir));
+    expect((await again.open("g8-twins", "/workspace")).length).toBe(2);
+  });
+});

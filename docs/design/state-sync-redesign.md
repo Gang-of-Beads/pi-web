@@ -385,6 +385,17 @@ Two P1 problems, both introduced by the sixth-gate fixes, and two P2.
 | P2-A | After the take-back gave up at 5 s and the id reopened, the old runtime's late batch and take-back cleared the new runtime's batch marker, settled its unread steers as read, and deleted its steer records | TRUE | Fixed: late work of a runtime that no longer owns its session id records, settles and takes back nothing, and a batch clears only its own marker |
 | P2-B | The closing lock was held through the abort; an abort that never finishes blocked the id's reopen forever and daemon shutdown with it | TRUE | Fixed: the lock releases when the close finishes or after 10 s, whichever is first |
 
+
+## Phase 1 eighth gate-lane triage (DeepSeek 4.1 max, over ea2ed475)
+
+No P0. All four gate-7 fixes verified, including that open/close waits now form an acyclic graph. Six hunt items adjudicated FALSE.
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| P1-1 | A direct handoff between the inbox and pi when the session closed ran on the torn-down runtime: unseen, unpersisted, and settled succeeded, with nothing to hand it again. Close waited for steer batches but not for a direct handoff | TRUE, pre-existing | Fixed: teardown waits for the whole handoff chain (within its 5 s bound), and a handoff re-checks right before `session.prompt` that its runtime still serves the session id; if not, the message goes back to the inbox for the next runtime |
+| P2-1 | `open()` deduplicated id-less entries by lane, text and millisecond and persisted the result, erasing a real second message | TRUE | Fixed: memory, which always matches the file, is the queue's truth; `open()` only adds legacy entries not already known by id |
+| P2-2 | The gate 7 P2-A disposition overstated its fix: a late handoff of a replaced runtime could still record a commit expectation and take the one-slot commit watcher | TRUE | Fixed: a handoff whose runtime no longer serves the id stops before any bookkeeping, and the commit watcher is taken only by the owning runtime |
+
 ## Phase 1 known limitations
 
 Each was found by a review lane, checked against the source, and left unfixed for the reason given.

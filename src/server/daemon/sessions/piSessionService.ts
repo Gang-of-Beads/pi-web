@@ -3252,7 +3252,7 @@ export class PiSessionService implements SessionRouteService {
     const sessionId = session.sessionId;
     const { clientMessageId, text } = entry;
     const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
-    if (this.liveRunState(session) !== HANDOFF_RUN_STATE[behavior ?? "direct"]) return "transient";
+    if (!this.servesSessionId(session) || this.liveRunState(session) !== HANDOFF_RUN_STATE[behavior ?? "direct"]) return "transient";
     if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text, imageCount: images.length });
     if (behavior === "steer") this.publishActivity(session, "steering queued", "active");
     let committed = false;
@@ -3275,7 +3275,7 @@ export class PiSessionService implements SessionRouteService {
         markHanded();
         return;
       }
-      if (session.agent.state?.isStreaming !== true) this.directCommitWatchers.set(sessionId, onCommit);
+      if (session.agent.state?.isStreaming !== true && this.ownsSessionId(session)) this.directCommitWatchers.set(sessionId, onCommit);
     };
     if (behavior === undefined && isCommand) this.runStartWatchers.set(sessionId, markHanded);
     const settled = this.runSessionEntryMutation(session, "send a prompt", () => session.prompt(text, { ...buildPromptOptions(behavior, images), preflightResult })).then(
@@ -3360,6 +3360,16 @@ export class PiSessionService implements SessionRouteService {
   private ownsSessionId(session: PiAgentSession): boolean {
     const current = this.active.get(session.sessionId)?.runtime.session;
     return current === undefined || current === session;
+  }
+
+  /**
+   * Whether this runtime is still the one serving its session id - the check a handoff makes
+   * right before `session.prompt`. A runtime being closed or shut down is no longer active; a
+   * message handed to it would run on a torn-down runtime, unseen and unpersisted, so it goes
+   * back to the inbox instead, where the next runtime hands it.
+   */
+  private servesSessionId(session: PiAgentSession): boolean {
+    return this.active.get(session.sessionId)?.runtime.session === session;
   }
 
   /** A steer is pi's once `_queueSteer` has pushed it, which is when the SDK calls its preflight. */
@@ -4537,13 +4547,14 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * Before a runtime goes away: let a steer batch in flight land, then take back what pi holds
+   * Before a runtime goes away: let the handoff in flight finish (a message it no longer may
+   * hand goes back to the inbox, see `servesSessionId`), then take back what pi holds
    * unread into the inbox file, where the next runtime - or the next daemon - hands it again.
    * Steers the agent loop already holds stay; the abort lets the loop commit them.
    */
   private async keepWhatThePiHolds(session: PiAgentSession): Promise<void> {
     const takeBack = (async () => {
-      await this.steerBatches.get(session.sessionId);
+      await this.handoffChains.get(session.sessionId);
       await this.takeBackHeldMessages(session);
     })();
     let timer: NodeJS.Timeout | undefined;

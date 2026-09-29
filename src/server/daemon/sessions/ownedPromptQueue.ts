@@ -97,11 +97,12 @@ export class OwnedPromptQueue {
       const legacyPath = queueFilePath(cwd, sessionId);
       const loaded = path === undefined ? [] : await loadQuarantiningCorruption(path, sessionId);
       const migrated = path === undefined || path === legacyPath ? [] : await loadQuarantiningCorruption(legacyPath, sessionId);
-      const merged = [...migrated, ...loaded, ...(this.perSession.get(sessionId) ?? [])].reduce<OwnedQueueEntry[]>(
-        (kept, entry) => kept.some((known) => sameEntry(known, entry)) ? kept : [...kept, entry],
-        [],
-      );
-      if (merged.length !== loaded.length) await this.persist(sessionId, merged);
+      const remembered = this.perSession.get(sessionId);
+      const current = remembered ?? loaded;
+      const knownIds = new Set(current.map((entry) => entry.clientMessageId).filter((id) => id !== undefined));
+      const moved = migrated.filter((entry) => entry.clientMessageId === undefined || !knownIds.has(entry.clientMessageId));
+      const merged = [...moved, ...current];
+      if (moved.length > 0 || (remembered !== undefined && remembered.length !== loaded.length)) await this.persist(sessionId, merged);
       if (migrated.length > 0) await unlink(legacyPath).catch(() => undefined);
       this.perSession.set(sessionId, merged);
       return [...merged];
@@ -205,15 +206,6 @@ export class OwnedPromptQueue {
 
 function isMissingFileError(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
-function anonymousKey(entry: OwnedQueueEntry): string {
-  return `${entry.lane}\u0000${entry.text}\u0000${entry.acceptedAt}`;
-}
-
-function sameEntry(a: OwnedQueueEntry, b: OwnedQueueEntry): boolean {
-  if (a.clientMessageId !== undefined || b.clientMessageId !== undefined) return a.clientMessageId === b.clientMessageId;
-  return anonymousKey(a) === anonymousKey(b);
 }
 
 /**
