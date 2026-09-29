@@ -41,7 +41,7 @@ async function unansweredSend(answer: LedgerAnswers, overrides: Partial<typeof d
   await controller.send("no answer came").catch(() => undefined);
   const id = state.messages.find((line) => line.role === "user")?.meta?.delivery?.clientMessageId;
   if (id === undefined) throw new Error("the send needs a row");
-  savePendingPrompt(outboxKey, { text: "no answer came", clientMessageId: id, at: new Date().toISOString(), state: "unverified" });
+  savePendingPrompt(outboxKey, { text: "no answer came", clientMessageId: id, at: new Date().toISOString(), state: "unverifiable" });
   return {
     controller,
     id,

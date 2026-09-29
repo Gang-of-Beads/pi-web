@@ -799,3 +799,21 @@ Three of these flip to `it`. "spells the state it waits in the same way" waits f
 - the delivery words (`ChatView.test.ts`, `pendingPromptActions.test.ts`, `PromptEditor.sendFailure.test.ts`);
 - the command's Read (`commandLedger.test.ts`, `ChatView.commandBubbles.test.ts`);
 - the verification step's shape (`sendVerification.test.ts`: a failure is now `{ kind: "fail", cause }`).
+
+### Phase 5b as landed: one state set
+
+- `OutgoingState` is `MessageDeliveryState`. The outbox record's states are the bubble's six:
+  - `stored` becomes `sending`;
+  - `accepted` splits into `received` (the POST answered) and `queued` (the queue holds it);
+  - `unverified` becomes `unverifiable`.
+- `outgoingStateFromStorage` reads what earlier builds wrote as the state it meant. An unknown state still reads as `sending`.
+- A received or queued record fails on `send-refused-permanent`, which is how a runtime refusal after acceptance will reach it (5c).
+- A failed record carries `failure` (its cause), and moving on clears it.
+
+**Repro changes, by the delegated spelling decision:**
+- "records an expired deadline the same way as a dropped link": `records: ["unverified"]` becomes `["unverifiable"]`.
+- "survives a state the table has no row for": `state: "unverified"` becomes `"unverifiable"`. Its fixture's unknown state moves from `"unverifiable"`, which is now a real state, to `"committed-in-2027"`, so it still exercises an unknown one.
+- "has no clock-driven exit": the fixture asks about `unverifiable`. The expected exits are unchanged.
+- "spells the state it waits in the same way as the bubble does" flips to `it`.
+
+The client suite has no expected failure left.

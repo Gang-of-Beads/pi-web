@@ -1,7 +1,8 @@
 import type { PromptAttachment } from "./api";
 import type { PromptAttachmentDelivery } from "../../shared/apiTypes";
 import type { OutgoingEvent, OutgoingState } from "./outgoingMessages";
-import { isOutgoingState, outgoingVerdict } from "./outgoingMessages";
+import { outgoingStateFromStorage, outgoingVerdict } from "./outgoingMessages";
+import type { DeliveryFailureCause } from "./deliveryWords";
 /**
  * Pending-message outbox: survives network drops so a send is never silently
  * lost. When a prompt fails with a network error, its contents are persisted
@@ -19,6 +20,8 @@ export interface PendingPrompt {
    * late answer for a session the reader has left cannot rewrite what another one shows.
    */
   state?: OutgoingState;
+  /** Why a failed record failed, so the tray words it as the bubble does. */
+  failure?: DeliveryFailureCause;
   text: string;
   behavior?: "steer" | "followUp";
   /** The bubble's correlation id, so the retry lands on the same tracking. */
@@ -57,15 +60,26 @@ export function advancePendingPrompt(sessionKey: string, clientMessageId: string
   const prompts = loadPendingPrompts(sessionKey);
   const target = prompts.find((prompt) => prompt.clientMessageId === clientMessageId);
   if (target === undefined) return undefined;
-  const verdict = outgoingVerdict(target.state ?? "stored", event);
-  if (verdict.kind === "ignore" || verdict.kind === "stay") return target.state ?? "stored";
+  const verdict = outgoingVerdict(target.state ?? "sending", event);
+  if (verdict.kind === "ignore" || verdict.kind === "stay") return target.state ?? "sending";
   if (verdict.kind === "drop") {
     forgetPendingPrompt(sessionKey, clientMessageId);
     return undefined;
   }
-  savePendingPrompt(sessionKey, { ...target, state: verdict.to });
+  const moved: PendingPrompt = { ...target, state: verdict.to };
+  delete moved.failure;
+  savePendingPrompt(sessionKey, verdict.to === "failed" ? { ...moved, failure: FAILURE_FOR_EVENT[event] ?? "not-sent" } : moved);
   return verdict.to;
 }
+
+/**
+ * Why a record that fails on this event failed. Every event that fails a record is a refusal or
+ * a dead link, so the message never became part of the conversation.
+ */
+const FAILURE_FOR_EVENT: Partial<Record<OutgoingEvent, DeliveryFailureCause>> = {
+  "send-refused-network": "not-sent",
+  "send-refused-permanent": "not-sent",
+};
 
 function isPendingPrompt(value: unknown): value is PendingPrompt {
   if (value === null || typeof value !== "object" || typeof Reflect.get(value, "text") !== "string") return false;
@@ -74,16 +88,19 @@ function isPendingPrompt(value: unknown): value is PendingPrompt {
 }
 
 /**
- * A record whose state this build's table has no row for - written by another build, or under
- * the bubble's spelling - is read as freshly stored. The table lookup is unchecked, so an
- * unknown state used to make the next transition throw inside the async send, where nothing
- * caught it.
+ * A record keeps its meaning across builds: a name an earlier build wrote is read as the state it
+ * meant, and a state this build has no row for is read as sending. The table lookup is
+ * unchecked, so an unknown state used to make the next transition throw inside the async send,
+ * where nothing caught it.
  */
 function withKnownState(prompt: PendingPrompt): PendingPrompt {
-  if (prompt.state === undefined || isOutgoingState(prompt.state)) return prompt;
-  const stored = { ...prompt };
-  delete stored.state;
-  return stored;
+  if (prompt.state === undefined) return prompt;
+  const known = outgoingStateFromStorage(prompt.state);
+  if (known === prompt.state) return prompt;
+  if (known !== undefined) return { ...prompt, state: known };
+  const unknown = { ...prompt };
+  delete unknown.state;
+  return unknown;
 }
 
 /** Whether an error looks like connectivity loss rather than a server verdict. */
@@ -167,11 +184,11 @@ function announceOutboxChange(sessionKey: string): void {
  * much as one that failed, and the two used to be recorded differently for the same event.
  */
 const NEEDS_ATTENTION: Readonly<Record<OutgoingState, boolean>> = {
-  stored: false,
   sending: false,
-  accepted: false,
+  received: false,
+  queued: false,
   delivered: false,
-  unverified: true,
+  unverifiable: true,
   failed: true,
 };
 

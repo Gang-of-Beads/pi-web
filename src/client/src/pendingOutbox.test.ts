@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, type PendingPrompt } from "./pendingOutbox";
+import { advancePendingPrompt, clearPendingPrompts, isNetworkFailure, loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, sessionsWithFailedSends, type PendingPrompt } from "./pendingOutbox";
 
 function memoryStorage(): Storage & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -126,5 +126,28 @@ describe("moveOutbox", () => {
       moved: loadPendingPrompts("local:started-1", storage).map((prompt) => [prompt.clientMessageId, prompt.state]),
       left: loadPendingPrompts("local:pending-1", storage),
     }).toEqual({ moved: [["cm-a", undefined], ["cm-b", "failed"]], left: [] });
+  });
+});
+
+describe("a record written by an earlier build", () => {
+  it("keeps its meaning: an unverified record still reads as unanswered and still marks its session", () => {
+    const storage = memoryStorage();
+    storage.setItem("pi-web:pending-prompt:local:session-old", JSON.stringify([{ text: "a", clientMessageId: "cm-old", state: "unverified", at: "2026-09-01T00:00:00.000Z" }]));
+
+    expect({ state: loadPendingPrompts("local:session-old", storage)[0]?.state, marked: [...sessionsWithFailedSends(storage)] })
+      .toEqual({ state: "unverifiable", marked: ["session-old"] });
+  });
+});
+
+describe("a record that fails", () => {
+  it("records why, and forgets why once it moves on", () => {
+    savePendingPrompt("local:session-f", { text: "a", clientMessageId: "cm-f", at: new Date().toISOString() });
+    advancePendingPrompt("local:session-f", "cm-f", "send-refused-network");
+    const failed = loadPendingPrompts("local:session-f")[0];
+    advancePendingPrompt("local:session-f", "cm-f", "retry");
+    const retried = loadPendingPrompts("local:session-f")[0];
+    clearPendingPrompts("local:session-f");
+
+    expect({ failed: [failed?.state, failed?.failure], retried: [retried?.state, retried?.failure] }).toEqual({ failed: ["failed", "not-sent"], retried: ["sending", undefined] });
   });
 });

@@ -103,7 +103,7 @@ describe("one event, two records", () => {
     expect({
       records: loadPendingPrompts("local:session-timeout").map((entry) => entry.state),
       markedInList: [...sessionsWithFailedSends()].sort(),
-    }).toMatchObject({ records: ["unverified"], markedInList: ["session-link", "session-timeout"] });
+    }).toMatchObject({ records: ["unverifiable"], markedInList: ["session-link", "session-timeout"] });
   });
 });
 
@@ -139,14 +139,14 @@ describe("a record read back from storage", () => {
     // lookup is unchecked (outgoingMessages.ts:131). A record written by another
     // build - or by the bubble's own word, "unverifiable" - makes
     // advancePendingPrompt throw inside the async send, where nothing catches it.
-    savePendingPrompt("local:session-1", { text: "a", clientMessageId: "cm-1", state: "unverifiable" as never, at: new Date().toISOString() });
+    savePendingPrompt("local:session-1", { text: "a", clientMessageId: "cm-1", state: "committed-in-2027" as never, at: new Date().toISOString() });
     const advanced = advancePendingPrompt("local:session-1", "cm-1", "send-timeout");
-    expect({ advanced, state: loadPendingPrompts("local:session-1")[0]?.state }).toMatchObject({ state: "unverified" });
+    expect({ advanced, state: loadPendingPrompts("local:session-1")[0]?.state }).toMatchObject({ state: "unverifiable" });
   });
 });
 
 describe("where a row can wait forever", () => {
-  it.fails("spells the state it waits in the same way as the bubble does", () => {
+  it("spells the state it waits in the same way as the bubble does", () => {
     const deliveryStates: MessageDeliveryState[] = ["sending", "received", "queued", "delivered", "failed", "unverifiable"];
     // Two modules, one fact, two spellings: the outbox record says "unverified",
     // the delivery table and the bubble say "unverifiable". Nothing forces them
@@ -158,7 +158,7 @@ describe("where a row can wait forever", () => {
   });
 
   it("has no clock-driven exit, only a server fact or the reader", () => {
-    const exits = OUTGOING_EVENTS.filter((event) => outgoingVerdict("unverified", event).kind !== "ignore");
+    const exits = OUTGOING_EVENTS.filter((event) => outgoingVerdict("unverifiable", event).kind !== "ignore");
     // Documents that the outbox table is fact-driven. The only re-ask of the
     // daemon about these identities is closeUnverifiedOperations
     // (sessionController.ts:2161), called from onReconnect alone
