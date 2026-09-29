@@ -36,7 +36,7 @@ function stallingFetch(): typeof fetch {
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); resetInFlight(); });
 
 describe("a read whose body stalls", () => {
-  it.fails("settles at the deadline instead of waiting for the body forever", async () => {
+  it("settles at the deadline instead of waiting for the body forever", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("fetch", stallingFetch());
     let settled: string | undefined;

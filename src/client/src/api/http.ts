@@ -22,6 +22,11 @@ export async function request<T>(url: string, parse: (value: unknown) => T, init
   return parse(body);
 }
 
+/**
+ * One request, bounded end to end: the deadline covers the body as well as the headers.
+ * Headers can arrive at once while the body stalls, and a deadline that ended at the headers
+ * left a panel "Reading…" for as long as the body took - measured at 47 s on a 30 s deadline.
+ */
 async function fetchBody(url: string, init?: RequestInit): Promise<unknown> {
   const headers = new Headers(init?.headers);
   if (init?.body !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");
@@ -33,17 +38,21 @@ async function fetchBody(url: string, init?: RequestInit): Promise<unknown> {
   // back.
   const timeoutMs = timeoutForBody(init?.body);
   const deadline = deadlineSignal(timeoutMs, init?.signal);
-  let response: Response;
   try {
-    response = await fetch(resolveAppUrl(url), { ...init, headers, signal: deadline.signal });
+    return await readResponse(url, await fetch(resolveAppUrl(url), { ...init, headers, signal: deadline.signal }));
   } catch (error) {
     // An abort that was ours is a deadline, and says so. An abort the caller
-    // asked for is theirs and is passed through unchanged.
+    // asked for is theirs and is passed through unchanged, and so is a status
+    // the server did answer with.
+    if (error instanceof HttpError) throw error;
     if (deadline.signal.aborted && init?.signal?.aborted !== true) throw new RequestTimeoutError(url, timeoutMs);
     throw error;
   } finally {
     deadline.done();
   }
+}
+
+async function readResponse(url: string, response: Response): Promise<unknown> {
   // The server answered - a 500 from it disproves "the link is down" just as
   // much as a 200 does - so the transport report fires before the status is
   // judged.
