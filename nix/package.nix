@@ -26,7 +26,10 @@ buildNpmPackage rec {
 
     packageRoot=$out/lib/node_modules/@gang-of-beads/pi-web
     mkdir -p "$packageRoot"
-    cp -R dist package.json node_modules "$packageRoot/"
+    cp -R dist package.json node_modules extensions "$packageRoot/"
+    # node-pty#850: the macOS spawn-helper prebuild ships without an execute bit, and the store
+    # is read-only by the time PI WEB could repair it, so every terminal failed with posix_spawnp.
+    find "$packageRoot/node_modules/node-pty/prebuilds" -name spawn-helper -exec chmod +x {} +
 
     makeWrapper ${nodejs}/bin/node $out/bin/pi-web \
       --add-flags "$packageRoot/dist/cli.js"
