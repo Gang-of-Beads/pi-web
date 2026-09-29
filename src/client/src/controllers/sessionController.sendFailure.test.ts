@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { initialAppState } from "../appState";
 import { SessionController } from "./sessionController";
 import { defaultApi, FakeSocket, oldSession, status, workspace, type AppState } from "./sessionController.testSupport";
-import { NetworkSendError } from "../pendingOutbox";
+import { NetworkSendError, SendScopeChangedError } from "../pendingOutbox";
 import { HttpError } from "../api/http";
 
 /**
@@ -120,6 +120,19 @@ describe("SessionController send failure", () => {
     await expect(controller.send("the daemon already owns this")).resolves.toBe(true);
 
     expect(read().messages.filter((line) => line.role === "user").map((line) => line.meta?.delivery?.state)).toEqual(["queued"]);
+  });
+
+  it("refuses a send written for another session, before any row or request", async () => {
+    const posted: string[] = [];
+    const api: typeof defaultApi = { ...defaultApi, prompt: (_session, text) => { posted.push(text); return Promise.resolve({ accepted: true }); } };
+    const { controller, read } = controllerWith(api);
+
+    await expect(controller.send("meant for another session", undefined, undefined, "inline", { clientMessageId: "cm-elsewhere", scope: { machineId: "local", sessionId: "another-session" } }))
+      .rejects.toBeInstanceOf(SendScopeChangedError);
+    await expect(controller.send("meant for this one", undefined, undefined, "inline", { clientMessageId: "cm-here", scope: { machineId: "local", sessionId: oldSession.id } }))
+      .resolves.toBe(true);
+
+    expect({ posted, rows: read().messages.filter((line) => line.role === "user").length }).toEqual({ posted: ["meant for this one"], rows: 1 });
   });
 
   it("keeps the optimistic bubble when the send succeeds", async () => {

@@ -20,9 +20,9 @@ import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
-import { forgetPendingPrompt, isNetworkFailure, NetworkSendError } from "../pendingOutbox";
+import { forgetPendingPrompt, isNetworkFailure, NetworkSendError, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
 import { VERIFY_AFTER_MS, verificationStep } from "../sendVerification";
-import type { MessageDeliveryState } from "../components/shared";
+import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, parseSessionSocketEvent, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
@@ -521,8 +521,10 @@ export class SessionController {
    * attachment with it, leaving the user to retype a long prompt and re-pick
    * images that may no longer be at hand.
    */
-  async send(text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery: PromptAttachmentDelivery = "inline", replay?: { clientMessageId?: string }): Promise<boolean> {
+  async send(text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery: PromptAttachmentDelivery = "inline", replay?: SendReplay): Promise<boolean> {
     const session = this.getState().selectedSession;
+    const scope = replay?.scope;
+    if (scope !== undefined && (session?.id !== scope.sessionId || selectedMachineId(this.getState()) !== scope.machineId)) throw new SendScopeChangedError(scope);
     if (!session || session.archived === true) return false;
 
     const trimmed = text.trim();
@@ -2204,6 +2206,7 @@ export class SessionController {
     if (this.getState().selectedSession?.id !== session.id || selectedMachineId(this.getState()) !== machineId) return;
     const outboxKey = machineSessionKey(machineId, session.id);
     for (const clientMessageId of open) {
+      if (!stillUnverifiable(this.getState().messages, clientMessageId)) continue;
       const step = verificationStep(outcomes[clientMessageId], lastAsk);
       if (step.kind === "wait") continue;
       if (step.kind === "withdraw") {
@@ -2901,5 +2904,15 @@ function isHighFrequencyTranscriptEvent(event: SessionUiEvent): boolean {
 
 function isSessionNotFoundError(error: unknown): boolean {
   return error instanceof Error && error.message.toLowerCase().includes("session not found");
+}
+
+/**
+ * Whether a row is still waiting for the answer its verification asked for. A retry that went
+ * out, or a frame that landed, while the ledger was being asked has moved the row on; the
+ * answer describes the ledger before that and would mark a message that is now on its way as
+ * not received - for good, since a failed row does not move forward.
+ */
+function stillUnverifiable(messages: readonly ChatLine[], clientMessageId: string): boolean {
+  return messages[findDeliveryLineIndex(messages, clientMessageId)]?.meta?.delivery?.state === "unverifiable";
 }
 

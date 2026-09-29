@@ -94,6 +94,33 @@ export function isNetworkFailure(error: unknown): boolean {
   return false;
 }
 
+/** The machine and session a message was composed for. */
+export interface SendScope {
+  machineId: string;
+  sessionId: string;
+}
+
+/** What a send hands the controller besides its content: its identity and its own scope. */
+export interface SendReplay {
+  clientMessageId?: string;
+  scope?: SendScope;
+}
+
+/**
+ * The selection moved away from the scope a send was composed for before the send could go.
+ *
+ * Sends wait their turn behind the previous one, and the controller sends to whatever session
+ * is selected when a send finally goes - so a message composed for session A, still waiting
+ * when the reader switched machine and opened B, ran in B. Neither a refusal nor a failure:
+ * the message keeps its outbox record under its own scope and goes when that session is open.
+ */
+export class SendScopeChangedError extends Error {
+  constructor(readonly scope: SendScope) {
+    super(`The message was written for another session (${scope.machineId}:${scope.sessionId})`);
+    this.name = "SendScopeChangedError";
+  }
+}
+
 /**
  * A connectivity failure on send, carrying the bubble's correlation id so the
  * outbox can retry the *same* message. Retrying under a fresh id would leave

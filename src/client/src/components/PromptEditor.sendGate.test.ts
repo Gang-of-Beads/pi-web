@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from "vitest";
 import { PromptEditor, recordedDelivery } from "./PromptEditor";
-import { loadPendingPrompts } from "../pendingOutbox";
+import { loadPendingPrompts, SendScopeChangedError } from "../pendingOutbox";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -94,6 +94,49 @@ describe("one composer's sends reach the daemon in the order they were made", ()
 
     expect({ sent, keptForItsSession: loadPendingPrompts("local:session-1").map((prompt) => prompt.text) })
       .toEqual({ sent: ["first"], keptForItsSession: ["second"] });
+  });
+});
+
+describe("a waiting send only ever goes to the session it was written for", () => {
+  it("is not handed over by a composer that was taken off the page, and stays in its session's outbox", async () => {
+    const element = await composer();
+    const first = deferred();
+    const sent: string[] = [];
+    element.onSend = (text: string) => {
+      sent.push(text);
+      return text === "first" ? first.promise : Promise.resolve(true);
+    };
+
+    element.replaceText("first");
+    fireSend(element);
+    element.replaceText("second");
+    fireSend(element);
+    element.remove();
+    first.resolve(true);
+    await flush();
+
+    expect({ sent, keptForItsSession: loadPendingPrompts("local:session-1").map((prompt) => prompt.text) })
+      .toEqual({ sent: ["first"], keptForItsSession: ["second"] });
+  });
+
+  it("hands the controller its own scope, and keeps the record when the controller says the selection moved", async () => {
+    const element = await composer();
+    const replays: unknown[] = [];
+    element.onSend = (_text, _behavior, _attachments, _delivery, replay) => {
+      replays.push(replay?.scope);
+      return Promise.reject(new SendScopeChangedError({ machineId: "local", sessionId: "session-1" }));
+    };
+
+    element.replaceText("written for session one");
+    fireSend(element);
+    await flush();
+
+    const draft: unknown = Reflect.get(element, "draft");
+    expect({
+      scope: replays[0],
+      kept: loadPendingPrompts("local:session-1").map((prompt) => prompt.text),
+      draft,
+    }).toEqual({ scope: { machineId: "local", sessionId: "session-1" }, kept: ["written for session one"], draft: "" });
   });
 });
 

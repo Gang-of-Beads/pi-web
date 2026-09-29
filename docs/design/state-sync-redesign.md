@@ -490,6 +490,21 @@ The last two abort the call's signal, and the race does not rely on the daemon h
 - The controller asks at 5 s, 15 s and 45 s after the send gave up, and again when the tab comes back.
 - The daemon publishes `prompt.refused` per identity when the runtime refuses a message the inbox accepted. The frame is published only if the ledger actually recorded `failed`, so a run failing after the read is not reported as the message's refusal. The client marks that row failed. The outbox entry is not re-created, so a refused message is never replayed automatically on reconnect.
 
+
+**Phase 2 first gate-lane triage (Opus 5.5, over 493d9701).** Confirmed sound:
+- the proxy deadline, which settles once and never replies twice;
+- the body deadline;
+- the 5xx disposition;
+- the proven-row refusal path, which cannot send twice;
+- `refuse()`.
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| P1-1 | A send waiting in the gate on a composer that was unmounted (a machine switch, or a cleared selection) still passed the scope guard, because a detached element's props never change. The controller then posted it to whatever session was selected, on another machine | TRUE, caused by the gate | Fixed at both ends. A send records whether its composer was on the page when written, and one taken off the page since is not handed over; its record stays in its own session's outbox. Every send also carries its recorded scope, and `controller.send` refuses a mismatched one with `SendScopeChangedError`, which the composer treats as "keep for its session", neither a refusal nor a failure. |
+| P1-2 | A verification answer was applied to a row that changed while the ledger was being asked. A Retry that went out mid-ask was overwritten to `failed`, and a failed row never moves forward | TRUE, caused by the clock | Fixed: a step applies only to a row that is still `unverifiable` when the answer arrives |
+| P2-1 | A row the runtime refused offers Retry, whose notice ("may already have been delivered") is untrue, because the accepted send already retired its outbox record | TRUE | Recorded for phase 5 (owner decision): Retry for a refused message is a words-and-semantics question. Discard hands the words back meanwhile, so nothing is lost. |
+| P2-2 | After a stall of about 70 s before acceptance, the last ask can call a message not received that the daemon then accepts and runs, and `failed` never moves forward | TRUE (rare) | Recorded for phase 3. "A failed row never moves forward" dates from retries that minted new ids; retries now reuse the identity, so a later fact about the same identity should outrank an inferred failure. That is the browser store's reducer rule (facts outrank answers), which phase 3 builds. Retry recovers the row meanwhile. |
+
 **Conflicts for phase 5 (owner decision).** Some confirm repros cannot all pass together:
 - **The bubble's words.** "does not claim it may be running when the bytes never left" wants the bubble of an `unverifiable` row to read "Not sent". "gives the reader words for who is being waited on" wants "No answer yet" for the same input. The owner's words (Sending… / Receiving… / Received / Not received · Retry) match neither.
 - **The received label.** "the label of a confirmation that is not a queue" wants a `received` row to read "Queued". The owner's words say "Received".

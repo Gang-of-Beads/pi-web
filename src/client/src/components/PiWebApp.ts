@@ -3937,7 +3937,7 @@ export class PiWebApp extends LitElement {
     }
   }
 
-  private async sendPrompt(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery, replay?: { clientMessageId?: string }): Promise<boolean> {
+  private async sendPrompt(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery, replay?: import("../pendingOutbox").SendReplay): Promise<boolean> {
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     // Handled locally by the auth flow; nothing to restore.
     if (!hasAttachments && streamingBehavior === undefined && this.auth.handleSlashCommand(text)) return true;
@@ -3947,7 +3947,7 @@ export class PiWebApp extends LitElement {
   // Stable handler identities for child components. Inlined arrow closures
   // would be a fresh reference on every render, forcing Lit to re-commit the
   // bindings each time the app re-renders; bound class fields keep them constant.
-  private readonly handleSendPrompt = (text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery, replay?: { clientMessageId?: string }): Promise<boolean | undefined> => {
+  private readonly handleSendPrompt = (text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery, replay?: import("../pendingOutbox").SendReplay): Promise<boolean | undefined> => {
     // Returned, not fired: the composer decides between accepted, refused and the link dropped (keep the outbox row, offer a retry) from what this settles to. Swallowing the promise made every failure look accepted.
     return this.sendPrompt(text, streamingBehavior, attachments, delivery, replay);
   };

@@ -86,6 +86,30 @@ describe("an unanswered send asks the daemon's ledger on its own", () => {
     expect({ asked: send.asked.length, rows: send.rows() }).toEqual({ asked: 1, rows: ["received"] });
   });
 
+  it("does not apply an answer to a row a retry moved on while the ledger was being asked", async () => {
+    let answerAsk: (answer: Record<string, string>) => void = () => undefined;
+    let state: AppState = {
+      ...initialAppState(),
+      selectedWorkspace: workspace,
+      selectedSession: oldSession,
+      sessions: [oldSession],
+      status: status(oldSession.id),
+      sessionStatuses: { [oldSession.id]: status(oldSession.id) },
+    };
+    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, {
+      api: { ...defaultApi, operationOutcomes: () => new Promise((resolve) => { answerAsk = resolve; }) },
+      socket: new FakeSocket(),
+    });
+    state.messages = [{ role: "user", parts: [{ type: "text", text: "retried" }], meta: { delivery: { clientMessageId: "cm-retried", state: "unverifiable" } } }];
+
+    const asking = controller.verifyUnansweredSends();
+    state.messages = [{ role: "user", parts: [{ type: "text", text: "retried" }], meta: { delivery: { clientMessageId: "cm-retried", state: "sending" } } }];
+    answerAsk({ "cm-retried": "failed" });
+    await asking;
+
+    expect(state.messages.map((line) => line.meta?.delivery?.state)).toEqual(["sending"]);
+  });
+
   it("leaves the row open and honest when asking fails too", async () => {
     const send = await unansweredSend(() => undefined);
     await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[2] ?? 0);
