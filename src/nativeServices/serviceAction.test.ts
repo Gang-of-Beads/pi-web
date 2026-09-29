@@ -13,6 +13,7 @@ import {
   orderServices,
   performServiceAction,
   readinessComponentForService,
+  reloadLaunchdServicesForInstall,
   restartLaunchdService,
   ServiceCommandError,
   serviceRestartOrder,
@@ -487,5 +488,57 @@ describe("restartLaunchdService inside its own service", () => {
     );
 
     expect(calls.some((args) => args[0] === "bootout")).toBe(true);
+  });
+});
+
+describe("reloadLaunchdServicesForInstall", () => {
+  /** A launchd that tracks which labels are loaded, recording every call in order. */
+  function scriptedLaunchd(loaded: readonly string[]) {
+    const labels = new Set(loaded.map((label) => `gui/501/${label}`));
+    const calls: string[] = [];
+    const answer = (args: readonly string[]): number => {
+      const [verb, ...rest] = args;
+      calls.push([verb, ...rest.filter((arg) => arg.startsWith("gui/501/") || arg.endsWith(".plist"))].join(" "));
+      if (verb === "print") return labels.has(rest[0] ?? "") ? 0 : 1;
+      if (verb === "bootout") labels.delete(rest[0] ?? "");
+      if (verb === "bootstrap") labels.add(`gui/501/${(rest[1] ?? "").replace(/^\/tmp\//, "").replace(/\.plist$/, "")}`);
+      return 0;
+    };
+    return { calls, deps: { run: (_command: string, args: readonly string[]) => answer(args), runQuiet: (_command: string, args: readonly string[]) => answer(args), sleep: () => Promise.resolve(undefined) } };
+  }
+  const context = (hostingServiceId: string | undefined) => ({ domain: "gui/501", plistPath: (service: LifecycleServiceRef) => `/tmp/${service.launchdLabel}.plist`, hostingServiceId });
+
+  it("leaves the running job it is installed from alone, and reloads the rest around the new definitions", async () => {
+    const launchd = scriptedLaunchd(["com.pi-web.sessiond", "com.pi-web.web"]);
+
+    const kept = await reloadLaunchdServicesForInstall(
+      { unload: [ref("web"), ref("sessiond")], load: [ref("sessiond"), ref("web")] },
+      context("sessiond"),
+      launchd.deps,
+      () => { launchd.calls.push("redefine"); return Promise.resolve(); },
+    );
+
+    const sessiondCalls = launchd.calls.filter((call) => call.includes("com.pi-web.sessiond"));
+    expect({
+      kept: kept.map((service) => service.id),
+      sessiondTornDown: sessiondCalls.some((call) => call.startsWith("bootout") || call.startsWith("bootstrap") || call.startsWith("kickstart -k")),
+      webReloaded: launchd.calls.indexOf("bootout gui/501/com.pi-web.web") < launchd.calls.indexOf("redefine") && launchd.calls.indexOf("redefine") < launchd.calls.indexOf("bootstrap /tmp/com.pi-web.web.plist"),
+    }).toEqual({ kept: ["sessiond"], sessiondTornDown: false, webReloaded: true });
+  });
+
+  it("starts the job it is installed from when that job is not loaded", async () => {
+    const launchd = scriptedLaunchd([]);
+
+    const kept = await reloadLaunchdServicesForInstall({ unload: [ref("sessiond")], load: [ref("sessiond")] }, context("sessiond"), launchd.deps, () => Promise.resolve());
+
+    expect({ kept, started: launchd.calls.includes("bootstrap /tmp/com.pi-web.sessiond.plist") }).toEqual({ kept: [], started: true });
+  });
+
+  it("reloads every job when it runs outside them", async () => {
+    const launchd = scriptedLaunchd(["com.pi-web.sessiond", "com.pi-web.web"]);
+
+    const kept = await reloadLaunchdServicesForInstall({ unload: [ref("web"), ref("sessiond")], load: [ref("sessiond"), ref("web")] }, context(undefined), launchd.deps, () => Promise.resolve());
+
+    expect({ kept, bootedOut: launchd.calls.filter((call) => call.startsWith("bootout")) }).toEqual({ kept: [], bootedOut: ["bootout gui/501/com.pi-web.web", "bootout gui/501/com.pi-web.sessiond"] });
   });
 });

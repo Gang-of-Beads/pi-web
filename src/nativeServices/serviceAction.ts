@@ -224,6 +224,37 @@ export async function restartLaunchdService(
 }
 
 /**
+ * Install's reload of the LaunchAgents it redefines: unload every job, write the new
+ * definitions, load them again - except the job this command runs inside.
+ *
+ * Booting that job out kills the command and everything the job hosts. A Nix switch started
+ * from a PI WEB chat ends in `pi-web install`, so it restarted the session daemon under the
+ * conversation that asked for it (2026-09-29), while the switch's own restart step had been
+ * careful to leave the daemon alone. The hosting job keeps its loaded definition - and so the
+ * previous build - until it is restarted from outside; starting it is a no-op while it runs
+ * and brings it up when it is not loaded. Returns the jobs left on their previous definition.
+ */
+export async function reloadLaunchdServicesForInstall(
+  services: { unload: readonly LifecycleServiceRef[]; load: readonly LifecycleServiceRef[] },
+  context: LaunchdServiceContext,
+  deps: Pick<ServiceActionDeps, "run" | "runQuiet" | "sleep">,
+  redefine: () => Promise<void>,
+  timing: ServiceActionTiming = {},
+): Promise<LifecycleServiceRef[]> {
+  const hosting = (ref: LifecycleServiceRef): boolean => restartsInPlace(ref.id, context.hostingServiceId);
+  const kept = services.load.filter((ref) => hosting(ref) && launchdServiceLoaded(launchdServiceTarget(context.domain, ref), deps));
+  for (const ref of services.unload) {
+    if (!hosting(ref)) deps.runQuiet("launchctl", launchdBootoutArgs(launchdServiceTarget(context.domain, ref)));
+  }
+  await redefine();
+  for (const ref of services.load) {
+    if (!hosting(ref)) await settleLaunchdServiceUnload(launchdServiceTarget(context.domain, ref), deps, timing);
+    startLaunchdService(ref, context, deps);
+  }
+  return kept;
+}
+
+/**
  * Wait until every service is manager-reported running and its user-facing
  * component responds. Manager state gates the component probe: a service that
  * is not running yet is not probed. Returns the services still unready when
