@@ -30,6 +30,11 @@ export class TrailingRefreshCoordinator<Key> {
     return (this.pendingByKey.get(key)?.promise ?? Promise.resolve()).catch(() => undefined);
   }
 
+  /** Whether a refresh for the key is waiting or running. */
+  pending(key: Key): boolean {
+    return this.pendingByKey.has(key);
+  }
+
   request(key: Key, refresh: () => Promise<void>): Promise<void> {
     const existing = this.pendingByKey.get(key);
     if (existing !== undefined) {

@@ -181,3 +181,17 @@ describe("an accepted message kept aside for a refusal", () => {
     expect({ old: restoreRefusedPrompt("m:old", "moving", storage, at), moved: restoreRefusedPrompt("m:new", "moving", storage, at) }).toEqual({ old: false, moved: true });
   });
 });
+
+describe("phase 5 gate 1: reserves a session never revisits", () => {
+  it("are removed from storage once past their day, when any message is reserved", () => {
+    const storage = memoryStorage();
+    const day = 24 * 60 * 60 * 1000;
+    const at = Date.parse("2026-09-30T00:00:00.000Z");
+    savePendingPrompt("m:forgotten", { text: "old", clientMessageId: "cm-old", at: "2026-09-30T00:00:00.000Z" }, storage);
+    reserveAcceptedPrompt("m:forgotten", "cm-old", storage, at);
+    savePendingPrompt("m:current", { text: "new", clientMessageId: "cm-new", at: "2026-10-01T00:00:00.000Z" }, storage);
+    reserveAcceptedPrompt("m:current", "cm-new", storage, at + day);
+
+    expect([...storage.data.keys()].filter((key) => key.startsWith("pi-web:accepted-prompt:"))).toEqual(["pi-web:accepted-prompt:m:current"]);
+  });
+});

@@ -48,7 +48,9 @@ async function unansweredSend(answer: LedgerAnswers, overrides: Partial<typeof d
     asked,
     rows: () => state.messages.filter((line) => line.role === "user").map((line) => line.meta?.delivery?.state),
     outbox: () => loadPendingPrompts(outboxKey).map((prompt) => prompt.clientMessageId),
+    records: () => loadPendingPrompts(outboxKey).map((prompt) => [prompt.state, prompt.failure, prompt.refused === true]),
     notice: () => state.error,
+    showSession: (session: typeof oldSession) => { state = { ...state, selectedSession: session }; },
   };
 }
 
@@ -71,6 +73,59 @@ describe("an unanswered send whose ledger cannot be reached", () => {
       through: { asked: 6, rows: ["failed"], notice: "" },
       afterSettling: 6,
     });
+  });
+});
+
+describe("phase 5 gate 1: asks that outlive the screen they started on", () => {
+  const elsewhere = { ...oldSession, id: "another-session", path: "/tmp/another-session.jsonl" };
+
+  it("withdraws the reconnecting words once the reader has left the session they were about", async () => {
+    const send = await unansweredSend(() => undefined);
+    await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
+    const raised = send.notice();
+    send.showSession(elsewhere);
+    await vi.advanceTimersByTimeAsync(VERIFY_RETRY_MS);
+
+    expect({ raised, afterLeaving: send.notice() }).toEqual({ raised: VERIFY_RECONNECTING, afterLeaving: "" });
+  });
+
+  it("settles a row left behind once the reader returns after its last ask", async () => {
+    const send = await unansweredSend(() => ({}));
+    send.showSession(elsewhere);
+    await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[2] ?? 0);
+    send.showSession(oldSession);
+    await send.controller.verifyUnansweredSends();
+
+    expect(send.rows()).toEqual(["failed"]);
+  });
+
+  it("takes an answer that would not parse as an answer, not as a dead link", async () => {
+    let asks = 0;
+    const send = await unansweredSend(() => ({}), { operationOutcomes: () => { asks += 1; return Promise.reject(new SyntaxError("Unexpected token < in JSON")); } });
+    await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[2] ?? 0);
+    await vi.advanceTimersByTimeAsync(VERIFY_RETRY_MS * 3);
+
+    expect({ reconnecting: send.notice() === VERIFY_RECONNECTING, asks }).toEqual({ reconnecting: false, asks: VERIFY_AFTER_MS.length });
+  });
+
+  it("asks nothing more once the controller is disposed", async () => {
+    const send = await unansweredSend(() => undefined);
+    send.controller.dispose();
+    await vi.advanceTimersByTimeAsync((VERIFY_AFTER_MS[2] ?? 0) + VERIFY_RETRY_MS * 3);
+
+    expect(send.asked).toHaveLength(0);
+  });
+
+  it("writes the ledger's verdict onto the record, so the tray reads what the bubble reads", async () => {
+    const refused = await unansweredSend(each("failed"));
+    await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
+    const refusedRecords = refused.records();
+    localStorage.clear();
+    vi.useRealTimers();
+    const lost = await unansweredSend(each("unknown"));
+    await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
+
+    expect({ refused: refusedRecords, lost: lost.records() }).toEqual({ refused: [["failed", "not-sent", true]], lost: [["failed", "not-received", false]] });
   });
 });
 

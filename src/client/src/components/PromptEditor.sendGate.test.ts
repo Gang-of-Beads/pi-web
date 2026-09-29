@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from "vitest";
 import { PromptEditor, recordedDelivery } from "./PromptEditor";
-import { loadPendingPrompts, moveOutbox, SendScopeChangedError } from "../pendingOutbox";
+import { loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, SendScopeChangedError } from "../pendingOutbox";
+import { HttpError } from "../api/http";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -295,5 +296,57 @@ describe("a record's attachments travel the way they were composed", () => {
 
   it("has no delivery for a record without attachments", () => {
     expect(recordedDelivery({})).toBeUndefined();
+  });
+});
+
+describe("phase 5 gate 1: what the outbox sends on its own", () => {
+  const at = () => new Date(Date.now() - 60_000).toISOString();
+
+  it("sends a message Pi refused only when the reader presses its Retry, never on online", async () => {
+    savePendingPrompt("local:session-1", { text: "refused by pi", clientMessageId: "cm-refused", at: at(), state: "failed", failure: "not-sent", refused: true });
+    savePendingPrompt("local:session-1", { text: "lost offline", clientMessageId: "cm-offline", at: at(), state: "failed", failure: "not-sent" });
+    const element = await composer();
+    const sent: string[] = [];
+    element.onSend = (text: string) => { sent.push(text); return Promise.resolve(true); };
+    window.dispatchEvent(new Event("online"));
+    await flush();
+    await flush();
+    const automatic = [...sent];
+    element.retryOutbox("cm-refused");
+    await flush();
+    await flush();
+
+    expect({ automatic, afterRetry: sent }).toEqual({ automatic: ["lost offline"], afterRetry: ["lost offline", "refused by pi"] });
+  });
+
+  it("records an answer that came back while the browser reported offline as unanswered, as the bubble does", async () => {
+    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
+    try {
+      const element = await composer();
+      element.onSend = (_text, _behavior, _attachments, _delivery, replay) => Promise.reject(new NetworkSendError("gateway", replay?.clientMessageId, { cause: new HttpError("Remote machine timeout", 504) }));
+      element.replaceText("maybe running");
+      fireSend(element);
+      await flush();
+      await flush();
+
+      expect(loadPendingPrompts("local:session-1").map((prompt) => [prompt.state, prompt.failure])).toEqual([["unverifiable", undefined]]);
+    } finally {
+      Reflect.deleteProperty(navigator, "onLine");
+    }
+  });
+
+  it("keeps a record the daemon holds out of the tray after a discard re-reads it", async () => {
+    localStorage.setItem("pi-web:pending-prompt:local:session-1", JSON.stringify([
+      { text: "held by the daemon", clientMessageId: "cm-held", at: at(), state: "accepted" },
+      { text: "discard me", clientMessageId: "cm-gone", at: at(), state: "failed", failure: "not-sent", refused: true },
+    ]));
+    const element = await composer();
+    const discard: unknown = Reflect.get(element, "discardPendingPrompt");
+    if (typeof discard !== "function") throw new Error("discard is not reachable");
+    Reflect.apply(discard, element, [loadPendingPrompts("local:session-1").find((prompt) => prompt.clientMessageId === "cm-gone")]);
+    await element.updateComplete;
+
+    const shown: unknown = Reflect.get(element, "pendingPrompts");
+    expect(Array.isArray(shown) ? shown.length : "not a list").toBe(0);
   });
 });

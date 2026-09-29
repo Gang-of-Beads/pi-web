@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { initialAppState } from "../appState";
 import type { ExtensionDialogCloseResponse, ExtensionDialogKind, PendingExtensionDialog } from "../api";
 import { SessionController } from "./sessionController";
-import { clearPendingPrompts, loadPendingPrompts, savePendingPrompt } from "../pendingOutbox";
+import { clearPendingPrompts, loadPendingPrompts, reserveAcceptedPrompt, savePendingPrompt } from "../pendingOutbox";
 import { machineSessionKey } from "../machineKeys";
 import { selectedMachineId } from "./types";
 import { defaultApi, deferred, EmitSocket, emptyPage, FakeSocket, oldSession, replacementSession, status, workspace, type AppState, type SessionStatus } from "./sessionController.testSupport";
@@ -180,6 +180,28 @@ describe("SessionController prompt.refused", () => {
 
     expect({ afterAcceptance, record: { text: record?.text, state: record?.state, failure: record?.failure }, row: harness.state().messages[0]?.meta?.delivery })
       .toEqual({ afterAcceptance: 0, record: { text: "refused after acceptance", state: "failed", failure: "not-sent" }, row: { clientMessageId: "cmid-p2", state: "failed", cause: "not-sent" } });
+  });
+
+  it("keeps a refusal that landed before its send's own answer: the row stays Not sent and Retry keeps its words", async () => {
+    const socket = new EmitSocket();
+    const post = deferred<{ accepted: true }>();
+    let state = selectedState({ selectedSession: undefined });
+    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api: { ...selectableApi(status(oldSession.id)), prompt: () => post.promise }, socket });
+    await controller.selectSession(oldSession, { updateUrl: false });
+    const key = machineSessionKey(selectedMachineId(state), oldSession.id);
+    savePendingPrompt(key, { text: "refused before its answer", clientMessageId: "cmid-late", at: new Date().toISOString() });
+
+    const sending = controller.send("refused before its answer", "followUp", undefined, "inline", { clientMessageId: "cmid-late" });
+    socket.emit({ type: "prompt.accepted", clientMessageId: "cmid-late" });
+    socket.emit({ type: "prompt.refused", clientMessageId: "cmid-late", message: "No model configured" });
+    post.resolve({ accepted: true });
+    await sending;
+    reserveAcceptedPrompt(key, "cmid-late");
+    const record = loadPendingPrompts(key)[0];
+    clearPendingPrompts(key);
+
+    expect({ row: state.messages.find((line) => line.meta?.delivery?.clientMessageId === "cmid-late")?.meta?.delivery?.state, record: [record?.state, record?.refused] })
+      .toEqual({ row: "failed", record: ["failed", true] });
   });
 
   it("leaves a row the transcript already claimed as read", async () => {

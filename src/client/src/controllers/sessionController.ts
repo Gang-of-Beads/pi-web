@@ -20,7 +20,7 @@ import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
-import { advancePendingPrompt, forgetPendingPrompt, forgetReservedPrompt, isNetworkFailure, linkReportedOffline, moveOutbox, NetworkSendError, reserveAcceptedPrompt, restoreRefusedPrompt, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
+import { failPendingPrompt, forgetPendingPrompt, forgetReservedPrompt, isNetworkFailure, linkReportedOffline, moveOutbox, NetworkSendError, reserveAcceptedPrompt, restoreRefusedPrompt, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
 import { provenRowStep, VERIFY_AFTER_MS, VERIFY_RECONNECTING, VERIFY_RETRY_MS, verificationStep } from "../sendVerification";
 import { statusReadVerdict, type StatusPosition } from "../statusOrder";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
@@ -186,12 +186,22 @@ function takenMessageId(line: ChatLine): string | undefined {
  * when the daemon had taken it, so the tray and Retry have it.
  */
 function failRefusedRecord(sessionKey: string, clientMessageId: string): void {
-  if (!restoreRefusedPrompt(sessionKey, clientMessageId)) advancePendingPrompt(sessionKey, clientMessageId, "send-refused-permanent");
+  if (!restoreRefusedPrompt(sessionKey, clientMessageId)) failPendingPrompt(sessionKey, clientMessageId, "not-sent", true);
 }
 
 function isTransientRefreshError(error: unknown): boolean {
   if (!(error instanceof HttpError)) return true;
   return error.status >= 500;
+}
+
+/**
+ * Whether an ask of the ledger failed because the link could not carry it. A body that would not
+ * parse is an answer the link carried: counted as unreachable it kept the chain asking every
+ * 15 s, and the banner up, for as long as the session stayed on screen.
+ */
+function ledgerUnreachable(error: unknown): boolean {
+  if (error instanceof HttpError) return error.status === 0 || error.status >= 500;
+  return isNetworkFailure(error) || isRequestTimeout(error);
 }
 
 export class SessionController {
@@ -283,6 +293,8 @@ export class SessionController {
     this.clearPendingUpdates();
     for (const timer of this.verificationRetries.values()) clearTimeout(timer);
     this.verificationRetries.clear();
+    for (const timers of this.sendVerificationTimers.values()) for (const timer of timers) clearTimeout(timer);
+    this.sendVerificationTimers.clear();
   }
 
   clearActiveSession() {
@@ -469,7 +481,7 @@ export class SessionController {
           // Ask, do not resend. Every row the link left unverifiable is an
           // identity the daemon can answer for; sending again without asking is
           // how one message becomes two.
-          void this.refreshSelectedSession(session.id).then(() => this.closeUnverifiedOperations(session));
+          void this.refreshSelectedSession(session.id).then(() => this.askLedgerAbout(session, machineId));
         },
         onMalformed: () => { this.dialogScope.requestResync(); },
         onGap: gapsSeenByTheRepair,
@@ -479,7 +491,7 @@ export class SessionController {
       void this.refreshAvailableThinkingLevels();
       for (const event of socketBuffer) this.routeLiveEvent(event);
       this.socket.setHandler((event) => { this.routeLiveEvent(event); });
-      void this.closeUnverifiedOperations(session);
+      void this.askLedgerAbout(session, machineId);
       this.onSelectedSessionReady?.({ machineId, session });
       if (options?.updateUrl !== false) this.updateUrl();
     } catch (error) {
@@ -685,7 +697,9 @@ export class SessionController {
       } else {
         await this.api.prompt(session, text, streamingBehavior, machineId, attachments, clientMessageId);
       }
-      if (clientMessageId !== undefined) this.markDelivery(session.id, clientMessageId, "received");
+      if (clientMessageId !== undefined && rowState(this.getState().messages, clientMessageId) !== "failed") {
+        this.markDelivery(session.id, clientMessageId, "received");
+      }
       this.markCachedNewSessionPersisted(session);
       return true;
     } catch (error) {
@@ -2259,11 +2273,23 @@ export class SessionController {
    */
   private async askLedgerAbout(session: SessionRef, machineId: string): Promise<void> {
     const key = machineSessionKey(machineId, session.id);
-    const onScreen = (): boolean => this.getState().selectedSession?.id === session.id && selectedMachineId(this.getState()) === machineId;
-    if (!onScreen()) return;
-    await this.selectedSessionRefreshes.settled(key);
-    if (!onScreen()) return;
+    const onScreen = (): boolean => !this.disposed && this.getState().selectedSession?.id === session.id && selectedMachineId(this.getState()) === machineId;
+    const leave = (): void => {
+      if (this.getState().error === VERIFY_RECONNECTING) this.setState(clearErrorPatch());
+    };
+    if (!onScreen()) {
+      leave();
+      return;
+    }
+    while (this.selectedSessionRefreshes.pending(key)) {
+      await this.selectedSessionRefreshes.settled(key);
+      if (!onScreen()) {
+        leave();
+        return;
+      }
+    }
     const asked = await this.closeUnverifiedOperations(session, this.verificationPastLastAsk.has(key));
+    if (this.disposed) return;
     const state = this.getState();
     if (asked !== "unreachable") {
       if (state.error === VERIFY_RECONNECTING) this.setState(clearErrorPatch());
@@ -2287,9 +2313,7 @@ export class SessionController {
   async verifyUnansweredSends(): Promise<void> {
     const session = this.getState().selectedSession;
     if (session === undefined) return;
-    await this.selectedSessionRefreshes.settled(machineSessionKey(selectedMachineId(this.getState()), session.id));
-    if (this.getState().selectedSession?.id !== session.id) return;
-    await this.closeUnverifiedOperations(session, false);
+    await this.askLedgerAbout(session, selectedMachineId(this.getState()));
   }
 
   /**
@@ -2310,7 +2334,7 @@ export class SessionController {
     try {
       outcomes = await this.api.operationOutcomes(session, open, machineId);
     } catch (error) {
-      return isTransientRefreshError(error) ? "unreachable" : "answered";
+      return ledgerUnreachable(error) ? "unreachable" : "answered";
     }
     if (this.getState().selectedSession?.id !== session.id || selectedMachineId(this.getState()) !== machineId) return "answered";
     const outboxKey = machineSessionKey(machineId, session.id);
@@ -2327,6 +2351,7 @@ export class SessionController {
       if (step.kind === "fail") {
         this.markDeliveryFailed(session.id, clientMessageId, step.cause);
         if (step.cause === "not-sent") failRefusedRecord(outboxKey, clientMessageId);
+        else failPendingPrompt(outboxKey, clientMessageId, step.cause, false);
         continue;
       }
       this.markDelivery(session.id, clientMessageId, step.state);

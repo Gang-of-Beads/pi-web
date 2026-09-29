@@ -1,7 +1,7 @@
 import type { PromptAttachment } from "./api";
 import type { PromptAttachmentDelivery } from "../../shared/apiTypes";
 import type { OutgoingEvent, OutgoingState } from "./outgoingMessages";
-import { outgoingStateFromStorage, outgoingVerdict } from "./outgoingMessages";
+import { outgoingStateFromStorage, outgoingStopped, outgoingVerdict } from "./outgoingMessages";
 import type { DeliveryFailureCause } from "./deliveryWords";
 /**
  * Pending-message outbox: survives network drops so a send is never silently
@@ -22,6 +22,11 @@ export interface PendingPrompt {
   state?: OutgoingState;
   /** Why a failed record failed, so the tray words it as the bubble does. */
   failure?: DeliveryFailureCause;
+  /**
+   * The runtime refused it. Only the reader's Retry sends it again: an automatic replay on the
+   * next `online` or session switch resent a message Pi had refused, raising the same error again.
+   */
+  refused?: true;
   text: string;
   behavior?: "steer" | "followUp";
   /** The bubble's correlation id, so the retry lands on the same tracking. */
@@ -68,6 +73,7 @@ export function advancePendingPrompt(sessionKey: string, clientMessageId: string
   }
   const moved: PendingPrompt = { ...target, state: verdict.to };
   delete moved.failure;
+  delete moved.refused;
   savePendingPrompt(sessionKey, verdict.to === "failed" ? { ...moved, failure: FAILURE_FOR_EVENT[event] ?? "not-sent" } : moved);
   return verdict.to;
 }
@@ -293,6 +299,8 @@ function writeReserve(sessionKey: string, reserved: readonly ReservedPrompt[], s
  */
 export function reserveAcceptedPrompt(sessionKey: string, clientMessageId: string, storage = browserStorage(), now = Date.now()): void {
   const record = loadPendingPrompts(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId);
+  if (record?.refused === true) return;
+  sweepExpiredReserves(storage, now);
   if (record !== undefined) {
     const reserved = loadReserve(sessionKey, storage, now).filter((entry) => entry.clientMessageId !== clientMessageId);
     const kept: ReservedPrompt = { ...record, state: "received", reservedAt: new Date(now).toISOString() };
@@ -300,6 +308,57 @@ export function reserveAcceptedPrompt(sessionKey: string, clientMessageId: strin
     writeReserve(sessionKey, [...reserved, kept], storage);
   }
   forgetPendingPrompt(sessionKey, clientMessageId, storage);
+}
+
+/**
+ * Drop every reserve entry past its day, in every session. A session the reader never opens
+ * again kept its entries - attachments included - for good, and a full storage quota is what
+ * would lose the next unsent message's record.
+ */
+function sweepExpiredReserves(storage: Storage | undefined, now: number): void {
+  if (storage === undefined) return;
+  const keys: string[] = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index) ?? "";
+    if (key.startsWith(reservePrefix)) keys.push(key.slice(reservePrefix.length));
+  }
+  for (const sessionKey of keys) {
+    const kept = loadReserve(sessionKey, storage, now);
+    if (kept.length !== storedReserveLength(sessionKey, storage)) writeReserve(sessionKey, kept, storage);
+  }
+}
+
+function storedReserveLength(sessionKey: string, storage: Storage): number {
+  try {
+    const parsed: unknown = JSON.parse(storage.getItem(`${reservePrefix}${sessionKey}`) ?? "[]");
+    return Array.isArray(parsed) ? parsed.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Write a verdict onto a record the reserve does not hold: the daemon's ledger said the runtime
+ * refused it, or that it has no record of it. The record kept reading "Receiving…" in the tray
+ * while its bubble read the verdict. A refusal is marked so only Retry sends it again.
+ */
+export function failPendingPrompt(sessionKey: string, clientMessageId: string, cause: DeliveryFailureCause, refused: boolean, storage = browserStorage()): void {
+  const record = loadPendingPrompts(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId);
+  if (record === undefined) return;
+  const failed: PendingPrompt = { ...record, state: "failed", failure: cause };
+  delete failed.refused;
+  savePendingPrompt(sessionKey, refused ? { ...failed, refused: true } : failed, storage);
+}
+
+/**
+ * Whether a replay sends this record. A replay of everything - on `online`, on the first render,
+ * on a session switch - sends what stopped without an answer; a refused record goes only when
+ * the reader presses its Retry.
+ */
+export function replaysRecord(record: PendingPrompt, only: string | undefined): boolean {
+  if (!outgoingStopped(record.state)) return false;
+  if (only !== undefined) return record.clientMessageId === only;
+  return record.refused !== true;
 }
 
 /**
@@ -311,7 +370,7 @@ export function restoreRefusedPrompt(sessionKey: string, clientMessageId: string
   const record = reserved.find((entry) => entry.clientMessageId === clientMessageId);
   if (record === undefined) return false;
   writeReserve(sessionKey, reserved.filter((entry) => entry !== record), storage);
-  const restored: PendingPrompt & { reservedAt?: string } = { ...record, state: "failed", failure: "not-sent" };
+  const restored: PendingPrompt & { reservedAt?: string } = { ...record, state: "failed", failure: "not-sent", refused: true };
   delete restored.reservedAt;
   savePendingPrompt(sessionKey, restored, storage);
   return true;

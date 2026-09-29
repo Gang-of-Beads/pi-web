@@ -18,7 +18,7 @@ import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { addToHeldComposerAttachments, holdComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
-import { advancePendingPrompt, isNetworkFailure, linkReportedOffline, loadPendingPrompts, reserveAcceptedPrompt, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
+import { advancePendingPrompt, isNetworkFailure, linkReportedOffline, loadPendingPrompts, NetworkSendError, replaysRecord, reserveAcceptedPrompt, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
 import { outgoingStopped } from "../outgoingMessages";
 import { classifySubmission, handleOutcome, transportFactsFor } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
@@ -621,7 +621,7 @@ export class PromptEditor extends LitElement {
       forgetPendingPrompt(key, id);
       this.outboxInFlight.delete(id);
     }
-    this.pendingPrompts = loadPendingPrompts(key);
+    this.pendingPrompts = this.pendingPromptsForSession();
   }
 
   private outboxKey(): string {
@@ -662,7 +662,7 @@ export class PromptEditor extends LitElement {
     if (key === "" || prompt.clientMessageId === undefined) return;
     forgetPendingPrompt(key, prompt.clientMessageId);
     this.outboxInFlight.delete(prompt.clientMessageId);
-    this.pendingPrompts = loadPendingPrompts(key);
+    this.pendingPrompts = this.pendingPromptsForSession();
     this.takeBack({ text: prompt.text, attachments: prompt.attachments ?? [] });
   }
 
@@ -1228,11 +1228,11 @@ export class PromptEditor extends LitElement {
     const scope: SendScope = { machineId: this.machineId, sessionId: this.sessionId ?? "" };
     this.flushInFlight = true;
     try {
-      for (const prompt of loadPendingPrompts(key).filter((entry) => outgoingStopped(entry.state) && (only === undefined || entry.clientMessageId === only))) {
+      for (const prompt of loadPendingPrompts(key).filter((entry) => replaysRecord(entry, only))) {
         const id = prompt.clientMessageId;
         if (id === undefined || this.outboxInFlight.has(id)) continue;
         if (!this.stillShows(key)) return;
-        if (!loadPendingPrompts(key).some((entry) => entry.clientMessageId === id && outgoingStopped(entry.state))) continue;
+        if (!loadPendingPrompts(key).some((entry) => entry.clientMessageId === id && replaysRecord(entry, only))) continue;
         this.outboxInFlight.add(id);
         try {
           const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: id, scope });
@@ -1316,7 +1316,7 @@ export class PromptEditor extends LitElement {
     const carried = attachments === undefined || attachments.length === 0 ? undefined : attachments;
     if (outboxKey !== "") {
       savePendingPrompt(outboxKey, { text, ...(behavior === undefined ? {} : { behavior }), clientMessageId: outboxId, ...(carried === undefined ? {} : { attachments: carried, delivery }), at: new Date().toISOString() });
-      this.pendingPrompts = loadPendingPrompts(outboxKey);
+      this.pendingPrompts = this.pendingPromptsForSession();
     }
     this.outboxInFlight.add(outboxId);
     return { outboxKey, outboxId, scope: { machineId: this.machineId, sessionId: this.sessionId ?? "" }, writtenOnPage: this.isConnected, text, behavior, attachments, delivery };
@@ -1373,7 +1373,8 @@ export class PromptEditor extends LitElement {
     }
     if (handleOutcome(classifySubmission(failure, (value) => !isNetworkFailure(value) && !isRequestTimeout(value))).keepInOutbox) {
       if (outboxKey !== "") {
-        const left = transportFactsFor(failure, { isTimeout: isRequestTimeout(failure), linkOffline: linkReportedOffline(failure) }).bytesHandedToTransport;
+        const cause: unknown = failure instanceof NetworkSendError && failure.cause !== undefined ? failure.cause : failure;
+        const left = transportFactsFor(cause, { isTimeout: isRequestTimeout(cause), linkOffline: linkReportedOffline(cause) }).bytesHandedToTransport;
         advancePendingPrompt(outboxKey, outboxId, left ? "send-timeout" : "send-refused-network");
         this.pendingPrompts = this.pendingPromptsForSession();
       }
