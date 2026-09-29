@@ -624,3 +624,29 @@ It also takes the status revision and join frame moved from phase 1, and the thr
 - **F4 (P2), two status frames in one render kept the older.** The pending map kept the last arrival, so a late machine-wide copy could replace a newer session frame. Fixed: a pending entry at or past the incoming position in the same epoch is kept.
 - **F5 (P2), a new epoch first seen live.** The watermark filter compared seqs across epochs and dropped the restarted daemon's frames below the old snapshot's seq, and nothing asked for what the new space published before that frame. Fixed: the filter compares within an epoch, and the machine applies the frame and asks for one full read.
 - **Hunt 2, a different-epoch seed during a repair.** Recorded, not changed: it needs an old daemon's reply to outlive a new daemon's full refresh, and the next reconnect heals it.
+
+**Phase 3 gate lane 2 (DeepSeek) triage, at 1035a866.** Verdict PASS: no P0 or P1. It confirms both of lane 1's P1 fixes at the root. Each P2 is fixed with a test that fails first, or recorded with its reason.
+
+- **A (P2): an unstamped commit of a failed message's own text adds a second row. Recorded, not changed.** Since F3, a failed row yields only to a copy stamped with its own id, and an unstamped copy with equal text becomes a line of its own. The case the lane raises is a copy that is the failed message itself but arrived unstamped. Only a daemon too old to stamp commits, or an id-less inbox entry, produces that, and this daemon stamps every commit it hands over. F3's case, a different message with the same words (an extension's "continue"), cannot be told apart from it by content. Claiming would call a refused message delivered; appending shows two rows. The owner decides which of these is the lesser wrong if it ever matters.
+- **B (P2): the verification clock asked the ledger without waiting for a refresh. Fixed.** Asked right after a daemon restart, before the reopen re-records a restored inbox, the ledger's `unknown` marked a queued row not received. The timer's ask now waits on `TrailingRefreshCoordinator.settled` like the reconnect and resume asks.
+- **C (P2, pre-existing): a recalled message came back after a delta refresh. Fixed.** The delta path applied the replay's `message.append` echo but dropped its `prompt.withdrawn`, which is not a transcript event. So a recalled queued message stood again as a plain line, and a reload kept it, because the persisted watermark picks the delta path again. The replay's withdrawals and refusals now apply to the rebuilt transcript before waiting rows are carried.
+- **D (P2, pre-existing): a failed row vanished on any rebuild. Fixed.** `carryUnsettledForward` carried only waiting rows, so after a reconnect the "Not received · Retry" bubble was gone while its outbox record stayed. A failed row is now carried like a waiting one. A copy stamped with its id still settles it.
+- **E (P2): a repair that spans a daemon restart. Fixed.** Held frames from a new epoch were merged with the old epoch's replay by raw seq, and could be dropped as reflected by the old watermark until the follow-up resync. Now, when a held frame belongs to another epoch, the stale replay is discarded, the new space is entered, its held frames apply in order, and one full read is asked for.
+- **Fixture notes.** The `epoch` key in the refreshRace `streamSync` fixtures is decorative, since the parser keeps no epoch on a sync reply; recorded. The G1 repro's assertion message says "the held copies win and keep the wire arrival order". It describes the defect the repro caught, not the machine now, and repros turn green without changing their assertions, so it stays.
+
+## Phase 3 acceptance
+
+Phase 3 meets the acceptance bar:
+
+- **A fresh gate lane with no P0 or P1.** Gate lane 2 (DeepSeek) passed at 1035a866. Gate lane 1 (Opus) blocked on two P1s, both fixed in 1035a866; lane 2 then confirmed those fixes at the root.
+- **Every P2 fixed or recorded.** Lane 1: F2–F5 fixed. Lane 2: B–E fixed, and A recorded as a choice for the owner.
+- **The full suite green**, at the commit that records this: tsc and knip clean; 5868 passed, 12 expected fail, 5 skipped, 705 files. The 12 expected failures belong to later phases: 6 read repros (phase 4), 4 label repros (phase 5) and S1/S2.
+- **A live probe proven to discriminate.** `scripts/probe-realtime.mjs` on the 8505 stack scores the build before phase 3 (976195e0) 0/3 and this build 3/3:
+  1. After a daemon restart, a page reopened from its cache is missing the new prompt's row on the old build and shows it on the new one.
+  2. Frames dropped on the wire are never asked for again on the old build (0 replay requests) and are repaired on the new one (1). The final text matches on both, because the message end carries the whole reply, so this leg discriminates by the repair, not by the screen.
+  3. A message the daemon still queues reads as a plain transcript row after a reconnect refresh on the old build, and stays one "queued" row on the new one.
+- **The earlier phases still hold** on this build: `probe-inbox-order` 29/29, `probe-transport` 5/5.
+
+Each fix in the phase came with tests run first against the commit before it, and each commit message names which of them failed there. The only exception is a test that cannot load on the old code because it imports what the fix added; its behaviour is covered by a test at the controller.
+
+The phase 3 known limitations above stand: a send to a session still starting lives in memory only, the page and the snapshot are two reads, and the web answers an unknown API path with the app.

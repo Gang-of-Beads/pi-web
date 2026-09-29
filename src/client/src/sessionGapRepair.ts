@@ -15,7 +15,9 @@
  * that carries no epoch, from a daemon too old to stamp one. Applied seqs of an old space
  * say nothing about the new one, and a new space first seen on a live frame says nothing
  * about the frames of it published before that one: the view is rebuilt from a full read,
- * whose snapshot seeds the new space.
+ * whose snapshot seeds the new space. The same holds when the new space shows up among the
+ * frames held during a repair: the replay answers for the old space, so it is dropped rather
+ * than merged by a seq that means something else in the new one.
  *
  * States: `idle` (frames apply as they arrive), `repairing` (a gap was seen; live frames are
  * held while one replay is fetched and flushed). Anything that cannot be replayed - a resync
@@ -142,6 +144,13 @@ export class SessionGapRepair {
     const held = this.buffer;
     this.buffer = [];
     this.state = "idle";
+    const newSpace = held.map(frameEpoch).find((epoch) => epoch !== undefined && this.epoch !== undefined && epoch !== this.epoch);
+    if (newSpace !== undefined) {
+      this.enterSpace(newSpace);
+      this.applyInSeqOrder(held.filter((frame) => frameEpoch(frame) === newSpace));
+      this.options.resync();
+      return;
+    }
     if (!result.ok) {
       this.applyInSeqOrder(held);
       this.options.resync();

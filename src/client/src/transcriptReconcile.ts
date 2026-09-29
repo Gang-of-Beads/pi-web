@@ -1,5 +1,26 @@
 import type { ChatLine } from "./components/shared";
-import { carryDeliveryForward, deliveryWaiting } from "./messageDelivery";
+import { carryDeliveryForward, deliveryWaiting, markDelivery, withdrawDeliveryLine } from "./messageDelivery";
+
+/** Terminal outcomes a replay carried for messages it did not commit: taken back, or refused. */
+export interface ReplayedOutcomes {
+  withdrawn: readonly string[];
+  refused: readonly string[];
+}
+
+/**
+ * Apply a replay's withdrawals and refusals to a transcript. They are not transcript events, so
+ * a rebuild from the cache plus a replay applied the replayed echo of a message but not its
+ * withdrawal: a recalled message stood again as a plain line, and a reload kept it.
+ */
+export function applyReplayedOutcomes(lines: ChatLine[], outcomes: ReplayedOutcomes): ChatLine[] {
+  const kept = outcomes.withdrawn.reduce((next, clientMessageId) => withdrawDeliveryLine(next, clientMessageId), lines);
+  return outcomes.refused.reduce((next, clientMessageId) => markDelivery(next, clientMessageId, "failed"), kept);
+}
+
+/** A row a rebuild must not lose: one still waiting, and one that failed and still offers Retry. */
+function carriedAcrossRebuild(state: Parameters<typeof deliveryWaiting>[0]): boolean {
+  return state === "failed" || deliveryWaiting(state);
+}
 
 /**
  * What a rebuilt transcript holds of one waiting message, found by its identity in every form
@@ -37,13 +58,16 @@ function rebuiltCopyOf(rebuilt: readonly ChatLine[], clientMessageId: string): R
  * - A committed copy stamped with its id is the fact of delivery: it becomes the row, marked
  *   delivered.
  * - Nothing of it: the row is carried to the end, as before.
+ *
+ * A failed row rides along too: rebuilt away, the sender's "Not received" bubble and its
+ * Retry vanished while the outbox still held the message.
  */
 export function carryUnsettledForward(previous: readonly ChatLine[], rebuilt: ChatLine[]): ChatLine[] {
   let next = rebuilt;
   const carried: ChatLine[] = [];
   for (const line of previous) {
     const delivery = line.meta?.delivery;
-    if (delivery === undefined || !deliveryWaiting(delivery.state)) continue;
+    if (delivery === undefined || !carriedAcrossRebuild(delivery.state)) continue;
     const copy = rebuiltCopyOf(next, delivery.clientMessageId);
     if (copy.kind === "tracked") continue;
     if (copy.kind === "absent") {

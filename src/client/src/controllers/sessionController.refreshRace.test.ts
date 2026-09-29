@@ -164,6 +164,36 @@ describe("a gap repair that outlives its selection", () => {
   });
 });
 
+describe("a message recalled while the link was down", () => {
+  it("stays gone after the reconnect refresh replays its echo and its withdrawal", async () => {
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
+    const id = "recalled-1a";
+    const text = "never mind";
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      messages: () => Promise.resolve(emptyPage),
+      status: (session) => Promise.resolve({ ...status(sessionLookupId(session)), isStreaming: true }),
+      streamSnapshot: () => Promise.resolve({ seq: 10, epoch: "e.1", partial: null }),
+      streamSync: (_session, sinceSeq) => Promise.resolve({
+        kind: "replay" as const,
+        sinceSeq,
+        frames: [
+          JSON.stringify({ type: "message.append", message: { role: "user", content: text, timestamp: 1_790_000_000_000 }, echo: true, clientMessageId: id, seq: 11, epoch: "e.1" }),
+          JSON.stringify({ type: "prompt.withdrawn", clientMessageId: id, seq: 12, epoch: "e.1" }),
+        ],
+      }),
+    };
+    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api, socket: new EmitSocket() });
+    await controller.selectSession(oldSession, { updateUrl: false });
+    state = { ...state, messages: [...state.messages, { role: "user", parts: [{ type: "text", text }], meta: { delivery: { clientMessageId: id, state: "queued", kind: "steer" } } }] };
+
+    await controller.refreshSelectedSession();
+    runPendingAnimationFrames();
+
+    expect(state.messages.filter((line) => line.parts.some((part) => "text" in part && part.text === text))).toEqual([]);
+  });
+});
+
 describe("a live frame applied while a reconnect refresh is in flight", () => {
   it("is fetched again as soon as the refresh replaces the view, without waiting for another frame", async () => {
     const race = refreshRace();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { newClientMessageId, optimisticUserLine } from "./messageDelivery";
-import { carryUnsettledForward, hasWaitingDelivery } from "./transcriptReconcile";
+import { applyReplayedOutcomes, carryUnsettledForward, hasWaitingDelivery } from "./transcriptReconcile";
 import { applyTranscriptEvent } from "./chatTranscript";
 import type { ChatLine } from "./components/shared";
 
@@ -89,6 +89,29 @@ describe("a committed message with the same words as a refused one", () => {
     const next = applyTranscriptEvent([failed(clientMessageId)], { type: "message.end", message: { role: "user", content: "continue", timestamp: 900, clientMessageId } }) ?? [];
 
     expect(next.map((line) => line.meta?.delivery?.state ?? "transcript")).toEqual(["delivered"]);
+  });
+});
+
+describe("a failed send across a rebuild", () => {
+  it("keeps its bubble and its Retry when the rebuild has no copy of it", () => {
+    const clientMessageId = newClientMessageId();
+    const failedRow: ChatLine = { ...optimisticUserLine("try again later", clientMessageId), meta: { ...optimisticUserLine("try again later", clientMessageId).meta, delivery: { clientMessageId, state: "failed" } } };
+
+    expect(carryUnsettledForward([failedRow], []).map((line) => line.meta?.delivery?.state)).toEqual(["failed"]);
+  });
+});
+
+describe("a replay's withdrawals and refusals", () => {
+  it("take a recalled message's echo out of the rebuild and its row out of the view, and mark a refused row failed", () => {
+    const recalled = newClientMessageId();
+    const refused = newClientMessageId();
+    const view: ChatLine[] = [optimisticUserLine("never mind", recalled), optimisticUserLine("not allowed", refused)];
+    const rebuilt = applyTranscriptEvent([], { type: "message.append", message: { role: "user", content: "never mind", timestamp: 900 }, echo: true, clientMessageId: recalled }) ?? [];
+    const outcomes = { withdrawn: [recalled], refused: [refused] };
+
+    const healed = carryUnsettledForward(applyReplayedOutcomes(view, outcomes), applyReplayedOutcomes(rebuilt, outcomes));
+
+    expect(healed.map((line) => ({ text: line.parts.map((part) => ("text" in part ? part.text : "")).join(""), state: line.meta?.delivery?.state }))).toEqual([{ text: "not allowed", state: "failed" }]);
   });
 });
 

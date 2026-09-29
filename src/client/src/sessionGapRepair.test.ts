@@ -186,6 +186,29 @@ describe("SessionGapRepair entering a new space on a live frame", () => {
   });
 });
 
+describe("SessionGapRepair across a daemon restart during a repair", () => {
+  it("drops the old space's replay, starts the new space from its held frames, and asks for a full read", async () => {
+    const resync = vi.fn();
+    const applied: string[] = [];
+    let answer: (value: { ok: true; frames: SessionUiEvent[] }) => void = () => undefined;
+    const repair = new SessionGapRepair({
+      apply: (event) => { applied.push(("text" in event ? event.text : event.type) + seqSuffix(event)); },
+      request: () => new Promise((resolve) => { answer = resolve; }),
+      resync,
+    });
+    repair.seed({ seq: 40, epoch: "daemon-a.1" });
+    repair.onLiveFrame({ type: "assistant.delta", text: "old gap", seq: 43, epoch: "daemon-a.1" }, 43);
+    repair.onLiveFrame({ type: "assistant.delta", text: "new one", seq: 1, epoch: "daemon-b.1" }, 1);
+    repair.onLiveFrame({ type: "assistant.delta", text: "new two", seq: 2, epoch: "daemon-b.1" }, 2);
+
+    answer({ ok: true, frames: [{ type: "assistant.delta", text: "old 41", seq: 41, epoch: "daemon-a.1" }, { type: "assistant.delta", text: "old 42", seq: 42, epoch: "daemon-a.1" }] });
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    repair.onLiveFrame({ type: "assistant.delta", text: "new three", seq: 3, epoch: "daemon-b.1" }, 3);
+
+    expect({ applied, resyncs: resync.mock.calls.length }).toEqual({ applied: ["new one@1", "new two@2", "new three@3"], resyncs: 1 });
+  });
+});
+
 describe("SessionGapRepair reseeded below its frontier", () => {
   const settle = async (): Promise<void> => { for (let index = 0; index < 8; index += 1) await Promise.resolve(); };
   const inEpoch = (text: string, seq: number): SessionUiEvent => ({ type: "assistant.delta", text, seq, epoch: "daemon-a.1" });

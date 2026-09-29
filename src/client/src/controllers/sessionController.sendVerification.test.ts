@@ -16,7 +16,7 @@ const outboxKey = `local:${oldSession.id}`;
 /** The ledger's answer to one ask, given the ids asked about; undefined when asking fails. */
 type LedgerAnswers = (ids: readonly string[], ask: number) => Record<string, string> | undefined;
 
-async function unansweredSend(answer: LedgerAnswers) {
+async function unansweredSend(answer: LedgerAnswers, overrides: Partial<typeof defaultApi> = {}) {
   let state: AppState = {
     ...initialAppState(),
     selectedWorkspace: workspace,
@@ -34,6 +34,7 @@ async function unansweredSend(answer: LedgerAnswers) {
       const answered = answer(ids, asked.length);
       return answered === undefined ? Promise.reject(new TypeError("Failed to fetch")) : Promise.resolve(answered);
     },
+    ...overrides,
   };
   const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api, socket: new FakeSocket() });
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -78,6 +79,24 @@ describe("an unanswered send asks the daemon's ledger on its own", () => {
     const send = await unansweredSend(each("withdrawn"));
     await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
     expect({ rows: send.rows(), outbox: send.outbox() }).toEqual({ rows: [], outbox: [] });
+  });
+
+  it("waits for a refresh in flight before asking: the reopen is what re-records a restored inbox", async () => {
+    let answerPage: (page: { messages: never[]; start: number; total: number }) => void = () => undefined;
+    const send = await unansweredSend(each("pending"), {
+      messages: () => new Promise((resolve) => { answerPage = resolve; }),
+      status: (session) => Promise.resolve(status(typeof session === "string" ? session : session.id)),
+      streamSnapshot: () => Promise.resolve({ seq: 1, epoch: "e.1", partial: null }),
+    });
+    const refreshing = send.controller.refreshSelectedSession();
+
+    await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
+    const whileRefreshing = send.asked.length;
+    answerPage({ messages: [], start: 0, total: 0 });
+    await refreshing;
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect({ whileRefreshing, after: send.asked.length }).toEqual({ whileRefreshing: 0, after: 1 });
   });
 
   it("asks at once when the tab comes back", async () => {

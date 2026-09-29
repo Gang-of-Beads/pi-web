@@ -13,7 +13,7 @@ import { resetWorkspaceScopedState, type AppState, type ClosedExtensionDialog } 
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
 import { noteStopCause } from "../stopCause";
-import { carryUnsettledForward } from "../transcriptReconcile";
+import { applyReplayedOutcomes, carryUnsettledForward } from "../transcriptReconcile";
 import { machineSessionKey } from "../machineKeys";
 import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessionsCache";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
@@ -1672,6 +1672,7 @@ export class SessionController {
       const statusIsFresh = !this.statusReadIsStale(status, framesAtRequest);
       let messages = cached.messages;
       let lastSeq = watermark.seq;
+      const outcomes: { withdrawn: string[]; refused: string[] } = { withdrawn: [], refused: [] };
       for (const raw of sync.frames) {
         let parsedFrame: unknown;
         try {
@@ -1681,14 +1682,17 @@ export class SessionController {
         }
         const frame = parseSessionSocketEvent(parsedFrame);
         if (frame === undefined) continue;
+        if (frame.type === "prompt.withdrawn") outcomes.withdrawn.push(frame.clientMessageId);
+        if (frame.type === "prompt.refused") outcomes.refused.push(frame.clientMessageId);
         const next = this.transcripts.applyLiveEvent(messages, frame);
         if (next !== undefined) messages = next;
         if (frame.seq !== undefined) lastSeq = Math.max(lastSeq, frame.seq);
       }
+      for (const clientMessageId of outcomes.withdrawn) forgetPendingPrompt(key, clientMessageId);
       this.streamWatermark = { sessionId: target.session.id, seq: lastSeq, ...(watermark.epoch === undefined ? {} : { epoch: watermark.epoch }) };
       this.reseedLiveStream(this.streamWatermark);
       this.setState({
-        messages: carryUnsettledForward(this.getState().messages, messages),
+        messages: carryUnsettledForward(applyReplayedOutcomes(this.getState().messages, outcomes), applyReplayedOutcomes(messages, outcomes)),
         ...(statusIsFresh ? { status } : {}),
         activity: this.getState().sessionActivities[target.session.id],
         newerPendingCount: 0,
@@ -2193,10 +2197,11 @@ export class SessionController {
     const key = machineSessionKey(machineId, session.id);
     for (const timer of this.sendVerificationTimers.get(key) ?? []) clearTimeout(timer);
     const last = VERIFY_AFTER_MS.length - 1;
+    const onScreen = (): boolean => this.getState().selectedSession?.id === session.id && selectedMachineId(this.getState()) === machineId;
     this.sendVerificationTimers.set(key, VERIFY_AFTER_MS.map((delay, index) => setTimeout(() => {
       if (index === last) this.sendVerificationTimers.delete(key);
-      if (this.getState().selectedSession?.id !== session.id || selectedMachineId(this.getState()) !== machineId) return;
-      void this.closeUnverifiedOperations(session, index === last);
+      if (!onScreen()) return;
+      void this.selectedSessionRefreshes.settled(key).then(() => (onScreen() ? this.closeUnverifiedOperations(session, index === last) : undefined));
     }, delay)));
   }
 
