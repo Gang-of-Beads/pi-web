@@ -323,3 +323,26 @@ No P0 or P1, no lost message, no ordering break. P2-1 and P2-2 re-verified; eigh
 | G2 | A registered command in a steer batch held the batch until its handler returned; Stop runs `emptyQueues` before its abort, so a handler parked on a dialog blocked Stop until the dialog was answered | TRUE, pre-existing | Fixed: inside a steer batch a registered command counts as handed once invoked; its outcome settles when its handler returns |
 | G3 | A handled command left a commit expectation that no commit consumes, claimable later by a same-text message | TRUE, pre-existing | Fixed: a `handled` landing withdraws its expectation |
 | G4 | pi's display lane keeps a steer until `message_start`, but agent-core drains it at the loop poll, and `prepareNextTurn` (where between-turn compaction runs) sits in between: a recall or Clear during that compaction took back or withdrew a message the loop still commits | TRUE, pre-existing | Fixed: when pi shows lane entries but agent-core's queues are empty, the loop holds them; recall answers "already gone" and Clear leaves them to be read. Stop still hands them back, as pi's own TUI does, because its abort ends the loop before they are committed |
+
+## Phase 1 third gate-lane triage (Opus 5.5, over 553cc23e)
+
+Verified against the SDK: after `prepareNextTurn` the agent loop emits `message_start`/`message_end` for the messages it drained without checking the abort signal (agent-loop.js 93-118), and an aborted auto-compaction returns `false` instead of throwing (agent-session.js 2250-2276). `hasQueuedMessages` counts the follow-up queue too (agent.js 203), where pi-web's own ask answers and subsession notices go.
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| A | Stop handed back and withdrew steers the loop had already drained; the aborted compaction returns and the loop commits them anyway | TRUE, P1 | Fixed: loop-held steers are never taken by Stop or Clear; they settle succeeded (the loop commits them whatever happens) and keep their commit expectation so the stamp still finds them |
+| B | Close restored loop-held steers to the inbox file; the aborted loop committed them, and the next open handed them again | TRUE, P1 | Fixed: close's take-back skips loop-held steers and settles them succeeded, since pi-web's listener is gone when the loop commits them |
+| C | "Held by the loop" was judged from `hasQueuedMessages`, which a queued follow-up (subsession notice, ask answer) makes true | TRUE, P1 | Fixed: held is counted per lane, oldest first: pi's displayed lane minus the user messages still in agent-core's queue for that lane. Custom messages and the other lane no longer count. The SDK fields read are pinned by the real-SDK test |
+| D | Command names were split at any whitespace; the SDK splits at the first space only, so "/tidy\nnow" was taken for a command while pi queued it as a steer | TRUE, P2 | Fixed: parsed exactly as `_tryExecuteExtensionCommand` does |
+| E | Inside a steer batch, a command whose handler later injects a steer can have that injected steer land after the batch's later steers | TRUE, P2 | Not fixed: the command's own text never reaches the agent, so no accepted message is reordered; this is about messages a command derives. Recorded as a known limitation for the owner to decide |
+
+The G4 test's Stop assertion pinned the wrong behaviour (its fake had no loop); it now expects Stop to leave loop-held steers alone.
+
+## Phase 1 known limitations
+
+Each was found by a review lane, checked against the source, and left unfixed for the reason given.
+
+1. **Foreign user steers share pi's text-only lanes (F5).** A steer queued by an extension (`sendUserMessage(..., {deliverAs: "steer"})`) sits in the same lane as pi-web's, and lane identity is by position. In the rare arrangements where a foreign steer is read or stranded out of order with pi-web's, an id can shift to the neighbouring entry.
+2. **`clearQueue` also drops agent-core's custom messages (L-note).** Taking pi-held messages back uses the SDK's only clear, which also drops a custom message (ask answer, subsession notice) queued at the same instant. It needs both to miss the loop's final poll together.
+3. **A steer that becomes a new run inside the SDK's own awaits keeps its batch open through `_checkCompaction` (F2-note),** so Stop waits for that compaction. It needs the agent to go idle during the few milliseconds of a steer's preflight.
+4. **A command's derived steer can follow later steers in the same batch (gate 3 E).** Inside a steer batch a command counts as handed once invoked, so a steer its handler injects after an await can land after the batch's later steers. No accepted message is reordered. Waiting for handlers again would bring back Stop blocking on a handler parked on a dialog (G2). **Owner decision.**

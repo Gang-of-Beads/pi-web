@@ -64,6 +64,16 @@ async function inboxService(sessionId: string, options: { dataDir?: string; dir?
 
 const texts = (calls: { text: string }[]) => calls.map((call) => call.text);
 
+/**
+ * Model the agent loop having drained agent-core's queues at its poll: pi still shows the lane
+ * entries (it removes them only at `message_start`), but agent-core holds no user messages.
+ * Custom messages (ask answers, subsession notices) may remain queued.
+ */
+function drainAgentQueues(agent: object, remaining: { steer?: unknown[]; followUp?: unknown[] } = {}): void {
+  Reflect.set(agent, "steeringQueue", { peek: () => remaining.steer ?? [] });
+  Reflect.set(agent, "followUpQueue", { peek: () => remaining.followUp ?? [] });
+}
+
 describe("the inbox settles each message from what the agent did (O1)", () => {
   it("settles a steer the agent read under other text, so a retry after a restart does not run it again", async () => {
     const first = await inboxService("o1-steer");
@@ -551,19 +561,81 @@ describe("second gate-lane findings", () => {
     await service.dispose();
   });
 
-  it("G4: recall and Clear leave messages the agent loop has already taken, and Stop hands them back", async () => {
+  it("G4/A: recall, Clear and Stop all leave messages the agent loop has already taken, which settle as read", async () => {
     const { fake, service, ref, lane } = await inboxService("g4-drained");
     await service.prompt(ref, "being read", undefined, undefined, { clientMessageId: "g4-s-00001" });
     fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect([...lane]).toEqual(["being read"]); });
-    Reflect.set(fake.session.agent, "hasQueuedMessages", () => false);
+    drainAgentQueues(fake.session.agent);
     fake.session.isCompacting = true;
     const recalled = await service.recallQueuedMessage(ref, { kind: "steer", text: "being read", clientMessageId: "g4-s-00001" });
     await service.clearQueue(ref);
-    expect({ recalled: recalled.recalled, lane: [...lane], outcome: service.operationOutcomes("g4-drained", ["g4-s-00001"]) })
-      .toEqual({ recalled: false, lane: ["being read"], outcome: { "g4-s-00001": "pending" } });
     const { discarded } = await service.abort(ref);
-    expect({ discarded: discarded.map((entry) => entry.clientMessageId), lane: [...lane] }).toEqual({ discarded: ["g4-s-00001"], lane: [] });
+    expect({ recalled: recalled.recalled, discarded, inbox: (await service.status(ref)).queuedMessages, outcome: service.operationOutcomes("g4-drained", ["g4-s-00001"]) })
+      .toEqual({ recalled: false, discarded: [], inbox: [], outcome: { "g4-s-00001": "succeeded" } });
+    await service.dispose();
+  });
+});
+
+describe("third gate-lane findings", () => {
+  it("B: closing a session does not put a loop-held steer back in the inbox, so the next daemon does not run it again", async () => {
+    const first = await inboxService("b-close-held");
+    await first.service.prompt(first.ref, "drained before close", undefined, undefined, { clientMessageId: "gb-s-00001" });
+    first.fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect([...first.lane]).toEqual(["drained before close"]); });
+    drainAgentQueues(first.fake.session.agent);
+    first.fake.session.isCompacting = true;
+    await first.service.stop(first.ref);
+    await first.service.dispose();
+
+    const second = await inboxService("b-close-held", { dir: first.dir, dataDir: first.dataDir, isStreaming: false });
+    await expect(second.service.resumeWaitingInboxes()).resolves.toEqual([]);
+    await second.service.status(second.ref);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect({ calls: second.fake.calls.prompt, outcome: second.service.operationOutcomes("b-close-held", ["gb-s-00001"]) })
+      .toEqual({ calls: [], outcome: { "gb-s-00001": "succeeded" } });
+    await second.service.dispose();
+  });
+
+  it("C: a queued subsession notice does not hide that the loop holds a steer", async () => {
+    const { hub, fake, service, ref, lane } = await inboxService("c-custom-follow-up");
+    await service.prompt(ref, "held steer", undefined, undefined, { clientMessageId: "gc-s-00001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["held steer"]); });
+    drainAgentQueues(fake.session.agent, { followUp: [{ role: "custom", customType: "subsession-notice" }] });
+    Reflect.set(fake.session.agent, "hasQueuedMessages", () => true);
+    fake.session.isCompacting = true;
+    const recalled = await service.recallQueuedMessage(ref, { kind: "steer", text: "held steer", clientMessageId: "gc-s-00001" });
+    await service.clearQueue(ref);
+    const withdrawn = hub.sessionEvents.filter(({ event }) => event.type === "prompt.withdrawn").map(({ event }): unknown => Reflect.get(event, "clientMessageId"));
+    expect({ recalled: recalled.recalled, withdrawn, outcome: service.operationOutcomes("c-custom-follow-up", ["gc-s-00001"]) }).toEqual({ recalled: false, withdrawn: [], outcome: { "gc-s-00001": "succeeded" } });
+    await service.dispose();
+  });
+
+  it("C: only the loop-held part of a lane is left; a steer queued after the drain is still handed back", async () => {
+    const { fake, service, ref, lane } = await inboxService("c-partial");
+    await service.prompt(ref, "S1 drained", undefined, undefined, { clientMessageId: "gc-s1-0001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["S1 drained"]); });
+    await service.prompt(ref, "S2 still queued", undefined, undefined, { clientMessageId: "gc-s2-0001" });
+    fake.emit({ type: "tool_execution_end" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["S1 drained", "S2 still queued"]); });
+    drainAgentQueues(fake.session.agent, { steer: [{ role: "user", content: "S2 still queued" }] });
+    const { discarded } = await service.abort(ref);
+    expect({ discarded: discarded.map((entry) => entry.clientMessageId), outcomes: service.operationOutcomes("c-partial", ["gc-s1-0001", "gc-s2-0001"]) })
+      .toEqual({ discarded: ["gc-s2-0001"], outcomes: { "gc-s1-0001": "succeeded", "gc-s2-0001": "withdrawn" } });
+    await service.dispose();
+  });
+
+  it("D: a slash text the SDK does not parse as a command is recorded as the steer pi queues", async () => {
+    const { fake, service, ref, lane } = await inboxService("d-newline");
+    fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "tidy" }];
+    await service.prompt(ref, "/tidy\nnow", undefined, undefined, { clientMessageId: "gd-s-00001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["/tidy\nnow"]); });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect({ outcome: service.operationOutcomes("d-newline", ["gd-s-00001"]), queued: (await service.status(ref)).queuedMessages.map((entry) => entry.clientMessageId) })
+      .toEqual({ outcome: { "gd-s-00001": "pending" }, queued: ["gd-s-00001"] });
     await service.dispose();
   });
 });
