@@ -1,5 +1,129 @@
 # @gang-of-beads/pi-web
 
+## 2.202609.28
+
+### Patch Changes
+
+- 2173d96: An image attached in the composer is still there when you switch to another session and come back. It stays with the session it was attached in and never goes out with another session's message. A page reload still drops it.
+- 484a437: Background runs have their own list in the ≡ menu, drawn by the background-runs plugin: running work first, then the newest finished runs with name (up to two lines), status, duration and exit code laid out apart, and a long history cut to the newest thirty with the rest counted. The panel is there whenever a session is open, like Subagents and Tasks, and says honestly whether the runs are still being read, could not be read, or are none; nothing is drawn above the composer.
+- 2ab0a6c: Messages sent quickly one after another from the same composer reach the agent in the order you sent them: each is saved at once and handed over after the previous one is answered. A message sent while a photo is still uploading is no longer silently dropped, and the send button stays usable. A message retried from the unsent list keeps the attachment handling it was composed with, instead of taking it from whatever the composer holds at the time.
+- ba3685a: Messages reach the agent in the order you sent them. While the agent works, every message waits in the session's queue, visible and recallable, and all of them are handed to the agent together at its next pause. A message that arrives while an earlier one is still being handed no longer overtakes it or gets refused. A retry of a message you recalled or stopped does not run it again. Waiting messages survive a daemon restart and are sent without anyone opening the session, and a read-only workspace no longer blocks sending.
+- b745994: On desktop, the navigation and Go to buttons at the top of the chat now line up with the left and right edges of the messages, and the composer's button row has equal space above and below it. The phone layout is unchanged.
+- efc7b9d: Every row in the Go to menu now has an icon. Subagents and Background draw their own, and a plugin panel that brings no icon of its own shows a neutral plugin mark instead of an empty space.
+- 65592b5: An extension screen renders as a card, not as a terminal frame.
+
+  `ctx.ui.custom` drew a framed TUI and the browser repeated it verbatim, so the goal
+  plugin's task-list confirmation arrived on a phone as box-drawing characters with a
+  key row under them. An extension can now say what its screen _is_ — `ctx.ui.custom(
+factory, { web: { kind: "menu", title, body, options } })` — and the browser draws
+  its own card: a heading, the proposal text pre-formatted, and the options as real
+  buttons with the current one marked. pi ignores the unknown key, so the terminal
+  keeps the component.
+
+  A screen that declares nothing is read by shape (a cursor with its sibling rows is a
+  menu), and one that matches neither stays monospace text with the key row, which is
+  still faithful and still tappable. The goal plugin's confirmation now declares its
+  card.
+
+- 4e939e5: A message marked "not sent" because no answer came in time now shows as sent once the server proves it arrived. A message refused while you were looking at another session shows the refusal when you come back. After a reconnect, text the agent streamed while the page caught up is no longer missing, and no longer shows twice.
+- dcaada7: On desktop, choosing a tool such as Background or Files from Go to now opens the right-hand panel if you had folded it away. Before, the tool was selected into a hidden panel and nothing appeared to happen.
+- d5727ba: The Goals section now says "No goals in this workspace." with a refresh button instead of disappearing. A goal created later in the same session shows up after a refresh.
+- 93595fa: `pi-web install` run from a PI WEB chat, including by an update or a Nix switch started there, no longer restarts the session daemon under the conversation. The daemon keeps the previous build and says so. Run `pi-web restart` from a terminal outside PI WEB to move it to the new one.
+- 4cace4d: Rows inside live events, tool boxes included, sit 13px inside the group's border again on phone and desktop. The margin template padded each row as if it drew no box, on top of the inset the group body already carries, which pushed them to 23px on a phone and 25px on desktop.
+- 4a7f187: A failed send stays in the session it was sent from.
+
+  The resend/discard row could appear in a session the message was never sent from: the send
+  captured the right key, then wrote its answer into whatever the editor was showing. A
+  pending message now carries its own state and its own scope, the row is a selection over
+  the records whose scope matches the session on screen, and a transition table (stored to
+  sending to accepted to delivered, with failed and unverified alongside) decides every move
+  so an unhandled event fails in tests rather than in a renderer. The composer restore waits
+  until the reader is back in that session; a live answer for another one cannot rewrite it.
+
+- 9cbe9b7: The navigation page no longer has a separate › close button. Tapping the grid key takes you back, as does the system back gesture on a phone.
+- d8cced6: The README now explains how to install PI WEB with Nix from the public binary cache gang-of-beads.cachix.org. It covers pinning a release tag, trusting the cache, and using the flake's own package with the Home Manager module, so the install downloads instead of compiling. The installation guide's Nix example now does the same.
+- 2237ef3: The Nix package now starts terminals on macOS and ships the `/pi-web` extension. Its node-pty spawn helper was not executable, so every terminal failed with "posix_spawnp failed", and `extensions/` was left out of the package.
+- 619fa4a: Sent messages now use one set of words on the bubble and in the tray under the composer: Sending…, Receiving… (sent, and the server has not confirmed it yet), Received, Queued, Not sent, and Not received. A message the agent has taken carries no mark, and neither does a slash command that has run; the command's result line is unchanged. A message typed while the browser was offline now reads "Not sent" instead of "may already be running".
+- 3178025: A browser plugin that registers an element through a side-effect import (`import "./element.js"`) now loads. The plugin build only followed `import … from` when deciding whether an entry reaches a package and must be bundled, so such an entry shipped with a bare `lit` import the browser could not resolve and the whole plugin silently never activated; the shipped-entry guard had the same blind spot and now walks every import form through the whole graph.
+- e723c25: A session request the session daemon does not answer now ends after 25 seconds with a clear "did not answer" error instead of hanging until the browser gives up, and closing the page cancels the request on the daemon side.
+- 767c81d: Question and extension-dialog cards are the same width as every message again. The row that holds them was padded as if it drew no box, and the question card padded itself as well, so on a phone it sat 20px narrower on each side than the messages above it; the answered-question record had the same inset.
+- b17b771: A panel whose answer starts arriving but then stalls no longer stays on "Reading…": the 30-second request deadline now covers the whole answer, not just its first bytes, so the read fails honestly and can be tried again.
+- 07d0a64: The transcript stops bouncing and stop losing the reader.
+
+  Two defects behind the owner's "偶尔回弹" and "莫名其妙弹到 session 中部":
+
+  - A follow scroll wrote its target and the _next_ scroll event adopted it back,
+    overruling a pin the reader's own wheel or finger had already dropped. The target
+    is now matched by value _and_ freshness, and never against an already-dropped pin,
+    so a coincidental equality cannot drag the view down again.
+  - Restoring a session whose saved anchor row was no longer loaded retried by fetching
+    history even when the reader had been following the bottom. That walked the view up
+    to the top of the loaded window - mid-session on screen - and unpinned it. A reader
+    who was at the bottom now lands at the bottom.
+
+- 3837bc9: Panels that read from the machine now say what they know:
+
+  - **Subagents panel:** an older answer can no longer replace a newer list, and a slow machine no longer gets a pile of repeated reads. A failed refresh keeps the rows already shown and says it could not refresh.
+  - **Goals section:** it follows the selected session within a workspace. If goals could not be read, it says so and offers a retry instead of disappearing.
+  - **Links:** a link that names a tool in `view=` opens that tool, even when `tool=` is missing or names another.
+  - **Status bar:** if the selected session's status could not be read, it now offers Retry.
+  - **Supervisor requests:** a request you already answered shows your answer instead of asking again. Each reply names the request it answers, so two questions from one subagent no longer share an answer.
+  - **Stalled reads:** a plugin read whose body stalls now ends at the request deadline.
+
+- 84ec07e: A message you recalled while the connection was down no longer comes back after the reconnect, and a "Not received · Retry" message no longer disappears when the page catches up. Right after a daemon restart, a message still waiting in the queue is no longer briefly marked as not received.
+- 41d02fc: A message reading "Receiving…" keeps checking with the server while the connection is down, instead of giving up after three tries. The top of the page says "Reconnecting to update message status…" until a check gets through; the message then shows what the server knows about it.
+- 1035a86: After a reconnect, a message still waiting in the queue stays one row and still reads "queued". It no longer shows twice or reads "delivered" before the agent has read it. Also fixed:
+
+  - A reply can no longer appear in the wrong session after you switch sessions during a reconnect.
+  - Right after a daemon restart, a queued message is no longer briefly marked as not received.
+  - A refused message no longer turns "delivered" because a different message with the same words arrived.
+  - Text streamed by a restarted daemon is no longer dropped.
+
+- aa0b9d9: A message the server accepted but Pi then refused (for example, because no model is configured) now reads "Not sent", and Retry sends it again. Before, Retry could not find the message and said it may already have been delivered.
+- 6768376: A saved reading position carries its machine, and the ones for sessions that are gone
+  are dropped.
+
+  The key was the bare session id, so the same session under two machines shared one
+  position, and nothing ever evicted a key: `removeItem` existed and was never called, so
+  a deleted session left its entry in localStorage forever. The key now carries the
+  machine, and the positions are pruned against the sessions the machine actually lists.
+
+- 3897508: A message whose send ended in a gateway or proxy error (a 5xx) now stays in the conversation marked unanswered, instead of disappearing and being handed back to the composer while the daemon may already be running it. A message the daemon has already confirmed stays even if a later answer disagrees, a timed-out send is marked in the session list like one that failed, and a message that left the queue of an idle session is no longer shown as read until the conversation actually contains it.
+- 1da4f66: A session no longer flips back to "idle" while the agent is working because a slow status reply arrived after a newer live update, and a message still waiting in the queue no longer disappears from the conversation when the page catches up after a reconnect.
+- 9ce8982: What a session is running reads as one status line. The strip of chips above the activity dock ("Background · 404 finished") is gone, along with the unstyled background-task list it opened over the transcript. Background work now rides the dock's own line in every state ("receiving response · 1 background run") and stays on the dock while a question card is open; at narrow widths the state and the note give way together instead of spilling past the dock. The background-run count was never shown before because the app did not pass plugin notes to the transcript; it does now.
+- 9e23ec5: A session's live updates now apply once each and in order when some arrive late or out of order: an update published just before you opened the session, or one missed while the page was catching up, is fetched and put back in its place instead of being skipped or applied twice.
+- 5317cb2: After the session daemon restarts, or after it drops the replay buffer of a session nobody was watching, a browser catching up on that session now reloads it instead of silently skipping the messages it missed.
+- 7eec600: A subagent's supervisor card shows what the child asked. The card never read the question field pi-subagents writes (`requestBody`), and it knew none of the reasons pi-subagents actually sends except progress updates, so a decision request rendered as a bare "Message from delegate" with only a run id and a reply box. It now reads "Decision request from delegate" (or "Interview request", "Progress update") with the question underneath.
+- a6cb47b: A message whose send got no answer no longer waits forever: pi-web asks the session daemon what became of it 5, 15 and 45 seconds later and again when you come back to the tab, then shows it as received, takes it back if it was withdrawn, or offers Retry if the daemon never got it. A message the agent refuses after the daemon accepted it now says so on its own row instead of staying "Queued".
+- 64c6ae3: An unsent message shows once. The tray above the composer repeated any outbox entry older than four seconds even while the transcript already showed the same message as "Sending" or "Sent, no answer yet", so one message read as two. The tray now speaks only for a message nothing else shows (one recovered after a reload), and both it and the transcript row offer the same actions: Retry - for that message alone, under the same identity so the daemon deduplicates it, and shown as sending again the moment it starts - when the answer never came or the server says it never arrived, and Discard once no send is in flight. Discard, recall, stop and "edit and send again" all hand the text and images back to the composer without overwriting what you are typing: the returned message goes after your draft. Rows that need a decision keep their actions visible on desktop, and a Retry that cannot start - offline, another retry running, or the message no longer held - says why instead of doing nothing.
+- f78dcdf: The transcript stops fetching and moving on its own.
+
+  Four review lanes traced every writer of `chat.scrollTop` and every producer that can
+  start a load. The transcript loaded history while the reader was pinned at the newest
+  end (nothing above them had changed), the forward end fetched from a render rather than
+  a scroll - which slides the window page by page under a stationary reader - and a
+  restore that could not find its saved row slammed the view to the top of the loaded
+  window, which reads as the middle of the session.
+
+  Now: history answers an upward scroll and nothing else, the forward end answers a
+  downward one, an unfilled viewport is the only exception, and a restore that missed
+  fetches the page its row lives in and stays put. The jump-to-newest control fetches the
+  pages between here and there back to back, so it lands on the newest instead of on the
+  boundary of the loaded window.
+
+  The verification wave then found four defects the author had missed, now fixed: the
+  policy module was never wired in (only its direction helper was imported) and now runs
+  the open, the miss, the growth, the jump and both load ends; a pending jump survived a
+  session switch and a machine change saved the old session under the new machine's key;
+  `prune` deleted every other machine's saved positions because it judged keys by the
+  current machine's session list; and the scroll handler asked the policy _before_
+  computing the direction, so it always answered the previous event.
+
+  The policy itself is one pure classifier (`chatViewport/viewportDecision.ts`) over
+  (stored open, scroll, growth, jump, page arrival) with an exhaustive cross-product test,
+  so the states the owner described - bottom opens at the newest page, a stored spot opens
+  at that spot, one page each - are named rather than spelled out at four call sites.
+
 ## 2.202609.17
 
 ### Patch Changes
