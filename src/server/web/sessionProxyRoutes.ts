@@ -4,6 +4,9 @@ import {
   SessionDaemonClient,
   type SessionDaemonRequestOptions,
 } from "../shared/sessiondClient/sessionDaemonClient.js";
+import { boundDaemonRequest, SESSION_PROXY_DEADLINE_MS } from "./boundedDaemonRequest.js";
+
+interface DaemonAnswer { statusCode: number; headers: Record<string, string>; body: string }
 
 export interface SessionProxyDaemon {
   request(
@@ -11,14 +14,22 @@ export interface SessionProxyDaemon {
     path: string,
     body?: unknown,
     options?: SessionDaemonRequestOptions,
-  ): Promise<{ statusCode: number; headers: Record<string, string>; body: string }>;
+  ): Promise<DaemonAnswer>;
   connectWebSocket(path: string): WebSocket;
 }
 
 export function registerSessionProxyRoutes(app: FastifyInstance, daemon: SessionProxyDaemon = new SessionDaemonClient(), prefix = "/api"): void {
+  const forward = async (reply: FastifyReply, method: string, url: string, body?: unknown): Promise<DaemonAnswer | undefined> => {
+    const outcome = await boundDaemonRequest(reply.raw, (signal) => daemon.request(method, stripPrefix(url, prefix), body, { signal }));
+    if (outcome.kind === "answered") return outcome.value;
+    reply.code(504).send({ error: outcome.kind === "deadline" ? `Session daemon did not answer within ${String(SESSION_PROXY_DEADLINE_MS / 1000)}s` : "The browser closed the request" });
+    return undefined;
+  };
+
   const proxy = async (request: { method: string; url: string; body?: unknown }, reply: FastifyReply) => {
     try {
-      const upstream = await daemon.request(request.method, stripPrefix(request.url, prefix), request.body);
+      const upstream = await forward(reply, request.method, request.url, request.body);
+      if (upstream === undefined) return undefined;
       reply.code(upstream.statusCode);
       const contentType = upstream.headers["content-type"];
       if (contentType !== undefined && contentType !== "") reply.header("content-type", contentType);
@@ -50,7 +61,8 @@ export function registerSessionProxyRoutes(app: FastifyInstance, daemon: Session
   app.all(`${prefix}/sessions`, (request, reply) => proxy(request, reply));
   app.get(`${prefix}/sessions/:sessionId/tool-results/:toolCallId/images/:index`, async (request, reply) => {
     try {
-      const upstream = await daemon.request("GET", stripPrefix(request.url, prefix));
+      const upstream = await forward(reply, "GET", request.url);
+      if (upstream === undefined) return undefined;
       if (upstream.statusCode !== 200) {
         reply.code(upstream.statusCode);
         return upstream.body !== "" ? parseJson(upstream.body) : undefined;

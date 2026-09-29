@@ -448,3 +448,27 @@ Each was found by a review lane, checked against the source, and left unfixed fo
 7. **A take-back bounded at teardown can give up (gate 6 P2-2).** If a handoff does not settle within 5 s of a close or shutdown (an extension input handler that never returns), what pi still holds goes with the runtime; its rows stay pending, so after a restart a retry runs it.
 8. **The closing lock has a 10 s ceiling (gate 7 P2-B).** A close whose abort never returns stops holding its session id after 10 s, so the id can reopen while the old runtime still winds down. The old runtime's late work leaves the new one's state alone, but both can then write the same session file.
 9. **A direct handoff put back while Stop clears is not handed back (gate 10 note).** If the SDK refuses a direct handoff as momentarily busy at the instant of a Stop, the message returns to the inbox after Stop's clear. It shows as waiting and runs later, not withdrawn. Clearing again after the handoff would also withdraw messages sent after the Stop.
+
+## Phase 2 as landed
+
+**Scope.** Phase 2 takes the 12 transport repros:
+- 4 composer (`PromptEditor.send`);
+- 5 non-label confirm repros (`ChatView.deliveryLabels`);
+- 2 proxy;
+- 1 http.
+
+The four confirm repros about words belong to phase 5, where the owner approves the vocabulary (see "Conflicts for phase 5" below).
+
+**Proxy deadline (A).** `boundedDaemonRequest.ts` ends every proxied daemon call in one of three ways:
+- with the daemon's answer;
+- at `SESSION_PROXY_DEADLINE_MS` (25 s), with a 504;
+- when the browser's connection closes.
+
+The last two abort the call's signal, and the race does not rely on the daemon honouring it. The 25 s comes from measurement: over the last 1.5 GB of the production access log, the slowest session read took 22.6 s and the slowest prompt 6.1 s; 19 reads took over 2.5 s. The repro "a daemon that never answers…" raced the proxy against a 3 s real-time window, which any deadline that real reads survive exceeds. Its fixture now uses fake timers advanced past the default deadline, below the browser's 30 s; its assertion is unchanged.
+
+**Conflicts for phase 5 (owner decision).** Some confirm repros cannot all pass together:
+- **The bubble's words.** "does not claim it may be running when the bytes never left" wants the bubble of an `unverifiable` row to read "Not sent". "gives the reader words for who is being waited on" wants "No answer yet" for the same input. The owner's words (Sending… / Receiving… / Received / Not received · Retry) match neither.
+- **The received label.** "the label of a confirmation that is not a queue" wants a `received` row to read "Queued". The owner's words say "Received".
+- **The state names.** "spells the state it waits in the same way as the bubble does" requires the outbox's states to be exactly the bubble's six, with no `unverified`. "records an expired deadline…" and "survives a state the table has no row for" (phase 2) require the outbox record to say `unverified`.
+
+Phase 5 has to pick the words and then the spelling, and at least one of these assertions changes with the owner's approval.
