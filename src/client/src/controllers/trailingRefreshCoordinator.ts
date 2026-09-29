@@ -21,6 +21,15 @@ export class TrailingRefreshCoordinator<Key> {
     }
   }
 
+  /**
+   * When the key's refreshes are done, without starting one: resolves at once when none is
+   * pending, and never rejects, since a caller waiting for quiet has no use for the refresh's
+   * failure.
+   */
+  settled(key: Key): Promise<void> {
+    return (this.pendingByKey.get(key)?.promise ?? Promise.resolve()).catch(() => undefined);
+  }
+
   request(key: Key, refresh: () => Promise<void>): Promise<void> {
     const existing = this.pendingByKey.get(key);
     if (existing !== undefined) {

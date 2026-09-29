@@ -172,6 +172,20 @@ describe("SessionGapRepair seeded from a snapshot", () => {
   });
 });
 
+describe("SessionGapRepair entering a new space on a live frame", () => {
+  it("applies the frame and asks for a full read once: what the new space published before it is unknown", () => {
+    const resync = vi.fn();
+    const applied: string[] = [];
+    const repair = new SessionGapRepair({ apply: (event) => { applied.push(("text" in event ? event.text : event.type) + seqSuffix(event)); }, request: () => Promise.resolve({ ok: true, frames: [] }), resync });
+    repair.seed({ seq: 40, epoch: "daemon-a.1" });
+
+    repair.onLiveFrame({ type: "assistant.delta", text: "after restart", seq: 7, epoch: "daemon-b.1" }, 7);
+    repair.onLiveFrame({ type: "assistant.delta", text: "next", seq: 8, epoch: "daemon-b.1" }, 8);
+
+    expect({ applied, resyncs: resync.mock.calls.length }).toEqual({ applied: ["after restart@7", "next@8"], resyncs: 1 });
+  });
+});
+
 describe("SessionGapRepair reseeded below its frontier", () => {
   const settle = async (): Promise<void> => { for (let index = 0; index < 8; index += 1) await Promise.resolve(); };
   const inEpoch = (text: string, seq: number): SessionUiEvent => ({ type: "assistant.delta", text, seq, epoch: "daemon-a.1" });

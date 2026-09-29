@@ -45,6 +45,25 @@ describe("status facts in stream order", () => {
     expect(state.status?.isStreaming).toBe(false);
   });
 
+  it("keeps the newer of two status frames that land before one render", async () => {
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
+    const socket = new EmitSocket();
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      messages: () => Promise.resolve(emptyPage),
+      status: (session) => Promise.resolve({ ...status(sessionLookupId(session)), isStreaming: true, streamPosition: { seq: 9, epoch: "daemon-a.1" } }),
+      streamSnapshot: () => Promise.resolve({ seq: 10, epoch: "daemon-a.1", partial: null }),
+    };
+    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api, socket });
+
+    await controller.selectSession(oldSession, { updateUrl: false });
+    socket.emit({ type: "status.update", status: { ...status(oldSession.id), isStreaming: false }, seq: 11, epoch: "daemon-a.1" });
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status(oldSession.id), isStreaming: true, streamPosition: { seq: 10, epoch: "daemon-a.1" } } });
+    runPendingAnimationFrames();
+
+    expect(state.status?.isStreaming).toBe(false);
+  });
+
   it("orders the machine-wide copy of a status frame by the position of its session frame", async () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
     const api: typeof defaultApi = {

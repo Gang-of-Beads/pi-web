@@ -110,10 +110,12 @@ function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine, committedI
     const byText = byId !== -1 ? byId : findTrackedUserLineIndex(messages, messageText(displayEnded));
     const tracked = byText !== -1 ? byText : findTrackedUserLineIndexByContent(messages, displayEnded);
     const target = tracked === -1 ? findEchoLineIndex(messages, displayEnded) : tracked;
-    if (target !== -1) {
-      const previous = messages[target];
-      if (previous !== undefined) return [...messages.slice(0, target), carryDeliveryForward(previous, displayEnded), ...messages.slice(target + 1)];
-    }
+    const previous = target === -1 ? undefined : messages[target];
+    // A committed copy overturns a failure, but only its own: an unstamped
+    // "continue" from an extension or a forwarded command matched a refused
+    // "continue" by text and called it delivered, taking Retry away.
+    if (previous !== undefined && byId === -1 && previous.meta?.delivery?.state === "failed") return [...messages, displayEnded];
+    if (previous !== undefined) return [...messages.slice(0, target), carryDeliveryForward(previous, displayEnded), ...messages.slice(target + 1)];
   }
   // The half-done streaming line lives at the unanswered tail, the same place
   // appendText grows it - not necessarily at the end, because a message queued

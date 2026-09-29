@@ -43,6 +43,55 @@ describe("rebuilding the transcript from disk while a send is still in flight", 
   });
 });
 
+/**
+ * The rebuilt forms of a waiting message as the transcript itself builds them: a page line
+ * carries the id as `meta.clientMessageId` and no delivery, and the daemon's echo carries it as
+ * `echoClientMessageId`. The fixture above hands the rebuild a line with a delivery, which no
+ * page line has, so it could not see a waiting row duplicated beside its committed copy.
+ */
+describe("a waiting message the rebuild already holds in another form", () => {
+  const waiting = (clientMessageId: string): ChatLine => ({ ...optimisticUserLine("second thought", clientMessageId), meta: { ...optimisticUserLine("second thought", clientMessageId).meta, delivery: { clientMessageId, state: "queued", kind: "steer" } } });
+
+  it("takes the place of its echo and keeps its state: acceptance is not reading", () => {
+    const clientMessageId = newClientMessageId();
+    const rebuilt = applyTranscriptEvent([], { type: "message.append", message: { role: "user", content: "second thought", timestamp: 900 }, echo: true, clientMessageId }) ?? [];
+
+    const healed = carryUnsettledForward([waiting(clientMessageId)], rebuilt);
+
+    expect(healed.map((line) => ({ state: line.meta?.delivery?.state, echo: line.meta?.echo === true }))).toEqual([{ state: "queued", echo: false }]);
+  });
+
+  it("becomes its committed copy, delivered, instead of standing beside it", () => {
+    const clientMessageId = newClientMessageId();
+    const rebuilt = applyTranscriptEvent([], { type: "message.append", message: { role: "user", content: "second thought", timestamp: 900, clientMessageId } }) ?? [];
+    const committedHasNoDelivery = rebuilt[0]?.meta?.delivery === undefined && rebuilt[0]?.meta?.clientMessageId === clientMessageId;
+
+    const healed = carryUnsettledForward([waiting(clientMessageId)], rebuilt);
+
+    expect({ committedHasNoDelivery, states: healed.map((line) => line.meta?.delivery?.state) }).toEqual({ committedHasNoDelivery: true, states: ["delivered"] });
+  });
+});
+
+describe("a committed message with the same words as a refused one", () => {
+  const failed = (clientMessageId: string): ChatLine => ({ ...optimisticUserLine("continue", clientMessageId), meta: { ...optimisticUserLine("continue", clientMessageId).meta, delivery: { clientMessageId, state: "failed" } } });
+
+  it("leaves the refused message failed when the committed copy carries no id: they are two messages", () => {
+    const clientMessageId = newClientMessageId();
+
+    const next = applyTranscriptEvent([failed(clientMessageId)], { type: "message.end", message: { role: "user", content: "continue", timestamp: 900 } }) ?? [];
+
+    expect(next.map((line) => line.meta?.delivery?.state ?? "transcript")).toEqual(["failed", "transcript"]);
+  });
+
+  it("lets the committed copy stamped with the refused message's own id overturn the failure", () => {
+    const clientMessageId = newClientMessageId();
+
+    const next = applyTranscriptEvent([failed(clientMessageId)], { type: "message.end", message: { role: "user", content: "continue", timestamp: 900, clientMessageId } }) ?? [];
+
+    expect(next.map((line) => line.meta?.delivery?.state ?? "transcript")).toEqual(["delivered"]);
+  });
+});
+
 describe("noticing a confirmation the pushes may have dropped", () => {
   it("sees a waiting card and stops seeing it once settled", () => {
     const pending = optimisticUserLine("ship it", newClientMessageId());

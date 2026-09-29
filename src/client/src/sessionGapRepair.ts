@@ -13,7 +13,9 @@
  * A seq space is one epoch of the daemon's numbering. A frame from another epoch - the
  * daemon restarted or evicted the ring - starts a new space; so does a lower seq on a frame
  * that carries no epoch, from a daemon too old to stamp one. Applied seqs of an old space
- * say nothing about the new one.
+ * say nothing about the new one, and a new space first seen on a live frame says nothing
+ * about the frames of it published before that one: the view is rebuilt from a full read,
+ * whose snapshot seeds the new space.
  *
  * States: `idle` (frames apply as they arrive), `repairing` (a gap was seen; live frames are
  * held while one replay is fetched and flushed). Anything that cannot be replayed - a resync
@@ -97,7 +99,12 @@ export class SessionGapRepair {
       this.options.apply(event);
       return;
     }
-    if (this.startsNewSpace(event, seq)) this.enterSpace(frameEpoch(event));
+    if (this.startsNewSpace(event, seq)) {
+      this.enterSpace(frameEpoch(event));
+      this.applyFrame(event, seq);
+      this.options.resync();
+      return;
+    }
     if (this.alreadyApplied(seq)) return;
     const frontier = this.frontier;
     if (frontier !== undefined && seq > frontier + 1) {

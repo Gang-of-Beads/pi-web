@@ -408,9 +408,11 @@ export class SessionController {
       buffered = socketBuffer;
       // Gap repair holds live frames while the daemon's ring replays the
       // missed range in front of them; a resync verdict or failed request
-      // falls back to the same full refresh a reconnect takes.
-      this.gapRepair = new SessionGapRepair({
-        apply: (event) => { this.applyEvent(event); },
+      // falls back to the same full refresh a reconnect takes. A replay that
+      // lands after the reader chose another session belongs to this machine
+      // only: applied, it put session A's frames into session B's view.
+      const repair: SessionGapRepair = new SessionGapRepair({
+        apply: (event) => { if (this.gapRepair === repair) this.applyEvent(event); },
         request: async (sinceSeq, epoch) => {
           const sync = await this.api.streamSync(session, sinceSeq, machineId, epoch ?? this.streamWatermark?.epoch);
           if (sync.kind !== "replay") return { ok: false };
@@ -427,16 +429,16 @@ export class SessionController {
           }
           return { ok: true, frames };
         },
-        resync: () => { void this.refreshSelectedSession(session.id); },
+        resync: () => { if (this.gapRepair === repair) void this.refreshSelectedSession(session.id); },
       });
+      this.gapRepair = repair;
       this.socket.connect(session, machineId, {
         onEvent: (event) => socketBuffer.push(event),
         onReconnect: () => {
-          void this.refreshSelectedSession(session.id);
           // Ask, do not resend. Every row the link left unverifiable is an
           // identity the daemon can answer for; sending again without asking is
           // how one message becomes two.
-          void this.closeUnverifiedOperations(session);
+          void this.refreshSelectedSession(session.id).then(() => this.closeUnverifiedOperations(session));
         },
         onMalformed: () => { this.dialogScope.requestResync(); },
         onGap: gapsSeenByTheRepair,
@@ -2198,10 +2200,19 @@ export class SessionController {
     }, delay)));
   }
 
-  /** Ask again about the unanswered sends on screen, as when the tab comes back into view. */
-  verifyUnansweredSends(): Promise<void> {
+  /**
+   * Ask again about the unanswered sends on screen, as when the tab comes back into view.
+   *
+   * The ask waits for a refresh in flight. After a daemon restart the ledger reads `unknown`
+   * for a message still waiting in the restored inbox until the refresh reopens the session
+   * and the inbox records it again; asked in between, a waiting row read "not received".
+   */
+  async verifyUnansweredSends(): Promise<void> {
     const session = this.getState().selectedSession;
-    return session === undefined ? Promise.resolve() : this.closeUnverifiedOperations(session, false);
+    if (session === undefined) return;
+    await this.selectedSessionRefreshes.settled(machineSessionKey(selectedMachineId(this.getState()), session.id));
+    if (this.getState().selectedSession?.id !== session.id) return;
+    await this.closeUnverifiedOperations(session, false);
   }
 
   /**
@@ -2544,6 +2555,8 @@ export class SessionController {
    * socket, or the position the daemon stamped on the machine-wide copy of the same frame.
    */
   private queueStatusUpdate(status: SessionStatus, position: StatusPosition | undefined = status.streamPosition): void {
+    const pending = this.pendingStatusPositions.get(status.sessionId);
+    if (pending !== undefined && position !== undefined && pending.epoch === position.epoch && pending.seq >= position.seq) return;
     this.pendingStatusBySession.set(status.sessionId, status);
     if (position === undefined) this.pendingStatusPositions.delete(status.sessionId);
     else this.pendingStatusPositions.set(status.sessionId, position);
@@ -2771,10 +2784,13 @@ export class SessionController {
   // the watermark when it belongs to the selected session's seeded snapshot
   // (`seq <= watermark.seq`); such events are already reflected in the committed
   // history + seeded partial and must be dropped. Events with no `seq` (which
-  // should not occur on the per-session socket) are never dropped.
+  // should not occur on the per-session socket) are never dropped. A seq only
+  // compares within its epoch: after a daemon restart the new numbering starts
+  // at 1, and comparing it with the old snapshot's seq dropped live frames.
   private isStreamEventBelowWatermark(event: SessionUiEvent): boolean {
     const watermark = this.streamWatermark;
     if (watermark === undefined || watermark.sessionId !== this.getState().selectedSession?.id) return false;
+    if (event.epoch !== undefined && watermark.epoch !== undefined && event.epoch !== watermark.epoch) return false;
     return event.seq !== undefined && event.seq <= watermark.seq;
   }
 }
