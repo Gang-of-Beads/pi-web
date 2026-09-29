@@ -573,6 +573,7 @@ export class PromptEditor extends LitElement {
   private readonly outboxInFlight = new Set<string>();
   private sendOrder: Promise<void> = Promise.resolve();
   private sendsWaiting = 0;
+  private replayQueued = false;
 
   /**
    * Whether storage holds anything for this session.
@@ -1174,36 +1175,73 @@ export class PromptEditor extends LitElement {
     this.replayOutbox(undefined);
   };
 
+  /**
+   * Replay the outbox as one step of the composer's send chain, so a replay and a new send can
+   * never overtake each other: kept records go before anything typed after them. A replay
+   * already queued and not yet started covers every record present when it runs, so a second
+   * one is not queued behind it.
+   */
   private replayOutbox(only: string | undefined): void {
-    if (!navigator.onLine || this.flushInFlight) return;
+    if (this.onSend === undefined) return;
+    if (only === undefined) {
+      if (this.replayQueued) return;
+      this.replayQueued = true;
+    }
+    this.enqueueSend(async () => {
+      if (only === undefined) this.replayQueued = false;
+      await this.replayRecords(only);
+    });
+  }
+
+  /**
+   * Send the records the composer's current session holds, in stored order, reading them when
+   * this step's turn comes rather than when it was queued. A record whose own send is still
+   * waiting in the chain is skipped: its own step sends it.
+   */
+  private async replayRecords(only: string | undefined): Promise<void> {
     const send = this.onSend;
-    if (send === undefined) return;
-    const key = machineSessionKey(this.machineId, this.sessionId ?? "");
-    if (key === "") return;
-    const pending = loadPendingPrompts(key).filter((prompt) => only === undefined || prompt.clientMessageId === only);
-    if (pending.length === 0) return;
+    const key = this.outboxKey();
+    if (!navigator.onLine || !this.isConnected || send === undefined || key === "") return;
+    const scope: SendScope = { machineId: this.machineId, sessionId: this.sessionId ?? "" };
     this.flushInFlight = true;
-    void (async () => {
-      try {
-        const scope: SendScope = { machineId: this.machineId, sessionId: this.sessionId ?? "" };
-        for (const prompt of pending) {
-          if (prompt.clientMessageId === undefined || this.outboxInFlight.has(prompt.clientMessageId)) continue;
-          if (!this.isConnected || machineSessionKey(this.machineId, this.sessionId ?? "") !== key) return;
-          const current = loadPendingPrompts(key);
-          if (!current.some((entry) => entry.clientMessageId === prompt.clientMessageId)) continue;
-          try {
-            const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: prompt.clientMessageId, scope });
-            if (accepted !== false) forgetPendingPrompt(key, prompt.clientMessageId);
-          } catch {
-            continue;
-          }
+    try {
+      for (const prompt of loadPendingPrompts(key).filter((entry) => only === undefined || entry.clientMessageId === only)) {
+        const id = prompt.clientMessageId;
+        if (id === undefined || this.outboxInFlight.has(id)) continue;
+        if (!this.stillShows(key)) return;
+        if (!loadPendingPrompts(key).some((entry) => entry.clientMessageId === id)) continue;
+        this.outboxInFlight.add(id);
+        try {
+          const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: id, scope });
+          if (accepted !== false) forgetPendingPrompt(key, id);
+        } catch {
+          continue;
+        } finally {
+          this.outboxInFlight.delete(id);
         }
-      } finally {
-        this.flushInFlight = false;
-        this.pendingPrompts = this.pendingPromptsForSession();
-        if (this.isConnected && machineSessionKey(this.machineId, this.sessionId ?? "") !== key) this.flushPendingPrompts();
       }
-    })();
+    } finally {
+      this.flushInFlight = false;
+      this.pendingPrompts = this.pendingPromptsForSession();
+    }
+  }
+
+  /** Whether this composer is still on the page and showing the session an outbox key names. */
+  private stillShows(key: string): boolean {
+    return this.isConnected && this.outboxKey() === key;
+  }
+
+  /** Run one outbound step after every earlier one from this composer; the first starts at once. */
+  private enqueueSend(step: () => Promise<void>): void {
+    this.sendsWaiting += 1;
+    const run = async (): Promise<void> => {
+      try {
+        await step();
+      } finally {
+        this.sendsWaiting -= 1;
+      }
+    };
+    this.sendOrder = this.sendsWaiting === 1 ? run() : this.sendOrder.then(run, run);
   }
 
   /**
@@ -1235,15 +1273,7 @@ export class PromptEditor extends LitElement {
     const restorable = { text: this.draft, attachments: pending };
     this.resetComposer();
     const outgoing = this.recordOutgoing(text, behavior, attachments, delivery);
-    this.sendsWaiting += 1;
-    const run = async (): Promise<void> => {
-      try {
-        await this.deliverAndRestoreOnFailure(text, behavior, attachments, delivery, restorable, outgoing);
-      } finally {
-        this.sendsWaiting -= 1;
-      }
-    };
-    this.sendOrder = this.sendsWaiting === 1 ? run() : this.sendOrder.then(run, run);
+    this.enqueueSend(() => this.deliverAndRestoreOnFailure(text, behavior, attachments, delivery, restorable, outgoing));
   }
 
   /** Mint the message's identity and write its outbox record, before it waits for its turn. */
@@ -1279,6 +1309,7 @@ export class PromptEditor extends LitElement {
     const keepForItsSession = (): void => {
       this.outboxInFlight.delete(outboxId);
       this.pendingPrompts = this.pendingPromptsForSession();
+      this.flushPendingPrompts();
     };
     if ((outgoing.writtenOnPage && !this.isConnected) || this.outboxKey() !== outboxKey) {
       keepForItsSession();

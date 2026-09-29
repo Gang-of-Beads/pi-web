@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from "vitest";
 import { PromptEditor, recordedDelivery } from "./PromptEditor";
-import { loadPendingPrompts, SendScopeChangedError } from "../pendingOutbox";
+import { loadPendingPrompts, moveOutbox, SendScopeChangedError } from "../pendingOutbox";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -142,6 +142,67 @@ describe("a waiting send only ever goes to the session it was written for", () =
 
     expect({ sent, left: loadPendingPrompts("local:session-1") }).toEqual({
       sent: [{ text: "first", session: "session-1" }, { text: "second", session: "session-1" }],
+      left: [],
+    });
+  });
+
+  it("sends kept records before anything typed after the composer shows their session again", async () => {
+    const element = await composer();
+    const first = deferred();
+    const secondReplay = deferred();
+    let replaying = false;
+    const sent: string[] = [];
+    element.onSend = (text: string) => {
+      sent.push(text);
+      if (text === "first") return first.promise;
+      return text === "second" && replaying ? secondReplay.promise : Promise.resolve(true);
+    };
+
+    element.replaceText("first");
+    fireSend(element);
+    element.replaceText("second");
+    fireSend(element);
+    element.replaceText("third");
+    fireSend(element);
+    element.sessionId = "session-2";
+    await element.updateComplete;
+    first.resolve(true);
+    await flush();
+    replaying = true;
+    element.sessionId = "session-1";
+    await element.updateComplete;
+    element.replaceText("fourth, typed after coming back");
+    fireSend(element);
+    await flush();
+    secondReplay.resolve(true);
+    await flush();
+
+    expect(sent).toEqual(["first", "second", "third", "fourth, typed after coming back"]);
+  });
+
+  it("sends a waiting message its session's new identity now holds", async () => {
+    const element = await composer();
+    const first = deferred();
+    const sent: { text: string; session: string | undefined }[] = [];
+    element.onSend = (text: string) => {
+      sent.push({ text, session: element.sessionId });
+      return text === "first" ? first.promise : Promise.resolve(true);
+    };
+
+    element.replaceText("first");
+    fireSend(element);
+    element.sessionId = "pending-session";
+    await element.updateComplete;
+    element.replaceText("written while the session was starting");
+    fireSend(element);
+    moveOutbox("local:pending-session", "local:started-session");
+    element.sessionId = "started-session";
+    await element.updateComplete;
+    first.resolve(true);
+    await flush();
+
+    expect({ sent, left: loadPendingPrompts("local:started-session") }).toEqual({
+      sent: [{ text: "first", session: "session-1" }, { text: "written while the session was starting", session: "started-session" }],
       left: [],
     });
   });

@@ -520,6 +520,21 @@ The last two abort the call's signal, and the race does not rely on the daemon h
 | F2 (P2) | Records under a session's old key (a browser-created session starting, or one recreated after its daemon copy vanished) were read by no surface | TRUE | Fixed: `moveOutbox` carries the records next to `moveDraft` at both id changes |
 | F4 (P2) | A `prompt.refused` frame published while the reader is on another session reaches no socket, and the row later steps to received with no Retry | TRUE | Recorded for phase 3: frames only reach the selected session's socket. The store's join frame and per-identity facts on (re)join are where a missed terminal fact is recovered. |
 
+
+**Phase 2 third gate-lane triage (Opus 5.5, over 6ed00a38).** Confirmed sound:
+- no replay reaches another scope;
+- switching creates no storm;
+- `moveOutbox` runs before the selection moves;
+- the in-flight skip, the proxy deadline, `refuse()` and `stillUnverifiable` hold.
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| 1 (P1) | A replay ran beside the send gate, not in it. A message typed right after switching back could reach the daemon before the kept messages being replayed | TRUE | Fixed by one serializer. `enqueueSend` is the only way anything leaves a composer: a new send, a Retry and every replay are steps on one chain. A replay reads its session's records when its turn comes, so kept records go before anything typed after them. |
+| 2 (P1) | The in-flight skip could strand a record: one moved to a session's new identity while its own send waited, or one kept while a replay for the same session was running, which refused the next flush | TRUE | Fixed by the same chain. Keeping a send for its session queues a replay, and a replay queued behind a running one is no longer refused. At most one queued-but-not-started replay exists, and it covers every record present when it runs. |
+| 3 (P2) | An automatic replay of a record whose ledger outcome is `failed` would be answered "duplicate, accepted" | Not true | The ledger re-admits a `failed` identity (`READMITTED.failed`), so the replay is accepted again and runs once more. If the runtime refuses it again, the row shows `failed` from the refusal frame and the record is gone, so there is no loop. At most one automatic re-attempt of a message the client only knew as unverified. |
+
+The same lane noted, outside phase 2's diff, that a send to a session still starting drops its identity and retires its outbox record as soon as it is queued in the browser. That belongs to phase 3's store.
+
 **Conflicts for phase 5 (owner decision).** Some confirm repros cannot all pass together:
 - **The bubble's words.** "does not claim it may be running when the bytes never left" wants the bubble of an `unverifiable` row to read "Not sent". "gives the reader words for who is being waited on" wants "No answer yet" for the same input. The owner's words (Sending… / Receiving… / Received / Not received · Retry) match neither.
 - **The received label.** "the label of a confirmation that is not a queue" wants a `received` row to read "Queued". The owner's words say "Received".
