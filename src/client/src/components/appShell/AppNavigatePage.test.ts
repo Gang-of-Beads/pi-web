@@ -121,11 +121,10 @@ describe("app-navigate-page", () => {
     expect(page.renderRoot.textContent).toContain("No sessions match");
   });
 
-  it("offers a close only when a session is open behind it", async () => {
-    const withSession = await mount({ closable: true });
-    expect(withSession.renderRoot.querySelector(".close")).not.toBeNull();
-    const standalone = await mount();
-    expect(standalone.renderRoot.querySelector(".close")).toBeNull();
+  it("has no close key of its own: the grid key is the way back (owner, 2026-09-30)", async () => {
+    const overlay = await mount({ returnable: true });
+    expect({ close: overlay.renderRoot.querySelector(".close"), grid: overlay.renderRoot.querySelector(".quick-access")?.getAttribute("aria-label") })
+      .toEqual({ close: null, grid: "Close navigation" });
   });
 
   it("gives every row one name on the left and one menu on the right, with no second line", async () => {
@@ -181,7 +180,7 @@ describe("app-navigate-page", () => {
 describe("the quick-access key", () => {
   it("widens to everything first and closes the page when there is nothing left to widen", async () => {
     const closes: number[] = [];
-    const page = await mount({ closable: true, returnable: true, onClose: () => { closes.push(1); } });
+    const page = await mount({ returnable: true, onClose: () => { closes.push(1); } });
     Reflect.set(page, "kind", "project");
     await page.updateComplete;
 
@@ -201,7 +200,7 @@ describe("the quick-access key", () => {
 describe("the quick-access key with nowhere to return to", () => {
   it("only widens on the desktop rail, which is the page's permanent home", async () => {
     const closes: number[] = [];
-    const page = await mount({ closable: false, returnable: false, onClose: () => { closes.push(1); } });
+    const page = await mount({ returnable: false, onClose: () => { closes.push(1); } });
 
     page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
     await page.updateComplete;

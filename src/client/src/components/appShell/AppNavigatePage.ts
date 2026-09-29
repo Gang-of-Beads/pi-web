@@ -80,8 +80,6 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) loadingSessions = false;
   @property({ attribute: false }) loadingChoices = false;
   @property({ attribute: false }) loadError: string | undefined = undefined;
-  /** Whether a session is open behind this page, which is what a close returns to. */
-  @property({ type: Boolean }) closable = false;
   /**
    * Whether there is somewhere to go back to. The desktop rail is the page's
    * permanent home, so its leading key only widens; an overlay and the phone's
@@ -190,7 +188,6 @@ export class AppNavigatePage extends LitElement {
           <div class="path-bar-actions">
             ${this.onOpenSettings === undefined ? nothing : html`<button type="button" class="settings" aria-label="Settings" title="Settings" @click=${() => { this.onOpenSettings?.(); }}>${renderGearIcon()}</button>`}
             ${this.onReload === undefined ? nothing : html`<app-refresh-control .onReload=${this.onReload}></app-refresh-control>`}
-            ${this.closable ? html`<button type="button" class="close" aria-label="Close navigation" @click=${() => { this.onClose?.(); }}>${renderChevronRightIcon()}</button>` : nothing}
           </div>
         </header>
         <nav class="kinds" aria-label="What to list">
@@ -438,7 +435,7 @@ export class AppNavigatePage extends LitElement {
     .path-step { box-sizing: border-box; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); font: inherit; cursor: pointer; }
     .path-step.chosen { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     .path-sep { flex: 0 0 auto; display: inline-grid; place-items: center; color: var(--pi-muted); }
-    .path-sep .ui-icon, .close .ui-icon { width: 14px; height: 14px; }
+    .path-sep .ui-icon { width: 14px; height: 14px; }
     /* One tap back to every session this machine runs; the path alone made the
        reader work out where "everything" lived. */
     .quick-access { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
@@ -447,7 +444,6 @@ export class AppNavigatePage extends LitElement {
     .path-bar-actions { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); }
     .settings { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     .settings .ui-icon { width: 18px; height: 18px; }
-    .close { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     .kinds { flex: 0 0 auto; display: flex; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
     .kind { box-sizing: border-box; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
     .kind.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-text-bright); }

@@ -2655,12 +2655,11 @@ export class PiWebApp extends LitElement {
     }
   }
 
-  private renderNavigatePage(closable: boolean) {
+  private renderNavigatePage(overlay: boolean) {
     return html`<app-navigate-page
       .input=${this.navigateInput()}
       .pinnedProjectIds=${this.pinnedProjectIds}
-      ?closable=${closable}
-      ?returnable=${closable || (this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined)}
+      ?returnable=${overlay || (this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined)}
       .onClose=${() => { this.leaveNavigate(); }}
       .onChoose=${(level: NavigateLevel, id: string) => { void this.navigateChoose(level, id); }}
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
