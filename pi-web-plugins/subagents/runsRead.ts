@@ -80,7 +80,7 @@ export class RunsRead {
     if (answered !== undefined) {
       this.shown = answered;
       this.refreshFailed = false;
-    } else if (this.shown?.kind === "rows") {
+    } else if (this.shown?.kind === "rows" || this.shown?.kind === "empty") {
       this.refreshFailed = true;
     } else {
       this.shown = COULD_NOT_ASK;

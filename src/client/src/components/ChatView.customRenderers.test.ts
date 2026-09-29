@@ -78,6 +78,15 @@ describe("plugin message renderers in the transcript", () => {
     expect({ first: last("first"), second: last("second") }).toEqual({ first: ["one", "two"], second: ["two"] });
   });
 
+  it("keeps its reply index across renders that hand it a fresh empty queue", async () => {
+    const view = await viewWith([customLine("poll", "first"), { role: "user", parts: [{ type: "text", text: "one" }] }], () => renderer());
+    const built: unknown = Reflect.get(view, "followingIndex");
+    view.clientQueuedMessages = [];
+    await view.updateComplete;
+
+    expect({ built: built !== undefined, reused: Reflect.get(view, "followingIndex") === built }).toEqual({ built: true, reused: true });
+  });
+
   it("hands the renderer the tag and payload it was given", async () => {
     const seen: unknown[] = [];
     const render = (view: unknown) => { seen.push(view); return html`<div></div>`; };

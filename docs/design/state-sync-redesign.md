@@ -700,3 +700,33 @@ The lane was Opus (`anthropic/claude-opus-5-5`) on 84ec07e8..3837bc91, reading s
 | 5 | `followingUserTexts` rebuilt and sorted the one-row register for every custom card on every render. | True | **Fixed.** A per-transcript index (row of each custom part, and the user texts), rebuilt only when `messages`, the client queue or the status queue changes identity. The new multi-card test passes on both builds, as it should for a refactor that changes no behaviour. |
 | 6 | `routedWorkspaceTool` let a hand-written link naming two different tools (`tool=A&view=B`) put the header on B and the panel on A. | True | **Fixed.** A view that is a tool names the panel's tool. The chat and navigation views keep the route's tool, or the one the panel had. The test that pinned the old answer (`named: git`) is changed deliberately, because it pinned the disagreement R5 forbids. |
 | 7 | The Subagents panel reads the local machine while a remote one is selected, because the package does not declare `machineSpecific`. | **Not true** | `piWebPluginCatalog.ts:692` defaults `machineSpecific` to true for an entry with both `module` and `serverModule`, which Subagents has (`docs/plugins.md`, "Dual browser/server entries default to `true`"). The lane read `package.json` only. |
+
+### Phase 4 gate lane 2 triage
+
+The lane was DeepSeek (`botim-bllm/deepseek-v4.1-flash:max`) on 84ec07e8..e0f4b564, reading source only. Verdict: PASS, with no P0 or P1 and seven P2s. It confirmed lane 1's fixes and its "not true" verdict on finding 7 independently. Each finding below was checked in source. The three code fixes each come with a test that fails on e0f4b564.
+
+| # | Finding | Verdict | Outcome |
+|---|---|---|---|
+| F1 | The reply index was keyed on the client queue's identity. The app passes a fresh `[]` whenever nothing is queued, so the index was rebuilt on every render; lane 1's row 5 claimed "built once per transcript". | True | **Fixed.** Two empty queues count as the same queue (`sameQueue`). Test: the index survives a render that hands it a new empty queue. |
+| F2 | `statusReadFailed` stored `error.message`. A 503 over HTTP/2 arrives as `HttpError("", 503)`, and an empty failure reads as "no failure", so the bar showed "No session status yet" with no Retry (F8's symptom again). | True | **Fixed**, together with its sibling `transcriptFailed`: both now store `describeError(error)`, which is never empty. Test: that refusal gives the bar its Retry line. |
+| F3 | A workspace whose goals read as empty loses its Goals section, and the section's own render is its only read trigger. A goal created later in the same scope does not appear until the reader leaves that scope. | True, pre-existing | **Owner decision.** 84ec07e8 had the same `goals.length > 0` rule. The fix is a product choice: a Goals section that is always present and says "No goals", or a host-driven re-read of sections it does not render. Added to the open owner decisions. |
+| F4 | The reply prefix now names the request, so a reply in the old format no longer marks its card answered. With no request id, two requests from one run still share a prefix. | True in mechanism, not reachable | **Recorded.** The card and its reply format (7eec6005) are in no release, and 8504 never wrote the old format, so no user transcript holds such a reply. Requests without an id keep the collision; `contact_supervisor` gives each request an id. |
+| F5 | A failed poll after an empty answer replaced "This session has started no subagents." with "could not be asked", unlike the rows case. | True | **Fixed.** An empty answer is kept like rows, with the same "Could not refresh" note. Test in `runsRead.test.ts`. |
+| F6 | `scripts/verify-shipped-fixes.mjs` and `scripts/probe-chatview-press-geometry.mjs` still read `ChatView.subagentRuns` and `.subagent-row`, so those legs wait out their deadlines and measure nothing. | True, pre-existing | **Recorded as owed.** ChatView lost `subagentRuns` in 52d31a97, before phase 4. Neither script is wired into CI or `run-probes.mjs`. They need their legs pointed at the Subagents panel, or retired. |
+| F7 | `status.pluginSurfaces` is published by the daemon and parsed by the client, but read by no production code. `ChatView.pluginPanels.test.ts` varies it as if it were wired. | True, pre-existing | **Recorded as owed.** Same family as F9: remove the field, its publication and its parse, and the test's dead parameter. |
+
+### Phase 4 acceptance
+
+Phase 4 is accepted at the commit that lands this triage.
+- Both gate lanes (Opus, then DeepSeek) passed it with no P0 or P1. Every P2 is fixed, recorded with its reason, or judged not true in source.
+- All six read repros are green with their `expect` lines unchanged. The fixture adjustments are recorded above.
+- The full suite passed on the phase 4 tree: 5872 passed, 6 expected fail (phase 5's four labels and S1/S2), 5 skipped. The four web tests that time out under load pass alone. CI is green on 3837bc91 and e0f4b564.
+- The live probe discriminates: `probe-reads.mjs` scores 0/3 on 84ec07e8 and 3/3 on e0f4b564. `probe-realtime` (3/3), `probe-goto-desktop` (4/4) and the geometry baseline pass on the same build.
+
+Open for the owner:
+- F3's Goals empty state.
+
+Owed, not in phase 4's scope:
+- F6's stale probe legs.
+- F7's dead `pluginSurfaces` field.
+- A Subagents poll that stops while the tab count is not shown (gate 1 finding 2).

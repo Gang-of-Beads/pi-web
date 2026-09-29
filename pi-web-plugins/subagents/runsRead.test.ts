@@ -91,4 +91,17 @@ describe("RunsRead", () => {
       recovered: runs.view("a")?.refreshFailed,
     }).toEqual({ firstFailed: "unknown", failedAfterRows: { kind: "rows", refreshFailed: true }, recovered: false });
   });
+
+  it("keeps a known-empty answer when a later read fails, and says the refresh failed", async () => {
+    const { runs, calls } = reader();
+    runs.select("a");
+    calls[0]?.resolve({ known: true, runs: [] });
+    await settle();
+    runs.tick();
+    calls[1]?.reject(new Error("down"));
+    await settle();
+
+    const view = runs.view("a");
+    expect({ kind: view?.state?.kind, refreshFailed: view?.refreshFailed }).toEqual({ kind: "empty", refreshFailed: true });
+  });
 });

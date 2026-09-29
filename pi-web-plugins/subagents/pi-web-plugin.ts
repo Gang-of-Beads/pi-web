@@ -35,9 +35,10 @@ function renderRuns(html: HtmlTemplateTag, view: RunsView | undefined) {
   const state: SubagentListState | undefined = view?.state;
   if (state === undefined) return html`<p class="empty" role="status">Reading this session's subagents…</p>`;
   if (state.kind === "unknown") return html`<p class="empty" role="status">${state.reason}</p>`;
-  if (state.kind === "empty") return html`<p class="empty" role="status">This session has started no subagents.</p>`;
+  const staleNote = view?.refreshFailed === true ? html`<p class="empty" role="status">Could not refresh - showing the last read.</p>` : null;
+  if (state.kind === "empty") return html`${staleNote}<p class="empty" role="status">This session has started no subagents.</p>`;
   return html`
-    ${view?.refreshFailed === true ? html`<p class="empty" role="status">Could not refresh - showing the last read.</p>` : null}
+    ${staleNote}
     <ul class="list subagent-runs">
       ${state.rows.map((row) => {
         const presentation = runPresentation(row);

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { HttpError } from "../api/http";
 import { initialAppState } from "../appState";
+import { sessionStatusLine } from "../sessionStatusLine";
 import { SessionController } from "./sessionController";
 import { defaultApi, EmitSocket, emptyPage, oldSession, runPendingAnimationFrames, sessionLookupId, status, workspace, type AppState } from "./sessionController.testSupport";
 
@@ -42,6 +44,23 @@ describe("the selected session's own status read", () => {
     for (let index = 0; index < 6; index += 1) await Promise.resolve();
 
     expect({ status: state.status, failed: state.statusReadFailed }).toEqual({ status: undefined, failed: "daemon unreachable" });
+  });
+
+  it("says it failed when the refusal carries no text, as a 503 over HTTP/2 does", async () => {
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
+    let reads = 0;
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      messages: () => Promise.resolve(emptyPage),
+      status: () => { reads += 1; return reads === 1 ? Promise.reject(new HttpError("", 503)) : new Promise(() => undefined); },
+      streamSnapshot: () => Promise.resolve({ seq: 1, epoch: "daemon-a.1", partial: null }),
+    };
+    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api, socket: new EmitSocket() });
+
+    void controller.selectSession(oldSession, { updateUrl: false });
+    for (let index = 0; index < 6; index += 1) await Promise.resolve();
+
+    expect(sessionStatusLine({ hasStatus: state.status !== undefined, failure: state.statusReadFailed }).kind).toBe("unavailable");
   });
 });
 

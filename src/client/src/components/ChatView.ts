@@ -551,6 +551,14 @@ function renderDrawerDisclosureIcon(collapsed: boolean) {
 }
 
 
+/**
+ * Whether two queues are the same list for the reply index. The app hands a fresh `[]` on every
+ * render when nothing is queued, so identity alone rebuilt the index on every streamed frame.
+ */
+function sameQueue(known: readonly unknown[] | undefined, now: readonly unknown[] | undefined): boolean {
+  return known === now || ((known?.length ?? 0) === 0 && (now?.length ?? 0) === 0);
+}
+
 function clampPercent(value: number): number {
   return clampNumber(value, 0, 100);
 }
@@ -2111,8 +2119,8 @@ if (this.heldWaitingClearTimer !== undefined) {
 
   private followingIndex: {
     messages: ChatLine[];
-    clientQueued: unknown;
-    queued: unknown;
+    clientQueued: readonly unknown[] | undefined;
+    queued: readonly unknown[] | undefined;
     rowOfPart: Map<ChatPart, number>;
     userTexts: { row: number; text: string }[];
   } | undefined;
@@ -2134,7 +2142,7 @@ if (this.heldWaitingClearTimer !== undefined) {
   private followingIndexNow(): NonNullable<ChatView["followingIndex"]> {
     const known = this.followingIndex;
     const queued = this.status?.queuedMessages;
-    if (known?.messages === this.messages && known.clientQueued === this.clientQueuedMessages && known.queued === queued) return known;
+    if (known?.messages === this.messages && sameQueue(known.clientQueued, this.clientQueuedMessages) && sameQueue(known.queued, queued)) return known;
     const rows = this.transcriptMessages();
     const rowOfPart = new Map<ChatPart, number>();
     const userTexts: { row: number; text: string }[] = [];

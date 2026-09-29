@@ -393,7 +393,7 @@ export class SessionController {
       void this.api.status(session, machineId)
         .then((status) => { if (this.isCurrentSessionSelection(session.id, machineId, seq) && !this.statusReadIsStale(status, framesAtRequest)) this.applyStatusRead(status); })
         .catch((error: unknown) => {
-          if (this.isCurrentSessionSelection(session.id, machineId, seq)) this.setState({ statusReadFailed: error instanceof Error ? error.message : String(error) });
+          if (this.isCurrentSessionSelection(session.id, machineId, seq)) this.setState({ statusReadFailed: describeError(error) });
         });
     }
     let buffered: SessionUiEvent[] | undefined;
@@ -472,7 +472,7 @@ export class SessionController {
         for (const event of buffered) this.routeLiveEvent(event);
         this.socket.setHandler((event) => { this.routeLiveEvent(event); });
       }
-      this.setState({ ...errorNoticePatch(error), transcriptFailed: error instanceof Error ? error.message : String(error) });
+      this.setState({ ...errorNoticePatch(error), transcriptFailed: describeError(error) });
       if (options?.propagateRefreshError === true) throw error;
     } finally {
       // Only the selection that set the flag may clear it: a superseded
