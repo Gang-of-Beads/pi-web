@@ -28,7 +28,8 @@ const PROJECT = process.env.PI_WEB_PROBE_PROJECT ?? "991606fd-e498-4b93-a1ce-2af
 const WORKSPACE = process.env.PI_WEB_PROBE_WORKSPACE ?? "ef2cdf93e1ac";
 const SESSION = process.env.PI_WEB_PROBE_SESSION ?? "01a05000-5eed-7c00-8000-0000000000c1";
 const CWD = process.env.PI_WEB_PROBE_CWD ?? "/Users/hanxiao.du/.pi-web-8505/pi-web-8505-seed-workspace";
-const REPO = "/Users/hanxiao.du/Desktop/vincent/projects/pi-web";
+const REPO = process.env.PI_WEB_PROBE_REPO ?? "/Users/hanxiao.du/Desktop/vincent/projects/pi-web";
+if (REPO.startsWith("/nix/")) throw new Error("refusing to freeze a daemon run from the Nix store");
 const RUN = String(Date.now());
 
 const results = [];
