@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { initialAppState } from "../appState";
 import type { ExtensionDialogCloseResponse, ExtensionDialogKind, PendingExtensionDialog } from "../api";
 import { SessionController } from "./sessionController";
+import { clearPendingPrompts, loadPendingPrompts, savePendingPrompt } from "../pendingOutbox";
+import { machineSessionKey } from "../machineKeys";
+import { selectedMachineId } from "./types";
 import { defaultApi, deferred, EmitSocket, emptyPage, FakeSocket, oldSession, replacementSession, status, workspace, type AppState, type SessionStatus } from "./sessionController.testSupport";
 
 function dialog(dialogId: string, kind: ExtensionDialogKind = "confirm"): PendingExtensionDialog {
@@ -161,6 +164,22 @@ describe("SessionController prompt.refused", () => {
     harness.socket.emit({ type: "prompt.refused", clientMessageId: "cmid-r", message: "No model configured" });
 
     expect(harness.state().messages.map((message) => message.meta?.delivery?.state)).toEqual(["failed"]);
+  });
+
+  it("puts a message the daemon took and the runtime refused back in the outbox, so Retry has its words", async () => {
+    const harness = await liveSession();
+    const key = machineSessionKey(selectedMachineId(harness.state()), harness.state().selectedSession?.id ?? "");
+    savePendingPrompt(key, { text: "refused after acceptance", clientMessageId: "cmid-p2", at: new Date().toISOString() });
+    harness.state().messages = [{ role: "user", parts: [{ type: "text", text: "refused after acceptance" }], meta: { delivery: { clientMessageId: "cmid-p2", state: "sending" } } }];
+
+    harness.socket.emit({ type: "prompt.accepted", clientMessageId: "cmid-p2" });
+    const afterAcceptance = loadPendingPrompts(key).length;
+    harness.socket.emit({ type: "prompt.refused", clientMessageId: "cmid-p2", message: "No model configured" });
+    const record = loadPendingPrompts(key)[0];
+    clearPendingPrompts(key);
+
+    expect({ afterAcceptance, record: { text: record?.text, state: record?.state, failure: record?.failure }, row: harness.state().messages[0]?.meta?.delivery })
+      .toEqual({ afterAcceptance: 0, record: { text: "refused after acceptance", state: "failed", failure: "not-sent" }, row: { clientMessageId: "cmid-p2", state: "failed", cause: "not-sent" } });
   });
 
   it("leaves a row the transcript already claimed as read", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advancePendingPrompt, clearPendingPrompts, isNetworkFailure, loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, sessionsWithFailedSends, type PendingPrompt } from "./pendingOutbox";
+import { advancePendingPrompt, clearPendingPrompts, forgetReservedPrompt, reserveAcceptedPrompt, restoreRefusedPrompt, isNetworkFailure, loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, sessionsWithFailedSends, type PendingPrompt } from "./pendingOutbox";
 
 function memoryStorage(): Storage & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -149,5 +149,35 @@ describe("a record that fails", () => {
     clearPendingPrompts("local:session-f");
 
     expect({ failed: [failed?.state, failed?.failure], retried: [retried?.state, retried?.failure] }).toEqual({ failed: ["failed", "not-sent"], retried: ["sending", undefined] });
+  });
+});
+
+describe("an accepted message kept aside for a refusal", () => {
+  const at = Date.parse("2026-09-30T00:00:00.000Z");
+  const record = (id: string): PendingPrompt => ({ text: `words ${id}`, clientMessageId: id, at: "2026-09-30T00:00:00.000Z", attachments: [] });
+
+  it("leaves the outbox, comes back failed on a refusal, and is gone once the agent took it or a day passed", () => {
+    const storage = memoryStorage();
+    for (const id of ["refused", "taken", "old"]) savePendingPrompt("m:s", record(id), storage);
+    for (const id of ["refused", "taken", "old"]) reserveAcceptedPrompt("m:s", id, storage, at);
+    const outboxAfterAcceptance = loadPendingPrompts("m:s", storage).length;
+    forgetReservedPrompt("m:s", "taken", storage, at);
+
+    expect({
+      outboxAfterAcceptance,
+      refused: restoreRefusedPrompt("m:s", "refused", storage, at),
+      taken: restoreRefusedPrompt("m:s", "taken", storage, at),
+      oldAfterADay: restoreRefusedPrompt("m:s", "old", storage, at + 24 * 60 * 60 * 1000),
+      outbox: loadPendingPrompts("m:s", storage).map((entry) => [entry.clientMessageId, entry.state, entry.failure, entry.text]),
+    }).toEqual({ outboxAfterAcceptance: 0, refused: true, taken: false, oldAfterADay: false, outbox: [["refused", "failed", "not-sent", "words refused"]] });
+  });
+
+  it("moves with its session to the session's new identity", () => {
+    const storage = memoryStorage();
+    savePendingPrompt("m:old", record("moving"), storage);
+    reserveAcceptedPrompt("m:old", "moving", storage, at);
+    moveOutbox("m:old", "m:new", storage, at);
+
+    expect({ old: restoreRefusedPrompt("m:old", "moving", storage, at), moved: restoreRefusedPrompt("m:new", "moving", storage, at) }).toEqual({ old: false, moved: true });
   });
 });

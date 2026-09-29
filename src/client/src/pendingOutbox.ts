@@ -253,14 +253,90 @@ export function forgetPendingPrompt(sessionKey: string, clientMessageId: string,
   }
 }
 
+const reservePrefix = "pi-web:accepted-prompt:";
+
+/** How long an accepted message is kept for a refusal that may still come; the daemon's ledger answers replays for a day. */
+const RESERVE_KEEP_MS = 24 * 60 * 60 * 1000;
+
+interface ReservedPrompt extends PendingPrompt {
+  reservedAt: string;
+}
+
+function loadReserve(sessionKey: string, storage: Storage | undefined, now: number): ReservedPrompt[] {
+  try {
+    const raw = storage?.getItem(`${reservePrefix}${sessionKey}`);
+    if (raw === undefined || raw === null || raw === "") return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((value): value is ReservedPrompt => isPendingPrompt(value) && typeof Reflect.get(value, "reservedAt") === "string")
+      .filter((entry) => now - Date.parse(entry.reservedAt) < RESERVE_KEEP_MS);
+  } catch {
+    return [];
+  }
+}
+
+function writeReserve(sessionKey: string, reserved: readonly ReservedPrompt[], storage: Storage | undefined): void {
+  try {
+    if (reserved.length === 0) storage?.removeItem(`${reservePrefix}${sessionKey}`);
+    else storage?.setItem(`${reservePrefix}${sessionKey}`, JSON.stringify(reserved));
+  } catch {
+    return;
+  }
+}
+
+/**
+ * The daemon took this message: it leaves the outbox, which holds only what waits on the reader,
+ * and its content is kept aside until the agent takes it. The runtime can still refuse a message
+ * the inbox accepted, and Retry needs the words and attachments to send it again under the same
+ * identity - a refused row once offered Retry with nothing left to send.
+ */
+export function reserveAcceptedPrompt(sessionKey: string, clientMessageId: string, storage = browserStorage(), now = Date.now()): void {
+  const record = loadPendingPrompts(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId);
+  if (record !== undefined) {
+    const reserved = loadReserve(sessionKey, storage, now).filter((entry) => entry.clientMessageId !== clientMessageId);
+    const kept: ReservedPrompt = { ...record, state: "received", reservedAt: new Date(now).toISOString() };
+    delete kept.failure;
+    writeReserve(sessionKey, [...reserved, kept], storage);
+  }
+  forgetPendingPrompt(sessionKey, clientMessageId, storage);
+}
+
+/**
+ * The runtime refused a message the daemon had taken: it goes back to the outbox as failed, so the
+ * tray and Retry have it. Returns whether the reserve held it.
+ */
+export function restoreRefusedPrompt(sessionKey: string, clientMessageId: string, storage = browserStorage(), now = Date.now()): boolean {
+  const reserved = loadReserve(sessionKey, storage, now);
+  const record = reserved.find((entry) => entry.clientMessageId === clientMessageId);
+  if (record === undefined) return false;
+  writeReserve(sessionKey, reserved.filter((entry) => entry !== record), storage);
+  const restored: PendingPrompt & { reservedAt?: string } = { ...record, state: "failed", failure: "not-sent" };
+  delete restored.reservedAt;
+  savePendingPrompt(sessionKey, restored, storage);
+  return true;
+}
+
+/** The agent took it: nothing can refuse it any more. */
+export function forgetReservedPrompt(sessionKey: string, clientMessageId: string, storage = browserStorage(), now = Date.now()): void {
+  const reserved = loadReserve(sessionKey, storage, now);
+  if (!reserved.some((entry) => entry.clientMessageId === clientMessageId)) return;
+  writeReserve(sessionKey, reserved.filter((entry) => entry.clientMessageId !== clientMessageId), storage);
+}
+
 /**
  * Carry a session's unsent records to its new identity. A session created in this browser
  * gets its daemon id when it starts, and one whose daemon copy vanished is recreated under a
  * new id; records left under the old key were read by no surface - not the strip, not the
  * session list, not a replay - and Retry called them gone.
  */
-export function moveOutbox(fromSessionKey: string, toSessionKey: string, storage = browserStorage()): void {
+export function moveOutbox(fromSessionKey: string, toSessionKey: string, storage = browserStorage(), now = Date.now()): void {
   if (fromSessionKey === toSessionKey) return;
+  const reserved = loadReserve(fromSessionKey, storage, now);
+  if (reserved.length > 0) {
+    writeReserve(toSessionKey, [...loadReserve(toSessionKey, storage, now), ...reserved], storage);
+    writeReserve(fromSessionKey, [], storage);
+  }
   const moving = loadPendingPrompts(fromSessionKey, storage);
   if (moving.length === 0) return;
   for (const prompt of moving) savePendingPrompt(toSessionKey, prompt, storage);

@@ -3,7 +3,7 @@ import { provenRowStep, VERIFY_AFTER_MS, verificationStep } from "./sendVerifica
 
 describe("an unanswered send, asked about", () => {
   it.each([
-    ["pending", { kind: "mark", state: "received", retireOutbox: true }],
+    ["pending", { kind: "mark", state: "received", retireOutbox: false }],
     ["succeeded", { kind: "mark", state: "received", retireOutbox: true }],
     ["failed", { kind: "fail", cause: "not-sent" }],
     ["unknown", { kind: "fail", cause: "not-received" }],

@@ -160,6 +160,25 @@ export function outgoingStateFromStorage(value: unknown): OutgoingState | undefi
   return typeof value === "string" && Object.hasOwn(EARLIER_NAMES, value) ? EARLIER_NAMES[value] : undefined;
 }
 
+/**
+ * Which records wait on the reader: a send that stopped without the daemon taking it. A record
+ * the daemon holds stays on file until the agent takes it, so a runtime refusal can still turn it
+ * back into something Retry can send, but it is neither replayed nor shown in the tray. A record
+ * with no state is one an earlier build left before its send started.
+ */
+const STOPPED: Readonly<Record<OutgoingState, boolean>> = {
+  sending: true,
+  unverifiable: true,
+  failed: true,
+  received: false,
+  queued: false,
+  delivered: false,
+};
+
+export function outgoingStopped(state: OutgoingState | undefined): boolean {
+  return state === undefined || STOPPED[state];
+}
+
 export const OUTGOING_STATES: OutgoingState[] = ["sending", "received", "queued", "delivered", "failed", "unverifiable"];
 
 export const OUTGOING_EVENTS: OutgoingEvent[] = [

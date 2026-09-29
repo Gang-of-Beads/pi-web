@@ -18,7 +18,8 @@ import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { addToHeldComposerAttachments, holdComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
-import { advancePendingPrompt, isNetworkFailure, linkReportedOffline, loadPendingPrompts, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
+import { advancePendingPrompt, isNetworkFailure, linkReportedOffline, loadPendingPrompts, reserveAcceptedPrompt, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
+import { outgoingStopped } from "../outgoingMessages";
 import { classifySubmission, handleOutcome, transportFactsFor } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { newClientMessageId } from "../messageDelivery";
@@ -1157,9 +1158,13 @@ export class PromptEditor extends LitElement {
     return true;
   }
 
+  /**
+   * The records waiting on the reader. A record the daemon holds stays on file until the agent
+   * takes it, so a refusal can still make it retryable, but it is not the tray's to show.
+   */
   private pendingPromptsForSession(): PendingPrompt[] {
     const key = machineSessionKey(this.machineId, this.sessionId ?? "");
-    return key === "" ? [] : loadPendingPrompts(key);
+    return key === "" ? [] : loadPendingPrompts(key).filter((prompt) => outgoingStopped(prompt.state));
   }
 
   private flushInFlight = false;
@@ -1223,15 +1228,15 @@ export class PromptEditor extends LitElement {
     const scope: SendScope = { machineId: this.machineId, sessionId: this.sessionId ?? "" };
     this.flushInFlight = true;
     try {
-      for (const prompt of loadPendingPrompts(key).filter((entry) => only === undefined || entry.clientMessageId === only)) {
+      for (const prompt of loadPendingPrompts(key).filter((entry) => outgoingStopped(entry.state) && (only === undefined || entry.clientMessageId === only))) {
         const id = prompt.clientMessageId;
         if (id === undefined || this.outboxInFlight.has(id)) continue;
         if (!this.stillShows(key)) return;
-        if (!loadPendingPrompts(key).some((entry) => entry.clientMessageId === id)) continue;
+        if (!loadPendingPrompts(key).some((entry) => entry.clientMessageId === id && outgoingStopped(entry.state))) continue;
         this.outboxInFlight.add(id);
         try {
           const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: id, scope });
-          if (accepted !== false) forgetPendingPrompt(key, id);
+          if (accepted !== false) reserveAcceptedPrompt(key, id);
         } catch {
           continue;
         } finally {
@@ -1361,7 +1366,7 @@ export class PromptEditor extends LitElement {
     }
     if (accepted !== false) {
       if (outboxKey !== "") {
-        forgetPendingPrompt(outboxKey, outboxId);
+        reserveAcceptedPrompt(outboxKey, outboxId);
         this.pendingPrompts = this.pendingPromptsForSession();
       }
       return;

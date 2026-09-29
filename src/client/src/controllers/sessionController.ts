@@ -20,7 +20,7 @@ import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
-import { forgetPendingPrompt, isNetworkFailure, linkReportedOffline, moveOutbox, NetworkSendError, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
+import { advancePendingPrompt, forgetPendingPrompt, forgetReservedPrompt, isNetworkFailure, linkReportedOffline, moveOutbox, NetworkSendError, reserveAcceptedPrompt, restoreRefusedPrompt, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
 import { provenRowStep, VERIFY_AFTER_MS, verificationStep } from "../sendVerification";
 import { statusReadVerdict, type StatusPosition } from "../statusOrder";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
@@ -170,6 +170,25 @@ const REFRESH_RETRY_BASE_MS = 3000;
 const REFRESH_RETRY_MAX = 4;
 
 /** 5xx and transport-level failures heal themselves; 4xx are the reader's to fix. */
+/**
+ * The id of a message the agent took, when this line proves it: a delivered row, or a committed
+ * user line stamped with its sender's id. An echo is a queued copy, not a taken one.
+ */
+function takenMessageId(line: ChatLine): string | undefined {
+  const delivery = line.meta?.delivery;
+  if (delivery !== undefined) return delivery.state === "delivered" ? delivery.clientMessageId : undefined;
+  if (line.role !== "user" || line.meta?.echo === true) return undefined;
+  return line.meta?.clientMessageId;
+}
+
+/**
+ * The runtime refused a message: its record goes back to the outbox as failed, from the reserve
+ * when the daemon had taken it, so the tray and Retry have it.
+ */
+function failRefusedRecord(sessionKey: string, clientMessageId: string): void {
+  if (!restoreRefusedPrompt(sessionKey, clientMessageId)) advancePendingPrompt(sessionKey, clientMessageId, "send-refused-permanent");
+}
+
 function isTransientRefreshError(error: unknown): boolean {
   if (!(error instanceof HttpError)) return true;
   return error.status >= 500;
@@ -227,13 +246,19 @@ export class SessionController {
   // `sessionStatuses` were minted by a process that no longer exists.
   private readonly statusCatalogEpochs = new Map<string, string>();
 
+  private readonly setState: SetState;
+
   constructor(
     private readonly getState: GetState,
-    private readonly setState: SetState,
+    writeState: SetState,
     private readonly updateUrl: UpdateUrl,
     private readonly sessionSelection: SessionSelectionMemory = new InMemorySessionSelectionMemory(),
     deps: SessionControllerDependencies = {},
   ) {
+    this.setState = (patch) => {
+      writeState(patch);
+      if (patch.messages !== undefined) this.retireTakenRecords(patch.messages);
+    };
     this.socket = deps.socket ?? new SessionSocket();
     this.api = deps.api ?? defaultApi;
     this.transcripts = deps.transcripts ?? new ChatTranscriptStore();
@@ -2265,10 +2290,16 @@ export class SessionController {
       }
       if (step.kind === "fail") {
         this.markDeliveryFailed(session.id, clientMessageId, step.cause);
+        if (step.cause === "not-sent") failRefusedRecord(outboxKey, clientMessageId);
         continue;
       }
       this.markDelivery(session.id, clientMessageId, step.state);
-      if (step.retireOutbox) forgetPendingPrompt(outboxKey, clientMessageId);
+      if (step.retireOutbox) {
+        forgetPendingPrompt(outboxKey, clientMessageId);
+        forgetReservedPrompt(outboxKey, clientMessageId);
+      } else {
+        reserveAcceptedPrompt(outboxKey, clientMessageId);
+      }
     }
   }
 
@@ -2277,6 +2308,29 @@ export class SessionController {
     if (current.selectedSession?.id !== sessionId) return;
     const messages = markDelivery(current.messages, clientMessageId, state);
     if (messages !== current.messages) this.setState({ messages });
+  }
+
+  private readonly retiredRecords = new Set<string>();
+
+  /**
+   * A message the agent took leaves the outbox. Its record stayed on file past acceptance so a
+   * runtime refusal could still make it retryable; once its row is delivered, or the history holds
+   * its committed copy (a reader who left before the row turned delivered), nothing can refuse it.
+   * Every write of the transcript passes here, and only an id not retired before reads storage.
+   */
+  private retireTakenRecords(messages: readonly ChatLine[]): void {
+    const current = this.getState();
+    const selected = current.selectedSession;
+    if (selected === undefined) return;
+    const key = machineSessionKey(selectedMachineId(current), selected.id);
+    for (const line of messages) {
+      const taken = takenMessageId(line);
+      if (taken === undefined) continue;
+      const retired = `${key}\u0000${taken}`;
+      if (this.retiredRecords.has(retired)) continue;
+      this.retiredRecords.add(retired);
+      forgetReservedPrompt(key, taken);
+    }
   }
 
   private markDeliveryFailed(sessionId: string, clientMessageId: string, cause: DeliveryFailureCause): void {
@@ -2522,8 +2576,12 @@ export class SessionController {
       return;
     }
     if (event.type === "prompt.refused") {
-      const selected = this.getState().selectedSession;
-      if (selected !== undefined) this.markDeliveryFailed(selected.id, event.clientMessageId, "not-sent");
+      const current = this.getState();
+      const selected = current.selectedSession;
+      if (selected !== undefined) {
+        this.markDeliveryFailed(selected.id, event.clientMessageId, "not-sent");
+        failRefusedRecord(machineSessionKey(selectedMachineId(current), selected.id), event.clientMessageId);
+      }
       return;
     }
     if (event.type === "prompt.accepted") {
@@ -2538,9 +2596,11 @@ export class SessionController {
         this.markDelivery(selected.id, event.clientMessageId, "queued");
         // The daemon has it: whatever the send call reported - a timeout that
         // raced an accepted request, a socket that dropped mid-reply - this
-        // message is not unsent, so it leaves the outbox. Leaving it there is
-        // what offered "Retry" for a message the agent had already answered.
-        forgetPendingPrompt(machineSessionKey(selectedMachineId(current), selected.id), event.clientMessageId);
+        // message is not unsent, so it leaves the outbox. Its content is kept
+        // aside until the agent takes it, so a runtime refusal can still make it
+        // retryable. Leaving it in the outbox is what offered "Retry" for a
+        // message the agent had already answered.
+        reserveAcceptedPrompt(machineSessionKey(selectedMachineId(current), selected.id), event.clientMessageId);
       }
       return;
     }

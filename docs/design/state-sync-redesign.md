@@ -817,3 +817,19 @@ Three of these flip to `it`. "spells the state it waits in the same way" waits f
 - "spells the state it waits in the same way as the bubble does" flips to `it`.
 
 The client suite has no expected failure left.
+
+### Phase 5c as landed: a refused message can be retried
+
+**This corrects the design above.** Keeping an accepted message's record in the outbox broke seven tests, a repro among them, all asserting that the outbox lets go once the daemon has the message. So the outbox keeps its meaning, "waits on the reader", and an accepted message's content moves to a reserve instead (`reserveAcceptedPrompt`).
+- The reserve is its own storage key, kept until the agent takes the message, and never longer than a day (the daemon's ledger answers replays for a day).
+- A runtime refusal moves it back to the outbox as failed/`not-sent` (`restoreRefusedPrompt`), so the tray and Retry have its words and attachments. Retry sends it under the same identity, which the ledger admits after a failure.
+- `prompt.refused` and the ledger's `failed` verdict take that route. A message the reserve never held (sent by another device) fails its outbox record, if there is one.
+- A delivered row, or a committed history line carrying the message's id, retires its reserve entry (`retireTakenRecords`, on every transcript write, reading storage once per id).
+- The ledger's `pending` verdict reserves; its `succeeded` verdict retires both.
+- `moveOutbox` carries the reserve to a session's new identity.
+- Replays and the tray read only stopped records (`outgoingStopped`), so a record with a legacy `accepted` state (read as `received`) is neither resent nor shown.
+
+**Tests:**
+- New: a message the daemon took and the runtime refused returns to the outbox, with its words, failed and not sent (fails on 81ede09d).
+- New: the reserve's refusal, taken, a day old, and a session move.
+- Changed deliberately: the verification step for `pending` no longer retires the outbox record; it reserves it.

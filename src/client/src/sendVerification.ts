@@ -20,7 +20,10 @@ export type VerificationStep =
   | { kind: "withdraw" }
   | { kind: "wait" };
 
-const RECEIVED: VerificationStep = { kind: "mark", state: "received", retireOutbox: true };
+/** The daemon holds it and the agent has not read it: the record stays, in case the runtime refuses it. */
+const RECEIVED: VerificationStep = { kind: "mark", state: "received", retireOutbox: false };
+/** The agent read it: nothing can refuse it any more, so the record goes. */
+const READ: VerificationStep = { kind: "mark", state: "received", retireOutbox: true };
 const NOT_RECEIVED: VerificationStep = { kind: "fail", cause: "not-received" };
 /** The runtime refused it after the inbox took it: it never became part of the conversation. */
 const REFUSED: VerificationStep = { kind: "fail", cause: "not-sent" };
@@ -28,14 +31,15 @@ const REFUSED: VerificationStep = { kind: "fail", cause: "not-sent" };
 /**
  * The ledger's word, by outcome.
  *
- * - `pending`, `succeeded`: the daemon has it (waiting, or read), so the outbox lets go.
+ * - `pending`: the daemon has it and the agent has not read it; the record stays in case the runtime refuses it.
+ * - `succeeded`: the agent read it, so the outbox lets go.
  * - `failed`: refused after acceptance; the row offers Retry under the same identity.
  * - `unknown`: a restart lost it before the agent read it; the ledger re-admits a retry.
  * - `withdrawn`: taken back by Stop, Clear or recall; it leaves like a withdrawal frame.
  */
 const STEP_FOR_OUTCOME: Readonly<Record<string, VerificationStep>> = {
   pending: RECEIVED,
-  succeeded: RECEIVED,
+  succeeded: READ,
   failed: REFUSED,
   unknown: NOT_RECEIVED,
   withdrawn: { kind: "withdraw" },
