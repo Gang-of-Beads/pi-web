@@ -226,13 +226,29 @@ type HandoffLanding = "lane" | "run" | "handled";
 /**
  * The SDK calls preflight right after `_queueSteer` pushed the message (having emitted
  * `queue_update` synchronously), right before `_runAgentPrompt` on the run path, and without
- * queueing anything when an extension command or an input handler took the message. So pi's
- * lanes growing during the handoff means it is queued; otherwise the run flag, not yet set on
- * the run path, tells a new run from a handled message.
+ * queueing anything when an extension command or an input handler took the message.
+ *
+ * A registered extension command is always handled: the SDK runs commands before it considers
+ * queueing, and a command's handler may itself push messages, so lane growth says nothing about
+ * the command. Otherwise the steering lane growing during the handoff means it is queued (pi-web
+ * only ever hands into that lane), and the run flag, not yet set on the run path, tells a new
+ * run from a handled message.
  */
-function landingAtPreflight(session: PiAgentSession, lanesGrew: boolean): HandoffLanding {
-  if (lanesGrew) return "lane";
+function landingAtPreflight(session: PiAgentSession, facts: { isCommand: boolean; steeringGrew: boolean }): HandoffLanding {
+  if (facts.isCommand) return "handled";
+  if (facts.steeringGrew) return "lane";
   return session.isStreaming ? "handled" : "run";
+}
+
+/**
+ * Whether pi shows lane entries its agent loop has already taken. The loop drains agent-core's
+ * queue when it polls, but pi removes a message from the lane it shows only at the message's
+ * `message_start`, and between the two the loop can spend a whole between-turn compaction.
+ * Those messages are about to be read: taking them back would have them read twice.
+ */
+function lanesHeldByLoop(session: PiAgentSession): boolean {
+  if (session.agent.hasQueuedMessages === undefined) return false;
+  return runtimeLanes(session).length > 0 && !session.agent.hasQueuedMessages();
 }
 
 /**
@@ -241,11 +257,10 @@ function landingAtPreflight(session: PiAgentSession, lanesGrew: boolean): Handof
  */
 const READ_WHEN_RESOLVED: Readonly<Record<HandoffLanding, boolean>> = { lane: false, run: true, handled: true };
 
-/** How many messages pi's lanes hold, per a `queue_update` event. */
+/** How many messages pi's steering lane holds, per a `queue_update` event. */
 function queueUpdateSize(event: unknown): number {
   const steering = getProperty(event, "steering");
-  const followUp = getProperty(event, "followUp");
-  return (Array.isArray(steering) ? steering.length : 0) + (Array.isArray(followUp) ? followUp.length : 0);
+  return Array.isArray(steering) ? steering.length : 0;
 }
 
 /**
@@ -564,7 +579,7 @@ export interface PiAgentSession {
    * calls without depending on pi-ai's deprecated `/compat` provider registry or
    * leaking the full `Agent`/`AgentSession` surface.
    */
-  agent: { streamFunction: StreamFn; steeringMode?: "all" | "one-at-a-time"; readonly state?: { readonly isStreaming: boolean } };
+  agent: { streamFunction: StreamFn; steeringMode?: "all" | "one-at-a-time"; readonly state?: { readonly isStreaming: boolean }; hasQueuedMessages?: () => boolean };
   /**
    * Debug-only capture of the exact model surface this session was constructed
    * with — the system prompt and the configured tools (name + description).
@@ -3200,17 +3215,19 @@ export class PiSessionService implements SessionRouteService {
       this.settleSucceeded(sessionId, clientMessageId);
       markHanded();
     };
+    const isCommand = this.isExtensionCommand(session, text);
     const preflightResult = (success: boolean): void => {
       if (!success) return;
-      landed = landingAtPreflight(session, (this.laneGrowth.get(sessionId) ?? 0) > growthAtCall);
+      landed = landingAtPreflight(session, { isCommand, steeringGrew: (this.laneGrowth.get(sessionId) ?? 0) > growthAtCall });
       if (landed === "lane") this.holdSteer(sessionId, entry, images);
+      if (landed === "handled" && clientMessageId !== undefined) this.committedExpectations.withdraw(sessionId, clientMessageId);
       if (landed !== "run") {
         markHanded();
         return;
       }
       if (session.agent.state?.isStreaming !== true) this.directCommitWatchers.set(sessionId, onCommit);
     };
-    if (behavior === undefined && this.isExtensionCommand(session, text)) this.runStartWatchers.set(sessionId, markHanded);
+    if (behavior === undefined && isCommand) this.runStartWatchers.set(sessionId, markHanded);
     const settled = this.runSessionEntryMutation(session, "send a prompt", () => session.prompt(text, { ...buildPromptOptions(behavior, images), preflightResult })).then(
       () => ({ verdict: "handed" as const, message: "" }),
       (error: unknown) => {
@@ -3218,6 +3235,7 @@ export class PiSessionService implements SessionRouteService {
         return { verdict: refusalKind(message), message };
       },
     );
+    if (behavior === "steer" && isCommand) markHanded();
     const verdict = await Promise.race([handed, settled.then((result) => result.verdict)]);
     if (verdict === "handed") {
       void settled.then((result) => { this.afterHandoff(session, entry, { ...result, committed, landed }, { onCommit, markHanded }); });
@@ -3959,7 +3977,7 @@ export class PiSessionService implements SessionRouteService {
   async clearQueue(ref: PiSessionRef): Promise<ClientSessionStatus> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
-    await this.emptyQueues(session);
+    await this.emptyQueues(session, "clear");
     this.publishStatus(session);
     return this.statusFromSession(session);
   }
@@ -4013,13 +4031,15 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * Take one message out of what pi holds. While the agent runs, pi's lanes are rewritten
+   * Take one message out of what pi holds. Messages the agent loop has already taken are about
+   * to be read and cannot be recalled. While the agent runs, pi's lanes are rewritten
    * without it. Once the run is over, replaying the survivors would start each as a new run
    * under the queue lock, so everything pi holds goes back to the inbox first and the message
    * is recalled from there.
    */
   private async recallFromRuntime(session: PiAgentSession, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }): Promise<{ removed: boolean; clientMessageId?: string }> {
     const sessionId = session.sessionId;
+    if (lanesHeldByLoop(session)) return { removed: false };
     if (this.runStateFor(session) !== "running") {
       await this.takeBackHeldMessages(session);
       const owned = await this.ownedQueue.recall(sessionId, { ...(target.clientMessageId === undefined ? {} : { clientMessageId: target.clientMessageId }), text: target.text });
@@ -4110,7 +4130,7 @@ export class PiSessionService implements SessionRouteService {
    * recall and announce the same way: the pressing device cleans its rows from the answer,
    * every other device needs the frame.
    */
-  private async emptyQueues(session: PiAgentSession): Promise<QueuedSessionMessage[]> {
+  private async emptyQueues(session: PiAgentSession, purpose: "stop" | "clear"): Promise<QueuedSessionMessage[]> {
     const sessionId = session.sessionId;
     this.emptying.add(sessionId);
     try {
@@ -4118,20 +4138,31 @@ export class PiSessionService implements SessionRouteService {
       await this.steerBatches.get(sessionId);
       const restoredMeanwhile = await this.ownedQueue.clear(sessionId);
       this.settleConsumedSteers(session);
-      const discarded = this.queuedMessagesWithClientIds(session);
-      for (const record of this.queuedPromptClientIds.get(sessionId) ?? []) {
-        if (discarded.some((entry) => entry.clientMessageId === record.clientMessageId)) continue;
-        discarded.push({ kind: "steer", text: record.entry?.text ?? record.text, clientMessageId: record.clientMessageId });
-      }
-      clearSessionQueue(session);
+      const discarded = purpose === "clear" && lanesHeldByLoop(session) ? [] : this.takeRuntimeLanes(session);
       for (const entry of [...restoredMeanwhile, ...inbox]) discarded.push({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }) });
       for (const entry of discarded) this.withdraw(sessionId, entry.clientMessageId);
-      this.queuedPromptClientIds.delete(sessionId);
-      this.queuedPromptImages.delete(sessionId);
       return discarded;
     } finally {
       this.emptying.delete(sessionId);
     }
+  }
+
+  /**
+   * Empty pi's lanes and return what they held, with identities. Clear leaves lanes the agent
+   * loop has already taken alone (they are about to be read); Stop takes them, as pi's own TUI
+   * does, because its abort ends the loop before they are committed.
+   */
+  private takeRuntimeLanes(session: PiAgentSession): QueuedSessionMessage[] {
+    const sessionId = session.sessionId;
+    const taken = this.queuedMessagesWithClientIds(session);
+    for (const record of this.queuedPromptClientIds.get(sessionId) ?? []) {
+      if (taken.some((entry) => entry.clientMessageId === record.clientMessageId)) continue;
+      taken.push({ kind: "steer", text: record.entry?.text ?? record.text, clientMessageId: record.clientMessageId });
+    }
+    clearSessionQueue(session);
+    this.queuedPromptClientIds.delete(sessionId);
+    this.queuedPromptImages.delete(sessionId);
+    return taken;
   }
 
   private withdraw(sessionId: string, clientMessageId: string | undefined): void {
@@ -4161,7 +4192,7 @@ export class PiSessionService implements SessionRouteService {
     const active = this.activeForRef(ref);
     if (active === undefined) return { discarded: [] };
     const sessionId = active.runtime.session.sessionId;
-    const discarded = await this.emptyQueues(active.runtime.session);
+    const discarded = await this.emptyQueues(active.runtime.session, "stop");
     // Settle run-scoped dialogs now, at abort-request time: pi's agent loop
     // waits for a parked `tool_call` dialog handler before it can emit
     // `agent_end`, so leaving settlement to the `agent_end` observer would

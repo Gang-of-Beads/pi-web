@@ -502,3 +502,68 @@ describe("gate-lane findings", () => {
     await service.dispose();
   });
 });
+
+describe("second gate-lane findings", () => {
+  it("G1: a command whose handler pushes a message is still handled, not recorded as queued", async () => {
+    const { fake, service, ref, lane } = await inboxService("g1-inject");
+    fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "kickoff" }];
+    fake.session.prompt = (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      if (text.startsWith("/")) lane.push("injected by the command");
+      else lane.push(text);
+      options?.preflightResult?.(true);
+      return Promise.resolve();
+    };
+    await service.prompt(ref, "/kickoff now", undefined, undefined, { clientMessageId: "g1-cmd-001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(service.operationOutcomes("g1-inject", ["g1-cmd-001"])).toEqual({ "g1-cmd-001": "succeeded" }); });
+    expect((await service.status(ref)).queuedMessages.map((entry) => entry.clientMessageId)).toEqual([undefined]);
+    await service.dispose();
+  });
+
+  it("G2: Stop does not wait for a command's handler inside a steer batch", async () => {
+    const { fake, service, ref, lane } = await inboxService("g2-handler");
+    fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "ask-me" }];
+    fake.session.prompt = async (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      if (text.startsWith("/")) await new Promise<void>(() => undefined);
+      lane.push(text);
+      options?.preflightResult?.(true);
+    };
+    await service.prompt(ref, "/ask-me", undefined, undefined, { clientMessageId: "g2-cmd-001" });
+    await service.prompt(ref, "after the command", undefined, undefined, { clientMessageId: "g2-s2-0001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["/ask-me", "after the command"]); });
+    const stop = service.abort(ref);
+    const answered = await Promise.race([stop.then((result) => result.discarded.map((entry) => entry.clientMessageId)), new Promise((resolve) => setTimeout(() => { resolve("stop still waiting on the handler"); }, 500))]);
+    expect(answered).toEqual(["g2-s2-0001"]);
+    await service.dispose();
+  });
+
+  it("G3: a handled command leaves no identity for a later message with the same text", async () => {
+    const { fake, service, ref } = await inboxService("g3-expect", { isStreaming: false });
+    fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "tidy" }];
+    await service.prompt(ref, "/tidy", undefined, undefined, { clientMessageId: "g3-cmd-001" });
+    await vi.waitFor(() => { expect(service.operationOutcomes("g3-expect", ["g3-cmd-001"])).toEqual({ "g3-cmd-001": "succeeded" }); });
+    const later: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "/tidy" }] };
+    fake.emit({ type: "message_start", message: later });
+    expect(later["clientMessageId"]).toBeUndefined();
+    await service.dispose();
+  });
+
+  it("G4: recall and Clear leave messages the agent loop has already taken, and Stop hands them back", async () => {
+    const { fake, service, ref, lane } = await inboxService("g4-drained");
+    await service.prompt(ref, "being read", undefined, undefined, { clientMessageId: "g4-s-00001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["being read"]); });
+    Reflect.set(fake.session.agent, "hasQueuedMessages", () => false);
+    fake.session.isCompacting = true;
+    const recalled = await service.recallQueuedMessage(ref, { kind: "steer", text: "being read", clientMessageId: "g4-s-00001" });
+    await service.clearQueue(ref);
+    expect({ recalled: recalled.recalled, lane: [...lane], outcome: service.operationOutcomes("g4-drained", ["g4-s-00001"]) })
+      .toEqual({ recalled: false, lane: ["being read"], outcome: { "g4-s-00001": "pending" } });
+    const { discarded } = await service.abort(ref);
+    expect({ discarded: discarded.map((entry) => entry.clientMessageId), lane: [...lane] }).toEqual({ discarded: ["g4-s-00001"], lane: [] });
+    await service.dispose();
+  });
+});
