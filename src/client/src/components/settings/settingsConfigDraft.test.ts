@@ -41,8 +41,6 @@ describe("settings config drafts", () => {
       pathAccess: { allowedPaths: ["/old"] },
       uploads: { defaultFolder: "old/uploads" },
       maxUploadBytes: 1234,
-      spawnSessions: true,
-      subsessions: false,
       agent: { command: "agent-lab", dir: "~/agent-profiles/lab" },
     })).toEqual({
       host: "gateway.local",
@@ -53,8 +51,6 @@ describe("settings config drafts", () => {
       pathAccess: { allowedPaths: ["/old"] },
       uploads: { defaultFolder: "old/uploads" },
       maxUploadBytes: 1234,
-      spawnSessions: true,
-      subsessions: false,
       agent: { command: "agent-lab", dir: "~/agent-profiles/lab" },
     });
 

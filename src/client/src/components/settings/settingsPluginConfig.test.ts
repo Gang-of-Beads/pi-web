@@ -31,7 +31,6 @@ describe("plugin settings config helpers", () => {
       port: 8504,
       allowedHosts: ["gateway.local"],
       shortcuts: { "core:view.chat": "mod+1" },
-      spawnSessions: false,
       plugins: { info: { enabled: false } },
     });
     const selectedMachine = configResponse({ plugins: { info: { enabled: true }, metrics: { enabled: false } } });
@@ -43,7 +42,6 @@ describe("plugin settings config helpers", () => {
         port: 8504,
         allowedHosts: ["gateway.local"],
         shortcuts: { "core:view.chat": "mod+1" },
-        spawnSessions: false,
         plugins: { info: { enabled: true }, metrics: { enabled: false } },
       },
       effectiveConfig: {
@@ -51,7 +49,6 @@ describe("plugin settings config helpers", () => {
         port: 8504,
         allowedHosts: ["gateway.local"],
         shortcuts: { "core:view.chat": "mod+1" },
-        spawnSessions: false,
         plugins: { info: { enabled: true }, metrics: { enabled: false } },
       },
     });
@@ -64,6 +61,6 @@ function configResponse(config: PiWebConfigValues): PiWebConfigResponse {
     exists: true,
     config,
     effectiveConfig: config,
-    envOverrides: { host: false, port: false, allowedHosts: false, spawnSessions: false, subsessions: false, askUser: false },
+    envOverrides: { host: false, port: false, allowedHosts: false, askUser: false },
   };
 }

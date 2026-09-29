@@ -174,15 +174,6 @@ export interface PiWebConfigValues {
   uploads?: PiWebUploadsConfig;
   /** Maximum accepted HTTP request body size in bytes (uploads/attachments). */
   maxUploadBytes?: number;
-  /** When true, LLMs can start new sessions via the spawn_session tool. */
-  spawnSessions?: boolean;
-  /**
-   * When true, LLMs can start tracked child sessions via the
-   * spawn_subsession / list_subsessions / check_subsession / read_subsession
-   * tools. On by default; set to `false` to disable. Requires spawnSessions
-   * to be enabled.
-   */
-  subsessions?: boolean;
   /**
    * When true, LLMs can post a question set to the browser via the ask_user
    * tool. On by default; set to `false` to remove the tool from the runtime.
@@ -321,8 +312,6 @@ export interface PiWebConfigEnvOverrides {
   host: boolean;
   port: boolean;
   allowedHosts: boolean;
-  spawnSessions: boolean;
-  subsessions: boolean;
   askUser: boolean;
 }
 

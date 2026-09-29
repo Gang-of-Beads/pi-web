@@ -14,10 +14,8 @@ export interface LoadedPiWebConfig {
   deprecatedAgentInputs: readonly DeprecatedAgentInput[];
 }
 
-export interface EffectivePiWebConfig extends Omit<PiWebConfig, "uploads" | "spawnSessions" | "subsessions" | "askUser" | "dockerEnvironmentFacts" | "agent" | "extensionDialogsTimeoutMs"> {
+export interface EffectivePiWebConfig extends Omit<PiWebConfig, "uploads" | "askUser" | "dockerEnvironmentFacts" | "agent" | "extensionDialogsTimeoutMs"> {
   uploads: NonNullable<PiWebConfig["uploads"]>;
-  spawnSessions: boolean;
-  subsessions: boolean;
   askUser: boolean;
   environmentFacts: boolean;
   extensionDialogsTimeoutMs: number;
@@ -189,13 +187,6 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
       ...(allowedHosts !== undefined && allowedHosts !== "" ? { allowedHosts: parseAllowedHostsEnv(allowedHosts) } : {}),
       ...(maxUpload !== undefined && maxUpload !== "" ? { maxUploadBytes: parseMaxUploadBytes(maxUpload, "PI_WEB_MAX_UPLOAD_BYTES") } : {}),
       uploads: effectiveUploadsConfig(loaded.config),
-      // Always resolved (on by default) so the effective config is the single
-      // source of truth for the runtime state and the settings UI toggle.
-      spawnSessions: spawnSessionsEnabled(env, loaded.config),
-      // Resolved on by default like the other capabilities,
-      // so the effective config is the single source of truth for the runtime
-      // state and the settings UI toggle.
-      subsessions: subsessionsEnabled(env, loaded.config),
       // Always resolved (on by default); the user is present for every ask.
       askUser: askUserEnabled(env, loaded.config),
       // Always resolved (on by default); inert outside Docker deployments.
@@ -222,8 +213,6 @@ export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}):
   delete existing["pathAccess"];
   delete existing["uploads"];
   delete existing["maxUploadBytes"];
-  delete existing["spawnSessions"];
-  delete existing["subsessions"];
   delete existing["askUser"];
   delete existing["respectProjectTrust"];
   delete existing["environmentFacts"];
@@ -251,8 +240,6 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
     ...(config.pathAccess !== undefined ? { pathAccess: config.pathAccess } : {}),
     ...(config.uploads !== undefined ? { uploads: config.uploads } : {}),
     ...(config.maxUploadBytes !== undefined ? { maxUploadBytes: config.maxUploadBytes } : {}),
-    ...(config.spawnSessions !== undefined ? { spawnSessions: config.spawnSessions } : {}),
-    ...(config.subsessions !== undefined ? { subsessions: config.subsessions } : {}),
     ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.environmentFacts !== undefined ? { environmentFacts: config.environmentFacts } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
@@ -270,8 +257,6 @@ function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebCo
     ...(value["pathAccess"] !== undefined ? { pathAccess: parsePathAccessConfig(value["pathAccess"], path) } : {}),
     ...(value["uploads"] !== undefined ? { uploads: parseUploadsConfig(value["uploads"], path) } : {}),
     ...(value["maxUploadBytes"] !== undefined ? { maxUploadBytes: parseMaxUploadBytes(value["maxUploadBytes"], "maxUploadBytes", path) } : {}),
-    ...(value["spawnSessions"] !== undefined ? { spawnSessions: parseSpawnSessions(value["spawnSessions"], path) } : {}),
-    ...(value["subsessions"] !== undefined ? { subsessions: parseSubsessions(value["subsessions"], path) } : {}),
     ...(value["askUser"] !== undefined ? { askUser: parseAskUser(value["askUser"], path) } : {}),
     ...(value["environmentFacts"] !== undefined ? { environmentFacts: parseBooleanKey(value["environmentFacts"], "environmentFacts", path) } : {}),
     ...(value["extensionDialogsTimeoutMs"] !== undefined ? { extensionDialogsTimeoutMs: parseExtensionDialogsTimeoutMs(value["extensionDialogsTimeoutMs"], path) } : {}),
@@ -283,41 +268,6 @@ function parseMaxUploadBytes(value: unknown, key: string, path = "environment"):
   const bytes = typeof value === "number" ? value : typeof value === "string" && value !== "" ? Number(value) : NaN;
   if (!Number.isInteger(bytes) || bytes < 1) throw new Error(`PI WEB config ${key} must be a positive integer: ${path}`);
   return bytes;
-}
-
-function parseSpawnSessions(value: unknown, path: string): boolean {
-  if (typeof value !== "boolean") throw new Error(`PI WEB config spawnSessions must be a boolean: ${path}`);
-  return value;
-}
-
-/**
- * Whether LLMs may start new sessions via the spawn_session tool. On by default
- * (spawned sessions appear in the session list, so humans notice them); set the
- * env var `PI_WEB_SPAWN_SESSIONS` or the `spawnSessions` config key to `false`
- * to disable. The env var takes precedence over the config file.
- */
-export function spawnSessionsEnabled(env: NodeJS.ProcessEnv = process.env, config: PiWebConfig = {}): boolean {
-  const fromEnv = env["PI_WEB_SPAWN_SESSIONS"];
-  if (fromEnv !== undefined && fromEnv !== "") return fromEnv === "1" || fromEnv.toLowerCase() === "true";
-  return config.spawnSessions ?? true;
-}
-
-function parseSubsessions(value: unknown, path: string): boolean {
-  if (typeof value !== "boolean") throw new Error(`PI WEB config subsessions must be a boolean: ${path}`);
-  return value;
-}
-
-/**
- * Whether LLMs may start tracked child sessions via the spawn_subsession
- * family of tools. On by default; set the env var `PI_WEB_SUBSESSIONS` or the
- * `subsessions` config key to `false` to disable. The env var takes precedence
- * over the config file. Subsessions also require spawnSessions to be enabled
- * (they share the same project-scope resolver).
- */
-export function subsessionsEnabled(env: NodeJS.ProcessEnv = process.env, config: PiWebConfig = {}): boolean {
-  const fromEnv = env["PI_WEB_SUBSESSIONS"];
-  if (fromEnv !== undefined && fromEnv !== "") return fromEnv === "1" || fromEnv.toLowerCase() === "true";
-  return config.subsessions ?? true;
 }
 
 function parseAskUser(value: unknown, path: string): boolean {

@@ -1739,8 +1739,6 @@ function parsePiWebConfigValues(value: unknown): PiWebConfigValues {
     ...optionalField("uploads", optionalUploads(record["uploads"])),
     ...optionalField("maxUploadBytes", optionalNumber(record, "maxUploadBytes")),
     ...optionalField("agent", optionalAgent(record["agent"])),
-    ...optionalField("spawnSessions", optionalBoolean(record, "spawnSessions")),
-    ...optionalField("subsessions", optionalBoolean(record, "subsessions")),
     ...optionalField("askUser", optionalBoolean(record, "askUser")),
     ...optionalField("environmentFacts", optionalBoolean(record, "environmentFacts")),
     ...optionalField("extensionDialogsTimeoutMs", optionalNumber(record, "extensionDialogsTimeoutMs")),
@@ -1822,8 +1820,6 @@ function parsePiWebConfigEnvOverrides(value: unknown): PiWebConfigEnvOverrides {
     host: requireBoolean(record, "host"),
     port: requireBoolean(record, "port"),
     allowedHosts: requireBoolean(record, "allowedHosts"),
-    spawnSessions: requireBoolean(record, "spawnSessions"),
-    subsessions: requireBoolean(record, "subsessions"),
     askUser: requireBoolean(record, "askUser"),
   };
 }

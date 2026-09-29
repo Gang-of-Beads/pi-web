@@ -39,8 +39,6 @@ describe("config routes", () => {
       host: "0.0.0.0",
       port: 9000,
       allowedHosts: true,
-      spawnSessions: true,
-      subsessions: true,
       shortcuts: { "core:view.chat": "mod+1", "core:session.stop": null },
       plugins: { info: { enabled: false, settings: { note: "hidden" } } },
       pathAccess: { allowedPaths: ["/tmp"] },
@@ -145,7 +143,6 @@ describe("config routes", () => {
     const selectedMachinePatch: PiWebConfigValues = {
       plugins: { info: { enabled: false } },
       uploads: { defaultFolder: "uploads\\manual" },
-      spawnSessions: true,
       agent: { command: "alternate-agent", dir: "/srv/alternate-agent" },
     };
 
@@ -159,7 +156,6 @@ describe("config routes", () => {
       ...fullConfig(),
       plugins: { info: { enabled: false } },
       uploads: { defaultFolder: "uploads/manual" },
-      spawnSessions: true,
       agent: { command: "alternate-agent", dir: "/srv/alternate-agent" },
     };
     expect(response.statusCode).toBe(200);
@@ -170,8 +166,6 @@ describe("config routes", () => {
       pathAccess: { allowedPaths: ["/srv/repos"] },
       uploads: { defaultFolder: "uploads/manual" },
       maxUploadBytes: 1024,
-      spawnSessions: true,
-      subsessions: false,
       agent: { command: "alternate-agent", dir: "/srv/alternate-agent" },
     });
   });
@@ -191,7 +185,7 @@ describe("config routes", () => {
   });
 
   it("rejects config responses missing a required override flag", () => {
-    for (const flag of ["host", "port", "allowedHosts", "spawnSessions", "subsessions", "askUser"] as const) {
+    for (const flag of ["host", "port", "allowedHosts", "askUser"] as const) {
       const envOverrides = Object.fromEntries(Object.entries(responseFor({}, false).envOverrides).filter(([key]) => key !== flag));
       expect(() => parsePiWebConfigResponseBody({ ...responseFor({}, false), envOverrides })).toThrow(`field must be a boolean: ${flag}`);
     }
@@ -203,7 +197,7 @@ describe("config routes", () => {
     const response = await app.inject({
       method: "PUT",
       url: "/api/machines/local/config",
-      payload: { config: { host: "0.0.0.0", spawnSessions: true } },
+      payload: { config: { host: "0.0.0.0", askUser: true } },
     });
 
     expect(response.statusCode).toBe(400);
@@ -216,11 +210,11 @@ describe("config routes", () => {
     const response = await app.inject({
       method: "PUT",
       url: "/api/machines/local/config",
-      payload: { config: { spawnSessions: "yes" } },
+      payload: { config: { askUser: "yes" } },
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json<{ error: string }>().error).toContain("PI WEB selected-machine config spawnSessions must be a boolean");
+    expect(response.json<{ error: string }>().error).toContain("PI WEB selected-machine config askUser must be a boolean");
     expect(service.write).not.toHaveBeenCalled();
   });
 });
@@ -235,8 +229,6 @@ function fullConfig(): PiWebConfigValues {
     pathAccess: { allowedPaths: ["/srv/repos"] },
     uploads: { defaultFolder: "uploads" },
     maxUploadBytes: 1024,
-    spawnSessions: false,
-    subsessions: false,
     agent: { command: "agent-lab", dir: "/srv/agent-lab" },
   };
 }
@@ -247,8 +239,6 @@ function selectedMachineConfig(): PiWebConfigValues {
     pathAccess: { allowedPaths: ["/srv/repos"] },
     uploads: { defaultFolder: "uploads" },
     maxUploadBytes: 1024,
-    spawnSessions: false,
-    subsessions: false,
     agent: { command: "agent-lab", dir: "/srv/agent-lab" },
   };
 }
@@ -259,7 +249,7 @@ function responseFor(config: PiWebConfigValues, exists: boolean): PiWebConfigRes
     exists,
     config,
     effectiveConfig: config,
-    envOverrides: { host: false, port: false, allowedHosts: false, spawnSessions: false, subsessions: false, askUser: false },
+    envOverrides: { host: false, port: false, allowedHosts: false, askUser: false },
   };
 }
 

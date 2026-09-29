@@ -328,8 +328,6 @@ export function fullPiWebConfig(): PiWebConfigValues {
     pathAccess: { allowedPaths: ["/srv/repos"] },
     uploads: { defaultFolder: "uploads" },
     maxUploadBytes: 1024,
-    spawnSessions: false,
-    subsessions: false,
     agent: { command: "agent-lab", dir: "/srv/agent-lab" },
   };
 }
@@ -340,8 +338,6 @@ export function selectedMachinePiWebConfig(): PiWebConfigValues {
     pathAccess: { allowedPaths: ["/srv/repos"] },
     uploads: { defaultFolder: "uploads" },
     maxUploadBytes: 1024,
-    spawnSessions: false,
-    subsessions: false,
     agent: { command: "agent-lab", dir: "/srv/agent-lab" },
   };
 }
@@ -352,7 +348,7 @@ export function piWebConfigResponse(config: PiWebConfigValues): PiWebConfigRespo
     exists: false,
     config,
     effectiveConfig: config,
-    envOverrides: { host: false, port: false, allowedHosts: false, spawnSessions: false, subsessions: false, askUser: false },
+    envOverrides: { host: false, port: false, allowedHosts: false, askUser: false },
   };
 }
 

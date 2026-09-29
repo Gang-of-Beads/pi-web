@@ -30,7 +30,7 @@ describe("PiSessionService", () => {
 
       expect(result).toEqual({ sessionId: "spawned-1", cwd: "/workspace-feature" });
       await vi.waitFor(() => { expect(fake.calls.prompt).toEqual([{ text: "continue the plan", options: directHandoffOptions() }]); });
-      expect(log).toEqual([{ details: { spawningCwd: "/workspace", sessionId: "spawned-1", cwd: "/workspace-feature", promptLength: 17 }, message: "spawn_session started a new session" }]);
+      expect(log).toEqual([{ details: { spawningCwd: "/workspace", sessionId: "spawned-1", cwd: "/workspace-feature", promptLength: 17 }, message: "spawn route started a new session" }]);
       await service.dispose();
     });
 
@@ -38,11 +38,9 @@ describe("PiSessionService", () => {
       const fake = fakeRuntime("spawned-1", { sessionFile: "/tmp/spawned-1.jsonl", sessionManager: fakeSessionManager("/workspace-feature") });
       const model = testModel();
       let initialModel: PiAgentSession["model"];
-      let delegationToolsEnabled: boolean | undefined;
       const createAgentRuntime: RuntimeCreator = async (_createRuntime, options) => {
         await Promise.resolve();
         initialModel = options.initialModel;
-        delegationToolsEnabled = options.delegationToolsEnabled;
         return fake.runtime;
       };
       const service = new PiSessionService(new CapturingSessionEventHub(), {
@@ -57,7 +55,6 @@ describe("PiSessionService", () => {
       await service.spawnSession({ spawningCwd: "/workspace", spawningSessionId: "spawner-1", prompt: "continue", cwd: "/workspace-feature", model });
 
       expect(initialModel).toBe(model);
-      expect(delegationToolsEnabled).toBe(true);
       await service.dispose();
     });
 

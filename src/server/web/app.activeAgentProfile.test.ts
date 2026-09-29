@@ -185,8 +185,6 @@ function configResponse(config: PiWebConfigResponse["config"]): PiWebConfigRespo
       host: false,
       port: false,
       allowedHosts: false,
-      spawnSessions: false,
-      subsessions: false,
       askUser: false,
     },
   };
@@ -202,8 +200,6 @@ function emptyConfigService(): PiWebConfigService {
       host: false,
       port: false,
       allowedHosts: false,
-      spawnSessions: false,
-      subsessions: false,
       askUser: false,
     },
   };

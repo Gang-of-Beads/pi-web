@@ -61,6 +61,53 @@ afterEach(async () => {
   await app.close();
 });
 
+describe("the delegation routes", () => {
+  async function withRoutes(run: (app: FastifyInstance, service: CapturingRouteSessionService) => Promise<void>): Promise<void> {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const service = new CapturingRouteSessionService();
+    registerSessionRoutes(routeApp, service, new SessionEventHub());
+    try {
+      await run(routeApp, service);
+    } finally {
+      await routeApp.close();
+    }
+  }
+  const cwd = resolve("/repo");
+
+  it("start an independent session in the requested workspace, with the requested model", async () => {
+    await withRoutes(async (app, service) => {
+      const response = await app.inject({ method: "POST", url: "/sessions/parent-1/spawn", payload: { cwd, prompt: "go", model: "openai/gpt-5", targetCwd: "/repo-b" } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ sessionId: "independent-1", cwd: "/repo-b" });
+      expect(service.delegationCalls).toEqual([{ route: "spawn", ref: { id: "parent-1", cwd }, request: { prompt: "go", model: "openai/gpt-5", cwd: "/repo-b" } }]);
+    });
+  });
+
+  it("start a tracked child, then check it and read its transcript with filters", async () => {
+    await withRoutes(async (app, service) => {
+      expect((await app.inject({ method: "POST", url: "/sessions/parent-1/subsessions", payload: { cwd, prompt: "go" } })).json()).toEqual({ sessionId: "child-1", cwd: "/repo" });
+      expect((await app.inject({ method: "GET", url: `/sessions/parent-1/subsessions/child-1?cwd=${encodeURIComponent(cwd)}` })).json()).toMatchObject({ finalText: "done" });
+      const read = await app.inject({ method: "GET", url: `/sessions/parent-1/subsessions/child-1/transcript?cwd=${encodeURIComponent(cwd)}&roles=assistant,tool&limit=5&includeToolArgs=true` });
+      expect(read.statusCode).toBe(200);
+      expect(service.delegationCalls.at(-1)).toEqual({ route: "transcript", ref: { id: "parent-1", cwd }, childSessionId: "child-1", query: { roles: ["assistant", "tool"], includeToolArgs: true, limit: 5 } });
+    });
+  });
+
+  it.each([
+    ["POST", "/sessions/parent-1/subsessions", { cwd: resolve("/repo"), prompt: "  " }],
+    ["POST", "/sessions/parent-1/spawn", { cwd: resolve("/repo"), prompt: "go", model: 5 }],
+    ["GET", `/sessions/parent-1/subsessions/child-1/transcript?cwd=${encodeURIComponent(resolve("/repo"))}&roles=robot`, undefined],
+    ["GET", `/sessions/parent-1/subsessions/child-1/transcript?cwd=${encodeURIComponent(resolve("/repo"))}&limit=0`, undefined],
+  ] as const)("refuses a malformed %s %s with 400 and calls nothing", async (method, url, payload) => {
+    await withRoutes(async (app, service) => {
+      const response = await app.inject({ method, url, ...(payload === undefined ? {} : { payload }) });
+      expect(response.statusCode).toBe(400);
+      expect(service.delegationCalls).toEqual([]);
+    });
+  });
+});
+
 describe("session routes", () => {
   it("returns notification catalog and selected-inbox snapshots with required cwd context", async () => {
     const routeApp = Fastify({ logger: false });
@@ -1701,10 +1748,28 @@ class CapturingRouteSessionService implements SessionRouteService {
   }
 
   readonly subsessionsCalls: SessionRouteRef[] = [];
-  subsessionsResponse: import("./spawnSubsessionTool.js").SubsessionSummary[] = [];
-  subsessions(ref: SessionRouteRef): Promise<import("./spawnSubsessionTool.js").SubsessionSummary[]> {
+  subsessionsResponse: import("./delegation.js").SubsessionSummary[] = [];
+  subsessions(ref: SessionRouteRef): Promise<import("./delegation.js").SubsessionSummary[]> {
     this.subsessionsCalls.push(ref);
     return Promise.resolve(this.subsessionsResponse);
+  }
+
+  readonly delegationCalls: unknown[] = [];
+  spawnFromSession(ref: SessionRouteRef, request: unknown): Promise<{ sessionId: string; cwd: string }> {
+    this.delegationCalls.push({ route: "spawn", ref, request });
+    return Promise.resolve({ sessionId: "independent-1", cwd: "/repo-b" });
+  }
+  spawnSubsessionFromSession(ref: SessionRouteRef, request: unknown): Promise<{ sessionId: string; cwd: string }> {
+    this.delegationCalls.push({ route: "subsession", ref, request });
+    return Promise.resolve({ sessionId: "child-1", cwd: "/repo" });
+  }
+  subsessionCheck(ref: SessionRouteRef, childSessionId: string): Promise<import("./delegation.js").SubsessionCheckResult> {
+    this.delegationCalls.push({ route: "check", ref, childSessionId });
+    return Promise.resolve({ sessionId: childSessionId, cwd: "/repo", status: "idle", finalText: "done", messageCount: 2 });
+  }
+  subsessionTranscript(ref: SessionRouteRef, childSessionId: string, query: unknown): Promise<import("./delegation.js").SubsessionReadResult> {
+    this.delegationCalls.push({ route: "transcript", ref, childSessionId, query });
+    return Promise.resolve({ sessionId: childSessionId, cwd: "/repo", status: "idle", entries: [], total: 0, matched: 0, start: 0, hasMore: false });
   }
 
   shell(): never { throw unusedRouteMethod("shell"); }

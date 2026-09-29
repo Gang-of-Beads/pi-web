@@ -102,7 +102,7 @@ describe("PiSessionService", () => {
       await service.start("/workspace");
 
       await expect(service.spawnSubsession({ spawningCwd: "/workspace", parentSessionId: "parent-1", parentSessionFile: "/tmp/parent-1.jsonl", prompt: "do the slice", cwd: "/workspace-feature" }))
-        .rejects.toThrow("A tracked subsession runs in this session's working directory (/workspace); /workspace-feature was requested. Instruct the child to work elsewhere from this workspace, or use spawn_session for an independent session in another workspace.");
+        .rejects.toThrow("A tracked subsession runs in this session's working directory (/workspace); /workspace-feature was requested. Instruct the child to work elsewhere from this workspace, or start an independent session in the other workspace.");
       await expect(service.listSubsessions("parent-1")).resolves.toEqual([]);
       await service.dispose();
     });
@@ -126,20 +126,18 @@ describe("PiSessionService", () => {
       await service.dispose();
     });
 
-    it("uses the parent model and thinking level and disables delegation before creating the tracked child runtime", async () => {
+    it("uses the parent model and thinking level before creating the tracked child runtime", async () => {
       const parent = fakeRuntime("parent-1", { sessionFile: "/tmp/parent-1.jsonl" });
       const child = fakeRuntime("child-1", { sessionFile: "/tmp/child-1.jsonl", sessionManager: fakeSessionManager("/workspace") });
       const model = testModel();
       const initialModels: PiAgentSession["model"][] = [];
       const initialThinkingLevels: unknown[] = [];
-      const delegationCapabilities: boolean[] = [];
       const runtimes = [parent.runtime, child.runtime];
       let index = 0;
       const createAgentRuntime: RuntimeCreator = async (_createRuntime, options) => {
         await Promise.resolve();
         initialModels.push(options.initialModel);
         initialThinkingLevels.push(options.initialThinkingLevel);
-        delegationCapabilities.push(options.delegationToolsEnabled);
         const runtime = runtimes[index] ?? child.runtime;
         index += 1;
         return runtime;
@@ -159,7 +157,6 @@ describe("PiSessionService", () => {
 
       expect(initialModels).toEqual([undefined, model]);
       expect(initialThinkingLevels).toEqual([undefined, "max"]);
-      expect(delegationCapabilities).toEqual([true, false]);
       await service.dispose();
     });
 
@@ -444,14 +441,12 @@ describe("PiSessionService", () => {
         const child = fakeRuntime("child-1", { sessionFile: childFile, sessionManager: childManager });
         const parent = fakeRuntime("parent-1", { sessionFile: parentFile, sessionManager: parentManager });
         const runtimes = [child.runtime, parent.runtime];
-        const delegationCapabilities: boolean[] = [];
         let index = 0;
         const open = vi.fn((path: string) => path === parentFile ? parentManager : childManager);
         const service = new PiSessionService(new CapturingSessionEventHub(), {
           agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
-          createAgentRuntime: (_createRuntime, options) => {
-            delegationCapabilities.push(options.delegationToolsEnabled);
+          createAgentRuntime: () => {
             const runtime = runtimes[index] ?? parent.runtime;
             index += 1;
             return Promise.resolve(runtime);
@@ -480,7 +475,6 @@ describe("PiSessionService", () => {
         });
 
         expect(parent.calls.sendCustomMessage[0]?.message.content).toContain("Subsession child-1 stopped working");
-        expect(delegationCapabilities).toEqual([false, true]);
         expect(open).toHaveBeenCalledWith(parentFile);
         await service.dispose();
       } finally {
@@ -976,7 +970,7 @@ describe("PiSessionService", () => {
       });
 
       expect(parent.calls.sendCustomMessage[0]?.message.content).toBe(
-        "Subsession child-1 stopped working (idle).\nNo other tracked subsessions are working.\n\nOutput from subsession child-1 was too long for this completion notice and was omitted. Call check_subsession with sessionId \"child-1\" to retrieve the final output.",
+        "Subsession child-1 stopped working (idle).\nNo other tracked subsessions are working.\n\nOutput from subsession child-1 was too long for this completion notice (2134 characters) and was omitted. It is the child session's last reply.",
       );
       expect(parent.calls.sendCustomMessage[0]?.message.content).not.toContain("BEGIN_LONG_OUTPUT");
       await expect(service.checkSubsession("parent-1", "child-1", "/tmp/parent-1.jsonl")).resolves.toMatchObject({ finalText: longOutput });
@@ -1009,7 +1003,7 @@ describe("PiSessionService", () => {
       });
 
       expect(parent.calls.sendCustomMessage[0]?.message.content).toBe(
-        "Subsession child-1 stopped working (idle).\nStill working: child-2. Continue working, or call yield_to_subsessions alone and last at the next join point. Further completion notices arrive automatically; do not poll.\n\n--- SUBSESSION OUTPUT: child-1 ---\n(no output)",
+        "Subsession child-1 stopped working (idle).\nStill working: child-2. Further completion notices arrive automatically; do not poll.\n\n--- SUBSESSION OUTPUT: child-1 ---\n(no output)",
       );
 
       second.session.isStreaming = false;

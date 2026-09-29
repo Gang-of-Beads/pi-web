@@ -4,7 +4,7 @@
  * Anthropic's current API rejects `minimum`/`maximum` on an `integer` property
  * outright: "tools.44.custom: For 'integer' type, properties maximum, minimum
  * are not supported". The bounds came from our own tools (the number-of-chars,
- * before and limit arguments of read_subsession), and the failure is per
+ * before and limit arguments of a transcript-paging tool), and the failure is per
  * session, not per tool - one bounded property anywhere in a 45-tool list
  * fails every turn with a 400 and an assistant message that never arrives.
  *

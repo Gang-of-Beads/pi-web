@@ -176,13 +176,12 @@
               <p>
                 Environment overrides include <code>PI_WEB_HOST</code>, <code>PI_WEB_PORT</code> / <code>PORT</code>,
                 <code>PI_WEB_ALLOWED_HOSTS</code>, <code>PI_WEB_MAX_UPLOAD_BYTES</code>, <code>PI_CODING_AGENT_DIR</code>,
-                <code>PI_CODING_AGENT_SESSION_DIR</code>, <code>PI_WEB_SPAWN_SESSIONS</code>,
-                <code>PI_WEB_SUBSESSIONS</code>, <code>PI_WEB_ASK_USER</code>, and <code>PI_WEB_ENVIRONMENT_FACTS</code>.
+                <code>PI_CODING_AGENT_SESSION_DIR</code>, <code>PI_WEB_ASK_USER</code>, and <code>PI_WEB_ENVIRONMENT_FACTS</code>.
               </p>
               <ul>
                 <li><code>host</code> / <code>port</code>: restart the gateway web/API service or process.</li>
                 <li><code>maxUploadBytes</code>: restart both the web/API process and the session daemon on that machine.</li>
-                <li><code>spawnSessions</code> / <code>subsessions</code> / <code>askUser</code> / <code>extensionDialogsTimeoutMs</code> / <code>environmentFacts</code>: restart the session daemon on that machine.</li>
+                <li><code>askUser</code> / <code>extensionDialogsTimeoutMs</code> / <code>environmentFacts</code>: restart the session daemon on that machine.</li>
                 <li><code>pathAccess</code>: applies on the next request; existing file views may need a browser refresh.</li>
                 <li><code>uploads.defaultFolder</code>: applies to newly opened Files upload dialogs and new direct drag/drop batches after config/workspace refresh.</li>
                 <li><code>plugins</code>: browser-only changes apply after a tab reload. Any enablement, settings, source, or package-revision change affecting a <code>serverModule</code> requires a manual sessiond restart, then a tab reload for its paired UI.</li>
@@ -216,8 +215,6 @@
     "defaultFolder": ".pi-web/uploads"
   },
   "maxUploadBytes": 67108864,
-  "spawnSessions": true,
-  "subsessions": true,
   "askUser": true,
   "extensionDialogsTimeoutMs": 300000,
   "plugins": {
@@ -339,7 +336,7 @@ worktree_path="$1"
                 it, and whether project-local config overrides or merges with global config. Rows with JSON key
                 <code>—</code> are runtime-only environment variables, not config-file keys. <code>Global</code> means
                 machine-global. In Settings, selected-machine-safe global keys (<code>pathAccess</code>, <code>uploads</code>,
-                <code>maxUploadBytes</code>, <code>spawnSessions</code>, <code>subsessions</code>, <code>askUser</code>, and <code>plugins</code>)
+                <code>maxUploadBytes</code>, <code>askUser</code>, and <code>plugins</code>)
                 are edited for the selected machine; gateway host/port/allowed-hosts, keyboard shortcuts, and machine
                 registry/tokens stay local.
               </p>
@@ -404,22 +401,6 @@ worktree_path="$1"
                       <td>Global</td>
                       <td>Not supported locally</td>
                       <td>Restart web/API and session daemon on that machine</td>
-                    </tr>
-                    <tr>
-                      <td>Agent can spawn sessions</td>
-                      <td><code>spawnSessions</code></td>
-                      <td><code>PI_WEB_SPAWN_SESSIONS</code></td>
-                      <td>Global/session daemon</td>
-                      <td>Not supported locally</td>
-                      <td>Restart session daemon on that machine</td>
-                    </tr>
-                    <tr>
-                      <td>Tracked subsessions</td>
-                      <td><code>subsessions</code></td>
-                      <td><code>PI_WEB_SUBSESSIONS</code></td>
-                      <td>Global/session daemon</td>
-                      <td>Not supported locally; also requires <code>spawnSessions</code></td>
-                      <td>Restart session daemon on that machine</td>
                     </tr>
                     <tr>
                       <td>Agent can post question forms</td>
@@ -833,70 +814,65 @@ PI_CODING_AGENT_SESSION_DIR=/opt/pi-profiles/lab-sessions</code></pre>
 
             <section id="session-tools">
               <h2>Session daemon tools</h2>
-              <h3><code>spawnSessions</code></h3>
+              <h3 id="delegation-routes">Delegation routes</h3>
               <p>
-                Boolean. Controls whether agents receive the <code>spawn_session</code> tool. Defaults to
-                <code>true</code>. Set it to <code>false</code> if you do not want an agent to start independent PI WEB sessions.
+                PI WEB gives agents no tools of its own. Starting other sessions is a session-daemon interface that a
+                plugin or extension can build tools on:
               </p>
-              <p>Environment override: <code>PI_WEB_SPAWN_SESSIONS=0|1|true|false</code>.</p>
-
-              <h3><code>subsessions</code></h3>
+              <div class="table-scroll" role="region" aria-label="Delegation routes" tabindex="0">
+                <table>
+                  <thead>
+                    <tr><th>Route</th><th>What it does</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><code>POST /api/sessions/:id/spawn</code></td>
+                      <td>Start an independent session. Body: <code>cwd</code> (this session's workspace), <code>prompt</code>,
+                        and optionally <code>targetCwd</code> (any workspace of the same project) and <code>model</code>.</td>
+                    </tr>
+                    <tr>
+                      <td><code>POST /api/sessions/:id/subsessions</code></td>
+                      <td>Start a tracked child in this session's own workspace. Body: <code>cwd</code>, <code>prompt</code>,
+                        and optionally <code>model</code>.</td>
+                    </tr>
+                    <tr>
+                      <td><code>GET /api/sessions/:id/subsessions?cwd=…</code></td>
+                      <td>List this session's tracked children and subagent runs.</td>
+                    </tr>
+                    <tr>
+                      <td><code>GET /api/sessions/:id/subsessions/:child?cwd=…</code></td>
+                      <td>A child's status and last reply.</td>
+                    </tr>
+                    <tr>
+                      <td><code>GET /api/sessions/:id/subsessions/:child/transcript?cwd=…</code></td>
+                      <td>A child's transcript. Optional filters: <code>roles</code>, <code>include</code> (comma-separated),
+                        <code>search</code>, <code>maxChars</code>, <code>includeToolArgs=true</code>, <code>before</code>,
+                        <code>limit</code>.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <ul>
+                <li>
+                  The new session inherits this session's model and thinking level. <code>model</code>, an exact
+                  <code>provider/model-id</code> such as <code>anthropic/claude-sonnet-4-5</code>, overrides the inherited
+                  model, and an unknown value is rejected.
+                </li>
+                <li>
+                  A tracked child always runs in this session's working directory, and a request for any other one is
+                  rejected.
+                </li>
+                <li>
+                  When a child stops working, its parent receives a completion notice that carries the child's final output
+                  when it fits.
+                </li>
+              </ul>
               <p>
-                Boolean. Controls whether agents receive the tracked-subsession tools:
-                <code>spawn_subsession</code>, <code>list_subsessions</code>, <code>check_subsession</code>,
-                <code>read_subsession</code>, and <code>yield_to_subsessions</code>. Defaults to <code>true</code> and also
-                requires <code>spawnSessions</code> to be enabled.
+                The <code>spawnSessions</code> and <code>subsessions</code> config keys, and <code>PI_WEB_SPAWN_SESSIONS</code>
+                and <code>PI_WEB_SUBSESSIONS</code>, are retired. They controlled the <code>spawn_session</code> and
+                tracked-subsession tools, which PI WEB no longer registers. A config file that still sets them loads, and
+                they have no effect.
               </p>
-              <p>
-                Tracked subsessions are join-oriented. Calling <code>spawn_subsession</code> returns immediately, so the
-                parent can continue independent work while the child runs. Work whose result the parent does not need to
-                join belongs in the fire-and-forget <code>spawn_session</code> tool instead.
-              </p>
-              <p>
-                A tracked subsession always runs in the spawning session's working directory, so it stays in that
-                workspace's session tree next to its parent. <code>spawn_subsession</code> takes no <code>cwd</code>. To
-                get work done elsewhere, instruct the child to work there from this workspace, or use
-                <code>spawn_session</code>, which still targets any workspace of the project, for an independent session
-                there.
-              </p>
-              <p>
-                At a join point, after finishing its independent work, the parent calls
-                <code>yield_to_subsessions</code> alone as the final action in its tool batch. Pi ends a tool batch early
-                only when every result in that batch is terminating. If any tracked child is still working, the action
-                ends the current agent run so the parent becomes idle. If none are working, it does not end the run and
-                clearly reports that there is nothing to wait for.
-              </p>
-              <p>
-                A completion notice wakes an idle parent or queues behind in-flight work. Each notice lists any other
-                tracked children still working, so the parent can continue work or call
-                <code>yield_to_subsessions</code> again at the next join point. Further notices arrive automatically; do
-                not poll. The notice includes the child's final output when it fits. If that output is too long, PI WEB
-                omits it entirely instead of adding a truncated duplicate to the parent's context and directs the parent
-                to retrieve it with <code>check_subsession</code>.
-              </p>
-              <p>
-                <code>list_subsessions</code>, <code>check_subsession</code>, and <code>read_subsession</code> never yield
-                or change control flow. They are for deliberate inspection or recovery, not completion polling. While a
-                child works, agent-facing <code>check_subsession</code> and <code>read_subsession</code> withhold partial
-                output and direct the parent to continue independent work or yield at the join point. Output becomes
-                available when the child stops. Included output and transcripts follow a labeled marker and come last,
-                after PI WEB guidance.
-              </p>
-              <p>
-                Both <code>spawn_session</code> and <code>spawn_subsession</code> accept an optional
-                <code>model</code> parameter, given as an exact <code>provider/model-id</code> such as
-                <code>anthropic/claude-sonnet-4-5</code>. When set, the new session starts on that model instead of
-                inheriting the dispatching session's model. The match is strict: an unknown or malformed value is
-                rejected with an error. A <code>#provider/model-id</code> reference in the prompt (see
-                <a href="#prompt-completions">Prompt completions</a>) is how users ask for a specific model; agents
-                forward that reference as this parameter. The new session also inherits the dispatching session's
-                thinking level, clamped to its model's capabilities.
-              </p>
-              <p>
-                In <strong>Settings → Session daemon</strong>, these keys are saved on the selected machine. Restart the
-                session daemon on that machine after changing them.
-              </p>
-              <p>Environment override: <code>PI_WEB_SUBSESSIONS=0|1|true|false</code>.</p>
 
               <h3><code>askUser</code> and <code>ask_user</code></h3>
               <p>
@@ -1072,8 +1048,8 @@ PI_CODING_AGENT_SESSION_DIR=/opt/pi-profiles/lab-sessions</code></pre>
                 <li>
                   <code>#</code> completes the models available to the session, filtered case-insensitively as you type
                   (at most 12 entries). Picking one inserts a <code>#provider/model-id</code> reference into the draft,
-                  which tells agents the request should run on that model — for example as the <code>model</code>
-                  parameter of <code>spawn_session</code>.
+                  which tells agents the request should run on that model — for example as the <code>model</code> of a
+                  <a href="#delegation-routes">spawn route</a>.
                 </li>
               </ul>
             </section>

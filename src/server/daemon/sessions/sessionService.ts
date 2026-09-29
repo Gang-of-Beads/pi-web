@@ -39,7 +39,7 @@ import type {
 } from "../../shared/types.js";
 import type { QueuedSessionMessage, SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
-import type { SubsessionSummary } from "./spawnSubsessionTool.js";
+import type { DelegationRequest, SpawnSessionResult, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionSummary } from "./delegation.js";
 
 export type SessionRouteRef = ClientSessionRef;
 
@@ -123,6 +123,15 @@ export interface SessionRouteService {
    * live. Returned with the fields the client needs to label and reopen them.
    */
   subsessions(ref: SessionRouteRef): Promise<SubsessionSummary[]>;
+  /**
+   * Delegation as an interface, not as agent tools: PI WEB registers no tool for
+   * these (docs/design/no-builtin-agent-tools.md), and a plugin or extension that
+   * wants one builds it on these routes.
+   */
+  spawnFromSession(ref: SessionRouteRef, request: DelegationRequest & { cwd?: string }): Promise<SpawnSessionResult>;
+  spawnSubsessionFromSession(ref: SessionRouteRef, request: DelegationRequest): Promise<SpawnSubsessionResult>;
+  subsessionCheck(ref: SessionRouteRef, childSessionId: string): Promise<SubsessionCheckResult>;
+  subsessionTranscript(ref: SessionRouteRef, childSessionId: string, query: SubsessionReadQuery): Promise<SubsessionReadResult>;
   respondToCommand(ref: SessionRouteRef, requestId: string, value: string): Promise<ClientCommandResult>;
   navigateTree(ref: SessionRouteRef, request: ClientSessionTreeNavigateRequest): Promise<ClientSessionTreeNavigateResult>;
   forkFromTree(ref: SessionRouteRef, request: ClientSessionTreeForkRequest): Promise<ClientSessionTreeForkResult>;

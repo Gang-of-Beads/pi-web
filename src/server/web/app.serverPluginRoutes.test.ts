@@ -53,7 +53,7 @@ function emptyConfigService(): PiWebConfigService {
     exists: false,
     config: {},
     effectiveConfig: {},
-    envOverrides: { host: false, port: false, allowedHosts: false, spawnSessions: false, subsessions: false, askUser: false },
+    envOverrides: { host: false, port: false, allowedHosts: false, askUser: false },
   };
   return { read: () => Promise.resolve(response), write: () => Promise.resolve(response) };
 }

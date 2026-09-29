@@ -8,6 +8,7 @@ import type { SessionRouteRef, SessionRouteService } from "./sessionService.js";
 import { clearInterruptedRuns, readInterruptedRuns } from "./interruptedRunStore.js";
 import { normalizeSessionCleanupRequest } from "./sessionCleanup.js";
 import { payloadRevision } from "./payloadRevision.js";
+import { delegationRequestFromBody, spawnCwdFromBody, subsessionReadQuery, type SubsessionTranscriptQuery } from "./delegationRequests.js";
 
 interface SessionQuery {
   cwd?: string;
@@ -380,6 +381,46 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
       return snapshot;
     } catch (error) {
       return reply.code(503).send({ error: errorMessage(error) });
+    }
+  });
+
+  // Delegation is an interface, not agent tools (docs/design/no-builtin-agent-tools.md):
+  // start an independent session, start a tracked child, check one, read one.
+  app.post<{ Params: { sessionId: string }; Body: Record<string, unknown> | undefined }>(`${prefix}/sessions/:sessionId/spawn`, async (request, reply) => {
+    try {
+      const body = optionalRecord(request.body);
+      return await sessions.spawnFromSession(sessionRefFromBody(request.params.sessionId, body), { ...delegationRequestFromBody(body), ...spawnCwdFromBody(body) });
+    } catch (error) {
+      return reply.code(mutationErrorStatus(error)).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.post<{ Params: { sessionId: string }; Body: Record<string, unknown> | undefined }>(`${prefix}/sessions/:sessionId/subsessions`, async (request, reply) => {
+    try {
+      const body = optionalRecord(request.body);
+      return await sessions.spawnSubsessionFromSession(sessionRefFromBody(request.params.sessionId, body), delegationRequestFromBody(body));
+    } catch (error) {
+      return reply.code(mutationErrorStatus(error)).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.get<{ Params: { sessionId: string; childId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/subsessions/:childId`, async (request, reply) => {
+    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
+    if (ref === undefined) return reply;
+    try {
+      return await sessions.subsessionCheck(ref, request.params.childId);
+    } catch (error) {
+      return reply.code(mutationErrorStatus(error)).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.get<{ Params: { sessionId: string; childId: string }; Querystring: SessionQuery & SubsessionTranscriptQuery }>(`${prefix}/sessions/:sessionId/subsessions/:childId/transcript`, async (request, reply) => {
+    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
+    if (ref === undefined) return reply;
+    try {
+      return await sessions.subsessionTranscript(ref, request.params.childId, subsessionReadQuery(request.query));
+    } catch (error) {
+      return reply.code(mutationErrorStatus(error)).send({ error: errorMessage(error) });
     }
   });
 

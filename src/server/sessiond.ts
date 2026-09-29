@@ -260,7 +260,7 @@ async function createSessionDaemonRuntime() {
     // daemon startup must not depend on how long that takes.
     machineStatus.notifyChanged();
     const projectWorkspaceDeps = { projects, workspaces: workspaceProviders };
-    const spawnTargets = config.spawnSessions ? new ProjectScopedSpawnTargetResolver(projectWorkspaceDeps) : undefined;
+    const spawnTargets = new ProjectScopedSpawnTargetResolver(projectWorkspaceDeps);
     const sessions = new PiSessionService(eventHub, sessionServiceDependencies({
       modelRuntime: auth.runtime,
       agentDir: activeAgentProfile.dir,
@@ -270,8 +270,7 @@ async function createSessionDaemonRuntime() {
       operationLedgerDir: piWebDataDir(daemonEnvironment),
       workspaceActivity,
       logger: app.log,
-      ...(spawnTargets === undefined ? {} : { spawnTargets }),
-      subsessionsEnabled: config.subsessions,
+      spawnTargets,
       askUserEnabled: config.askUser,
       hostContributions: {
         // Sessions always run nested in this daemon, so they always get the

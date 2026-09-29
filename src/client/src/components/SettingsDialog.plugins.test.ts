@@ -161,7 +161,6 @@ describe("settings-dialog plugin settings machine targeting", () => {
     const gatewayConfig = configResponse({
       host: "127.0.0.1",
       shortcuts: { "core:view.chat": "mod+1" },
-      spawnSessions: false,
       plugins: { info: { enabled: false }, gateway: { settings: { theme: "dark" } } },
     });
     const savedConfig = configResponse({ plugins: { info: { enabled: true }, gateway: { settings: { theme: "dark" } } } });
@@ -183,20 +182,17 @@ describe("settings-dialog plugin settings machine targeting", () => {
       config: {
         host: "127.0.0.1",
         shortcuts: { "core:view.chat": "mod+1" },
-        spawnSessions: false,
         plugins: { info: { enabled: true }, gateway: { settings: { theme: "dark" } } },
       },
       effectiveConfig: {
         host: "127.0.0.1",
         shortcuts: { "core:view.chat": "mod+1" },
-        spawnSessions: false,
         plugins: { info: { enabled: true }, gateway: { settings: { theme: "dark" } } },
       },
     });
     expect(onConfigSaved).toHaveBeenCalledWith({
       host: "127.0.0.1",
       shortcuts: { "core:view.chat": "mod+1" },
-      spawnSessions: false,
       plugins: { info: { enabled: true }, gateway: { settings: { theme: "dark" } } },
     });
   });

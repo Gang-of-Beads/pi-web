@@ -4,7 +4,7 @@ import { customElement, property } from "lit/decorators.js";
 import type { PiWebConfigResponse, PiWebConfigValues } from "../../api";
 import "./SettingsPanelFrame";
 import type { SettingsNotice } from "./SettingsPanelFrame";
-import { askUserConfigPatch, spawnSessionsConfigPatch, subsessionsConfigPatch } from "./settingsSessiondConfig";
+import { askUserConfigPatch } from "./settingsSessiondConfig";
 import { interactiveSurfaceStyles } from "../shared";
 
 @customElement("settings-sessiond-panel")
@@ -20,13 +20,6 @@ export class SettingsSessiondPanel extends LitElement {
 
   override render(): TemplateResult {
     const config = this.configResponse;
-    const spawnOverridden = config?.envOverrides.spawnSessions === true;
-    // On by default: the effective config is the source of truth for the toggle
-    // state, so an unset config file still shows the feature as enabled.
-    const effectiveSpawn = config?.effectiveConfig.spawnSessions !== false;
-    const subsessionsOverridden = config?.envOverrides.subsessions === true;
-    // On by default; also requires spawn to be enabled.
-    const effectiveSubsessions = config?.effectiveConfig.subsessions === true && effectiveSpawn;
     const askUserOverridden = config?.envOverrides.askUser === true;
     const effectiveAskUser = config?.effectiveConfig.askUser === true;
     return html`
@@ -42,38 +35,6 @@ export class SettingsSessiondPanel extends LitElement {
           <div class="config-path-card">
             <span>Config file</span>
             <code>${config.path}</code>
-          </div>
-          <div class="field">
-            <span class="field-heading">
-              <span>Allow agents to start sessions</span>
-              ${spawnOverridden ? html`<span class="override-badge">environment override</span>` : null}
-            </span>
-            <label class="toggle">
-              <input
-                type="checkbox"
-                .checked=${effectiveSpawn}
-                ?disabled=${this.loading || this.saving || spawnOverridden}
-                @change=${(event: Event) => { void this.toggleSpawnSessions(event); }}
-              >
-              <span>Enable the <code>spawn_session</code> tool</span>
-            </label>
-            <small>When enabled, LLMs can start new sessions, constrained to a workspace (any worktree) of the same registered project so every spawned session stays visible here. On by default.</small>
-          </div>
-          <div class="field">
-            <span class="field-heading">
-              <span>Allow agents to start tracked subsessions</span>
-              ${subsessionsOverridden ? html`<span class="override-badge">environment override</span>` : null}
-            </span>
-            <label class="toggle">
-              <input
-                type="checkbox"
-                .checked=${effectiveSubsessions}
-                ?disabled=${this.loading || this.saving || subsessionsOverridden || !effectiveSpawn}
-                @change=${(event: Event) => { void this.toggleSubsessions(event); }}
-              >
-              <span>Enable the <code>spawn_subsession</code> tools</span>
-            </label>
-            <small>Agents can start child sessions they stay attached to (<code>spawn_subsession</code>, <code>list_subsessions</code>, <code>check_subsession</code>, <code>read_subsession</code>) and are notified when a child finishes. Requires "Allow agents to start sessions". On by default.</small>
           </div>
           <div class="field">
             <span class="field-heading">
@@ -94,8 +55,6 @@ export class SettingsSessiondPanel extends LitElement {
           <section class="effective-card" aria-label="Desired session daemon configuration summary">
             <h3>Desired after environment overrides</h3>
             <dl>
-              <div><dt>Spawn sessions</dt><dd>${effectiveSpawn ? "Enabled" : html`<span class="muted">Disabled</span>`}</dd></div>
-              <div><dt>Subsessions</dt><dd>${effectiveSubsessions ? "Enabled" : html`<span class="muted">Disabled</span>`}</dd></div>
               <div><dt>Ask questions</dt><dd>${effectiveAskUser ? "Enabled" : html`<span class="muted">Disabled</span>`}</dd></div>
             </dl>
           </section>
@@ -113,16 +72,6 @@ export class SettingsSessiondPanel extends LitElement {
 
   private renderUnavailableConfigState(): TemplateResult {
     return html`<div class="loading-card">${this.loading ? "Loading configuration…" : "Configuration is unavailable. Reload to try again."}</div>`;
-  }
-
-  private async toggleSpawnSessions(event: Event): Promise<void> {
-    const enabled = event.target instanceof HTMLInputElement && event.target.checked;
-    await this.onSave?.(spawnSessionsConfigPatch(enabled));
-  }
-
-  private async toggleSubsessions(event: Event): Promise<void> {
-    const enabled = event.target instanceof HTMLInputElement && event.target.checked;
-    await this.onSave?.(subsessionsConfigPatch(enabled));
   }
 
   private async toggleAskUser(event: Event): Promise<void> {

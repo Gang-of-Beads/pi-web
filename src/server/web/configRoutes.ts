@@ -13,8 +13,6 @@ export const SELECTED_MACHINE_CONFIG_KEYS = [
   "pathAccess",
   "uploads",
   "maxUploadBytes",
-  "spawnSessions",
-  "subsessions",
   "askUser",
   "agent",
 ] as const satisfies readonly (keyof PiWebConfigValues)[];
@@ -130,8 +128,6 @@ function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "curr
   const pathAccess = value["pathAccess"];
   const uploads = value["uploads"];
   const maxUploadBytes = value["maxUploadBytes"];
-  const spawnSessions = value["spawnSessions"];
-  const subsessions = value["subsessions"];
   const askUser = value["askUser"];
   const agent = value["agent"];
   if (host !== undefined) {
@@ -148,14 +144,6 @@ function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "curr
   if (pathAccess !== undefined) config.pathAccess = parsePathAccessRequest(pathAccess);
   if (uploads !== undefined) config.uploads = parseUploadsConfig(uploads, "request");
   if (maxUploadBytes !== undefined) config.maxUploadBytes = parseMaxUploadBytesRequest(maxUploadBytes);
-  if (spawnSessions !== undefined) {
-    if (typeof spawnSessions !== "boolean") throw new Error("PI WEB config spawnSessions must be a boolean");
-    config.spawnSessions = spawnSessions;
-  }
-  if (subsessions !== undefined) {
-    if (typeof subsessions !== "boolean") throw new Error("PI WEB config subsessions must be a boolean");
-    config.subsessions = subsessions;
-  }
   if (askUser !== undefined) {
     if (typeof askUser !== "boolean") throw new Error("PI WEB config askUser must be a boolean");
     config.askUser = askUser;
@@ -170,8 +158,6 @@ function pickSelectedMachineConfig(config: PiWebConfigValues): PiWebConfig {
     ...(config.pathAccess !== undefined ? { pathAccess: config.pathAccess } : {}),
     ...(config.uploads !== undefined ? { uploads: config.uploads } : {}),
     ...(config.maxUploadBytes !== undefined ? { maxUploadBytes: config.maxUploadBytes } : {}),
-    ...(config.spawnSessions !== undefined ? { spawnSessions: config.spawnSessions } : {}),
-    ...(config.subsessions !== undefined ? { subsessions: config.subsessions } : {}),
     ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
   };
@@ -246,8 +232,6 @@ function parsePiWebConfigEnvOverridesResponse(value: unknown, source: string): P
     host: requireResponseBoolean(record, "host", source),
     port: requireResponseBoolean(record, "port", source),
     allowedHosts: requireResponseBoolean(record, "allowedHosts", source),
-    spawnSessions: requireResponseBoolean(record, "spawnSessions", source),
-    subsessions: requireResponseBoolean(record, "subsessions", source),
     askUser: requireResponseBoolean(record, "askUser", source),
   };
 }
@@ -274,8 +258,6 @@ function piWebConfigEnvOverrides(env: NodeJS.ProcessEnv): PiWebConfigEnvOverride
     host: isEnvSet(env["PI_WEB_HOST"]),
     port: isEnvSet(env["PI_WEB_PORT"]) || isEnvSet(env["PORT"]),
     allowedHosts: isEnvSet(env["PI_WEB_ALLOWED_HOSTS"]),
-    spawnSessions: isEnvSet(env["PI_WEB_SPAWN_SESSIONS"]),
-    subsessions: isEnvSet(env["PI_WEB_SUBSESSIONS"]),
     askUser: isEnvSet(env["PI_WEB_ASK_USER"]),
   };
 }

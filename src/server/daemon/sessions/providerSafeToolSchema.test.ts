@@ -86,23 +86,19 @@ describe("applying it to a session's tools", () => {
   });
 });
 
-describe("the tool that actually failed", () => {
-  it("stops sending read_subsession's integer bounds", async () => {
-    const { createSubsessionToolDefinitions } = await import("./spawnSubsessionTool");
-    const definitions = createSubsessionToolDefinitions("/tmp", {
-      spawn: () => Promise.resolve({ sessionId: "x", cwd: "/tmp" }),
-      list: () => Promise.resolve([]),
-      check: () => Promise.resolve({ sessionId: "x", cwd: "/tmp", status: "idle" as const, finalText: "", messageCount: 0 }),
-      read: () => Promise.resolve({ sessionId: "x", cwd: "/tmp", status: "idle" as const, entries: [], total: 0, matched: 0, start: 0, hasMore: false }),
-    });
-    const readTool = definitions.find((definition) => definition.name === "read_subsession");
-    if (readTool === undefined) throw new Error("read_subsession is gone; the tool this bug was reported against moved");
-    const parameters: unknown = readTool.parameters;
+describe("the tool shape that actually failed", () => {
+  it("stops sending the bounds of a paging tool's integer arguments", () => {
+    const parameters: unknown = {
+      type: "object",
+      properties: {
+        before: { type: "integer", minimum: 0 },
+        limit: { type: "integer", minimum: 1, maximum: 200 },
+        maxChars: { type: "integer", minimum: 1 },
+      },
+    };
+    expect(JSON.stringify(parameters)).toContain("minimum");
 
-    const before = JSON.stringify(parameters);
-    expect(before, "read_subsession no longer carries bounds, so this guard stopped meaning anything").toContain("minimum");
-
-    const tools = definitions.map((definition): { name: string; parameters: unknown } => ({ name: definition.name, parameters: definition.parameters }));
+    const tools = [{ name: "read_transcript", parameters }];
     expect(applyProviderSafeToolSchemas({
       getAllTools: () => tools,
       getToolDefinition: (name) => tools.find((definition) => definition.name === name),

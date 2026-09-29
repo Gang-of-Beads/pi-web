@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS, DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_UPLOADS_FOLDER, AGENT_SESSION_DIR_ENV_KEYS, agentSessionDirEnvOverride, askUserEnabled, detectDeprecatedAgentInputs, effectiveAgentConfig, environmentFactsEnabled, effectivePiWebConfig, loadPiWebConfig, maxUploadBytes, offlineModeEnabled, savePiWebConfig, spawnSessionsEnabled, subsessionsEnabled } from "./config.js";
+import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS, DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_UPLOADS_FOLDER, AGENT_SESSION_DIR_ENV_KEYS, agentSessionDirEnvOverride, askUserEnabled, detectDeprecatedAgentInputs, effectiveAgentConfig, environmentFactsEnabled, effectivePiWebConfig, loadPiWebConfig, maxUploadBytes, offlineModeEnabled, savePiWebConfig } from "./config.js";
 
 let tempDir: string;
 let configPath: string;
@@ -14,6 +14,16 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true });
+});
+
+describe("the retired delegation keys", () => {
+  it("load without effect and survive a save, so an existing config file keeps working", async () => {
+    await writeFile(configPath, JSON.stringify({ port: 9000, spawnSessions: false, subsessions: true }));
+
+    expect(loadPiWebConfig(testOptions()).config).toEqual({ port: 9000 });
+    savePiWebConfig({ port: 9001 }, testOptions());
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({ port: 9001, spawnSessions: false, subsessions: true });
+  });
 });
 
 describe("PI WEB config persistence", () => {
@@ -263,36 +273,6 @@ describe("extensionDialogsTimeoutMs", () => {
     await writeFile(configPath, `${JSON.stringify({ extensionDialogsTimeoutMs: 0 }, null, 2)}\n`, "utf8");
 
     expect(effectivePiWebConfig(testOptions()).config.extensionDialogsTimeoutMs).toBe(0);
-  });
-});
-
-describe("spawnSessionsEnabled", () => {
-  it("is on by default when nothing is configured", () => {
-    expect(spawnSessionsEnabled({}, {})).toBe(true);
-  });
-
-  it("honors an explicit config opt-out", () => {
-    expect(spawnSessionsEnabled({}, { spawnSessions: false })).toBe(false);
-  });
-
-  it("lets the env var override the config in both directions", () => {
-    expect(spawnSessionsEnabled({ PI_WEB_SPAWN_SESSIONS: "0" }, { spawnSessions: true })).toBe(false);
-    expect(spawnSessionsEnabled({ PI_WEB_SPAWN_SESSIONS: "1" }, { spawnSessions: false })).toBe(true);
-  });
-});
-
-describe("subsessionsEnabled", () => {
-  it("is on by default", () => {
-    expect(subsessionsEnabled({}, {})).toBe(true);
-  });
-
-  it("honors an explicit config opt-out", () => {
-    expect(subsessionsEnabled({}, { subsessions: false })).toBe(false);
-  });
-
-  it("lets the env var override the config in both directions", () => {
-    expect(subsessionsEnabled({ PI_WEB_SUBSESSIONS: "1" }, { subsessions: false })).toBe(true);
-    expect(subsessionsEnabled({ PI_WEB_SUBSESSIONS: "0" }, { subsessions: true })).toBe(false);
   });
 });
 

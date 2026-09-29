@@ -27,7 +27,7 @@ describe("settings-dialog session daemon machine targeting", () => {
   });
 
   it("loads session-daemon config from the selected machine", async () => {
-    const config = configResponse({ spawnSessions: false, subsessions: true });
+    const config = configResponse({ askUser: false });
     const configSpy = vi.spyOn(configApi, "config").mockResolvedValue(config);
     const dialog = new SettingsDialog();
     dialog.machine = remoteMachine;
@@ -41,7 +41,7 @@ describe("settings-dialog session daemon machine targeting", () => {
   });
 
   it("reloads session-daemon config and refreshes the machine runtime together", async () => {
-    const config = configResponse({ spawnSessions: false, subsessions: true });
+    const config = configResponse({ askUser: false });
     const configSpy = vi.spyOn(configApi, "config").mockResolvedValue(config);
     const runtimeRefresh = vi.fn(() => Promise.resolve());
     const dialog = new SettingsDialog();
@@ -57,24 +57,24 @@ describe("settings-dialog session daemon machine targeting", () => {
 
   it("saves local session-daemon config through the local machine alias and updates local daemon state", async () => {
     stubWindowTimers();
-    const gatewayConfig = configResponse({ host: "127.0.0.1", spawnSessions: false, subsessions: false });
-    const savedConfig = configResponse({ spawnSessions: true });
+    const gatewayConfig = configResponse({ host: "127.0.0.1", askUser: false });
+    const savedConfig = configResponse({ askUser: true });
     const saveSpy = vi.spyOn(configApi, "saveConfig").mockResolvedValue(savedConfig);
     const dialog = new SettingsDialog();
     setDialogProperty(dialog, "configResponse", gatewayConfig);
 
-    await callDialogPromise(dialog, "saveSessiondConfig", { spawnSessions: true });
+    await callDialogPromise(dialog, "saveSessiondConfig", { askUser: true });
 
-    expect(saveSpy.mock.calls).toEqual([[{ spawnSessions: true }, "local"]]);
+    expect(saveSpy.mock.calls).toEqual([[{ askUser: true }, "local"]]);
     expect(getDialogProperty(dialog, "sessiondConfigResponse")).toBe(savedConfig);
-    expect(getDialogProperty(dialog, "configResponse")).toMatchObject({ config: { host: "127.0.0.1", spawnSessions: true, subsessions: false } });
+    expect(getDialogProperty(dialog, "configResponse")).toMatchObject({ config: { host: "127.0.0.1", askUser: true } });
     expect(getDialogProperty(dialog, "savedMessage")).toBe("Config saved.");
     expect(getDialogProperty(dialog, "saving")).toBe(false);
   });
 
   it("saves session-daemon toggles on the selected remote machine", async () => {
     stubWindowTimers();
-    const patch = { spawnSessions: false, subsessions: true };
+    const patch = { askUser: true };
     const saved = configResponse(patch);
     const saveSpy = vi.spyOn(configApi, "saveConfig").mockResolvedValue(saved);
     const dialog = new SettingsDialog();
@@ -97,7 +97,7 @@ describe("settings-dialog session daemon machine targeting", () => {
 
     dialog.machine = secondRemoteMachine;
     callDialogUpdated(dialog, new Map([["machine", remoteMachine]]));
-    load.resolve(configResponse({ spawnSessions: false }));
+    load.resolve(configResponse({ askUser: false }));
     await loadPromise;
 
     expect(getDialogProperty(dialog, "sessiondConfigResponse")).toBeUndefined();
@@ -112,11 +112,11 @@ describe("settings-dialog session daemon machine targeting", () => {
     const dialog = new SettingsDialog();
     dialog.machine = remoteMachine;
 
-    const savePromise = callDialogPromise(dialog, "saveSessiondConfig", { subsessions: true });
+    const savePromise = callDialogPromise(dialog, "saveSessiondConfig", { askUser: true });
     expect(getDialogProperty(dialog, "saving")).toBe(true);
 
     dialog.machine = secondRemoteMachine;
-    save.resolve(configResponse({ subsessions: true }));
+    save.resolve(configResponse({ askUser: true }));
     await savePromise;
 
     expect(getDialogProperty(dialog, "sessiondConfigResponse")).toBeUndefined();

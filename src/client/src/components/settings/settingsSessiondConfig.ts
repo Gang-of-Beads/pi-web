@@ -1,12 +1,6 @@
 import type { PiWebConfigResponse, PiWebConfigValues } from "../../api";
 
-export function spawnSessionsConfigPatch(enabled: boolean): PiWebConfigValues {
-  return { spawnSessions: enabled };
-}
 
-export function subsessionsConfigPatch(enabled: boolean): PiWebConfigValues {
-  return { subsessions: enabled };
-}
 
 export function askUserConfigPatch(enabled: boolean): PiWebConfigValues {
   return { askUser: enabled };
@@ -19,8 +13,6 @@ export function mergeSelectedMachineSessiondConfig(base: PiWebConfigResponse, se
     effectiveConfig: { ...base.effectiveConfig, ...selectedMachine.effectiveConfig },
     envOverrides: {
       ...base.envOverrides,
-      spawnSessions: selectedMachine.envOverrides.spawnSessions,
-      subsessions: selectedMachine.envOverrides.subsessions,
       askUser: selectedMachine.envOverrides.askUser,
     },
   };

@@ -10,7 +10,6 @@ describe("selected-machine access config helpers", () => {
       allowedHosts: ["gateway.local"],
       shortcuts: { "core:view.chat": "mod+1" },
       plugins: { info: { enabled: true } },
-      spawnSessions: false,
       pathAccess: { allowedPaths: ["/old"] },
       uploads: { defaultFolder: "old/uploads" },
       maxUploadBytes: 1234,
@@ -29,7 +28,6 @@ describe("selected-machine access config helpers", () => {
         allowedHosts: ["gateway.local"],
         shortcuts: { "core:view.chat": "mod+1" },
         plugins: { info: { enabled: true } },
-        spawnSessions: false,
         pathAccess: { allowedPaths: ["~/SDKs"] },
         uploads: { defaultFolder: "manual/uploads" },
         maxUploadBytes: 5678,
@@ -40,7 +38,6 @@ describe("selected-machine access config helpers", () => {
         allowedHosts: ["gateway.local"],
         shortcuts: { "core:view.chat": "mod+1" },
         plugins: { info: { enabled: true } },
-        spawnSessions: false,
         pathAccess: { allowedPaths: ["~/SDKs"] },
         uploads: { defaultFolder: "manual/uploads" },
         maxUploadBytes: 5678,
@@ -81,6 +78,6 @@ function configResponse(config: PiWebConfigValues): PiWebConfigResponse {
     exists: true,
     config,
     effectiveConfig: config,
-    envOverrides: { host: false, port: false, allowedHosts: false, spawnSessions: false, subsessions: false, askUser: false },
+    envOverrides: { host: false, port: false, allowedHosts: false, askUser: false },
   };
 }

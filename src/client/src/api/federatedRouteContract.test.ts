@@ -134,7 +134,7 @@ describe("federated route contract", () => {
       ignoreParseFailure(piWebApi.piWebStatus(machineId)),
       ignoreParseFailure(piWebApi.checkForUpdates(machineId)),
       ignoreParseFailure(configApi.config(machineId)),
-      ignoreParseFailure(configApi.saveConfig({ spawnSessions: true }, machineId)),
+      ignoreParseFailure(configApi.saveConfig({ askUser: true }, machineId)),
       ignoreParseFailure(pluginsApi.plugins(machineId)),
       ignoreParseFailure(piPackagesApi.packages(machineId)),
       ignoreParseFailure(piPackagesApi.install("npm:@acme/tools", machineId)),

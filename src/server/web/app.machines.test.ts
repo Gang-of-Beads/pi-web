@@ -129,7 +129,7 @@ describe("buildApp machine routes", () => {
     const response = await appTestContext.app.inject({
       method: "PUT",
       url: `/api/machines/${remote.id}/config`,
-      payload: { config: { plugins: { info: { enabled: false } }, pathAccess: { allowedPaths: ["/srv/remote"] }, uploads: { defaultFolder: "remote\\uploads" }, maxUploadBytes: 4096, spawnSessions: true, agent: { command: "remote-agent", dir: "/srv/remote-agent" } } },
+      payload: { config: { plugins: { info: { enabled: false } }, pathAccess: { allowedPaths: ["/srv/remote"] }, uploads: { defaultFolder: "remote\\uploads" }, maxUploadBytes: 4096, askUser: true, agent: { command: "remote-agent", dir: "/srv/remote-agent" } } },
     });
 
     const expectedMerged: PiWebConfigValues = {
@@ -138,7 +138,7 @@ describe("buildApp machine routes", () => {
       pathAccess: { allowedPaths: ["/srv/remote"] },
       uploads: { defaultFolder: "remote/uploads" },
       maxUploadBytes: 4096,
-      spawnSessions: true,
+      askUser: true,
       agent: { command: "remote-agent", dir: "/srv/remote-agent" },
     };
     expect(response.statusCode).toBe(200);
@@ -149,8 +149,7 @@ describe("buildApp machine routes", () => {
       pathAccess: { allowedPaths: ["/srv/remote"] },
       uploads: { defaultFolder: "remote/uploads" },
       maxUploadBytes: 4096,
-      spawnSessions: true,
-      subsessions: false,
+      askUser: true,
       agent: { command: "remote-agent", dir: "/srv/remote-agent" },
     });
   });
@@ -169,11 +168,11 @@ describe("buildApp machine routes", () => {
     const response = await appTestContext.app.inject({
       method: "PUT",
       url: `/api/machines/${remote.id}/config`,
-      payload: { config: { spawnSessions: true } },
+      payload: { config: { askUser: true } },
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json<PiWebConfigResponse>().config.spawnSessions).toBe(true);
+    expect(response.json<PiWebConfigResponse>().config.askUser).toBe(true);
   });
 
   it("preserves foreign-platform agent paths across the federation transport", async () => {
@@ -208,7 +207,7 @@ describe("buildApp machine routes", () => {
     const response = await appTestContext.app.inject({
       method: "PUT",
       url: `/api/machines/${remote.id}/config`,
-      payload: { config: { host: "0.0.0.0", allowedHosts: true, shortcuts: { "core:view.chat": "mod+1" }, spawnSessions: true } },
+      payload: { config: { host: "0.0.0.0", allowedHosts: true, shortcuts: { "core:view.chat": "mod+1" }, askUser: true } },
     });
 
     expect(response.statusCode).toBe(400);

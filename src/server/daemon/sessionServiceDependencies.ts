@@ -24,10 +24,8 @@ export interface SessionServiceDependencyInput {
   onUnreadChanged: NonNullable<PiSessionServiceDependencies["onUnreadChanged"]>;
   /** Read-only view of the background refresher; see the assembly below. */
   catalogRefreshStatus: NonNullable<PiSessionServiceDependencies["catalogRefreshStatus"]>;
-  /** Omitted when the operator has not enabled session spawning. */
+  /** Project-scope resolver behind the spawn and subsession routes; omitted in tests that spawn nothing. */
   spawnTargets?: NonNullable<PiSessionServiceDependencies["spawnTargets"]>;
-  /** The operator's subsessions preference, which also requires spawning. */
-  subsessionsEnabled: boolean;
   /** Whether agents may post structured question sets to the browser. */
   askUserEnabled: boolean;
   /** Everything the host adds to what sessions receive; THE seam, as data. */
@@ -55,9 +53,6 @@ export function sessionServiceDependencies(input: SessionServiceDependencyInput)
     workspaceActivity: input.workspaceActivity,
     logger: input.logger,
     ...(input.spawnTargets === undefined ? {} : { spawnTargets: input.spawnTargets }),
-    // Tracked subsessions share the spawn capability's project-scope resolver,
-    // so they stay off unless spawning is configured too.
-    subsessionsEnabled: input.spawnTargets !== undefined && input.subsessionsEnabled,
     askUserEnabled: input.askUserEnabled,
     hostContributions: input.hostContributions,
     extensionDialogsTimeoutMs: input.extensionDialogsTimeoutMs,

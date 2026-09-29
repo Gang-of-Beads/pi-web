@@ -89,7 +89,7 @@ import { PendingExtensionDialogStore, type ExtensionDialogCancelReason } from ".
 import type { PendingExtensionDialog } from "../../../shared/apiTypes.js";
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../../config.js";
-import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type SpawnSessionResult } from "./spawnSessionTool.js";
+import type { DelegationRequest, SpawnSessionInvocation, SpawnSessionResult, SpawnSubsessionInvocation, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionStatus, SubsessionSummary } from "./delegation.js";
 import { createBackgroundRunCountCycle } from "./backgroundRunCount.js";
 import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
@@ -101,7 +101,6 @@ import { createDurableAcceptanceLedger, type AcceptanceFace } from "./operationL
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { OwnedPromptQueue, dataDirInboxLocation, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry } from "./ownedPromptQueue.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
-import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
 import { applyProviderSafeToolSchemas } from "./providerSafeToolSchema.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
 import { planSessionCleanup, summarizeSessionCleanupExecution, type NormalizedSessionCleanupRequest, type SessionCleanupPlan } from "./sessionCleanup.js";
@@ -181,7 +180,15 @@ function spawnTargetError(decision: Extract<SpawnTargetDecision, { allowed: fals
  * message names the rule and both supported ways to get work done elsewhere.
  */
 function subsessionCwdError(spawningCwd: string, requestedCwd: string): Error {
-  return new Error(`A tracked subsession runs in this session's working directory (${spawningCwd}); ${requestedCwd} was requested. Instruct the child to work elsewhere from this workspace, or use spawn_session for an independent session in another workspace.`);
+  return new Error(`A tracked subsession runs in this session's working directory (${spawningCwd}); ${requestedCwd} was requested. Instruct the child to work elsewhere from this workspace, or start an independent session in the other workspace.`);
+}
+
+function inheritedModelFields(session: PiAgentSession, modelSpec: string | undefined): Pick<SpawnSessionInvocation, "model" | "modelSpec" | "thinkingLevel"> {
+  return {
+    ...(session.model === undefined ? {} : { model: session.model }),
+    ...(modelSpec === undefined ? {} : { modelSpec }),
+    thinkingLevel: session.thinkingLevel,
+  };
 }
 
 function modelSpecOf(model: { provider: string; id: string }): string {
@@ -861,13 +868,11 @@ interface CreateAgentRuntimeOptions {
   cwd: string;
   agentDir: string;
   sessionManager: PiSessionManager;
-  delegationToolsEnabled: boolean;
   initialModel?: AgentModel;
   initialThinkingLevel?: ClientThinkingLevel;
 }
 
 type PiWebRuntimeFactoryOptions = Parameters<CreateAgentSessionRuntimeFactory>[0] & {
-  delegationToolsEnabled?: boolean;
   initialModel?: AgentModel;
   initialThinkingLevel?: ClientThinkingLevel;
 };
@@ -880,7 +885,7 @@ type CreateAgentRuntime = (createRuntime: PiWebCreateAgentSessionRuntimeFactory,
 
 function defaultCreateAgentRuntime(createRuntime: PiWebCreateAgentSessionRuntimeFactory, options: CreateAgentRuntimeOptions): Promise<PiSessionRuntime> {
   if (!(options.sessionManager instanceof SessionManager)) throw new Error("Default runtime creation requires an SDK SessionManager");
-  const runtimeFactory = createRuntimeWithOneShotSessionOptions(createRuntime, options.initialModel, options.initialThinkingLevel, options.delegationToolsEnabled);
+  const runtimeFactory = createRuntimeWithOneShotSessionOptions(createRuntime, options.initialModel, options.initialThinkingLevel);
   return createAgentSessionRuntime(runtimeFactory, {
     cwd: options.cwd,
     agentDir: options.agentDir,
@@ -892,45 +897,33 @@ function createRuntimeWithOneShotSessionOptions(
   createRuntime: PiWebCreateAgentSessionRuntimeFactory,
   initialModel: AgentModel | undefined,
   initialThinkingLevel: ClientThinkingLevel | undefined,
-  delegationToolsEnabled: boolean,
 ): CreateAgentSessionRuntimeFactory {
   // These inputs belong only to the session being opened. A later runtime
-  // replacement resolves its own model and delegation capability, and restores
-  // the thinking level from the existing session file.
+  // replacement resolves its own model, and restores the thinking level from
+  // the existing session file.
   let pendingInitialModel = initialModel;
   let pendingInitialThinkingLevel = initialThinkingLevel;
-  let pendingDelegationToolsEnabled: boolean | undefined = delegationToolsEnabled;
   return async (options) => {
     const model = pendingInitialModel;
     const thinkingLevel = pendingInitialThinkingLevel;
-    const toolsEnabled = pendingDelegationToolsEnabled;
     pendingInitialModel = undefined;
     pendingInitialThinkingLevel = undefined;
-    pendingDelegationToolsEnabled = undefined;
     return createRuntime({
       ...options,
       ...(model === undefined ? {} : { initialModel: model }),
       ...(thinkingLevel === undefined ? {} : { initialThinkingLevel: thinkingLevel }),
-      ...(toolsEnabled === undefined ? {} : { delegationToolsEnabled: toolsEnabled }),
     });
   };
 }
 
-type SpawnSessionFn = (input: SpawnSessionInvocation) => Promise<SpawnSessionResult>;
-
-export function createPiWebCustomToolDefinitions(
-  cwd: string,
-  delegationEnabled: boolean,
-  spawn?: SpawnSessionFn,
-  subsessions?: SubsessionToolDeps,
-  askUser?: AskUserToolDeps,
-) {
+/**
+ * The tools PI WEB puts on a session: pi's own `edit`, wrapped to compute a diff
+ * preview, and nothing it adds. Owner, 2026-09-30: "pi web不要给ai任何多余工具
+ * 都应该由用户自己插件定义" - delegation is a session route (docs/design/no-builtin-agent-tools.md).
+ */
+export function createPiWebCustomToolDefinitions(cwd: string, askUser?: AskUserToolDeps) {
   return [
     createPiWebEditToolDefinition(cwd),
-    ...(delegationEnabled && spawn !== undefined ? [createSpawnSessionToolDefinition(cwd, { spawn })] : []),
-    ...(delegationEnabled && subsessions !== undefined ? createSubsessionToolDefinitions(cwd, subsessions) : []),
-    // Asking the user is not delegation: the questions land in the session the
-    // user is already watching, so tracked children may ask too.
     ...(askUser === undefined ? [] : [createAskUserToolDefinition(askUser)]),
   ];
 }
@@ -1124,14 +1117,11 @@ export function piWebResourceLoaderOptions(
 
 function createDefaultRuntimeFactory(
   modelRuntime: ModelRuntime,
-  sessionManagers: Pick<PiSessionManagerGateway, "open">,
-  spawn?: SpawnSessionFn,
-  subsessions?: SubsessionToolDeps,
   askUser?: AskUserToolDeps,
   appendSystemPromptSections: readonly string[] = [],
 ): PiWebCreateAgentSessionRuntimeFactory {
   const resourceLoaderOptions = piWebResourceLoaderOptions(appendSystemPromptSections);
-  return async ({ cwd, agentDir, sessionManager, sessionStartEvent, initialModel, initialThinkingLevel, delegationToolsEnabled }) => {
+  return async ({ cwd, agentDir, sessionManager, sessionStartEvent, initialModel, initialThinkingLevel }) => {
     // PI WEB always honors pi's project-trust model. When the workspace ships
     // trust-requiring resources, trust is resolved exactly once, mirroring the
     // SDK's flow: the resource loader first loads the pre-trust extension set
@@ -1176,9 +1166,7 @@ function createDefaultRuntimeFactory(
       ...(initialThinkingLevel === undefined ? {} : { initialThinkingLevel }),
     });
     services.diagnostics.push(...modelOptions.diagnostics);
-    const resolvedDelegationToolsEnabled = delegationToolsEnabled
-      ?? await sessionAllowsDelegationTools(sessionManager, sessionManagers);
-    const customTools = createPiWebCustomToolDefinitions(cwd, resolvedDelegationToolsEnabled, spawn, subsessions, askUser);
+    const customTools = createPiWebCustomToolDefinitions(cwd, askUser);
     const result = await createAgentSessionFromServices({
       services,
       sessionManager,
@@ -1239,17 +1227,10 @@ export interface PiSessionServiceDependencies {
   heartbeatIntervalMs?: number;
   workspaceActivity?: Pick<WorkspaceActivityService, "applySessionStatus" | "applySessionActivity" | "removeSession" | "reconcileSessionActivity">;
   /**
-   * When provided, `spawn_session` is available to sessions whose creation
-   * provenance permits delegation, scoped to the project's workspaces.
-   * Omit to keep the capability disabled.
+   * Project-scope resolver behind the spawn and subsession routes. Omitted, every
+   * spawn is refused.
    */
   spawnTargets?: SpawnTargetResolver;
-  /**
-   * When true (and `spawnTargets` is provided), the tracked-subsession
-   * tools are available to sessions whose creation provenance permits
-   * delegation. On by default; the operator opts out via config or environment.
-   */
-  subsessionsEnabled?: boolean;
   /**
    * When true, `ask_user` is available to every session, so an agent can post a
    * question set to the browser. Independent of the delegation capabilities: the
@@ -1510,19 +1491,8 @@ export class PiSessionService implements SessionRouteService {
       deps.unreadPublicationRetryDelayMs ?? DEFAULT_UNREAD_PUBLICATION_RETRY_MS,
     );
     this.unreadPublicationRetryDelayMs = this.unreadPublicationRetryInitialMs;
-    // Subsessions are gated behind their own flag, and they
-    // also require the spawn capability (they share its project-scope resolver).
-    const subsessionsActive = this.spawnTargets !== undefined && deps.subsessionsEnabled === true;
     this.createRuntime = deps.createRuntime ?? createDefaultRuntimeFactory(
       this.modelRuntime,
-      this.sessionManager,
-      this.spawnTargets === undefined ? undefined : (input) => this.spawnSession(input),
-      !subsessionsActive ? undefined : {
-        spawn: (input) => this.spawnSubsession(input),
-        list: (parentSessionId, parentSessionFile) => this.listSubsessions(parentSessionId, parentSessionFile),
-        check: (parentSessionId, sessionId, parentSessionFile) => this.checkSubsession(parentSessionId, sessionId, parentSessionFile),
-        read: (parentSessionId, sessionId, query, parentSessionFile) => this.readSubsession(parentSessionId, sessionId, query, parentSessionFile),
-      },
       deps.askUserEnabled === true ? { open: (input) => this.openAsk(input) } : undefined,
       deps.hostContributions?.systemPromptSections ?? [],
     );
@@ -1840,7 +1810,7 @@ export class PiSessionService implements SessionRouteService {
     await this.prompt(created, input.prompt);
     this.logger.info(
       { spawningCwd: input.spawningCwd, sessionId: created.id, cwd: decision.cwd, promptLength: input.prompt.length },
-      "spawn_session started a new session",
+      "spawn route started a new session",
     );
     return {
       sessionId: created.id,
@@ -1892,7 +1862,7 @@ export class PiSessionService implements SessionRouteService {
     await this.prompt(created, input.prompt);
     this.logger.info(
       { parentSessionId: input.parentSessionId, sessionId: created.id, cwd: decision.cwd, promptLength: input.prompt.length },
-      "spawn_subsession started a tracked child session",
+      "subsession route started a tracked child session",
     );
     return {
       sessionId: created.id,
@@ -2667,7 +2637,7 @@ export class PiSessionService implements SessionRouteService {
     const workingIds = this.workingSubsessionIds(link.parentSessionId);
     const next = workingIds.length === 0
       ? "No other tracked subsessions are working."
-      : `Still working: ${workingIds.join(", ")}. Continue working, or call yield_to_subsessions alone and last at the next join point. Further completion notices arrive automatically; do not poll.`;
+      : `Still working: ${workingIds.join(", ")}. Further completion notices arrive automatically; do not poll.`;
     const text = `Subsession ${childId} stopped working (${status}).\n${next}\n\n${outputSection}`;
     void this.notifyParentOfSubsession(link.parentSessionId, childId, text);
   }
@@ -2959,6 +2929,48 @@ export class PiSessionService implements SessionRouteService {
   async subsessions(ref: PiSessionRef): Promise<SubsessionSummary[]> {
     const session = await this.getOrOpen(ref);
     return this.listSubsessions(session.sessionId, session.sessionManager.getSessionFile());
+  }
+
+  /**
+   * Start an independent session from this one: the spawn route. The new session
+   * inherits this session's model and thinking level unless a `provider/model-id`
+   * is requested, exactly as the retired `spawn_session` tool read them.
+   */
+  async spawnFromSession(ref: PiSessionRef, request: DelegationRequest & { cwd?: string }): Promise<SpawnSessionResult> {
+    await this.assertWritable(ref);
+    const session = await this.getOrOpen(ref);
+    return this.spawnSession({
+      spawningCwd: session.sessionManager.getCwd(),
+      spawningSessionId: session.sessionId,
+      prompt: request.prompt,
+      cwd: request.cwd,
+      ...inheritedModelFields(session, request.model),
+    });
+  }
+
+  /** Start a tracked child of this session in its own workspace: the subsession route. */
+  async spawnSubsessionFromSession(ref: PiSessionRef, request: DelegationRequest): Promise<SpawnSubsessionResult> {
+    await this.assertWritable(ref);
+    const session = await this.getOrOpen(ref);
+    return this.spawnSubsession({
+      spawningCwd: session.sessionManager.getCwd(),
+      parentSessionId: session.sessionId,
+      parentSessionFile: session.sessionManager.getSessionFile(),
+      prompt: request.prompt,
+      ...inheritedModelFields(session, request.model),
+    });
+  }
+
+  /** One tracked child's status and last reply, scoped to this session's children. */
+  async subsessionCheck(ref: PiSessionRef, childSessionId: string): Promise<SubsessionCheckResult> {
+    const session = await this.getOrOpen(ref);
+    return this.checkSubsession(session.sessionId, childSessionId, session.sessionManager.getSessionFile());
+  }
+
+  /** One tracked child's filtered, paged transcript, scoped to this session's children. */
+  async subsessionTranscript(ref: PiSessionRef, childSessionId: string, query: SubsessionReadQuery): Promise<SubsessionReadResult> {
+    const session = await this.getOrOpen(ref);
+    return this.readSubsession(session.sessionId, childSessionId, query, session.sessionManager.getSessionFile());
   }
 
   async subagentRunOutput(ref: PiSessionRef, runId: string): Promise<string | undefined> {
@@ -4866,13 +4878,10 @@ export class PiSessionService implements SessionRouteService {
     startup: SessionStartupProgressReporter,
   ): Promise<ActiveSession<PiSessionRuntime>> {
     startup.report(STARTUP_PHASE_RUNTIME);
-    const delegationToolsEnabled = options.creationProvenance !== "tracked-subsession"
-      && await sessionAllowsDelegationTools(sessionManager, this.sessionManager);
     const runtime = await this.createAgentRuntime(this.createRuntime, {
       cwd,
       agentDir: this.agentDir,
       sessionManager,
-      delegationToolsEnabled,
       ...(options.initialModel === undefined ? {} : { initialModel: options.initialModel }),
       ...(options.initialThinkingLevel === undefined ? {} : { initialThinkingLevel: options.initialThinkingLevel }),
     });
@@ -6107,24 +6116,6 @@ interface TrackedSubsessionSessionIdentity {
   cwd: string;
 }
 
-/**
- * Resolve the delegation capability from server-owned, persisted session
- * provenance. A copied marker is not enough: the child header and reciprocal
- * parent link must identify the exact same session files.
- */
-export async function sessionAllowsDelegationTools(
-  sessionManager: PiSessionManager,
-  managers: Pick<PiSessionManagerGateway, "open">,
-): Promise<boolean> {
-  const trackedLink = await verifiedTrackedSubsessionLink(managers, {
-    sessionId: sessionManager.getSessionId(),
-    sessionFile: sessionManager.getSessionFile(),
-    sessionManager,
-    cwd: sessionManager.getCwd(),
-  });
-  return trackedLink === undefined;
-}
-
 async function verifiedTrackedSubsessionLink(
   managers: Pick<PiSessionManagerGateway, "open">,
   session: TrackedSubsessionSessionIdentity,
@@ -6537,7 +6528,7 @@ function boundToolResultMessage(message: unknown): unknown {
 /** custom entry type used to persist parent -> child subsession links outside LLM context. */
 const SUBSESSION_LINK_CUSTOM_TYPE = "pi-web.subsession.link";
 
-/** custom entry type used to mark a child as created by spawn_subsession. */
+/** custom entry type used to mark a child as created by the subsession route. */
 const SUBSESSION_CHILD_LINK_CUSTOM_TYPE = "pi-web.subsession.spawned";
 
 /** customType marking a parent-facing subsession-completion notice. */
@@ -6548,7 +6539,7 @@ const SUBSESSION_NOTIFICATION_MAX_OUTPUT_CHARS = 2000;
 /** Avoid duplicating a partial result in context when deliberate inspection can return the full output. */
 function formatSubsessionNotificationOutput(childSessionId: string, text: string): string {
   if (text.length > SUBSESSION_NOTIFICATION_MAX_OUTPUT_CHARS) {
-    return `Output from subsession ${childSessionId} was too long for this completion notice and was omitted. Call check_subsession with sessionId "${childSessionId}" to retrieve the final output.`;
+    return `Output from subsession ${childSessionId} was too long for this completion notice (${String(text.length)} characters) and was omitted. It is the child session's last reply.`;
   }
   return `--- SUBSESSION OUTPUT: ${childSessionId} ---\n${text === "" ? "(no output)" : text}`;
 }

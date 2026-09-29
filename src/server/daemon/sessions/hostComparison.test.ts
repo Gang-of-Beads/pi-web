@@ -78,7 +78,7 @@ async function buildHost(options: {
     sessionManager,
     model: testModel(),
     ...(options.webCustomTools === true
-      ? { customTools: createPiWebCustomToolDefinitions(cwd, false, undefined, undefined, undefined) }
+      ? { customTools: createPiWebCustomToolDefinitions(cwd) }
       : {}),
   });
   return result.session;
