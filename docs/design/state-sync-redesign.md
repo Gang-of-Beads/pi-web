@@ -923,3 +923,10 @@ The lane was DeepSeek on 9cbe9b71 and c85abb89, reading source only. Verdict: BL
 **Live.** `scripts/probe-navigate-close.mjs` (393x850 touch) scores c85abb89 4/6 (legs 5 and 6 fail as described) and this build 6/6. `probe-navigate` and the geometry baseline pass.
 
 Report-only, for the owner: the machine-wide page's "+ New session" still creates in the app's selected project. A partial `moveOutbox` leaves a copy under the old key, which nothing reads.
+
+**Invariant (navigation, after lanes 3 and 4 found the same symptom twice).** A way back never changes what it returns to: only an action the reader chose to change the selection, or a fact about the selection, may clear the session behind the navigation page. Every producer of `clearActiveSession` in the client, enumerated:
+- `navigateWiden` (PiWebApp): reached only from the page's grid key and path steps. Both now widen through the app only from a project the reader stepped into.
+- `handleMachineChange`, `selectProject`, `selectWorkspace` and `deselectSession`: the reader chose another machine, project or folder, or deselected.
+- The topology fallback (the folder vanished), `forgetProject` (the project was removed), and an archived session with no successor: facts.
+
+Open for the owner: choosing another project on the navigation page (stepping into it) still clears the session behind the page, because it selects that project. That is a deliberate choice, but the page is also a place to browse.
