@@ -408,6 +408,17 @@ A whole-inbox review that walked every user journey end to end. Every recorded f
 | F3 (P2) | Messages waiting for a closed session could be archived with it and later run inside the archived session at startup. A deleted session's waiting messages failed to resume at every start | TRUE | Fixed: bulk archive, cleanup and archived delete refuse or skip a closed session with waiting messages, the same rule an open one already has; opening it delivers them. The inbox hands nothing to a runtime opened to read an archived session, and startup resume skips archived sessions |
 | F4 (P2) | pi removes a read message from its shown lane by text and skips empty text, so a photo-only steer stayed shown after it was read. That held its own ledger row, and every later one, pending | TRUE (SDK) | Fixed: at a user message start with empty text, the daemon applies pi's own rule to the empty text: the same splice and queue update pi makes |
 
+
+## Phase 1 tenth gate-lane triage (DeepSeek 4.1 max, over d6277414)
+
+Verdict: **PASS: no P0 or P1.** The lane verified that no local hold id leaks from the daemon. It found F1 and F3 complete, and F2 and F4 correct in their mechanism. It reported three P2 items:
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| P2-1 | F4 was incomplete. The empty-text drop took the oldest empty lane entry. When an extension's empty-text follow-up was read, it could remove a photo-only steer still waiting in agent-core. The daemon then settled that steer succeeded, and Stop or close dropped it with no frame | TRUE | Fixed: the drop only removes an entry from the part of each lane the agent loop already took. The gate-9 F4 test now drains agent-core before its read, as the real loop does; its assertion is unchanged |
+| P2-2 | A Stop during a direct slash command whose handler parks waited out the 5 s bound, then stopped nothing | TRUE | Fixed: Stop does not wait for a command handoff, the same rule gate 2's G2 set for a command inside a steer batch. Teardown still waits within its own 5 s bound (limitation 7) |
+| Notes | (a) A direct handoff put back transiently while Stop clears is not announced; it waits and runs later. (b) `hasQueuedPromptClientId` was dead code. (c) `getArchived` compares cwd exactly, now also for the startup resume skip | (a) TRUE (b) TRUE (c) not reproduced | (a) Recorded as limitation 9. (b) Removed. (c) Pre-existing. A mismatch opens the session through the live path, which fails because the file is archived, so the messages keep waiting. Nothing is lost or run in the archive |
+
 ## Phase 1 known limitations
 
 Each was found by a review lane, checked against the source, and left unfixed for the reason given.
@@ -420,3 +431,4 @@ Each was found by a review lane, checked against the source, and left unfixed fo
 6. **A late busy refusal can put a message behind a younger one (gate 6 P2-3).** A handoff already counted as handed (a slash command released at run start) that is then refused as busy goes back to the head of the inbox, while a younger message may already sit in pi's lane and be read first.
 7. **A take-back bounded at teardown can give up (gate 6 P2-2).** If a handoff does not settle within 5 s of a close or shutdown (an extension input handler that never returns), what pi still holds goes with the runtime; its rows stay pending, so after a restart a retry runs it.
 8. **The closing lock has a 10 s ceiling (gate 7 P2-B).** A close whose abort never returns stops holding its session id after 10 s, so the id can reopen while the old runtime still winds down. The old runtime's late work leaves the new one's state alone, but both can then write the same session file.
+9. **A direct handoff put back while Stop clears is not handed back (gate 10 note).** If the SDK refuses a direct handoff as momentarily busy at the instant of a Stop, the message returns to the inbox after Stop's clear. It shows as waiting and runs later, not withdrawn. Clearing again after the handoff would also withdraw messages sent after the Stop.

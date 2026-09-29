@@ -1407,6 +1407,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly arrivalChains = new Map<string, Promise<unknown>>();
   private readonly handoffChains = new Map<string, Promise<unknown>>();
   private readonly handing = new Set<string>();
+  private readonly handingCommands = new Set<string>();
   /** Accepted prompt identities, so a lost response answers instead of re-running. */
   /**
    * Durable when the daemon has a data directory, in-memory otherwise (tests
@@ -3248,11 +3249,13 @@ export class PiSessionService implements SessionRouteService {
     const [entry] = await this.ownedQueue.take(sessionId, 1);
     if (entry === undefined) return;
     this.handing.add(sessionId);
+    if (this.isExtensionCommand(session, entry.text)) this.handingCommands.add(sessionId);
     let verdict: HandoffVerdict;
     try {
       verdict = await this.handToRuntime(session, entry, undefined);
     } finally {
       this.handing.delete(sessionId);
+      this.handingCommands.delete(sessionId);
     }
     if (verdict === "transient") {
       await this.ownedQueue.restoreFront(sessionId, [entry]);
@@ -3536,10 +3539,6 @@ export class PiSessionService implements SessionRouteService {
       const id = publishedId(entry.clientMessageId);
       if (target !== undefined && id !== undefined) target.clientMessageId = id;
     }
-  }
-
-  private hasQueuedPromptClientId(sessionId: string, clientMessageId: string): boolean {
-    return this.queuedPromptClientIds.get(sessionId)?.some((record) => record.clientMessageId === clientMessageId) === true;
   }
 
   private recordQueuedPromptImages(sessionId: string, text: string, images: ImageContent[]): void {
@@ -4618,9 +4617,11 @@ export class PiSessionService implements SessionRouteService {
    * handlers, image preparation - aborts nothing the SDK then starts: the message has left the
    * inbox and is in no lane, and the run it starts after the abort would ignore the Stop. Wait,
    * bounded, for that handoff to land (the chain ends at the message's commit), and stop the run.
+   * Not for a slash command: its handler may wait on anything, and Stop does not wait for it, as
+   * it does not inside a steer batch.
    */
   private async stopHandoffInFlight(session: PiAgentSession): Promise<void> {
-    if (!this.handing.has(session.sessionId)) return;
+    if (!this.handing.has(session.sessionId) || this.handingCommands.has(session.sessionId)) return;
     const outcome = await withinHandoffBound(this.handoffChains.get(session.sessionId) ?? Promise.resolve());
     if (outcome === "done" && session.isStreaming) await this.abortSessionOperations(session);
   }
@@ -6327,15 +6328,18 @@ export function turnStartedAtFromBranch(branch: readonly unknown[]): string | un
  * (`contentText(content, "")`), and skips a message without text: a photo-only steer stayed shown
  * after the agent read it, holding its own ledger row and every later one pending. The daemon
  * applies pi's own rule to the empty text - the same splice and queue update pi makes - on the
- * SDK's lane arrays, pinned by a real-SDK test.
+ * SDK's lane arrays, pinned by a real-SDK test. Only among the entries the agent loop already
+ * took: an empty-text message from elsewhere (an extension's follow-up) must not remove a
+ * photo-only steer that is still waiting to be read.
  */
 function dropReadEmptyLaneEntry(session: PiAgentSession, message: unknown): void {
   if (laneText(message) !== "") return;
-  for (const name of ["_steeringMessages", "_followUpMessages"]) {
+  const held = loopHeldCounts(session);
+  for (const [kind, name] of SDK_LANE_ARRAYS) {
     const lane: unknown = Reflect.get(session, name);
     if (!Array.isArray(lane)) continue;
     const index = lane.indexOf("");
-    if (index === -1) continue;
+    if (index === -1 || index >= held[kind]) continue;
     lane.splice(index, 1);
     const emitQueueUpdate: unknown = Reflect.get(session, "_emitQueueUpdate");
     if (typeof emitQueueUpdate === "function") Reflect.apply(emitQueueUpdate, session, []);
@@ -6353,6 +6357,8 @@ async function withinHandoffBound(work: Promise<unknown>): Promise<"done" | "tim
     clearTimeout(timer);
   }
 }
+
+const SDK_LANE_ARRAYS: readonly (readonly [QueuedPromptKind, string])[] = [["steer", "_steeringMessages"], ["followUp", "_followUpMessages"]];
 
 function laneText(message: unknown): string {
   const content = getProperty(message, "content");

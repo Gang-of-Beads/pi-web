@@ -1069,11 +1069,52 @@ describe("ninth gate-lane findings", () => {
     await service.prompt(ref, "and this", undefined, undefined, { clientMessageId: "g9f4-b-0001" });
     fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect(lane).toEqual(["", "and this"]); });
+    drainAgentQueues(fake.session.agent);
     fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "image", data: PNG_ATTACHMENT.data, mimeType: "image/png" }] } });
     lane.splice(lane.indexOf("and this"), 1);
     fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "and this" }] } });
     expect({ lane: [...lane], outcomes: service.operationOutcomes("g9-photo", ["g9f4-p-0001", "g9f4-b-0001"]) })
       .toEqual({ lane: [], outcomes: { "g9f4-p-0001": "succeeded", "g9f4-b-0001": "succeeded" } });
+    await service.dispose();
+  });
+});
+
+describe("tenth gate-lane findings", () => {
+  it("P2-1: an empty-text follow-up read by the agent does not remove a photo-only steer still waiting, and Stop hands that steer back", async () => {
+    const { fake, service, ref, lane } = await inboxService("g10-live-photo");
+    const followUp = [""];
+    Reflect.set(fake.session, "_steeringMessages", lane);
+    Reflect.set(fake.session, "_followUpMessages", followUp);
+    Reflect.set(fake.session, "_emitQueueUpdate", () => { fake.emit({ type: "queue_update", steering: [...lane], followUp: [...followUp] }); });
+    fake.session.getFollowUpMessages = () => [...followUp];
+    await service.prompt(ref, "", undefined, [PNG_ATTACHMENT], { clientMessageId: "g10-p-0001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(lane).toEqual([""]); });
+    drainAgentQueues(fake.session.agent, { steer: [{ role: "user", content: [] }] });
+    fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "" }, { type: "image", data: PNG_ATTACHMENT.data, mimeType: "image/png" }] } });
+    expect({ steering: [...lane], followUp: [...followUp], outcome: service.operationOutcomes("g10-live-photo", ["g10-p-0001"]) })
+      .toEqual({ steering: [""], followUp: [], outcome: { "g10-p-0001": "pending" } });
+    const { discarded } = await service.abort(ref);
+    expect({ discarded: discarded.map((entry) => entry.clientMessageId), outcome: service.operationOutcomes("g10-live-photo", ["g10-p-0001"]) })
+      .toEqual({ discarded: ["g10-p-0001"], outcome: { "g10-p-0001": "withdrawn" } });
+    await service.dispose();
+  });
+
+  it("P2-2: Stop does not wait for a direct command's handler", async () => {
+    const { fake, service, ref } = await inboxService("g10-direct-command", { isStreaming: false });
+    fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "ask-me" }];
+    let releaseHandler = (): void => undefined;
+    const handler = new Promise<void>((resolve) => { releaseHandler = resolve; });
+    fake.session.prompt = async (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      await handler;
+    };
+    await service.prompt(ref, "/ask-me", undefined, undefined, { clientMessageId: "g10-cmd-001" });
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["/ask-me"]); });
+    const stop = service.abort(ref);
+    const answered = await Promise.race([stop.then(() => "stopped"), new Promise((resolve) => setTimeout(() => { resolve("stop still waiting on the handler"); }, 500))]);
+    expect(answered).toBe("stopped");
+    releaseHandler();
     await service.dispose();
   });
 });
