@@ -88,6 +88,25 @@ describe("every bar producer", () => {
   });
 });
 
+/**
+ * Desktop exceptions the owner asked for on 2026-09-29, measured live by
+ * scripts/probe-desktop-edges.mjs: the context bar's keys stand on the conversation's edges,
+ * and the composer's action row has the same space below as above. Both are scoped to the
+ * desktop layout so the phone keeps the bar template.
+ */
+describe("desktop edges", () => {
+  const desktop = "@media not ((pointer: coarse) or (max-width: 760px))";
+  it("puts the context bar's keys on the conversation gutter, on desktop only", () => {
+    expect(read("./appShell/AppContextBar.ts")).toContain(`${desktop} {\n      .context-bar { padding-inline: var(--pi-chat-gutter); }`);
+  });
+
+  it("gives the composer's action row the gap from the input below it too, on desktop only", () => {
+    const css = read("./PromptEditor.ts");
+    expect(css).toContain("gap: var(--pi-space-4); padding: var(--pi-space-6) var(--pi-chat-gutter);");
+    expect(css).toContain(`${desktop} {\n    footer { padding-bottom: var(--pi-space-4); }`);
+  });
+});
+
 describe("controls inside bars", () => {
   it("are one control tall, never the touch floor that would fill the bar", () => {
     const contextBar = read("./appShell/AppContextBar.ts");

@@ -125,6 +125,12 @@ export class AppContextBar extends LitElement {
        they share a height: 44px of control plus the 1px rule, measured 45 on
        the rail and 53 here before the padding was taken out of the equation. */
     .context-bar { position: relative; flex: 0 0 auto; min-width: 0; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; gap: var(--pi-space-5); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
+    /* Desktop only (owner, 2026-09-29): the two keys stand on the conversation's edges, so the
+       column reads as one. On a phone the gutter is the bar inset already; a coarse pointer at
+       any width keeps the bar template. */
+    @media not ((pointer: coarse) or (max-width: 760px)) {
+      .context-bar { padding-inline: var(--pi-chat-gutter); }
+    }
     button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     @media (pointer: coarse) { button:active { background: var(--pi-surface-hover); } }
     .panel-toggle { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); }

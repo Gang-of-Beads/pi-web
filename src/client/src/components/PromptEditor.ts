@@ -76,6 +76,11 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .expand-composer-hint { display: inline-flex; flex: 0 0 auto; margin-inline-start: auto; color: var(--pi-muted); }
   .expand-composer-hint .ui-icon { width: var(--pi-dot-md); height: var(--pi-dot-md); }
   .expand-composer-draft { min-width: 0; overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-xs); text-overflow: ellipsis; white-space: nowrap; }
+  /* Desktop only (owner, 2026-09-29): the action row gets the same space below it as above it,
+     the gap from the input. The phone's bar rule centres the row on its own. */
+  @media not ((pointer: coarse) or (max-width: 760px)) {
+    footer { padding-bottom: var(--pi-space-4); }
+  }
   footer.shell-mode { border-top-color: var(--pi-success); background: var(--pi-success-bg); }
   .editor-wrap { min-width: 0; }
   /* The clip is clamped against the box it floats in, so that box must be the
