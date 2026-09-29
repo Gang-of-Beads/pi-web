@@ -9,8 +9,11 @@
  *      started the run - never arrived.
  *   2. Frames lost on the wire are repaired: with the daemon dropping frames to the socket, the
  *      streamed reply on the live page equals the same reply read fresh by a new page.
- *   3. A message waiting in the queue survives a reconnect refresh: the delta path rebuilt the
- *      transcript from the cache and dropped rows only this page held.
+ *   3. A message the daemon still queues stays one waiting row across a reconnect refresh. The
+ *      old delta path rebuilt the transcript from the cache and dropped rows only this page
+ *      held, leaving the replayed echo, a plain transcript row, in its place. The daemon's queue
+ *      is read before and after, so a message handed over meanwhile makes the leg
+ *      inconclusive instead of passing or failing it.
  *
  * Needs the stack started with PI_WEB_DEBUG_FRAME_DROP=1. The probe restarts the session
  * daemon twice through its tmux pane, and only ever a daemon whose working directory is this
@@ -18,6 +21,7 @@
  */
 
 import { execSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -28,7 +32,7 @@ const PROJECT = process.env.PI_WEB_PROBE_PROJECT ?? "991606fd-e498-4b93-a1ce-2af
 const WORKSPACE = process.env.PI_WEB_PROBE_WORKSPACE ?? "ef2cdf93e1ac";
 const SESSION = process.env.PI_WEB_PROBE_SESSION ?? "01a05000-5eed-7c00-8000-0000000000c1";
 const CWD = process.env.PI_WEB_PROBE_CWD ?? "/Users/hanxiao.du/.pi-web-8505/pi-web-8505-seed-workspace";
-const REPO = process.env.PI_WEB_PROBE_REPO ?? "/Users/hanxiao.du/Desktop/vincent/projects/pi-web";
+const REPO = realpathSync(process.env.PI_WEB_PROBE_REPO ?? "/Users/hanxiao.du/Desktop/vincent/projects/pi-web");
 const SESSIOND_TMUX = "pi-web-8505-sessiond";
 const SESSIOND_SOCKET = process.env.PI_WEB_PROBE_SESSIOND_SOCKET ?? join(homedir(), ".pi-web-8505", "sessiond.sock");
 if (REPO.startsWith("/nix/")) throw new Error("refusing to restart a daemon run from the Nix store");
@@ -228,16 +232,20 @@ try {
     waiting = await userRows(reopened, markerE);
   }
   if (!(waiting.length === 1 && ["received", "queued"].includes(waiting[0].state))) throw new Error(`precondition: message E never waited in the queue (${JSON.stringify(waiting)})`);
-  if ((await status()).isStreaming !== true) throw new Error("precondition: the agent finished before the refresh; the leg would not hold a waiting row");
+  const daemonQueuesE = async () => {
+    const current = await status();
+    return current.isStreaming === true && (current.queuedMessages ?? []).some((entry) => typeof entry.text === "string" && entry.text.includes(markerE));
+  };
+  if (!(await daemonQueuesE())) throw new Error("precondition: the daemon did not hold message E before the refresh; the leg would not hold a waiting row");
   const syncs = [];
   reopened.on("request", (request) => { if (request.url().includes("stream-snapshot") && request.url().includes("sinceSeq=")) syncs.push(request.url()); });
   await reopened.evaluate(() => Reflect.apply(Reflect.get(Reflect.get(document.querySelector("pi-web-app"), "sessions"), "refreshSelectedSession"), Reflect.get(document.querySelector("pi-web-app"), "sessions"), []));
   const afterRefresh = await userRows(reopened, markerE);
-  if (afterRefresh.length === 1 && !(["received", "queued"].includes(afterRefresh[0].state))) throw new Error(`precondition: message E settled during the refresh (${afterRefresh[0].state}); the leg cannot tell a kept row from a re-committed one`);
+  if (!(await daemonQueuesE())) throw new Error(`precondition: the daemon handed message E over during the refresh (rows ${JSON.stringify(afterRefresh.map((row) => row.state))}); the leg cannot tell a kept row from a delivered one`);
   record(
-    "a message waiting in the queue survives a reconnect refresh",
-    syncs.length > 0 && afterRefresh.length === 1,
-    `${String(syncs.length)} delta request(s); rows after the refresh ${JSON.stringify(afterRefresh.map((row) => row.state))}`,
+    "a message the daemon still queues is one waiting row after a reconnect refresh",
+    syncs.length > 0 && afterRefresh.length === 1 && ["received", "queued"].includes(afterRefresh[0].state),
+    `${String(syncs.length)} delta request(s); the daemon still queues it; rows after the refresh ${JSON.stringify(afterRefresh.map((row) => row.state))}`,
   );
   await waitIdle();
   await context.close();
