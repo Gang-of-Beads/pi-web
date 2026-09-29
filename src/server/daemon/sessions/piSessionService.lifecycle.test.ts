@@ -6,6 +6,8 @@ import { createPiSessionManagerGateway } from "./piSessionManagerGateway.js";
 import { listSubagentRuns } from "./subagentRuns.js";
 import { PiSessionService, type PiAgentSession, type PiSessionRuntime } from "./piSessionService.js";
 import { SessionNotificationStore } from "./sessionNotificationStore.js";
+import { SessionEventHub } from "../realtime/sessionEventHub.js";
+import type { GlobalSessionEvent, SessionUiEvent } from "../../../shared/apiTypes.js";
 import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, fakeSessionManager, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime, type RuntimeCreator, type SessionGateway } from "./piSessionService.testSupport.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
@@ -1193,6 +1195,39 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
 });
 
 describe("PiSessionService.streamSnapshot", () => {
+  it("stamps the machine-wide copy of a status frame with the position of its session frame", async () => {
+    const global: GlobalSessionEvent[] = [];
+    const sessionStatusFrames: { seq: number; epoch: string }[] = [];
+    const hub = new (class extends SessionEventHub {
+      override publish(sessionId: string, event: SessionUiEvent): void {
+        super.publish(sessionId, event);
+        if (event.type === "status.update") sessionStatusFrames.push({ seq: this.currentSeq(sessionId), epoch: this.currentEpoch(sessionId) });
+      }
+
+      override publishGlobal(event: GlobalSessionEvent): void {
+        global.push(event);
+        super.publishGlobal(event);
+      }
+    })();
+    const fake = fakeRuntime("status-copy");
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([]),
+      heartbeatIntervalMs: 60_000,
+    });
+    try {
+      await service.start("/workspace");
+
+      const globalPositions = global.flatMap((event) => (event.type === "status.update" && event.status.sessionId === "status-copy" ? [event.status.streamPosition] : []));
+
+      expect({ count: globalPositions.length > 0, positions: globalPositions }).toEqual({ count: true, positions: sessionStatusFrames });
+    } finally {
+      await service.dispose();
+    }
+  });
+
   it("returns a null partial with the current watermark when idle", async () => {
     const hub = new CapturingSessionEventHub();
     const fake = fakeRuntime("snap-idle");

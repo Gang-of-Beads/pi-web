@@ -598,6 +598,7 @@ It also takes the status revision and join frame moved from phase 1, and the thr
 - A status read carries `streamPosition`, the seq and epoch it was computed at.
 - The controller keeps the position of the last status it applied, frame or read. `statusReadVerdict` drops an older read. A read without a position is dropped when a status frame landed while it was in flight, and a frame at or below an applied read's position is dropped too.
 - The delta refresh carries unsettled rows forward, as the full refresh does.
+- The machine-wide copy of a status frame is stamped with its session frame's position. That socket has no per-session seq, so an older copy that landed after a newer read overwrote it: the same C1 fault on the second socket, found while preparing the gate and proven by a test first.
 
 **Recorded items (3e).**
 - Facts outrank an inferred failure. A failed row moves to received, queued or delivered on a server fact about the same identity, and the committed copy makes it delivered. The old "never resurrect a failed row" rule dates from retries that minted new ids; three tests that pinned it now expect the fact to win.

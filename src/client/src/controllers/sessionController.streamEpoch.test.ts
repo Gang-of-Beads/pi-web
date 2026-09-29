@@ -44,4 +44,24 @@ describe("status facts in stream order", () => {
 
     expect(state.status?.isStreaming).toBe(false);
   });
+
+  it("orders the machine-wide copy of a status frame by the position of its session frame", async () => {
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      messages: () => Promise.resolve(emptyPage),
+      status: (session) => Promise.resolve({ ...status(sessionLookupId(session)), isStreaming: false, streamPosition: { seq: 12, epoch: "daemon-a.1" } }),
+      streamSnapshot: () => Promise.resolve({ seq: 10, epoch: "daemon-a.1", partial: null }),
+    };
+    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api, socket: new EmitSocket() });
+
+    await controller.selectSession(oldSession, { updateUrl: false });
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status(oldSession.id), isStreaming: true, streamPosition: { seq: 11, epoch: "daemon-a.1" } } });
+    runPendingAnimationFrames();
+    const late = state.status?.isStreaming;
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status(oldSession.id), isStreaming: true, streamPosition: { seq: 13, epoch: "daemon-a.1" } } });
+    runPendingAnimationFrames();
+
+    expect({ late, newer: state.status?.isStreaming }).toEqual({ late: false, newer: true });
+  });
 });

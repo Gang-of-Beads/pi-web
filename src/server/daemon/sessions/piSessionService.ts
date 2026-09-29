@@ -2775,8 +2775,16 @@ export class PiSessionService implements SessionRouteService {
    */
   async status(ref: PiSessionRef): Promise<ClientSessionStatus> {
     const session = await this.sessionForStatusOrDialogClose(ref);
-    const streamPosition = { seq: this.events.currentSeq(session.sessionId), epoch: this.events.currentEpoch(session.sessionId) };
-    return { ...this.statusFromSession(session), streamPosition };
+    return { ...this.statusFromSession(session), streamPosition: this.streamPosition(session.sessionId) };
+  }
+
+  /**
+   * Where a session's stream stands now. A status read carries it, and so does the machine-wide
+   * copy of a status frame - that socket has no per-session seq, and without the position its
+   * copy could land after a newer read and overwrite it.
+   */
+  private streamPosition(sessionId: string): { seq: number; epoch: string } {
+    return { seq: this.events.currentSeq(sessionId), epoch: this.events.currentEpoch(sessionId) };
   }
 
   /**
@@ -5638,7 +5646,7 @@ export class PiSessionService implements SessionRouteService {
     this.clearStaleActiveActivity(session);
     this.workspaceActivity?.applySessionStatus(session.sessionManager.getCwd(), status);
     this.events.publish(session.sessionId, { type: "status.update", status });
-    this.events.publishGlobal({ type: "status.update", status });
+    this.events.publishGlobal({ type: "status.update", status: { ...status, streamPosition: this.streamPosition(session.sessionId) } });
     this.observeUnreadActivityState(session);
   }
 

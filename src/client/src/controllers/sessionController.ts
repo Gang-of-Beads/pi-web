@@ -2436,7 +2436,7 @@ export class SessionController {
     // editor's DOM stable during streaming, so in-progress touch gestures (e.g.
     // the iOS long-press edit/paste callout) are not interrupted by a re-render.
     if (event.type === "status.update") {
-      this.queueStatusUpdate(event.status, event.seq === undefined ? undefined : { seq: event.seq, ...(event.epoch === undefined ? {} : { epoch: event.epoch }) });
+      this.queueStatusUpdate(event.status, event.seq === undefined ? event.status.streamPosition : { seq: event.seq, ...(event.epoch === undefined ? {} : { epoch: event.epoch }) });
       return;
     }
     if (event.type === "activity.update") {
@@ -2539,7 +2539,11 @@ export class SessionController {
     this.schedulePendingFlush();
   }
 
-  private queueStatusUpdate(status: SessionStatus, position?: StatusPosition): void {
+  /**
+   * Queue a status frame with its place in the session's stream: its own seq on the session
+   * socket, or the position the daemon stamped on the machine-wide copy of the same frame.
+   */
+  private queueStatusUpdate(status: SessionStatus, position: StatusPosition | undefined = status.streamPosition): void {
     this.pendingStatusBySession.set(status.sessionId, status);
     if (position === undefined) this.pendingStatusPositions.delete(status.sessionId);
     else this.pendingStatusPositions.set(status.sessionId, position);
