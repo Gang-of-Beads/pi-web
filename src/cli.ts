@@ -29,13 +29,13 @@ import {
 } from "./nativeServices/serviceInstall.js";
 import {
   launchdBootoutArgs,
+  reloadLaunchdServicesForInstall,
+  restartsInPlace,
   launchdServiceTarget,
   orderServices,
   performServiceAction,
   serviceStartOrder,
   serviceStopOrder,
-  settleLaunchdServiceUnload,
-  startLaunchdService,
   type LaunchdServiceContext,
   type ServiceActionDeps,
   type ServiceActionInput,
@@ -392,12 +392,19 @@ function installedServiceRefs(backend: ServiceBackend): ServiceRef[] {
   return installed.length === 0 ? productionServiceRefs() : installed;
 }
 
+/**
+ * Write and (re)start the systemd units. The unit this command runs inside is started, never
+ * restarted or stopped: restarting it kills the command and the session that ran it (see
+ * `reloadLaunchdServicesForInstall`). Starting a running unit does nothing, so it keeps the
+ * previous build until it is restarted from outside.
+ */
 async function installSystemdServices(plan: NativeServicePlan): Promise<void> {
+  const hosting = hostingServiceId(process.env);
   const selected = new Set<ServiceId>(plan.services.map((service) => service.id));
   const obsolete = stopOrder(allServiceRefs().filter((ref) => !selected.has(ref.id)));
 
   for (const ref of obsolete) {
-    runQuiet("systemctl", ["--user", "disable", "--now", ref.systemdName]);
+    runQuiet("systemctl", ["--user", "disable", ...(restartsInPlace(ref.id, hosting) ? [] : ["--now"]), ref.systemdName]);
     await rm(systemdServicePath(ref), { force: true });
   }
 
@@ -407,9 +414,19 @@ async function installSystemdServices(plan: NativeServicePlan): Promise<void> {
   }
 
   const names = plan.services.map((service) => service.manager.systemdName);
+  const hosted = plan.services.filter((service) => restartsInPlace(service.id, hosting)).map((service) => service.manager.systemdName);
+  const restartable = names.filter((name) => !hosted.includes(name));
   run("systemctl", ["--user", "daemon-reload"], { check: true });
   run("systemctl", ["--user", "enable", ...names], { check: true });
-  run("systemctl", ["--user", "restart", ...names], { check: true });
+  if (restartable.length > 0) run("systemctl", ["--user", "restart", ...restartable], { check: true });
+  if (hosted.length > 0) {
+    run("systemctl", ["--user", "start", ...hosted], { check: true });
+    console.log(keptPreviousBuildNotice(hosted));
+  }
+}
+
+function keptPreviousBuildNotice(names: readonly string[]): string {
+  return `${names.join(", ")} runs this command, so it keeps the previous build; run \`pi-web restart\` from a terminal outside PI WEB to move it.`;
 }
 
 function launchdDomain(): string {
@@ -445,29 +462,20 @@ async function installLaunchdServices(plan: NativeServicePlan): Promise<void> {
   await mkdir(launchdServiceDir, { recursive: true });
   await mkdir(logDir, { recursive: true });
 
-  for (const ref of stopOrder(allServiceRefs())) {
-    runQuiet("launchctl", launchdBootoutArgs(currentLaunchdServiceTarget(ref)));
-  }
-
-  for (const ref of allServiceRefs().filter((candidate) => !selected.has(candidate.id))) {
-    await rm(launchdPlistPath(ref), { force: true });
-  }
-
-  for (const service of plan.services) {
-    const plistPath = join(launchdServiceDir, service.manager.launchdPlistName);
-    await writeFile(plistPath, renderLaunchdPlist(plan, service, logDir));
-  }
-
-  // Settle each bootout before deciding bootstrap vs kickstart: acting on a
-  // label launchd is still asynchronously unloading races the teardown and can
-  // lose the service entirely (the same defect the restart path had).
-  const context = launchdActionContext();
-  const deps = serviceActionDeps(plan.backend);
-  for (const service of plan.services) {
-    const ref = serviceRefFromPlan(service.id, service.manager);
-    await settleLaunchdServiceUnload(currentLaunchdServiceTarget(ref), deps);
-    startLaunchdService(ref, context, deps);
-  }
+  const kept = await reloadLaunchdServicesForInstall(
+    { unload: stopOrder(allServiceRefs()), load: plan.services.map((service) => serviceRefFromPlan(service.id, service.manager)) },
+    launchdActionContext(),
+    serviceActionDeps(plan.backend),
+    async () => {
+      for (const ref of allServiceRefs().filter((candidate) => !selected.has(candidate.id))) {
+        await rm(launchdPlistPath(ref), { force: true });
+      }
+      for (const service of plan.services) {
+        await writeFile(join(launchdServiceDir, service.manager.launchdPlistName), renderLaunchdPlist(plan, service, logDir));
+      }
+    },
+  );
+  if (kept.length > 0) console.log(keptPreviousBuildNotice(kept.map((ref) => ref.launchdLabel)));
 }
 
 async function installNativeServices(plan: NativeServicePlan): Promise<void> {
