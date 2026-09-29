@@ -14,7 +14,8 @@ import { chromium } from "@playwright/test";
  * no key row); it carries the declared detail and exactly the declared options;
  * the factory never ran; a tap on a coarse 393x850 screen plus Send delivers the
  * answer to the extension; the card closes, and the notification drawer (where an
- * answered dialog is filed) names the chosen label rather than its value.
+ * answered dialog is filed) names the chosen label rather than its value. A second
+ * opening carries the declared title and closes on Cancel with no answer.
  */
 const BASE = process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
 const CWD = process.env.PROBE_CWD ?? "/Users/hanxiao.du/.pi-web-8505/pi-web-8505-seed-workspace";
@@ -84,6 +85,18 @@ try {
   const strings = (value) => (typeof value === "string" ? [value] : typeof value === "object" && value !== null ? Object.values(value).flatMap(strings) : []);
   const texts = strings(notices).filter((text) => text.startsWith("Answered "));
   leg("the card closes and the notification names the label", stillOpen === 0 && texts.some((text) => text.includes("Questions probe") && text.endsWith("Beta")), JSON.stringify({ stillOpen, texts }));
+
+  const cancelsBefore = occurrences("[ui-questions-probe] returned undefined");
+  void post("commands/run", { text: "/questions-probe" }).catch(() => undefined);
+  const reopened = await questions.first().waitFor({ state: "visible", timeout: 60_000 }).then(() => true, () => false);
+  leg("the card's heading is the declared title", reopened && (await questions.locator("h2").first().textContent()) === "Questions probe");
+  if (reopened) await questions.getByRole("button", { name: "Cancel" }).tap();
+  let cancelled = false;
+  for (let attempt = 0; attempt < 30 && !cancelled; attempt += 1) {
+    await sleep(500);
+    cancelled = occurrences("[ui-questions-probe] returned undefined") > cancelsBefore;
+  }
+  leg("Cancel closes the card and the extension gets no answer", cancelled && await card.count() === 0);
 } finally {
   await browser.close();
 }
