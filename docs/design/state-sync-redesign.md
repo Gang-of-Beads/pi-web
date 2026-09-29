@@ -396,6 +396,18 @@ No P0. All four gate-7 fixes verified, including that open/close waits now form 
 | P2-1 | `open()` deduplicated id-less entries by lane, text and millisecond and persisted the result, erasing a real second message | TRUE | Fixed: memory, which always matches the file, is the queue's truth; `open()` only adds legacy entries not already known by id |
 | P2-2 | The gate 7 P2-A disposition overstated its fix: a late handoff of a replaced runtime could still record a commit expectation and take the one-slot commit watcher | TRUE | Fixed: a handoff whose runtime no longer serves the id stops before any bookkeeping, and the commit watcher is taken only by the owning runtime |
 
+
+## Phase 1 ninth gate-lane triage (Opus 5.5, whole inbox over 0380b287)
+
+A whole-inbox review that walked every user journey end to end. Every recorded fix held. The lane found one P1 and three P2, all true and all fixed; each has a test that fails on 0380b287. The lane-array private state the F4 fix uses is pinned in the real-SDK test.
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| F1 (P1) | pi's lane holding a steer without an id next to one with an id gave the id to the wrong lane position. Stop then returned one message twice and lost the other, and close restored the duplicate into the inbox. An id-less send happens when a pending send is flushed to a session that is not selected | TRUE | Fixed: every steer pi holds gets a held-steer record, so lane positions correlate one to one. An id-less steer gets a local id that starts with a space, which no accepted client id can (they are trimmed). It is never published, settled or withdrawn |
+| F2 (P2) | Stop while a direct handoff was before its run (pre-prompt compaction, input handlers, image preparation) aborted nothing. The SDK then started the run anyway, and it ignored the Stop | TRUE | Fixed: Stop waits, within the 5 s handoff bound, for such a handoff to land. The wait ends at the commit, not at the end of the run. Stop then aborts the run it started. The message was already handed, so it stays delivered and the run is stopped |
+| F3 (P2) | Messages waiting for a closed session could be archived with it and later run inside the archived session at startup. A deleted session's waiting messages failed to resume at every start | TRUE | Fixed: bulk archive, cleanup and archived delete refuse or skip a closed session with waiting messages, the same rule an open one already has; opening it delivers them. The inbox hands nothing to a runtime opened to read an archived session, and startup resume skips archived sessions |
+| F4 (P2) | pi removes a read message from its shown lane by text and skips empty text, so a photo-only steer stayed shown after it was read. That held its own ledger row, and every later one, pending | TRUE (SDK) | Fixed: at a user message start with empty text, the daemon applies pi's own rule to the empty text: the same splice and queue update pi makes |
+
 ## Phase 1 known limitations
 
 Each was found by a review lane, checked against the source, and left unfixed for the reason given.

@@ -954,3 +954,126 @@ describe("eighth gate-lane findings", () => {
     expect((await again.open("g8-twins", "/workspace")).length).toBe(2);
   });
 });
+
+const PNG_ATTACHMENT = { kind: "image" as const, data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", mimeType: "image/png" };
+
+function archivedAt(sessionId: string, cwd: string, archive: (inputs: readonly { sessionId: string }[]) => void = () => undefined) {
+  const record = { sessionId, cwd, archivedAt: "2026-09-29T00:00:00.000Z", archivePath: `/archive/${sessionId}.jsonl` };
+  return {
+    list: () => Promise.resolve([record]),
+    get: (id: string) => Promise.resolve(id === sessionId ? record : undefined),
+    archive: () => Promise.reject(new Error("archive should not be called")),
+    archiveMany: (inputs: readonly { sessionId: string; cwd: string }[]) => {
+      archive(inputs);
+      return Promise.resolve(inputs.map((input) => ({ ...input, archivedAt: record.archivedAt })));
+    },
+    restore: () => Promise.resolve(),
+    isArchived: (id: string) => Promise.resolve(id === sessionId),
+  };
+}
+
+describe("ninth gate-lane findings", () => {
+  it("F1: at Stop, a steer sent without an id and one with an id come back as themselves", async () => {
+    const { fake, service, ref, lane } = await inboxService("g9-mixed-stop");
+    await service.prompt(ref, "A without id");
+    await service.prompt(ref, "B with id", undefined, undefined, { clientMessageId: "g9f1-b-0001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(lane).toEqual(["A without id", "B with id"]); });
+    const { discarded } = await service.abort(ref);
+    expect({
+      discarded: discarded.map((entry) => ({ text: entry.text, id: entry.clientMessageId })),
+      outcome: service.operationOutcomes("g9-mixed-stop", ["g9f1-b-0001"]),
+    }).toEqual({
+      discarded: [{ text: "A without id", id: undefined }, { text: "B with id", id: "g9f1-b-0001" }],
+      outcome: { "g9f1-b-0001": "withdrawn" },
+    });
+    await service.dispose();
+  });
+
+  it("F1: at close, a steer sent without an id and one with an id go back to the inbox as themselves", async () => {
+    const { fake, service, ref, lane, dir, dataDir } = await inboxService("g9-mixed-close");
+    await service.prompt(ref, "A without id");
+    await service.prompt(ref, "B with id", undefined, undefined, { clientMessageId: "g9f1-b-0002" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(lane).toEqual(["A without id", "B with id"]); });
+    await service.stop(ref);
+    const reopened = await new OwnedPromptQueue(dataDirInboxLocation(dataDir)).open("g9-mixed-close", dir);
+    expect(reopened.map((entry) => ({ text: entry.text, id: entry.clientMessageId }))).toEqual([
+      { text: "A without id", id: undefined },
+      { text: "B with id", id: "g9f1-b-0002" },
+    ]);
+    await service.dispose();
+  });
+
+  it("F2: Stop during a direct handoff that has not reached its run stops the run the handoff then starts", async () => {
+    const { fake, service, ref } = await inboxService("g9-stop-early", { isStreaming: false });
+    let releasePrompt = (): void => undefined;
+    const beforeRun = new Promise<void>((resolve) => { releasePrompt = resolve; });
+    let runStarted = false;
+    let abortsOfTheRun = 0;
+    fake.session.abort = () => {
+      if (runStarted) abortsOfTheRun += 1;
+      return Promise.resolve();
+    };
+    fake.session.prompt = async (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      await beforeRun;
+      options?.preflightResult?.(true);
+      fake.session.isStreaming = true;
+      runStarted = true;
+      fake.emit({ type: "agent_start" });
+      fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "text", text }] } });
+    };
+    await service.prompt(ref, "X", undefined, undefined, { clientMessageId: "g9f2-x-0001" });
+    await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(1); });
+    const stopping = service.abort(ref);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    releasePrompt();
+    await stopping;
+    expect(abortsOfTheRun).toBe(1);
+    await service.dispose();
+  });
+
+  it("F3: a closed session with messages waiting is not archived", async () => {
+    const { service, ref, dir } = await inboxService("g9-archive-waiting");
+    await service.prompt(ref, "still waiting", undefined, undefined, { clientMessageId: "g9f3-w-0001" });
+    await service.stop(ref);
+    const archived: string[] = [];
+    Reflect.set(service, "archiveStore", { ...archivedAt("someone-else", dir, (inputs) => { archived.push(...inputs.map((input) => input.sessionId)); }), list: () => Promise.resolve([]), get: () => Promise.resolve(undefined) });
+    const result = await service.archiveMany([{ id: "g9-archive-waiting", cwd: dir }]);
+    expect({ archived, archivedSessionIds: result.archivedSessionIds, failures: result.failures.map((failure) => failure.sessionId) })
+      .toEqual({ archived: [], archivedSessionIds: [], failures: ["g9-archive-waiting"] });
+    await service.dispose();
+  });
+
+  it("F3: messages waiting for an archived session are not handed into it at startup or when it is opened to read", async () => {
+    const first = await inboxService("g9-archived-resume");
+    await first.service.prompt(first.ref, "waits for the archive", undefined, undefined, { clientMessageId: "g9f3-r-0001" });
+    await first.service.stop(first.ref);
+    await first.service.dispose();
+
+    const second = await inboxService("g9-archived-resume", { dir: first.dir, dataDir: first.dataDir, isStreaming: false });
+    Reflect.set(second.service, "archiveStore", archivedAt("g9-archived-resume", first.dir));
+    await expect(second.service.resumeWaitingInboxes()).resolves.toEqual([]);
+    await second.service.status(second.ref);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(second.fake.calls.prompt).toHaveLength(0);
+    await second.service.dispose();
+  });
+
+  it("F4: a photo-only steer the agent read is settled, and does not keep the next steer pending", async () => {
+    const { fake, service, ref, lane } = await inboxService("g9-photo");
+    Reflect.set(fake.session, "_steeringMessages", lane);
+    Reflect.set(fake.session, "_emitQueueUpdate", () => { fake.emit({ type: "queue_update", steering: [...lane], followUp: [] }); });
+    await service.prompt(ref, "", undefined, [PNG_ATTACHMENT], { clientMessageId: "g9f4-p-0001" });
+    await service.prompt(ref, "and this", undefined, undefined, { clientMessageId: "g9f4-b-0001" });
+    fake.emit({ type: "turn_end" });
+    await vi.waitFor(() => { expect(lane).toEqual(["", "and this"]); });
+    fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "image", data: PNG_ATTACHMENT.data, mimeType: "image/png" }] } });
+    lane.splice(lane.indexOf("and this"), 1);
+    fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "and this" }] } });
+    expect({ lane: [...lane], outcomes: service.operationOutcomes("g9-photo", ["g9f4-p-0001", "g9f4-b-0001"]) })
+      .toEqual({ lane: [], outcomes: { "g9f4-p-0001": "succeeded", "g9f4-b-0001": "succeeded" } });
+    await service.dispose();
+  });
+});

@@ -221,6 +221,20 @@ function refMatchesStartupSession(ref: PiSessionRef, session: PiAgentSession): b
 
 
 /** A steer handed to pi and not yet read: its sender's id, and the inbox entry it came from. */
+/**
+ * Every steer pi holds has a held-steer record, so lane positions correlate one to one; a steer
+ * sent without an id gets a local one. It starts with a space, which no accepted client id can
+ * (`parseClientMessageId` trims), and it never leaves the daemon: `publishedId` drops it.
+ */
+const LOCAL_HOLD_ID_PREFIX = " local-hold:";
+
+const WAITING_MESSAGES_BLOCK_ARCHIVE = "Messages are waiting for this session. Open it to deliver them before archiving";
+const WAITING_MESSAGES_BLOCK_DELETE = "Messages are waiting for this session. Restore and open it to deliver them before deleting";
+
+function publishedId(id: string | undefined): string | undefined {
+  return id === undefined || id.startsWith(LOCAL_HOLD_ID_PREFIX) ? undefined : id;
+}
+
 interface HeldSteerRecord {
   clientMessageId: string;
   text: string;
@@ -1418,6 +1432,12 @@ export class PiSessionService implements SessionRouteService {
   private readonly replayingLanes = new Set<string>();
   private readonly emptying = new Set<string>();
   private readonly closingSessions = new Map<string, Promise<void>>();
+  /**
+   * Runtimes opened to read an archived session. The inbox hands nothing to them: messages that
+   * wait for an archived session keep waiting until it is restored and opened for work.
+   */
+  private readonly archivedRuntimes = new WeakSet<PiAgentSession>();
+  private localHoldIds = 0;
   private readonly laneSizes = new Map<string, number>();
   private readonly laneGrowth = new Map<string, number>();
   /**
@@ -1693,7 +1713,7 @@ export class PiSessionService implements SessionRouteService {
     const skippedBusySessionIds = new Set(plan.skippedBusySessionIds);
 
     for (const input of plan.archiveInputs) {
-      if (this.activeSessionHasWork(input.sessionId)) {
+      if (this.activeSessionHasWork(input.sessionId) || await this.closedSessionHasWaiting(input.sessionId, input.cwd)) {
         skippedBusySessionIds.add(input.sessionId);
         continue;
       }
@@ -1705,7 +1725,7 @@ export class PiSessionService implements SessionRouteService {
     await this.forgetUnreadSessions(readyArchiveInputs);
 
     for (const record of plan.deleteRecords) {
-      if (this.activeSessionHasWork(record.sessionId)) {
+      if (this.activeSessionHasWork(record.sessionId) || await this.closedSessionHasWaiting(record.sessionId, record.cwd)) {
         skippedBusySessionIds.add(record.sessionId);
         continue;
       }
@@ -1990,7 +2010,7 @@ export class PiSessionService implements SessionRouteService {
       ...ownedEntries.map((entry) => entry.text),
     ];
     const queuedMessageIds = [
-      ...(this.queuedPromptClientIds.get(input.sessionId) ?? []).map((record) => record.clientMessageId),
+      ...(this.queuedPromptClientIds.get(input.sessionId) ?? []).map((record) => publishedId(record.clientMessageId)).filter((id): id is string => id !== undefined),
       ...ownedEntries.map((entry) => entry.clientMessageId).filter((id): id is string => id !== undefined),
     ];
     const result = this.pendingAskStore.open({ ...input, queuedMessageTexts, queuedMessageIds });
@@ -3070,6 +3090,10 @@ export class PiSessionService implements SessionRouteService {
     const resumed: string[] = [];
     for (const { sessionId, cwd } of await listWaitingInboxes(this.inboxDataDir)) {
       try {
+        if (await this.getArchived({ id: sessionId, cwd }) !== undefined) {
+          this.logger.info({ sessionId, cwd }, "messages wait for an archived session; they are handed once it is restored and opened");
+          continue;
+        }
         await this.getOrOpen({ id: sessionId, cwd });
         resumed.push(sessionId);
       } catch (error: unknown) {
@@ -3164,7 +3188,7 @@ export class PiSessionService implements SessionRouteService {
   private async handOff(session: PiAgentSession, trigger: HandoffTrigger): Promise<void> {
     const sessionId = session.sessionId;
     if (this.active.get(sessionId)?.runtime.session !== session) return;
-    if (this.emptying.has(sessionId)) return;
+    if (this.emptying.has(sessionId) || this.archivedRuntimes.has(session)) return;
     const run = this.runStateFor(session);
     if (run === "idle") await this.takeBackHeldMessages(session);
     const decision = nextHandoff({ waiting: this.ownedQueue.entries(sessionId).length, run, trigger });
@@ -3374,12 +3398,14 @@ export class PiSessionService implements SessionRouteService {
 
   /** A steer is pi's once `_queueSteer` has pushed it, which is when the SDK calls its preflight. */
   private holdSteer(sessionId: string, entry: OwnedQueueEntry, images: ImageContent[]): void {
-    if (entry.clientMessageId !== undefined) this.recordQueuedPromptClientId(sessionId, entry.clientMessageId, entry.text, "steer", entry);
+    this.localHoldIds += 1;
+    this.recordQueuedPromptClientId(sessionId, entry.clientMessageId ?? `${LOCAL_HOLD_ID_PREFIX}${String(this.localHoldIds)}`, entry.text, "steer", entry);
     if (images.length > 0) this.recordQueuedPromptImages(sessionId, entry.text, images);
   }
 
   private settleSucceeded(sessionId: string, clientMessageId: string | undefined): void {
-    if (clientMessageId !== undefined) this.acceptanceLedger.settle(sessionId, clientMessageId, "succeeded");
+    const id = publishedId(clientMessageId);
+    if (id !== undefined) this.acceptanceLedger.settle(sessionId, id, "succeeded");
   }
 
   /** Undo the bookkeeping of a handoff the runtime did not take. */
@@ -3410,6 +3436,7 @@ export class PiSessionService implements SessionRouteService {
       this.laneSizes.set(sessionId, size);
     }
     if (eventType !== "message_start" || getProperty(getProperty(event, "message"), "role") !== "user") return;
+    dropReadEmptyLaneEntry(session, getProperty(event, "message"));
     const onCommit = this.directCommitWatchers.get(sessionId);
     this.directCommitWatchers.delete(sessionId);
     onCommit?.();
@@ -3456,8 +3483,9 @@ export class PiSessionService implements SessionRouteService {
       const original = records.find((record) => record.clientMessageId === held.clientMessageId)?.entry;
       if (original !== undefined) return original;
       const images = this.takeQueuedPromptImages(sessionId, held.text);
+      const id = publishedId(held.clientMessageId);
       return {
-        ...(held.clientMessageId === undefined ? {} : { clientMessageId: held.clientMessageId }),
+        ...(id === undefined ? {} : { clientMessageId: id }),
         lane: "steer",
         text: held.text,
         images: images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType })),
@@ -3505,7 +3533,8 @@ export class PiSessionService implements SessionRouteService {
     const correlated = correlateQueuedPromptIds(queued, records);
     for (const [index, entry] of correlated.entries()) {
       const target = queued[index];
-      if (target !== undefined && entry.clientMessageId !== undefined) target.clientMessageId = entry.clientMessageId;
+      const id = publishedId(entry.clientMessageId);
+      if (target !== undefined && id !== undefined) target.clientMessageId = id;
     }
   }
 
@@ -3864,6 +3893,10 @@ export class PiSessionService implements SessionRouteService {
         failures.push({ sessionId: item.input.sessionId, error: "Stop current session activity before archiving" });
         continue;
       }
+      if (await this.closedSessionHasWaiting(item.input.sessionId, item.input.cwd)) {
+        failures.push({ sessionId: item.input.sessionId, error: WAITING_MESSAGES_BLOCK_ARCHIVE });
+        continue;
+      }
       readyPlanItems.push(active === undefined ? item : { ...item, active });
     }
 
@@ -3963,6 +3996,10 @@ export class PiSessionService implements SessionRouteService {
       const active = this.activeForRef({ id: record.sessionId, cwd: record.cwd });
       if (active !== undefined && this.hasActiveWork(active.runtime.session)) {
         failures.push({ sessionId: record.sessionId, error: "Stop current session activity before deleting archived session" });
+        continue;
+      }
+      if (await this.closedSessionHasWaiting(record.sessionId, record.cwd)) {
+        failures.push({ sessionId: record.sessionId, error: WAITING_MESSAGES_BLOCK_DELETE });
         continue;
       }
       planItems.push({ record });
@@ -4183,7 +4220,7 @@ export class PiSessionService implements SessionRouteService {
     const [forgotten] = records.splice(index, 1);
     if (records.length === 0) this.queuedPromptClientIds.delete(sessionId);
     else this.queuedPromptClientIds.set(sessionId, records);
-    return forgotten?.clientMessageId;
+    return publishedId(forgotten?.clientMessageId);
   }
 
   /**
@@ -4238,7 +4275,8 @@ export class PiSessionService implements SessionRouteService {
     this.queuedPromptImages.delete(sessionId);
     return waiting.map((entry) => {
       const original = records.find((record) => record.clientMessageId === entry.clientMessageId)?.entry;
-      return { kind: entry.kind, text: original?.text ?? entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }) };
+      const id = publishedId(entry.clientMessageId);
+      return { kind: entry.kind, text: original?.text ?? entry.text, ...(id === undefined ? {} : { clientMessageId: id }) };
     });
   }
 
@@ -4251,7 +4289,8 @@ export class PiSessionService implements SessionRouteService {
     for (const entry of loopHeld) this.settleSucceeded(sessionId, entry.clientMessageId);
   }
 
-  private withdraw(sessionId: string, clientMessageId: string | undefined): void {
+  private withdraw(sessionId: string, candidate: string | undefined): void {
+    const clientMessageId = publishedId(candidate);
     if (clientMessageId === undefined) return;
     this.acceptanceLedger.settle(sessionId, clientMessageId, "withdrawn");
     this.committedExpectations.withdraw(sessionId, clientMessageId);
@@ -4290,6 +4329,7 @@ export class PiSessionService implements SessionRouteService {
     this.events.publish(sessionId, { type: "session.stopped", cause: "user" });
     try {
       await this.abortSessionOperations(active.runtime.session);
+      await this.stopHandoffInFlight(active.runtime.session);
       this.publishActivity(active.runtime.session, "stopped", "idle");
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -4398,6 +4438,15 @@ export class PiSessionService implements SessionRouteService {
   private activeSessionHasWork(sessionId: string): boolean {
     const active = this.active.get(sessionId);
     return active !== undefined && this.hasActiveWork(active.runtime.session);
+  }
+
+  /**
+   * Messages waiting for a session that is not open keep it from being archived or deleted, as
+   * they keep an open one: archived, they would wait for a read-only session; deleted, they would
+   * never be delivered nor handed back. Opening the session delivers them.
+   */
+  private async closedSessionHasWaiting(sessionId: string, cwd: string): Promise<boolean> {
+    return this.active.get(sessionId) === undefined && await this.ownedQueue.hasWaiting(sessionId, cwd);
   }
 
   private reconcilableSessionIds(cwd: string, listedSessionIds: string[], archivedById: Map<string, ArchivedSessionRecord>): string[] {
@@ -4553,20 +4602,27 @@ export class PiSessionService implements SessionRouteService {
    * Steers the agent loop already holds stay; the abort lets the loop commit them.
    */
   private async keepWhatThePiHolds(session: PiAgentSession): Promise<void> {
-    const takeBack = (async () => {
-      await this.handoffChains.get(session.sessionId);
-      await this.takeBackHeldMessages(session);
-    })();
-    let timer: NodeJS.Timeout | undefined;
-    const deadline = new Promise<"timed out">((resolve) => { timer = setTimeout(() => { resolve("timed out"); }, TEARDOWN_TAKE_BACK_MS); });
     try {
-      const outcome = await Promise.race([takeBack.then(() => "kept" as const), deadline]);
+      const outcome = await withinHandoffBound((async () => {
+        await this.handoffChains.get(session.sessionId);
+        await this.takeBackHeldMessages(session);
+      })());
       if (outcome === "timed out") console.warn(`[inbox] ${session.sessionId}: a handoff did not settle within ${String(TEARDOWN_TAKE_BACK_MS)} ms; messages pi still holds go with the runtime`);
     } catch (error: unknown) {
       console.warn(`[inbox] ${session.sessionId}: keeping pi's unread messages failed: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      clearTimeout(timer);
     }
+  }
+
+  /**
+   * A Stop while a direct handoff is before its run - a pre-prompt compaction, extension input
+   * handlers, image preparation - aborts nothing the SDK then starts: the message has left the
+   * inbox and is in no lane, and the run it starts after the abort would ignore the Stop. Wait,
+   * bounded, for that handoff to land (the chain ends at the message's commit), and stop the run.
+   */
+  private async stopHandoffInFlight(session: PiAgentSession): Promise<void> {
+    if (!this.handing.has(session.sessionId)) return;
+    const outcome = await withinHandoffBound(this.handoffChains.get(session.sessionId) ?? Promise.resolve());
+    if (outcome === "done" && session.isStreaming) await this.abortSessionOperations(session);
   }
 
   /** Per-session inbox state. Safe to drop at close: no runtime can reopen the id until the close ends. */
@@ -4802,6 +4858,7 @@ export class PiSessionService implements SessionRouteService {
       ...(options.initialThinkingLevel === undefined ? {} : { initialThinkingLevel: options.initialThinkingLevel }),
     });
     const active: ActiveSession<PiSessionRuntime> = { runtime, unsubscribe: noop };
+    if (options.notifications === "disabled") this.archivedRuntimes.add(runtime.session);
     let boundSession = runtime.session;
     let notificationGeneration = options.notificationGeneration;
     let notificationOwnership: "disabled" | "external" | "registered" | "replacement" = options.notifications === "disabled"
@@ -4853,6 +4910,7 @@ export class PiSessionService implements SessionRouteService {
             this.notificationGenerationBySession.set(session, candidateGeneration);
           }
           this.releaseWorkspaceWatch(boundSession);
+          if (this.archivedRuntimes.has(boundSession)) this.archivedRuntimes.add(session);
           await this.bindRuntime(active, session);
           this.holdWorkspaceWatch(session);
           // The runtime being replaced parked every dialog the store still
@@ -6264,6 +6322,45 @@ export function turnStartedAtFromBranch(branch: readonly unknown[]): string | un
  * and filtering on it hid a second "continue" from the queue it was waiting in.
  */
 /** pi's own lanes, oldest first per lane, exactly as it holds them. */
+/**
+ * pi removes a read user message from the lanes it shows by matching the message's text
+ * (`contentText(content, "")`), and skips a message without text: a photo-only steer stayed shown
+ * after the agent read it, holding its own ledger row and every later one pending. The daemon
+ * applies pi's own rule to the empty text - the same splice and queue update pi makes - on the
+ * SDK's lane arrays, pinned by a real-SDK test.
+ */
+function dropReadEmptyLaneEntry(session: PiAgentSession, message: unknown): void {
+  if (laneText(message) !== "") return;
+  for (const name of ["_steeringMessages", "_followUpMessages"]) {
+    const lane: unknown = Reflect.get(session, name);
+    if (!Array.isArray(lane)) continue;
+    const index = lane.indexOf("");
+    if (index === -1) continue;
+    lane.splice(index, 1);
+    const emitQueueUpdate: unknown = Reflect.get(session, "_emitQueueUpdate");
+    if (typeof emitQueueUpdate === "function") Reflect.apply(emitQueueUpdate, session, []);
+    return;
+  }
+}
+
+/** Work a teardown or a Stop waits for, bounded so a handoff that never lands cannot hold it. */
+async function withinHandoffBound(work: Promise<unknown>): Promise<"done" | "timed out"> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<"timed out">((resolve) => { timer = setTimeout(() => { resolve("timed out"); }, TEARDOWN_TAKE_BACK_MS); });
+  try {
+    return await Promise.race([work.then(() => "done" as const), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function laneText(message: unknown): string {
+  const content = getProperty(message, "content");
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.filter((part: unknown) => getProperty(part, "type") === "text").map((part: unknown) => getString(part, "text") ?? "").join("");
+}
+
 function runtimeLanes(session: PiAgentSession): { kind: QueuedPromptKind; text: string; clientMessageId?: string }[] {
   return [
     ...session.getSteeringMessages().map((text) => ({ kind: "steer" as const, text })),

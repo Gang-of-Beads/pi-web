@@ -109,6 +109,24 @@ export class OwnedPromptQueue {
     });
   }
 
+  /**
+   * Whether messages wait for a session, open or not: its entries once this process opened it,
+   * else its inbox file or legacy file. A file that cannot be read counts as waiting - absence
+   * is not negation.
+   */
+  async hasWaiting(sessionId: string, cwd: string): Promise<boolean> {
+    return this.serialize(sessionId, async () => {
+      const remembered = this.perSession.get(sessionId);
+      if (remembered !== undefined) return remembered.length > 0;
+      for (const path of new Set([this.location(sessionId, cwd), queueFilePath(cwd, sessionId)])) {
+        if (path === undefined) continue;
+        const waiting = await readInboxFile(path).then((file) => (file?.entries.length ?? 0) > 0, () => true);
+        if (waiting) return true;
+      }
+      return false;
+    });
+  }
+
   entries(sessionId: string): OwnedQueueEntry[] {
     return [...(this.perSession.get(sessionId) ?? [])];
   }

@@ -110,6 +110,20 @@ describe("SDK state the daemon reads", () => {
       steeringMode: session.agent.steeringMode,
     }).toEqual({ emittingSettled: false, loopStreaming: false, steeringMode: "all" });
   });
+
+  it("shows its lanes from the arrays the daemon splices, and announces them with the queue update it calls", async () => {
+    const { session } = await realSession(200);
+    const updates: unknown[] = [];
+    session.subscribe((event) => { if (event.type === "queue_update") updates.push(event.steering); });
+    const steering: unknown = Reflect.get(session, "_steeringMessages");
+    const followUp: unknown = Reflect.get(session, "_followUpMessages");
+    if (!Array.isArray(steering) || !Array.isArray(followUp)) throw new Error("pi's lane arrays are missing");
+    steering.push("");
+    const emitQueueUpdate: unknown = Reflect.get(session, "_emitQueueUpdate");
+    if (typeof emitQueueUpdate !== "function") throw new Error("pi's queue update is missing");
+    Reflect.apply(emitQueueUpdate, session, []);
+    expect({ shown: session.getSteeringMessages(), followUpShown: session.getFollowUpMessages() === followUp, updates }).toEqual({ shown: [""], followUpShown: true, updates: [[""]] });
+  });
 });
 
 describe("daemon over the real SDK: idle session, sequential sends (outbox replay awaits each answer)", () => {
