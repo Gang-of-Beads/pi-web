@@ -1797,8 +1797,17 @@ export class PiWebApp extends LitElement {
     return snapshot.projectId !== undefined && this.state.selectedProject?.id !== snapshot.projectId && this.state.error !== "";
   }
 
+  /**
+   * Put a workspace tool on screen. On a desktop the tool lives in the right-hand panel, and a
+   * reader who had folded that panel away chose Background in Go to and saw nothing happen:
+   * the tool was selected into a panel 0px wide. Every caller here is a request to see the tool,
+   * so the panel opens with it. A phone shows the tool as the whole view and has no side panel
+   * to open. A route restored at boot sets the tool without coming here, so a remembered fold
+   * survives a reload.
+   */
   private openWorkspaceTool(tool: QualifiedContributionId) {
     if (tool === "core:workspace.terminal") this.terminalAutoStartWorkspaceId = this.state.selectedWorkspace?.id;
+    if (!this.appShell.isMobileNavigationLayout) this.panelCollapse.expandWorkspacePanel();
     this.setState({ workspaceTool: tool, mainView: tool });
     this.updateUrl();
     this.refreshSelectedWorkspaceTool(tool);
