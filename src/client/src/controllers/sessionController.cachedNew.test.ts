@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { initialAppState } from "../appState";
 import { isCachedNewSessionInfo, loadCachedNewSessions, markCachedNewSessionInfo, rememberCachedNewSession } from "../cachedNewSessions";
 import { loadDraft, saveDraft } from "../promptDraftStorage";
+import { loadPendingPrompts, savePendingPrompt } from "../pendingOutbox";
 import { SessionController } from "./sessionController";
 import { defaultApi, emptyPage, FakeSocket, MemoryStorage, oldSession, replacementSession, sessionKey, sessionLookupId, status, workspace, type AppState } from "./sessionController.testSupport";
 
@@ -109,6 +110,40 @@ describe("SessionController cached-new sessions", () => {
     expect(loadDraft(sessionKey(replacementSession.id))).toBe("draft text");
     expect(loadCachedNewSessions().map((session) => session.id)).toEqual([replacementSession.id]);
     expect(urlUpdates).toEqual([{ replace: true }]);
+  });
+
+  it("moves a recreated session's draft and unsent messages under its own machine even when the reader switched machine meanwhile", async () => {
+    const storage = new MemoryStorage();
+    Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+    rememberCachedNewSession(oldSession);
+    saveDraft(sessionKey(oldSession.id), "draft text");
+    savePendingPrompt(sessionKey(oldSession.id), { text: "kept for this session", clientMessageId: "cm-kept", at: "2026-09-29T00:00:00.000Z" });
+
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [markCachedNewSessionInfo(oldSession)] };
+    const other: NonNullable<AppState["selectedMachine"]> = { id: "remote-1", name: "Remote", kind: "remote", baseUrl: "https://remote.example", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      startSession: () => {
+        state = { ...state, selectedMachine: other };
+        return Promise.resolve(replacementSession);
+      },
+      messages: (session) => {
+        if (sessionLookupId(session) === oldSession.id) return Promise.reject(new Error("Session not found"));
+        return Promise.resolve(emptyPage);
+      },
+      status: (session) => Promise.resolve(status(sessionLookupId(session))),
+    };
+    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api, socket: new FakeSocket() });
+
+    await controller.selectSession(markCachedNewSessionInfo(oldSession), { updateUrl: false });
+
+    expect({
+      draftMoved: loadDraft(sessionKey(replacementSession.id)),
+      outboxMoved: loadPendingPrompts(sessionKey(replacementSession.id)).map((prompt) => prompt.clientMessageId),
+      outboxLeft: loadPendingPrompts(sessionKey(oldSession.id)),
+      cached: loadCachedNewSessions().map((session) => session.id),
+      selectionFollowed: state.selectedSession?.id === replacementSession.id,
+    }).toEqual({ draftMoved: "draft text", outboxMoved: ["cm-kept"], outboxLeft: [], cached: [replacementSession.id], selectionFollowed: false });
   });
 
   it("stores command prompt drafts for replacement sessions before selecting them", async () => {

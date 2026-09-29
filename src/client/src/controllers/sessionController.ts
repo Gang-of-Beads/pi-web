@@ -2007,17 +2007,17 @@ export class SessionController {
         return;
       }
       const replacement = await this.api.startSession(session.cwd, machineId);
-      // The start was in flight across a possible scope switch: a late
-      // answer must not prepend machine A's session into machine B's list,
-      // move the draft under B's key, or yank the selection to A's row.
-      if (selectedMachineId(this.getState()) !== machineId) {
-        rememberCachedNewSession(replacement, machineId);
-        return;
-      }
+      const fromKey = machineSessionKey(machineId, session.id);
+      const toKey = machineSessionKey(machineId, replacement.id);
       rememberCachedNewSession(replacement, machineId);
-      moveDraft(this.sessionCacheKey(session.id), this.sessionCacheKey(replacement.id));
-      moveOutbox(this.sessionCacheKey(session.id), this.sessionCacheKey(replacement.id));
+      moveDraft(fromKey, toKey);
+      moveOutbox(fromKey, toKey);
       forgetCachedNewSession(session.id, machineId);
+      // The start was in flight across a possible scope switch: a late
+      // answer must not prepend machine A's session into machine B's list
+      // or yank the selection to A's row. Its draft and outbox move under
+      // machine A's own keys either way.
+      if (selectedMachineId(this.getState()) !== machineId) return;
       const cachedReplacement = markCachedNewSessionInfo(replacement, machineId);
       this.setState({ sessions: [cachedReplacement, ...this.getState().sessions.filter((candidate) => candidate.id !== session.id)], ...clearErrorPatch() });
       await this.selectSession(cachedReplacement, { updateUrl: false });

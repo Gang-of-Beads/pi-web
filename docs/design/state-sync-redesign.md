@@ -535,6 +535,37 @@ The last two abort the call's signal, and the race does not rely on the daemon h
 
 The same lane noted, outside phase 2's diff, that a send to a session still starting drops its identity and retires its outbox record as soon as it is queued in the browser. That belongs to phase 3's store.
 
+
+**Phase 2 fourth gate-lane triage (DeepSeek 4.1 max, over 37a93fb9).** Verdict: **PASS, no P0 or P1.**
+
+Checked and found to hold:
+- the chain cannot stall, because every step is bounded by the request deadline and a rejected step cannot strand the tail;
+- `replayQueued` cannot stick;
+- a Retry is never refused forever, and running after a newer send is acceptable, because it is a fresh acceptance under its own identity;
+- a replay reads the scope current when it runs, and never sends one session's records to another;
+- a restore after a refusal never overwrites a newer draft or reaches another session;
+- every recorded fix is present and complete.
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| P2-1 | A recreate that finished after the reader switched machine returned before moving the draft and outbox, leaving them under the dead id | TRUE | Fixed: both are moved under the session's own machine keys, and the dead id is forgotten, before the machine check that keeps the selection where the reader is |
+| P2-2 | `enqueueSend` set the chain's tail only after starting a first step, so a step queuing another from inside itself would queue it beside itself | TRUE, latent | Fixed: the tail is in place before a first step starts, which still starts at once |
+| P2-3 | Discard left the record's in-flight mark behind | TRUE | Fixed |
+
+## Phase 2 acceptance (2026-09-29, at the commit that records it)
+
+All four merge conditions hold:
+- **Repros:** the 12 transport repros pass with their assertions unchanged. The proxy repro's clock is now fake timers, recorded above. The 4 label repros are phase 5's.
+- **Suite:** the full suite is green: 5811 passed, 20 expected fail for later phases, 5 skipped. tsc, eslint and knip are clean.
+- **Live:** `scripts/probe-transport.mjs` passes 5/5 on 8505. The never-received leg is proven to fail on 2ab0a6cf, the commit before the verification clock.
+- **Review:** the fourth fresh gate lane passed with no P0 or P1, and its P2s are fixed.
+
+Four gate lanes found 6 P1s, each fixed and pinned by a test that fails on the commit before its fix.
+
+Recorded for later phases:
+- phase 3: the late acceptance after the last ask (P2-2); the refusal frame for a background session (F4); the identity of a send to a session that is still starting.
+- phase 5: a refused row's Retry (P2-1) and the four label conflicts.
+
 **Conflicts for phase 5 (owner decision).** Some confirm repros cannot all pass together:
 - **The bubble's words.** "does not claim it may be running when the bytes never left" wants the bubble of an `unverifiable` row to read "Not sent". "gives the reader words for who is being waited on" wants "No answer yet" for the same input. The owner's words (Sending… / Receiving… / Received / Not received · Retry) match neither.
 - **The received label.** "the label of a confirmation that is not a queue" wants a `received` row to read "Queued". The owner's words say "Received".

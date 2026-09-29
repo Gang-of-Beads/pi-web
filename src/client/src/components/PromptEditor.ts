@@ -650,6 +650,7 @@ export class PromptEditor extends LitElement {
     const key = machineSessionKey(this.machineId, this.sessionId ?? "");
     if (key === "" || prompt.clientMessageId === undefined) return;
     forgetPendingPrompt(key, prompt.clientMessageId);
+    this.outboxInFlight.delete(prompt.clientMessageId);
     this.pendingPrompts = loadPendingPrompts(key);
     this.takeBack({ text: prompt.text, attachments: prompt.attachments ?? [] });
   }
@@ -1231,7 +1232,11 @@ export class PromptEditor extends LitElement {
     return this.isConnected && this.outboxKey() === key;
   }
 
-  /** Run one outbound step after every earlier one from this composer; the first starts at once. */
+  /**
+   * Run one outbound step after every earlier one from this composer; the first starts at once.
+   * The chain's tail is in place before a first step starts, so a step that queues another
+   * from inside itself queues it behind itself rather than beside it.
+   */
   private enqueueSend(step: () => Promise<void>): void {
     this.sendsWaiting += 1;
     const run = async (): Promise<void> => {
@@ -1241,7 +1246,13 @@ export class PromptEditor extends LitElement {
         this.sendsWaiting -= 1;
       }
     };
-    this.sendOrder = this.sendsWaiting === 1 ? run() : this.sendOrder.then(run, run);
+    if (this.sendsWaiting > 1) {
+      this.sendOrder = this.sendOrder.then(run, run);
+      return;
+    }
+    let settled: () => void = () => undefined;
+    this.sendOrder = new Promise<void>((resolve) => { settled = resolve; });
+    void run().then(settled, settled);
   }
 
   /**

@@ -246,6 +246,41 @@ describe("a waiting send only ever goes to the session it was written for", () =
   });
 });
 
+describe("the send chain's own order", () => {
+  it("runs a step queued from inside the first step after that step, not beside it", async () => {
+    const element = await composer();
+    const enqueue: unknown = Reflect.get(element, "enqueueSend");
+    if (typeof enqueue !== "function") throw new Error("enqueueSend is not reachable");
+    const queue = (step: () => Promise<void>): void => { Reflect.apply(enqueue, element, [step]); };
+    const outer = deferred();
+    const order: string[] = [];
+
+    queue(async () => {
+      order.push("outer starts");
+      queue(() => { order.push("inner"); return Promise.resolve(); });
+      await outer.promise;
+      order.push("outer ends");
+    });
+    await flush();
+    outer.resolve(true);
+    await flush();
+
+    expect(order).toEqual(["outer starts", "outer ends", "inner"]);
+  });
+
+  it("forgets a discarded record's in-flight mark with the record", async () => {
+    const element = await composer();
+    const inFlight: unknown = Reflect.get(element, "outboxInFlight");
+    const discard: unknown = Reflect.get(element, "discardPendingPrompt");
+    if (!(inFlight instanceof Set) || typeof discard !== "function") throw new Error("outbox internals are not reachable");
+    inFlight.add("cm-discarded");
+
+    Reflect.apply(discard, element, [{ text: "take me back", clientMessageId: "cm-discarded", at: "2026-09-29T00:00:00.000Z" }]);
+
+    expect(inFlight.has("cm-discarded")).toBe(false);
+  });
+});
+
 describe("a record's attachments travel the way they were composed", () => {
   const image = { kind: "image" as const, name: "p.png", mimeType: "image/png", data: "AAA", size: 3 };
   const file = { kind: "file" as const, name: "notes.txt", mimeType: "text/plain", data: "", size: 0 };
