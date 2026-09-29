@@ -405,3 +405,15 @@ describe("ask-user-card geometry", () => {
     expect(position).not.toBe("fixed");
   });
 });
+
+describe("a new question set", () => {
+  it("opens on its first question, not on the step the previous set was left at", async () => {
+    const card = await mountOpenAsk(openAsk([question("a", "First?", [option("x", "X")]), question("b", "Second?", [option("y", "Y")])]));
+    buttonWithText(renderRoot(card), "Next").click();
+    await card.updateComplete;
+    card.ask = { ...openAsk([question("c", "Third?", [option("z", "Z")]), question("d", "Fourth?", [option("w", "W")])]), askId: "ask-2" };
+    await card.updateComplete;
+
+    expect(renderRoot(card).querySelector("legend")?.textContent).toContain("Third?");
+  });
+});

@@ -67,6 +67,13 @@ export class AskUserCard extends LitElement {
   /** Machine-scoped session cache key used by the ask draft store. */
   @property({ attribute: false }) draftSessionId = "";
   @property({ attribute: false }) onSubmit?: AskUserSubmitCallback;
+  /** The card's heading: an extension's questions screen names itself. */
+  @property({ attribute: false }) heading = "Questions";
+  /**
+   * Close without answering, offered when the asker can take a refusal. An extension
+   * screen can; `ask_user` has no cancel, because the model is told what went unanswered.
+   */
+  @property({ attribute: false }) onCancel?: () => void | Promise<void>;
 
   @state() private answers: AskDraftAnswers = {};
   /**
@@ -87,6 +94,7 @@ export class AskUserCard extends LitElement {
     if (identity === this.modelIdentity) return;
     this.modelIdentity = identity;
     this.answers = this.loadCurrentDraft();
+    this.step = 0;
     this.confirmingPartialSubmit = false;
     this.submitting = false;
   }
@@ -103,7 +111,7 @@ export class AskUserCard extends LitElement {
     return html`
       <article class="card open-card" aria-labelledby="ask-user-heading">
         <header class="card-header">
-          <h2 id="ask-user-heading">Questions</h2>
+          <h2 id="ask-user-heading">${this.heading}</h2>
           <span class="header-status" role="status" aria-live="polite" aria-atomic="true">
             ${ask.questions.length > 1
               ? html`${this.stepIndex(ask) + 1} of ${ask.questions.length} · ${count} answered`
@@ -215,6 +223,9 @@ export class AskUserCard extends LitElement {
     const isLast = index >= ask.questions.length - 1;
     return html`
       <div class="step-actions">
+        ${this.onCancel === undefined
+          ? null
+          : html`<button class="secondary-action" type="button" ?disabled=${this.submitting} @click=${() => { void this.onCancel?.(); }}>Cancel</button>`}
         ${index > 0
           ? html`<button class="secondary-action" type="button" @click=${() => { this.goToStep(ask, index - 1); }}>Back</button>`
           : null}
@@ -265,7 +276,7 @@ export class AskUserCard extends LitElement {
     return html`
       <article class="card record-card" aria-labelledby="ask-user-record-heading">
         <header class="card-header">
-          <h2 id="ask-user-record-heading">Questions</h2>
+          <h2 id="ask-user-record-heading">${this.heading}</h2>
           <span class=${`header-status ${outcome.reason}`}>${recordLabel}</span>
         </header>
         <p class="record-summary">

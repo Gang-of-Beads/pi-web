@@ -161,6 +161,8 @@ export class ExtensionDialogCard extends LitElement {
   @property({ attribute: false }) onAnswer?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancel?: ExtensionDialogCancelCallback;
   @property({ attribute: false }) onKey?: ExtensionDialogKeyCallback;
+  /** Machine-scoped session key, so a questions screen keeps a half-given answer across a reload. */
+  @property({ attribute: false }) draftSessionId = "";
 
   @state() private inputValue = "";
   @state() private closing = false;
@@ -208,7 +210,10 @@ export class ExtensionDialogCard extends LitElement {
     const ask: PendingAskUser = { askId: dialog.dialogId, askedAt: dialog.askedAt, questions: screen.questions };
     return html`<ask-user-card
       .ask=${ask}
-      .onSubmit=${(_askId: string, submission: AskUserSubmission) => { this.answerDialog(dialog, submission); }}
+      .heading=${splitDialogTitle(dialog.title).heading}
+      .draftSessionId=${this.draftSessionId}
+      .onSubmit=${(_askId: string, submission: AskUserSubmission) => this.closeWith(dialog, () => this.onAnswer?.(dialog.dialogId, submission))}
+      .onCancel=${() => this.closeWith(dialog, () => this.onCancel?.(dialog.dialogId))}
     ></ask-user-card>`;
   }
 
@@ -378,11 +383,11 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   private answerDialog(dialog: PendingExtensionDialog, value: ExtensionDialogAnswer): void {
-    this.closeWith(dialog, () => this.onAnswer?.(dialog.dialogId, value));
+    void this.closeWith(dialog, () => this.onAnswer?.(dialog.dialogId, value));
   }
 
   private cancelDialog(dialog: PendingExtensionDialog): void {
-    this.closeWith(dialog, () => this.onCancel?.(dialog.dialogId));
+    void this.closeWith(dialog, () => this.onCancel?.(dialog.dialogId));
   }
 
   private submitInput(event: SubmitEvent, dialog: PendingExtensionDialog): void {
@@ -391,11 +396,12 @@ export class ExtensionDialogCard extends LitElement {
     this.answerDialog(dialog, this.inputValue);
   }
 
-  private closeWith(dialog: PendingExtensionDialog, close: () => void | Promise<void>): void {
-    if (this.closing) return;
+  /** Settles when the close request does, so a caller can show it is in flight. */
+  private closeWith(dialog: PendingExtensionDialog, close: () => void | Promise<void>): Promise<void> {
+    if (this.closing) return Promise.resolve();
     this.closing = true;
     const dialogId = dialog.dialogId;
-    void Promise.resolve()
+    return Promise.resolve()
       .then(close)
       .catch(() => {
         // The parent controller owns the visible transport error. Keeping this

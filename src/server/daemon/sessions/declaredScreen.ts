@@ -38,12 +38,31 @@ export function declaredScreen(value: unknown): ExtensionDialogScreen | undefine
   return { kind: "questions", ...(title === undefined ? {} : { title }), questions };
 }
 
+/**
+ * A one-line account of a declaration that did not fit, for the daemon log. A refused
+ * declaration draws the terminal frame instead, which is the very thing declaring
+ * avoids; without this line nothing said why.
+ */
+export function refusedDeclarationSummary(value: unknown): string {
+  if (!isRecord(value)) return `web is ${typeof value}`;
+  const questions = value["questions"];
+  if (!Array.isArray(questions)) return `kind ${String(value["kind"])}, no questions list`;
+  const sizes = questions.map((entry) => {
+    if (!isRecord(entry)) return "junk";
+    const options = entry["options"];
+    const detail = entry["detail"];
+    return `${Array.isArray(options) ? String(options.length) : "?"} options, detail ${typeof detail === "string" ? String(detail.length) : "none"}`;
+  });
+  return `kind ${String(value["kind"])}, ${String(questions.length)} questions: ${sizes.join("; ")}`;
+}
+
 function declaredQuestion(value: unknown): AskUserQuestion | undefined {
   if (!isRecord(value)) return undefined;
   const id = text(value["id"], ASK_USER_ID_MAX_LENGTH);
   const question = text(value["question"], ASK_USER_TEXT_MAX_LENGTH);
   const options = listOf(value["options"] ?? [], ASK_USER_OPTION_LIMIT, declaredOption);
   if (id === undefined || question === undefined || options === undefined || !unique(options.map((option) => option.value))) return undefined;
+  if (options.length === 0 && value["custom"] === false) return undefined;
   const detail = optionalText(value["detail"], EXTENSION_DIALOG_PROSE_MAX_LENGTH);
   if (detail === null) return undefined;
   return {

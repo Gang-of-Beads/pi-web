@@ -113,7 +113,7 @@ import {
 } from "./sessionNotificationStore.js";
 import { plainTextTheme } from "./plainTextTheme.js";
 import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
-import { DECLARABLE_SCREENS, declaredScreen } from "./declaredScreen.js";
+import { DECLARABLE_SCREENS, declaredScreen, refusedDeclarationSummary } from "./declaredScreen.js";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
 import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
@@ -1304,7 +1304,9 @@ function customScreenOptions(opts: unknown): {
   if (opts === null || typeof opts !== "object") return {};
   const signal: unknown = Reflect.get(opts, "signal");
   const timeout: unknown = Reflect.get(opts, "timeout");
-  const screen = declaredScreen(Reflect.get(opts, "web"));
+  const web: unknown = Reflect.get(opts, "web");
+  const screen = declaredScreen(web);
+  if (web !== undefined && screen === undefined) console.error("[extension-screen] declaration refused, drawing the terminal frame:", refusedDeclarationSummary(web));
   return {
     ...(signal instanceof AbortSignal ? { signal } : {}),
     ...(typeof timeout === "number" ? { timeout } : {}),

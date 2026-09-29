@@ -60,3 +60,19 @@ For an extension that ships only `ui.custom` (pi-ask-user, the updater, anything
 - **Parse by option, not by line.** A continuation line (deeper indent, no cursor or number) joins the option above it. A description line under an option belongs to that option.
 - **Tap by walking and checking.** Send one arrow, read the redrawn screen, and stop when the cursor line carries the tapped option; then Enter. The walk is bounded. When it cannot reach the option, the card says so instead of doing nothing.
 - The key row stays for screens that do not parse as a menu.
+
+## Gate lane 1 (Opus, reviewer) on 74b74112 + pi-goal ab8c791: PASS
+
+Verdict: no P0 or P1. Each finding was checked against the source.
+
+| Finding | Verdict | Disposition |
+|---|---|---|
+| F1 (P2): questions dialogs have no Cancel. Declining meant "Send anyway" with nothing, recorded as "Answered". | TRUE | Fixed. The card offers Cancel, which closes the dialog without an answer, so `custom()` resolves `undefined`. |
+| F2 (P2): a partial web send read as a finished questionnaire, and skipped questions vanished for the model. | TRUE | Fixed in pi-goal 9070b9b. A skipped question reads "(left unanswered)". Terminal output is unchanged. |
+| F3 (P2): a refused declaration silently drew the terminal frame again. | TRUE | Fixed. The daemon logs `[extension-screen] declaration refused` with a shape summary. pi-goal declares only what fits and treats blank context as absent. |
+| F4 (P3): no options plus `custom: false` could not be answered. | TRUE | Fixed. The daemon refuses that combination, and pi-goal no longer declares it. |
+| F5 (P3): the card lost its chrome: the heading always read "Questions", "Sending..." never showed, and the message was wrong. | TRUE | Heading and "Sending..." fixed. The message is moot: the store keeps no message for a `custom` dialog. |
+| Draft lost when the card is recreated (P3) | TRUE | Fixed. The dialog card passes the session's draft key. |
+| A queued second question set opened on the previous set's step (P3, `ask_user` too) | TRUE | Fixed. A new set opens on its first question. |
+| One malformed dialog fails the whole session status (P3) | TRUE | Not fixed. Dropping the dialog alone would leave its extension waiting on a card nobody sees, and it is reachable only through a future screen kind. |
+| A tab from before 74b74112 draws an empty frame for a questions dialog (P3) | TRUE | Not fixed. Only during a rolling upgrade, and updates now restart both processes. |

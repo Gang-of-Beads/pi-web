@@ -531,6 +531,20 @@ describe("a screen the extension declared as questions", () => {
     expect(onAnswer).toHaveBeenCalledWith("dlg-q", { answers: [{ id: "confirm", values: ["0"] }] });
   });
 
+  it("carries the dialog's title, and a Cancel that closes it without an answer", async () => {
+    const onAnswer = vi.fn<ExtensionDialogAnswerCallback>();
+    const onCancel = vi.fn<ExtensionDialogCancelCallback>();
+    const card = await mountOpenDialog(declared, { onAnswer, onCancel });
+    const { inner } = await questionsCard(card);
+
+    expect(inner.querySelector("h2")?.textContent).toBe("Confirm Goal Draft");
+    buttonWithText(inner, "Cancel").click();
+    await Promise.resolve();
+
+    expect(onCancel).toHaveBeenCalledWith("dlg-q");
+    expect(onAnswer).not.toHaveBeenCalled();
+  });
+
   it("records the answer by its label", () => {
     expect(extensionDialogCloseSummary({ ...closedDialog("answered", { answers: [{ id: "confirm", values: ["0"] }] }), dialog: declared })).toBe("Answered: Confirm");
     expect(extensionDialogCloseSummary({ ...closedDialog("answered", { answers: [] }), dialog: declared })).toBe("Sent without answering.");

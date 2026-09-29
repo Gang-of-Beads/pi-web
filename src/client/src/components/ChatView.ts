@@ -1863,6 +1863,7 @@ if (this.heldWaitingClearTimer !== undefined) {
             .onAnswer=${this.onAnswerDialog}
             .onCancel=${this.onCancelDialog}
             .onKey=${this.onDialogKey}
+            .draftSessionId=${this.askDraftSessionId}
           ></extension-dialog-card>
           ${queuedCount > 0
             ? html`<p class="queued-dialogs" role="status">${String(queuedCount)} more extension ${queuedCount === 1 ? "dialog" : "dialogs"} queued</p>`

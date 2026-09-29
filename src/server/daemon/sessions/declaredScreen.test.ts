@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { declaredScreen } from "./declaredScreen.js";
+import { declaredScreen, refusedDeclarationSummary } from "./declaredScreen.js";
 
 const question = { id: "q1", question: "Which?", options: [{ value: "a", label: "A", detail: "first" }, { value: "b", label: "B" }] };
 
@@ -25,7 +25,12 @@ describe("declaredScreen", () => {
     ["a blank label", { kind: "questions", questions: [{ ...question, options: [{ value: "a", label: " " }] }] }],
     ["a junk question", { kind: "questions", questions: [question, "q2"] }],
     ["an oversized detail", { kind: "questions", questions: [{ ...question, detail: "x".repeat(8_001) }] }],
+    ["a question that can be answered neither by option nor by text", { kind: "questions", questions: [{ ...question, options: [], custom: false }] }],
   ])("reads %s as undeclared, so the drawn screen stands", (_name, value) => {
     expect(declaredScreen(value)).toBeUndefined();
+  });
+
+  it("summarizes a refused declaration for the log", () => {
+    expect(refusedDeclarationSummary({ kind: "questions", questions: [{ ...question, detail: "x".repeat(8_001) }, "q2"] })).toBe("kind questions, 2 questions: 2 options, detail 8001; junk");
   });
 });
