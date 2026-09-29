@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ChatLine } from "./components/shared";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE, type AskUserOutcome } from "../../shared/apiTypes";
 import { groupChatMessages } from "./chatGroups";
-import { appendText, appendThinking, describeAssistantFailure, normalizeMessage, normalizeMessages, textMessage } from "./chatMessages";
+import { appendText, appendThinking, describeAssistantFailure, failureKind, type FailureKind, normalizeMessage, normalizeMessages, textMessage } from "./chatMessages";
 
 const askUserOutcome: AskUserOutcome = {
   askId: "ask-1",
@@ -158,20 +158,24 @@ describe("chat message normalization", () => {
     ]);
   });
 
-  it("names the tool a stopped turn was running, since the abort message does not", () => {
-    // "This operation was aborted" is true of a cancelled turn, a hung tool,
-    // and a stop the reader pressed - so on its own it left the reader to work
-    // out which. The failed message still carries the tool it was calling.
-    const msg = { content: [{ type: "toolCall", name: "bash" }] };
-    expect(describeAssistantFailure("This operation was aborted", msg)).toBe("This operation was aborted (stopped while running bash)");
-  });
+  describe("a reply that did not finish says which of two things ended it", () => {
+    const aborted = "This operation was aborted";
+    const bash = [{ type: "toolCall", name: "bash" }];
 
-  it("says a turn was stopped when an abort names no tool", () => {
-    expect(describeAssistantFailure("This operation was aborted", { content: [] })).toBe("This operation was aborted (the turn was stopped before it finished)");
-  });
+    it.each<[FailureKind, string, unknown, string]>([
+      ["stopped-by-you", aborted, { content: [], stoppedBy: "you" }, "You stopped this turn."],
+      ["stopped-by-you", aborted, { content: bash, stoppedBy: "you" }, "You stopped this turn while it was running bash."],
+      ["interrupted", aborted, { content: [] }, "Interrupted before it finished: This operation was aborted"],
+      ["interrupted", aborted, { content: bash }, "Interrupted while running bash: This operation was aborted"],
+      ["failed", "429 rate limit", { content: [], stoppedBy: "you" }, "Model response failed: 429 rate limit"],
+    ])("%s: %s", (kind, detail, message, text) => {
+      expect(failureKind(detail, message)).toBe(kind);
+      expect(describeAssistantFailure(detail, message)).toBe(text);
+    });
 
-  it("passes a non-abort failure through unchanged", () => {
-    expect(describeAssistantFailure("429 rate limit", { content: [] })).toBe("429 rate limit");
+    it("never calls an unmarked abort a stop the reader pressed", () => {
+      expect(describeAssistantFailure(aborted, { content: [] })).not.toMatch(/stopped/iu);
+    });
   });
 
   it("keeps partial assistant content and adds a visible error line", () => {

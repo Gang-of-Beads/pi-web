@@ -2,7 +2,6 @@ import { ASK_USER_ANSWERS_CUSTOM_TYPE } from "../../shared/apiTypes";
 import { deliverySettled } from "./messageDelivery";
 import { parseAskUserOutcome } from "./api/parsers";
 import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview, ToolResultImageRef } from "./components/shared";
-import { recentStopCause, stopCauseSuffix, type StopCause } from "./stopCause";
 
 export function normalizeMessages(messages: unknown[]): ChatLine[] {
   return coalesceToolExecutions(messages.flatMap(normalizeMessage)).filter((message) => message.parts.length > 0);
@@ -101,30 +100,36 @@ function assistantErrorLine(message: unknown): ChatLine | undefined {
   if (getString(message, "role") !== "assistant" || getString(message, "stopReason") !== "error") return undefined;
   const errorMessage = getString(message, "errorMessage")?.trim();
   const detail = errorMessage === undefined || errorMessage === "" ? "The model returned an error." : errorMessage;
-  return textMessage("system", `Model response failed: ${describeAssistantFailure(detail, message, recentStopCause())}`);
+  return textMessage("system", describeAssistantFailure(detail, message));
 }
 
 /**
- * Name what stopped, when the failure itself does not.
+ * What ended a reply that did not finish.
  *
- * An abort arrives as "This operation was aborted" - true of a cancelled turn,
- * a tool that hung, and a stop the reader pressed themselves, which leaves the
- * reader to work out which one happened. The message that failed still carries
- * the tool it was calling, so the turn can say so.
+ * "This operation was aborted" is true of a Stop the reader pressed and of a
+ * connection something else cut, and the row used to read "(the turn was stopped
+ * before it finished)" for both. Owner, 2026-09-30: only two cases matter - you
+ * stopped it, or it was interrupted. The daemon marks a reply the reader's Stop cut
+ * (`stoppedBy: "you"`, live and in history), so everything else is an interruption.
  */
-export function describeAssistantFailure(detail: string, message: unknown, cause?: StopCause): string {
-  if (isUnreplayableThinkingFailure(detail)) {
-    return `${detail} (a turn was interrupted while the model was thinking, so this conversation carries a thinking block the provider will not accept again; every retry on this branch fails the same way. Open /tree and fork from the user message that asked for the broken turn - the fork drops it and returns your message as a draft.)`;
-  }
-  if (!/aborted/iu.test(detail)) return detail;
-  // Who stopped it, when the client knows: the daemon only records the cause
-  // for its own stops, so an unknown cause stays "stopped", never a guess.
-  const whose = stopCauseSuffix(cause);
-  const tool = lastToolCallName(message);
-  if (tool !== undefined) return `${detail} (stopped while running ${tool}${whose === undefined ? "" : `, ${whose}`})`;
-  return whose === undefined
-    ? `${detail} (the turn was stopped before it finished)`
-    : `${detail} (${whose})`;
+export type FailureKind = "failed" | "unreplayable-thinking" | "stopped-by-you" | "interrupted";
+
+export function failureKind(detail: string, message: unknown): FailureKind {
+  if (isUnreplayableThinkingFailure(detail)) return "unreplayable-thinking";
+  if (!/aborted/iu.test(detail)) return "failed";
+  return getString(message, "stoppedBy") === "you" ? "stopped-by-you" : "interrupted";
+}
+
+const FAILURE_TEXT: Record<FailureKind, (detail: string, tool: string | undefined) => string> = {
+  failed: (detail) => `Model response failed: ${detail}`,
+  "unreplayable-thinking": (detail) => `Model response failed: ${detail} (a turn was interrupted while the model was thinking, so this conversation carries a thinking block the provider will not accept again; every retry on this branch fails the same way. Open /tree and fork from the user message that asked for the broken turn - the fork drops it and returns your message as a draft.)`,
+  "stopped-by-you": (_detail, tool) => (tool === undefined ? "You stopped this turn." : `You stopped this turn while it was running ${tool}.`),
+  interrupted: (detail, tool) => `${tool === undefined ? "Interrupted before it finished" : `Interrupted while running ${tool}`}: ${detail}`,
+};
+
+/** The failure row's text; the tool a cut reply was calling is named when it had one. */
+export function describeAssistantFailure(detail: string, message: unknown): string {
+  return FAILURE_TEXT[failureKind(detail, message)](detail, lastToolCallName(message));
 }
 
 /**

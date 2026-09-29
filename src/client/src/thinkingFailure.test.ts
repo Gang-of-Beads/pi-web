@@ -26,12 +26,12 @@ describe("a branch that can no longer be replayed says so", () => {
 
   it("does not claim it for an unrelated failure", () => {
     expect(isUnreplayableThinkingFailure("400 rate limit exceeded")).toBe(false);
-    expect(describeAssistantFailure("400 rate limit exceeded", undefined)).toBe("400 rate limit exceeded");
+    expect(describeAssistantFailure("400 rate limit exceeded", undefined)).toBe("Model response failed: 400 rate limit exceeded");
   });
 
   it("does not claim it for a merely aborted turn", () => {
     expect(isUnreplayableThinkingFailure("request aborted")).toBe(false);
-    expect(describeAssistantFailure("request aborted", undefined)).toContain("stopped before it finished");
+    expect(describeAssistantFailure("request aborted", undefined)).toBe("Interrupted before it finished: request aborted");
   });
 
   it("does not claim it when thinking is only mentioned", () => {

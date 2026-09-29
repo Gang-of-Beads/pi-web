@@ -22,6 +22,25 @@ const errors = (messages: unknown[]): unknown[] => messages.flatMap((message): u
   return text === undefined ? [] : [text];
 });
 
+describe("a turn the reader stopped, after a reload", () => {
+  const stopped = { type: "custom", id: "s1", customType: "pi-web.turn.stopped", data: { by: "you" } };
+  const cut = (id: string) => ({ type: "message", id, message: { role: "assistant", content: [], stopReason: "aborted", errorMessage: "Request aborted" } });
+  const stoppedBy = (messages: unknown[]): unknown[] => messages.map((message): unknown => (typeof message === "object" && message !== null ? Reflect.get(message, "stoppedBy") : undefined));
+
+  it("marks the reply the Stop cut", () => {
+    expect(stoppedBy(branchMessages([{ type: "message", id: "u1", message: { role: "user", content: "go" } }, stopped, cut("a1")]))).toEqual([undefined, "you"]);
+  });
+
+  it("marks nothing in a later turn", () => {
+    const later = [stopped, { type: "message", id: "u2", message: { role: "user", content: "again" } }, cut("a2")];
+    expect(stoppedBy(branchMessages(later))).toEqual([undefined, undefined]);
+  });
+
+  it("marks only the first cut reply after the Stop", () => {
+    expect(stoppedBy(branchMessages([stopped, cut("a1"), cut("a2")]))).toEqual(["you", undefined]);
+  });
+});
+
 describe("retried attempts in the transcript", () => {
   it("shows only the failure no retry replaced", () => {
     expect(errors(branchMessages(branch))).toEqual(["overloaded, final"]);

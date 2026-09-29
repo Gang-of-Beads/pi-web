@@ -34,7 +34,7 @@ import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../..
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
-import { annotateAssistantThinkingLevel, branchMessages } from "../../../shared/branchMessages.js";
+import { annotateAssistantThinkingLevel, branchMessages, isCutAssistant, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
 import { runTranscriptMessages } from "../../../shared/subagentRunTranscript.js";
 import { readableMessageCount } from "./readableMessageCount.js";
 import { pluginSurfacePresence } from "./pluginSurfaces.js";
@@ -1458,6 +1458,8 @@ export class PiSessionService implements SessionRouteService {
   private customScreenStack: string | undefined;
   /** Open extension screens, by dialog id, so a keypress can find its component. */
   private readonly customScreens = new Map<string, (key: string) => void>();
+  /** Sessions whose running turn the reader stopped; cleared when that turn ends. */
+  private readonly stoppedByReader = new Set<string>();
   private readonly dialogWaiters = new ExtensionDialogWaiters();
   private readonly catalogRefreshStatus: CatalogRefreshStatus | undefined;
   private readonly unreadPublicationRetryInitialMs: number;
@@ -3590,6 +3592,33 @@ export class PiSessionService implements SessionRouteService {
     message["clientMessageId"] = clientMessageId;
   }
 
+  /**
+   * Remember that the reader stopped this turn, durably. The custom entry is what
+   * history reads after a reload (`branchMessages`); the set marks the live reply.
+   */
+  private recordStopByReader(session: PiAgentSession): void {
+    this.stoppedByReader.add(session.sessionId);
+    try {
+      session.sessionManager.appendCustomEntry?.(TURN_STOPPED_CUSTOM_TYPE, { by: "you" });
+    } catch (error) {
+      console.error("[stop] could not record the reader's stop", String(error));
+    }
+  }
+
+  /** The reply a reader's Stop cut says so on the live frame, as history will. */
+  private stampStoppedReply(session: PiAgentSession, event: unknown): void {
+    const eventType = getString(event, "type");
+    if (eventType === "agent_end") {
+      this.stoppedByReader.delete(session.sessionId);
+      return;
+    }
+    if (eventType !== "message_end" || !this.stoppedByReader.has(session.sessionId)) return;
+    const message = getProperty(event, "message");
+    if (!isRecord(message) || !isCutAssistant(message)) return;
+    message["stoppedBy"] = "you";
+    this.stoppedByReader.delete(session.sessionId);
+  }
+
   private publishActivityChangeForToolEvent(session: PiAgentSession, event: unknown): void {
     const eventType = getString(event, "type");
     if (eventType !== "tool_execution_start" && eventType !== "tool_execution_end") return;
@@ -4314,6 +4343,7 @@ export class PiSessionService implements SessionRouteService {
     // Named before the abort: the failure row the browser builds from it has to
     // be able to say who stopped the turn.
     this.events.publish(sessionId, { type: "session.stopped", cause: "user" });
+    if (active.runtime.session.isStreaming) this.recordStopByReader(active.runtime.session);
     try {
       await this.abortSessionOperations(active.runtime.session);
       await this.stopHandoffInFlight(active.runtime.session);
@@ -5227,6 +5257,7 @@ export class PiSessionService implements SessionRouteService {
 
   private handleRuntimeEvent(session: PiAgentSession, event: unknown): void {
     this.stampCommittedUserMessage(session, event);
+    this.stampStoppedReply(session, event);
     this.observeInboxFacts(session, event);
     this.publishActivityChangeForToolEvent(session, event);
     this.events.publish(session.sessionId, toClientEvent(event, session.thinkingLevel));

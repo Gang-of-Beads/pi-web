@@ -17,6 +17,26 @@
  */
 
 /**
+ * Custom entry the daemon appends when the reader presses Stop during a turn.
+ *
+ * pi records an ended reply with its provider's words ("This operation was aborted")
+ * and not who ended it, so after a reload a Stop the reader pressed read the same as
+ * a dropped connection. Owner, 2026-09-30: only two cases matter, "you stopped it"
+ * and "it was interrupted". The entry is the durable half; the daemon also marks the
+ * live reply, so every device and every reload says the same.
+ */
+export const TURN_STOPPED_CUSTOM_TYPE = "pi-web.turn.stopped";
+
+/** A reply that ended without finishing: pi's own abort, or an error. */
+export function isCutAssistant(message: unknown): boolean {
+  return isRecord(message) && message["role"] === "assistant" && (message["stopReason"] === "aborted" || message["stopReason"] === "error");
+}
+
+function stoppedByYou(message: unknown): unknown {
+  return isRecord(message) ? { ...message, stoppedBy: "you" } : message;
+}
+
+/**
  * The failed attempts pi retried: an assistant message that ended in an error and
  * that a `context_edit` then removed with no replacement. That pair is pi's own
  * recovery signature (`auto_retry_start`, then `_omitRecoveryAttempt`), so nothing
@@ -61,10 +81,16 @@ export function branchMessages(entries: Iterable<unknown>): unknown[] {
   const retried = retriedAttemptIds(branch);
   const messages: unknown[] = [];
   let thinkingLevel: string | undefined;
+  let stoppedByReader = false;
   for (const entry of branch) {
     if (!isRecord(entry)) continue;
+    if (entry["type"] === "custom" && entry["customType"] === TURN_STOPPED_CUSTOM_TYPE) stoppedByReader = true;
     if (entry["type"] === "message") {
-      if (!retried.has(getString(entry, "id") ?? "")) messages.push(annotateAssistantThinkingLevel(entry["message"], thinkingLevel));
+      const message = entry["message"];
+      if (isRecord(message) && message["role"] === "user") stoppedByReader = false;
+      const cut = stoppedByReader && isCutAssistant(message);
+      if (cut) stoppedByReader = false;
+      if (!retried.has(getString(entry, "id") ?? "")) messages.push(annotateAssistantThinkingLevel(cut ? stoppedByYou(message) : message, thinkingLevel));
     }
     else if (entry["type"] === "thinking_level_change") {
       const level = getString(entry, "thinkingLevel");
