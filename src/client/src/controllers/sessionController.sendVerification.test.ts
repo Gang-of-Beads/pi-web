@@ -173,6 +173,19 @@ describe("phase 5 gate 2: verdicts on a message the daemon had taken", () => {
   });
 });
 
+describe("phase 5 gate 5: an ask that answers after the reader moved on", () => {
+  it("does not raise the reconnecting words over the session the reader switched to", async () => {
+    let fail: (error: unknown) => void = () => undefined;
+    const send = await unansweredSend(() => ({}), { operationOutcomes: () => new Promise((_resolve, reject) => { fail = reject; }) });
+    await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
+    send.showSession({ ...oldSession, id: "another-session", path: "/tmp/another-session.jsonl" });
+    fail(new TypeError("Failed to fetch"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(send.notice() === VERIFY_RECONNECTING).toBe(false);
+  });
+});
+
 describe("an unanswered send asks the daemon's ledger on its own", () => {
   it("asks nothing at once, then five seconds after the send gave up", async () => {
     const send = await unansweredSend(() => ({}));

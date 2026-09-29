@@ -33,6 +33,12 @@ function input(patch: Partial<Omit<NavigateInput, "query">> = {}): Omit<Navigate
   };
 }
 
+/** Click an element the test depends on, failing loudly when it is missing rather than passing a negative half on nothing. */
+function press(element: HTMLElement | null | undefined): void {
+  if (element === null || element === undefined) throw new Error("the element to press is not on the page");
+  element.click();
+}
+
 async function mount(patch: Partial<AppNavigatePage> = {}, modelInput = input()): Promise<AppNavigatePage> {
   const page = document.createElement("app-navigate-page");
   page.input = modelInput;
@@ -79,7 +85,7 @@ describe("app-navigate-page", () => {
     const page = await mount({ onWiden });
     Reflect.set(page, "pathProjectId", "p1");
     await page.updateComplete;
-    page.renderRoot.querySelector<HTMLButtonElement>(".path-step")?.click();
+    press(page.renderRoot.querySelector<HTMLButtonElement>(".path-step"));
     expect(onWiden).toHaveBeenCalledWith("project");
   });
 
@@ -186,13 +192,13 @@ describe("the quick-access key over an open session", () => {
     const page = await mount({ returnable: true, onClose: () => { closes.push(1); }, onWiden: (level: string) => { widened.push(level); } });
     Reflect.set(page, "kind", "project");
     await page.updateComplete;
-    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
     await page.updateComplete;
-    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
     const fromTab = { widened: [...widened], closes: closes.length };
     Reflect.set(page, "pathProjectId", "project-1");
     await page.updateComplete;
-    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
 
     expect({ fromTab, fromProject: widened }).toEqual({ fromTab: { widened: [], closes: 1 }, fromProject: ["project"] });
     page.remove();
@@ -204,12 +210,12 @@ describe("the path steps over an open session", () => {
     const widened: string[] = [];
     const page = await mount({ returnable: true, onWiden: (level: string) => { widened.push(level); } });
     const projectStep = (): HTMLButtonElement | undefined => [...page.renderRoot.querySelectorAll<HTMLButtonElement>(".path-step")].at(-1);
-    projectStep()?.click();
+    press(projectStep());
     await page.updateComplete;
     const onTheMachine = [...widened];
     Reflect.set(page, "pathProjectId", "project-1");
     await page.updateComplete;
-    projectStep()?.click();
+    press(projectStep());
 
     expect({ onTheMachine, fromAProject: widened }).toEqual({ onTheMachine: [], fromAProject: ["project"] });
     page.remove();
@@ -233,13 +239,13 @@ describe("the quick-access key", () => {
     Reflect.set(page, "kind", "project");
     await page.updateComplete;
 
-    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
     await page.updateComplete;
 
     expect(Reflect.get(page, "kind")).toBe("sessions");
     expect(closes).toHaveLength(0);
 
-    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
 
     expect(closes).toHaveLength(1);
     page.remove();
@@ -251,9 +257,9 @@ describe("the quick-access key with nowhere to return to", () => {
     const closes: number[] = [];
     const page = await mount({ returnable: false, onClose: () => { closes.push(1); } });
 
-    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
     await page.updateComplete;
-    page.renderRoot.querySelector<HTMLButtonElement>(".quick-access")?.click();
+    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
 
     expect(closes).toHaveLength(0);
     expect(page.renderRoot.querySelector(".quick-access")?.getAttribute("aria-label")).toBe("All sessions on this machine");

@@ -927,6 +927,37 @@ Report-only, for the owner: the machine-wide page's "+ New session" still create
 **Invariant (navigation, after lanes 3 and 4 found the same symptom twice).** A way back never changes what it returns to: only an action the reader chose to change the selection, or a fact about the selection, may clear the session behind the navigation page. Every producer of `clearActiveSession` in the client, enumerated:
 - `navigateWiden` (PiWebApp): reached only from the page's grid key and path steps. Both now widen through the app only from a project the reader stepped into.
 - `handleMachineChange`, `selectProject`, `selectWorkspace` and `deselectSession`: the reader chose another machine, project or folder, or deselected.
-- The topology fallback (the folder vanished), `forgetProject` (the project was removed), and an archived session with no successor: facts.
+- The topology fallback (the folder vanished) and an archived session with no successor: facts. `closeProject` (the reader closed the project from its row menu): a deliberate choice.
 
 Open for the owner: choosing another project on the navigation page (stepping into it) still clears the session behind the page, because it selects that project. That is a deliberate choice, but the page is also a place to browse.
+
+### Phase 5 gate lane 5 triage
+
+The lane was Opus on all of phase 5 (4fa133ef..b292a190), as the acceptance lane. Verdict: **PASS**, with no P0 or P1. It confirmed that the fixes from lanes 1–4 hold and that the producer list is complete. Its four P2s are fixed. Each code fix has a test that fails on b292a190.
+
+| # | Finding | Outcome |
+|---|---|---|
+| P2-1 | A replay nobody answered left its record's state as it was, so a record that had failed while offline, then replayed and timed out after the bytes left, read "Not sent" in the tray while the bubble read "Receiving…". This is a sibling of lane 1's F3a on the replay path. | **Fixed.** `unansweredBytesLeft` classifies the wrapped cause for both the first send and a replay. A replay writes its outcome with `markUnansweredPrompt`, because a failed record ignores a timeout in the table, and a retry is a fresh attempt. The reviewer's converse case (a replay failing while the browser says offline) cannot happen, because a replay does not start offline. Test: a replay that timed out records `unverifiable`. |
+| P2-2 | An ask that answered after the reader switched sessions raised or withdrew the reconnect words over the new session. | **Fixed:** after its await, the ask withdraws its own words and stops when its session is gone. Test: the words do not rise over the session switched to. |
+| P2-3 | A POST answer for a message the agent had already taken could reserve it again when its acceptance frame had been missed, leaving the words in storage for a day. | **Fixed:** the controller settles the answered send itself (`settleAnsweredSend`). A failed row stays failed, a delivered row keeps nothing aside, and anything else is received and reserved. The editor's own reserve then finds nothing to move. Test: taken, then answered, with the frame missed, leaves the reserve empty. |
+| P2-4 | The producer list named `forgetProject`, which does not clear the session; `closeProject` does. | **Fixed** in the list above. |
+
+The navigation tests' clicks now fail loudly when the element is missing (`press`), so their "nothing widened" halves cannot pass on nothing.
+
+Residual risk recorded, not reproduced: an ask made after a daemon restart, but before the session reopens and its inbox re-records a message, can read `unknown`. A still-queued message could then read "Not received" until its replay meets the daemon's duplicate path, which answers `prompt.accepted`. This needs a timing probe on a live stack.
+
+### Phase 5 acceptance
+
+Phase 5 is accepted at the commit that lands this triage.
+- Five gate lanes ran, alternating Opus and DeepSeek. Lanes 1–4 each blocked, and every finding was fixed with a test that fails first. Lane 5, fresh and covering the whole phase, passed with no P0 or P1, and its four P2s are fixed.
+- All four label repros turned green. The assertion changes follow the owner's words, and the fixture changes are recorded.
+- Live on the 8505 stack:
+  - `probe-vocabulary` scores 4fa133ef 0/6 and the phase 5 tree 6/6;
+  - `probe-navigate-close` scores 71cb0103 3/4 and c85abb89 4/6, and this tree 6/6;
+  - `probe-offline-send`, `probe-outbox-settles`, `probe-navigate`, `probe-realtime`, `probe-reads` and the geometry baseline pass.
+
+Open for the owner:
+- the command bubble's "Running", and the session list's "failed to send" label for an unanswered message;
+- whether stepping into another project from the navigation page should keep the session behind it;
+- an Escape key for the desktop navigation overlay;
+- the machine-wide page's "+ New session", which creates in the app's selected project.

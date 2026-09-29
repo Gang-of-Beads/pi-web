@@ -689,9 +689,7 @@ export class SessionController {
       } else {
         await this.api.prompt(session, text, streamingBehavior, machineId, attachments, clientMessageId);
       }
-      if (clientMessageId !== undefined && rowState(this.getState().messages, clientMessageId) !== "failed") {
-        this.markDelivery(session.id, clientMessageId, "received");
-      }
+      if (clientMessageId !== undefined) this.settleAnsweredSend(session, machineId, clientMessageId);
       this.markCachedNewSessionPersisted(session);
       return true;
     } catch (error) {
@@ -2286,6 +2284,10 @@ export class SessionController {
     }
     const asked = await this.closeUnverifiedOperations(session, this.verificationPastLastAsk.has(key));
     if (this.disposed) return;
+    if (!onScreen()) {
+      leave();
+      return;
+    }
     const state = this.getState();
     if (asked !== "unreachable") {
       if (state.error === VERIFY_RECONNECTING) this.setState(clearErrorPatch());
@@ -2365,6 +2367,25 @@ export class SessionController {
     if (current.selectedSession?.id !== sessionId) return;
     const messages = markDelivery(current.messages, clientMessageId, state);
     if (messages !== current.messages) this.setState({ messages });
+  }
+
+  /**
+   * The POST answered for this message. A row a refusal failed during this attempt stays failed:
+   * `restartDelivery` put it back to sending when the attempt began. A row the agent already took
+   * keeps nothing aside; the answer can arrive after the delivered row retired its reserve, and
+   * reserving then left the words in storage for a day. Anything else is received, and kept aside
+   * until the agent takes it.
+   */
+  private settleAnsweredSend(session: SessionRef, machineId: string, clientMessageId: string): void {
+    const row = rowState(this.getState().messages, clientMessageId);
+    if (row === "failed") return;
+    const key = machineSessionKey(machineId, session.id);
+    if (row === "delivered") {
+      forgetPendingPrompt(key, clientMessageId);
+      return;
+    }
+    this.markDelivery(session.id, clientMessageId, "received");
+    reserveAcceptedPrompt(key, clientMessageId);
   }
 
   private readonly retiredRecords = new Set<string>();

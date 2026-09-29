@@ -18,7 +18,7 @@ import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { addToHeldComposerAttachments, holdComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
-import { advancePendingPrompt, isNetworkFailure, linkReportedOffline, loadPendingPrompts, NetworkSendError, replaysRecord, reserveAcceptedPrompt, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
+import { advancePendingPrompt, isNetworkFailure, linkReportedOffline, loadPendingPrompts, markUnansweredPrompt, NetworkSendError, replaysRecord, reserveAcceptedPrompt, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
 import { outgoingStopped } from "../outgoingMessages";
 import { classifySubmission, handleOutcome, transportFactsFor } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
@@ -1243,7 +1243,9 @@ export class PromptEditor extends LitElement {
           const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: id, scope });
           if (accepted !== false) reserveAcceptedPrompt(key, id);
           else if (prompt.refused === true && loadPendingPrompts(key).some((entry) => entry.clientMessageId === id)) savePendingPrompt(key, prompt);
-        } catch {
+        } catch (failure) {
+          const left = unansweredBytesLeft(failure);
+          if (left !== undefined) markUnansweredPrompt(key, id, left);
           continue;
         } finally {
           this.outboxInFlight.delete(id);
@@ -1377,10 +1379,9 @@ export class PromptEditor extends LitElement {
       }
       return;
     }
-    if (handleOutcome(classifySubmission(failure, (value) => !isNetworkFailure(value) && !isRequestTimeout(value))).keepInOutbox) {
+    const left = unansweredBytesLeft(failure);
+    if (left !== undefined) {
       if (outboxKey !== "") {
-        const cause: unknown = failure instanceof NetworkSendError && failure.cause !== undefined ? failure.cause : failure;
-        const left = transportFactsFor(cause, { isTimeout: isRequestTimeout(cause), linkOffline: linkReportedOffline(cause) }).bytesHandedToTransport;
         advancePendingPrompt(outboxKey, outboxId, left ? "send-timeout" : "send-refused-network");
         this.pendingPrompts = this.pendingPromptsForSession();
       }
@@ -1423,6 +1424,19 @@ export class PromptEditor extends LitElement {
 // cares about (canSteer/canStop/isCompacting/sending) is passed as a separate
 // property that Lit already diffs by value. Comparing just these fields lets us
 // ignore the per-token status churn that does not change anything on screen.
+/**
+ * For a send nobody answered, whether its bytes left - the fact the bubble words it by; undefined
+ * for a failure that is an answer. The controller wraps the transport error in `NetworkSendError`
+ * and classifies the original, so this unwraps it too: classifying the wrapper made the record
+ * say "Not sent" while the bubble said "Receiving…". The first send and a replay both use it; a
+ * replay used to leave its record's state as it was whatever the retry found.
+ */
+function unansweredBytesLeft(failure: unknown): boolean | undefined {
+  if (!handleOutcome(classifySubmission(failure, (value) => !isNetworkFailure(value) && !isRequestTimeout(value))).keepInOutbox) return undefined;
+  const cause: unknown = failure instanceof NetworkSendError && failure.cause !== undefined ? failure.cause : failure;
+  return transportFactsFor(cause, { isTimeout: isRequestTimeout(cause), linkOffline: linkReportedOffline(cause) }).bytesHandedToTransport;
+}
+
 function sessionStatusRenderEqual(a: SessionStatus | undefined, b: SessionStatus | undefined): boolean {
   if (a === b) return true;
   if (a === undefined || b === undefined) return false;

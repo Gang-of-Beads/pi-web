@@ -204,6 +204,28 @@ describe("SessionController prompt.refused", () => {
       .toEqual({ row: "failed", record: ["failed", true] });
   });
 
+  it("keeps nothing aside for a message the agent took before its send's own answer came, its acceptance frame missed", async () => {
+    const socket = new EmitSocket();
+    const post = deferred<{ accepted: true }>();
+    let state = selectedState({ selectedSession: undefined });
+    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api: { ...selectableApi(status(oldSession.id)), prompt: () => post.promise }, socket });
+    await controller.selectSession(oldSession, { updateUrl: false });
+    const key = machineSessionKey(selectedMachineId(state), oldSession.id);
+    savePendingPrompt(key, { text: "taken at once", clientMessageId: "cmid-taken", at: new Date().toISOString() });
+
+    const sending = controller.send("taken at once", "followUp", undefined, "inline", { clientMessageId: "cmid-taken" });
+    const write: unknown = Reflect.get(controller, "setState");
+    if (typeof write !== "function") throw new Error("setState is not reachable");
+    Reflect.apply(write, controller, [{ messages: state.messages.map((line) => (line.meta?.delivery?.clientMessageId === "cmid-taken" ? { ...line, meta: { ...line.meta, delivery: { clientMessageId: "cmid-taken", state: "delivered" as const } } } : line)) }]);
+    post.resolve({ accepted: true });
+    await sending;
+    reserveAcceptedPrompt(key, "cmid-taken");
+    const reserved = localStorage.getItem(`pi-web:accepted-prompt:${key}`) ?? "";
+    clearPendingPrompts(key);
+
+    expect({ reserved: reserved.includes("cmid-taken"), outbox: loadPendingPrompts(key).length }).toEqual({ reserved: false, outbox: 0 });
+  });
+
   it("leaves a row the transcript already claimed as read", async () => {
     const harness = await liveSession();
     const line = { role: "user" as const, parts: [{ type: "text" as const, text: "read already" }], meta: { delivery: { clientMessageId: "cmid-read", state: "delivered" as const } } };

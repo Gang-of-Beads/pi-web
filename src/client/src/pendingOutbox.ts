@@ -366,6 +366,20 @@ export function failPendingPrompt(sessionKey: string, clientMessageId: string, c
 }
 
 /**
+ * A replay nobody answered: the record says what the bubble says. Bytes that left may have
+ * arrived (Receiving…); bytes that never left did not (Not sent). The table cannot say it, because
+ * a failed record ignores a timeout; a retry is a fresh attempt, so its outcome replaces the old.
+ */
+export function markUnansweredPrompt(sessionKey: string, clientMessageId: string, bytesLeft: boolean, storage = browserStorage()): void {
+  const record = loadPendingPrompts(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId);
+  if (record === undefined) return;
+  const marked: PendingPrompt = { ...record, state: bytesLeft ? "unverifiable" : "failed" };
+  delete marked.failure;
+  delete marked.refused;
+  savePendingPrompt(sessionKey, bytesLeft ? marked : { ...marked, failure: "not-sent" }, storage);
+}
+
+/**
  * Whether a replay sends this record. A replay of everything - on `online`, on the first render,
  * on a session switch - sends what stopped without an answer; a refused record goes only when
  * the reader presses its Retry.

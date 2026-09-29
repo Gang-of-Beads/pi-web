@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PromptEditor, recordedDelivery } from "./PromptEditor";
 import { forgetPendingPrompt, loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, SendScopeChangedError } from "../pendingOutbox";
 import { HttpError } from "../api/http";
+import { RequestTimeoutError } from "../api/requestDeadline";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -376,6 +377,18 @@ describe("phase 5 gate 2: a refused message the reader retried", () => {
     await flush();
 
     expect({ sent, refused: loadPendingPrompts("local:session-1")[0]?.refused }).toEqual({ sent: ["refused twice"], refused: true });
+  });
+
+  it("words a replay whose bytes left and got no answer as the bubble does: receiving, not the old not sent", async () => {
+    const at = new Date(Date.now() - 60_000).toISOString();
+    savePendingPrompt("local:session-1", { text: "timed out", clientMessageId: "cm-left", at, state: "failed", failure: "not-sent" });
+    const element = await composer();
+    element.onSend = (_text, _behavior, _attachments, _delivery, replay) => Promise.reject(new NetworkSendError("timeout", replay?.clientMessageId, { cause: new RequestTimeoutError("api/sessions/prompt", 30_000) }));
+    element.retryOutbox("cm-left");
+    await flush();
+    await flush();
+
+    expect(loadPendingPrompts("local:session-1").map((prompt) => [prompt.state, prompt.failure])).toEqual([["unverifiable", undefined]]);
   });
 
   it("does not bring back a record that left the outbox while its retry was in flight", async () => {
