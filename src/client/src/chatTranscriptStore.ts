@@ -9,6 +9,7 @@ import {
   writeChatHistoryCache,
   writeChatHistoryWatermark,
   type RawMessagePage,
+  type StreamWatermark,
 } from "./chatHistoryCache";
 import type { ChatLine } from "./components/shared";
 import type { SessionUiEvent } from "./sessionSocket";
@@ -35,8 +36,8 @@ export interface ChatHistoryCacheAdapter {
   read(sessionId: string): RawMessagePage | undefined;
   write(sessionId: string, page: RawMessagePage): void;
   remove?(sessionId: string): void;
-  readWatermark?(sessionId: string): number | undefined;
-  writeWatermark?(sessionId: string, seq: number): void;
+  readWatermark?(sessionId: string): StreamWatermark | undefined;
+  writeWatermark?(sessionId: string, watermark: StreamWatermark): void;
   removeWatermark?(sessionId: string): void;
 }
 
@@ -51,7 +52,7 @@ const browserChatHistoryCache: ChatHistoryCacheAdapter = {
 
 export class ChatTranscriptStore {
   private readonly rawHistoryPages = new Map<string, RawMessagePage>();
-  private readonly watermarkBySession = new Map<string, number>();
+  private readonly watermarkBySession = new Map<string, StreamWatermark>();
   private readonly maxInMemoryTranscripts: number;
 
   constructor(
@@ -105,12 +106,12 @@ export class ChatTranscriptStore {
    * replay path later asks the daemon for frames after this seq instead of
    * re-fetching the page.
    */
-  setWatermark(sessionId: string, seq: number): void {
-    this.watermarkBySession.set(sessionId, seq);
-    this.cache.writeWatermark?.(sessionId, seq);
+  setWatermark(sessionId: string, watermark: StreamWatermark): void {
+    this.watermarkBySession.set(sessionId, watermark);
+    this.cache.writeWatermark?.(sessionId, watermark);
   }
 
-  watermark(sessionId: string): number | undefined {
+  watermark(sessionId: string): StreamWatermark | undefined {
     const inMemory = this.watermarkBySession.get(sessionId);
     if (inMemory !== undefined) return inMemory;
     const persisted = this.cache.readWatermark?.(sessionId);

@@ -66,7 +66,7 @@ export interface SessionRouteService {
   toolResultImage(ref: SessionRouteRef, toolCallId: string, index: number): Promise<{ mimeType: string; data: string } | undefined>;
   streamSnapshot(ref: SessionRouteRef): Promise<SessionStreamSnapshot>;
   /** Gap repair: replay the frames after the client's last seen seq, or resync. */
-  streamSync(ref: SessionRouteRef, sinceSeq: number): Promise<SessionStreamSync>;
+  streamSync(ref: SessionRouteRef, sinceSeq: number, epoch?: string): Promise<SessionStreamSync>;
   notificationCatalog(): SessionNotificationCatalogSnapshot | Promise<SessionNotificationCatalogSnapshot>;
   unreadCatalog(): Promise<SessionUnreadCatalogSnapshot>;
   /** Status of every currently loaded session, for browser hydration. */

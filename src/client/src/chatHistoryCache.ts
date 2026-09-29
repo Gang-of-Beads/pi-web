@@ -261,20 +261,35 @@ function watermarkKey(sessionId: string): string {
  * (page, watermark) is only meaningful together, so a missing page makes the
  * watermark ignorable.
  */
-export function readChatHistoryWatermark(sessionId: string, storage: HistoryStorage = browserStorage()): number | undefined {
+/**
+ * A seq and the epoch of the seq space it belongs to. A watermark an older build stored as a
+ * bare number reads back without an epoch; the daemon answers such a citation with resync, and
+ * the full read that follows records one with its epoch.
+ */
+export interface StreamWatermark {
+  seq: number;
+  epoch?: string;
+}
+
+export function readChatHistoryWatermark(sessionId: string, storage: HistoryStorage = browserStorage()): StreamWatermark | undefined {
   try {
     const raw = storage.getItem(watermarkKey(sessionId));
     if (raw === null || raw === "") return undefined;
     const parsed: unknown = JSON.parse(raw);
-    return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : undefined;
+    if (typeof parsed === "number") return Number.isFinite(parsed) ? { seq: parsed } : undefined;
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    const seq: unknown = Reflect.get(parsed, "seq");
+    const epoch: unknown = Reflect.get(parsed, "epoch");
+    if (typeof seq !== "number" || !Number.isFinite(seq)) return undefined;
+    return typeof epoch === "string" ? { seq, epoch } : { seq };
   } catch {
     return undefined;
   }
 }
 
-export function writeChatHistoryWatermark(sessionId: string, seq: number, storage: HistoryStorage = browserStorage()): void {
+export function writeChatHistoryWatermark(sessionId: string, watermark: StreamWatermark, storage: HistoryStorage = browserStorage()): void {
   try {
-    storage.setItem(watermarkKey(sessionId), JSON.stringify(seq));
+    storage.setItem(watermarkKey(sessionId), JSON.stringify(watermark));
   } catch {
     // A watermark the storage refuses is a lost optimization, not a failure.
   }

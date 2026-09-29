@@ -1285,6 +1285,8 @@ export interface MessagePage {
  */
 export interface SessionStreamSnapshot {
     seq: number;
+    /** The seq space `seq` belongs to. A watermark cited with any other epoch is answered with resync. */
+    epoch?: string;
     /** Browser-projected in-flight `AssistantMessage`, or `null` when idle. */
     partial: unknown;
 }
@@ -1339,6 +1341,7 @@ export type CommandResult = {
  */
 export type SessionUiEvent = SessionUiEventBody & {
     seq?: number;
+    epoch?: string;
 };
 type SessionUiEventBody = 
 /**

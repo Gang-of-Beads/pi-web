@@ -251,6 +251,11 @@ describe("notification socket guards", () => {
     expect(parseSessionSocketEvent({ type: "ask.opened", ask, revision: "x" })).not.toHaveProperty("revision");
   });
 
+  it("carries the epoch of a frame's seq space along with its seq", () => {
+    expect(parseSessionSocketEvent({ type: "assistant.delta", text: "a", seq: 3, epoch: "daemon-a.1" }))
+      .toEqual({ type: "assistant.delta", text: "a", seq: 3, epoch: "daemon-a.1" });
+  });
+
   it("carries a refusal after acceptance: prompt.refused frames parse with their clientMessageId and reason", () => {
     expect(parseSessionSocketEvent({ type: "prompt.refused", clientMessageId: "cmid-1", message: "No model configured" }))
       .toEqual({ type: "prompt.refused", clientMessageId: "cmid-1", message: "No model configured" });

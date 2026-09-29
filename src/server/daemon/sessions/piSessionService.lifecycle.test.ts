@@ -1208,7 +1208,7 @@ describe("PiSessionService.streamSnapshot", () => {
 
       const snapshot = await service.streamSnapshot(sessionRef("snap-idle"));
 
-      expect(snapshot).toEqual({ seq: 0, partial: null });
+      expect(snapshot).toEqual({ seq: 0, epoch: hub.currentEpoch("snap-idle"), partial: null });
     } finally {
       await service.dispose();
     }

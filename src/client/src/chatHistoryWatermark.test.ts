@@ -20,10 +20,16 @@ describe("chat history watermark", () => {
   it("round-trips the seq a cached page is current through", () => {
     const storage = memoryStorage();
     expect(readChatHistoryWatermark("s1", storage)).toBeUndefined();
-    writeChatHistoryWatermark("s1", 41, storage);
-    expect(readChatHistoryWatermark("s1", storage)).toBe(41);
+    writeChatHistoryWatermark("s1", { seq: 41, epoch: "daemon.1" }, storage);
+    expect(readChatHistoryWatermark("s1", storage)).toEqual({ seq: 41, epoch: "daemon.1" });
     removeChatHistoryWatermark("s1", storage);
     expect(readChatHistoryWatermark("s1", storage)).toBeUndefined();
+  });
+
+  it("reads a bare number an older build stored as a watermark without an epoch", () => {
+    const storage = memoryStorage();
+    storage.setItem("pi-web:chat-watermark:v1:s1", JSON.stringify(41));
+    expect(readChatHistoryWatermark("s1", storage)).toEqual({ seq: 41 });
   });
 
   it("reads a corrupt or non-numeric watermark as absent", () => {

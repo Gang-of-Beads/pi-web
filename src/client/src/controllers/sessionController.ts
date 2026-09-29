@@ -190,7 +190,7 @@ export class SessionController {
   // stream snapshot: buffered/live events with `seq <= seq` are already reflected
   // in the committed history + seeded partial and must be dropped, so every event
   // applies exactly once. Reset whenever the selection changes.
-  private streamWatermark: { sessionId: string; seq: number } | undefined;
+  private streamWatermark: { sessionId: string; seq: number; epoch?: string } | undefined;
   /**
    * Loss detection and repair for the selected session's dialog surface. A
    * dialog frame carries the surface's monotonic revision; a skipped one means
@@ -406,7 +406,7 @@ export class SessionController {
       this.gapRepair = new SessionGapRepair({
         apply: (event) => { this.applyEvent(event); },
         request: async (sinceSeq) => {
-          const sync = await this.api.streamSync(session, sinceSeq, machineId);
+          const sync = await this.api.streamSync(session, sinceSeq, machineId, this.streamWatermark?.epoch);
           if (sync.kind !== "replay") return { ok: false };
           const frames: SessionUiEvent[] = [];
           for (const raw of sync.frames) {
@@ -1654,13 +1654,13 @@ export class SessionController {
       // failed sync falls through to the full fetch, which reads status
       // anyway, and an extra read here would double-count against repair
       // flows that assert exactly one authoritative read.
-      const sync = await this.api.streamSync(target.session, watermark, target.machineId).catch(() => undefined);
+      const sync = await this.api.streamSync(target.session, watermark.seq, target.machineId, watermark.epoch).catch(() => undefined);
       if (!this.isCurrentRefreshTarget(target)) return true;
       if (sync?.kind !== "replay") return false;
       const status = await this.api.status(target.session, target.machineId);
       if (!this.isCurrentRefreshTarget(target)) return true;
       let messages = cached.messages;
-      let lastSeq = watermark;
+      let lastSeq = watermark.seq;
       for (const raw of sync.frames) {
         let parsedFrame: unknown;
         try {
@@ -1674,7 +1674,7 @@ export class SessionController {
         if (next !== undefined) messages = next;
         if (frame.seq !== undefined) lastSeq = Math.max(lastSeq, frame.seq);
       }
-      this.streamWatermark = { sessionId: target.session.id, seq: lastSeq };
+      this.streamWatermark = { sessionId: target.session.id, seq: lastSeq, ...(watermark.epoch === undefined ? {} : { epoch: watermark.epoch }) };
       this.setState({
         messages,
         status,
@@ -1711,10 +1711,11 @@ export class SessionController {
       // from the page alone made it vanish with no failure anywhere.
       const carried = carryUnsettledForward(this.getState().messages, history.messages);
       const messages = this.transcripts.seedStreamingPartial(carried, streamSnapshot.partial);
-      this.streamWatermark = { sessionId: target.session.id, seq: streamSnapshot.seq };
+      const snapshotWatermark = { seq: streamSnapshot.seq, ...(streamSnapshot.epoch === undefined ? {} : { epoch: streamSnapshot.epoch }) };
+      this.streamWatermark = { sessionId: target.session.id, ...snapshotWatermark };
       // The page just read is current through this seq: a later reload can
       // replay frames after it instead of re-fetching the page.
-      this.transcripts.setWatermark(key, streamSnapshot.seq);
+      this.transcripts.setWatermark(key, snapshotWatermark);
       this.setState({
         ...history,
         messages,

@@ -21,6 +21,8 @@ interface SessionsListQuery extends SessionQuery {
 interface StreamSnapshotQuery extends SessionQuery {
   /** Present: the client wants gap repair from this seq, not a seed. */
   sinceSeq?: string;
+  /** The seq space `sinceSeq` belongs to; any other, or none, is answered with resync. */
+  epoch?: string;
 }
 
 interface MessageQuery extends SessionQuery {
@@ -279,7 +281,7 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
       if (!Number.isSafeInteger(sinceSeq)) return reply.code(400).send({ error: "Invalid sinceSeq" });
     }
     try {
-      return sinceSeq === undefined ? await sessions.streamSnapshot(ref) : await sessions.streamSync(ref, sinceSeq);
+      return sinceSeq === undefined ? await sessions.streamSnapshot(ref) : await sessions.streamSync(ref, sinceSeq, request.query.epoch);
     } catch (error) {
       return reply.code(404).send({ error: errorMessage(error) });
     }

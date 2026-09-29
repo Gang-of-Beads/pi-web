@@ -646,8 +646,10 @@ export function parseSessionStatus(value: unknown): SessionStatus {
 
 export function parseSessionStreamSnapshot(value: unknown): SessionStreamSnapshot {
   const record = requireRecord(value);
+  const epoch = record["epoch"];
   return {
     seq: requireNumber(record, "seq"),
+    ...(typeof epoch === "string" ? { epoch } : {}),
     partial: record["partial"] ?? null,
   };
 }

@@ -2826,11 +2826,12 @@ export class PiSessionService implements SessionRouteService {
     // Single consistent tick: capture the watermark and the partial together so
     // the seq matches the partial the client seeds against.
     const seq = this.events.currentSeq(session.sessionId);
+    const epoch = this.events.currentEpoch(session.sessionId);
     const streamingMessage = session.state.streamingMessage;
     const partial = streamingMessage === undefined || streamingMessage === null
       ? null
       : annotateAssistantThinkingLevel(projectBrowserMessage(streamingMessage), session.thinkingLevel);
-    return { seq, partial };
+    return { seq, epoch, partial };
   }
 
   /**
@@ -2840,9 +2841,9 @@ export class PiSessionService implements SessionRouteService {
    * `getOrOpen` precedes the ring read, so the verdict can never describe a
    * session other than the one the ref named.
    */
-  async streamSync(ref: PiSessionRef, sinceSeq: number): Promise<SessionStreamSync> {
+  async streamSync(ref: PiSessionRef, sinceSeq: number, epoch?: string): Promise<SessionStreamSync> {
     const session = await this.getOrOpen(ref);
-    const missed = this.events.replaySince(session.sessionId, sinceSeq);
+    const missed = this.events.replaySince(session.sessionId, sinceSeq, epoch);
     if (missed.verdict === "resync") return { kind: "resync", sinceSeq };
     return { kind: "replay", sinceSeq, frames: missed.frames };
   }

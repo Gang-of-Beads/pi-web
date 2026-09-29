@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { capTranscriptSpan, ChatTranscriptStore, TRANSCRIPT_SPAN_CAP, type ChatHistoryCacheAdapter } from "./chatTranscriptStore";
-import type { RawMessagePage } from "./chatHistoryCache";
+import type { RawMessagePage, StreamWatermark } from "./chatHistoryCache";
 
 function page(start: number, count: number, total?: number): RawMessagePage {
   return {
@@ -10,16 +10,16 @@ function page(start: number, count: number, total?: number): RawMessagePage {
   };
 }
 
-function memoryCache(): ChatHistoryCacheAdapter & { pages: Map<string, RawMessagePage>; marks: Map<string, number> } {
+function memoryCache(): ChatHistoryCacheAdapter & { pages: Map<string, RawMessagePage>; marks: Map<string, StreamWatermark> } {
   const pages = new Map<string, RawMessagePage>();
-  const marks = new Map<string, number>();
+  const marks = new Map<string, StreamWatermark>();
   return {
     pages,
     marks,
     read: (id) => pages.get(id),
     write: (id, page) => { pages.set(id, page); },
     readWatermark: (id) => marks.get(id),
-    writeWatermark: (id, seq) => { marks.set(id, seq); },
+    writeWatermark: (id, watermark) => { marks.set(id, watermark); },
     removeWatermark: (id) => { marks.delete(id); },
   };
 }
@@ -97,10 +97,10 @@ describe("ChatTranscriptStore span cap", () => {
   it("keeps the watermark across selections and drops it on discard", () => {
     const cache = memoryCache();
     const store = new ChatTranscriptStore(cache);
-    store.setWatermark("s1", 41);
-    expect(store.watermark("s1")).toBe(41);
+    store.setWatermark("s1", { seq: 41, epoch: "daemon.1" });
+    expect(store.watermark("s1")).toEqual({ seq: 41, epoch: "daemon.1" });
     const fresh = new ChatTranscriptStore(cache);
-    expect(fresh.watermark("s1")).toBe(41);
+    expect(fresh.watermark("s1")).toEqual({ seq: 41, epoch: "daemon.1" });
     store.discard("s1");
     expect(store.watermark("s1")).toBeUndefined();
     expect(cache.marks.has("s1")).toBe(false);

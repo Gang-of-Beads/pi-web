@@ -89,7 +89,7 @@ describe("SessionEventHub replay", () => {
     hub.publish("s1", { type: "assistant.delta", text: "b" });
     hub.publish("s1", { type: "assistant.delta", text: "c" });
 
-    const missed = hub.replaySince("s1", 1);
+    const missed = hub.replaySince("s1", 1, hub.currentEpoch("s1"));
 
     expect(missed.verdict).toBe("replay");
     expect(missed.frames.map((frame) => frameField(frame, "text"))).toEqual(["b", "c"]);
@@ -101,7 +101,7 @@ describe("SessionEventHub replay", () => {
     hub.publish("s1", { type: "assistant.delta", text: "unobserved" });
     hub.publish("s1", { type: "assistant.delta", text: "seen" });
 
-    const missed = hub.replaySince("s1", 0);
+    const missed = hub.replaySince("s1", 0, hub.currentEpoch("s1"));
 
     expect(missed.verdict).toBe("replay");
     expect(missed.frames.map((frame) => frameField(frame, "text"))).toEqual(["unobserved", "seen"]);
@@ -111,9 +111,9 @@ describe("SessionEventHub replay", () => {
     const hub = new SessionEventHub({ replayBufferLimit: 3 });
     for (const text of ["1", "2", "3", "4", "5"]) hub.publish("s1", { type: "assistant.delta", text });
 
-    expect(hub.replaySince("s1", 1).verdict).toBe("resync");
+    expect(hub.replaySince("s1", 1, hub.currentEpoch("s1")).verdict).toBe("resync");
     // The buffer still reaches a recent seq.
-    expect(hub.replaySince("s1", 3).verdict).toBe("replay");
+    expect(hub.replaySince("s1", 3, hub.currentEpoch("s1")).verdict).toBe("replay");
   });
 
   it("drops delivery when armed but keeps the frame replayable", () => {
@@ -128,15 +128,15 @@ describe("SessionEventHub replay", () => {
 
     const sent = sessionSocket.send.mock.calls.map((call) => frameField(String(call[0]), "text"));
     expect(sent).toEqual(["arrives", "arrives-too"]);
-    const missed = hub.replaySince("s1", 1);
+    const missed = hub.replaySince("s1", 1, hub.currentEpoch("s1"));
     expect(missed.verdict).toBe("replay");
     expect(missed.frames.map((frame) => frameField(frame, "text"))).toEqual(["dropped", "arrives-too"]);
   });
 
   it("answers an unknown session or a fresh client with an empty replay", () => {
     const hub = new SessionEventHub();
-    expect(hub.replaySince("ghost", 0)).toEqual({ verdict: "replay", frames: [] });
-    expect(hub.replaySince("ghost", 4).verdict).toBe("resync");
+    expect(hub.replaySince("ghost", 0, hub.currentEpoch("ghost"))).toEqual({ verdict: "replay", frames: [] });
+    expect(hub.replaySince("ghost", 4, hub.currentEpoch("ghost")).verdict).toBe("resync");
   });
 });
 
@@ -150,7 +150,7 @@ describe("SessionEventHub", () => {
 
     hub.publish("s1", { type: "assistant.delta", text: "hello" });
 
-    expect(sessionSocket.send).toHaveBeenCalledWith(JSON.stringify({ type: "assistant.delta", text: "hello", seq: 1 }));
+    expect(sessionSocket.send).toHaveBeenCalledWith(JSON.stringify({ type: "assistant.delta", text: "hello", seq: 1, epoch: hub.currentEpoch("s1") }));
     expect(otherSocket.send).not.toHaveBeenCalled();
   });
 
@@ -180,6 +180,7 @@ describe("SessionEventHub", () => {
       dismissThrough: { order: 1, overflowWatermark: 0 },
       delta: { kind: "added", notification },
       seq: 1,
+      epoch: hub.currentEpoch("s1"),
     }));
     expect(otherSocket.send).not.toHaveBeenCalled();
   });
@@ -197,6 +198,7 @@ describe("SessionEventHub", () => {
       type: "message.end",
       message: { role: "assistant", content: [{ type: "thinking", thinking: "private chain", redacted: true }, { type: "text", text: "visible answer" }] },
       seq: 1,
+      epoch: hub.currentEpoch("s1"),
     }));
     expect(thinkingBlock.thinkingSignature).toBe("opaque-provider-payload");
   });
@@ -228,7 +230,7 @@ describe("SessionEventHub", () => {
 
     expect(slow.send).not.toHaveBeenCalled();
     expect(slow.terminate).toHaveBeenCalledOnce();
-    expect(healthy.send).toHaveBeenCalledWith(JSON.stringify({ type: "assistant.delta", text: "hello", seq: 1 }));
+    expect(healthy.send).toHaveBeenCalledWith(JSON.stringify({ type: "assistant.delta", text: "hello", seq: 1, epoch: hub.currentEpoch("s1") }));
   });
 
   it("terminates a failed session socket without disrupting healthy delivery or sequence watermarks", () => {
@@ -243,7 +245,7 @@ describe("SessionEventHub", () => {
 
     expect(failed.send).toHaveBeenCalledOnce();
     expect(failed.terminate).toHaveBeenCalledOnce();
-    expect(healthy.send).toHaveBeenCalledWith(JSON.stringify({ type: "assistant.delta", text: "hello", seq: 1 }));
+    expect(healthy.send).toHaveBeenCalledWith(JSON.stringify({ type: "assistant.delta", text: "hello", seq: 1, epoch: hub.currentEpoch("s1") }));
     expect(hub.currentSeq("s1")).toBe(1);
 
     failed.send.mockClear();
@@ -251,7 +253,7 @@ describe("SessionEventHub", () => {
 
     expect(failed.send).not.toHaveBeenCalled();
     expect(failed.terminate).toHaveBeenCalledOnce();
-    expect(healthy.send).toHaveBeenLastCalledWith(JSON.stringify({ type: "assistant.delta", text: "again", seq: 2 }));
+    expect(healthy.send).toHaveBeenLastCalledWith(JSON.stringify({ type: "assistant.delta", text: "again", seq: 2, epoch: hub.currentEpoch("s1") }));
     expect(hub.currentSeq("s1")).toBe(2);
   });
 
@@ -357,9 +359,9 @@ describe("SessionEventHub", () => {
     hub.publish("s1", { type: "assistant.delta", text: "b" });
     hub.publish("s1", { type: "assistant.delta", text: "c" });
 
-    expect(socket.send).toHaveBeenNthCalledWith(1, JSON.stringify({ type: "assistant.delta", text: "a", seq: 1 }));
-    expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify({ type: "assistant.delta", text: "b", seq: 2 }));
-    expect(socket.send).toHaveBeenNthCalledWith(3, JSON.stringify({ type: "assistant.delta", text: "c", seq: 3 }));
+    expect(socket.send).toHaveBeenNthCalledWith(1, JSON.stringify({ type: "assistant.delta", text: "a", seq: 1, epoch: hub.currentEpoch("s1") }));
+    expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify({ type: "assistant.delta", text: "b", seq: 2, epoch: hub.currentEpoch("s1") }));
+    expect(socket.send).toHaveBeenNthCalledWith(3, JSON.stringify({ type: "assistant.delta", text: "c", seq: 3, epoch: hub.currentEpoch("s1") }));
   });
 
   it("bounds inactive replay rings by least-recently-used session", () => {
@@ -369,9 +371,9 @@ describe("SessionEventHub", () => {
     hub.publish("s1", { type: "assistant.delta", text: "one-again" });
     hub.publish("s3", { type: "assistant.delta", text: "three" });
 
-    expect(hub.replaySince("s2", 1).verdict).toBe("resync");
-    expect(hub.replaySince("s1", 0).frames.map((frame) => frameField(frame, "text"))).toEqual(["one", "one-again"]);
-    expect(hub.replaySince("s3", 0).frames.map((frame) => frameField(frame, "text"))).toEqual(["three"]);
+    expect(hub.replaySince("s2", 1, hub.currentEpoch("s2")).verdict).toBe("resync");
+    expect(hub.replaySince("s1", 0, hub.currentEpoch("s1")).frames.map((frame) => frameField(frame, "text"))).toEqual(["one", "one-again"]);
+    expect(hub.replaySince("s3", 0, hub.currentEpoch("s3")).frames.map((frame) => frameField(frame, "text"))).toEqual(["three"]);
   });
 
   it("keeps a subscribed session replayable while evicting inactive rings", () => {
@@ -382,8 +384,8 @@ describe("SessionEventHub", () => {
     hub.publish("s2", { type: "assistant.delta", text: "inactive" });
     hub.publish("s3", { type: "assistant.delta", text: "new" });
 
-    expect(hub.replaySince("s1", 0).frames.map((frame) => frameField(frame, "text"))).toEqual(["subscribed"]);
-    expect(hub.replaySince("s2", 1).verdict).toBe("resync");
+    expect(hub.replaySince("s1", 0, hub.currentEpoch("s1")).frames.map((frame) => frameField(frame, "text"))).toEqual(["subscribed"]);
+    expect(hub.replaySince("s2", 1, hub.currentEpoch("s2")).verdict).toBe("resync");
   });
 
   it("advances seq even when no sockets are attached so the watermark stays accurate", () => {
@@ -398,7 +400,7 @@ describe("SessionEventHub", () => {
     hub.add("s1", socket);
     hub.publish("s1", { type: "assistant.delta", text: "c" });
 
-    expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "assistant.delta", text: "c", seq: 3 }));
+    expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "assistant.delta", text: "c", seq: 3, epoch: hub.currentEpoch("s1") }));
   });
 
   it("tracks seq independently per session", () => {
@@ -414,8 +416,8 @@ describe("SessionEventHub", () => {
 
     expect(hub.currentSeq("s1")).toBe(2);
     expect(hub.currentSeq("s2")).toBe(1);
-    expect(s1.send).toHaveBeenLastCalledWith(JSON.stringify({ type: "assistant.delta", text: "b", seq: 2 }));
-    expect(s2.send).toHaveBeenCalledWith(JSON.stringify({ type: "assistant.delta", text: "x", seq: 1 }));
+    expect(s1.send).toHaveBeenLastCalledWith(JSON.stringify({ type: "assistant.delta", text: "b", seq: 2, epoch: hub.currentEpoch("s1") }));
+    expect(s2.send).toHaveBeenCalledWith(JSON.stringify({ type: "assistant.delta", text: "x", seq: 1, epoch: hub.currentEpoch("s2") }));
   });
 
   it("hands the join frame to each global subscriber as it joins, and to no one else", () => {
@@ -486,5 +488,44 @@ describe("SessionEventHub", () => {
     hub.publishGlobal({ type: "session.name", sessionId: "s1", name: "Third" });
 
     expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "session.name", sessionId: "s1", name: "Third", seq: 3 }));
+  });
+});
+
+describe("a session's seq space has an epoch", () => {
+  it("stamps live and replayed frames with the epoch of their seq space, and replays a watermark cited in it", () => {
+    const hub = new SessionEventHub();
+    const socket = new FakeSocket();
+    hub.add("s1", socket);
+    hub.publish("s1", { type: "assistant.delta", text: "a" });
+    hub.publish("s1", { type: "assistant.delta", text: "b" });
+    const epoch = hub.currentEpoch("s1");
+    const missed = hub.replaySince("s1", 1, epoch);
+    expect({
+      liveEpoch: frameField(String(socket.send.mock.calls[0]?.[0]), "epoch"),
+      verdict: missed.verdict,
+      replayed: missed.frames.map((frame) => [frameField(frame, "text"), frameField(frame, "epoch")]),
+    }).toEqual({ liveEpoch: epoch, verdict: "replay", replayed: [["b", epoch]] });
+  });
+
+  it("answers a watermark from another epoch, or with none, with resync", () => {
+    const hub = new SessionEventHub();
+    hub.publish("s1", { type: "assistant.delta", text: "a" });
+    expect({
+      none: hub.replaySince("s1", 1).verdict,
+      other: hub.replaySince("s1", 0, "another-instance.1").verdict,
+    }).toEqual({ none: "resync", other: "resync" });
+  });
+
+  it("starts a new epoch when an evicted ring's session publishes again, and per instance", () => {
+    const hub = new SessionEventHub({ replaySessionLimit: 1 });
+    hub.publish("s1", { type: "assistant.delta", text: "a" });
+    const before = hub.currentEpoch("s1");
+    hub.publish("s2", { type: "assistant.delta", text: "evicts s1" });
+    hub.publish("s1", { type: "assistant.delta", text: "b" });
+    expect({
+      afterEviction: hub.currentEpoch("s1") === before,
+      anotherInstance: new SessionEventHub().currentEpoch("s1") === before,
+      staleWatermark: hub.replaySince("s1", 1, before).verdict,
+    }).toEqual({ afterEviction: false, anotherInstance: false, staleWatermark: "resync" });
   });
 });

@@ -1,4 +1,5 @@
 import type { GlobalSessionEvent, RealtimeEvent, SessionNotificationSummaryEvent, SessionUiEvent } from "../../../shared/apiTypes.js";
+import { randomUUID } from "node:crypto";
 import { projectBrowserSessionEvent } from "../browserMessageProjection.js";
 
 export interface RealtimeSocket {
@@ -32,6 +33,9 @@ export class SessionEventHub {
   private readonly socketsBySession = new Map<string, Set<RealtimeSocket>>();
   private readonly globalSockets = new Set<RealtimeSocket>();
   private readonly seqBySession = new Map<string, number>();
+  private readonly epochBySession = new Map<string, string>();
+  private readonly instanceId = randomUUID().slice(0, 8);
+  private epochCounter = 0;
   /** Recent per-session frames, oldest first, for replaying a counted gap. */
   private readonly replayBySession = new Map<string, { seq: number; event: SessionUiEvent }[]>();
   private readonly replayBufferLimit: number;
@@ -112,6 +116,7 @@ export class SessionEventHub {
   }
 
   publish(sessionId: string, event: SessionUiEvent): void {
+    const epoch = this.currentEpoch(sessionId);
     const seq = (this.seqBySession.get(sessionId) ?? 0) + 1;
     this.seqBySession.set(sessionId, seq);
     // The ring records every stamped frame, listeners or not: a frame published
@@ -136,8 +141,28 @@ export class SessionEventHub {
       else this.dropNextPerSession.set(sessionId, remaining);
       return;
     }
-    const payload = JSON.stringify({ ...projectBrowserSessionEvent(event), seq });
+    const payload = JSON.stringify({ ...projectBrowserSessionEvent(event), seq, epoch });
     this.sendToSockets(sockets, payload);
+  }
+
+  /**
+   * The epoch of a session's seq space: which run of numbers its seqs belong to.
+   *
+   * The seq space restarts when a daemon restarts or when the ring of an inactive session is
+   * evicted, and a bare number cannot say which space it came from - so an old watermark was
+   * answered as caught up, or replayed with every frame it had never seen missing. A watermark
+   * is a seq and its epoch; one with any other epoch, or none, is answered with resync. The
+   * epoch is minted when the space starts - at the first publish or snapshot, and after an
+   * eviction - from this instance's id, so no two runs of numbers share one.
+   */
+  currentEpoch(sessionId: string): string {
+    let epoch = this.epochBySession.get(sessionId);
+    if (epoch === undefined) {
+      this.epochCounter += 1;
+      epoch = `${this.instanceId}.${String(this.epochCounter)}`;
+      this.epochBySession.set(sessionId, epoch);
+    }
+    return epoch;
   }
 
   /**
@@ -162,7 +187,9 @@ export class SessionEventHub {
    * rather than splice a hole into its transcript. No await anywhere near the
    * buffer read: the ring is captured in the same tick as the watermark.
    */
-  replaySince(sessionId: string, sinceSeq: number): { verdict: "replay" | "resync"; frames: string[] } {
+  replaySince(sessionId: string, sinceSeq: number, epoch?: string): { verdict: "replay" | "resync"; frames: string[] } {
+    const current = this.epochBySession.get(sessionId);
+    if (epoch !== current) return { verdict: "resync", frames: [] };
     const ring = this.replayBySession.get(sessionId);
     const seqs = ring?.map((entry) => entry.seq);
     const decision = replayDecision(seqs, sinceSeq);
@@ -172,7 +199,7 @@ export class SessionEventHub {
     const frames: string[] = [];
     for (const entry of ring ?? []) {
       if (entry.seq <= sinceSeq) continue;
-      frames.push(JSON.stringify({ ...projectBrowserSessionEvent(entry.event), seq: entry.seq }));
+      frames.push(JSON.stringify({ ...projectBrowserSessionEvent(entry.event), seq: entry.seq, epoch: current }));
     }
     return { verdict: "replay", frames };
   }
@@ -267,6 +294,7 @@ export class SessionEventHub {
         if (sessionId === currentSessionId || (this.socketsBySession.get(sessionId)?.size ?? 0) > 0) continue;
         this.replayBySession.delete(sessionId);
         this.seqBySession.delete(sessionId);
+        this.epochBySession.delete(sessionId);
         this.dropNextPerSession.delete(sessionId);
         evicted = true;
         break;
@@ -274,6 +302,7 @@ export class SessionEventHub {
       if (!evicted && (this.socketsBySession.get(currentSessionId)?.size ?? 0) === 0) {
         this.replayBySession.delete(currentSessionId);
         this.seqBySession.delete(currentSessionId);
+        this.epochBySession.delete(currentSessionId);
         this.dropNextPerSession.delete(currentSessionId);
         evicted = true;
       }

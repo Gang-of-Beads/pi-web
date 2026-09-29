@@ -7,7 +7,7 @@ function delta(text: string) {
 }
 
 describe("review-repro realtime: a watermark has no epoch", () => {
-  it.fails("an evicted ring restarts the seq space, and an old watermark then replays with a hole", () => {
+  it("an evicted ring restarts the seq space, and an old watermark then replays with a hole", () => {
     const hub = new SessionEventHub({ replaySessionLimit: 1 });
     for (let index = 1; index <= 5; index += 1) hub.publish("session-a", delta(`old-${String(index)}`));
     const clientWatermark = hub.currentSeq("session-a");
@@ -19,7 +19,7 @@ describe("review-repro realtime: a watermark has no epoch", () => {
     expect({ verdict: answer.verdict, texts }, "new-1..new-5 were never sent to this client; a replay that omits them is a silent hole").toEqual({ verdict: "resync", texts: [] });
   });
 
-  it.fails("a daemon restart does the same: the new instance answers a previous instance watermark as caught-up", () => {
+  it("a daemon restart does the same: the new instance answers a previous instance watermark as caught-up", () => {
     const before = new SessionEventHub();
     for (let index = 1; index <= 3; index += 1) before.publish("session-a", delta(`before-${String(index)}`));
     const clientWatermark = before.currentSeq("session-a");

@@ -343,7 +343,9 @@ export function parseRealtimeSocketEvent(event: unknown): BrowserRealtimeEvent |
 function withTransportSeq(event: SessionUiEvent, raw: unknown): SessionUiEvent {
   if (typeof raw !== "object" || raw === null || !("seq" in raw)) return event;
   const seq = raw.seq;
-  return typeof seq === "number" ? { ...event, seq } : event;
+  if (typeof seq !== "number") return event;
+  const epoch: unknown = "epoch" in raw ? raw.epoch : undefined;
+  return typeof epoch === "string" ? { ...event, seq, epoch } : { ...event, seq };
 }
 
 /**
