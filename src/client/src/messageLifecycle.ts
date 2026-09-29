@@ -1,4 +1,5 @@
 import { classifySettlement, type AmbiguityReason, type OperationSettlement } from "../../shared/operationSettlement.js";
+import { HttpError } from "./api/http.js";
 /**
  * What happened to a message the user sent, and what may be done about it.
  *
@@ -73,7 +74,7 @@ export function classifySubmission(
 ): MessageOutcome {
   if (error === undefined) return { settlement: classifySettlement({ answer: "accepted", bytesHandedToTransport: true }), detail: "" };
   const detail = error instanceof Error ? error.message : JSON.stringify(error);
-  if (isDefiniteRefusal(error)) {
+  if (!carriesNoVerdict(error) && isDefiniteRefusal(error)) {
     return { settlement: classifySettlement({ answer: "refused", refusalReason: "rejected-by-server", bytesHandedToTransport: true }), detail };
   }
   return {
@@ -83,6 +84,20 @@ export function classifySubmission(
     }),
     detail,
   };
+}
+
+/**
+ * Whether an answer came from something that gave up rather than from the daemon's verdict.
+ *
+ * The session daemon refuses a message with a 4xx; a 5xx comes from a proxy or gateway that
+ * stopped waiting (the remote-machine proxy's 504 when it gave up reading the daemon's body),
+ * or from a crash - and the daemon may have accepted the message and be running it. Treating
+ * it as a refusal deleted the row and handed the words back, and the resend carried a new
+ * identity the ledger could not dedupe, so the message ran twice. Whatever a caller's own
+ * predicate says, a 5xx is unverifiable.
+ */
+export function carriesNoVerdict(error: unknown): boolean {
+  return error instanceof HttpError && error.status >= 500;
 }
 
 /**

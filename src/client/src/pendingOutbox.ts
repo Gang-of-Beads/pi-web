@@ -1,6 +1,6 @@
 import type { PromptAttachment } from "./api";
 import type { OutgoingEvent, OutgoingState } from "./outgoingMessages";
-import { outgoingVerdict } from "./outgoingMessages";
+import { isOutgoingState, outgoingVerdict } from "./outgoingMessages";
 /**
  * Pending-message outbox: survives network drops so a send is never silently
  * lost. When a prompt fails with a network error, its contents are persisted
@@ -59,13 +59,26 @@ export function advancePendingPrompt(sessionKey: string, clientMessageId: string
   return verdict.to;
 }
 
-/** Whether an error looks like connectivity loss rather than a server verdict. */
 function isPendingPrompt(value: unknown): value is PendingPrompt {
   if (value === null || typeof value !== "object" || typeof Reflect.get(value, "text") !== "string") return false;
   const state: unknown = Reflect.get(value, "state");
   return state === undefined || typeof state === "string";
 }
 
+/**
+ * A record whose state this build's table has no row for - written by another build, or under
+ * the bubble's spelling - is read as freshly stored. The table lookup is unchecked, so an
+ * unknown state used to make the next transition throw inside the async send, where nothing
+ * caught it.
+ */
+function withKnownState(prompt: PendingPrompt): PendingPrompt {
+  if (prompt.state === undefined || isOutgoingState(prompt.state)) return prompt;
+  const stored = { ...prompt };
+  delete stored.state;
+  return stored;
+}
+
+/** Whether an error looks like connectivity loss rather than a server verdict. */
 export function isNetworkFailure(error: unknown): boolean {
   if (error instanceof NetworkSendError) return true;
   if (error instanceof TypeError && /fetch|network|load failed|failed to fetch/i.test(error.message)) return true;
@@ -102,6 +115,19 @@ function announceOutboxChange(sessionKey: string): void {
 }
 
 /**
+ * Which record states the session list marks: a send nobody answered for needs the reader as
+ * much as one that failed, and the two used to be recorded differently for the same event.
+ */
+const NEEDS_ATTENTION: Readonly<Record<OutgoingState, boolean>> = {
+  stored: false,
+  sending: false,
+  accepted: false,
+  delivered: false,
+  unverified: true,
+  failed: true,
+};
+
+/**
  * The sessions holding a send that failed, so the session list can mark them.
  *
  * The failure's record already carries its scope; this reads the marks back out for the
@@ -114,7 +140,7 @@ export function sessionsWithFailedSends(storage = browserStorage()): Set<string>
     const key = storage.key(index) ?? "";
     if (!key.startsWith(outboxPrefix)) continue;
     const prompts = loadPendingPrompts(key.slice(outboxPrefix.length), storage);
-    if (!prompts.some((prompt) => prompt.state === "failed")) continue;
+    if (!prompts.some((prompt) => prompt.state !== undefined && NEEDS_ATTENTION[prompt.state])) continue;
     const scope = key.slice(outboxPrefix.length);
     marked.add(scope.slice(scope.indexOf(":") + 1));
   }
@@ -127,7 +153,7 @@ export function loadPendingPrompts(sessionKey: string, storage = browserStorage(
     if (raw === undefined || raw === null || raw === "") return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isPendingPrompt);
+    return parsed.filter(isPendingPrompt).map(withKnownState);
   } catch {
     return [];
   }

@@ -52,7 +52,7 @@ const TABLE: Record<OutgoingState, Record<OutgoingEvent, OutgoingVerdict>> = {
     "send-accepted": IGNORE,
     "send-refused-network": move("failed"),
     "send-refused-permanent": move("failed"),
-    "send-timeout": IGNORE,
+    "send-timeout": move("unverified"),
     "daemon-queued": move("accepted"),
     "daemon-delivered": move("delivered"),
     "seen-in-transcript": move("delivered"),
@@ -129,6 +129,11 @@ const TABLE: Record<OutgoingState, Record<OutgoingEvent, OutgoingVerdict>> = {
 
 export function outgoingVerdict(state: OutgoingState, event: OutgoingEvent): OutgoingVerdict {
   return TABLE[state][event];
+}
+
+/** Whether a value read back from storage is a state this table answers for. */
+export function isOutgoingState(value: unknown): value is OutgoingState {
+  return typeof value === "string" && Object.hasOwn(TABLE, value);
 }
 
 export const OUTGOING_STATES: OutgoingState[] = ["stored", "sending", "accepted", "delivered", "unverified", "failed"];

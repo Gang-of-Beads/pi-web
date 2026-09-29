@@ -3,6 +3,7 @@ import { initialAppState } from "../appState";
 import { SessionController } from "./sessionController";
 import { defaultApi, FakeSocket, oldSession, status, workspace, type AppState } from "./sessionController.testSupport";
 import { NetworkSendError } from "../pendingOutbox";
+import { HttpError } from "../api/http";
 
 /**
  * A send that fails leaves the message in exactly one place the user can act
@@ -89,6 +90,36 @@ describe("SessionController send failure", () => {
     // The composer restores this one, so the transcript must not also hold it.
     expect(read().messages.filter((line) => line.role === "user")).toHaveLength(0);
     expect(read().error).toMatch(/400 Bad Request/u);
+  });
+
+  it("keeps the row unverifiable on a gateway's 5xx, which names no verdict", async () => {
+    const api: typeof defaultApi = { ...defaultApi, prompt: () => Promise.reject(new HttpError("Remote machine timeout", 504, "prod")) };
+    const { controller, read } = controllerWith(api);
+
+    await expect(controller.send("maybe running already")).rejects.toBeInstanceOf(NetworkSendError);
+
+    const [bubble] = read().messages.filter((line) => line.role === "user");
+    expect(bubble?.meta?.delivery?.state).toBe("unverifiable");
+  });
+
+  it("keeps a row the acceptance frame proved, and reports the send accepted, when a refusal arrives after it", async () => {
+    let markQueued = (): void => undefined;
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      prompt: () => {
+        markQueued();
+        return Promise.reject(new Error("400 Bad Request"));
+      },
+    };
+    const { controller, read } = controllerWith(api);
+    markQueued = () => {
+      const bubble = read().messages.find((line) => line.role === "user");
+      if (bubble?.meta?.delivery !== undefined) bubble.meta.delivery = { ...bubble.meta.delivery, state: "queued" };
+    };
+
+    await expect(controller.send("the daemon already owns this")).resolves.toBe(true);
+
+    expect(read().messages.filter((line) => line.role === "user").map((line) => line.meta?.delivery?.state)).toEqual(["queued"]);
   });
 
   it("keeps the optimistic bubble when the send succeeds", async () => {

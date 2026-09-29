@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyQueueToDelivery, deliverySettled, deliveryTaken, deliveryWaiting, splitTranscriptAndPending, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "./messageDelivery";
-import type { ChatLine } from "./components/shared";
+import { applyQueueToDelivery, deliveryProvenByServer, deliverySettled, deliveryTaken, deliveryWaiting, splitTranscriptAndPending, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, withdrawDeliveryLine, restartDelivery } from "./messageDelivery";
+import type { ChatLine, MessageDeliveryState } from "./components/shared";
 
 const ID = "cm-1";
 
-function tracked(state: "sending" | "received" | "queued" | "delivered" | "failed", id = ID, text = "hello"): ChatLine {
+function tracked(state: MessageDeliveryState, id = ID, text = "hello"): ChatLine {
   return { role: "user", parts: [{ type: "text", text }], meta: { delivery: { clientMessageId: id, state } } };
 }
 
@@ -115,25 +115,34 @@ describe("applyQueueToDelivery", () => {
   });
 });
 
-describe("removeDeliveryLine", () => {
+describe("withdrawDeliveryLine on recall and Stop", () => {
   it("removes the bubble for a message taken back out of the queue", () => {
     // Recall puts the text back in the composer, so the transcript must not
     // keep a copy: an unsent message is not history.
-    expect(removeDeliveryLine([tracked("queued"), assistant()], ID)).toEqual([assistant()]);
+    expect(withdrawDeliveryLine([tracked("queued"), assistant()], ID)).toEqual([assistant()]);
   });
 
   it("leaves the transcript alone when the bubble is already gone", () => {
     // The agent can take the message between the click and the response; the
     // status that comes back is then the truth and nothing here should change.
     const messages = [assistant()];
-    expect(removeDeliveryLine(messages, ID)).toEqual(messages);
+    expect(withdrawDeliveryLine(messages, ID)).toEqual(messages);
   });
 
-  it("keeps a recalled message from being promoted to delivered", () => {
-    // applyQueueToDelivery reads "no longer queued" as delivered, so a bubble
-    // left behind after a recall would claim the agent had read it.
-    const remaining = removeDeliveryLine([tracked("queued")], ID);
+  it("keeps a recalled message from being settled by a later status", () => {
+    const remaining = withdrawDeliveryLine([tracked("queued")], ID);
     expect(applyQueueToDelivery(remaining, [])).toEqual([]);
+  });
+});
+
+describe("removeDeliveryLine on a local refusal", () => {
+  it.each(["sending", "failed", "unverifiable"] as const)("removes a %s row no server fact has proved", (state) => {
+    expect(removeDeliveryLine([tracked(state), assistant()], ID)).toEqual([assistant()]);
+  });
+
+  it.each(["received", "queued", "delivered"] as const)("keeps a %s row a server fact proved", (state) => {
+    expect(removeDeliveryLine([tracked(state), assistant()], ID)).toEqual([tracked(state), assistant()]);
+    expect(deliveryProvenByServer([tracked(state)], ID)).toBe(true);
   });
 });
 
@@ -379,9 +388,9 @@ describe("a failure is settled but not silent", () => {
 describe("queue reconciliation against runtime state", () => {
   const queuedRow: ChatLine = { role: "user", parts: [{ type: "text", text: "steer me" }], meta: { delivery: { clientMessageId: "c-q", state: "queued" } } };
 
-  it("settles a queued row absent from an idle runtime's queue", () => {
+  it("moves a queued row an idle runtime no longer holds to received, leaving read to the transcript", () => {
     const out = applyQueueToDelivery([queuedRow], [], true);
-    expect(out[0]?.meta?.delivery?.state).toBe("delivered");
+    expect(out[0]?.meta?.delivery?.state).toBe("received");
   });
 
   it("leaves a queued row alone while the runtime is mid-turn", () => {

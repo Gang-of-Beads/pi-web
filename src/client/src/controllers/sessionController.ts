@@ -19,7 +19,7 @@ import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessio
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
-import { findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
+import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import { forgetPendingPrompt, isNetworkFailure, NetworkSendError } from "../pendingOutbox";
 import type { MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
@@ -666,6 +666,7 @@ export class SessionController {
         if (clientMessageId !== undefined) this.markDelivery(session.id, clientMessageId, "unverifiable");
         throw new NetworkSendError(String(error), clientMessageId, { cause: error });
       }
+      if (clientMessageId !== undefined && deliveryProvenByServer(this.getState().messages, clientMessageId)) return true;
       if (!handling.keepRow && clientMessageId !== undefined) this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
       return false;
     } finally {
@@ -1404,7 +1405,7 @@ export class SessionController {
       // back for a second send.
       const clientMessageId = message.clientMessageId;
       if (recalled && clientMessageId !== undefined) {
-        this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
+        this.setState({ messages: withdrawDeliveryLine(this.getState().messages, clientMessageId) });
       }
       this.applyStatus(status);
       return recalled;
@@ -1606,7 +1607,7 @@ export class SessionController {
       const result = await this.api.abort(session, selectedMachineId(this.getState()));
       for (const message of result.discarded) {
         if (message.clientMessageId === undefined) continue;
-        this.setState({ messages: removeDeliveryLine(this.getState().messages, message.clientMessageId) });
+        this.setState({ messages: withdrawDeliveryLine(this.getState().messages, message.clientMessageId) });
       }
       return result.discarded;
     } catch (error) {

@@ -30,7 +30,7 @@ const isDefiniteRefusal = (value: unknown): boolean => !isNetworkFailure(value) 
 const gatewayTimeout = new HttpError("Remote machine timeout (Remote machine response body timed out)", 504, "prod-8504");
 
 describe("an answer that names no verdict", () => {
-  it.fails("stays unverifiable instead of deleting the message", () => {
+  it("stays unverifiable instead of deleting the message", () => {
     const outcome = classifySubmission(gatewayTimeout, isDefiniteRefusal, transportFactsFor(gatewayTimeout, { isTimeout: false, linkOffline: false }));
 
     // The gateway's 504 is produced by machineProxyRoutes.ts:366 when the
@@ -86,7 +86,7 @@ describe("the words for a message nobody answered for", () => {
 });
 
 describe("one event, two records", () => {
-  it.fails("records an expired deadline the same way as a dropped link", () => {
+  it("records an expired deadline the same way as a dropped link", () => {
     savePendingPrompt("local:session-timeout", { text: "a", clientMessageId: "cm-timeout", at: new Date().toISOString() });
     savePendingPrompt("local:session-link", { text: "b", clientMessageId: "cm-link", at: new Date().toISOString() });
 
@@ -108,7 +108,7 @@ describe("one event, two records", () => {
 });
 
 describe("two confirmations that disagree", () => {
-  it.fails("does not delete a row the acceptance frame already proved the daemon owns", () => {
+  it("does not delete a row the acceptance frame already proved the daemon owns", () => {
     const proven = { role: "user" as const, parts: [{ type: "text" as const, text: "hello" }], meta: { delivery: { clientMessageId: "cm-1", state: "queued" as const } } };
     // The frame says the daemon owns this prompt. A later, ambiguous HTTP answer
     // goes down the refusal branch in deliverPromptToSession
@@ -121,7 +121,7 @@ describe("two confirmations that disagree", () => {
 });
 
 describe("an idle session is not a delivery", () => {
-  it.fails("waits for the transcript before calling a queued message read", () => {
+  it("waits for the transcript before calling a queued message read", () => {
     const queued = { role: "user" as const, parts: [{ type: "text" as const, text: "hello" }], meta: { delivery: { clientMessageId: "cm-1", state: "queued" as const } } };
     // applyQueueToDelivery(messages, queued, runtimeIdle) - driven by every status
     // frame (sessionController.ts:2078). "The queue no longer holds it and the
@@ -133,7 +133,7 @@ describe("an idle session is not a delivery", () => {
 });
 
 describe("a record read back from storage", () => {
-  it.fails("survives a state the table has no row for", () => {
+  it("survives a state the table has no row for", () => {
     // Nothing validates the state on the way out of localStorage
     // (pendingOutbox.ts isPendingPrompt only asks for a string), and the table
     // lookup is unchecked (outgoingMessages.ts:131). A record written by another

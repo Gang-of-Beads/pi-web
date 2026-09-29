@@ -215,15 +215,34 @@ export function restartDelivery(messages: readonly ChatLine[], clientMessageId: 
 }
 
 /**
- * Drop the optimistic bubble for a message that was pulled back out of the
- * queue. It has to go rather than change state: the bubble says "the server has
- * this and the agent will take it next", which stopped being true, and a
- * recalled message has no committed copy to settle against. The text lands back
- * in the composer, which is where an unsent message belongs.
+ * Which delivery states a server fact has proved: the daemon answered for it, its queue holds
+ * it, or the transcript does. A local answer - a refused or ambiguous HTTP reply - cannot
+ * delete such a row: the fact outranks the answer, and deleting it handed the words back for
+ * a second send under a new identity the ledger could not dedupe.
+ */
+const PROVEN_BY_SERVER: Readonly<Record<MessageDeliveryState, boolean>> = {
+  sending: false,
+  failed: false,
+  unverifiable: false,
+  received: true,
+  queued: true,
+  delivered: true,
+};
+
+/** Whether a server fact already proved this message's row, which no local answer overturns. */
+export function deliveryProvenByServer(messages: readonly ChatLine[], clientMessageId: string): boolean {
+  const state = messages[findDeliveryLineIndex(messages, clientMessageId)]?.meta?.delivery?.state;
+  return state !== undefined && PROVEN_BY_SERVER[state];
+}
+
+/**
+ * Drop the optimistic bubble of a send the client itself learned was refused. Only a row no
+ * server fact has proved goes; a message the daemon has taken back leaves through
+ * `withdrawDeliveryLine`, on the daemon's word.
  */
 export function removeDeliveryLine(messages: readonly ChatLine[], clientMessageId: string): ChatLine[] {
   const index = findDeliveryLineIndex(messages, clientMessageId);
-  if (index === -1) return [...messages];
+  if (index === -1 || deliveryProvenByServer(messages, clientMessageId)) return [...messages];
   return [...messages.slice(0, index), ...messages.slice(index + 1)];
 }
 
@@ -292,7 +311,9 @@ export function rowedClientMessageIds(messages: readonly ChatLine[], queued: rea
 }
 
 /**
- * Remove the withdrawn message's lines - and only those.
+ * Remove the withdrawn message's lines - and only those. Recall, Stop and the daemon's
+ * withdrawal frame all end here: the daemon says the message left its queue, and the text
+ * goes back to the composer, where an unsent message belongs.
  *
  * A delivered line is the transcript's, not the queue's: a withdrawal frame
  * that raced the drain must not delete a row the conversation already
@@ -308,6 +329,11 @@ export function withdrawDeliveryLine(messages: readonly ChatLine[], clientMessag
   });
 }
 
+/**
+ * Follow the daemon's queue. A row the queue holds is queued; a queued row an idle session no
+ * longer holds is received - the daemon has it - but not read: absence from a queue is an
+ * inference, and the committed copy in the transcript is the fact (`carryDeliveryForward`).
+ */
 export function applyQueueToDelivery(messages: ChatLine[], queued: readonly QueuedSessionMessage[], runtimeIdle = false): ChatLine[] {
   let next = messages;
   const queuedIds = new Map<string, "steer" | "followUp">();
@@ -322,8 +348,23 @@ export function applyQueueToDelivery(messages: ChatLine[], queued: readonly Queu
       next = markDelivery(next, delivery.clientMessageId, "queued", kind);
       continue;
     }
-    if (runtimeIdle && delivery.state === "queued") next = markDelivery(next, delivery.clientMessageId, "delivered");
+    if (runtimeIdle && delivery.state === "queued") next = leaveQueue(next, delivery.clientMessageId);
   }
+  return next;
+}
+
+/**
+ * The one step back the delivery order allows: a row the queue stopped holding is received
+ * again, not read. `markDelivery` only moves forward, which is right for every answer and
+ * frame - this is not an answer but the retraction of the queue's own claim.
+ */
+function leaveQueue(messages: ChatLine[], clientMessageId: string): ChatLine[] {
+  const index = findDeliveryLineIndex(messages, clientMessageId);
+  const line = messages[index];
+  const delivery = line?.meta?.delivery;
+  if (line === undefined || delivery?.state !== "queued") return messages;
+  const next = [...messages];
+  next[index] = { ...line, meta: { ...line.meta, delivery: { ...delivery, state: "received" } } };
   return next;
 }
 
