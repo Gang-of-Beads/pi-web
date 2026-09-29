@@ -161,19 +161,31 @@ function kindChanged(current: "steer" | "followUp" | undefined, next: "steer" | 
  */
 const DELIVERY_ORDER: Record<MessageDeliveryState, number> = { failed: -1, unverifiable: 0, sending: 0, received: 1, queued: 2, delivered: 3 };
 
+/**
+ * What a failed row still moves to: a server fact about the same message - the daemon has it,
+ * its queue holds it, the transcript holds it. A failure is often an inference (no ledger row by
+ * the last ask, a link that dropped); a later fact about the same identity proves it wrong, and
+ * one message keeps one identity for its whole life, retries included. Deliberate retries go
+ * through `restartDelivery`, which takes the row back to sending.
+ */
+const OUTRANKS_A_FAILURE: Readonly<Record<MessageDeliveryState, boolean>> = {
+  received: true,
+  queued: true,
+  delivered: true,
+  sending: false,
+  unverifiable: false,
+  failed: false,
+};
+
 function advancesDelivery(current: MessageDeliveryState, next: MessageDeliveryState): boolean {
   if (current === next) return false;
-  // A failure is terminal for the attempt and can interrupt any earlier state,
-  // but a late success event must not resurrect a message the user was told to
-  // retry, and nothing recovers from "delivered".
+  // A failure can interrupt any earlier state; nothing overturns "delivered".
   if (next === "failed") return current !== "delivered";
   // An answer that arrives late closes an unverifiable row; that is the whole
   // point of keeping it open rather than calling it failed.
   if (current === "unverifiable") return next !== "sending";
   if (next === "unverifiable") return current === "sending";
-  // Deliberate retries go through restartDelivery, which takes the bubble back
-  // to sending; a late event still cannot resurrect a failed message.
-  if (current === "failed") return false;
+  if (current === "failed") return OUTRANKS_A_FAILURE[next];
   return DELIVERY_ORDER[next] > DELIVERY_ORDER[current];
 }
 
@@ -392,7 +404,7 @@ export function carryDeliveryForward(previous: ChatLine, finalized: ChatLine): C
   if (delivery === undefined) return finalized;
   return {
     ...finalized,
-    meta: { ...finalized.meta, delivery: { ...delivery, state: delivery.state === "failed" ? delivery.state : "delivered" } },
+    meta: { ...finalized.meta, delivery: { ...delivery, state: "delivered" } },
   };
 }
 

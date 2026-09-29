@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { VERIFY_AFTER_MS, verificationStep } from "./sendVerification";
+import { provenRowStep, VERIFY_AFTER_MS, verificationStep } from "./sendVerification";
 
 describe("an unanswered send, asked about", () => {
   it.each([
@@ -23,6 +23,24 @@ describe("an unanswered send, asked about", () => {
   it("reads an outcome this build does not know as no row, never as a verdict", () => {
     expect({ early: verificationStep("committed-in-2027", false), last: verificationStep("committed-in-2027", true) })
       .toEqual({ early: { kind: "wait" }, last: { kind: "mark", state: "failed", retireOutbox: false } });
+  });
+
+  it("acts on a row a server fact proved only with a terminal fact it missed", () => {
+    expect({
+      failed: provenRowStep("failed"),
+      unknown: provenRowStep("unknown"),
+      withdrawn: provenRowStep("withdrawn"),
+      pending: provenRowStep("pending"),
+      succeeded: provenRowStep("succeeded"),
+      noRow: provenRowStep(undefined),
+    }).toEqual({
+      failed: { kind: "mark", state: "failed", retireOutbox: false },
+      unknown: { kind: "mark", state: "failed", retireOutbox: false },
+      withdrawn: { kind: "withdraw" },
+      pending: { kind: "wait" },
+      succeeded: { kind: "wait" },
+      noRow: { kind: "wait" },
+    });
   });
 
   it("asks on a clock that ends", () => {

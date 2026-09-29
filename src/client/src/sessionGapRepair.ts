@@ -53,6 +53,8 @@ export class SessionGapRepair {
   /** The highest seq reflected or applied in the current space. */
   private frontier: number | undefined;
   private epoch: string | undefined;
+  /** A seed during a repair moved the start back: the repair in flight asked from too late. */
+  private repairAgainSince: number | undefined;
 
   constructor(private readonly options: GapRepairOptions) {}
 
@@ -65,12 +67,21 @@ export class SessionGapRepair {
    * Start from a snapshot: everything at or below its seq is already reflected, and the next
    * frame is expected right after it. A frame published between the snapshot and the
    * subscription is then a gap like any other, not a silent loss.
+   *
+   * A seed replaces the view. Frames this space applied past the seed's seq went onto the view
+   * being replaced - a reconnect refresh reads while live frames keep applying - so they are
+   * fetched again at once rather than when the next frame happens to reveal the gap, which a
+   * quiet session never sends.
    */
   seed(watermark: StreamFrontier): void {
+    const replacedBeyond = this.epoch === watermark.epoch && this.frontier !== undefined && this.frontier > watermark.seq;
     this.appliedSeqs.clear();
     this.reflectedThrough = watermark.seq;
     this.frontier = watermark.seq;
     this.epoch = watermark.epoch;
+    if (!replacedBeyond) return;
+    if (this.state === "idle") void this.repair(watermark.seq);
+    else this.repairAgainSince = watermark.seq;
   }
 
   /**
@@ -118,6 +129,9 @@ export class SessionGapRepair {
     } catch {
       result = { ok: false };
     }
+    const again = this.repairAgainSince;
+    this.repairAgainSince = undefined;
+    if (again !== undefined) return this.runRepair(again);
     const held = this.buffer;
     this.buffer = [];
     this.state = "idle";

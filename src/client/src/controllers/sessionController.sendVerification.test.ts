@@ -110,6 +110,29 @@ describe("an unanswered send asks the daemon's ledger on its own", () => {
     expect(state.messages.map((line) => line.meta?.delivery?.state)).toEqual(["sending"]);
   });
 
+  it("learns of a refusal a queued row missed while the reader was elsewhere, and leaves a still-pending one alone", async () => {
+    let state: AppState = {
+      ...initialAppState(),
+      selectedWorkspace: workspace,
+      selectedSession: oldSession,
+      sessions: [oldSession],
+      status: status(oldSession.id),
+      sessionStatuses: { [oldSession.id]: status(oldSession.id) },
+    };
+    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, {
+      api: { ...defaultApi, operationOutcomes: () => Promise.resolve({ "cm-refused": "failed", "cm-waiting": "pending" }) },
+      socket: new FakeSocket(),
+    });
+    state.messages = [
+      { role: "user", parts: [{ type: "text", text: "refused while away" }], meta: { delivery: { clientMessageId: "cm-refused", state: "queued" } } },
+      { role: "user", parts: [{ type: "text", text: "still waiting" }], meta: { delivery: { clientMessageId: "cm-waiting", state: "queued" } } },
+    ];
+
+    await controller.verifyUnansweredSends();
+
+    expect(state.messages.map((line) => line.meta?.delivery?.state)).toEqual(["failed", "queued"]);
+  });
+
   it("leaves the row open and honest when asking fails too", async () => {
     const send = await unansweredSend(() => undefined);
     await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[2] ?? 0);

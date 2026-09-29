@@ -3,7 +3,7 @@ import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
-import { SessionGapRepair } from "../sessionGapRepair";
+import { SessionGapRepair, type StreamFrontier } from "../sessionGapRepair";
 import { describeError, noticeForReader } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
@@ -21,7 +21,7 @@ import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import { forgetPendingPrompt, isNetworkFailure, moveOutbox, NetworkSendError, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
-import { VERIFY_AFTER_MS, verificationStep } from "../sendVerification";
+import { provenRowStep, VERIFY_AFTER_MS, verificationStep } from "../sendVerification";
 import { statusReadVerdict, type StatusPosition } from "../statusOrder";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
@@ -446,6 +446,7 @@ export class SessionController {
       void this.refreshAvailableThinkingLevels();
       for (const event of socketBuffer) this.routeLiveEvent(event);
       this.socket.setHandler((event) => { this.routeLiveEvent(event); });
+      void this.closeUnverifiedOperations(session);
       this.onSelectedSessionReady?.({ machineId, session });
       if (options?.updateUrl !== false) this.updateUrl();
     } catch (error) {
@@ -463,8 +464,8 @@ export class SessionController {
       // buffering callback. Apply what arrived and keep live events flowing so
       // reconnect/trailing refresh can recover authoritatively.
       if (buffered !== undefined) {
-        for (const event of buffered) this.applyEvent(event);
-        this.socket.setHandler((event) => { this.applyEvent(event); });
+        for (const event of buffered) this.routeLiveEvent(event);
+        this.socket.setHandler((event) => { this.routeLiveEvent(event); });
       }
       this.setState({ ...errorNoticePatch(error), transcriptFailed: error instanceof Error ? error.message : String(error) });
       if (options?.propagateRefreshError === true) throw error;
@@ -1683,7 +1684,7 @@ export class SessionController {
         if (frame.seq !== undefined) lastSeq = Math.max(lastSeq, frame.seq);
       }
       this.streamWatermark = { sessionId: target.session.id, seq: lastSeq, ...(watermark.epoch === undefined ? {} : { epoch: watermark.epoch }) };
-      this.gapRepair?.seed(this.streamWatermark);
+      this.reseedLiveStream(this.streamWatermark);
       this.setState({
         messages: carryUnsettledForward(this.getState().messages, messages),
         ...(statusIsFresh ? { status } : {}),
@@ -1723,7 +1724,7 @@ export class SessionController {
       const messages = this.transcripts.seedStreamingPartial(carried, streamSnapshot.partial);
       const snapshotWatermark = { seq: streamSnapshot.seq, ...(streamSnapshot.epoch === undefined ? {} : { epoch: streamSnapshot.epoch }) };
       this.streamWatermark = { sessionId: target.session.id, ...snapshotWatermark };
-      this.gapRepair?.seed(snapshotWatermark);
+      this.reseedLiveStream(snapshotWatermark);
       // The page just read is current through this seq: a later reload can
       // replay frames after it instead of re-fetching the page.
       this.transcripts.setWatermark(key, snapshotWatermark);
@@ -2203,12 +2204,18 @@ export class SessionController {
     return session === undefined ? Promise.resolve() : this.closeUnverifiedOperations(session, false);
   }
 
+  /**
+   * Ask the daemon's ledger about every open row of the session on screen: an unverifiable one
+   * learns what became of it, and one a server fact already proved learns of a terminal fact
+   * whose frame went to a socket the reader had left - a refusal, a loss, a withdrawal.
+   */
   private async closeUnverifiedOperations(session: SessionRef, lastAsk = false): Promise<void> {
-    const open: string[] = [];
+    const askedAbout = new Map<string, MessageDeliveryState>();
     for (const line of this.getState().messages) {
       const delivery = line.meta?.delivery;
-      if (delivery?.state === "unverifiable") open.push(delivery.clientMessageId);
+      if (delivery !== undefined && ASKED_ABOUT[delivery.state]) askedAbout.set(delivery.clientMessageId, delivery.state);
     }
+    const open = [...askedAbout.keys()];
     if (open.length === 0) return;
     const machineId = selectedMachineId(this.getState());
     let outcomes: Record<string, string>;
@@ -2220,9 +2227,10 @@ export class SessionController {
     }
     if (this.getState().selectedSession?.id !== session.id || selectedMachineId(this.getState()) !== machineId) return;
     const outboxKey = machineSessionKey(machineId, session.id);
-    for (const clientMessageId of open) {
-      if (!stillUnverifiable(this.getState().messages, clientMessageId)) continue;
-      const step = verificationStep(outcomes[clientMessageId], lastAsk);
+    for (const [clientMessageId, askedState] of askedAbout) {
+      if (rowState(this.getState().messages, clientMessageId) !== askedState) continue;
+      const answer = outcomes[clientMessageId];
+      const step = askedState === "unverifiable" ? verificationStep(answer, lastAsk) : provenRowStep(answer);
       if (step.kind === "wait") continue;
       if (step.kind === "withdraw") {
         forgetPendingPrompt(outboxKey, clientMessageId);
@@ -2399,6 +2407,17 @@ export class SessionController {
    * range it sees missing, including frames published between the snapshot and the
    * subscription.
    */
+  /**
+   * Rebase the live stream on a view just rebuilt from a read. Frames still waiting for the next
+   * render were applied to the view being replaced: those the read reflects are in it already,
+   * and the machine fetches the ones after it again, so only frames without a seq stay queued.
+   */
+  private reseedLiveStream(watermark: StreamFrontier): void {
+    if (this.gapRepair === undefined) return;
+    this.pendingTranscriptEvents = this.pendingTranscriptEvents.filter((event) => Reflect.get(event, "seq") === undefined);
+    this.gapRepair.seed(watermark);
+  }
+
   private routeLiveEvent(event: SessionUiEvent): void {
     const seq: unknown = Reflect.get(event, "seq");
     this.gapRepair?.onLiveFrame(event, typeof seq === "number" ? seq : undefined);
@@ -2963,12 +2982,24 @@ function isSessionNotFoundError(error: unknown): boolean {
 }
 
 /**
- * Whether a row is still waiting for the answer its verification asked for. A retry that went
- * out, or a frame that landed, while the ledger was being asked has moved the row on; the
- * answer describes the ledger before that and would mark a message that is now on its way as
- * not received - for good, since a failed row does not move forward.
+ * The rows whose fate the daemon's ledger is asked about: one nobody answered for, and one a
+ * server fact proved but the transcript has not settled yet.
  */
-function stillUnverifiable(messages: readonly ChatLine[], clientMessageId: string): boolean {
-  return messages[findDeliveryLineIndex(messages, clientMessageId)]?.meta?.delivery?.state === "unverifiable";
+const ASKED_ABOUT: Readonly<Record<MessageDeliveryState, boolean>> = {
+  unverifiable: true,
+  received: true,
+  queued: true,
+  sending: false,
+  delivered: false,
+  failed: false,
+};
+
+/**
+ * A row's state now. An answer applies only to a row still in the state it was asked about: a
+ * retry that went out, or a frame that landed, while the ledger was being asked has moved the
+ * row on, and the answer describes the ledger before that.
+ */
+function rowState(messages: readonly ChatLine[], clientMessageId: string): MessageDeliveryState | undefined {
+  return messages[findDeliveryLineIndex(messages, clientMessageId)]?.meta?.delivery?.state;
 }
 

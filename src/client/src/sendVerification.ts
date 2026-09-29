@@ -46,3 +46,21 @@ export function verificationStep(answer: string | undefined, lastAsk: boolean): 
   if (known !== undefined) return known;
   return lastAsk ? NOT_RECEIVED : { kind: "wait" };
 }
+
+const WAIT: VerificationStep = { kind: "wait" };
+
+/**
+ * The ledger's word on a row a server fact already proved - received, or held by the queue.
+ * Only a terminal fact the row missed acts: a refusal or a loss it never heard about (its frame
+ * went to a socket the reader had left), or a withdrawal. Pending, read, or no row say nothing
+ * the row does not already know; the transcript settles a read one.
+ */
+const PROVEN_ROW_STEP: Readonly<Record<string, VerificationStep>> = {
+  failed: NOT_RECEIVED,
+  unknown: NOT_RECEIVED,
+  withdrawn: { kind: "withdraw" },
+};
+
+export function provenRowStep(answer: string | undefined): VerificationStep {
+  return (answer === undefined ? undefined : PROVEN_ROW_STEP[answer]) ?? WAIT;
+}

@@ -171,3 +171,59 @@ describe("SessionGapRepair seeded from a snapshot", () => {
     });
   });
 });
+
+describe("SessionGapRepair reseeded below its frontier", () => {
+  const settle = async (): Promise<void> => { for (let index = 0; index < 8; index += 1) await Promise.resolve(); };
+  const inEpoch = (text: string, seq: number): SessionUiEvent => ({ type: "assistant.delta", text, seq, epoch: "daemon-a.1" });
+
+  function reseedable(reply: (sinceSeq: number) => Promise<{ ok: true; frames: SessionUiEvent[] }>) {
+    const applied: string[] = [];
+    const requests: number[] = [];
+    const repair = new SessionGapRepair({
+      apply: (event) => { applied.push(("text" in event ? event.text : event.type) + seqSuffix(event)); },
+      request: (sinceSeq) => { requests.push(sinceSeq); return reply(sinceSeq); },
+      resync: vi.fn(),
+    });
+    repair.seed({ seq: 5, epoch: "daemon-a.1" });
+    return { repair, applied, requests };
+  }
+
+  it("fetches again what it applied past the new seed, since that went onto the view the seed replaced", async () => {
+    const { repair, applied, requests } = reseedable(() => Promise.resolve({ ok: true, frames: [inEpoch("seven", 7)] }));
+    repair.onLiveFrame(inEpoch("six", 6), 6);
+    repair.onLiveFrame(inEpoch("seven", 7), 7);
+    applied.length = 0;
+    repair.seed({ seq: 6, epoch: "daemon-a.1" });
+    await settle();
+    expect({ applied, requests }).toEqual({ applied: ["seven@7"], requests: [6] });
+  });
+
+  it("fetches nothing when the seed is at or past everything applied, or in another epoch", async () => {
+    const { repair, requests } = reseedable(() => Promise.resolve({ ok: true, frames: [] }));
+    repair.onLiveFrame(inEpoch("six", 6), 6);
+    repair.seed({ seq: 6, epoch: "daemon-a.1" });
+    repair.onLiveFrame(inEpoch("seven", 7), 7);
+    repair.seed({ seq: 2, epoch: "daemon-b.1" });
+    await settle();
+    expect(requests).toEqual([]);
+  });
+
+  it("asks again from the new seed when it is reseeded during a repair, and applies in seq order", async () => {
+    const first = deferredReply();
+    const { repair, applied, requests } = reseedable((sinceSeq) => (sinceSeq === 7 ? first.promise : Promise.resolve({ ok: true, frames: [inEpoch("six", 6), inEpoch("seven", 7), inEpoch("eight", 8)] })));
+    repair.onLiveFrame(inEpoch("six", 6), 6);
+    repair.onLiveFrame(inEpoch("seven", 7), 7);
+    repair.onLiveFrame(inEpoch("nine", 9), 9);
+    applied.length = 0;
+    repair.seed({ seq: 5, epoch: "daemon-a.1" });
+    first.resolve({ ok: true, frames: [inEpoch("eight", 8)] });
+    await settle();
+    expect({ applied, requests }).toEqual({ applied: ["six@6", "seven@7", "eight@8", "nine@9"], requests: [7, 5] });
+  });
+});
+
+function deferredReply() {
+  let resolve: (value: { ok: true; frames: SessionUiEvent[] }) => void = () => undefined;
+  const promise = new Promise<{ ok: true; frames: SessionUiEvent[] }>((settle) => { resolve = settle; });
+  return { promise, resolve };
+}

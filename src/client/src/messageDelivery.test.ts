@@ -47,10 +47,15 @@ describe("markDelivery", () => {
     expect(markDelivery(messages, "other-id", "delivered")).toBe(messages);
   });
 
-  it("reports a failed send and does not let a late success undo it", () => {
+  it("reports a failed send, and lets a later server fact about the same message overturn it", () => {
     const failed = markDelivery([tracked("sending")], ID, "failed");
     expect(failed[0]?.meta?.delivery?.state).toBe("failed");
-    expect(markDelivery(failed, ID, "received")).toBe(failed);
+    expect(markDelivery(failed, ID, "received")[0]?.meta?.delivery?.state).toBe("received");
+  });
+
+  it("does not move a failed row back to sending or unverifiable except through a retry", () => {
+    const failed = [tracked("failed")];
+    expect({ sending: markDelivery(failed, ID, "sending"), unverifiable: markDelivery(failed, ID, "unverifiable") }).toEqual({ sending: failed, unverifiable: failed });
   });
 
   it("records the lane a queued message is waiting in", () => {
@@ -172,8 +177,8 @@ describe("carryDeliveryForward", () => {
     expect(carryDeliveryForward({ role: "user", parts: [] }, finalized)).toBe(finalized);
   });
 
-  it("does not claim delivery for a message that failed to send", () => {
-    expect(carryDeliveryForward(tracked("failed"), { role: "user", parts: [] }).meta?.delivery?.state).toBe("failed");
+  it("calls a message delivered once the transcript holds it, whatever was inferred before", () => {
+    expect(carryDeliveryForward(tracked("failed"), { role: "user", parts: [] }).meta?.delivery?.state).toBe("delivered");
   });
 });
 

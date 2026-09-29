@@ -572,3 +572,43 @@ Recorded for later phases:
 - **The state names.** "spells the state it waits in the same way as the bubble does" requires the outbox's states to be exactly the bubble's six, with no `unverified`. "records an expired deadline…" and "survives a state the table has no row for" (phase 2) require the outbox record to say `unverified`.
 
 Phase 5 has to pick the words and then the spelling, and at least one of these assertions changes with the owner's approval.
+
+## Phase 3 as landed
+
+**Scope.** The 8 realtime repros:
+- 2 for the hub's epoch;
+- 2 for gap repair;
+- 4 for the controller's join, status order and delta refresh.
+
+It also takes the status revision and join frame moved from phase 1, and the three items recorded for it.
+
+**Epochs (3a).** The session event hub mints an epoch whenever a session's seq space starts: at the first publish or snapshot, and after an eviction, from a per-instance id.
+- Live and replayed frames carry the epoch, and the stream snapshot returns it.
+- `replaySince` answers a watermark cited with any other epoch, or none, with resync.
+- The client persists its watermark as `{seq, epoch}` and cites both. A bare number stored by an older build reads back without an epoch, gets resync, and is replaced.
+
+**Ordered application (3b).** `SessionGapRepair` is seeded with the snapshot's watermark.
+- It sees gaps itself, including one before the first live frame.
+- It fetches the missed range in its own epoch and applies replayed and held frames merged by seq, once each.
+- A frame from another epoch, or a lower seq on one without an epoch, starts a new space.
+- The join buffer goes through it, and every snapshot or delta refresh reseeds it.
+- The seed plays the join frame's role: the snapshot is where the stream stands.
+
+**Status order and the delta path (3c, 3d).**
+- A status read carries `streamPosition`, the seq and epoch it was computed at.
+- The controller keeps the position of the last status it applied, frame or read. `statusReadVerdict` drops an older read. A read without a position is dropped when a status frame landed while it was in flight, and a frame at or below an applied read's position is dropped too.
+- The delta refresh carries unsettled rows forward, as the full refresh does.
+
+**Recorded items (3e).**
+- Facts outrank an inferred failure. A failed row moves to received, queued or delivered on a server fact about the same identity, and the committed copy makes it delivered. The old "never resurrect a failed row" rule dates from retries that minted new ids; three tests that pinned it now expect the fact to win.
+- Missed terminal facts are asked for. After a join, on reconnect, on the verification clock and when the tab comes back, the ledger is asked about every open row. A row a server fact proved acts only on a terminal fact it missed: a refusal or loss marks it failed, and a withdrawal removes it.
+
+**A refresh that replaces the view (3f).** Found while writing the limitations, and proven by a test before the fix.
+- A reconnect refresh reads while live frames keep applying, and its result replaces the view. A frame newer than the snapshot vanished until the next frame revealed the gap, which a quiet session never sends.
+- A seed below the machine's frontier in the same epoch now fetches the range again at once. During a repair, the repair in flight asks again from the new seed.
+- Sequenced frames still queued for render when the view is replaced are dropped: the snapshot reflects them, or the new fetch brings them back. Before this, one could apply twice.
+- A failed join routed its buffer and later frames around the machine. It now routes them through it, as a successful join does.
+
+**Phase 3 known limitations.**
+1. **A send to a session that is still starting lives only in memory until the session starts.** The composer's record is retired when the controller queues it, and the queued send carries no identity. A reload during the second or two a new session takes to start loses the message. Keeping the record until delivery needs the pending-start queue to settle every send on every exit path (a failed delivery that stops the flush, a discarded start, a thrown network error), or the composer's chain stalls on it. That is a redesign of pending start, left for later.
+2. **The page and the snapshot are two reads.** A full refresh reads committed history and the stream snapshot in parallel. A message committed between the two reads can be in the page and also replayed after the snapshot's seq. This predates phase 3 and is not reproduced; a daemon read that returns both at one seq would close it.
