@@ -223,6 +223,20 @@ export function forgetPendingPrompt(sessionKey: string, clientMessageId: string,
   }
 }
 
+/**
+ * Carry a session's unsent records to its new identity. A session created in this browser
+ * gets its daemon id when it starts, and one whose daemon copy vanished is recreated under a
+ * new id; records left under the old key were read by no surface - not the strip, not the
+ * session list, not a replay - and Retry called them gone.
+ */
+export function moveOutbox(fromSessionKey: string, toSessionKey: string, storage = browserStorage()): void {
+  if (fromSessionKey === toSessionKey) return;
+  const moving = loadPendingPrompts(fromSessionKey, storage);
+  if (moving.length === 0) return;
+  for (const prompt of moving) savePendingPrompt(toSessionKey, prompt, storage);
+  clearPendingPrompts(fromSessionKey, storage);
+}
+
 export function clearPendingPrompts(sessionKey: string, storage = browserStorage()): void {
   try {
     storage?.removeItem(outboxKey(sessionKey));

@@ -408,6 +408,7 @@ export class PromptEditor extends LitElement {
       // The strip must carry the scope it belongs to: rows loaded for the
       // previous session may not render - or act - against this one.
       this.pendingPrompts = this.pendingPromptsForSession();
+      if (this.isConnected) this.flushPendingPrompts();
     }
     this.syncAttachmentZoomDialog();
   }
@@ -1186,7 +1187,7 @@ export class PromptEditor extends LitElement {
       try {
         const scope: SendScope = { machineId: this.machineId, sessionId: this.sessionId ?? "" };
         for (const prompt of pending) {
-          if (prompt.clientMessageId === undefined) continue;
+          if (prompt.clientMessageId === undefined || this.outboxInFlight.has(prompt.clientMessageId)) continue;
           if (!this.isConnected || machineSessionKey(this.machineId, this.sessionId ?? "") !== key) return;
           const current = loadPendingPrompts(key);
           if (!current.some((entry) => entry.clientMessageId === prompt.clientMessageId)) continue;
@@ -1200,6 +1201,7 @@ export class PromptEditor extends LitElement {
       } finally {
         this.flushInFlight = false;
         this.pendingPrompts = this.pendingPromptsForSession();
+        if (this.isConnected && machineSessionKey(this.machineId, this.sessionId ?? "") !== key) this.flushPendingPrompts();
       }
     })();
   }

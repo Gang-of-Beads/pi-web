@@ -20,7 +20,7 @@ import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
-import { forgetPendingPrompt, isNetworkFailure, NetworkSendError, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
+import { forgetPendingPrompt, isNetworkFailure, moveOutbox, NetworkSendError, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
 import { VERIFY_AFTER_MS, verificationStep } from "../sendVerification";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
@@ -1861,6 +1861,7 @@ export class SessionController {
 
     rememberCachedNewSession(session, pending.machineId);
     moveDraft(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
+    moveOutbox(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
     const cachedSession = markCachedNewSessionInfo(session, pending.machineId);
     if (!this.isCurrentPendingStart(pending)) {
       this.setState({ clientQueuedSessionMessages: omitKey(this.getState().clientQueuedSessionMessages, tempId) });
@@ -2015,6 +2016,7 @@ export class SessionController {
       }
       rememberCachedNewSession(replacement, machineId);
       moveDraft(this.sessionCacheKey(session.id), this.sessionCacheKey(replacement.id));
+      moveOutbox(this.sessionCacheKey(session.id), this.sessionCacheKey(replacement.id));
       forgetCachedNewSession(session.id, machineId);
       const cachedReplacement = markCachedNewSessionInfo(replacement, machineId);
       this.setState({ sessions: [cachedReplacement, ...this.getState().sessions.filter((candidate) => candidate.id !== session.id)], ...clearErrorPatch() });

@@ -119,6 +119,51 @@ describe("a waiting send only ever goes to the session it was written for", () =
       .toEqual({ sent: ["first"], keptForItsSession: ["second"] });
   });
 
+  it("hands a send it kept for its own session over once the composer shows that session again", async () => {
+    const element = await composer();
+    const first = deferred();
+    const sent: { text: string; session: string | undefined }[] = [];
+    element.onSend = (text: string) => {
+      sent.push({ text, session: element.sessionId });
+      return text === "first" ? first.promise : Promise.resolve(true);
+    };
+
+    element.replaceText("first");
+    fireSend(element);
+    element.replaceText("second");
+    fireSend(element);
+    element.sessionId = "session-2";
+    await element.updateComplete;
+    first.resolve(true);
+    await flush();
+    element.sessionId = "session-1";
+    await element.updateComplete;
+    await flush();
+
+    expect({ sent, left: loadPendingPrompts("local:session-1") }).toEqual({
+      sent: [{ text: "first", session: "session-1" }, { text: "second", session: "session-1" }],
+      left: [],
+    });
+  });
+
+  it("does not replay a send whose request is still in flight", async () => {
+    const element = await composer();
+    const sent: string[] = [];
+    element.onSend = (text: string) => {
+      sent.push(text);
+      return new Promise<boolean>(() => undefined);
+    };
+
+    element.replaceText("still going");
+    fireSend(element);
+    const flushOutbox: unknown = Reflect.get(element, "flushPendingPrompts");
+    if (typeof flushOutbox !== "function") throw new Error("flushPendingPrompts is not reachable");
+    Reflect.apply(flushOutbox, element, []);
+    await flush();
+
+    expect(sent).toEqual(["still going"]);
+  });
+
   it("hands the controller its own scope, and keeps the record when the controller says the selection moved", async () => {
     const element = await composer();
     const replays: unknown[] = [];

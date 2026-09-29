@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, NetworkSendError, savePendingPrompt, type PendingPrompt } from "./pendingOutbox";
+import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, type PendingPrompt } from "./pendingOutbox";
 
 function memoryStorage(): Storage & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -112,3 +112,19 @@ class MemoryStorage implements Storage {
   removeItem(key: string): void { this.map.delete(key); }
   setItem(key: string, value: string): void { this.map.set(key, value); }
 }
+
+describe("moveOutbox", () => {
+  it("carries a session's unsent records to its new identity, keeping each identity once", () => {
+    const storage = memoryStorage();
+    savePendingPrompt("local:pending-1", { text: "a", clientMessageId: "cm-a", at: "2026-09-29T00:00:00.000Z" }, storage);
+    savePendingPrompt("local:pending-1", { text: "b", clientMessageId: "cm-b", at: "2026-09-29T00:00:01.000Z", state: "failed" }, storage);
+    savePendingPrompt("local:started-1", { text: "a", clientMessageId: "cm-a", at: "2026-09-29T00:00:00.000Z" }, storage);
+
+    moveOutbox("local:pending-1", "local:started-1", storage);
+
+    expect({
+      moved: loadPendingPrompts("local:started-1", storage).map((prompt) => [prompt.clientMessageId, prompt.state]),
+      left: loadPendingPrompts("local:pending-1", storage),
+    }).toEqual({ moved: [["cm-a", undefined], ["cm-b", "failed"]], left: [] });
+  });
+});

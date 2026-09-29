@@ -505,6 +505,21 @@ The last two abort the call's signal, and the race does not rely on the daemon h
 | P2-1 | A row the runtime refused offers Retry, whose notice ("may already have been delivered") is untrue, because the accepted send already retired its outbox record | TRUE | Recorded for phase 5 (owner decision): Retry for a refused message is a words-and-semantics question. Discard hands the words back meanwhile, so nothing is lost. |
 | P2-2 | After a stall of about 70 s before acceptance, the last ask can call a message not received that the daemon then accepts and runs, and `failed` never moves forward | TRUE (rare) | Recorded for phase 3. "A failed row never moves forward" dates from retries that minted new ids; retries now reuse the identity, so a later fact about the same identity should outrank an inferred failure. That is the browser store's reducer rule (facts outrank answers), which phase 3 builds. Retry recovers the row meanwhile. |
 
+
+**Phase 2 second gate-lane triage (DeepSeek 4.1 max, over e67d4680).** Confirmed sound:
+- the proxy and body deadlines, and `carriesNoVerdict`;
+- `withdrawDeliveryLine` for recall and Stop, and `refuse()`;
+- `stillUnverifiable`;
+- the scope check, which cannot misfire for a stable selection because both sides read the same state (so `local` and remote machine ids agree);
+- the auth slash-command path.
+
+| # | Finding | Verdict | Disposition |
+|---|---|---|---|
+| F1 (P1) | The gate-1 P1-1 fix was incomplete. The composer element is reused, not remounted, across a session switch, so a send kept for its own session was never handed over again: only `firstUpdated` and the browser's `online` event flushed the outbox | TRUE | Fixed: the composer flushes its outbox whenever its session or machine changes. A flush interrupted by a switch flushes again for the new scope. |
+| F3 (P2) | A replay re-posted an identity whose request was still in flight | TRUE for the waste; not true that it runs twice. `acceptPrompt` is serialised per session and checks the ledger inside, so the second copy waits for the first to be recorded and is answered as a duplicate. | Fixed anyway: a replay skips identities still in flight |
+| F2 (P2) | Records under a session's old key (a browser-created session starting, or one recreated after its daemon copy vanished) were read by no surface | TRUE | Fixed: `moveOutbox` carries the records next to `moveDraft` at both id changes |
+| F4 (P2) | A `prompt.refused` frame published while the reader is on another session reaches no socket, and the row later steps to received with no Retry | TRUE | Recorded for phase 3: frames only reach the selected session's socket. The store's join frame and per-identity facts on (re)join are where a missed terminal fact is recovered. |
+
 **Conflicts for phase 5 (owner decision).** Some confirm repros cannot all pass together:
 - **The bubble's words.** "does not claim it may be running when the bytes never left" wants the bubble of an `unverifiable` row to read "Not sent". "gives the reader words for who is being waited on" wants "No answer yet" for the same input. The owner's words (Sending… / Receiving… / Received / Not received · Retry) match neither.
 - **The received label.** "the label of a confirmation that is not a queue" wants a `received` row to read "Queued". The owner's words say "Received".
