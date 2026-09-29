@@ -1,0 +1,115 @@
+// @vitest-environment happy-dom
+import { afterEach, describe, expect, it } from "vitest";
+import { PromptEditor, recordedDelivery } from "./PromptEditor";
+import { loadPendingPrompts } from "../pendingOutbox";
+
+afterEach(() => {
+  document.body.replaceChildren();
+  localStorage.clear();
+});
+
+async function composer(sessionId = "session-1"): Promise<PromptEditor> {
+  const element = new PromptEditor();
+  element.sessionId = sessionId;
+  element.machineId = "local";
+  document.body.append(element);
+  await element.updateComplete;
+  return element;
+}
+
+function fireSend(element: PromptEditor): void {
+  const send: unknown = Reflect.get(element, "send");
+  if (typeof send !== "function") throw new Error("send is not reachable");
+  Reflect.apply(send, element, [undefined]);
+}
+
+function deferred(): { promise: Promise<boolean>; resolve: (value: boolean) => void } {
+  let resolve: (value: boolean) => void = () => undefined;
+  const promise = new Promise<boolean>((settle) => { resolve = settle; });
+  return { promise, resolve };
+}
+
+const flush = async (): Promise<void> => { await new Promise((resolve) => setTimeout(resolve, 0)); };
+
+describe("one composer's sends reach the daemon in the order they were made", () => {
+  it("hands the second send over once the first has settled, and records both at once", async () => {
+    const element = await composer();
+    const answers = [deferred(), deferred()];
+    const sent: string[] = [];
+    element.onSend = (text: string) => {
+      sent.push(text);
+      return answers[sent.length - 1]?.promise ?? Promise.resolve(true);
+    };
+
+    element.replaceText("first");
+    fireSend(element);
+    element.replaceText("second");
+    fireSend(element);
+    await flush();
+    expect({ sent: [...sent], recorded: loadPendingPrompts("local:session-1").map((prompt) => prompt.text) })
+      .toEqual({ sent: ["first"], recorded: ["first", "second"] });
+
+    answers[0]?.resolve(true);
+    await flush();
+    expect(sent).toEqual(["first", "second"]);
+    answers[1]?.resolve(true);
+    await flush();
+    expect(loadPendingPrompts("local:session-1")).toEqual([]);
+  });
+
+  it("keeps going after a send that failed", async () => {
+    const element = await composer();
+    const sent: string[] = [];
+    element.onSend = (text: string) => {
+      sent.push(text);
+      return text === "first" ? Promise.reject(new Error("400 Bad Request")) : Promise.resolve(true);
+    };
+
+    element.replaceText("first");
+    fireSend(element);
+    element.replaceText("second");
+    fireSend(element);
+    await flush();
+
+    expect(sent).toEqual(["first", "second"]);
+  });
+
+  it("does not hand a waiting send to a session the reader switched to, and keeps it for its own", async () => {
+    const element = await composer();
+    const first = deferred();
+    const sent: string[] = [];
+    element.onSend = (text: string) => {
+      sent.push(text);
+      return text === "first" ? first.promise : Promise.resolve(true);
+    };
+
+    element.replaceText("first");
+    fireSend(element);
+    element.replaceText("second");
+    fireSend(element);
+    element.sessionId = "session-2";
+    await element.updateComplete;
+    first.resolve(true);
+    await flush();
+
+    expect({ sent, keptForItsSession: loadPendingPrompts("local:session-1").map((prompt) => prompt.text) })
+      .toEqual({ sent: ["first"], keptForItsSession: ["second"] });
+  });
+});
+
+describe("a record's attachments travel the way they were composed", () => {
+  const image = { kind: "image" as const, name: "p.png", mimeType: "image/png", data: "AAA", size: 3 };
+  const file = { kind: "file" as const, name: "notes.txt", mimeType: "text/plain", data: "", size: 0 };
+
+  it("uses the delivery the record carries", () => {
+    expect(recordedDelivery({ attachments: [image], delivery: "folder" })).toBe("folder");
+  });
+
+  it("answers from the record's own attachments when an older record carries none", () => {
+    expect({ image: recordedDelivery({ attachments: [image] }), file: recordedDelivery({ attachments: [file] }) }).toEqual({ image: "inline", file: "folder" });
+  });
+
+  it("has no delivery for a record without attachments", () => {
+    expect(recordedDelivery({})).toBeUndefined();
+  });
+});

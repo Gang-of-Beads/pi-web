@@ -65,7 +65,7 @@ const fileAttachment = { kind: "file" as const, name: "notes.txt", mimeType: "te
 const imageAttachment = { kind: "image" as const, name: "p.png", mimeType: "image/png", data: "AAA", size: 3 };
 
 describe("two Enter presses, one composer", () => {
-  it.fails("leaves both sends in flight with nothing ordering them", async () => {
+  it("leaves both sends in flight with nothing ordering them", async () => {
     const element = await composer();
     const calls: unknown[][] = [];
     element.onSend = (...args: unknown[]) => {
@@ -87,7 +87,7 @@ describe("two Enter presses, one composer", () => {
     expect({ sendsIssued: calls.length, ids: calls.map((call) => call[4]) }).toMatchObject({ sendsIssued: 1 });
   });
 
-  it.fails("swallows the second send when the first is uploading", async () => {
+  it("swallows the second send when the first is uploading", async () => {
     const element = await composer();
     const calls: unknown[][] = [];
     element.onSend = recordSend(calls);
@@ -105,7 +105,7 @@ describe("two Enter presses, one composer", () => {
 });
 
 describe("a replayed outbox entry", () => {
-  it.fails("is sent with the delivery its own attachments chose", async () => {
+  it("is sent with the delivery its own attachments chose", async () => {
     const element = await composer();
     savePendingPrompt(SESSION_KEY, {
       text: "read this",
@@ -131,7 +131,7 @@ describe("a replayed outbox entry", () => {
     }).toMatchObject({ delivery: "folder" });
   });
 
-  it.fails("is not turned into a workspace file because the composer holds one", async () => {
+  it("is not turned into a workspace file because the composer holds one", async () => {
     const element = await composer();
     savePendingPrompt(SESSION_KEY, {
       text: "look at this",

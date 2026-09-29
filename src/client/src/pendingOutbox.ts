@@ -1,4 +1,5 @@
 import type { PromptAttachment } from "./api";
+import type { PromptAttachmentDelivery } from "../../shared/apiTypes";
 import type { OutgoingEvent, OutgoingState } from "./outgoingMessages";
 import { isOutgoingState, outgoingVerdict } from "./outgoingMessages";
 /**
@@ -29,6 +30,13 @@ export interface PendingPrompt {
    * replayed and the send succeeded.
    */
   attachments?: PromptAttachment[];
+  /**
+   * How the attachments travel, decided when the message was composed. A replay used to
+   * recompute it from whatever the composer held at replay time - empty, or the next
+   * message's files - so a file meant for the workspace went inline, and an image inline
+   * became a workspace file.
+   */
+  delivery?: PromptAttachmentDelivery;
   at: string;
 }
 

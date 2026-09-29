@@ -429,7 +429,6 @@ export class PromptEditor extends LitElement {
     const shellInputMode = this.currentInputMode.kind === "shell" ? this.currentInputMode : undefined;
     const shellMode = shellInputMode !== undefined;
     const queuesInput = this.canSteer || this.isCompacting;
-    const busy = this.disabled || this.sending;
     return html`
       <footer class=${shellMode ? "shell-mode" : ""} @paste=${(event: ClipboardEvent) => { void this.handlePaste(event); }} @dragover=${(event: DragEvent) => { this.handleDragOver(event); }} @drop=${(event: DragEvent) => { void this.handleDrop(event); }}>
         <input class="attachment-input" type="file" multiple hidden @change=${(event: Event) => { void this.handleFileInput(event); }} />
@@ -455,7 +454,7 @@ export class PromptEditor extends LitElement {
           ${this.renderCompactStatus()}
           ${this.renderHistoryButton()}
           ${this.renderComposerContributions("trailing")}
-          <button class="icon-button send-button" ?disabled=${busy} title=${queuesInput ? "Steer — joins the current turn at the next safe point" : "Send message"} aria-label=${queuesInput ? "Steer current response (queued if busy)" : "Send message"} @click=${() => { this.send(this.canSteer ? "steer" : "followUp"); }}>${this.canSteer ? renderSteerIcon() : queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
+          <button class="icon-button send-button" ?disabled=${this.disabled} title=${queuesInput ? "Steer — joins the current turn at the next safe point" : "Send message"} aria-label=${queuesInput ? "Steer current response (queued if busy)" : "Send message"} @click=${() => { this.send(this.canSteer ? "steer" : "followUp"); }}>${this.canSteer ? renderSteerIcon() : queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
           <button class="icon-button stop-button" ?disabled=${this.disabled || !this.canStop} title=${this.canStop ? "Stop current work and clear queued messages" : "Nothing running"} aria-label="Stop current work" @click=${() => this.onStop?.()}>${renderStopIcon()}</button>
         </div>
       </footer>
@@ -571,6 +570,8 @@ export class PromptEditor extends LitElement {
   private pendingRevealTimer: ReturnType<typeof setTimeout> | undefined;
   /** The sends this composer is still waiting on, by client message id. */
   private readonly outboxInFlight = new Set<string>();
+  private sendOrder: Promise<void> = Promise.resolve();
+  private sendsWaiting = 0;
 
   /**
    * Whether storage holds anything for this session.
@@ -1189,7 +1190,7 @@ export class PromptEditor extends LitElement {
           const current = loadPendingPrompts(key);
           if (!current.some((entry) => entry.clientMessageId === prompt.clientMessageId)) continue;
           try {
-            const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, prompt.attachments === undefined ? undefined : this.effectiveAttachmentDelivery(), { clientMessageId: prompt.clientMessageId });
+            const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: prompt.clientMessageId });
             if (accepted !== false) forgetPendingPrompt(key, prompt.clientMessageId);
           } catch {
             continue;
@@ -1202,8 +1203,14 @@ export class PromptEditor extends LitElement {
     })();
   }
 
+  /**
+   * Send the composer's contents. Sends from one composer reach the daemon in the order they
+   * were made: each is recorded in the outbox at once - durable, and shown as sending - and
+   * handed over only after the previous one settled, so two in flight cannot be reordered by
+   * the network. A send is never swallowed because another is uploading; it waits its turn.
+   */
   private send(streamingBehavior?: "steer" | "followUp") {
-    if (this.disabled || this.sending) return;
+    if (this.disabled) return;
     // A file still being read belongs to this message. Sending without it is
     // how one submission became a text message plus a bodiless image.
     if (this.attachingCount > 0) {
@@ -1224,7 +1231,29 @@ export class PromptEditor extends LitElement {
     // people distrust the app.
     const restorable = { text: this.draft, attachments: pending };
     this.resetComposer();
-    void this.deliverAndRestoreOnFailure(text, behavior, attachments, delivery, restorable);
+    const outgoing = this.recordOutgoing(text, behavior, attachments, delivery);
+    this.sendsWaiting += 1;
+    const run = async (): Promise<void> => {
+      try {
+        await this.deliverAndRestoreOnFailure(text, behavior, attachments, delivery, restorable, outgoing);
+      } finally {
+        this.sendsWaiting -= 1;
+      }
+    };
+    this.sendOrder = this.sendsWaiting === 1 ? run() : this.sendOrder.then(run, run);
+  }
+
+  /** Mint the message's identity and write its outbox record, before it waits for its turn. */
+  private recordOutgoing(text: string, behavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery): OutgoingSend {
+    const outboxKey = machineSessionKey(this.machineId, this.sessionId ?? "");
+    const outboxId = newClientMessageId();
+    const carried = attachments === undefined || attachments.length === 0 ? undefined : attachments;
+    if (outboxKey !== "") {
+      savePendingPrompt(outboxKey, { text, ...(behavior === undefined ? {} : { behavior }), clientMessageId: outboxId, ...(carried === undefined ? {} : { attachments: carried, delivery }), at: new Date().toISOString() });
+      this.pendingPrompts = loadPendingPrompts(outboxKey);
+    }
+    this.outboxInFlight.add(outboxId);
+    return { outboxKey, outboxId, text, behavior, attachments, delivery };
   }
 
   /**
@@ -1240,18 +1269,18 @@ export class PromptEditor extends LitElement {
     attachments: PromptAttachment[] | undefined,
     delivery: PromptAttachmentDelivery,
     restorable: { text: string; attachments: PendingAttachment[] },
+    outgoing: OutgoingSend = this.recordOutgoing(text, behavior, attachments, delivery),
   ): Promise<void> {
-    const outboxKey = machineSessionKey(this.machineId, this.sessionId ?? "");
+    const { outboxKey, outboxId } = outgoing;
     const scopeKey = outboxKey;
-    const outboxId = newClientMessageId();
-    if (outboxKey !== "") {
-      savePendingPrompt(outboxKey, { text, ...(behavior === undefined ? {} : { behavior }), clientMessageId: outboxId, ...(attachments === undefined || attachments.length === 0 ? {} : { attachments }), at: new Date().toISOString() });
-      this.pendingPrompts = loadPendingPrompts(outboxKey);
+    if (this.outboxKey() !== outboxKey) {
+      this.outboxInFlight.delete(outboxId);
+      this.pendingPrompts = this.pendingPromptsForSession();
+      return;
     }
 
     let accepted: boolean | undefined;
     let failure: unknown;
-    this.outboxInFlight.add(outboxId);
     try {
       accepted = await this.onSend?.(text, behavior, attachments, attachments === undefined ? undefined : delivery, { clientMessageId: outboxId });
     } catch (error) {
@@ -1429,4 +1458,25 @@ export function retryBlocked(online: boolean, replaying: boolean, held: boolean)
   if (!online) return "offline";
   if (replaying) return "busy";
   return held ? undefined : "gone";
+}
+
+/** One send as it was composed, with the scope and identity its outbox record holds. */
+interface OutgoingSend {
+  outboxKey: string;
+  outboxId: string;
+  text: string;
+  behavior: "steer" | "followUp" | undefined;
+  attachments: PromptAttachment[] | undefined;
+  delivery: PromptAttachmentDelivery;
+}
+
+/**
+ * How a replayed record's attachments travel: the way they were composed. The live composer
+ * says nothing about a record - it was emptied when the message was sent, or holds the next
+ * message's files - so a record written before delivery was recorded answers from its own
+ * attachments.
+ */
+export function recordedDelivery(prompt: Pick<PendingPrompt, "attachments" | "delivery">): PromptAttachmentDelivery | undefined {
+  if (prompt.attachments === undefined || prompt.attachments.length === 0) return undefined;
+  return prompt.delivery ?? effectivePromptAttachmentDelivery("inline", prompt.attachments);
 }
