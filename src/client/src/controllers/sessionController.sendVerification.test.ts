@@ -4,6 +4,7 @@ import { initialAppState } from "../appState";
 import { SessionController } from "./sessionController";
 import { defaultApi, FakeSocket, oldSession, status, workspace, type AppState } from "./sessionController.testSupport";
 import { loadPendingPrompts, savePendingPrompt } from "../pendingOutbox";
+import type { ChatLine } from "../components/shared";
 import { VERIFY_AFTER_MS, VERIFY_RECONNECTING, VERIFY_RETRY_MS } from "../sendVerification";
 
 afterEach(() => {
@@ -36,7 +37,13 @@ async function unansweredSend(answer: LedgerAnswers, overrides: Partial<typeof d
     },
     ...overrides,
   };
-  const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api, socket: new FakeSocket() });
+  let normalize: ((line: ChatLine) => ChatLine) | undefined;
+  const write = (patch: Partial<AppState>): void => {
+    const messages = patch.messages !== undefined && normalize !== undefined ? patch.messages.map(normalize) : patch.messages;
+    normalize = undefined;
+    state = { ...state, ...patch, ...(messages === undefined ? {} : { messages }) };
+  };
+  const controller = new SessionController(() => state, write, () => undefined, undefined, { api, socket: new FakeSocket() });
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   await controller.send("no answer came").catch(() => undefined);
   const id = state.messages.find((line) => line.role === "user")?.meta?.delivery?.clientMessageId;
@@ -51,6 +58,8 @@ async function unansweredSend(answer: LedgerAnswers, overrides: Partial<typeof d
     records: () => loadPendingPrompts(outboxKey).map((prompt) => [prompt.state, prompt.failure, prompt.refused === true]),
     notice: () => state.error,
     showSession: (session: typeof oldSession) => { state = { ...state, selectedSession: session }; },
+    messages: () => state.messages,
+    normalizeNextWrite: (next: (line: ChatLine) => ChatLine) => { normalize = next; },
   };
 }
 
@@ -126,6 +135,41 @@ describe("phase 5 gate 1: asks that outlive the screen they started on", () => {
     await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
 
     expect({ refused: refusedRecords, lost: lost.records() }).toEqual({ refused: [["failed", "not-sent", true]], lost: [["failed", "not-received", false]] });
+  });
+});
+
+describe("phase 5 gate 2: verdicts on a message the daemon had taken", () => {
+  it("brings a received message the daemon lost back to the outbox as not received, so Retry has its words", async () => {
+    const send = await unansweredSend((ids, ask) => Object.fromEntries(ids.map((id) => [id, ask === 1 ? "pending" : "unknown"])));
+    await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
+    const reserved = { rows: send.rows(), outbox: send.outbox() };
+    await vi.advanceTimersByTimeAsync((VERIFY_AFTER_MS[1] ?? 0) - (VERIFY_AFTER_MS[0] ?? 0));
+
+    expect({ reserved, rows: send.rows(), records: send.records() })
+      .toEqual({ reserved: { rows: ["received"], outbox: [] }, rows: ["failed"], records: [["failed", "not-received", false]] });
+  });
+
+  it("keeps the reconnecting words of the session on screen when another session's ask runs", async () => {
+    const send = await unansweredSend(() => undefined);
+    await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
+    const ask: unknown = Reflect.get(send.controller, "askLedgerAbout");
+    if (typeof ask !== "function") throw new Error("askLedgerAbout is not reachable");
+    await Reflect.apply(ask, send.controller, [{ ...oldSession, id: "another-session" }, "local"]);
+
+    expect(send.notice()).toBe(VERIFY_RECONNECTING);
+  });
+
+  it("retires a reserved message once the transcript as stored shows it taken, whatever the patch carried", async () => {
+    const send = await unansweredSend(each("pending"));
+    await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
+    const write: unknown = Reflect.get(send.controller, "setState");
+    if (typeof write !== "function") throw new Error("setState is not reachable");
+    send.normalizeNextWrite((line) => (line.meta?.delivery === undefined ? line : { ...line, meta: { ...line.meta, delivery: { ...line.meta.delivery, state: "delivered" as const } } }));
+    const reserve = () => localStorage.getItem(`pi-web:accepted-prompt:${outboxKey}`) ?? "";
+    const before = reserve().includes(send.id);
+    Reflect.apply(write, send.controller, [{ messages: send.messages() }]);
+
+    expect({ before, after: reserve().includes(send.id) }).toEqual({ before: true, after: false });
   });
 });
 

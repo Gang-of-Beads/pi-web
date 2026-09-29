@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advancePendingPrompt, clearPendingPrompts, forgetReservedPrompt, reserveAcceptedPrompt, restoreRefusedPrompt, isNetworkFailure, loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, sessionsWithFailedSends, type PendingPrompt } from "./pendingOutbox";
+import { advancePendingPrompt, clearPendingPrompts, forgetReservedPrompt, failPendingPrompt, reserveAcceptedPrompt, isNetworkFailure, loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, sessionsWithFailedSends, type PendingPrompt } from "./pendingOutbox";
 
 function memoryStorage(): Storage & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -165,9 +165,9 @@ describe("an accepted message kept aside for a refusal", () => {
 
     expect({
       outboxAfterAcceptance,
-      refused: restoreRefusedPrompt("m:s", "refused", storage, at),
-      taken: restoreRefusedPrompt("m:s", "taken", storage, at),
-      oldAfterADay: restoreRefusedPrompt("m:s", "old", storage, at + 24 * 60 * 60 * 1000),
+      refused: failPendingPrompt("m:s", "refused", "not-sent", true, storage, at),
+      taken: failPendingPrompt("m:s", "taken", "not-sent", true, storage, at),
+      oldAfterADay: failPendingPrompt("m:s", "old", "not-sent", true, storage, at + 24 * 60 * 60 * 1000),
       outbox: loadPendingPrompts("m:s", storage).map((entry) => [entry.clientMessageId, entry.state, entry.failure, entry.text]),
     }).toEqual({ outboxAfterAcceptance: 0, refused: true, taken: false, oldAfterADay: false, outbox: [["refused", "failed", "not-sent", "words refused"]] });
   });
@@ -178,7 +178,7 @@ describe("an accepted message kept aside for a refusal", () => {
     reserveAcceptedPrompt("m:old", "moving", storage, at);
     moveOutbox("m:old", "m:new", storage, at);
 
-    expect({ old: restoreRefusedPrompt("m:old", "moving", storage, at), moved: restoreRefusedPrompt("m:new", "moving", storage, at) }).toEqual({ old: false, moved: true });
+    expect({ old: failPendingPrompt("m:old", "moving", "not-sent", true, storage, at), moved: failPendingPrompt("m:new", "moving", "not-sent", true, storage, at) }).toEqual({ old: false, moved: true });
   });
 });
 
@@ -193,5 +193,20 @@ describe("phase 5 gate 1: reserves a session never revisits", () => {
     reserveAcceptedPrompt("m:current", "cm-new", storage, at + day);
 
     expect([...storage.data.keys()].filter((key) => key.startsWith("pi-web:accepted-prompt:"))).toEqual(["pi-web:accepted-prompt:m:current"]);
+  });
+});
+
+describe("phase 5 gate 2: a reserve the storage cannot take", () => {
+  it("keeps the message in the outbox when the reserve write fails", () => {
+    const storage = memoryStorage();
+    const write = (key: string, value: string): void => { storage.data.set(key, value); };
+    storage.setItem = (key: string, value: string) => {
+      if (key.startsWith("pi-web:accepted-prompt:")) throw new DOMException("quota", "QuotaExceededError");
+      write(key, value);
+    };
+    savePendingPrompt("m:s", { text: "kept", clientMessageId: "cm-kept", at: "2026-09-30T00:00:00.000Z" }, storage);
+    reserveAcceptedPrompt("m:s", "cm-kept", storage, Date.parse("2026-09-30T00:00:00.000Z"));
+
+    expect(loadPendingPrompts("m:s", storage).map((prompt) => prompt.text)).toEqual(["kept"]);
   });
 });

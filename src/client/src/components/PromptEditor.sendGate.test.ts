@@ -350,3 +350,16 @@ describe("phase 5 gate 1: what the outbox sends on its own", () => {
     expect(Array.isArray(shown) ? shown.length : "not a list").toBe(0);
   });
 });
+
+describe("phase 5 gate 2: a refused message the reader retried", () => {
+  it("leaves the outbox once its Retry is accepted", async () => {
+    savePendingPrompt("local:session-1", { text: "refused, then retried", clientMessageId: "cm-again", at: new Date(Date.now() - 60_000).toISOString(), state: "failed", failure: "not-sent", refused: true });
+    const element = await composer();
+    element.onSend = () => Promise.resolve(true);
+    element.retryOutbox("cm-again");
+    await flush();
+    await flush();
+
+    expect(loadPendingPrompts("local:session-1").map((prompt) => prompt.clientMessageId)).toEqual([]);
+  });
+});

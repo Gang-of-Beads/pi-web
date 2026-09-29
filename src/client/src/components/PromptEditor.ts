@@ -1234,6 +1234,11 @@ export class PromptEditor extends LitElement {
         if (!this.stillShows(key)) return;
         if (!loadPendingPrompts(key).some((entry) => entry.clientMessageId === id && replaysRecord(entry, only))) continue;
         this.outboxInFlight.add(id);
+        if (only !== undefined && prompt.refused === true) {
+          const retried: PendingPrompt = { ...prompt };
+          delete retried.refused;
+          savePendingPrompt(key, retried);
+        }
         try {
           const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: id, scope });
           if (accepted !== false) reserveAcceptedPrompt(key, id);

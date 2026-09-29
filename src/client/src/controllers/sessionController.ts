@@ -20,7 +20,7 @@ import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
-import { failPendingPrompt, forgetPendingPrompt, forgetReservedPrompt, isNetworkFailure, linkReportedOffline, moveOutbox, NetworkSendError, reserveAcceptedPrompt, restoreRefusedPrompt, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
+import { failPendingPrompt, forgetPendingPrompt, forgetReservedPrompt, isNetworkFailure, linkReportedOffline, moveOutbox, NetworkSendError, reserveAcceptedPrompt, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
 import { provenRowStep, VERIFY_AFTER_MS, VERIFY_RECONNECTING, VERIFY_RETRY_MS, verificationStep } from "../sendVerification";
 import { statusReadVerdict, type StatusPosition } from "../statusOrder";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
@@ -181,14 +181,6 @@ function takenMessageId(line: ChatLine): string | undefined {
   return line.meta?.clientMessageId;
 }
 
-/**
- * The runtime refused a message: its record goes back to the outbox as failed, from the reserve
- * when the daemon had taken it, so the tray and Retry have it.
- */
-function failRefusedRecord(sessionKey: string, clientMessageId: string): void {
-  if (!restoreRefusedPrompt(sessionKey, clientMessageId)) failPendingPrompt(sessionKey, clientMessageId, "not-sent", true);
-}
-
 function isTransientRefreshError(error: unknown): boolean {
   if (!(error instanceof HttpError)) return true;
   return error.status >= 500;
@@ -267,7 +259,7 @@ export class SessionController {
   ) {
     this.setState = (patch) => {
       writeState(patch);
-      if (patch.messages !== undefined) this.retireTakenRecords(patch.messages);
+      if (patch.messages !== undefined) this.retireTakenRecords(this.getState().messages);
     };
     this.socket = deps.socket ?? new SessionSocket();
     this.api = deps.api ?? defaultApi;
@@ -2275,7 +2267,11 @@ export class SessionController {
     const key = machineSessionKey(machineId, session.id);
     const onScreen = (): boolean => !this.disposed && this.getState().selectedSession?.id === session.id && selectedMachineId(this.getState()) === machineId;
     const leave = (): void => {
-      if (this.getState().error === VERIFY_RECONNECTING) this.setState(clearErrorPatch());
+      const state = this.getState();
+      if (state.error !== VERIFY_RECONNECTING) return;
+      const selected = state.selectedSession;
+      if (selected !== undefined && this.verificationRetries.has(machineSessionKey(selectedMachineId(state), selected.id))) return;
+      this.setState(clearErrorPatch());
     };
     if (!onScreen()) {
       leave();
@@ -2350,8 +2346,7 @@ export class SessionController {
       }
       if (step.kind === "fail") {
         this.markDeliveryFailed(session.id, clientMessageId, step.cause);
-        if (step.cause === "not-sent") failRefusedRecord(outboxKey, clientMessageId);
-        else failPendingPrompt(outboxKey, clientMessageId, step.cause, false);
+        failPendingPrompt(outboxKey, clientMessageId, step.cause, step.cause === "not-sent");
         continue;
       }
       this.markDelivery(session.id, clientMessageId, step.state);
@@ -2642,7 +2637,7 @@ export class SessionController {
       const selected = current.selectedSession;
       if (selected !== undefined) {
         this.markDeliveryFailed(selected.id, event.clientMessageId, "not-sent");
-        failRefusedRecord(machineSessionKey(selectedMachineId(current), selected.id), event.clientMessageId);
+        failPendingPrompt(machineSessionKey(selectedMachineId(current), selected.id), event.clientMessageId, "not-sent", true);
       }
       return;
     }

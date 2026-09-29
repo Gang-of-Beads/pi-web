@@ -230,7 +230,9 @@ export function loadPendingPrompts(sessionKey: string, storage = browserStorage(
   }
 }
 
-export function savePendingPrompt(sessionKey: string, prompt: PendingPrompt, storage = browserStorage()): void {
+/** Returns whether the record was written; the callers that move a message out of another store need to know. */
+export function savePendingPrompt(sessionKey: string, prompt: PendingPrompt, storage = browserStorage()): boolean {
+  if (storage === undefined) return false;
   try {
     const pending = loadPendingPrompts(sessionKey, storage);
     // A retry that failed again saves the same message; replacing rather than
@@ -240,11 +242,13 @@ export function savePendingPrompt(sessionKey: string, prompt: PendingPrompt, sto
       : pending.findIndex((entry) => entry.clientMessageId === prompt.clientMessageId);
     if (index === -1) pending.push(prompt);
     else pending[index] = prompt;
-    storage?.setItem(outboxKey(sessionKey), JSON.stringify(pending));
+    storage.setItem(outboxKey(sessionKey), JSON.stringify(pending));
     announceOutboxChange(sessionKey);
+    return true;
   } catch {
     // localStorage unavailable (private mode/quota): the message is still in
     // the composer's restore buffer; the outbox is best-effort.
+    return false;
   }
 }
 
@@ -282,12 +286,15 @@ function loadReserve(sessionKey: string, storage: Storage | undefined, now: numb
   }
 }
 
-function writeReserve(sessionKey: string, reserved: readonly ReservedPrompt[], storage: Storage | undefined): void {
+/** Whether the write landed: a full quota must not cost a message whose words live only here. */
+function writeReserve(sessionKey: string, reserved: readonly ReservedPrompt[], storage: Storage | undefined): boolean {
+  if (storage === undefined) return false;
   try {
-    if (reserved.length === 0) storage?.removeItem(`${reservePrefix}${sessionKey}`);
-    else storage?.setItem(`${reservePrefix}${sessionKey}`, JSON.stringify(reserved));
+    if (reserved.length === 0) storage.removeItem(`${reservePrefix}${sessionKey}`);
+    else storage.setItem(`${reservePrefix}${sessionKey}`, JSON.stringify(reserved));
+    return true;
   } catch {
-    return;
+    return false;
   }
 }
 
@@ -305,7 +312,7 @@ export function reserveAcceptedPrompt(sessionKey: string, clientMessageId: strin
     const reserved = loadReserve(sessionKey, storage, now).filter((entry) => entry.clientMessageId !== clientMessageId);
     const kept: ReservedPrompt = { ...record, state: "received", reservedAt: new Date(now).toISOString() };
     delete kept.failure;
-    writeReserve(sessionKey, [...reserved, kept], storage);
+    if (!writeReserve(sessionKey, [...reserved, kept], storage)) return;
   }
   forgetPendingPrompt(sessionKey, clientMessageId, storage);
 }
@@ -338,16 +345,24 @@ function storedReserveLength(sessionKey: string, storage: Storage): number {
 }
 
 /**
- * Write a verdict onto a record the reserve does not hold: the daemon's ledger said the runtime
- * refused it, or that it has no record of it. The record kept reading "Receiving…" in the tray
- * while its bubble read the verdict. A refusal is marked so only Retry sends it again.
+ * Write a verdict onto a message's record, wherever it is kept: the runtime refused it, or the
+ * daemon has no record of it. A record in the reserve comes back to the outbox, so the tray and
+ * Retry have its words - a message the daemon lost across a restart, already reserved as
+ * received, read "Not received" with a Retry that had nothing to send. A refusal is marked so
+ * only Retry sends it again. Returns whether a record now carries the verdict.
  */
-export function failPendingPrompt(sessionKey: string, clientMessageId: string, cause: DeliveryFailureCause, refused: boolean, storage = browserStorage()): void {
-  const record = loadPendingPrompts(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId);
-  if (record === undefined) return;
-  const failed: PendingPrompt = { ...record, state: "failed", failure: cause };
+export function failPendingPrompt(sessionKey: string, clientMessageId: string, cause: DeliveryFailureCause, refused: boolean, storage = browserStorage(), now = Date.now()): boolean {
+  const outboxed = loadPendingPrompts(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId);
+  const reserved = loadReserve(sessionKey, storage, now);
+  const kept = outboxed === undefined ? reserved.find((entry) => entry.clientMessageId === clientMessageId) : undefined;
+  const record: (PendingPrompt & { reservedAt?: string }) | undefined = outboxed ?? kept;
+  if (record === undefined) return false;
+  const failed: PendingPrompt & { reservedAt?: string } = { ...record, state: "failed", failure: cause };
   delete failed.refused;
-  savePendingPrompt(sessionKey, refused ? { ...failed, refused: true } : failed, storage);
+  delete failed.reservedAt;
+  if (!savePendingPrompt(sessionKey, refused ? { ...failed, refused: true } : failed, storage)) return false;
+  if (kept !== undefined) writeReserve(sessionKey, reserved.filter((entry) => entry !== kept), storage);
+  return true;
 }
 
 /**
@@ -359,21 +374,6 @@ export function replaysRecord(record: PendingPrompt, only: string | undefined): 
   if (!outgoingStopped(record.state)) return false;
   if (only !== undefined) return record.clientMessageId === only;
   return record.refused !== true;
-}
-
-/**
- * The runtime refused a message the daemon had taken: it goes back to the outbox as failed, so the
- * tray and Retry have it. Returns whether the reserve held it.
- */
-export function restoreRefusedPrompt(sessionKey: string, clientMessageId: string, storage = browserStorage(), now = Date.now()): boolean {
-  const reserved = loadReserve(sessionKey, storage, now);
-  const record = reserved.find((entry) => entry.clientMessageId === clientMessageId);
-  if (record === undefined) return false;
-  writeReserve(sessionKey, reserved.filter((entry) => entry !== record), storage);
-  const restored: PendingPrompt & { reservedAt?: string } = { ...record, state: "failed", failure: "not-sent", refused: true };
-  delete restored.reservedAt;
-  savePendingPrompt(sessionKey, restored, storage);
-  return true;
 }
 
 /** The agent took it: nothing can refuse it any more. */
@@ -392,8 +392,7 @@ export function forgetReservedPrompt(sessionKey: string, clientMessageId: string
 export function moveOutbox(fromSessionKey: string, toSessionKey: string, storage = browserStorage(), now = Date.now()): void {
   if (fromSessionKey === toSessionKey) return;
   const reserved = loadReserve(fromSessionKey, storage, now);
-  if (reserved.length > 0) {
-    writeReserve(toSessionKey, [...loadReserve(toSessionKey, storage, now), ...reserved], storage);
+  if (reserved.length > 0 && writeReserve(toSessionKey, [...loadReserve(toSessionKey, storage, now), ...reserved], storage)) {
     writeReserve(fromSessionKey, [], storage);
   }
   const moving = loadPendingPrompts(fromSessionKey, storage);
