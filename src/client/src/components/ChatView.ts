@@ -2109,18 +2109,41 @@ if (this.heldWaitingClearTimer !== undefined) {
     return { session: { id: this.sessionId, cwd: this.sessionCwd }, machineId: this.drawerMachineId };
   }
 
+  private followingIndex: {
+    messages: ChatLine[];
+    clientQueued: unknown;
+    queued: unknown;
+    rowOfPart: Map<ChatPart, number>;
+    userTexts: { row: number; text: string }[];
+  } | undefined;
+
   /**
    * The texts of the user messages after the one carrying this part, in the settled transcript
    * as loaded, oldest first. The row is found by the part itself: grouping and the one-row
-   * register hand the renderer copies of the line, never the object in `messages`.
+   * register hand the renderer copies of the line, never the object in `messages`. The index is
+   * built once per transcript: every custom card asks on every render, and rebuilding the
+   * register for each of them cost a sort per card while a reply streamed.
    */
   private followingUserTexts(part: ChatPart): readonly string[] {
+    const index = this.followingIndexNow();
+    const at = index.rowOfPart.get(part);
+    if (at === undefined) return [];
+    return index.userTexts.filter((entry) => entry.row > at).map((entry) => entry.text);
+  }
+
+  private followingIndexNow(): NonNullable<ChatView["followingIndex"]> {
+    const known = this.followingIndex;
+    const queued = this.status?.queuedMessages;
+    if (known?.messages === this.messages && known.clientQueued === this.clientQueuedMessages && known.queued === queued) return known;
     const rows = this.transcriptMessages();
-    const at = rows.findIndex((line) => line.parts.includes(part));
-    if (at === -1) return [];
-    return rows.slice(at + 1)
-      .filter((line) => line.role === "user")
-      .map((line) => line.parts.map((part) => (part.type === "text" ? part.text : "")).join(""));
+    const rowOfPart = new Map<ChatPart, number>();
+    const userTexts: { row: number; text: string }[] = [];
+    rows.forEach((line, row) => {
+      for (const part of line.parts) if (part.type === "custom") rowOfPart.set(part, row);
+      if (line.role === "user") userTexts.push({ row, text: line.parts.map((part) => (part.type === "text" ? part.text : "")).join("") });
+    });
+    this.followingIndex = { messages: this.messages, clientQueued: this.clientQueuedMessages, queued, rowOfPart, userTexts };
+    return this.followingIndex;
   }
 
   private renderCustomPart(part: Extract<ChatPart, { type: "custom" }>) {

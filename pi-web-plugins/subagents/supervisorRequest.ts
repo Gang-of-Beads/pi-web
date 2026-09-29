@@ -76,10 +76,18 @@ export function replyMessage(request: SupervisorRequest, text: string): string {
   return `${replyPrefix(request)}${text.trim()}`;
 }
 
+/**
+ * How a reply to this request begins. It names the request when the child gave it an id: two
+ * requests from one run otherwise shared a prefix, so the agent could not tell which one a
+ * reply answered, and a reply to the later request marked the earlier card answered.
+ */
 function replyPrefix(request: SupervisorRequest): string {
   const target = request.childTarget ?? request.agent ?? "the subagent";
-  const run = request.runId === undefined ? "" : ` (run ${request.runId})`;
-  return `Reply to ${target}${run}: `;
+  const about = [
+    ...(request.runId === undefined ? [] : [`run ${request.runId}`]),
+    ...(request.requestId === undefined ? [] : [`request ${request.requestId}`]),
+  ];
+  return `Reply to ${target}${about.length === 0 ? "" : ` (${about.join(", ")})`}: `;
 }
 
 /**

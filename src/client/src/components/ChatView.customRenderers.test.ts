@@ -67,6 +67,17 @@ describe("plugin message renderers in the transcript", () => {
     expect(lastView).toMatchObject({ followingUserTexts: ["yes", "and ship"] });
   });
 
+  it("gives each of several cards only what was said after it", async () => {
+    const seen: { payload: unknown; following: readonly string[] | undefined }[] = [];
+    const render = vi.fn<QualifiedMessageRendererContribution["render"]>((view) => { seen.push({ payload: view.payload, following: view.followingUserTexts }); return html`<div></div>`; });
+    const said = (text: string): ChatLine => ({ role: "user", parts: [{ type: "text", text }] });
+
+    await viewWith([customLine("poll", "first"), said("one"), customLine("poll", "second"), said("two")], () => renderer({ render }));
+
+    const last = (payload: string) => seen.filter((entry) => entry.payload === payload).at(-1)?.following;
+    expect({ first: last("first"), second: last("second") }).toEqual({ first: ["one", "two"], second: ["two"] });
+  });
+
   it("hands the renderer the tag and payload it was given", async () => {
     const seen: unknown[] = [];
     const render = (view: unknown) => { seen.push(view); return html`<div></div>`; };

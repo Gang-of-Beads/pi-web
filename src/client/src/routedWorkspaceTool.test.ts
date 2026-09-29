@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 import { routedWorkspaceTool } from "./routedWorkspaceTool";
 
 describe("the tool a restored route puts in the panel", () => {
-  it("is the route's tool, the view's tool when the route names none, and otherwise stays", () => {
+  it("is the view's tool when the view is one, else the route's tool, else the one it had", () => {
     expect({
-      named: routedWorkspaceTool("git:git", "subagents:workspace.subagents", "files:files"),
+      disagreeing: routedWorkspaceTool("git:git", "subagents:workspace.subagents", "files:files"),
       viewOnly: routedWorkspaceTool(undefined, "subagents:workspace.subagents", "files:files"),
+      chatWithTool: routedWorkspaceTool("git:git", "chat", "files:files"),
       chat: routedWorkspaceTool(undefined, "chat", "files:files"),
       navigation: routedWorkspaceTool(undefined, "navigation", "git:git"),
     }).toEqual({
-      named: "git:git",
+      disagreeing: "subagents:workspace.subagents",
       viewOnly: "subagents:workspace.subagents",
+      chatWithTool: "git:git",
       chat: "files:files",
       navigation: "git:git",
     });

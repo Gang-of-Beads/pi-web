@@ -10,8 +10,12 @@ import { subagentListState, type SubagentListState } from "./runRows.js";
  * was watching. A read that has not answered after `READ_PRESUMED_DEAD_MS` is presumed dead,
  * so a lost reply cannot stop the panel reading for good; its answer, should it still come,
  * is older than anything read since and is dropped.
+ *
+ * The bound sits past the host's 30 s request deadline, which settles every read the host
+ * carries: at 20 s it cut in first, and a stalled server kept two reads in flight for good.
+ * It remains for a host whose operations carry no deadline.
  */
-export const READ_PRESUMED_DEAD_MS = 20_000;
+export const READ_PRESUMED_DEAD_MS = 35_000;
 
 /** What the panel shows for the session it reads: the last answer, and whether the latest read failed. */
 export interface RunsView {

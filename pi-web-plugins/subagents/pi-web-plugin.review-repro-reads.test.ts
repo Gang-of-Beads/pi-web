@@ -74,7 +74,7 @@ describe("the subagents panel read", () => {
    */
   it("does not let a late answer for an older read overwrite a newer answer", async () => {
     const harnessed = harness();
-    await vi.advanceTimersByTimeAsync(21_000);
+    await vi.advanceTimersByTimeAsync(36_000);
     expect(harnessed.pending).toHaveLength(2);
     harnessed.pending[1]?.(answer("newer-run"));
     await settle();

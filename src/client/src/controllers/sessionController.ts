@@ -1849,6 +1849,8 @@ export class SessionController {
       // and this path advances the selection counter, so a read still in flight
       // will decline to clear the flag it set.
       isLoadingTranscript: transcriptLoadingAfter({ event: "selectedWithoutRead" }),
+      transcriptFailed: undefined,
+      statusReadFailed: undefined,
       status: undefined,
       activity,
       pendingAsk: undefined,

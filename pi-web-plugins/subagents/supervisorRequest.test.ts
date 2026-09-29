@@ -45,9 +45,16 @@ describe("supervisorRequest", () => {
     expect(offersReply(supervisorRequest({}))).toBe(false);
   });
 
-  it("names the child and its run in the message the session receives", () => {
+  it("names the child, its run and the request in the message the session receives", () => {
     expect(replyMessage(supervisorRequest(payload), "  go ahead  "))
-      .toBe("Reply to subagent-design-reviewer-d-1 (run run-1): go ahead");
+      .toBe("Reply to subagent-design-reviewer-d-1 (run run-1, request r1): go ahead");
+  });
+
+  it("does not take a reply to a later request from the same run as an answer to an earlier one", () => {
+    const first = supervisorRequest(payload);
+    const second = supervisorRequest({ ...payload, requestId: "r2" });
+
+    expect({ first: answeredReply(first, [replyMessage(second, "no")]), second: answeredReply(second, [replyMessage(second, "no")]) }).toEqual({ first: undefined, second: "no" });
   });
 
   it("still addresses a child whose target is unknown", () => {

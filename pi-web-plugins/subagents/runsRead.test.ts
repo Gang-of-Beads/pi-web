@@ -33,6 +33,31 @@ describe("RunsRead", () => {
     expect({ beforeTheBound, calls: calls.length, shown: shown?.kind === "rows" ? shown.rows[0]?.agent : shown?.kind }).toEqual({ beforeTheBound: 1, calls: 2, shown: "newer" });
   });
 
+  it("never has two reads in flight against a server that stalls every read until the host's 30 s deadline", async () => {
+    const { runs, calls, advance } = reader();
+    const hostDeadlineMs = 30_000;
+    const started: number[] = [];
+    const settled = new Set<number>();
+    let now = 0;
+    let mostInFlight = 0;
+    runs.select("a");
+    started.push(0);
+    for (; now <= 120_000; now += 3_000) {
+      for (const [index, at] of started.entries()) {
+        if (settled.has(index) || now - at < hostDeadlineMs) continue;
+        settled.add(index);
+        calls[index]?.reject(new Error("timed out"));
+      }
+      await settle();
+      runs.tick();
+      while (started.length < calls.length) started.push(now);
+      mostInFlight = Math.max(mostInFlight, started.length - settled.size);
+      advance(3_000);
+    }
+
+    expect({ mostInFlight, readsOverTwoMinutes: calls.length }).toEqual({ mostInFlight: 1, readsOverTwoMinutes: 5 });
+  });
+
   it("drops an answer for the session the reader left", async () => {
     const { runs, calls } = reader();
     runs.select("a");

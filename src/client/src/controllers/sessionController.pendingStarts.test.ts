@@ -6,6 +6,21 @@ import { SessionController } from "./sessionController";
 import { defaultApi, deferred, emptyPage, FakeSocket, MemoryStorage, oldSession, sessionKey, sessionLookupId, status, workspace, type AppState, type SessionInfo } from "./sessionController.testSupport";
 
 describe("SessionController pending starts", () => {
+  it("does not carry the previous session's failed reads into the session being started", () => {
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [], statusReadFailed: "daemon unreachable", transcriptFailed: "could not read" };
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      undefined,
+      { api: { ...defaultApi, startSession: () => new Promise<SessionInfo>(() => undefined) }, socket: new FakeSocket() },
+    );
+
+    void controller.startSession();
+
+    expect({ status: state.statusReadFailed, transcript: state.transcriptFailed }).toEqual({ status: undefined, transcript: undefined });
+  });
+
   it("creates and selects a temporary editable session before backend start resolves", async () => {
     const started: SessionInfo = { ...oldSession, id: "started-session", path: "/tmp/started-session.jsonl" };
     const startRequest = deferred<SessionInfo>();

@@ -657,10 +657,10 @@ The phase 3 known limitations above stand: a send to a session still starting li
 
 **Subagents panel (`RunsRead`).** The runs read is a package-local machine:
 - a sequence number per read, and one read in flight per session;
-- a read that has not answered after 20 s is presumed dead, so a lost reply cannot stop the panel reading for good;
+- a read that has not answered after 35 s (past the host's 30 s request deadline) is presumed dead, so a lost reply cannot stop the panel reading for good;
 - an answer older than the one shown is dropped;
 - a failed read keeps the rows it already showed, and says "Could not refresh - showing the last read." (the background-runs shape);
-- the tab badge also selects the session it is asked about, so the poll follows the selected session while the panel is closed (F7).
+- the tab badge also selects the session it is asked about, so the poll follows the selected session whenever the tab strip renders (a tool view or the Go to sheet). On the chat view with neither open, the poll keeps the session it last had until the strip or the panel renders; nothing renders its rows there, and the panel reads the new session as it opens (F7, gate 1 finding 2).
 
 **Goals section.**
 - The read's key carries the session cwd as well as the workspace, because `goals.list` depends on both.
@@ -677,7 +677,7 @@ The phase 3 known limitations above stand: a send to a session still starting li
 
 **Recorded, not changed.**
 - **F7's other half, the poll never stops.** The tab's running count depends on it. A paused poll would leave a stale count on screen, and the repro file's own baseline pins a poll that keeps going.
-- **Two repros conflicted.** "keeps one read in flight" expects one call after 9 s. "a late answer may not overwrite a newer one" first asserts two reads in flight at 3 s. With one read in flight, two reads for one session overlap only after the first is presumed dead, so the late-answer repro's timer advance moved from 3 s to 21 s. Its `expect` lines are unchanged, as with phase 2's proxy repro. The polling baseline in the same file answers each read before the next tick, because it counted a pile of unanswered reads; its intent (the poll continues while the panel is not rendered) and its call counts are unchanged.
+- **Two repros conflicted.** "keeps one read in flight" expects one call after 9 s. "a late answer may not overwrite a newer one" first asserts two reads in flight at 3 s. With one read in flight, two reads for one session overlap only after the first is presumed dead, so the late-answer repro's timer advance moved from 3 s to 21 s, then to 36 s when gate 1 moved the bound past the request deadline. Its `expect` lines are unchanged, as with phase 2's proxy repro. The polling baseline in the same file answers each read before the next tick, because it counted a pile of unanswered reads; its intent (the poll continues while the panel is not rendered) and its call counts are unchanged.
 - **`followingUserTexts` covers only what is loaded.** A card whose reply lies in a newer page not loaded yet still offers the form.
 
 **Live.** `scripts/probe-reads.mjs` on the 8505 stack scores the build before phase 4 (84ec07e8) 0/3 and this build 3/3:
@@ -686,3 +686,17 @@ The phase 3 known limitations above stand: a send to a session still starting li
 - C. A refused goals read says it could not be read (old: nothing).
 
 The phase 3 realtime probe (3/3), the desktop Go to probe (4/4) and the geometry baseline pass on the same build.
+
+### Phase 4 gate lane 1 triage
+
+The lane was Opus (`anthropic/claude-opus-5-5`) on 84ec07e8..3837bc91, reading source only. Verdict: PASS, with no P0 or P1 and seven P2s. Each finding was checked against the source before any change. Each fix comes with a test that fails on 3837bc91.
+
+| # | Finding | Verdict | Outcome |
+|---|---|---|---|
+| 1 | The 20 s presumed-dead bound was shorter than the host's 30 s request deadline. A stalled server kept two runs reads in flight for good (R3). | True | **Fixed.** `READ_PRESUMED_DEAD_MS` is now 35 s. Test: a server that stalls every read until the 30 s deadline, stepped over two minutes, never has more than one read in flight (on 3837bc91 it has two). The late-answer repro's advance moves to 36 s; its `expect` lines are unchanged. |
+| 2 | The badge moves the poll only while the tab strip renders (a tool view or the Go to sheet). On the chat view, the poll keeps the previous session. | True, doc only | **Recorded.** "Phase 4 as landed" said the poll follows the selected session while the panel is closed. It now says when that holds. The panel's view is keyed by session, so nothing wrong renders, and opening the panel reads the new session. |
+| 3 | `statusReadFailed` and `transcriptFailed` carried into a session being started. | True | **Fixed.** `selectClientPendingStartSession` clears both. Test in `sessionController.pendingStarts.test.ts`. |
+| 4 | Two requests from one run shared a reply prefix, so a reply to the later request marked the earlier card answered. | True | **Fixed.** The prefix names the request when the child gave it an id: `Reply to <target> (run R, request Q): `. The relay message changes with it, deliberately; the existing test that pinned the old text is updated. New test: a reply to r2 does not answer r1. |
+| 5 | `followingUserTexts` rebuilt and sorted the one-row register for every custom card on every render. | True | **Fixed.** A per-transcript index (row of each custom part, and the user texts), rebuilt only when `messages`, the client queue or the status queue changes identity. The new multi-card test passes on both builds, as it should for a refactor that changes no behaviour. |
+| 6 | `routedWorkspaceTool` let a hand-written link naming two different tools (`tool=A&view=B`) put the header on B and the panel on A. | True | **Fixed.** A view that is a tool names the panel's tool. The chat and navigation views keep the route's tool, or the one the panel had. The test that pinned the old answer (`named: git`) is changed deliberately, because it pinned the disagreement R5 forbids. |
+| 7 | The Subagents panel reads the local machine while a remote one is selected, because the package does not declare `machineSpecific`. | **Not true** | `piWebPluginCatalog.ts:692` defaults `machineSpecific` to true for an entry with both `module` and `serverModule`, which Subagents has (`docs/plugins.md`, "Dual browser/server entries default to `true`"). The lane read `package.json` only. |
