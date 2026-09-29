@@ -57,6 +57,16 @@ describe("plugin message renderers in the transcript", () => {
     expect(view.shadowRoot?.querySelector(".custom-card-unknown")).not.toBeNull();
   });
 
+  it("tells the renderer what the reader said after the card, and only after it", async () => {
+    const render = vi.fn<QualifiedMessageRendererContribution["render"]>(() => html`<div class="poll-body">Ship it?</div>`);
+    const said = (text: string): ChatLine => ({ role: "user", parts: [{ type: "text", text }] });
+
+    await viewWith([said("before the card"), customLine("poll"), said("yes"), { role: "assistant", parts: [{ type: "text", text: "noted" }] }, said("and ship")], () => renderer({ render }));
+
+    const lastView: unknown = render.mock.lastCall?.[0];
+    expect(lastView).toMatchObject({ followingUserTexts: ["yes", "and ship"] });
+  });
+
   it("hands the renderer the tag and payload it was given", async () => {
     const seen: unknown[] = [];
     const render = (view: unknown) => { seen.push(view); return html`<div></div>`; };

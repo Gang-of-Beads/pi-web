@@ -2109,6 +2109,20 @@ if (this.heldWaitingClearTimer !== undefined) {
     return { session: { id: this.sessionId, cwd: this.sessionCwd }, machineId: this.drawerMachineId };
   }
 
+  /**
+   * The texts of the user messages after the one carrying this part, in the settled transcript
+   * as loaded, oldest first. The row is found by the part itself: grouping and the one-row
+   * register hand the renderer copies of the line, never the object in `messages`.
+   */
+  private followingUserTexts(part: ChatPart): readonly string[] {
+    const rows = this.transcriptMessages();
+    const at = rows.findIndex((line) => line.parts.includes(part));
+    if (at === -1) return [];
+    return rows.slice(at + 1)
+      .filter((line) => line.role === "user")
+      .map((line) => line.parts.map((part) => (part.type === "text" ? part.text : "")).join(""));
+  }
+
   private renderCustomPart(part: Extract<ChatPart, { type: "custom" }>) {
     const renderer = this.findMessageRenderer?.(part.tag);
     if (renderer === undefined) {
@@ -2132,6 +2146,7 @@ if (this.heldWaitingClearTimer !== undefined) {
         createdAt: undefined,
         insertIntoComposer: this.onInsertIntoComposer,
         sendMessage: this.onSendMessage,
+        followingUserTexts: this.followingUserTexts(part),
       });
     } catch (error) {
       console.error(`Plugin ${renderer.pluginId} failed rendering ${part.tag}`, error);

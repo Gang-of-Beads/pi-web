@@ -454,6 +454,13 @@ export interface MessageRendererViewModel {
    * says what it is sending and sends that.
    */
   readonly sendMessage?: ((text: string) => void | Promise<void>) | undefined;
+  /**
+   * What the reader said after this message: the texts of the later user messages in the
+   * transcript as loaded, oldest first. A card that asks for a reply can tell it was answered
+   * from this, rather than from its own memory, which a reload or a session switch erases.
+   * Only what is loaded: a transcript whose newest messages are not loaded yet says less.
+   */
+  readonly followingUserTexts?: readonly string[] | undefined;
 }
 
 export interface MessageRendererContribution {
