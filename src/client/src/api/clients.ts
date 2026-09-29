@@ -3,7 +3,7 @@ import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
 import { HttpError, request } from "./http";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
-import { fetchWithDeadline } from "./requestDeadline";
+import { fetchWithDeadline, isTransportFailure } from "./requestDeadline";
 import {
   arrayOf,
   parseAborted,
@@ -49,7 +49,6 @@ import {
   parseSessionStatus,
   parseSessionStatusCatalogSnapshot,
   parseRecallQueuedMessageResult,
-  parseSessionSubagentsSnapshot,
   parseBackgroundTasks,
   parseInterruptedRunSnapshot,
   parseSessionUnreadAcknowledgeResponse,
@@ -298,8 +297,6 @@ export const sessionsApi = {
   // Reading this clears it on the daemon, so it is fetched once per connection
   // rather than polled: the record answers "what did the last restart cut off".
   interruptedRuns: (machineId = "local") => request(`${machinePrefix(machineId)}/sessions/interrupted`, parseInterruptedRunSnapshot, { cache: "no-store" }),
-  subsessions: (session: SessionRef, machineId = "local") =>
-    request(`${sessionPath(session, "subsessions", machineId)}?cwd=${encodeURIComponent(session.cwd)}`, parseSessionSubagentsSnapshot, { cache: "no-store" }),
   acknowledgeUnread: (session: SessionRef, catalogId: string, throughCompletionOrder: number, machineId = "local") => {
     const body: SessionUnreadAcknowledgeRequest = { cwd: session.cwd, catalogId, throughCompletionOrder };
     return request(sessionPath(session, "unread/acknowledge", machineId), parseSessionUnreadAcknowledgeResponse, { method: "POST", body: JSON.stringify(body) });
@@ -414,25 +411,26 @@ export class SessionTreeForkUnavailableError extends Error {
 }
 
 async function requestSessionTreeFork(session: SessionRef, fork: SessionTreeForkRequest, machineId: string): Promise<SessionTreeForkResult> {
-  let response: Awaited<ReturnType<typeof fetchWithDeadline>>;
   try {
-    response = await fetchWithDeadline(resolveAppUrl(sessionPath(session, "tree/fork", machineId)), {
+    return await fetchWithDeadline(resolveAppUrl(sessionPath(session, "tree/fork", machineId)), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: sessionBody(session, { entryId: fork.entryId, expectedLeafId: fork.expectedLeafId }),
+    }, async (response) => {
+      reportTransportReachable(sessionPath(session, "tree/fork", machineId));
+      if (!response.ok) {
+        const body: unknown = await response.json().catch((): unknown => ({}));
+        if (isMissingSessionTreeForkRoute(response.status, body)) throw new SessionTreeForkUnavailableError();
+        throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(sessionPath(session, "tree/fork", machineId)));
+      }
+      return parseSessionTreeForkResult(await response.json());
     });
   } catch (error) {
     // A bare TypeError is the browser's link-failure shape; unscoped, it
     // lands page-level and any other machine's success erases it.
-    throw new HttpError(describeError(error), 0, machineId);
+    if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, machineId);
+    throw error;
   }
-  reportTransportReachable(sessionPath(session, "tree/fork", machineId));
-  if (!response.ok) {
-    const body: unknown = await response.json().catch((): unknown => ({}));
-    if (isMissingSessionTreeForkRoute(response.status, body)) throw new SessionTreeForkUnavailableError();
-    throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(sessionPath(session, "tree/fork", machineId)));
-  }
-  return parseSessionTreeForkResult(await response.json());
 }
 
 function isMissingSessionTreeForkRoute(status: number, value: unknown): boolean {
@@ -443,19 +441,21 @@ function isMissingSessionTreeForkRoute(status: number, value: unknown): boolean 
 }
 
 async function getOptionalTerminalCommandRun(runId: string, machineId: string): Promise<TerminalCommandRun | undefined> {
-  let response: Awaited<ReturnType<typeof fetchWithDeadline>>;
+  const path = `${machinePrefix(machineId)}/terminal-command-runs/${encodeURIComponent(runId)}`;
   try {
-    response = await fetchWithDeadline(resolveAppUrl(`${machinePrefix(machineId)}/terminal-command-runs/${encodeURIComponent(runId)}`));
+    return await fetchWithDeadline(resolveAppUrl(path), undefined, async (response) => {
+      reportTransportReachable(path);
+      if (response.status === 404) return undefined;
+      if (!response.ok) {
+        const body: unknown = await response.json().catch((): unknown => ({}));
+        throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineId);
+      }
+      return parseTerminalCommandRun(await response.json());
+    });
   } catch (error) {
-    throw new HttpError(describeError(error), 0, machineId);
+    if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, machineId);
+    throw error;
   }
-  reportTransportReachable(`${machinePrefix(machineId)}/terminal-command-runs/${encodeURIComponent(runId)}`);
-  if (response.status === 404) return undefined;
-  if (!response.ok) {
-    const body: unknown = await response.json().catch((): unknown => ({}));
-    throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineId);
-  }
-  return parseTerminalCommandRun(await response.json());
 }
 
 function terminalCommandRunFilterQuery(filter: TerminalCommandRunFilter | undefined): string {

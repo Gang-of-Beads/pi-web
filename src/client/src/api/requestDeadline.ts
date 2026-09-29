@@ -69,16 +69,29 @@ export function timeoutForBody(body: BodyInit | null | undefined): number {
  * because they read the response themselves.
  *
  * They are the same hazard: a hung fetch here strands whatever the caller set
- * while waiting, exactly as it did through request().
+ * while waiting, exactly as it did through request(). The deadline holds until
+ * `read` is done with the body: it used to end when the headers arrived, and a
+ * body that then stalled kept a plugin panel on "Reading…" for as long as the
+ * server took (47s measured live while the server had answered 200 at once).
  */
-export async function fetchWithDeadline(url: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+export async function fetchWithDeadline<T>(url: string, init: RequestInit | undefined, read: (response: Response) => Promise<T>, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const deadline = deadlineSignal(timeoutMs, init?.signal);
   try {
-    return await fetch(url, { ...init, signal: deadline.signal });
+    const response = await fetch(url, { ...init, signal: deadline.signal });
+    return await read(response);
   } catch (error) {
     if (deadline.signal.aborted && init?.signal?.aborted !== true) throw new RequestTimeoutError(url, timeoutMs);
     throw error;
   } finally {
     deadline.done();
   }
+}
+
+/**
+ * Whether an error from `fetchWithDeadline` means the link, not the answer: nothing came back
+ * in time, or the connection failed while the request or its body was in flight. A refusal,
+ * a size limit or an unparseable body is an answer and keeps its own error.
+ */
+export function isTransportFailure(error: unknown): boolean {
+  return error instanceof RequestTimeoutError || error instanceof TypeError;
 }

@@ -26,6 +26,25 @@ describe("the stream watermark carries its epoch", () => {
   });
 });
 
+describe("the selected session's own status read", () => {
+  it("says it failed, so the bar can offer Retry instead of waiting forever", async () => {
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
+    let reads = 0;
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      messages: () => Promise.resolve(emptyPage),
+      status: () => { reads += 1; return reads === 1 ? Promise.reject(new Error("daemon unreachable")) : new Promise(() => undefined); },
+      streamSnapshot: () => Promise.resolve({ seq: 1, epoch: "daemon-a.1", partial: null }),
+    };
+    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api, socket: new EmitSocket() });
+
+    void controller.selectSession(oldSession, { updateUrl: false });
+    for (let index = 0; index < 6; index += 1) await Promise.resolve();
+
+    expect({ status: state.status, failed: state.statusReadFailed }).toEqual({ status: undefined, failed: "daemon unreachable" });
+  });
+});
+
 describe("status facts in stream order", () => {
   it("does not let a status frame that lands late overwrite a status read computed after it", async () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };

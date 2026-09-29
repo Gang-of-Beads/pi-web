@@ -365,6 +365,7 @@ export class SessionController {
       // session that is about to produce its history.
       isLoadingTranscript: true,
       transcriptFailed: undefined,
+      statusReadFailed: undefined,
       ...(options?.preserveTreeDialog === true ? {} : { treeDialog: undefined }),
       status: session.archived === true ? undefined : this.getState().sessionStatuses[session.id],
       activity: session.archived === true ? undefined : this.getState().sessionActivities[session.id],
@@ -391,7 +392,9 @@ export class SessionController {
       const framesAtRequest = this.statusFramesApplied;
       void this.api.status(session, machineId)
         .then((status) => { if (this.isCurrentSessionSelection(session.id, machineId, seq) && !this.statusReadIsStale(status, framesAtRequest)) this.applyStatusRead(status); })
-        .catch(() => undefined);
+        .catch((error: unknown) => {
+          if (this.isCurrentSessionSelection(session.id, machineId, seq)) this.setState({ statusReadFailed: error instanceof Error ? error.message : String(error) });
+        });
     }
     let buffered: SessionUiEvent[] | undefined;
     try {

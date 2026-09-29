@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PLUGIN_BACKEND_RESPONSE_BODY_MAX_BYTES } from "../../../shared/pluginBackendProtocol";
+import { REQUEST_TIMEOUT_MS } from "./requestDeadline";
 import {
   pluginBackendRequestPath,
   pluginBackendRequestUrl,
@@ -87,5 +88,35 @@ describe("browser plugin backend helper", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(requestPluginBackend(target, "cards.summary", null)).rejects.toThrow("response exceeds");
+  });
+
+  /**
+   * A plugin panel reads through here. Headers at once and a body that never finishes kept the
+   * subagents panel on "Reading…" for as long as the server took: the deadline ended with the
+   * headers. It now settles at the deadline as the machine's link failure.
+   */
+  it("settles at the request deadline when the body stalls after the headers", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal("fetch", (_url: string, init?: RequestInit) => Promise.resolve(new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          init?.signal?.addEventListener("abort", () => { controller.error(new DOMException("aborted", "AbortError")); }, { once: true });
+        },
+      }), { status: 200 })));
+      const settled = requestPluginBackend(target, "cards.summary", null).then(
+        () => "answered",
+        (error: unknown) => {
+          if (!(error instanceof Error)) return "not an error";
+          const status: unknown = Reflect.get(error, "status");
+          return { status, timedOut: error.message.includes("did not answer") };
+        },
+      );
+
+      await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+
+      expect(await settled).toEqual({ status: 0, timedOut: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

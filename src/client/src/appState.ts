@@ -1,4 +1,4 @@
-import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, BackgroundTasksRead, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
+import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, BackgroundTasksRead, SessionBackgroundTaskInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
 import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
 import type { StopCause } from "./stopCause";
@@ -61,8 +61,6 @@ export interface AppState {
   selectedProject: Project | undefined;
   selectedWorkspace: Workspace | undefined;
   selectedSession: SessionInfo | undefined;
-  /** Subagents (child sessions) of the selected session, most urgent first. */
-  subagents: readonly SessionSubagentInfo[];
   backgroundTasks: readonly SessionBackgroundTaskInfo[];
   backgroundTasksRead: BackgroundTasksRead;
   /**
@@ -72,8 +70,12 @@ export interface AppState {
    * fresh one otherwise, and the empty state invites writing into it.
    */
   transcriptFailed: string | undefined;
-  /** Subagent-tool runs for the selected session; see server/sessions/subagentRuns.ts. */
-  subagentRuns: readonly SessionSubagentRunInfo[];
+  /**
+   * The selected session's own status read failed, with the reason. It reset on every
+   * selection; without it a failed read read as "No session status yet", a read that had not
+   * happened, with no way to ask again (reads F8).
+   */
+  statusReadFailed: string | undefined;
   status: SessionStatus | undefined;
   activity: SessionActivity | undefined;
   /**
@@ -257,11 +259,10 @@ export function initialAppState(): AppState {
     selectedProject: undefined,
     selectedWorkspace: undefined,
     selectedSession: undefined,
-    subagents: [],
     backgroundTasks: [],
     backgroundTasksRead: "unread",
     transcriptFailed: undefined,
-    subagentRuns: [],
+    statusReadFailed: undefined,
     status: undefined,
     activity: undefined,
     pendingAsk: undefined,

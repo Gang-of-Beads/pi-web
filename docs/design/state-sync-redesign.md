@@ -650,3 +650,39 @@ Phase 3 meets the acceptance bar:
 Each fix in the phase came with tests run first against the commit before it, and each commit message names which of them failed there. The only exception is a test that cannot load on the old code because it imports what the fix added; its behaviour is covered by a test at the controller.
 
 The phase 3 known limitations above stand: a send to a session still starting lives in memory only, the page and the snapshot are two reads, and the web answers an unknown API path with the app.
+
+## Phase 4 as landed
+
+**Scope.** The 6 read repros (subagents 3, goals 3). The reads lane's other findings: F1 body deadline on `fetchWithDeadline`, F5 `view`/`tool` route, F7 poll pinned to the last session, F8 swallowed status read, F9 dead `/subsessions` read. The supervisor card's answered state.
+
+**Subagents panel (`RunsRead`).** The runs read is a package-local machine:
+- a sequence number per read, and one read in flight per session;
+- a read that has not answered after 20 s is presumed dead, so a lost reply cannot stop the panel reading for good;
+- an answer older than the one shown is dropped;
+- a failed read keeps the rows it already showed, and says "Could not refresh - showing the last read." (the background-runs shape);
+- the tab badge also selects the session it is asked about, so the poll follows the selected session while the panel is closed (F7).
+
+**Goals section.**
+- The read's key carries the session cwd as well as the workspace, because `goals.list` depends on both.
+- A failed read is a state of its own. The section says "Goal records could not be read on this machine." with a refresh, and the drawer keeps the section.
+- A malformed answer counts as failed.
+- A refresh's answer only replaces an older one.
+
+**Other reads.**
+- **F1:** `fetchWithDeadline` keeps its deadline until the caller's `read` has the body. No caller streams; the phase 2 note that one did was wrong. `isTransportFailure` keeps link failures and timeouts the caller's transport error, and refusals, size limits and parse errors keep their own.
+- **F5:** a restored route whose `view` names a tool and which has no `tool` shows that tool (`routedWorkspaceTool`).
+- **F8:** the selection's own status read records its failure (`statusReadFailed`), so the status bar offers Retry.
+- **F9:** the host's `/subsessions` read, the state it wrote and its parser and label module are removed. Nothing had rendered them since the chip strip went. The daemon route stays.
+- **Supervisor card:** renderers get `followingUserTexts`, the texts of later user messages in the settled transcript as loaded. The card shows "Answered: …" when the reader's reply to this request is among them, instead of offering the form again after a reload or a session switch.
+
+**Recorded, not changed.**
+- **F7's other half, the poll never stops.** The tab's running count depends on it. A paused poll would leave a stale count on screen, and the repro file's own baseline pins a poll that keeps going.
+- **Two repros conflicted.** "keeps one read in flight" expects one call after 9 s. "a late answer may not overwrite a newer one" first asserts two reads in flight at 3 s. With one read in flight, two reads for one session overlap only after the first is presumed dead, so the late-answer repro's timer advance moved from 3 s to 21 s. Its `expect` lines are unchanged, as with phase 2's proxy repro. The polling baseline in the same file answers each read before the next tick, because it counted a pile of unanswered reads; its intent (the poll continues while the panel is not rendered) and its call counts are unchanged.
+- **`followingUserTexts` covers only what is loaded.** A card whose reply lies in a newer page not loaded yet still offers the form.
+
+**Live.** `scripts/probe-reads.mjs` on the 8505 stack scores the build before phase 4 (84ec07e8) 0/3 and this build 3/3:
+- A. A view-only deep link to Subagents opens it and reads it (old build: the panel stays on Files, 0 reads).
+- B. A stalled runs read is not multiplied (old: 1 read became 5 over 10 s).
+- C. A refused goals read says it could not be read (old: nothing).
+
+The phase 3 realtime probe (3/3), the desktop Go to probe (4/4) and the geometry baseline pass on the same build.

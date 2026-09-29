@@ -16,7 +16,7 @@ import { autoFocusesComposer } from "../appShell/appShellController";
 import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
 import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
-  type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
+  type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { BackgroundTasksRead, PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
 import type { AppAction } from "../actions";
 import { composerCwd, initialAppState, type AppState } from "../appState";
@@ -42,6 +42,7 @@ import { keyboardInset, visualViewportOffsetTop } from "../appShell/keyboardInse
 import { machineSessionKey } from "../machineKeys";
 import { commandsForSession } from "../commandLedger";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
+import { routedWorkspaceTool } from "../routedWorkspaceTool";
 import { isWaitingForUser } from "../../../shared/sessionActivityState";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { SessionUnreadController } from "../sessionUnread";
@@ -744,8 +745,8 @@ export class PiWebApp extends LitElement {
       // A failed activity read keeps the rows it last saw, but those rows are
       // facts about the chat they were read for: carrying them under another
       // selection would render one chat's frozen work on another's dock.
-      if (this.state.subagents.length > 0 || this.state.subagentRuns.length > 0 || this.state.backgroundTasks.length > 0 || this.state.backgroundTasksRead !== "unread") {
-        this.setState({ subagents: [], subagentRuns: [], backgroundTasks: [], backgroundTasksRead: "unread" });
+      if (this.state.backgroundTasks.length > 0 || this.state.backgroundTasksRead !== "unread") {
+        this.setState({ backgroundTasks: [], backgroundTasksRead: "unread" });
       }
     }
     this.committedChatIdentity = chatIdentity;
@@ -888,22 +889,22 @@ export class PiWebApp extends LitElement {
     if (!shouldPoll) this.subagentRefreshArmedFor = undefined;
   }
 
-  private readonly refreshSubagents = oneReadAtATime(() => this.readSubagents());
+  private readonly refreshSubagents = oneReadAtATime(() => this.readBackgroundTasks());
 
-  private async readSubagents(): Promise<void> {
+  /**
+   * The session's background runs, for the dock and the Background panel. It also read
+   * `/subsessions` - child sessions and subagent-tool runs - which nothing has rendered since
+   * the chip strip went: the Subagents panel reads its own runs. The dead read fired twice
+   * within 250ms on every selection (reads F9), so it is gone rather than kept for a surface
+   * that no longer exists.
+   */
+  private async readBackgroundTasks(): Promise<void> {
     const session = this.state.selectedSession;
     if (session === undefined) return;
     const machineId = selectedMachineId(this.state);
-    const [snapshot, tasks] = await Promise.allSettled([
-      sessionsApi.subsessions(session, machineId),
-      sessionsApi.backgroundTasks(session, machineId),
-    ]);
+    const [tasks] = await Promise.allSettled([sessionsApi.backgroundTasks(session, machineId)]);
     if (this.state.selectedSession?.id !== session.id || selectedMachineId(this.state) !== machineId) return;
     const patch: Partial<AppState> = {};
-    if (snapshot.status === "fulfilled") {
-      if (!sameSubagents(snapshot.value.subsessions, this.state.subagents)) patch.subagents = snapshot.value.subsessions;
-      if (!sameSubagentRuns(snapshot.value.toolRuns, this.state.subagentRuns)) patch.subagentRuns = snapshot.value.toolRuns;
-    }
     if (tasks.status === "fulfilled" && !sameBackgroundTasks(tasks.value, this.state.backgroundTasks)) patch.backgroundTasks = tasks.value;
     const read: BackgroundTasksRead = tasks.status === "fulfilled" ? "read" : "failed";
     if (read !== this.state.backgroundTasksRead) patch.backgroundTasksRead = read;
@@ -1415,7 +1416,7 @@ export class PiWebApp extends LitElement {
       const mainView = this.resolveRestoredMainView(restoredMainView) ?? route.view ?? this.defaultRouteView(route);
       this.workspacePanelFullscreen = false;
       this.setState({
-        workspaceTool: route.tool ?? this.state.workspaceTool,
+        workspaceTool: routedWorkspaceTool(route.tool, mainView, this.state.workspaceTool),
         mainView,
         selectedTerminalId: routeSurface.selectedTerminalId,
       });
@@ -4093,7 +4094,7 @@ export class PiWebApp extends LitElement {
     return html`
       <status-bar
         .status=${state.status}
-        .failure=${state.status === undefined ? state.transcriptFailed : undefined}
+        .failure=${state.status === undefined ? state.transcriptFailed ?? state.statusReadFailed : undefined}
         .onRetry=${() => { void this.retryAfterError(); }}
       ></status-bar>
     `;
@@ -4451,27 +4452,6 @@ export function sameBackgroundTasks(left: readonly SessionBackgroundTaskInfo[], 
   return left.every((entry, index) => {
     const other = right[index];
     return other?.id === entry.id && other.status === entry.status && other.exitCode === entry.exitCode && other.durationMs === entry.durationMs;
-  });
-}
-
-function sameSubagents(left: readonly SessionSubagentInfo[], right: readonly SessionSubagentInfo[]): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((entry, index) => {
-    const other = right[index];
-    return other?.sessionId === entry.sessionId && other.status === entry.status;
-  });
-}
-
-/**
- * Runs compare on what the strip shows, elapsed time included: a running child
- * has to re-render as its clock moves, or the list would freeze at whatever it
- * said when the run started.
- */
-function sameSubagentRuns(left: readonly SessionSubagentRunInfo[], right: readonly SessionSubagentRunInfo[]): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((entry, index) => {
-    const other = right[index];
-    return other?.runId === entry.runId && other.status === entry.status && other.elapsedMs === entry.elapsedMs && other.lastActivity === entry.lastActivity;
   });
 }
 

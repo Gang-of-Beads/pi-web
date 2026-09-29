@@ -78,12 +78,13 @@ async function importPluginModule(moduleUrl: string): Promise<unknown> {
 }
 
 async function fetchPluginManifest(manifestUrl: string): Promise<PluginManifest | undefined> {
-  const response = await fetchWithDeadline(manifestUrl, { cache: "no-store" });
   // A third-party origin answering proves nothing about PI WEB's link; a
   // report here let an outside server retire a page claim it has no say in.
-  if (response.status === 404) return undefined;
-  if (!response.ok) throw new Error(await pluginManifestResponseError(response));
-  return parseManifest(await response.json());
+  return fetchWithDeadline(manifestUrl, { cache: "no-store" }, async (response) => {
+    if (response.status === 404) return undefined;
+    if (!response.ok) throw new Error(await pluginManifestResponseError(response));
+    return parseManifest(await response.json());
+  });
 }
 
 function parseManifest(value: unknown): PluginManifest {

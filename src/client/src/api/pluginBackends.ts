@@ -14,7 +14,7 @@ import {
 } from "../../../shared/pluginBackendProtocol";
 import { resolveAppUrl, type AppUrlContext } from "../appUrl";
 import { describeError } from "../notice";
-import { fetchWithDeadline } from "./requestDeadline";
+import { fetchWithDeadline, isTransportFailure } from "./requestDeadline";
 
 export interface PluginBackendRequestTarget {
   pluginId: string;
@@ -60,23 +60,26 @@ export async function requestPluginBackend(
     throw new Error(`Plugin backend request exceeds the ${String(PLUGIN_BACKEND_REQUEST_BODY_MAX_BYTES)} byte wire limit`);
   }
 
-  let response: Response;
+  let answered: { response: Response; text: string };
   try {
-    response = await fetchWithDeadline(pluginBackendRequestUrl(target, operation), {
+    answered = await fetchWithDeadline(pluginBackendRequestUrl(target, operation), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body,
+    }, async (response) => {
+      reportTransportReachable(pluginBackendRequestUrl(target, operation), { machineId: target.machineId });
+      return { response, text: await readBoundedResponseText(response) };
     });
-    reportTransportReachable(pluginBackendRequestUrl(target, operation), { machineId: target.machineId });
   } catch (error) {
     // The raw browser text stays raw: the transport family rules are anchored
     // whole-message, so a composed prefix converts a link failure into a
     // reader-retired permanent banner. The healing rewrite ("Lost connection
     // to PI WEB. Reconnecting…") is what the reader sees anyway.
-    throw new HttpError(describeError(error), 0, target.machineId);
+    if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, target.machineId);
+    throw error;
   }
 
-  const text = await readBoundedResponseText(response);
+  const { response, text } = answered;
   if (!response.ok) {
     throw new HttpError(pluginBackendErrorMessage(text) ?? `Plugin backend request returned HTTP ${String(response.status)}`, response.status, target.machineId);
   }
