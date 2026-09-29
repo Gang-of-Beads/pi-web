@@ -1118,3 +1118,37 @@ describe("tenth gate-lane findings", () => {
     await service.dispose();
   });
 });
+
+describe("a message the runtime refuses after the inbox accepted it (phase 2)", () => {
+  it("tells the sender's row by identity, and the ledger says failed", async () => {
+    const { fake, service, ref, hub } = await inboxService("p2-refused", { isStreaming: false });
+    fake.session.prompt = () => Promise.reject(new Error("No model configured"));
+    await service.prompt(ref, "refused after acceptance", undefined, undefined, { clientMessageId: "p2r-a-0001" });
+    await vi.waitFor(() => { expect(hub.sessionEvents.map((entry) => entry.event.type)).toContain("prompt.refused"); });
+    expect({
+      frame: hub.sessionEvents.map((entry) => entry.event).find((event) => event.type === "prompt.refused"),
+      outcome: service.operationOutcomes("p2-refused", ["p2r-a-0001"]),
+    }).toEqual({
+      frame: { type: "prompt.refused", clientMessageId: "p2r-a-0001", message: "No model configured" },
+      outcome: { "p2r-a-0001": "failed" },
+    });
+    await service.dispose();
+  });
+
+  it("does not call a message refused once the agent read it, when its run fails afterwards", async () => {
+    const { fake, service, ref, hub } = await inboxService("p2-read-then-failed", { isStreaming: false });
+    fake.session.prompt = async (text: string, options?: PromptOptions) => {
+      options?.preflightResult?.(true);
+      fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "text", text }] } });
+      await Promise.resolve();
+      throw new Error("provider went away mid-run");
+    };
+    await service.prompt(ref, "read, then the run failed", undefined, undefined, { clientMessageId: "p2r-b-0001" });
+    await vi.waitFor(() => { expect(hub.sessionEvents.map((entry) => entry.event.type)).toContain("session.error"); });
+    expect({
+      refusedFrames: hub.sessionEvents.filter((entry) => entry.event.type === "prompt.refused").length,
+      outcome: service.operationOutcomes("p2-read-then-failed", ["p2r-b-0001"]),
+    }).toEqual({ refusedFrames: 0, outcome: { "p2r-b-0001": "succeeded" } });
+    await service.dispose();
+  });
+});

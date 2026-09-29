@@ -1442,6 +1442,10 @@ type SessionUiEventBody =
     type: "prompt.withdrawn";
     clientMessageId: string;
 } | {
+    type: "prompt.refused";
+    clientMessageId: string;
+    message: string;
+} | {
     type: "activity.changed";
 } | {
     type: "dialog.opened";

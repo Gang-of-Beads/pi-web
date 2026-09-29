@@ -251,6 +251,12 @@ describe("notification socket guards", () => {
     expect(parseSessionSocketEvent({ type: "ask.opened", ask, revision: "x" })).not.toHaveProperty("revision");
   });
 
+  it("carries a refusal after acceptance: prompt.refused frames parse with their clientMessageId and reason", () => {
+    expect(parseSessionSocketEvent({ type: "prompt.refused", clientMessageId: "cmid-1", message: "No model configured" }))
+      .toEqual({ type: "prompt.refused", clientMessageId: "cmid-1", message: "No model configured" });
+    expect(parseSessionSocketEvent({ type: "prompt.refused", clientMessageId: "cmid-1" })).toBeUndefined();
+  });
+
   it("carries the acceptance stamp: prompt.accepted frames parse with their clientMessageId", () => {
     expect(parseSessionSocketEvent({ type: "prompt.accepted", clientMessageId: "cmid-1" })).toEqual({ type: "prompt.accepted", clientMessageId: "cmid-1" });
     expect(parseSessionSocketEvent({ type: "prompt.accepted" })).toBeUndefined();

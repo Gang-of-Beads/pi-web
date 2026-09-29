@@ -466,6 +466,30 @@ The four confirm repros about words belong to phase 5, where the owner approves 
 
 The last two abort the call's signal, and the race does not rely on the daemon honouring it. The 25 s comes from measurement: over the last 1.5 GB of the production access log, the slowest session read took 22.6 s and the slowest prompt 6.1 s; 19 reads took over 2.5 s. The repro "a daemon that never answers…" raced the proxy against a 3 s real-time window, which any deadline that real reads survive exceeds. Its fixture now uses fake timers advanced past the default deadline, below the browser's 30 s; its assertion is unchanged.
 
+
+**Body deadline (B).** `request()` keeps its deadline through the body read. A status the server did answer with still surfaces as its `HttpError`. `fetchWithDeadline` still ends at the headers, because its callers read the body themselves and one of them streams a terminal command's output for longer than any request deadline; phase 4's `readLoop` owns that.
+
+**One classifier, and facts outrank answers (C–F).**
+- `carriesNoVerdict` makes a 5xx unverifiable whatever the caller's predicate says. The daemon refuses with 400 or 404; a 5xx comes from a proxy, a gateway or a crash.
+- The outbox records a timed-out send as `unverified`, and the session list marks `unverified` as well as `failed`. A stored state the table does not know is read as `stored`.
+- `removeDeliveryLine` drops only a row no server fact proved (`PROVEN_BY_SERVER`). Recall and Stop, which act on the daemon's word, go through `withdrawDeliveryLine`. A refusal arriving after the acceptance frame keeps the row and reports the send accepted.
+- A queued row an idle session no longer holds steps back to `received` (`leaveQueue`), never forward to `delivered`. The existing test that expected `delivered` now expects `received`: absence from a queue is an inference, and the transcript's committed copy is the fact.
+
+**Send gate and complete records (G).**
+- Each send is written to the outbox at once and handed over after the previous one settled. A failed send does not stop the chain.
+- The upload flag no longer swallows a send, and the send button stays usable.
+- A waiting send whose session the reader left is not handed to the new session; its record stays in its own session's outbox.
+- Records carry the attachment delivery chosen at compose time. Older records answer from their own attachments.
+
+**Verification effect and refusal frame (H, I).**
+- `sendVerification.ts` decides what each ledger answer does to an unverifiable row:
+  - `pending` or `succeeded`: received, and the outbox lets go;
+  - `failed` or `unknown`: not received, and Retry keeps the identity;
+  - `withdrawn`: the row leaves, as it does for the withdrawal frame;
+  - no row: wait, until the last ask calls it not received.
+- The controller asks at 5 s, 15 s and 45 s after the send gave up, and again when the tab comes back.
+- The daemon publishes `prompt.refused` per identity when the runtime refuses a message the inbox accepted. The frame is published only if the ledger actually recorded `failed`, so a run failing after the read is not reported as the message's refusal. The client marks that row failed. The outbox entry is not re-created, so a refused message is never replayed automatically on reconnect.
+
 **Conflicts for phase 5 (owner decision).** Some confirm repros cannot all pass together:
 - **The bubble's words.** "does not claim it may be running when the bytes never left" wants the bubble of an `unverifiable` row to read "Not sent". "gives the reader words for who is being waited on" wants "No answer yet" for the same input. The owner's words (Sending… / Receiving… / Received / Not received · Retry) match neither.
 - **The received label.** "the label of a confirmation that is not a queue" wants a `received` row to read "Queued". The owner's words say "Received".

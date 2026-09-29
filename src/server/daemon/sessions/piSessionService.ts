@@ -3322,10 +3322,26 @@ export class PiSessionService implements SessionRouteService {
     const { message } = await settled;
     this.releaseHandoff(sessionId, entry, landed);
     if (verdict === "transient") return "transient";
-    if (clientMessageId !== undefined) this.acceptanceLedger.settle(sessionId, clientMessageId, "failed");
+    this.refuse(session, clientMessageId, message);
+    return "terminal";
+  }
+
+  /**
+   * The runtime refused a message the inbox had accepted. The ledger records it failed, and the
+   * sender's row hears it per identity (`prompt.refused`) - a session-wide error alone left the
+   * row reading "Queued" for good. A message the agent already read keeps its outcome: a run
+   * failing after the read is the run's error, not the message's refusal.
+   */
+  private refuse(session: PiAgentSession, clientMessageId: string | undefined, message: string): void {
+    const sessionId = session.sessionId;
+    if (clientMessageId !== undefined) {
+      this.acceptanceLedger.settle(sessionId, clientMessageId, "failed");
+      if (this.acceptanceLedger.outcomesFor(sessionId, [clientMessageId])[clientMessageId] === "failed") {
+        this.events.publish(sessionId, { type: "prompt.refused", clientMessageId, message });
+      }
+    }
     this.publishActivity(session, "error", "error", message);
     this.events.publish(sessionId, { type: "session.error", message });
-    return "terminal";
   }
 
   /**
@@ -3369,9 +3385,7 @@ export class PiSessionService implements SessionRouteService {
       void this.ownedQueue.restoreFront(sessionId, [entry]).then(() => { this.publishStatus(session); });
       return;
     }
-    if (entry.clientMessageId !== undefined) this.acceptanceLedger.settle(sessionId, entry.clientMessageId, "failed");
-    this.publishActivity(session, "error", "error", result.message);
-    this.events.publish(sessionId, { type: "session.error", message: result.message });
+    this.refuse(session, entry.clientMessageId, result.message);
   }
 
   private forgetHandoffWatchers(sessionId: string, watchers: HandoffWatchers): void {

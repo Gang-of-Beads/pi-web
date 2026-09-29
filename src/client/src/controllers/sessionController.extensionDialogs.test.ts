@@ -152,6 +152,28 @@ describe("SessionController prompt.accepted delivery transition", () => {
   });
 });
 
+describe("SessionController prompt.refused", () => {
+  it("ends the wait of a queued row the runtime refused, so it offers what a failed send offers", async () => {
+    const harness = await liveSession();
+    const line = { role: "user" as const, parts: [{ type: "text" as const, text: "refused later" }], meta: { delivery: { clientMessageId: "cmid-r", state: "queued" as const } } };
+    harness.state().messages = [line];
+
+    harness.socket.emit({ type: "prompt.refused", clientMessageId: "cmid-r", message: "No model configured" });
+
+    expect(harness.state().messages.map((message) => message.meta?.delivery?.state)).toEqual(["failed"]);
+  });
+
+  it("leaves a row the transcript already claimed as read", async () => {
+    const harness = await liveSession();
+    const line = { role: "user" as const, parts: [{ type: "text" as const, text: "read already" }], meta: { delivery: { clientMessageId: "cmid-read", state: "delivered" as const } } };
+    harness.state().messages = [line];
+
+    harness.socket.emit({ type: "prompt.refused", clientMessageId: "cmid-read", message: "late" });
+
+    expect(harness.state().messages.map((message) => message.meta?.delivery?.state)).toEqual(["delivered"]);
+  });
+});
+
 describe("SessionController prompt.withdrawn", () => {
   /**
    * A recall deletes the daemon's queue entry, so no transcript claim is

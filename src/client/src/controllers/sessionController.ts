@@ -21,6 +21,7 @@ import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import { forgetPendingPrompt, isNetworkFailure, NetworkSendError } from "../pendingOutbox";
+import { VERIFY_AFTER_MS, verificationStep } from "../sendVerification";
 import type { MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
@@ -214,6 +215,7 @@ export class SessionController {
   private readonly commandDialogRows = new Map<string, string>();
   private readonly suppressedCreatedSessions = new Map<string, SuppressedCreatedSession>();
   private readonly selectedSessionRefreshes = new TrailingRefreshCoordinator<string>();
+  private readonly sendVerificationTimers = new Map<string, ReturnType<typeof setTimeout>[]>();
   // The daemon instance each machine's last status catalog came from. Session
   // ids are the daemon's runtime handles, so a changed id means the entries in
   // `sessionStatuses` were minted by a process that no longer exists.
@@ -663,7 +665,10 @@ export class SessionController {
       if (handling.keepInOutbox) {
         // Unverifiable is not failed: the daemon may hold this message. The row says
         // so, and the outbox keeps it for a retry the identity makes safe.
-        if (clientMessageId !== undefined) this.markDelivery(session.id, clientMessageId, "unverifiable");
+        if (clientMessageId !== undefined) {
+          this.markDelivery(session.id, clientMessageId, "unverifiable");
+          this.scheduleSendVerification(session, machineId);
+        }
         throw new NetworkSendError(String(error), clientMessageId, { cause: error });
       }
       if (clientMessageId !== undefined && deliveryProvenByServer(this.getState().messages, clientMessageId)) return true;
@@ -2159,23 +2164,55 @@ export class SessionController {
 
   private readonly prefetched = new Set<string>();
 
-  private async closeUnverifiedOperations(session: SessionRef): Promise<void> {
+  /**
+   * Ask the daemon's ledger about this session's unanswered sends on a clock that ends
+   * (`VERIFY_AFTER_MS`). Only the session on screen has rows to settle; one scheduled for a
+   * session the reader left finds nothing and does nothing.
+   */
+  private scheduleSendVerification(session: SessionRef, machineId: string): void {
+    const key = machineSessionKey(machineId, session.id);
+    for (const timer of this.sendVerificationTimers.get(key) ?? []) clearTimeout(timer);
+    const last = VERIFY_AFTER_MS.length - 1;
+    this.sendVerificationTimers.set(key, VERIFY_AFTER_MS.map((delay, index) => setTimeout(() => {
+      if (index === last) this.sendVerificationTimers.delete(key);
+      if (this.getState().selectedSession?.id !== session.id || selectedMachineId(this.getState()) !== machineId) return;
+      void this.closeUnverifiedOperations(session, index === last);
+    }, delay)));
+  }
+
+  /** Ask again about the unanswered sends on screen, as when the tab comes back into view. */
+  verifyUnansweredSends(): Promise<void> {
+    const session = this.getState().selectedSession;
+    return session === undefined ? Promise.resolve() : this.closeUnverifiedOperations(session, false);
+  }
+
+  private async closeUnverifiedOperations(session: SessionRef, lastAsk = false): Promise<void> {
     const open: string[] = [];
     for (const line of this.getState().messages) {
       const delivery = line.meta?.delivery;
       if (delivery?.state === "unverifiable") open.push(delivery.clientMessageId);
     }
     if (open.length === 0) return;
+    const machineId = selectedMachineId(this.getState());
     let outcomes: Record<string, string>;
     try {
-      outcomes = await this.api.operationOutcomes(session, open, selectedMachineId(this.getState()));
+      outcomes = await this.api.operationOutcomes(session, open, machineId);
     } catch {
       // Asking failed too; the rows stay open and honest.
       return;
     }
-    for (const [clientMessageId, outcome] of Object.entries(outcomes)) {
-      if (outcome === "succeeded") this.markDelivery(session.id, clientMessageId, "received");
-      else if (outcome === "failed") this.markDelivery(session.id, clientMessageId, "failed");
+    if (this.getState().selectedSession?.id !== session.id || selectedMachineId(this.getState()) !== machineId) return;
+    const outboxKey = machineSessionKey(machineId, session.id);
+    for (const clientMessageId of open) {
+      const step = verificationStep(outcomes[clientMessageId], lastAsk);
+      if (step.kind === "wait") continue;
+      if (step.kind === "withdraw") {
+        forgetPendingPrompt(outboxKey, clientMessageId);
+        this.setState({ messages: withdrawDeliveryLine(this.getState().messages, clientMessageId) });
+        continue;
+      }
+      this.markDelivery(session.id, clientMessageId, step.state);
+      if (step.retireOutbox) forgetPendingPrompt(outboxKey, clientMessageId);
     }
   }
 
@@ -2409,6 +2446,11 @@ export class SessionController {
         const messages = withdrawDeliveryLine(current.messages, event.clientMessageId);
         if (messages.length !== current.messages.length) this.setState({ messages });
       }
+      return;
+    }
+    if (event.type === "prompt.refused") {
+      const selected = this.getState().selectedSession;
+      if (selected !== undefined) this.markDelivery(selected.id, event.clientMessageId, "failed");
       return;
     }
     if (event.type === "prompt.accepted") {

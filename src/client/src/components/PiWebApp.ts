@@ -1303,6 +1303,7 @@ export class PiWebApp extends LitElement {
     await this.sessionUnread.refreshAll();
     await Promise.all([
       this.sessions.refreshSelectedSession(),
+      this.sessions.verifyUnansweredSends(),
       this.refreshMachineStatusSnapshots(),
       this.refreshWorkspaceDeletionRuns(),
       this.refreshCurrentWorkspaceSurface(),

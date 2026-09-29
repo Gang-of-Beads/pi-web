@@ -16,6 +16,8 @@
   ],
   "ignoreExportsUsedInFile": true,
   "ignoreBinaries": [
+    "lsof",
+    "pgrep",
     "systemd-run",
     "tmux"
   ],
