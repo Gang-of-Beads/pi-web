@@ -1,5 +1,9 @@
 import type { Project, SessionInfo, Workspace } from "../api";
+import { mapWithLanes } from "./lanes";
 import { classifyReadError } from "./readPhase";
+
+/** How many of a machine's listings the board reads at once; the page keeps the rest of its six connections (object model §4.5). */
+const BOARD_LANES = 2;
 
 /**
  * Every session a machine holds, read from its listings (object model §1.5,
@@ -55,10 +59,10 @@ export function completeSessionBoard(board: SessionBoard, sources: SessionBoardS
 }
 
 async function readSources(sources: SessionBoardSources, projectIds: readonly string[], workspacePaths: readonly string[], known: SessionBoard): Promise<SessionBoard> {
-  const workspaceLists = await Promise.all(projectIds.map((projectId) => listed(sources.workspaces(projectId), { kind: "project", projectId })));
+  const workspaceLists = await mapWithLanes(projectIds, BOARD_LANES, (projectId) => listed(sources.workspaces(projectId), { kind: "project", projectId }));
   const listedWorkspaces = workspaceLists.flatMap((entry) => ("listed" in entry ? entry.listed : []));
   const paths = [...new Set([...listedWorkspaces.map((workspace) => workspace.path), ...workspacePaths])];
-  const sessionLists = await Promise.all(paths.map((path) => listed(sources.sessions(path), { kind: "workspace", path })));
+  const sessionLists = await mapWithLanes(paths, BOARD_LANES, (path) => listed(sources.sessions(path), { kind: "workspace", path }));
   const sessions = dedupeById([...known.sessions, ...sessionLists.flatMap((entry) => ("listed" in entry ? entry.listed : []))])
     .sort((left, right) => Date.parse(right.modified) - Date.parse(left.modified));
   const unknownSources = [...known.unknownSources, ...[...workspaceLists, ...sessionLists].flatMap((entry) => ("unknown" in entry ? [entry.unknown] : []))];

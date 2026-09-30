@@ -65,7 +65,7 @@ try {
   console.log(`first row ${String(row)} ms, status ${String(status)} ms; reads: ${reads.join(", ")}`);
   leg("precondition: the linked session opened, drew a row and got its status", row !== undefined && status !== undefined, `row ${String(row)}, status ${String(status)}`);
   leg("the first row is drawn before the status arrives", row !== undefined && status !== undefined && row < status, `row ${String(row)} ms, status ${String(status)} ms`);
-  leg(`the first row is within ${String(BUDGET_MS)} ms of navigation (the §4.3 budget; open until the board's cold listings stop holding every connection)`, row !== undefined && row <= BUDGET_MS, `${String(row)} ms`);
+  leg(`the first row is within ${String(BUDGET_MS)} ms of navigation (the §4.3 budget)`, row !== undefined && row <= BUDGET_MS, `${String(row)} ms`);
 } finally {
   await browser.close();
 }

@@ -1798,8 +1798,9 @@ export class SessionController {
       this.flushPendingUpdates();
       if (this.transcripts.watermark(key) !== undefined && await this.refreshByDeltaReplay(target, key)) return;
       const framesAtRequest = this.statusFramesApplied;
+      const tailRead = this.readTranscriptTail(target);
       const statusRead = settled(this.api.status(target.session, target.machineId));
-      const { page, stream: streamSnapshot } = await this.readTranscriptTail(target);
+      const { page, stream: streamSnapshot } = await tailRead;
       if (!this.isCurrentRefreshTarget(target)) return;
       // Seed the in-flight partial assistant message on top of committed history
       // and record the snapshot's sequence as the watermark. Buffered/live events

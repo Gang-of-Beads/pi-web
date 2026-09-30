@@ -91,6 +91,18 @@ describe("opening a session without waiting for its runtime (P2 slice c)", () =>
     expect(shownTexts(state())).toEqual(["hello from the file", "still writing"]);
   });
 
+  it("asks for the transcript before the status, so the transcript gets the first free connection", async () => {
+    const asked: string[] = [];
+    const { controller } = harness({
+      transcriptTail: () => { asked.push("tail"); return Promise.resolve({ kind: "answered", value: { page, stream: { seq: 3, epoch: "e1", partial: null } } }); },
+      status: (session) => { asked.push("status"); return Promise.resolve(status(sessionLookupId(session))); },
+    }, { sessionStatuses: { [oldSession.id]: status(oldSession.id) } });
+
+    await controller.selectSession(oldSession);
+
+    expect(asked.slice(0, 2)).toEqual(["tail", "status"]);
+  });
+
   it("reads the transcript the old way from a daemon that lacks the tail route", async () => {
     const { controller, state } = harness({
       transcriptTail: () => Promise.resolve({ kind: "unsupported" }),

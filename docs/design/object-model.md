@@ -528,7 +528,7 @@ Dependency direction: component → controller → `sync/*` → `api/http.ts`. P
 | idle, git/files panel open | ≤245 req/min | ≤8/min, plus head checks at 4/min | P3, P5 |
 | pins reads/min | 30 | ≤1 | P5 |
 | first transcript row, warm | 0.84 s | ≤400 ms | P6 |
-| first transcript row, cold 17.8 MB | 3.5–6.0 s | ≤1.5 s | P2 |
+| first transcript row, cold 17.8 MB | 3.5–6.0 s; **1.11–1.34 s** after P2c + P3a (phone, daemon-cold, `probe-open-latency.mjs`) | ≤1.5 s | P2, P3 |
 | session read's wait on lists | 0.55–1.5 s | 0 (with `cwd`) | P2 |
 | board read p99 | 23 s (list) | ≤1 s | P3, P4 |
 | time to the reconnecting row | 10.5–29 s | deadline + grace (7 s small / 12 s large) | P1, P3 |
@@ -543,7 +543,7 @@ Dependency direction: component → controller → `sync/*` → `api/http.ts`. P
 ### 4.5 Slow remote machines and long-held requests
 
 - Reader deadlines type the row cause `machine-unanswering(m)`. Daemon work is not cancelled by a reader leaving (§2.1, §2.6).
-- If §2.7's measurement demands it, a per-machine lane cap of 2.
+- If §2.7's measurement demands it, a per-machine lane cap of 2. **Shipped for the board (P3a):** the measurement demanded it. The board's seven cold listings held all six HTTP/1.1 connections for about 1.1 s, and the plugin modules the route restore waits for queued behind them (queued at 218 ms, sent at 1294 ms, served in 1–5 ms). The board now reads through `mapWithLanes(…, 2)` (`sync/lanes.ts`), and the selected session's refresh asks for the transcript before the status, so the transcript gets the first free connection.
 - Plugin operations are bounded (`runBounded`), with per-plugin concurrency 2.
 
 ### 4.6 The 10–29 s tail
@@ -552,7 +552,7 @@ Most likely cause: the daemon's single event loop is blocked in bursts by whole-
 
 Fix, in phase order (P3 unless noted):
 1. Measure: `monitorEventLoopDelay()` on daemon `/health`; log request queueing >500 ms; time the daemon startup phases.
-2. Single-flight scan + fs budget.
+2. Single-flight scan + fs budget. **Shipped (P3a):** `SessionSummaryScanner` runs one pass per directory for scans that overlap; each caller gets its own list. A joiner can miss a file written during the pass, and the next listing has it.
 3. Watcher filter + 2 s coalescing.
 4. Unread without flush.
 5. Only then, deadlines on every forward (a reader leaves; the work continues).

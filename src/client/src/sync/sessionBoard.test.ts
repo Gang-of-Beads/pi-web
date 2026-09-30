@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Project, SessionInfo, Workspace } from "../api";
+import { HttpError } from "../api/http";
 import { boardAnswer, completeSessionBoard, readSessionBoard, type SessionBoard } from "./sessionBoard";
 
 const project = (id: string): Project => ({ id, name: id, path: `/${id}`, createdAt: "now" });
@@ -26,6 +27,35 @@ describe("readSessionBoard", () => {
       sessions: (path) => Promise.resolve(path === "/alpha" ? [session("a1", "/alpha", "2026-09-01")] : [session("b1", "/beta", "2026-09-02")]),
     });
     expect({ ids: board.sessions.map((entry) => entry.id), unknown: board.unknownSources, answer: boardAnswer(board) }).toEqual({ ids: ["b1", "a1"], unknown: [], answer: "complete" });
+  });
+
+  it("reads at most two listings of a machine at once, so the page keeps its connections (object model §4.5)", async () => {
+    const paths = ["/w1", "/w2", "/w3", "/w4", "/w5", "/w6", "/w7"];
+    let running = 0;
+    let peak = 0;
+    const board = await readSessionBoard({
+      projects: () => Promise.resolve([alpha]),
+      workspaces: () => Promise.resolve(paths.map((path) => workspace("alpha", path))),
+      sessions: async (path) => {
+        running += 1;
+        peak = Math.max(peak, running);
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        running -= 1;
+        return [session(path.slice(1), path, "2026-09-01")];
+      },
+    });
+
+    expect({ listed: board.sessions.length, peak, answer: boardAnswer(board) }).toEqual({ listed: 7, peak: 2, answer: "complete" });
+  });
+
+  it("rejects the whole board when a listing states a refusal, even through the lanes", async () => {
+    const reading = readSessionBoard({
+      projects: () => Promise.resolve([alpha, beta]),
+      workspaces: (projectId) => Promise.resolve(projectId === "alpha" ? [alphaMain] : [betaMain]),
+      sessions: (path) => (path === "/beta" ? Promise.reject(new HttpError("Forbidden", 403, "local")) : Promise.resolve([session("a1", "/alpha", "2026-09-01")])),
+    });
+
+    await expect(reading).rejects.toBeInstanceOf(HttpError);
   });
 
   it("keeps a project whose workspaces did not answer as unknown, and still lists the others", async () => {
