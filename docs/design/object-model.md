@@ -222,7 +222,20 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
   - Every open panel keeps a head and verifies it every *T* (4 reads a minute per open panel), which covers workspaces without a watcher.
   - A repo test forbids `setInterval` in first-party plugin browser code; voice is on the allowlist.
   - Third-party plugins: a deprecation warning for one release, then removal. This is an engineering call; the API cannot enforce it in the browser.
-- **Watcher (P3)**: `workspace.changed` ignores `.pi/` and writes owned by the app, and keeps only `HEAD`, `refs/` and `index` under `.git/`. It is coalesced to ≤1 tree + ≤1 git read per 2 s per workspace. Git status + tree are 86 % of 8504 traffic, ~245 req/min [N §4]; the storm reproduced once on 8505. **Owner (Q6): research how VS Code's git extension and GitLens watch first** (research run 8f558e71); the filter follows what the mature tools do.
+- **Watcher (P3), after the owner's requested research** (run 8f558e71; VS Code's git extension, GitLens, lazygit, GitHub Desktop, JetBrains):
+  - **Cause.** The watcher is a recursive `fs.watch` on the whole workspace with no filter (`workspaceWatcher.ts:39`). It publishes `workspace.changed` at most once per 250 ms burst (`:44`, `:92-99`). Every `.git/objects` write, every `index.lock`, `node_modules`, and the `.pi/tasks/*.output` logs that background tasks append continuously therefore become one git status plus one tree read up to 4 times a second, which is the storm [N §4].
+  - Our own `git status` already runs with `--no-optional-locks` (`git/server-plugin.ts:195-201`), so our reads do not rewrite the index.
+  - **What the mature tools do, and PI WEB now does:**
+    - **Two watch sets.**
+      - A `.git` whitelist: `HEAD`, `index`, `packed-refs`, `refs/**`, `*_HEAD`, `MERGE_*`, `rebase-*/**`, `info/exclude` (the GitLens set). A terminal commit shows through `index` and `refs/**`, which is why `.git` is not ignored wholesale.
+      - The working tree, excluding `.git/`, `node_modules/`, `.pi/` and gitignored paths.
+    - **Always dropped:** `*.lock`, `objects/**`, `logs/**`, `.watchman-cookie-*`, `fsmonitor--daemon/`.
+    - **Two trailing windows:** 250 ms for `.git` (a commit shows fast) and 2.5 s for the tree (GitLens's numbers). One status in flight plus one queued per workspace (VS Code's throttle).
+    - **Our own git operations** (stage, commit through the git plugin) mark the workspace busy. Events that land meanwhile merge into one refresh when the operation ends (VS Code's `operations.isIdle()`).
+    - **Visibility gating:** a workspace with no visible panel keeps a dirty flag instead of refreshing, and refreshes once when a panel becomes visible or the tab regains focus (GitLens's suspend and resume, GitHub Desktop).
+    - **Head-based freshness:** status is cached per workspace, keyed by (HEAD, index mtime, tree generation). A request whose key has not moved is answered from the cache without spawning git.
+    - **Size cap:** above 10 000 status entries (VS Code's `git.statusLimit`), automatic status stops and the panel says so.
+  - **Budget:** ≤ 8 git/tree reads a minute with the panel open and nothing changing, and a terminal commit visible within about 1 s.
 
 ### 1.17 Goal (D7)
 
@@ -560,7 +573,7 @@ Each phase ships green, is probed on 8505 (393×850 coarse pointer where it matt
 - **Q3, the first transcript read**: "Loading this session…" (§1.7).
 - **Q4, an unanswered source**: only the machine in use shows in the row; other machines and single sources retry silently (§1.5, §2.3).
 - **Q5, other actions**: fire now, pending, never replayed; an unknown outcome is said (§1.11).
-- **Q6, the git watcher**: research VS Code and GitLens first (§1.16).
+- **Q6, the git watcher**: researched first, as asked (run 8f558e71); the design follows VS Code and GitLens: a `.git` whitelist, tree exclusions, 250 ms and 2.5 s windows, visibility gating, and our own operations merged (§1.16).
 - **Q7, board order**: live, held while touching or scrolling (§1.5).
 - **Q8, archived or deleted by link**: read-only with Restore, or the reason and a way back (§1.18).
 - **Q9, server errors**: the row shows the error reason, not reconnecting (§0, §2.3).
