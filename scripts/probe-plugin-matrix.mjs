@@ -50,26 +50,6 @@ const TERMINAL = `(function(){
   var s=found.shadowRoot;
   return {ok:!!(s&&(s.querySelector(".xterm, .xterm-screen, canvas, .terminal-host")||s.textContent.indexOf("$")>=0)),panel:true};
 })()`;
-const GOALS_TAB = `(function(){
-  var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}if(!found){var hit=root.querySelector("chat-view");if(hit)found=hit;}};
-  visit(document);
-  if(!found||!found.shadowRoot)return {ok:false,chat:false};
-  var tabs=found.shadowRoot.querySelectorAll(".drawer-tab");
-  var extra=null;var count=0;
-  for(var i=0;i<tabs.length;i++){var id=tabs[i].id||"";
-    if(id.indexOf("drawer-tab-")===0&&id!=="drawer-tab-activity"&&id!=="drawer-tab-notifications"){extra=tabs[i];count++;}}
-  if(!extra)return {ok:false,chat:true,pluginTabs:0,builtinTabs:tabs.length};
-  extra.click();
-  return {ok:true,chat:true,tab:extra.id,pluginTabs:count};
-})()`;
-const GOALS_BODY = (tabId) => `(function(){
-  var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}if(!found){var hit=root.querySelector("chat-view");if(hit)found=hit;}};
-  visit(document);
-  if(!found||!found.shadowRoot)return {ok:false};
-  var wanted=${JSON.stringify(tabId)}.replace("drawer-tab-","drawer-panel-");
-  var panel=found.shadowRoot.querySelector("[id='"+wanted+"']");
-  return {ok:panel!==null,wanted:wanted};
-})()`;
 const VOICE = `(function(){
   var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}if(!found){var hit=root.querySelector("prompt-editor");if(hit)found=hit;}};
   visit(document);
@@ -158,13 +138,6 @@ console.log("== desktop: goals, voice, themes");
   // The URL already names the session, so the click walk finding no row is not a
   // failure - the transcript being mounted is the claim.
   record("desktop: session opens into the chat", asOk(chat), { picked: sessionPicked, chat });
-
-  const goalsTab = await poll(page, GOALS_TAB);
-  if (goalsTab && goalsTab.ok === true) record("desktop: goals drawer tab renders and selects", true, goalsTab);
-  else console.log("  SKIP the goals drawer — this session has no goal, so the section reports itself unavailable");
-  const goalsBody = await poll(page, GOALS_BODY(goalsTab && goalsTab.tab ? goalsTab.tab : ""));
-  if (goalsBody && goalsBody.ok === true) record("desktop: goals drawer body mounts", true, goalsBody);
-  console.log("  goals detail:", JSON.stringify({ tab: goalsTab, body: goalsBody }));
 
   const voice = await poll(page, VOICE);
   record("desktop: composer renders (dictate slot wired)", voice && voice.ok === true && voice.buttons > 0, voice);

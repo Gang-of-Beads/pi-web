@@ -1,6 +1,6 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
-import type { ActivityNoteContribution, QualifiedActivityNoteContribution, ComposerContribution, DrawerSectionContribution, QualifiedDrawerSectionContribution, NavSectionContribution, QualifiedNavSectionContribution, MachineSectionContribution, QualifiedMachineSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ActivityNoteContribution, QualifiedActivityNoteContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, MachineSectionContribution, QualifiedMachineSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -32,7 +32,6 @@ export class PluginRegistry {
   private settingsSections: QualifiedSettingsSectionContribution[] = [];
   private messageRenderers: QualifiedMessageRendererContribution[] = [];
   private codeFenceRenderers: QualifiedCodeFenceRendererContribution[] = [];
-  private drawerSections: QualifiedDrawerSectionContribution[] = [];
   private activityNotes: QualifiedActivityNoteContribution[] = [];
   private navSections: QualifiedNavSectionContribution[] = [];
   private machineSections: QualifiedMachineSectionContribution[] = [];
@@ -86,6 +85,7 @@ export class PluginRegistry {
       }));
       const contributions = activation.contributions;
       if (activation.dispose !== undefined) this.addDisposer(runtimePluginId, activation.dispose);
+      if (Reflect.get(contributions, "drawerSections") !== undefined) throw new Error(`${sourcePluginId}: drawerSections was removed; PI WEB owns the chrome around the transcript. Contribute a workspacePanels page instead.`);
       const contributionIds = new Set<QualifiedContributionId>();
       const actions = (contributions.actions ?? []).map((action) => this.qualifyAction(runtimePluginId, action, registration.machineId, registration.sourcePluginId, contributionIds));
       const workspacePanels = (contributions.workspacePanels ?? []).map((panel) => this.qualifyWorkspacePanel(runtimePluginId, panel, registration.machineId, registration.sourcePluginId, backendRevision, contributionIds));
@@ -96,7 +96,6 @@ export class PluginRegistry {
       const composer = (contributions.composer ?? []).map((contribution) => this.qualifyComposerContribution(runtimePluginId, contribution, registration.machineId, registration.sourcePluginId, contributionIds));
       const settingsSections = (contributions.settingsSections ?? []).map((section) => this.qualifySettingsSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const claimedTags = new Set<string>();
-      const drawerSections = (contributions.drawerSections ?? []).map((section) => this.qualifyDrawerSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const activityNotes = (contributions.activityNotes ?? []).map((note) => this.qualifyActivityNote(runtimePluginId, note, registration.machineId, registration.sourcePluginId, contributionIds));
       const navSections = (contributions.navSections ?? []).map((section) => this.qualifyNavSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const machineSections = (contributions.machineSections ?? []).map((section) => this.qualifyMachineSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
@@ -118,7 +117,6 @@ export class PluginRegistry {
       this.settingsSections.push(...settingsSections);
       this.messageRenderers.push(...messageRenderers);
       this.codeFenceRenderers.push(...codeFenceRenderers);
-      this.drawerSections.push(...drawerSections);
       this.activityNotes.push(...activityNotes);
     this.navSections.push(...navSections);
     this.machineSections.push(...machineSections);
@@ -171,12 +169,6 @@ export class PluginRegistry {
   getComposerContributions(selectedMachineId: string | undefined): QualifiedComposerContribution[] {
     return this.composerContributions
       .filter((contribution) => selectedMachineId !== undefined && this.isContributionActive(contribution.pluginId, contribution.machineId, selectedMachineId, contribution.sourcePluginId))
-      .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
-  }
-
-  getDrawerSections(selectedMachineId: string | undefined): QualifiedDrawerSectionContribution[] {
-    return this.drawerSections
-      .filter((section) => selectedMachineId !== undefined && this.isContributionActive(section.pluginId, section.machineId, selectedMachineId, section.sourcePluginId))
       .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
   }
 
@@ -308,7 +300,6 @@ export class PluginRegistry {
     this.settingsSections = this.settingsSections.filter((entry) => entry.pluginId !== runtimePluginId);
     this.messageRenderers = this.messageRenderers.filter((entry) => entry.pluginId !== runtimePluginId);
     this.codeFenceRenderers = this.codeFenceRenderers.filter((entry) => entry.pluginId !== runtimePluginId);
-    this.drawerSections = this.drawerSections.filter((entry) => entry.pluginId !== runtimePluginId);
     this.activityNotes = this.activityNotes.filter((entry) => entry.pluginId !== runtimePluginId);
     this.navSections = this.navSections.filter((entry) => entry.pluginId !== runtimePluginId);
     this.machineSections = this.machineSections.filter((entry) => entry.pluginId !== runtimePluginId);
@@ -397,23 +388,6 @@ export class PluginRegistry {
       id: this.qualify(pluginId, renderer.id, contributionIds),
       pluginId,
       localId: renderer.id,
-      ...(machineId === undefined ? {} : { machineId }),
-      ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
-    };
-  }
-
-  private qualifyDrawerSection(
-    pluginId: string,
-    section: DrawerSectionContribution,
-    machineId: string | undefined,
-    sourcePluginId: string | undefined,
-    contributionIds: Set<QualifiedContributionId>,
-  ): QualifiedDrawerSectionContribution {
-    return {
-      ...section,
-      id: this.qualify(pluginId, section.id, contributionIds),
-      pluginId,
-      localId: section.id,
       ...(machineId === undefined ? {} : { machineId }),
       ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
     };

@@ -335,7 +335,6 @@ export interface PluginContributions {
     settingsSections?: SettingsSectionContribution[];
     messageRenderers?: MessageRendererContribution[];
     codeFenceRenderers?: CodeFenceRendererContribution[];
-    drawerSections?: DrawerSectionContribution[];
     activityNotes?: ActivityNoteContribution[];
 }
 /**
@@ -357,41 +356,6 @@ export interface ActivityNoteContext {
     status: unknown;
     /** Whether the assistant's own turn is idle. */
     idle: boolean;
-}
-/**
- * A section in the session drawer. The drawer renders exactly what plugins
- * contribute and disappears when nothing does; the shell keeps tab selection,
- * keyboard order and the collapsed state, the plugin brings a label and a
- * body. `available` answering undefined means the section cannot say yet, and
- * the shell shows the tab rather than claiming the feature is missing.
- */
-export interface DrawerSectionContext {
-    sessionId: string;
-    machineId: string;
-    workspacePath: string | undefined;
-    sessionCwd: string | undefined;
-    /**
-     * Sections are asked during render, so a read that lands after the ask
-     * reaches the screen only through this. The host supplies it; a section
-     * whose data arrives later calls it instead of waiting for an unrelated
-     * rerender to carry the answer.
-     */
-    requestUpdate: () => void;
-    /**
-     * Run a slash command in the focused session, exactly as a person would
-     * have typed it. Sections that act through the session's own command
-     * surface keep the audit trail and focus rules a private channel would
-     * bypass. Absent means the host offers no session to run one in.
-     */
-    runCommand?: ((command: string) => Promise<void>) | undefined;
-}
-export interface DrawerSectionContribution {
-    id: LocalContributionId;
-    title: string;
-    order?: number;
-    available?: (context: DrawerSectionContext) => boolean | undefined;
-    badge?: (context: DrawerSectionContext) => string | number | undefined;
-    render: (context: DrawerSectionContext) => TemplateResult;
 }
 /**
  * Claims one custom payload tag in the transcript. The runtime supplies the

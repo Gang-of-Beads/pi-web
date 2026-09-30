@@ -135,20 +135,6 @@ describe("controls that were moved into the row", () => {
   });
 });
 
-describe("the size of a drawer section button", () => {
-  /**
-   * They are a strip of section names above the conversation, not primary
-   * actions, and at full size they took a band of a phone screen that the
-   * conversation needed.
-   */
-  it("is smaller than a control you press to act", () => {
-    const rule = /\.drawer-tab\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
-    const height = /min-height:\s*(\d+)px/u.exec(rule)?.[1] ?? "";
-
-    expect(Number(height)).toBeLessThanOrEqual(24);
-  });
-});
-
 describe("the buttons in the control row", () => {
   /**
    * Dictate kept overrides from when it floated over the corner of the text:
@@ -192,20 +178,6 @@ describe("the mobile navigation panel", () => {
 
     expect(app).not.toBe("");
     expect(hidden).not.toBe("");
-  });
-});
-
-describe("the shape of the drawer's section buttons", () => {
-  /**
-   * They were the one pill left among square-cornered controls - message
-   * cards, icon buttons and rows all round to the radius scale - so the strip
-   * read as belonging to a different interface than the conversation under it.
-   */
-  it("rounds to the scale rather than to a pill", () => {
-    const rule = /\.drawer-tab\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
-
-    expect(rule).toMatch(/border-radius:\s*var\(--pi-radius-(xs|sm|md)\)/u);
-    expect(rule).not.toMatch(/--pi-radius-pill/u);
   });
 });
 

@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-unused-vars, @typescript-eslint/require-await -- review repro fixture: stubs reach into private runtime shapes; rewritten as a permanent test when its phase removes it.fails */
 import { html as litHtml, render as litRender, svg as litSvg, type TemplateResult } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DrawerSectionContribution, PluginActivationContext, DrawerSectionContext } from "@gang-of-beads/pi-web/plugin-api";
+import type { PluginActivationContext, WorkspacePanelContext, WorkspacePanelContribution } from "@gang-of-beads/pi-web/plugin-api";
 import type { GoalRecordSummary } from "./goalRecords.js";
 import plugin from "./pi-web-plugin.js";
 
@@ -22,34 +22,34 @@ const goal = (id: string): GoalRecordSummary => ({
 
 interface Harness {
   readonly container: HTMLElement;
-  readonly context: DrawerSectionContext;
+  readonly context: WorkspacePanelContext;
   draw: () => void;
   setSessionCwd(cwd: string): void;
 }
 
-function harnessFor(section: DrawerSectionContribution, sessionCwd: string): Harness {
+function harnessFor(section: WorkspacePanelContribution, sessionCwd: string): Harness {
   const container = document.createElement("div");
   document.body.append(container);
+  const state = { selectedSession: { id: "s", cwd: sessionCwd } };
   const context = {
-    sessionId: "s",
-    machineId: "m",
-    workspacePath: WORKSPACE,
-    sessionCwd,
-    requestUpdate: () => { harness.draw(); },
-  } as unknown as DrawerSectionContext;
+    machine: { id: "m", name: "m" },
+    workspace: { id: "w", projectId: "p", path: WORKSPACE, label: "w", isMain: true },
+    state,
+    host: { requestRender: () => { harness.draw(); }, workspacePanelFullscreen: () => false, setWorkspacePanelFullscreen: () => undefined },
+  } as unknown as WorkspacePanelContext;
   const harness: Harness = {
     container,
     context,
     draw: () => { litRender(section.render(context), container); },
-    setSessionCwd: (cwd) => { Reflect.set(context, "sessionCwd", cwd); },
+    setSessionCwd: (cwd) => { Reflect.set(state.selectedSession, "cwd", cwd); },
   };
   return harness;
 }
 
-function sectionOf(callOperation: (operation: string, input: unknown) => Promise<unknown>): DrawerSectionContribution {
+function sectionOf(callOperation: (operation: string, input: unknown) => Promise<unknown>): WorkspacePanelContribution {
   const context = { apiVersion: 2, pluginId: "goals", runtimePluginId: "goals", html: litHtml, svg: litSvg, callOperation } as unknown as PluginActivationContext;
-  const section = plugin.activate(context).contributions.drawerSections?.[0];
-  if (section === undefined) throw new Error("the goals plugin contributes no drawer section");
+  const section = plugin.activate(context).contributions.workspacePanels?.[0];
+  if (section === undefined) throw new Error("the goals plugin contributes no page");
   return section;
 }
 
@@ -69,6 +69,25 @@ async function shownText(container: HTMLElement): Promise<string> {
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
 
 describe("the goals section read", () => {
+  /**
+   * The drawer drew the section even while folded, so its count filled in by itself. A page is
+   * drawn only when opened, and a Go to entry that waited for that showed "Goals" with no count
+   * over a workspace with open tasks. The entry asks for the reading itself.
+   */
+  it("fills the Go to count without the page being opened", async () => {
+    const callOperation = vi.fn(async () => ({ goals: [goal("a")], brokenFiles: 0 }));
+    const section = sectionOf(callOperation);
+    const harness = harnessFor(section, "/w/session-a");
+
+    expect(section.badge?.(harness.context)).toBeUndefined();
+    await flush();
+
+    expect(callOperation).toHaveBeenCalledTimes(1);
+    expect(section.badge?.(harness.context)).toBe(2);
+    expect(section.summary?.(harness.context)).toBe("0/2 tasks");
+    expect(callOperation).toHaveBeenCalledTimes(1);
+  });
+
   it("reads once per workspace and shows what it read", async () => {
     const callOperation = vi.fn(async () => ({ goals: [goal("a")], brokenFiles: 0 }));
     const section = sectionOf(callOperation);
@@ -117,22 +136,12 @@ describe("the goals section read", () => {
     expect(await shownText(harness.container)).toContain("could not");
   });
 
-  /** The drawer decides whether the section exists at all from the same cache. */
-  it("keeps the failed section in the drawer instead of hiding it", async () => {
-    const callOperation = vi.fn(async () => { throw new Error("machine down"); });
-    const section = sectionOf(callOperation);
-    const harness = harnessFor(section, "/w/session-a");
-    harness.draw();
-    await flush();
-    expect(section.available?.(harness.context)).toBe(true);
-  });
-
   /**
    * Owner, 2026-09-30: "就说没有goal啊". A workspace with no goals says so and keeps its refresh; the
    * section used to leave the drawer, and nothing read it again, so a goal created later in the
    * same session never appeared.
    */
-  it("says there are no goals, and stays in the drawer to be refreshed", async () => {
+  it("says there are no goals, and keeps its refresh", async () => {
     const callOperation = vi.fn(async () => ({ goals: [], brokenFiles: 0 }));
     const section = sectionOf(callOperation);
     const harness = harnessFor(section, "/w/session-a");
@@ -141,9 +150,8 @@ describe("the goals section read", () => {
 
     expect({
       text: await shownText(harness.container),
-      available: section.available?.(harness.context),
       refresh: harness.container.querySelector("pi-web-goals-section")?.shadowRoot?.querySelector("button.refresh") instanceof HTMLButtonElement,
-    }).toEqual({ text: expect.stringContaining("No goals in this workspace.") as unknown, available: true, refresh: true });
+    }).toEqual({ text: expect.stringContaining("No goals in this workspace.") as unknown, refresh: true });
   });
 
   /** Phase 4's read identity: a refresh's answer only replaces an older one. */

@@ -1,7 +1,7 @@
-import type { PiWebPlugin, PluginActivationContext } from "@gang-of-beads/pi-web/plugin-api";
-import { html } from "lit";
+import type { PiWebPlugin, PluginActivationContext, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
+import { html, svg } from "lit";
 import { rememberGoalsHostUi } from "./hostUi.js";
-import { badgeFor, type GoalsSectionState } from "./goalsSectionElement.js";
+import { badgeFor, progressLabel, type GoalsSectionState } from "./goalsSectionElement.js";
 import type { GoalRecordSummary } from "./goalRecords.js";
 import { goalEventSummary } from "./goalEventSummary.js";
 
@@ -40,12 +40,13 @@ function readKey(workspacePath: string, sessionCwd: string | undefined): string 
   return JSON.stringify([workspacePath, sessionCwd ?? null]);
 }
 
-/** The goals surface as a plugin: one drawer section carrying the scope's
- *  leading goal record. The section owns its read-through-cache keyed by the
- *  scope it was asked for - a read that lands for another scope never reaches
- *  this one (the scope-carrying rule the host surfaces follow). A read that
- *  failed says so: it answered as an empty list before, which the drawer
- *  hid, so a machine that could not be read looked like one with no goals. */
+/** The goals surface as a plugin: one page in the Go to page, carrying the
+ *  scope's goal records. Owner, 2026-09-30: plugins do not draw bars over the
+ *  transcript; a plugin declares an entry and draws its own page behind it
+ *  (docs/design/state-diagram.md, D6 and rule 7). The page owns its
+ *  read-through-cache keyed by the scope it was asked for - a read that lands
+ *  for another scope never reaches this one. A read that failed says so, so a
+ *  machine that could not be read never looks like one with no goals. */
 const plugin: PiWebPlugin = {
   apiVersion: 2,
   name: "Goals",
@@ -79,6 +80,12 @@ const plugin: PiWebPlugin = {
       );
     };
     const cacheFor = (workspacePath: string, sessionCwd: string | undefined): GoalsRead | undefined => (cache?.key === readKey(workspacePath, sessionCwd) ? cache : undefined);
+    const reading = (panel: WorkspacePanelContext): GoalsRead | undefined => {
+      const workspacePath = panel.workspace.path;
+      const sessionCwd = panel.state?.selectedSession?.cwd;
+      if (cacheFor(workspacePath, sessionCwd) === undefined) read(workspacePath, sessionCwd, () => { panel.host.requestRender(); });
+      return cacheFor(workspacePath, sessionCwd);
+    };
 
     return {
       contributions: {
@@ -90,28 +97,26 @@ const plugin: PiWebPlugin = {
             return html`<strong>${summary.title}</strong>${summary.detail === undefined ? null : html`<small>${summary.detail}</small>`}`;
           },
         })),
-        drawerSections: [
+        workspacePanels: [
           {
             id: "goals",
             title: "Goals",
+            icon: svg`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r="0.8"></circle></svg>`,
             order: 30,
-            available: (section) => {
-              if (section.workspacePath === undefined) return false;
-              const known = cacheFor(section.workspacePath, section.sessionCwd);
-              if (known === undefined) return undefined;
-              if (known.read === "failed") return true;
-              return known.answer === undefined ? undefined : true;
+            badge: (panel) => badgeFor(reading(panel)?.answer),
+            summary: (panel) => {
+              const goal = reading(panel)?.answer?.goals[0];
+              return goal === undefined ? undefined : progressLabel(goal);
             },
-            badge: (section) => (section.workspacePath === undefined ? undefined : badgeFor(cacheFor(section.workspacePath, section.sessionCwd)?.answer)),
-            render: (section) => {
-              const workspacePath = section.workspacePath;
-              if (workspacePath === undefined) return html`<pi-web-goals-section .state=${undefined}></pi-web-goals-section>`;
-              if (cacheFor(workspacePath, section.sessionCwd) === undefined) read(workspacePath, section.sessionCwd, section.requestUpdate);
-              const known = cacheFor(workspacePath, section.sessionCwd);
+            render: (panel) => {
+              const workspacePath = panel.workspace.path;
+              const sessionCwd = panel.state?.selectedSession?.cwd;
+              const requestUpdate = () => { panel.host.requestRender(); };
+              const known = reading(panel);
               return html`<pi-web-goals-section
                 .state=${known?.answer}
                 .failed=${known?.read === "failed"}
-                .onRefresh=${() => { read(workspacePath, section.sessionCwd, section.requestUpdate); }}
+                .onRefresh=${() => { read(workspacePath, sessionCwd, requestUpdate); }}
               ></pi-web-goals-section>`;
             },
           },

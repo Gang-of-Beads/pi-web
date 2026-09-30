@@ -25,7 +25,6 @@ const budget = await p.evaluate(() => {
   return {
     screen: window.innerHeight,
     contextBar: measure(root?.querySelector("app-context-bar")),
-    drawer: measure(chat?.querySelector(".top-drawer, .drawer-header")),
     conversation: measure(scroller),
     composer: measure(root?.querySelector("prompt-editor")),
     statusBar: measure(root?.querySelector("status-bar")),
@@ -38,7 +37,7 @@ if (budget === undefined) {
 } else {
   const chrome = budget.screen - budget.conversation;
   const share = Math.round((budget.conversation / budget.screen) * 100);
-  console.log(`屏高=${String(budget.screen)}  对话=${String(budget.conversation)} (${String(share)}%)  上下文条=${String(budget.contextBar)}  抽屉=${String(budget.drawer)}  输入区=${String(budget.composer)}  状态条=${String(budget.statusBar)}  非对话共=${String(chrome)}`);
+  console.log(`屏高=${String(budget.screen)}  对话=${String(budget.conversation)} (${String(share)}%)  上下文条=${String(budget.contextBar)}  输入区=${String(budget.composer)}  状态条=${String(budget.statusBar)}  非对话共=${String(chrome)}`);
   if (share < 50) { console.error(`FAIL: the conversation gets ${String(share)}% of the screen`); process.exitCode = 1; }
   else console.log("PASS");
 }

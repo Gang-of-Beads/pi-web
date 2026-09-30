@@ -4,8 +4,8 @@
  *
  *   A. Every row of the Go to menu draws an icon, on the desktop (1440x900, mouse) and on a
  *      phone (393x850, touch). Subagents and Background shipped without one.
- *   B. A workspace whose goals read is empty says "No goals in this workspace." The section
- *      used to leave the drawer.
+ *   B. A workspace whose goals read is empty says "No goals in this workspace." on the Goals page
+ *      (a Go to page since B23). The section used to leave the drawer.
  *   C. A message sent while the browser is offline reads "Not sent". It read "No answer yet -
  *      this may already be running".
  *   D. A message whose send got no answer reads "Receiving…". While the ledger cannot be asked
@@ -46,8 +46,8 @@ const deepText = (page) => page.evaluate(() => {
   return parts.join(" ").replace(/\s+/gu, " ");
 });
 
-async function openSession(page) {
-  await page.goto(chatUrl, { waitUntil: "domcontentloaded" });
+async function openSession(page, url = chatUrl) {
+  await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(9000);
   const id = await page.evaluate(() => document.querySelector("pi-web-app")?.state?.selectedSession?.id ?? null);
   if (id !== SESSION) throw new Error(`precondition: the app selected ${String(id)}, not ${SESSION}; refusing to post into another session`);
@@ -123,7 +123,7 @@ try {
     const page = await context.newPage();
     let answered = 0;
     await page.route("**/plugins/goals/goals.list", (route) => { answered += 1; void route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ goals: [], brokenFiles: 0 }) }); });
-    await openSession(page);
+    await openSession(page, chatUrl.replace("view=chat", "view=goals:goals"));
     if (answered === 0) throw new Error("precondition: the goals section never read");
     const text = await deepText(page);
     record("B. an empty goals read says there are no goals", text.includes("No goals in this workspace."), `${String(answered)} empty answer(s); ${text.includes("Goals") ? "a Goals section is on the page" : "no Goals section on the page"}`);

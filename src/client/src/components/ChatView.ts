@@ -1,4 +1,4 @@
-import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
+import { css, LitElement, html, type TemplateResult, unsafeCSS } from "lit";
 import { renderCheckIcon, renderCopyIcon, renderCrossIcon, renderDoubleCheckIcon, renderPendingRingIcon, renderRecallIcon, renderResendIcon, renderRunIcon, uiIconStyle } from "./uiIcons.js";
 import { scrollbarWidthOf } from "../scrollbarWidth";
 import { ScrollThumbVisibility } from "../scrollActivity";
@@ -19,7 +19,6 @@ import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { doesNotFillViewport, shouldRequestNewerMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
-import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
 import { deliveryWordKey, deliveryWords } from "../deliveryWords";
 import { commandDeliveryPresentation, commandResultLine, type CommandLedgerEntry } from "../commandLedger";
@@ -34,8 +33,7 @@ import type { ClosedExtensionDialog } from "../appState";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { isWaitingForUser } from "../../../shared/sessionActivityState";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
-import type { DrawerSectionContext, QualifiedActivityNoteContribution, QualifiedDrawerSectionContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";
-import { selectedDrawerTab, type DrawerTab } from "../drawerTabSelection";
+import type { QualifiedActivityNoteContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
@@ -126,92 +124,6 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .jump-to-bottom:focus-visible { border-color: var(--pi-accent); }
   @media (hover: hover) { .jump-to-bottom:hover { border-color: var(--pi-accent); } }
   .quote-chip { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface-raised); color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; box-shadow: var(--pi-elevation-2); }
-  .top-notices { box-sizing: border-box; flex: 0 0 auto; max-height: 40%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--pi-bg-overlay); }
-  /* Subagents strip: child sessions spawned by the parent conversation. The
-     strip must read at one glance -- who is still working, who finished --
-     and every row is a real button large enough to open with a thumb. */
-  /* One drawer, two sections. It is chrome, not transcript: it sits on the app
-     background rather than the message surface so it cannot be mistaken for a
-     reply. Tabs rather than a stack, because two stacked scrollers on a short
-     window give each a sliver and neither is usable. */
-  .top-drawer { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box; background: color-mix(in srgb, var(--pi-purple) 7%, var(--pi-bg)); border-bottom: 1px solid var(--pi-purple-border); }
-  .top-drawer.collapsed { flex: 0 0 auto; }
-  /* On a phone the drawer used to get whatever height was left, which clipped
-     a goal's title mid-line. Taking the whole column instead was worse: the
-     way back went off the top of a tab strip that scrolls sideways, and the
-     transcript disappeared, so the reader was stranded.
-
-     It stays a drawer over the transcript - which is what makes leaving it
-     obvious - and simply gets room: up to three fifths of the screen, with its
-     own scroll, and a header that stays put so the control that closes it is
-     always where it was. */
-  @media (max-width: 640px) {
-    .top-drawer:not(.collapsed) { flex: 0 1 auto; max-height: 60vh; }
-    .top-drawer:not(.collapsed) .drawer-header { position: sticky; top: 0; z-index: 1; background: color-mix(in srgb, var(--pi-purple) 7%, var(--pi-bg)); }
-    .top-drawer:not(.collapsed) .drawer-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-  }
-  .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); line-height: var(--pi-panel-header-control-height); }
-  /* The two sections are told apart by colour, not only by label: activity is
-     violet (work this chat started), notifications keep the app's warning
-     palette (something happened to you). */
-  .drawer-header:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
-  .drawer-tabs-frame { position: relative; flex: 1 1 auto; min-width: 0; }
-  .drawer-tabs-frame::before, .drawer-tabs-frame::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 18px; opacity: 0; pointer-events: none; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
-  .drawer-tabs-frame::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
-  .drawer-tabs-frame::after { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
-  .drawer-tabs-frame.can-scroll-left::before, .drawer-tabs-frame.can-scroll-right::after { opacity: 1; }
-  .drawer-tabs { min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow-x: auto; scrollbar-width: none; }
-  .drawer-tabs::-webkit-scrollbar { display: none; }
-  /* A section that shortens stays reachable. Refusing to shrink pushed the
-     others off a narrow screen, where the selected one scrolled into view and
-     took the rest out of sight - which read as the strip disappearing. */
-  /* A section name is short and carries a count; cutting it to "ACTIVITY (..."
-     loses the number, which is the part worth reading. The names keep their
-     width and the running summary beside them gives way instead. */
-  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 22px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  @media (hover: hover) { .drawer-tab:hover { color: var(--pi-text-bright); } }
-  .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
-  .drawer-tab.selected { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text-bright); }
-  /* The count is a mark, not part of the name: bare "(3)" wore the label's
-     own size, colour and weight and could not be scanned. */
-  .drawer-tab-badge { flex: 0 0 auto; display: inline-block; min-width: 14px; border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; }
-  .drawer-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-1); }
-  .drawer-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; padding-inline: var(--pi-chat-gutter); }
-  .drawer-body[hidden] { display: none; }
-  /* Base sizes first, the coarse override after them: a media query carries no
-     extra specificity, so a coarse rule written earlier loses to a base rule
-     written later - the exact drift that pinned the collapse toggle at 32px on
-     touch screens once already (shared.ts keeps the same incident record). */
-  .drawer-control { box-sizing: border-box; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); cursor: pointer; }
-  .drawer-control { padding: 0 var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; white-space: nowrap; }
-  .drawer-collapse { display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; }
-  @media (pointer: coarse) {
-    .drawer-header { min-height: var(--pi-panel-header-height); }
-    .drawer-tab { min-height: var(--pi-panel-header-control-height); }
-    .drawer-collapse { width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }
-  }
-  .drawer-control:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
-  @media (pointer: coarse) { .drawer-control:active { background: var(--pi-surface-hover); } }
-  @media (hover: hover) { .drawer-control:hover { background: var(--pi-selection-bg); color: var(--pi-text-bright); } }
-  .drawer-control:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
-  .drawer-control:disabled { opacity: var(--pi-disabled-opacity); background: transparent; cursor: default; }
-  .drawer-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-  .drawer-disclosure-icon.expanded { transform: rotate(90deg); }
-  /* Severity is carried by the row itself, not only by a small coloured word:
-     an error and a routine notice were otherwise structurally identical, so the
-     tray had to be read to be triaged. The accent is a left border plus a very
-     light wash, which stays legible in both themes without shouting. */
-  /* Only the first line needs to clear the buttons; later lines use the full
-     width, so a long error does not wrap into a narrow column. */
-  /* Copy and dismiss sit together in one cluster rather than one floating over
-     the text: the message wraps under them, so an absolute button either
-     overlapped the text or forced padding that made every row look ragged. */
-  @media (max-width: 640px) {
-    .drawer-header { gap: var(--pi-space-2); padding-inline: var(--pi-chat-gutter); }
-    .drawer-tab { padding-inline: var(--pi-space-4); }
-  }
-  /* A short window is the case the drawer was breaking: keep it to a slice of
-     the viewport so the transcript never becomes a letterbox. */
   /* The 64px bottom padding was the reservation for the activity dock back when
      it floated over the scroller's bottom edge (both arrived in the commit that
      added the dock); measured at 393x850 the last message sat 80px above the
@@ -476,7 +388,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
     .msg-action::after { inset: calc(-1 * var(--pi-space-3)) calc(-1 * var(--pi-space-1)); }
   }
   .msg-action:focus { color: var(--pi-text); border-color: var(--pi-accent); }
-  @media (pointer: coarse) { .msg-action:active, .activity-dock button:active, .drawer-tab:active { background: var(--pi-surface-hover); } }
+  @media (pointer: coarse) { .msg-action:active, .activity-dock button:active { background: var(--pi-surface-hover); } }
   @media (hover: hover) { .msg-action:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
   .msg:focus-within > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
   @media (hover: hover) { .msg:hover > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions { opacity: 1; } }
@@ -543,13 +455,6 @@ function recordWithQueuedMessages(value: unknown): { queuedMessages?: readonly Q
   return { queuedMessages: queued };
 }
 
-function renderDrawerDisclosureIcon(collapsed: boolean) {
-  return html`
-    <svg class=${`drawer-icon drawer-disclosure-icon${collapsed ? "" : " expanded"}`} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="m9 18 6-6-6-6"></path>
-    </svg>
-  `;
-}
 
 
 /**
@@ -779,7 +684,6 @@ export class ChatView extends LitElement {
   /** The reader selected transcript text and asked to continue from it. */
   @property({ attribute: false }) onQuoteSelection?: (quoted: string) => void;
   @query(".chat") private chat?: HTMLDivElement;
-  @query(".drawer-tabs") private drawerTabs?: HTMLElement | null;
   @query("dialog.image-zoom") private imageZoomDialog?: HTMLDialogElement;
   @state() private pinnedToBottom = true;
   /** True while a touch gesture is moving the scroller; see onTouchStart. */
@@ -792,18 +696,8 @@ export class ChatView extends LitElement {
   @state() private expandedMetaKey: string | undefined;
   @state() private copiedMessageKey: string | undefined;
   @state() private currentConversationIndex: number | undefined;
-  /** Exact chats whose top drawer the reader folded away, so switching
-      conversations does not resurrect a drawer that was dismissed. */
-  @state() private collapsedTopDrawerKeys: ReadonlySet<string> = new Set();
-  /** Exact chats the reader explicitly unfolded, which outranks the default. */
-  @state() private expandedTopDrawerKeys: ReadonlySet<string> = new Set();
-  /** Section the reader last chose; ignored when that section has nothing. */
-  @state() private topDrawerTab: DrawerTab | undefined;
-  @property({ attribute: false }) drawerSections: readonly QualifiedDrawerSectionContribution[] = [];
-  @property() drawerMachineId = "local";
-  @property() drawerWorkspacePath?: string;
+  @property() machineId = "local";
   @property() sessionCwd?: string;
-  @property({ attribute: false }) onRunSectionCommand?: (command: string) => Promise<void>;
   /** When this browser first saw the current turn working, and a clock to age it. */
   @state() private turnStartedAtMs: number | undefined;
   @state() private turnNowMs = 0;
@@ -811,7 +705,6 @@ export class ChatView extends LitElement {
   private imageZoomModalRegistration: RenderedModalRegistration | undefined;
   private readonly disclosures = new ChatDisclosureController();
   private readonly scrollController = new ChatScrollController();
-  private readonly drawerTabEdgeTracker = new ScrollEdgeTracker(() => { this.requestUpdate(); });
   private suppressScrollSave = false;
   private suppressLoadMoreRequests = false;
   private loadMoreCheckFrame: number | undefined;
@@ -1044,7 +937,6 @@ export class ChatView extends LitElement {
     this.stopTurnClock();
     this.saveScrollPosition();
     this.scrollController.dispose();
-    this.drawerTabEdgeTracker.dispose();
     this.dockResizeObserver?.disconnect();
     this.dockResizeObserver = undefined;
     this.observedDock = undefined;
@@ -1071,7 +963,7 @@ export class ChatView extends LitElement {
 
   private savePreviousSessionScrollPosition(previousSessionId: unknown, previousMachineId?: unknown): void {
     if (typeof previousSessionId !== "string" || previousSessionId === "" || previousSessionId === this.sessionId) return;
-    const machineId = typeof previousMachineId === "string" && previousMachineId !== "" ? previousMachineId : this.drawerMachineId;
+    const machineId = typeof previousMachineId === "string" && previousMachineId !== "" ? previousMachineId : this.machineId;
     this.saveScrollPosition(machineSessionKey(machineId, previousSessionId));
   }
 
@@ -1101,7 +993,7 @@ if (this.heldWaitingClearTimer !== undefined) {
 
   protected override willUpdate(changed: Map<string, unknown>): void {
     if (changed.has("sessionId")) {
-      this.savePreviousSessionScrollPosition(changed.get("sessionId"), changed.get("drawerMachineId"));
+      this.savePreviousSessionScrollPosition(changed.get("sessionId"), changed.get("machineId"));
       this.prepareSessionUiState();
     }
     if (changed.has("messages") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
@@ -1168,7 +1060,6 @@ if (this.heldWaitingClearTimer !== undefined) {
       this.newerRequested = false;
       if (this.jumpToNewestPending) this.continueJumpToNewest();
     }
-    this.drawerTabEdgeTracker.observe(this.drawerTabs ?? undefined);
     this.publishScrollbarWidth();
     this.observeDock();
     const chat = this.chat;
@@ -1335,7 +1226,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     const groups = this.groupedMessages();
     const commands = placeCommands(this.commandLedger, groups.map((group) => this.groupTimestamp(group)));
     return html`
-      ${this.renderTopNotices()}
       ${this.renderQuoteChip()}
       <div class="chat-wrap">
         <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${() => { this.notePressStart(); }} @pointerup=${() => { this.releasePointer(); }} @pointercancel=${() => { this.releasePointer(); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
@@ -1405,128 +1295,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     `;
   }
 
-  private renderTopNotices() {
-    const drawer = this.renderTopDrawer();
-    if (drawer === null) return null;
-    return html`<div class="top-notices">${drawer}</div>`;
-  }
-
-  /**
-   * The session drawer hosts whatever sections plugins contribute - the
-   * goals panel, a terminal, anything registered on this machine - and the
-   * reader's own choice of section survives until they change it.
-   */
-  /**
-   * Folding is an explicit choice per chat, in both directions: the default
-   * only decides what happens before the reader has said anything, and must
-   * not overrule them later when a subagent happens to start.
-   */
-  private toggleTopDrawer(collapsed: boolean): void {
-    const key = this.topDrawerKey();
-    const collapsedKeys = new Set(this.collapsedTopDrawerKeys);
-    const expandedKeys = new Set(this.expandedTopDrawerKeys);
-    if (collapsed) {
-      collapsedKeys.delete(key);
-      expandedKeys.add(key);
-    } else {
-      expandedKeys.delete(key);
-      collapsedKeys.add(key);
-    }
-    this.collapsedTopDrawerKeys = collapsedKeys;
-    this.expandedTopDrawerKeys = expandedKeys;
-  }
-
-  /**
-   * The scope a contributed section is drawn for. Undefined while no session
-   * is selected: a section asked about nothing would have to invent an answer.
-   */
-  private drawerSectionContext(): DrawerSectionContext | undefined {
-    if (this.sessionId === "") return undefined;
-    const runSectionCommand = this.onRunSectionCommand;
-    return {
-      sessionId: this.sessionId,
-      machineId: this.drawerMachineId,
-      workspacePath: this.drawerWorkspacePath,
-      sessionCwd: this.sessionCwd,
-      requestUpdate: () => { this.requestUpdate(); },
-      runCommand: runSectionCommand === undefined ? undefined : (command) => runSectionCommand(command),
-    };
-  }
-
-  /**
-   * Collapse and tab choice follow the exact chat, not just its session id, so
-   * the same session id on another machine or cwd starts fresh.
-   */
-  private topDrawerKey(): string {
-    return JSON.stringify([this.drawerMachineId, this.drawerWorkspacePath, this.sessionId]);
-  }
-
-
-  private renderTopDrawer(): TemplateResult | null {
-    const sectionContext = this.drawerSectionContext();
-    if (sectionContext === undefined) return null;
-    const sections = this.drawerSections;
-    if (sections.length === 0) return null;
-    const sectionsWithContent = sections.filter((section) => section.available?.(sectionContext) !== false).map((section) => section.id);
-    if (sectionsWithContent.length === 0) return null;
-    const contentSections = sections.filter((section) => sectionsWithContent.includes(section.id));
-    const tab = selectedDrawerTab({ sections: sections.map((section) => section.id), withContent: sectionsWithContent }, this.topDrawerTab);
-    if (tab === undefined) return null;
-    const key = this.topDrawerKey();
-    const collapsed = this.expandedTopDrawerKeys.has(key)
-      ? false
-      : this.collapsedTopDrawerKeys.has(key) || !topDrawerStartsOpen();
-    const toggleLabel = collapsed ? "Show session sections" : "Hide session sections";
-    return html`
-      <section
-        class=${`top-drawer${collapsed ? " collapsed" : ""}`}
-        role="region"
-        aria-label="Session drawer"
-      >
-        <header class="drawer-header" tabindex="-1">
-          <div class=${`drawer-tabs-frame${scrollEdgeClasses(this.drawerTabEdgeTracker.edges)}`}>
-          <div class="drawer-tabs" role="tablist" aria-label="Session drawer sections" @scroll=${() => { this.drawerTabEdgeTracker.refresh(); }} @keydown=${(event: KeyboardEvent) => { this.onDrawerTabsKeydown(event); }}>
-            ${contentSections.map((section) => html`
-            <button
-              type="button"
-              role="tab"
-              id=${`drawer-tab-${section.id}`}
-              class=${`drawer-tab${tab === section.id ? " selected" : ""}`}
-              aria-selected=${String(tab === section.id)}
-              tabindex=${tab === section.id ? "0" : "-1"}
-              aria-controls=${`drawer-panel-${section.id}`}
-              @click=${() => { this.selectTopDrawerTab(section.id, collapsed); }}
-            >
-              <span class="drawer-tab-label">${section.title}</span>${sectionBadgeMark(section, sectionContext)}
-            </button>`)}
-          </div>
-          </div>
-          <div class="drawer-header-actions">
-            <button
-              type="button"
-              class="drawer-control drawer-collapse drawer-toggle"
-              aria-label=${toggleLabel}
-              title=${toggleLabel}
-              aria-expanded=${String(!collapsed)}
-              aria-controls=${`drawer-panel-${tab}`}
-              @click=${() => { this.toggleTopDrawer(collapsed); }}
-            >${renderDrawerDisclosureIcon(collapsed)}</button>
-          </div>
-        </header>
-        <div class="drawer-body" ?hidden=${collapsed}>
-          ${contentSections.filter((section) => section.id === tab).map((section) => html`
-            <div class="drawer-section-panel" id=${`drawer-panel-${section.id}`} role="tabpanel" aria-labelledby=${`drawer-tab-${section.id}`}>
-              ${section.render(sectionContext)}
-            </div>`)}
-        </div>
-      </section>
-    `;
-  }
-
-  private selectTopDrawerTab(tab: Exclude<DrawerTab, undefined>, collapsed: boolean): void {
-    this.topDrawerTab = tab;
-    if (collapsed) this.toggleTopDrawer(collapsed);
-  }
 
   /**
    * The subagents, tool runs and background tasks this session started.
@@ -1762,25 +1530,6 @@ if (this.heldWaitingClearTimer !== undefined) {
     `;
   }
 
-  /**
-   * Arrow keys move between the drawer's tabs, which is what `role="tablist"`
-   * promises a screen-reader user. Without it the role was a claim the widget
-   * did not honour: the tabs were reachable only by tabbing through each one,
-   * and a reader told "tab, 1 of 2" found the arrows did nothing.
-   */
-  private onDrawerTabsKeydown(event: KeyboardEvent): void {
-    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-    if (step === 0) return;
-    const tabs = [...this.renderRoot.querySelectorAll<HTMLElement>(".drawer-tab")];
-    if (tabs.length < 2) return;
-    const current = tabs.findIndex((candidate) => candidate === event.target);
-    if (current === -1) return;
-    event.preventDefault();
-    const next = tabs[(current + step + tabs.length) % tabs.length];
-    next?.click();
-    next?.focus();
-  }
-
   private renderPendingMessages() {
     const pending = this.transcriptSplit().pending;
     if (pending.length === 0) return null;
@@ -1835,7 +1584,7 @@ if (this.heldWaitingClearTimer !== undefined) {
     const notes = this.activityNotes
       .map((contribution) => contribution.note({
         sessionId: this.sessionId,
-        machineId: this.drawerMachineId,
+        machineId: this.machineId,
         sessionCwd: this.sessionCwd,
         status: this.status,
         idle,
@@ -2117,7 +1866,7 @@ if (this.heldWaitingClearTimer !== undefined) {
    */
   private imageScope(): { session: SessionRef; machineId: string } | undefined {
     if (this.sessionId === "" || this.sessionCwd === undefined || this.sessionCwd === "") return undefined;
-    return { session: { id: this.sessionId, cwd: this.sessionCwd }, machineId: this.drawerMachineId };
+    return { session: { id: this.sessionId, cwd: this.sessionCwd }, machineId: this.machineId };
   }
 
   private followingIndex: {
@@ -2765,13 +2514,13 @@ if (this.heldWaitingClearTimer !== undefined) {
   }
 
   private get scrollScopeKey(): string {
-    return machineSessionKey(this.drawerMachineId, this.sessionId);
+    return machineSessionKey(this.machineId, this.sessionId);
   }
 
   pruneScrollPositions(sessionIds: Iterable<string>): number {
     const known = new Set<string>();
-    for (const id of sessionIds) known.add(machineSessionKey(this.drawerMachineId, id));
-    return this.scrollController.prune(known, this.drawerMachineId);
+    for (const id of sessionIds) known.add(machineSessionKey(this.machineId, id));
+    return this.scrollController.prune(known, this.machineId);
   }
 
   restoreScrollPosition() {
@@ -3004,21 +2753,12 @@ if (this.heldWaitingClearTimer !== undefined) {
   static override styles = chatStyles;
 }
 
-export function topDrawerStartsOpen(): boolean {
-  return false;
-}
 
 /** A plugin's words about what else is running, kept whole while the state label gives way. */
 function renderActivityNote(notes: string | undefined): TemplateResult | null {
   return notes === undefined ? null : html`<span class="activity-note"> · ${notes}</span>`;
 }
 
-function sectionBadgeMark(section: QualifiedDrawerSectionContribution, context: DrawerSectionContext): TemplateResult | typeof nothing {
-  const badge = section.badge?.(context);
-  if (badge === undefined || badge === "") return nothing;
-  const label = `${section.title}: ${String(badge)} open`;
-  return html`<span class="drawer-tab-badge" title=${label} aria-label=${label}>${String(badge)}</span>`;
-}
 
 export function activityDockLabel(category: string | undefined, state: string, text: string): string {
   return category === "asking" && state === "idle" ? "Waiting for your answer" : text;

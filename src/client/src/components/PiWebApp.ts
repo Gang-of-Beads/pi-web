@@ -3935,38 +3935,6 @@ export class PiWebApp extends LitElement {
   }
 
   /** Resolves false when the message was not accepted, so the composer can restore it. */
-  /**
-   * Runs a goal slash command in the focused session.
-   *
-   * The extension owns goal state, so the command text is sent exactly as a
-   * person would type it: the same audit trail, token accounting and focus
-   * rules apply, including the picker the extension raises when a session has
-   * no focused goal and the workspace has more than one open.
-   */
-  /** True while a goal-panel command is in flight; both panels disable on it. */
-  private goalCommandInFlight = false;
-
-  private async runGoalCommand(command: string): Promise<void> {
-    if (this.goalCommandInFlight) return;
-    if (this.state.selectedSession === undefined) {
-      // A goal belongs to the workspace, but a goal command needs a session to
-      // run in. The silent form of this guard was the dead button: clicking
-      // Resume with no session selected did nothing, said nothing.
-      this.setState(noticePatch(noticeForReader("Open a session in this workspace to run goal commands.")));
-      return;
-    }
-    this.goalCommandInFlight = true;
-    this.requestUpdate();
-    try {
-      // Straight to the command route with the goal-panel source, so the ledger
-      // row says where the press came from; sendPrompt would launder it as typed.
-      await this.sessions.runCommand(command, "goal-panel");
-    } finally {
-      this.goalCommandInFlight = false;
-      this.requestUpdate();
-    }
-  }
-
   private async sendPrompt(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery, replay?: import("../pendingOutbox").SendReplay): Promise<boolean> {
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     // Handled locally by the auth flow; nothing to restore.
@@ -4083,7 +4051,7 @@ export class PiWebApp extends LitElement {
     return html`
       <chat-view .onRetryMessage=${(clientMessageId: string) => { this.promptEditor?.retryOutbox(clientMessageId); }} .onDiscardMessage=${this.handleDiscardMessage} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk}
         .onDialogKey=${this.handleDialogKey}
-        .pendingAsks=${state.pendingAsks} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(state))} .onRunSectionCommand=${(command: string) => this.runGoalCommand(command)} .drawerMachineId=${selectedMachineId(state)} .drawerWorkspacePath=${state.selectedWorkspace?.path} .sessionCwd=${session.cwd}></chat-view>
+        .pendingAsks=${state.pendingAsks} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .machineId=${selectedMachineId(state)} .sessionCwd=${session.cwd}></chat-view>
     `;
   }
 

@@ -1,9 +1,8 @@
 import { html, svg } from "lit";
 import { describe, expect, it } from "vitest";
-import { badgeFor, progressLabel } from "./goalsSectionElement.js";
+import { badgeFor, goalsSectionStyles, progressLabel } from "./goalsSectionElement.js";
 import type { GoalRecordSummary } from "./goalRecords.js";
 import plugin from "./pi-web-plugin.js";
-import type { DrawerSectionContribution } from "@gang-of-beads/pi-web/plugin-api";
 
 const activationContext = {
   apiVersion: 2,
@@ -18,31 +17,28 @@ const record = (overrides: Partial<GoalRecordSummary> = {}): GoalRecordSummary =
   ...overrides,
 });
 
-function requiredSection(): DrawerSectionContribution {
-  const section = plugin.activate(activationContext).contributions.drawerSections?.[0];
-  if (section === undefined) throw new Error("Expected the Goals drawer section");
-  return section;
-}
-
-describe("the goals drawer section contract", () => {
-  it("contributes exactly one drawer section named Goals", () => {
-    const sections = plugin.activate(activationContext).contributions.drawerSections;
-    expect(sections).toHaveLength(1);
-    const section = sections?.[0];
-    if (section === undefined) throw new Error("Expected the Goals drawer section");
-    expect(section.title).toBe("Goals");
+describe("the Goals page", () => {
+  /**
+   * Owner, 2026-09-30: "不要单加一个goal这个bar…应该在三个横杠的goto菜单里。插件声明后，出来一个新的插件的按钮点击进去是插件自定义的显示".
+   * Goals is one entry in the Go to page, opening its own page; nothing sits over the transcript.
+   */
+  it("is a Go to page entry named Goals, and no bar over the transcript", () => {
+    const contributions = plugin.activate(activationContext).contributions;
+    expect({
+      panels: (contributions.workspacePanels ?? []).map((panel) => [panel.id, panel.title]),
+      drawer: Reflect.has(contributions, "drawerSections"),
+    }).toEqual({ panels: [["goals", "Goals"]], drawer: false });
   });
 
-  it("is unavailable without a workspace path", () => {
-    const section = requiredSection();
-    const available = section.available?.({ sessionId: "s", machineId: "m", workspacePath: undefined, sessionCwd: undefined, requestUpdate: () => undefined });
-    expect(available).toBe(false);
-  });
-
-  it("hides itself once the workspace read found no goals", () => {
-    const section = requiredSection();
-    const context = { sessionId: "s", machineId: "m", workspacePath: "/w", sessionCwd: undefined, requestUpdate: () => undefined };
-    expect(section.available?.(context)).toBeUndefined();
+  /**
+   * Inside the old drawer the section borrowed the drawer's padding; as a page it has none of its
+   * own, and on a 393 px phone the goal's status dot sat on the screen edge, half cut. A page owns
+   * its inset and its scroll, like every other plugin page.
+   */
+  it("insets its content from the reading edge and scrolls on its own", () => {
+    const host = /:host\s*\{([^}]*)\}/u.exec(goalsSectionStyles)?.[1] ?? "";
+    expect(host).toMatch(/padding:[^;]*var\(--pi-reading-edge\)/u);
+    expect(host).toMatch(/overflow:\s*auto/u);
   });
 
   it("badges the remaining task count and stays quiet when nothing remains", () => {

@@ -40,7 +40,6 @@ const producers: { name: string; file: string; selector: string; height: "height
   { name: "workspace tool header", file: "./shared.ts", selector: "header.panel-header {", height: "min-height" },
   { name: "workspace tool toolbar", file: "./shared.ts", selector: ".workspace-tool-toolbar {", height: "min-height" },
   { name: "bundled plugin toolbar", file: "./shared.ts", selector: ".toolbar {", height: "min-height" },
-  { name: "chat drawer header", file: "./ChatView.ts", selector: "\n  .drawer-header {", height: "min-height" },
 ];
 
 /**

@@ -7,8 +7,8 @@
  *      Phone, 393x850 under touch: the deep-link shape the phone probes use.
  *   B. The Subagents panel keeps one read in flight: with `runs.list` never answering, the poll
  *      stacked a new read every 3 s (reads F3). Desktop, 1440x900 under a mouse.
- *   C. A goals read that fails says so in the drawer instead of hiding the section (reads F4).
- *      Desktop.
+ *   C. A goals read that fails says so on the Goals page instead of hiding the section (reads F4).
+ *      Desktop. Goals is a Go to page since B23, so the leg deep-links to it.
  */
 
 import { chromium } from "playwright";
@@ -81,7 +81,7 @@ try {
     const page = await context.newPage();
     let failed = 0;
     await page.route("**/plugins/goals/goals.list", (route) => { failed += 1; void route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "probe: goals read refused" }) }); });
-    await page.goto(`${base}&view=chat`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${base}&view=goals:goals`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(9000);
     await selected(page);
     if (failed === 0) throw new Error("precondition: the goals section never read");

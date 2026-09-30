@@ -127,12 +127,9 @@ describe("accessibility floors", () => {
 /**
  * Panel headers are a role, not a per-component decision.
  *
- * The navigation rail and the chat drawer sit either side of one vertical
- * divider, so their headers share a horizontal rule only while they agree on a
- * height. They did not: the rail was 56px because its buttons were never sized
- * and inherited the user agent's 31px, while the drawer had a hand-written
- * 36px. Both now read the same token, and this asserts they still do rather
- * than that they happen to compute equal today.
+ * The navigation header was 56px because its buttons were never sized and
+ * inherited the user agent's 31px. It reads the published token now, and this
+ * asserts it still does rather than that it happens to compute right today.
  */
 describe("panel headers share one height", () => {
   const navigationPage = readFileSync(
@@ -154,9 +151,8 @@ describe("panel headers share one height", () => {
     expect(missing).toEqual([]);
   });
 
-  it("sizes the navigation header and the drawer header from that token", () => {
+  it("sizes the navigation header from that token", () => {
     expect(navigationPage).toContain("min-height: var(--pi-panel-header-height)");
-    expect(String(chatStyles)).toContain("min-height: var(--pi-panel-header-height)");
   });
 
   it("sizes the navigation header controls from the token rather than the user agent", () => {
@@ -180,40 +176,6 @@ describe("controls inherit the app's type rather than the user agent's", () => {
     if (rules.length === 0) return;
     const declaresFont = rules.some((rule) => /(^|;|\s)(font|font-family|font-size)\s*:/u.test(rule));
     expect(declaresFont, "no button rule in this sheet sets a font").toBe(true);
-  });
-});
-
-describe("the activity drawer on a phone", () => {
-  /**
-   * Expanded, the drawer shared the chat column, so on a phone it got whatever
-   * was left: a goal's own title was clipped mid-line and its tasks were cut
-   * off. Reading anything meant scrolling a letterbox above the transcript.
-   *
-   * It is not glanced at often, and when it is opened the reader wants either
-   * one item's detail or to go back to the chat. That is a page, so on a phone
-   * it becomes one.
-   */
-  it("gets real room without taking the screen or the way out", () => {
-    const narrow = /@media\s*\(max-width:\s*640px\)\s*\{([\s\S]*?)\n\s{2}\}/u.exec(String(chatStyles))?.[1] ?? "";
-
-    // Two designs were tried and both stranded the reader: covering the screen
-    // put the drawer's own header - and the only control that closes it -
-    // under the app header, and taking the whole column hid the transcript.
-    // It stays a drawer over the transcript, and simply gets room.
-    expect(narrow).not.toMatch(/position:\s*fixed/u);
-    expect(narrow).toMatch(/\.top-drawer:not\(\.collapsed\)\s*\{[^}]*max-height:\s*60vh/u);
-    expect(narrow).toMatch(/\.drawer-header[^}]*position:\s*sticky/u);
-    expect(narrow).toMatch(/\.drawer-body[^}]*overflow:\s*auto/u);
-  });
-
-  /**
-   * A page the reader cannot leave is worse than a strip. The body has to
-   * scroll on its own so the header, which carries the way back, stays put.
-   */
-  it("keeps the way back in view while the page scrolls", () => {
-    const narrow = /@media\s*\(max-width:\s*640px\)\s*\{([\s\S]*?)\n\s{2}\}/u.exec(String(chatStyles))?.[1] ?? "";
-
-    expect(narrow).toMatch(/\.drawer-body[^}]*overflow:\s*auto/u);
   });
 });
 
@@ -268,12 +230,11 @@ describe("the layer scale", () => {
 
 /**
  * The reported shape was a completion notice drawn over the session switcher.
- * Notices live in the drawer that sticks to the top of the conversation, and a
- * switcher covers the conversation entirely, so the two must not be on the
- * same layer.
+ * Notices live in the activity dock over the conversation, and a switcher
+ * covers the conversation entirely, so the two must not be on the same layer.
  */
 describe("what a notice may cover", () => {
-  it("keeps the drawer below anything that covers the conversation", () => {
+  it("keeps the activity dock below anything that covers the conversation", () => {
     const chat = readFileSync(join(process.cwd(), "src/client/src/components/ChatView.ts"), "utf8");
     const dock = /\.activity-dock\s*\{[^}]*z-index:\s*var\(--pi-layer-([a-z]+)\)/u.exec(chat)?.[1] ?? "";
     const switcher = readFileSync(join(process.cwd(), "src/client/src/components/QuickSwitcher.ts"), "utf8");

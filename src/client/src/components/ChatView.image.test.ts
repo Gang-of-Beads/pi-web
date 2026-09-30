@@ -108,7 +108,7 @@ describe("deferred image failure and retry", () => {
     const view = new ChatView();
     view.sessionId = "s1";
     view.sessionCwd = "/repo";
-    view.drawerMachineId = "local";
+    view.machineId = "local";
     return view;
   }
 
