@@ -1020,7 +1020,7 @@ export class PiWebApp extends LitElement {
       return html`
         <div class="self-update-banner applying" role="status" aria-live="polite">
           <span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>
-          <span>正在更新 pi-web（${status.current} → ${status.latest ?? "new"}）… 重启后页面将自动重连。</span>
+          <span>Updating pi-web (${status.current} → ${status.latest ?? "new"})… The page reconnects automatically after the restart.</span>
         </div>`;
     }
     let skipped = false;
@@ -1028,7 +1028,7 @@ export class PiWebApp extends LitElement {
     if (skipped) return null;
     return html`
       <div class="self-update-banner" role="status" aria-live="polite">
-        <span>pi-web 有新版本：${status.current} → ${status.latest ?? "new"}</span>
+        <span>pi-web update available: ${status.current} → ${status.latest ?? "new"}</span>
         <button type="button" @click=${() => { void this.applySelfUpdate(); }}>Update now</button>
         <button type="button" class="skip" @click=${() => { this.skipSelfUpdate(); }}>Skip</button>
       </div>`;
