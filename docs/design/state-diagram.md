@@ -168,6 +168,10 @@ stateDiagram-v2
 - **Background work** is a count on the status, contributed by plugins (a `backgroundWork` contribution per plugin, summed by the daemon). The *category* is core. The *words* beside it ("2 background runs", "subagent: reviewing…") are the contributing plugin's appendage. A disabled plugin contributes neither count nor words.
 - **Sub-flags** (`compacting`, `bash`) qualify `working`. They are not categories.
 - **One `idle` per turn,** published at turn end only. `message_end` inside a turn is not idle.
+- **A cut turn settles visibly (B30).** A reply pi ended with `stopReason: "aborted"`, or with an error whose reason is an abort, always leaves exactly one settled row after whatever part it streamed. The partial text stays. The wording comes from one classifier:
+  - the daemon's mark (`stoppedBy: "you"`, from the `pi-web.turn.stopped` entry) gives "You stopped this turn", naming the tool when the cut reply was calling one;
+  - no mark gives "Interrupted before it finished". The mark is never guessed, so an old Stop written before the mark existed reads as an interruption (owner ruling, 2026-09-30: only "you stopped" and "interrupted").
+  - Before B30 only the error form had a row. A plain Stop (`aborted`, often with no content yet) rendered nothing, and the session went straight to idle.
 - **Context usage** carries the model and window it was measured against. After a model change it is `unknown` until measured again. It is never capped to hide a wrong number (B24).
 
 ### The status line narrates; it never parrots an event word
@@ -237,6 +241,13 @@ stateDiagram-v2
 - **Owner.** Each surface has a head (docs/design/sync-convergence.md): the transcript `{n, leaf}`, the stream `{epoch, seq}`, and the list and card revisions. The page compares heads and never assumes.
 - **Socket:** `connecting` → `open` → `closed`, plus `dead` when nothing at all arrives for 2 × the heartbeat interval.
 - **A cached page is a seed,** `unknown` until the first head comparison. A persisted page and its watermark are always written together.
+- **Every surface is live** (owner, 2026-09-30: "每个界面都应该无时不刻接受event based的更新"). This covers everything on screen: session rows and their state, latest activity, whether a session waits for the reader, and a list's order.
+  - Each surface subscribes to the events that change it and applies them as they arrive.
+  - The same quiet window *T* applies: nothing received for *T* makes the surface compare its head and pull only what changed.
+  - A session list is ordered by latest activity, a daemon fact carried on the list head. It re-sorts when an activity event arrives, never only when the list is refetched (B28).
+- **Efficiency and latency** (owner, 2026-09-30: "保证极致的消息效率，以及低延迟"). The budgets are measured by the phase probes, and a regression fails them:
+  - **Latency:** a frame reaches the screen within one animation frame of its arrival. A catch-up after *T* costs one head read plus the missing entries, never a page reload.
+  - **Efficiency:** heartbeats and head reads carry heads only, tens of bytes. Status frames carry what changed, not the whole status. Nothing polls on a timer while events are flowing.
 - **An aggregate list** (All projects) keeps one state per source. A workspace whose read failed shows as unknown with a retry; it never disappears into an empty list.
 
 ## D6. A plugin
@@ -263,6 +274,46 @@ stateDiagram-v2
   - **Appendages to fixed core states:** status-line notes and counts, row actions, docked cards (D2) and a settings page.
   - Nothing else: no bars, strips or drawers over or under the transcript (rule 7). The `drawerSections` contribution point is removed.
 - **Global prompts** such as an update offer are machine-scoped. The Updates plugin stores "asked for version v" per machine in its own storage and asks once per machine and version, never once per session.
+
+## D8. Where the reader is (navigation)
+
+```mermaid
+stateDiagram-v2
+    [*] --> restoring: page loads with a remembered place
+    restoring --> at: remembered place resolved
+    restoring --> at: reader acts first (the restore is dropped)
+    at --> going: reader taps somewhere (intent n)
+    going --> at: destination n resolved and n is still the latest intent
+    going --> going: reader taps elsewhere (intent n+1 supersedes n)
+    going --> at: reader cancels, or the destination is gone (stay, say why)
+```
+
+- **Owner.** One navigation controller. Every move is an *intent*, stamped with a sequence number from one counter: reader taps, back and forward, boot restore and machine-switch restore all draw from it. An async step commits a visible change only while its intent is still the latest.
+- **The frame and its content change together.** The header, the page and everything actionable on it describe the same place at every moment. The previous place's content is never shown, and never actionable, under the next place's frame (owner, 2026-09-30: "切过去了但是页面内容没刷新，然后我又在上面继续操作…完全操作和实际不同步"). A seed from the destination's own cache (same key) is allowed; another place's content is not.
+- **Producers found (B29):**
+  1. `openSessionFromQuickSwitcher` (`PiWebApp.ts:2948`). The Sessions page closes at tap time (`closeNavigate`, `:2667`, `:2703`), which uncovers the *previous* session's chat, live and sendable. Then `moveToBrowsedMachine` and `selectSession` are awaited, and `selectSession` returns only after the whole transcript read. Finally `focusChatComposer` forces `mainView = "chat"` (`:2970`), even if the reader has gone elsewhere in the meantime.
+  2. `restoreRouteFor` (`:1406`), used by boot restore (`:1271`), back and forward (`:1617`), machine switch (`:1788`) and `:1842`. It awaits the machine and plugin loads, then sets `mainView`. `routeRestoreSeq` guards only against a newer restore, not against a reader tap made meanwhile.
+  3. The deep link to a fresh session that opens another one (audit P0-1, B31): the restore falls back to a different session while the URL still names the requested one.
+- **Only the reader's intent moves the page.** A late answer to a superseded intent, a background refresh, a restore that the reader already overtook, or a list that reloaded never changes where the reader is (owner, 2026-09-30: "我什么都没按…突然给我跳到一个不知道什么界面了"; B29).
+- **`going` stays in place and says so** (owner, 2026-09-30: "停在原地没问题，怎么让用户感知到他点了这个按钮呢"). The screen stays where it is, live and bound to the place it shows (React Navigation's pending-navigation model). The tap is acknowledged within Nielsen's limits:
+  - **within one frame (< 0.1 s):** the tapped item takes its `going` look: the selected highlight, and a spinner in place of its trailing mark, with `aria-busy` and an "Opening <name>" announcement. An indeterminate progress line runs under the context bar. It is chrome-owned, so it stays visible even if the item scrolls away;
+  - **after 1 s:** the item's text adds "Opening…";
+  - **after 10 s:** the item reads "Still opening · Cancel";
+  - **on failure:** the item reads "Couldn't open · Retry", and the screen stays;
+  - **a destination with a same-key seed** (a cached transcript, a loaded list) switches in the same frame. Only an unseeded destination waits, so the common case never waits;
+  - **a tap elsewhere supersedes:** the earlier item returns to normal. A second tap on the same item does nothing. Back or Escape first cancels `going`, and only a second press navigates.
+- A tap that looks like it did nothing is how a later jump happens; `going` makes every tap visible.
+- **Implementation (B29):**
+  - One `NavigationIntent` owner holds the pending intent `{seq, target key, phase}`, where the phase is `going`, `slow`, `stalled` or `failed`. A pure `navigationPhase(elapsed, outcome)` classifier drives the words. Reader taps, back and forward, and restores all begin an intent.
+  - Opening a session:
+    1. begin an intent;
+    2. if the transcript cache has a seed for the session, commit at once;
+    3. otherwise await the first page (today's unused `prefetchSession`, returning its promise) and commit only if the intent is still the latest.
+
+    "Commit" is closing the Sessions page, selecting the session and showing the chat, all in one render. Focusing the composer happens only inside a current commit.
+  - `restoreRouteFor` begins an intent and checks it before setting `mainView`, so a reader tap made during a restore wins.
+  - The chrome draws the progress line from the intent. The tapped row draws its `going` look by comparing its key with the intent's target.
+- **A deep link to a session opens that session, or says why it cannot.** It never silently opens another one (audit, B31).
 
 ## D7. A goal (our own goal plugin, replacing pi-goal's flow)
 
@@ -349,6 +400,26 @@ Every owner report, the domain it breaks, and its producers (file:line in the in
 | B25 | "message queued · 10m 51s" while the agent works; queued messages wait with no reason | D3 | the status line narrates the step and what comes next | activity label published once at acceptance (`piSessionService.ts:3178`) and re-published by the heartbeat (`:5415-5431`) | p0-message |
 | B26 | an ask answered long ago appears only now | D1, D2 | an answer is a queued message, handed at the next injection point | `submitAsk` → `sendCustomMessage(…, { deliverAs: "followUp" })` (`piSessionService.ts:1995-1997`); subsession notices likewise (`:2688`) | p0-message |
 | B27 | "No goals in this workspace" while a goal is active | D7, rule 5 | the goal plugin owns its format; an unreadable file is not "none" | pi-goal appends a `# Goal Prompt` section after the JSON; `pi-web-plugins/goals/server-plugin.ts:31-40` parses the whole file as JSON, counts both as broken, and the page says "No goals" | own-goal-plugin |
+| B28 | the All-projects session list is not ordered by latest activity, or is stale | D5 | every surface is live; list order comes from a daemon activity fact carried on the list head | the machine-wide list is fetched once and cached for `QUICK_SWITCHER_REFRESH_MS` (`PiWebApp.ts:2820-2826`), not event-driven; order is `modified` at fetch time | sync |
+| B29 | the page jumps to another screen with no tap from the reader | D8 | only reader intent navigates; superseded or overtaken intents never move the page | to trace: late navigation completions and restores (`PiWebApp` selection paths, boot restore) | sync |
+| B30 | a manual Stop gives no feedback: no message, no status, straight to idle | D1, D3 | a Stop is a visible settled outcome whatever it cut | the "You stopped this turn" row (`af070d94`) is unreleased; on main a Stop that cuts no reply (during a tool call, before any text) leaves no row, and the status shows `idle` without saying why | p0-message |
+| B31 | a URL naming a new session shows another session, with live actions | D8, D5 | a named session opens or says why not | boot restore falls back to another session while the URL keeps the requested id (audit 5d672be6) | navigation |
+| B32 | streamed text is not shown until the turn ends | D1 | a streaming reply is one row growing in place | seen with the fixture provider only; to verify on a real provider | p0-message |
+| B33 | queued messages are handed one per request | D1 | batch handoff at the injection point | three requests 16-20 ms apart (audit fake.log) | p0-message |
+| B34 | the final model error is raw JSON | D1 | an error is a sentence plus Details | `Model response failed: 500: {...}` | p0-message |
+| B35 | phone targets under 44 px | rule: coarse floor | hit areas at the floor | 22, 24 and 36 px targets (three audit lanes) | maintenance |
+| B36 | a queued row has two near-identical take-back keys | D1 words | one take-back action | Recall and Put back side by side | p0-message |
+| B37 | a top-level menu is missing from some screens | D8 | every screen reaches Go to and Settings | no Go to on the board, no Settings in a phone chat | navigation |
+| B38 | a failed plugin toggle leaves a contradictory card | D6 | a failed save reverts and says why | EACCES on a read-only config; card says "Desired enabled" beside an unticked box | plugin-lifecycle |
+| B39 | the Actions palette has no touch opener | D8 | every surface reachable by touch | `actions.show` is the only opener | navigation |
+| B40 | permanent delete uses `window.confirm` | chrome | the app's own dialog | `PiWebApp.ts:2742` | bulk |
+| B41 | the URL does not describe the Sessions board | D8 | a place survives a reload | stale `tool=` and no `view=` | navigation |
+| B42 | `#` search has no suggestions and misses shown states | - | tags are discoverable | only three derived tags | maintenance |
+| B43 | Archived hides at 0 and sits seven screens down | bulk | a stable home for Archived | group removed when empty | bulk |
+| B44 | phone board chrome takes 20 % of the screen | D4 | owner: keep as it is | 171 px pinned | closed |
+| B45 | desktop first boot says "Select a project" beside a populated list | D8 | the empty centre says what to do next | `workspacePanelEmptyState` | navigation |
+| B46 | the board's grid key is a no-op | D8 | a key does something or is absent | `aria-pressed` with no effect | navigation |
+| B47 | `machineSections` is never rendered | D6 | render it or remove it | no caller of `getMachineSections` | plugin-lifecycle |
 | Fixed | Enter picking an IME word sent the message | composer | the IME owns its key | fixed in `3c449543` | done |
 | Fixed | the row menu did not fold on a second tap; no Archive or Delete | menus | one transition per tap | fixed in `a97f6c60` | done |
 

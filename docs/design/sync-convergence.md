@@ -118,6 +118,26 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
 5. **Heads read.** `POST /sessions/heads` with `{ sessions: [{ id, cwd }] }` returns each session's `{ seq, epoch, n, leaf }`, or `unknown` when the daemon does not hold it open. A page uses it when *T* passes with nothing received.
 6. **The head is what gets compared.** Status carries the head too. `messageCount` stays a display figure and is never compared, since it counts a different set (it leaves out compaction summaries).
 
+## Every surface is live (B28, owner 2026-09-30)
+
+Owner: "每个界面都应该无时不刻接受event based的更新 … 15s内（根据设置）没消息接收到主动探活看版本主动拉最新的更新", and "保证极致的消息效率，以及低延迟". Every surface should take event-based updates at all times, and when nothing arrives within T (default 15 s) the page should probe the heads and pull the latest changes.
+
+**What is wrong today** (traced, `PiWebApp.ts:2833-2880`):
+- The machine-wide session list costs 1 + P + W requests: projects, then workspaces per project, then sessions per workspace.
+- It is cached for 30 s (`QUICK_SWITCHER_REFRESH_MS`) and sorted by `modified` at fetch time.
+- No event touches it. Row badges (state, waiting) do follow `status.update` and `activity.update` on the global socket, but a row's place and its "latest activity" do not, so a session that just spoke stays where it was.
+- A failed workspace read becomes `[]`.
+
+**Design:**
+1. **One daemon fact for order.** `SessionStatus.lastActivityAt` (ISO) is the time of the latest transcript append, turn start or turn end. It rides every `status.update` frame on the global socket that already exists. The list orders rows by `lastActivityAt`, falling back to `modified` when unknown, and re-sorts on the frame. There is no refetch, and a frame costs a few dozen bytes.
+2. **One read for the list.** `GET /api/sessions/board` returns every session on the machine, each with `lastActivityAt`, plus the list head `{epoch, revision}`. It replaces the 1 + P + W fan-out. A workspace the daemon cannot read is listed as `unknown`, never dropped (B8).
+3. **The quiet window.** The global socket carries the list head in its keepalive, as the session socket does for the transcript (A2). After T with no frame, the page compares heads and pulls `/sessions/board` only when the head moved.
+4. **Latency and efficiency budgets**, measured by the phase C probe:
+   - an event reaches the row within one animation frame;
+   - a keepalive is under 120 bytes;
+   - a quiet page makes one head comparison per T and no list read;
+   - the list read is one request.
+
 ## What this keeps and what it retires
 
 - **Keeps:** the phase 1 inbox and ledger, the phase 2 deadlines and dispositions, and the phase 3 gap repair as the low-latency path.
