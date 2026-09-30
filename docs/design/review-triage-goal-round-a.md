@@ -54,5 +54,5 @@ pixel-equal; settings dialog card centered; tile grids equal-height.
 - Files vs Tasks/Relays toolbar rhythm (padding 8 vs 10/12) - partially
   aligned this wave (floor + pressed), full unification is a refactor.
 
-Research: docs/design/research/rounda-lane-a.md (phone walk),
+Research: 67d6c60f:docs/design/research/rounda-lane-a.md (phone walk),
 rounda-lane-b.md (desktop + responsive), rounda-lane-c.md (token layer).

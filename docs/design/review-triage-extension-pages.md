@@ -56,5 +56,5 @@ consumer is the YAGNI gate for a real `views` contribution - and that day
 the scope axis (machine vs project vs workspace) must be named in the type,
 because it is the deepest crack in the current compromise.
 
-Research: docs/design/research/extpages-lane-a.md (inventory),
+Research: 67d6c60f:docs/design/research/extpages-lane-a.md (inventory),
 extpages-lane-b.md (design review).

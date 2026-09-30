@@ -1,7 +1,7 @@
 # What to take from stablyai/orca
 
 Three lanes cloned the repository and reported with `file:line` on both sides
-(archived under `docs/design/research/orca-*.md`). This page is the decision
+(archived under `67d6c60f:docs/design/research/orca-*.md`). This page is the decision
 sheet: what we should borrow, what we must adapt, and what we should not copy.
 Nothing here is implemented yet.
 

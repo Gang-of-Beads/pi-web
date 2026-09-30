@@ -110,7 +110,7 @@ temptation is to leave "just this one" panel in core.
 
 ## What the review found (three read-only lanes, 2026-09-09)
 
-Full reports: `docs/design/research/plugin-core-boundary.md`,
+Full reports: `67d6c60f:docs/design/research/plugin-core-boundary.md`,
 `plugin-declarative-contract.md`, `plugin-discovery-and-loading.md`.
 
 ### Installing from GitHub is mostly already true

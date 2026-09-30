@@ -1,7 +1,7 @@
 # Review triage — UI polish convergence, rounds 4 and 5（终轮）
 
 前三轮见 `review-triage-uiux-round1.md` 与 `review-triage-uiux-rounds-2-3.md`。
-车道原始报告在 `docs/design/research/`。
+车道原始报告在 `67d6c60f:docs/design/research/`。
 
 ## 收敛判定：未达成"零发现"，但发现的性质已经变了
 

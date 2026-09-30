@@ -18,6 +18,7 @@
 
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { isPublishedEntry, readSiteIgnore } from "./docsSiteEntries.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -89,8 +90,9 @@ function injectDevMarkers(html, banner) {
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(pagesDir, { recursive: true });
 
+const siteIgnore = readSiteIgnore(docsDir);
 for (const entry of readdirSync(docsDir, { withFileTypes: true })) {
-  if (entry.name.startsWith(".") || excludedEntries.has(entry.name)) continue;
+  if (excludedEntries.has(entry.name) || !isPublishedEntry(entry.name, entry.isDirectory(), siteIgnore)) continue;
   cpSync(path.join(docsDir, entry.name), path.join(pagesDir, entry.name), { recursive: true });
 }
 

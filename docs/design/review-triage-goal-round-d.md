@@ -38,6 +38,6 @@ current ones - so client fixes verified live while plugin fixes did not.
 The verification round is what caught it; the delivery check (dev-server
 bytes vs source) is now a lane standard.
 
-Research: docs/design/research/roundd-lane-a.md (end-to-end with sha256
+Research: 67d6c60f:docs/design/research/roundd-lane-a.md (end-to-end with sha256
 delivery checks), roundd-lane-b.md (desktop + responsive),
 roundd-lane-c.md (token layer).

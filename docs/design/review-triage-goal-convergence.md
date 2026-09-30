@@ -44,4 +44,4 @@ explicitly declared the convergence bar met.
 - Two probe side-effects disclosed: empty test sessions in test/main
   folder workspaces across rounds.
 
-Research: docs/design/research/roundg-lane-a.md, roundg-lane-b.md.
+Research: 67d6c60f:docs/design/research/roundg-lane-a.md, roundg-lane-b.md.

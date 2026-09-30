@@ -27,5 +27,5 @@ All Round A-F deferred items re-measured and unchanged. New ledger entry:
 terminal panel line-height 16px px-literal joins the leading-ramp item
 (E-2 family).
 
-Research: docs/design/research/roundf-lane-a.md, roundf-lane-b.md,
+Research: 67d6c60f:docs/design/research/roundf-lane-a.md, roundf-lane-b.md,
 roundf-lane-c.md.

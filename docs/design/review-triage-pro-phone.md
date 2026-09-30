@@ -79,5 +79,5 @@ pile-up perception has three real mechanisms:
   solid vs "+ Add project" ghost vs the switcher's third form. These are
   rhythm decisions, not bugs.
 
-Research: docs/design/research/prophone-lane-a.md (click-walk),
+Research: 67d6c60f:docs/design/research/prophone-lane-a.md (click-walk),
 prophone-lane-b.md (consistency audit with measurements).

@@ -1,6 +1,6 @@
 # Review triage — UI polish convergence, rounds 2 and 3
 
-第一轮见 `review-triage-uiux-round1.md`。车道报告归档于 `docs/design/research/`。
+第一轮见 `review-triage-uiux-round1.md`。车道报告归档于 `67d6c60f:docs/design/research/`。
 
 ## 第二轮（41 条新发现：A 15 / B 10 / C 16）
 

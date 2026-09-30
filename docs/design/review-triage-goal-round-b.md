@@ -55,6 +55,6 @@ select-vs-input mismatch stays fixed).
   edge), settings dialog title edges, Save below the fold, workspace panel
   four left edges, three create-button forms, pill badges.
 
-Research: docs/design/research/roundb-lane-a.md (phone re-review),
+Research: 67d6c60f:docs/design/research/roundb-lane-a.md (phone re-review),
 roundb-lane-b.md (desktop + responsive verification),
 roundb-lane-c.md (token layer re-review).

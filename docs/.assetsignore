@@ -1,0 +1,9 @@
+# The docs site serves the site pages and the two references they link to.
+# Design records, review triage and working notes are for the repository,
+# not the public site: they carry agent lane output and local machine paths.
+design/
+*.md
+!config.md
+!plugins.md
+wrangler.jsonc
+wrangler.dev.jsonc
