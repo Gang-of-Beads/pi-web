@@ -35,6 +35,7 @@ import type {
   ClientSessionTreeNavigateResult,
   ClientThinkingLevel,
   SessionStreamSnapshot,
+  SessionTranscriptTail,
   SessionStreamSync,
 } from "../../shared/types.js";
 import type { QueuedSessionMessage, SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes.js";
@@ -67,6 +68,8 @@ export interface SessionRouteService {
   /** A deferred tool-result image's bytes; undefined when the session has no such block. */
   toolResultImage(ref: SessionRouteRef, toolCallId: string, index: number): Promise<{ mimeType: string; data: string } | undefined>;
   streamSnapshot(ref: SessionRouteRef): Promise<SessionStreamSnapshot>;
+  /** The last transcript page and the stream position it is current through, without waiting for the runtime. */
+  transcriptTail(ref: SessionRouteRef, page?: { limit?: number }): Promise<SessionTranscriptTail>;
   /** Gap repair: replay the frames after the client's last seen seq, or resync. */
   streamSync(ref: SessionRouteRef, sinceSeq: number, epoch?: string): Promise<SessionStreamSync>;
   notificationCatalog(): SessionNotificationCatalogSnapshot | Promise<SessionNotificationCatalogSnapshot>;

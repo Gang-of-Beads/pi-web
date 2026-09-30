@@ -23,6 +23,7 @@ import type {
   SessionRef,
   SessionStatus,
   SessionStreamSnapshot,
+  SessionTranscriptTail,
   SessionStreamSync,
   SessionTreeForkRequest,
   SessionTreeForkResult,
@@ -1472,6 +1473,7 @@ class CapturingRouteSessionService implements SessionRouteService {
   dismissWarningError: Error | undefined;
   unreadError: Error | undefined;
   messagesResponse: MessagePage = { messages: [], start: 0, total: 0 };
+  transcriptTailResponse: SessionTranscriptTail = { page: { messages: [{ role: "user", content: "hello", timestamp: 1 }], start: 0, total: 1 }, stream: { seq: 7, epoch: "epoch-1", partial: null } };
   streamSnapshotResponse: SessionStreamSnapshot = { seq: 0, partial: null };
   readonly streamSnapshotCalls: SessionRouteRef[] = [];
   streamSyncResponse: SessionStreamSync = { kind: "resync", sinceSeq: 0 };
@@ -1700,6 +1702,11 @@ class CapturingRouteSessionService implements SessionRouteService {
     });
   }
 
+  transcriptTail(lookup: SessionRouteRef, page?: { limit?: number }): Promise<SessionTranscriptTail> {
+    this.calls.push({ tail: lookup, page });
+    return Promise.resolve(this.transcriptTailResponse);
+  }
+
   locate(lookup: SessionRouteRef): Promise<ClientSession> {
     this.calls.push(lookup);
     return Promise.reject(new SessionNotFoundError());
@@ -1883,7 +1890,7 @@ function unusedRouteMethod(name: string): Error {
  * answered 404 for any failure, so a daemon error read as a deleted session.
  */
 describe("what a session read answers when it fails", () => {
-  const readRoutes = ["messages", "status", "stream-snapshot", "models", "models/catalog", "thinking-levels", "commands", "subsessions", "background-tasks", "subagent-runs/run-1/messages", "subagent-runs/run-1/output", "locate"];
+  const readRoutes = ["messages", "status", "stream-snapshot", "models", "models/catalog", "thinking-levels", "commands", "subsessions", "background-tasks", "subagent-runs/run-1/messages", "subagent-runs/run-1/output", "locate", "transcript-tail"];
 
   it("answers 404 with the code for a session the daemon does not have, on every read route", async () => {
     const answers: Record<string, unknown> = {};
@@ -1907,6 +1914,25 @@ describe("what a session read answers when it fails", () => {
       const body: unknown = response.json();
       const missingCwd = await routeApp.inject({ method: "GET", url: "/sessions/in-sub/locate" });
       expect({ status: response.statusCode, body, missingCwd: missingCwd.statusCode }).toEqual({ status: 200, body: located, missingCwd: 400 });
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
+  it("answers the transcript tail with its page and the stream position, reading the page size it was asked", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const routeService = new CapturingRouteSessionService();
+    registerSessionRoutes(routeApp, routeService, new SessionEventHub());
+    try {
+      const response = await routeApp.inject({ method: "GET", url: `/sessions/session-1/transcript-tail?cwd=${encodeURIComponent(resolve("/repo"))}&limit=40` });
+      const body: unknown = response.json();
+      expect({ status: response.statusCode, body, call: routeService.calls.at(-1) }).toEqual({
+        status: 200,
+        body: routeService.transcriptTailResponse,
+        call: { tail: { id: "session-1", cwd: resolve("/repo") }, page: { limit: 40 } },
+      });
     } finally {
       await routeService.dispose();
       await routeApp.close();

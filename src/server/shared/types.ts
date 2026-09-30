@@ -14,6 +14,7 @@ export type {
   MessagePage as ClientMessagePage,
   SessionStreamSnapshot,
   SessionStreamSync,
+  SessionTranscriptTail,
   SessionStatus as ClientSessionStatus,
   SessionModel as ClientSessionModel,
   SessionModelCatalogEntry as ClientSessionModelCatalogEntry,

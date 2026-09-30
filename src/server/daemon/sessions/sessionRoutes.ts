@@ -251,6 +251,17 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
+  app.get<{ Params: { sessionId: string }; Querystring: MessageQuery }>(`${prefix}/sessions/:sessionId/transcript-tail`, async (request, reply) => {
+    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
+    if (ref === undefined) return reply;
+    try {
+      const tail = await sessions.transcriptTail(ref, optionalField("limit", optionalNumber(request.query.limit)));
+      return { page: projectBrowserMessageResponse(tail.page), stream: tail.stream };
+    } catch (error) {
+      return sendError(reply, sessionErrorReply(error, 500));
+    }
+  });
+
   app.get<{ Params: { sessionId: string; toolCallId: string; index: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/tool-results/:toolCallId/images/:index`, async (request, reply) => {
     const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
     if (ref === undefined) return reply;

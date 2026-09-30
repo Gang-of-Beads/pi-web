@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { initialAppState } from "../appState";
 import { SessionController } from "./sessionController";
 import { defaultApi, deferred, FakeSocket, oldSession, replacementSession, sessionLookupId, status, workspace, type AppState, type MessagePage, type SessionStatus } from "./sessionController.testSupport";
@@ -75,7 +75,7 @@ describe("SessionController selected-session refresh", () => {
 
     const first = controller.refreshSelectedSession();
     const duplicate = controller.refreshSelectedSession();
-    await Promise.resolve();
+    await vi.waitFor(() => { if (messageCalls === 0) throw new Error("no transcript read yet"); });
 
     expect(messageCalls).toBe(1);
     expect(statusCalls).toBe(1);

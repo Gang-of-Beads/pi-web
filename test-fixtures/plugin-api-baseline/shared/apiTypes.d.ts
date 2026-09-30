@@ -1309,6 +1309,15 @@ export interface SessionStreamSnapshot {
     partial: unknown;
 }
 /**
+ * A session's last transcript page with the stream position it is current
+ * through, read without waiting for the session's runtime to open (object
+ * model §1.7, P2 slice c).
+ */
+export interface SessionTranscriptTail {
+    page: MessagePage;
+    stream: SessionStreamSnapshot;
+}
+/**
  * What a client citing `sinceSeq` gets from the sync route: the frames it
  * missed, replayed oldest-first exactly as live; or a resync verdict when the
  * server's ring cannot serve the request and the client must fall back to a

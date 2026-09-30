@@ -115,6 +115,7 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "GET", path: "/sessions/:sessionId/status" },
   { method: "GET", path: "/sessions/:sessionId/stream-snapshot" },
   { method: "GET", path: "/sessions/:sessionId/locate" },
+  { method: "GET", path: "/sessions/:sessionId/transcript-tail" },
   { method: "GET", path: "/sessions/:sessionId/models" },
   { method: "GET", path: "/sessions/:sessionId/models/catalog" },
   { method: "POST", path: "/sessions/:sessionId/models/enabled" },

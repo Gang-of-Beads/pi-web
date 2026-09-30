@@ -9,6 +9,7 @@ import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
 import { targetInListing } from "../sessionTarget";
 import { SessionTargetResolver, type SessionTargetOpenOptions } from "./sessionTargetResolver";
+import type { SessionTranscriptTail } from "../../../shared/apiTypes";
 import { isSessionNotFoundError } from "../sessionNotFound";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
@@ -1797,11 +1798,8 @@ export class SessionController {
       this.flushPendingUpdates();
       if (this.transcripts.watermark(key) !== undefined && await this.refreshByDeltaReplay(target, key)) return;
       const framesAtRequest = this.statusFramesApplied;
-      const [page, status, streamSnapshot] = await Promise.all([
-        this.api.messages(target.session, { limit: MESSAGE_PAGE_SIZE }, target.machineId),
-        this.api.status(target.session, target.machineId),
-        this.api.streamSnapshot(target.session, target.machineId),
-      ]);
+      const statusRead = settled(this.api.status(target.session, target.machineId));
+      const { page, stream: streamSnapshot } = await this.readTranscriptTail(target);
       if (!this.isCurrentRefreshTarget(target)) return;
       // Seed the in-flight partial assistant message on top of committed history
       // and record the snapshot's sequence as the watermark. Buffered/live events
@@ -1820,15 +1818,38 @@ export class SessionController {
       // The page just read is current through this seq: a later reload can
       // replay frames after it instead of re-fetching the page.
       this.transcripts.setWatermark(key, snapshotWatermark);
-      const statusIsFresh = !this.statusReadIsStale(status, framesAtRequest);
       this.setState({
         ...history,
         messages,
-        ...(statusIsFresh ? { status } : {}),
         activity: this.getState().sessionActivities[target.session.id],
+        isLoadingTranscript: transcriptLoadingAfter({ event: "readSettled", readSeq: target.selectionSeq, currentSeq: this.selectionSeq }),
       });
-      if (statusIsFresh) this.applyStatusRead(status);
+      const status = await statusRead;
+      if (!this.isCurrentRefreshTarget(target)) return;
+      if (status.kind === "failed") {
+        this.setState({ statusReadFailed: describeError(status.error), ...errorNoticePatch(status.error) });
+        return;
+      }
+      if (this.statusReadIsStale(status.value, framesAtRequest)) return;
+      this.setState({ status: status.value, statusReadFailed: undefined });
+      this.applyStatusRead(status.value);
     });
+  }
+
+  /**
+   * The last transcript page and the stream position it is current through
+   * (object model §1.7, P2 slice c). The tail route reads a closed session
+   * from its file instead of waiting 1.2-1.8 s for the runtime to open; a
+   * daemon older than the route answers the two reads it always had.
+   */
+  private async readTranscriptTail(target: SelectedSessionRefreshTarget): Promise<SessionTranscriptTail> {
+    const read = await this.api.transcriptTail(target.session, { limit: MESSAGE_PAGE_SIZE }, target.machineId);
+    if (read.kind === "answered") return read.value;
+    const [page, stream] = await Promise.all([
+      this.api.messages(target.session, { limit: MESSAGE_PAGE_SIZE }, target.machineId),
+      this.api.streamSnapshot(target.session, target.machineId),
+    ]);
+    return { page, stream };
   }
 
   private isCurrentRefreshTarget(target: SelectedSessionRefreshTarget): boolean {
@@ -2219,6 +2240,7 @@ export class SessionController {
       ...sessionMessageCountPatch(state, status.sessionId, status.messageCount),
       ...(clearsStaleActivity ? { sessionActivities: omitSessionActivity(state.sessionActivities, status.sessionId) } : {}),
       status: isSelected ? status : state.status,
+      ...(isSelected ? { statusReadFailed: undefined } : {}),
       activity: isSelected && clearsStaleActivity ? undefined : state.activity,
       // The daemon owns whether an ask is open, so every status it publishes is
       // authoritative for the selected session's card, including its removal.
@@ -3217,3 +3239,9 @@ function rowState(messages: readonly ChatLine[], clientMessageId: string): Messa
   return messages[findDeliveryLineIndex(messages, clientMessageId)]?.meta?.delivery?.state;
 }
 
+/** A read whose failure is kept as a value, so it can be awaited after another read without ever going unobserved. */
+type Settled<T> = { readonly kind: "answered"; readonly value: T } | { readonly kind: "failed"; readonly error: unknown };
+
+function settled<T>(read: Promise<T>): Promise<Settled<T>> {
+  return read.then((value) => ({ kind: "answered", value }), (error: unknown) => ({ kind: "failed", error }));
+}

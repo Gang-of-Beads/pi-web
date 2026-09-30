@@ -29,9 +29,13 @@ import {
   type ProjectTrustEvent,
   type ProjectTrustEventResult,
   type ResourceDiagnostic,
+  CURRENT_SESSION_VERSION,
+  migrateSessionEntries,
+  parseSessionEntries,
+  type FileEntry,
 } from "@earendil-works/pi-coding-agent";
 import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo, TranscriptHead } from "../../../shared/apiTypes.js";
-import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionUiEvent } from "../../shared/types.js";
+import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
 import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, isCutAssistant, stoppedTurnMessage, transcriptHead, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
@@ -101,6 +105,7 @@ import { createDurableAcceptanceLedger, type AcceptanceFace } from "./operationL
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { OwnedPromptQueue, dataDirInboxLocation, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry } from "./ownedPromptQueue.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
+import { branchFromFileEntries, isCurrentVersionFile } from "./fileBranch.js";
 import { applyProviderSafeToolSchemas } from "./providerSafeToolSchema.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
 import { planSessionCleanup, summarizeSessionCleanupExecution, type NormalizedSessionCleanupRequest, type SessionCleanupPlan } from "./sessionCleanup.js";
@@ -2791,13 +2796,36 @@ export class PiSessionService implements SessionRouteService {
    * not an empty session.
    */
   async messagesPassive(ref: PiSessionRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage | undefined> {
-    const active = this.active.get(ref.id);
+    const active = this.activeForRef(ref);
     if (active !== undefined) return transcriptPage(active.runtime.session.sessionManager.getBranch(), page);
     const listed = (await this.sessionManager.list(ref.cwd)).find((session) => session.id === ref.id);
     if (listed === undefined) return undefined;
-    const entries = await readSessionEntries(listed.path);
+    const entries = await readSessionFileEntries(listed.path);
     if (entries === undefined) return undefined;
-    return transcriptPage(entries, page);
+    migrateSessionEntries(entries);
+    return transcriptPage(branchFromFileEntries(entries), page);
+  }
+
+  /**
+   * The last transcript page and the stream position it is current through,
+   * without waiting for the runtime (object model §1.7, P2 slice c).
+   *
+   * Opening the runtime of a 17.8 MB session takes 1.2-1.8 s; reading and
+   * parsing its file takes about 60 ms. An open runtime answers from memory in
+   * one tick, like `streamSnapshot`. A closed session is read from its file on
+   * the branch the runtime would load, with the stream position taken before
+   * the read, so every later frame replays on top. A session whose file is not
+   * in its cwd's store (archived, or recorded elsewhere) takes the runtime
+   * path, which answers the typed error for a missing one.
+   */
+  async transcriptTail(ref: PiSessionRef, page?: { limit?: number }): Promise<SessionTranscriptTail> {
+    const open = this.activeForRef(ref)?.runtime.session;
+    if (open !== undefined) return { page: transcriptPage(open.sessionManager.getBranch(), page), stream: this.streamSnapshotOf(open) };
+    const file = await this.sessionManager.resolveSessionFile(ref.cwd, ref.id);
+    const stream = file === undefined ? undefined : { ...this.streamPosition(file.id), partial: null };
+    const entries = file === undefined ? undefined : await readSessionFileEntries(file.path);
+    if (stream === undefined || entries === undefined || !isCurrentVersionFile(entries, CURRENT_SESSION_VERSION)) return { page: await this.messages(ref, page), stream: await this.streamSnapshot(ref) };
+    return { page: transcriptPage(branchFromFileEntries(entries), page), stream };
   }
 
   /** The bytes behind a deferred tool-result image, read from the session file on demand. */
@@ -2816,7 +2844,10 @@ export class PiSessionService implements SessionRouteService {
    * signatures; it is `null` when no assistant message is mid-stream.
    */
   async streamSnapshot(ref: PiSessionRef): Promise<SessionStreamSnapshot> {
-    const session = await this.getOrOpen(ref);
+    return this.streamSnapshotOf(await this.getOrOpen(ref));
+  }
+
+  private streamSnapshotOf(session: PiAgentSession): SessionStreamSnapshot {
     // Single consistent tick: capture the watermark and the partial together so
     // the seq matches the partial the client seeds against.
     const seq = this.events.currentSeq(session.sessionId);
@@ -6696,6 +6727,15 @@ function historyMessagesFromEntries(entries: readonly unknown[]): unknown[] {
  * Ids are attached to the page's slice only: a 69k-message branch is not copied a second time
  * to label messages nobody asked for.
  */
+/** A session file's entries as the SDK parses them, or undefined when it cannot be read. */
+async function readSessionFileEntries(path: string): Promise<FileEntry[] | undefined> {
+  try {
+    return parseSessionEntries(await readFile(path, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
 function transcriptPage(entries: readonly unknown[], page?: { before?: number; limit?: number }): ClientMessagePage {
   const rows = branchTranscript(entries);
   const paged = pageMessagesAtSafeBoundary(rows.map((row) => boundToolResultMessage(row.message)), page);

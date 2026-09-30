@@ -4,7 +4,15 @@ import { machineSessionKey } from "../machineKeys";
 import type { SessionUiEvent } from "../sessionSocket";
 import type { SessionEventSocket, SessionSocketHandlers } from "./sessionController";
 
-export { api as defaultApi } from "../api";
+import { api } from "../api";
+
+/**
+ * The API a controller test starts from. It answers like a daemon without the
+ * transcript tail route, so a refresh takes the `messages` and
+ * `streamSnapshot` reads a test stubs; a test of the tail path overrides
+ * `transcriptTail` (P2 slice c).
+ */
+export const defaultApi: typeof api = { ...api, transcriptTail: () => Promise.resolve({ kind: "unsupported" }) };
 export type { MessagePage, PromptAttachment, SessionActivity, SessionInfo, SessionRef, SessionStatus, SessionStreamSnapshot, Workspace } from "../api";
 export type { AppState } from "../appState";
 

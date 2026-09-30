@@ -54,6 +54,7 @@ import {
   parseSessionUnreadAcknowledgeResponse,
   parseSessionUnreadCatalogSnapshot,
   parseSessionStreamSnapshot,
+  parseSessionTranscriptTail,
   parseSessionStreamSync,
   parseSessionTreeForkResult,
   parseSessionTreeNavigateResult,
@@ -356,6 +357,7 @@ export const sessionsApi = {
   }),
   forkTree: (session: SessionRef, fork: SessionTreeForkRequest, machineId = "local") => requestSessionTreeFork(session, fork, machineId),
   locateSession: (session: SessionRef, machineId = "local") => requestSessionLocation(session, machineId),
+  transcriptTail: (session: SessionRef, options: { limit: number }, machineId = "local") => readNewerDaemonRoute(`${sessionQueryPath(session, "transcript-tail", machineId)}&${new URLSearchParams({ limit: String(options.limit) }).toString()}`, machineId, parseSessionTranscriptTail, /^Route GET:.*\/transcript-tail(\?.*)? not found$/i),
   /**
    * Ask what became of identities this browser could not settle. Identities the
    * daemon has no row for are absent from the answer, which keeps "unknown"
@@ -446,13 +448,20 @@ function isMissingSessionTreeForkRoute(status: number, value: unknown): boolean 
 export type SessionLocation = { kind: "found"; session: SessionInfo } | { kind: "unsupported" };
 
 async function requestSessionLocation(session: SessionRef, machineId: string): Promise<SessionLocation> {
-  const path = sessionQueryPath(session, "locate", machineId);
+  const read = await readNewerDaemonRoute(sessionQueryPath(session, "locate", machineId), machineId, parseSessionInfo, /^Route GET:.*\/locate(\?.*)? not found$/i);
+  return read.kind === "answered" ? { kind: "found", session: read.value } : read;
+}
+
+/** A read of a route newer daemons have: its answer, or `unsupported` from a daemon older than the route. */
+export type NewerRouteRead<T> = { kind: "answered"; value: T } | { kind: "unsupported" };
+
+async function readNewerDaemonRoute<T>(path: string, machineId: string, parse: (value: unknown) => T, route: RegExp): Promise<NewerRouteRead<T>> {
   try {
-    return await fetchWithDeadline(resolveAppUrl(path), { cache: "no-store" }, async (response): Promise<SessionLocation> => {
+    return await fetchWithDeadline(resolveAppUrl(path), { cache: "no-store" }, async (response): Promise<NewerRouteRead<T>> => {
       reportTransportReachable(path);
-      if (response.ok) return { kind: "found", session: parseSessionInfo(await response.json()) };
+      if (response.ok) return { kind: "answered", value: parse(await response.json()) };
       const body: unknown = await response.json().catch((): unknown => ({}));
-      if (isMissingDaemonRoute(response.status, body, /^Route GET:.*\/locate(\?.*)? not found$/i)) return { kind: "unsupported" };
+      if (isMissingDaemonRoute(response.status, body, route)) return { kind: "unsupported" };
       throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(path), undefined, errorCode(body));
     });
   } catch (error) {

@@ -430,6 +430,19 @@ describe("session API compatibility", () => {
     expect(missing instanceof HttpError ? { status: missing.status, code: missing.code } : missing).toEqual({ status: 404, code: "session-not-found" });
   });
 
+  it("reads a transcript tail with its stream position through an encoded machine route, and says when a daemon lacks the route", async () => {
+    const fetchMock = stubSequenceFetch([
+      new Response(JSON.stringify({ page: { messages: [{ role: "user", content: "hello" }], start: 0, total: 1 }, stream: { seq: 7, epoch: "e1", partial: null } }), { status: 200, headers: { "content-type": "application/json" } }),
+      new Response(JSON.stringify({ statusCode: 404, error: "Not Found", message: "Route GET:/sessions/s-1/transcript-tail?cwd=%2Frepo&limit=40 not found" }), { status: 404, headers: { "content-type": "application/json" } }),
+    ]);
+
+    const tail = await sessionsApi.transcriptTail({ id: "s /?", cwd: "/repo with spaces" }, { limit: 40 }, "remote /?");
+    const old = await sessionsApi.transcriptTail({ id: "s-1", cwd: "/repo" }, { limit: 40 });
+
+    expect(fetchCall(fetchMock, 0)[0]).toBe("https://pi.example.test/api/machines/remote%20%2F%3F/sessions/s%20%2F%3F/transcript-tail?cwd=%2Frepo+with+spaces&limit=40");
+    expect({ tail, old }).toEqual({ tail: { kind: "answered", value: { page: { messages: [{ role: "user", content: "hello" }], start: 0, total: 1 }, stream: { seq: 7, epoch: "e1", partial: null } } }, old: { kind: "unsupported" } });
+  });
+
   it("keeps the code a missing session answers a fork with", async () => {
     stubResponseFetch(new Response(JSON.stringify({ error: "Session not found", code: "session-not-found" }), { status: 404, headers: { "content-type": "application/json" } }));
 
