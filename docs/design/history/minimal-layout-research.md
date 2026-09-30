@@ -2,7 +2,7 @@
 
 ## 定位
 
-本文不重复 `docs/design/industry-layout-research.md`（52 张带来源模式卡）。
+本文不重复 `docs/design/history/industry-layout-research.md`（52 张带来源模式卡）。
 聚焦 owner 的裁决性问题：**"看不出和以前的区别，甚至比以前的页面还复杂"** ——
 需要的是把"极简"从形容词变成逐表面可数的判据，并解释为什么"加"比"减"更常见。
 

@@ -66,7 +66,7 @@ that contradicted the assertion below it.
 **7. Comments and a design doc still stated a deleted rule.** `ba3f0278`
 
 Two comments in `messageDelivery.ts` — one orphaned above no function at all —
-and one line of `docs/message-delivery-design.md` still said absence from the
+and one line of `docs/design/history/message-delivery-design.md` still said absence from the
 queue proves delivery. That inference was removed precisely because a snapshot
 omits a message while the agent expands it, between taking it and writing it,
 and when its id could not be stamped at all. The queue can raise a message to

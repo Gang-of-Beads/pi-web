@@ -64,14 +64,14 @@ and project; the session list header keeps its own. `rowMenuGestures.ts` wraps
 
 **Workspace has no `+` on purpose:** the server has no create-workspace
 endpoint - workspaces come from a provider - so no button is offered that could
-not work. Recorded in `docs/feature-map.md` rather than left as a silent gap.
+not work. Recorded in `docs/design/history/feature-map.md` rather than left as a silent gap.
 
 **Long-press means two things, deliberately:** on picker rows it opens the row
 menu; on session rows it keeps the multi-select it has always had. Locked by an
 e2e test each.
 
 **Proof:** `rowMenuGestures` tests, `e2e/mobile.spec.ts` hold tests,
-`docs/feature-map.md` (36 rows) mapping every capability old entry → new entry.
+`docs/design/history/feature-map.md` (36 rows) mapping every capability old entry → new entry.
 
 ## 4. Archiving a stuck goal
 
@@ -130,7 +130,7 @@ composer and send button in the thumb zone.
 
 No gesture the platform already owns is bound: no edge-back, no long-press over
 selectable text, no pull-to-refresh, no double-tap zoom. Written down in
-`docs/mobile-gestures.md` with the reason for each.
+`docs/notes/mobile-gestures.md` with the reason for each.
 
 **Proof:** 20 passing mobile Playwright tests, including chrome height, keyboard
 inset, thumb reach, and the two long-press meanings.
@@ -191,7 +191,7 @@ every original capability is still reachable with a clear entry point.
   everything it absorbed, so `git cherry` stopped recognising a commit the fork
   demonstrably had. The report now checks the files an upstream commit touched
   before calling it outstanding.
-- `docs/feature-map.md` maps all 36 capabilities old entry → new entry. The
+- `docs/design/history/feature-map.md` maps all 36 capabilities old entry → new entry. The
   last two holes closed in task-10: Terminal took `⌘3` so the view numbers name
   positions, and the resize handle states its reset gesture rather than leaving
   it as folklore beside the palette entry.
@@ -202,7 +202,7 @@ every original capability is still reachable with a clear entry point.
 reading, archiving, focus/pause/resume, the event stream, the lock - and it must
 be implemented, with race conditions and failure modes named.
 
-**Where it lives:** `docs/pi-goal-integration.md`: who owns what, the facts that
+**Where it lives:** `docs/notes/pi-goal-integration.md`: who owns what, the facts that
 constrain the design (including that writes inside a turn are unchecked while
 writes outside one are revision-checked), the contract pi-web follows, and the
 consequences for the panel. `goalArchive.ts` is that contract in code.

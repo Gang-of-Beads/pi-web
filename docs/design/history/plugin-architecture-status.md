@@ -245,7 +245,7 @@ written multi-lane review and a live 8505 probe:
   `review-triage-extraction-waveB.md`; probe `scripts/probe-waveb.mjs` (13
   checks).
 - **Wave D** — owner ruled the notifications and activity drawer pages leave
-  the shell without conversion (`docs/design/wave-d-drawer-removal.md`). The
+  the shell without conversion (`docs/design/history/wave-d-drawer-removal.md`). The
   drawer is contributed-sections-only and the dock is a silent pill; the
   notifications data layer retired with the page.
 - **Wave C** — owner confirmed the element audit wins over the goal's original

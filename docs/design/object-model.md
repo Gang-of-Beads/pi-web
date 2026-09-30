@@ -1,6 +1,6 @@
 # PI WEB object model
 
-Status: revised design, 2026-09-30. Applies every "accept" in `docs/design/review-triage-object-model.md`; owner points carry **Pending owner answer Qn**. Builds on `docs/design/state-diagram.md` (rules 1–7, D1–D8, B1–B48, with the B48 draft under D5), `docs/design/sync-convergence.md` (heads, B28 board read, keepalive head) and `docs/design/state-sync-redesign.md` (one FIFO, facts not copies).
+Status: revised design, 2026-09-30. Applies every "accept" in `docs/design/reviews/review-triage-object-model.md`; owner points carry **Pending owner answer Qn**. Builds on `docs/design/state-diagram.md` (rules 1–7, D1–D8, B1–B48, with the B48 draft under D5), `docs/design/sync-convergence.md` (heads, B28 board read, keepalive head) and `docs/design/state-sync-redesign.md` (one FIFO, facts not copies).
 
 ## Summary
 

@@ -3,7 +3,7 @@
 探针：`scripts/audit-uiux-full.mjs`（13 条表面/开启态路径，fail-loud，零静默跳过；
 原始逐控件清单 `/tmp/uiux-audit/inventory.json`，截图 `/tmp/uiux-audit/*.png`）。
 
-判据来源：`docs/design/minimal-layout-research.md`（C1-C7）+ ui-ux-pro-max skill
+判据来源：`docs/design/history/minimal-layout-research.md`（C1-C7）+ ui-ux-pro-max skill
 Minimalism & Swiss Style 基线 + 触面双 token 政策。
 
 ## 逐表面控件/框线计数（C1/C4/C5 口径，"复杂度"基线）

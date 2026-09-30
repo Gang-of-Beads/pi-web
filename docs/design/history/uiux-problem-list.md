@@ -1,6 +1,6 @@
 # UI 协调性诊断问题清单（goal mty82jcc-0zf38k task-1）
 
-判据：docs/design/uiux-journey-guidelines.md + ui-ux-pro-max skill 查询结果
+判据：docs/design/history/uiux-journey-guidelines.md + ui-ux-pro-max skill 查询结果
 （overlay 对齐、badge 语义、密度、compact label semantics）。
 截图：/tmp/journeys/diag-phone-panel.png、diag-phone-drawer.png、
 goal-drawer-open.png（机主截图：第五次横幅会话）。
