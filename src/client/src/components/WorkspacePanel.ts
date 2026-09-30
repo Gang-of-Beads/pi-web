@@ -7,10 +7,12 @@ import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon";
 import { panelHeaderStyles } from "./appShell/panelHeaderStyles";
 import { interactiveSurfaceStyles, workspacePanelStyles } from "./shared";
 
-export interface WorkspacePanelEmptyState {
-  title: string;
-  body?: string;
-}
+/**
+ * What the panel says with no workspace to show. `unknown` says nothing: the
+ * data it would describe has not answered yet, and absence is not negation
+ * (B48); the app row speaks while the machine goes unanswered.
+ */
+export type WorkspacePanelEmptyState = { kind: "unknown" } | { kind: "message"; title: string; body?: string };
 
 @customElement("workspace-panel")
 export class WorkspacePanel extends LitElement {
@@ -27,11 +29,13 @@ export class WorkspacePanel extends LitElement {
   override render() {
     const workspace = this.workspace;
     if (workspace === undefined) return this.renderEmptyState(this.emptyState ?? {
+      kind: "message",
       title: "Select a workspace",
       body: "Choose a workspace to use its tools.",
     });
     const context = this.panelContext;
     if (context === undefined) return this.renderEmptyState({
+      kind: "message",
       title: "Workspace tools unavailable",
       body: "Try selecting the workspace again.",
     });
@@ -40,6 +44,7 @@ export class WorkspacePanel extends LitElement {
     return html`
       ${selectedPanel === undefined ? null : this.renderHeader(context, selectedPanel)}
       ${selectedPanel === undefined ? this.renderEmptyState({
+        kind: "message",
         title: "No workspace tools available",
         body: "No tools are available for this workspace.",
       }) : html`
@@ -116,6 +121,7 @@ export class WorkspacePanel extends LitElement {
   }
 
   private renderEmptyState(state: WorkspacePanelEmptyState): TemplateResult {
+    if (state.kind === "unknown") return html``;
     return html`
       <section class="empty-state" role="status">
         <h2>${state.title}</h2>

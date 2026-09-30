@@ -29,7 +29,7 @@ describe("PiWebApp boot route restore with a failed projects listing", () => {
     if (typeof projects !== "object" || projects === null) throw new Error("PiWebApp ProjectController was unavailable");
     if (!Reflect.set(projects, "loadProjects", () => {
       const setState = unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState");
-      setState.call(app, { projectsLoad: "failed" });
+      setState.call(app, { projectsLoad: "loading" });
       return Promise.resolve(undefined);
     })) {
       throw new Error("Could not replace projects.loadProjects");

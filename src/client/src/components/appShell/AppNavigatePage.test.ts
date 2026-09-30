@@ -216,17 +216,12 @@ describe("app-navigate-page", () => {
     expect(page.renderRoot.textContent).not.toContain("No sessions");
   });
 
-  it("names a failed read instead of an empty list", async () => {
-    const page = await mount({ loadError: "Couldn't read the sessions here." }, { ...input(), sessions: [] });
-    expect(page.renderRoot.textContent).toContain("Couldn't read the sessions here.");
-  });
-
-  it("says it is reading while the choices for a kind are unknown", async () => {
+  it("says nothing while the choices for a kind have not answered: no reading text, no empty claim, no failure (B48)", async () => {
     const page = await mount({ loadingChoices: true }, { ...input(), projects: [], machines: [] });
     page.showKind("project");
     await page.updateComplete;
-    expect(page.renderRoot.textContent).toContain("Loading…");
-    expect(page.renderRoot.textContent).not.toContain("Nothing to choose");
+    const text = page.renderRoot.textContent;
+    expect({ loading: text.includes("Loading…"), empty: text.includes("Nothing to choose"), failed: text.includes("Couldn't") }).toEqual({ loading: false, empty: false, failed: false });
   });
 });
 

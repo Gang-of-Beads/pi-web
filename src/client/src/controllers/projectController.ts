@@ -1,6 +1,8 @@
 import { api as defaultApi, type Project } from "../api";
 import { errorNoticePatch } from "../errorNotice";
 import { describeError } from "../notice";
+import type { ReadFact } from "../sync/readPhase";
+import { ScopedResource, type ResourceClock } from "../sync/scopedResource";
 import { selectedMachineId, type GetState, type SetState } from "./types";
 import type { WorkspaceController } from "./workspaceController";
 
@@ -16,10 +18,31 @@ export interface ProjectTrustChoice {
 
 export interface ProjectControllerDependencies {
   api?: Pick<typeof defaultApi, "projects" | "addProject" | "closeProject" | "setWorkspaceTrust">;
+  clock?: ResourceClock;
+  /** Called whenever a listing changes phase or value, so the app row can re-decide. */
+  onListingChange?: () => void;
 }
+
+/** The longest a lost projects read waits before it is tried again: the quiet window. */
+const PROJECTS_RETRY_CAP_MS = 15_000;
+
+/**
+ * A refusal the machine stated, in the reader's words. Shown as a notice until
+ * typed facts reach the app row (object model §0): a refusal is an answer, so
+ * it must not read as silence.
+ */
+const FACT_WORDS = new Map<ReadFact["kind"], string>([
+  ["signed-out", "This machine asked you to sign in before it lists its projects."],
+  ["forbidden", "This machine refused to list its projects."],
+]);
 
 export class ProjectController {
   private readonly api: Pick<typeof defaultApi, "projects" | "addProject" | "closeProject" | "setWorkspaceTrust">;
+  /** The projects of each machine, read until answered (B48). This controller is its only writer. */
+  private readonly listings: ScopedResource<string, Project[]>;
+  private watched: { machineId: string; release: () => void } | undefined;
+  private mirrored: Project[] | undefined;
+  private noticedFact: ReadFact["kind"] = "none";
 
   constructor(
     private readonly getState: GetState,
@@ -28,28 +51,74 @@ export class ProjectController {
     deps: ProjectControllerDependencies = {},
   ) {
     this.api = deps.api ?? defaultApi;
+    this.listings = new ScopedResource<string, Project[]>({
+      keyId: (machineId) => machineId,
+      read: (machineId) => this.api.projects(machineId),
+      retryCapMs: PROJECTS_RETRY_CAP_MS,
+      ...(deps.clock === undefined ? {} : { clock: deps.clock }),
+    });
+    this.listings.subscribe(() => {
+      this.mirror();
+      deps.onListingChange?.();
+    });
   }
 
+  /**
+   * Read the selected machine's projects. It resolves once this attempt settles;
+   * an attempt that got no answer keeps being retried in the background, and
+   * the rows appear when one comes. Nothing here writes an error: a lost answer
+   * is reconnecting, which only the app row says (B48).
+   */
   async loadProjects() {
     const machineId = selectedMachineId(this.getState());
-    // No clear here: a load start is not a retirement event, and the machine
-    // switch and browser-resume paths both pass through this method - the
-    // owner's call is that a scope switch may not silently eat a
-    // reader-retired banner. A failure replaces it; the reader dismisses it.
-    this.setState({ projectsLoad: "loading" });
-    try {
-      const projects = await this.api.projects(machineId);
-      if (selectedMachineId(this.getState()) !== machineId) return undefined;
-      const projectIds = new Set(projects.map((project) => project.id));
-      const workspacesByProjectId = Object.fromEntries(Object.entries(this.getState().workspacesByProjectId).filter(([projectId]) => projectIds.has(projectId)));
-      this.setState({ projects, workspacesByProjectId, projectsLoad: "loaded" });
-    } catch (error) {
-      // The previous rows stay on screen — a failed listing is not evidence
-      // that the projects are gone — and `failed` sticks until a load
-      // succeeds, so the list itself keeps saying what happened even after
-      // the banner has been retired by an unrelated success.
-      if (selectedMachineId(this.getState()) === machineId) this.setState({ ...errorNoticePatch(error), projectsLoad: "failed" });
+    this.watch(machineId);
+    this.mirror();
+    await this.listings.refresh(machineId);
+  }
+
+  /** A sign of life: retry a lost projects read now instead of waiting out the backoff. */
+  wake(): void {
+    this.listings.wake();
+  }
+
+  dispose(): void {
+    this.listings.dispose();
+  }
+
+  /** Since when the selected machine's projects have gone without an answer, for the app row. */
+  unansweredSince(): number | undefined {
+    return this.listings.unansweredSince([selectedMachineId(this.getState())]);
+  }
+
+  private watch(machineId: string): void {
+    if (this.watched?.machineId === machineId) return;
+    this.watched?.release();
+    this.watched = { machineId, release: this.listings.watch(machineId) };
+    this.mirrored = undefined;
+  }
+
+  /** Show the selected machine's listing as it stands: rows only from its own answer, and never a "failed". */
+  private mirror(): void {
+    const machineId = selectedMachineId(this.getState());
+    const entry = this.listings.entry(machineId);
+    this.noticeFact(entry.fact.kind);
+    const projectsLoad = entry.known ? "loaded" as const : "loading" as const;
+    if (!entry.known || entry.data === undefined || entry.data === this.mirrored) {
+      if (this.getState().projectsLoad !== projectsLoad) this.setState({ projectsLoad });
+      return;
     }
+    const projects = entry.data;
+    this.mirrored = projects;
+    const projectIds = new Set(projects.map((project) => project.id));
+    const workspacesByProjectId = Object.fromEntries(Object.entries(this.getState().workspacesByProjectId).filter(([projectId]) => projectIds.has(projectId)));
+    this.setState({ projects, workspacesByProjectId, projectsLoad });
+  }
+
+  private noticeFact(kind: ReadFact["kind"]): void {
+    if (kind === this.noticedFact) return;
+    this.noticedFact = kind;
+    const words = FACT_WORDS.get(kind);
+    if (words !== undefined) this.setState(errorNoticePatch(new Error(words)));
   }
 
   /**
@@ -64,6 +133,7 @@ export class ProjectController {
       const project = await this.api.addProject(path.trim(), undefined, create, machineId);
       if (selectedMachineId(this.getState()) !== machineId) return undefined;
       const projects = this.getState().projects;
+      this.listings.update(machineId, (listed) => [...listed.filter((p) => p.id !== project.id), project]);
       this.setState({ projects: [...projects.filter((p) => p.id !== project.id), project] });
       await this.workspaces.selectProject(project);
       if (trustChoice?.changed === true) {
@@ -93,6 +163,7 @@ export class ProjectController {
       await this.api.closeProject(projectId, machineId);
       if (selectedMachineId(this.getState()) !== machineId) return undefined;
       this.workspaces.forgetProject(projectId);
+      this.listings.update(machineId, (listed) => listed.filter((p) => p.id !== projectId));
       const state = this.getState();
       this.setState({ projects: state.projects.filter((p) => p.id !== projectId) });
       if (state.selectedProject?.id === projectId) this.workspaces.clearSelection();

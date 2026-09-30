@@ -41,6 +41,15 @@ export function errorBanner(
 }
 
 /**
+ * The app row while the machine in use goes unanswered (B48). It has no cross
+ * and no expiry: it leaves when an answer comes, and the page retries by itself,
+ * so there is nothing to press (owner, 2026-09-30).
+ */
+export function reconnectingRow(): TemplateResult {
+  return html`<div class="error transient" role="status"><span class="error-text">Reconnecting…</span></div>`;
+}
+
+/**
  * Whether a message is one of the self-healing transport failures.
  *
  * The classification seam: notice.ts asks it whether an error's text carries

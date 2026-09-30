@@ -24,7 +24,6 @@ function renderProjectsSection(context: NavSectionContext): TemplateResult {
     .hidden=${display.hidden}
     .projects=${context.projects}
     .projectsLoad=${context.projectsLoad}
-    .onRetryLoad=${() => { context.retryProjectsLoad(); }}
     .selected=${context.projects.find((project) => project.id === context.selectedProjectId)}
     .statusSnapshot=${context.statusSnapshot}
     .collapsible=${display.collapsible}

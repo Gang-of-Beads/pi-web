@@ -86,7 +86,6 @@ export class AppNavigatePage extends LitElement {
   /** What the host is still reading, so the page says "loading" instead of "none". */
   @property({ attribute: false }) loadingSessions = false;
   @property({ attribute: false }) loadingChoices = false;
-  @property({ attribute: false }) loadError: string | undefined = undefined;
   /**
    * Whether there is somewhere to go back to. The desktop rail is the page's
    * permanent home, so its leading key only widens; an overlay and the phone's
@@ -250,9 +249,9 @@ export class AppNavigatePage extends LitElement {
               `
             : html`
                 ${choices.map((choice) => this.renderChoice(choice))}
-                ${choices.length > 0
+                ${choices.length > 0 || this.loadingChoices
                   ? nothing
-                  : html`<p class="empty" role="status">${this.loadingChoices ? "Loading…" : this.loadError ?? "Nothing to choose at this level."}</p>`}
+                  : html`<p class="empty" role="status">Nothing to choose at this level.</p>`}
               `}
         </div>
       </section>
@@ -278,7 +277,7 @@ export class AppNavigatePage extends LitElement {
    */
   private renderSessionsEmptyState(matchCount: number) {
     const meaning = switcherEmptyMeaning({
-      loadError: this.loadError,
+      loadError: undefined,
       loading: this.loadingSessions,
       matchCount,
       query: this.query,

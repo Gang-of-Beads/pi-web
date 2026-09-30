@@ -1,6 +1,6 @@
 {
   "srcPaths": ["src/", "pi-web-plugins/", "extensions/"],
-  "writePaths": ["src/server/", "src/shared/", "src/client/src/controllers/", "src/client/src/api/"],
+  "writePaths": ["src/server/", "src/shared/", "src/client/src/controllers/", "src/client/src/api/", "src/client/src/sync/"],
   "verifyCommand": "npm run verify",
   "scoutAgent": "scout",
   "fixerAgent": "worker",

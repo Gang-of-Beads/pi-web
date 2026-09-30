@@ -15,6 +15,7 @@ export class MachineController {
     this.setState({ ...clearErrorPatch(), isLoadingMachines: true, machinesLoad: "loading" });
     try {
       const machines = await api.machines();
+      const previous = this.getState().selectedMachine?.id;
       const selectedMachine = await this.selectInitialMachine(machines, routeMachineId);
       const machineIds = new Set(machines.map((machine) => machine.id));
       this.setState({
@@ -26,6 +27,7 @@ export class MachineController {
       });
       void this.refreshMachineHealthFor(machines);
       void this.refreshMachineRuntimeFor(machines);
+      if (previous !== undefined && selectedMachine?.id !== previous) void this.projects.loadProjects();
     } catch (error) {
       // The previous roster stays on screen — a failed listing is not
       // evidence that the machines are gone — and `failed` sticks until a

@@ -101,7 +101,8 @@ import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } fr
 import { readPinnedProjectIds, togglePinnedProjectId, writePinnedProjectIds } from "../projectPins";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
-import { errorBanner, normalizeTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
+import { errorBanner, normalizeTransientError, reconnectingRow, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
+import { rowDecision } from "../sync/connectionSummary";
 import { interruptedRunsReadPlan } from "../interruptedRunsRead";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { interactiveSurfaceStyles } from "./shared";
@@ -236,6 +237,13 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
 /** Reopen within this window serves the list the last open just fetched. */
 const QUICK_SWITCHER_REFRESH_MS = 30_000;
 const EMPTY_ID_SET: ReadonlySet<string> = new Set();
+
+/**
+ * A panel whose data has not answered yet says nothing (owner, 2026-09-30): no
+ * "Loading…" title, and never an empty-state claim it cannot know. While the
+ * machine goes unanswered, the app row speaks (B48).
+ */
+const UNKNOWN_YET: WorkspacePanelEmptyState = { kind: "unknown" };
 const EMPTY_STATE_MAP: ReadonlyMap<string, SessionStateBadgeKind> = new Map();
 /** How much of a session's own history to offer the composer's picker. */
 const PROMPT_HISTORY_PROP_LIMIT = 50;
@@ -371,6 +379,7 @@ export class PiWebApp extends LitElement {
     () => this.state,
     (patch) => { this.setState(patch); },
     this.workspaces,
+    { onListingChange: () => { this.onProjectsListingChange(); } },
   );
   private readonly machines = new MachineController(
     () => this.state,
@@ -405,6 +414,8 @@ export class PiWebApp extends LitElement {
   private workspaceDeletionPollTimer: number | undefined;
   private subagentRefreshArmedFor: string | undefined;
   private livenessTimer: number | undefined;
+  private reconnectingShownAt: number | undefined;
+  private reconnectingRecheck: number | undefined;
   private lastInteractionLivenessAt = 0;
   private refreshingWorkspaceDeletionRuns = false;
   private readonly handledWorkspaceDeletionRunIds = new Set<string>();
@@ -655,6 +666,7 @@ export class PiWebApp extends LitElement {
    * the liveness check retire any socket that only looks alive.
    */
   private readonly onBrowserOnline = () => {
+    this.projects.wake();
     this.realtime.reconnectNow();
     this.sessions.reconnectSocketNow();
     this.checkSocketLiveness();
@@ -676,6 +688,7 @@ export class PiWebApp extends LitElement {
   private readonly onDocumentVisibilityChange = () => {
     this.updateSubagentPolling();
     if (document.visibilityState === "visible") {
+      this.projects.wake();
       void this.refreshSubagents();
       // Coming back to the tab is the moment a stale bundle bites next; a
       // server upgraded while the phone slept should be offered, not hidden.
@@ -1215,6 +1228,9 @@ export class PiWebApp extends LitElement {
     this.clearScheduledPiWebStatusRefresh();
     if (this.workspaceDeletionPollTimer !== undefined) window.clearInterval(this.workspaceDeletionPollTimer);
     this.workspaceDeletionPollTimer = undefined;
+    if (this.reconnectingRecheck !== undefined) window.clearTimeout(this.reconnectingRecheck);
+    this.reconnectingRecheck = undefined;
+    this.projects.dispose();
     if (this.livenessTimer !== undefined) window.clearInterval(this.livenessTimer);
     this.livenessTimer = undefined;
     window.removeEventListener("online", this.onBrowserOnline);
@@ -1276,7 +1292,7 @@ export class PiWebApp extends LitElement {
     // session." with no way back. Defer to the retry loop instead — it
     // re-lists the projects and re-restores the same route once the listing
     // recovers.
-    if (effectiveRoute.projectId !== undefined && this.state.projectsLoad === "failed") {
+    if (effectiveRoute.projectId !== undefined && this.state.projectsLoad !== "loaded") {
       this.deferRemoteRouteRestore(effectiveRoute, intent);
       await this.refreshWorkspaceDeletionRuns();
       return;
@@ -1584,6 +1600,15 @@ export class PiWebApp extends LitElement {
     this.schedulePendingRemoteRouteRestore();
   }
 
+  /**
+   * The projects listing answered or moved: a route restore waiting on it can
+   * run now instead of waiting out its ladder.
+   */
+  private onProjectsListingChange(): void {
+    this.requestUpdate();
+    if (this.state.projectsLoad === "loaded") this.retryPendingRemoteRouteRestoreSoon();
+  }
+
   private retryPendingRemoteRouteRestoreSoon(): void {
     if (this.pendingRemoteRouteRestore === undefined) return;
     this.schedulePendingRemoteRouteRestore(0);
@@ -1646,7 +1671,8 @@ export class PiWebApp extends LitElement {
 
   private scheduleNextRemoteRouteRestoreAttempt(route: ParsedAppRoute): void {
     this.remoteRouteRestoreAttempt += 1;
-    if (this.remoteRouteRestoreAttempt >= REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS.length) {
+    const local = (route.machineId ?? "local") === "local";
+    if (!local && this.remoteRouteRestoreAttempt >= REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS.length) {
       this.setRemoteRouteRestoreMessage(route, { exhausted: true });
       this.clearPendingRemoteRouteRestore();
       return;
@@ -1656,10 +1682,9 @@ export class PiWebApp extends LitElement {
   }
 
   private setRemoteRouteRestoreMessage(route: ParsedAppRoute, options: { exhausted?: boolean } = {}): void {
-    // The reconnecting sentence names a machine; a local route's ladder
-    // retries the projects listing, and loadProjects' catch already raises
-    // the honest failure banner - the machine wording would promise a
-    // reconnect the local ladder never performs.
+    // A local route waits on the projects listing, which retries by itself
+    // and is named by the app row while it goes unanswered (B48); the
+    // machine wording would promise a reconnect this ladder never performs.
     if ((route.machineId ?? "local") === "local") return;
     const machineId = route.machineId ?? "local";
     const machineName = this.state.machines.find((machine) => machine.id === machineId)?.name ?? this.state.selectedMachine?.name ?? "Remote machine";
@@ -2697,8 +2722,7 @@ export class PiWebApp extends LitElement {
       .onOpenSettings=${() => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }}
       .onReload=${() => { this.hardReloadApp(); }}
       .loadingSessions=${this.quickSwitcherLoading && this.quickSwitcherSessions.length === 0}
-      .loadingChoices=${this.state.projectsLoad === "loading" || this.state.isLoadingWorkspaces}
-      .loadError=${this.state.projectsLoad === "failed" ? "Couldn't read the projects on this machine." : undefined}
+      .loadingChoices=${this.state.projectsLoad !== "loaded" || this.state.isLoadingWorkspaces}
       .canRenameSession=${true}
       .canArchiveSessions=${!this.quickSwitcherBrowsingElsewhere()}
       .canCloseProject=${true}
@@ -3114,59 +3138,50 @@ export class PiWebApp extends LitElement {
 
   private workspacePanelEmptyState(): WorkspacePanelEmptyState {
     const project = this.state.selectedProject;
-    if (this.state.projectsLoad !== "loaded" && this.state.projectsLoad !== "failed") {
-      // Unloaded or loading: the list does not know yet, so it may not claim
-      // "no projects".
-      return {
-        title: "Loading projects…",
-        body: "Looking for projects you have added to PI WEB.",
-      };
-    }
+    if (this.state.projectsLoad !== "loaded") return UNKNOWN_YET;
     if (project === undefined) {
       return this.state.projects.length === 0
         ? {
+            kind: "message",
             title: "No projects yet",
             body: "Use Actions → Add Project to add a folder. Workspace tools will appear here after you choose a workspace.",
           }
         : {
+            kind: "message",
             title: "Select a project",
             body: "Choose a project from the sidebar, then select a workspace to use its tools.",
           };
     }
-    if (this.state.isLoadingWorkspaces) {
-      return {
-        title: "Loading workspaces…",
-        body: `Preparing workspace tools for ${project.name}.`,
-      };
-    }
+    if (this.state.isLoadingWorkspaces) return UNKNOWN_YET;
     if (this.state.workspaces.length === 0) {
       return {
+        kind: "message",
         title: "No workspaces found",
         body: `${project.name} does not have any available workspaces. Try selecting the project again or re-adding it.`,
       };
     }
     return {
+      kind: "message",
       title: "Select a workspace",
       body: `Choose a workspace in ${project.name} to use its tools.`,
     };
   }
 
   private sessionEmptyMessage(): string {
-    if (this.state.projectsLoad !== "loaded" && this.state.projectsLoad !== "failed") return "Loading projects…";
+    if (this.state.projectsLoad !== "loaded") return "";
     if (this.state.selectedWorkspace !== undefined) return "Select or start a session.";
     if (this.state.selectedProject !== undefined) return "Select a workspace to start a session.";
-    if (this.state.projectsLoad === "failed" && this.state.projects.length === 0) return "Projects could not be loaded.";
     if (this.state.projects.length === 0) return "Add a project to start a session.";
     return "Select a project and workspace to start a session.";
   }
 
   /** The one action that unblocks an empty chat surface, next to its text. */
   private renderEmptyStateAction(): TemplateResult {
-    if (this.state.projectsLoad !== "loaded" && this.state.projectsLoad !== "failed") return html``;
+    if (this.state.projectsLoad !== "loaded") return html``;
     if (this.state.selectedWorkspace !== undefined && this.canStartSession()) {
       return html`<button @click=${() => { void this.startSessionAndOpenChat(); }}>Start a session</button>`;
     }
-    if (this.state.projectsLoad === "loaded" && this.state.projects.length === 0) {
+    if (this.state.projects.length === 0) {
       return this.hasAddProjectEntry() ? html`<button @click=${() => { this.openProjectDialog(); }}>Add a project</button>` : html``;
     }
     return html``;
@@ -4183,6 +4198,29 @@ export class PiWebApp extends LitElement {
     await this.machines.loadMachines();
   }
 
+  /**
+   * The row when no notice holds it: reconnecting, once the machine in use has
+   * gone without an answer for the grace period, and held for the minimum
+   * visible time after it recovers. One claim at a time (owner, 2026-09-30).
+   */
+  private renderAppRow(error: string, retiredBy: RetiredBy) {
+    const notice = this.renderErrorBanner(error, retiredBy);
+    const row = this.renderReconnectingRow(notice !== null);
+    return notice ?? row;
+  }
+
+  private renderReconnectingRow(noticeShown: boolean) {
+    const decision = rowDecision({ notice: noticeShown, unansweredSince: this.projects.unansweredSince(), reconnectingShownAt: this.reconnectingShownAt, now: Date.now() });
+    if (this.reconnectingRecheck !== undefined) window.clearTimeout(this.reconnectingRecheck);
+    this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : window.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
+    if (decision.claim !== "reconnecting") {
+      this.reconnectingShownAt = undefined;
+      return null;
+    }
+    this.reconnectingShownAt ??= Date.now();
+    return reconnectingRow();
+  }
+
   private renderErrorBanner(error: string, retiredBy: RetiredBy) {
     // The hold window is an anti-churn device for one context. A scope
     // switch resets only this hold bookkeeping - the banner itself survives
@@ -4391,7 +4429,7 @@ export class PiWebApp extends LitElement {
         <main class=${mainViewClass(displayView)}>
           ${this.appShell.isMobileNavigationLayout && displayView === "navigation" ? null : this.renderContextBar()}
 
-          ${this.renderErrorBanner(state.error, state.errorRetiredBy)}
+          ${this.renderAppRow(state.error, state.errorRetiredBy)}
           ${this.renderStaleClientBanner()}
           ${this.renderSelfUpdateBanner()}
           ${deprecatedAgentInputsBanner(deprecatedAgentInputsWarnings(state.machines, state.machineRuntimes))}

@@ -175,30 +175,39 @@ describe("ProjectController", () => {
 });
 
 describe("ProjectController.loadProjects", () => {
-  it("keeps the previous projects and records a failure instead of an empty list", async () => {
-    // A failed fetch used to keep `[]` and drop the loading flag, so the list
-    // rendered exactly as if the machine had no projects.
+  it("never stops at a lost answer: it keeps the rows, writes no error, and retries by itself until the projects arrive (B48)", async () => {
     const kept = project("kept", "/kept");
+    const listed = project("listed", "/listed");
     let state: AppState = { ...initialAppState(), projects: [kept] };
+    const timers: { at: number; run: () => void; cancelled: boolean }[] = [];
+    let now = 0;
+    const clock = {
+      now: () => now,
+      setTimer: (run: () => void, delayMs: number) => {
+        const timer = { at: now + delayMs, run, cancelled: false };
+        timers.push(timer);
+        return () => { timer.cancelled = true; };
+      },
+    };
+    const advance = (ms: number) => {
+      now += ms;
+      for (const timer of timers.filter((candidate) => !candidate.cancelled && candidate.at <= now)) { timer.cancelled = true; timer.run(); }
+    };
+    const projects = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce([listed]);
     const controller = new ProjectController(
       () => state,
       (patch) => { state = { ...state, ...patch }; },
       { selectProject: vi.fn(), forgetProject: vi.fn(), clearSelection: vi.fn() },
-      {
-        api: {
-          projects: vi.fn().mockRejectedValue(new Error("web process down")),
-          addProject: vi.fn(),
-          closeProject: vi.fn(),
-          setWorkspaceTrust: vi.fn(),
-        },
-      },
+      { api: { projects, addProject: vi.fn(), closeProject: vi.fn(), setWorkspaceTrust: vi.fn() }, clock },
     );
 
     await controller.loadProjects();
 
-    expect(state.projects).toEqual([kept]);
-    expect(state.projectsLoad).toBe("failed");
-    expect(state.error).toContain("web process down");
+    expect({ projects: state.projects, load: state.projectsLoad, error: state.error }).toEqual({ projects: [kept], load: "loading", error: "" });
+    advance(1000);
+    await vi.waitFor(() => { expect(state.projectsLoad).toBe("loaded"); });
+    expect(state.projects).toEqual([listed]);
+    expect(projects).toHaveBeenCalledTimes(2);
   });
 
   it("marks a completed listing loaded", async () => {

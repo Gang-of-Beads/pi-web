@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { NavProjectSnapshot as Project } from "@gang-of-beads/pi-web/plugin-api";
 import { ProjectList } from "./ProjectList";
 
@@ -9,57 +9,34 @@ afterEach(() => {
 });
 
 /**
- * The projects list rendered its array and nothing else: no loading, no
- * failure, no empty message. A failed load kept `[]`, so a project list that
- * could not be fetched rendered exactly like an empty one, and the failure
- * banner retired itself — the "project vanished" report. The list now carries
- * the load state, says what it is doing, and offers Retry on failure.
+ * The list claims an empty machine only after a listing answered with zero.
+ * Before an answer it says nothing: the host retries a lost listing by itself
+ * and its app row names a machine that stays unanswered (B48). It never shows
+ * "Loading projects…" (owner, 2026-09-30) or a failure with Retry, which the
+ * owner met frozen on the phone board after one lost answer.
  */
-describe("the project list knows whether its data is loaded", () => {
-  it("shows a loading state before the first listing completes, not silence", async () => {
-    const text = await mountedText({ projectsLoad: "unloaded" });
-    expect(text).toContain("Loading projects");
+describe("the project list claims nothing it does not know", () => {
+  it("says nothing before the first listing answers, or while one is in flight", async () => {
+    for (const projectsLoad of ["unloaded", "loading"] as const) {
+      const text = await mountedText({ projectsLoad });
+      expect({ projectsLoad, loading: text.includes("Loading projects"), empty: text.includes("No projects yet"), failed: text.includes("Could not load") }).toEqual({ projectsLoad, loading: false, empty: false, failed: false });
+    }
   });
 
-  it("shows a loading state while a listing is in flight", async () => {
-    const text = await mountedText({ projectsLoad: "loading" });
-    expect(text).toContain("Loading projects");
-  });
-
-  it("renders the failure with a Retry instead of a silent bare list", async () => {
-    // RED before the discipline: a failed fetch rendered nothing at all.
-    const text = await mountedText({ projectsLoad: "failed" });
-    expect(text).toContain("Could not load projects");
-    expect(text).toContain("Retry");
-  });
-
-  it("keeps stale rows on screen under the failure, with the Retry offered", async () => {
-    const list = await mount({ projects: [project("kept")], projectsLoad: "failed" });
-    const text = list.shadowRoot?.textContent ?? "";
-    expect(text).toContain("kept");
-    expect(text).toContain("Could not load projects");
+  it("keeps the last known rows while a listing is in flight", async () => {
+    const list = await mount({ projects: [project("kept")], projectsLoad: "loading" });
+    expect(list.shadowRoot?.textContent).toContain("kept");
   });
 
   it("says 'No projects yet' only on a loaded-empty list", async () => {
     const text = await mountedText({ projects: [], projectsLoad: "loaded" });
     expect(text).toContain("No projects yet");
-    expect(text).not.toContain("Loading projects");
   });
 
   it("renders rows with no status line once loaded", async () => {
     const text = await mountedText({ projects: [project("a")], projectsLoad: "loaded" });
     expect(text).toContain("a");
-    expect(text).not.toContain("Loading projects");
     expect(text).not.toContain("No projects yet");
-  });
-
-  it("offers Retry through the host handler", async () => {
-    const onRetryLoad = vi.fn();
-    const list = await mount({ projects: [], projectsLoad: "failed", onRetryLoad });
-    const retry = [...(list.shadowRoot?.querySelectorAll("button") ?? [])].find((button) => button.textContent === "Retry");
-    if (retry === undefined) throw new Error("Expected a Retry button");
-    retry.click();
-    expect(onRetryLoad).toHaveBeenCalledOnce();
   });
 });
 
@@ -114,14 +91,12 @@ function rowNames(list: ProjectList): string[] {
 interface MountOptions {
   projects?: Project[];
   projectsLoad?: "unloaded" | "loading" | "loaded" | "failed";
-  onRetryLoad?: () => void;
 }
 
 async function mount(options: MountOptions): Promise<ProjectList> {
   const list = new ProjectList();
   list.projects = options.projects ?? [];
   list.projectsLoad = options.projectsLoad ?? "loaded";
-  if (options.onRetryLoad !== undefined) list.onRetryLoad = options.onRetryLoad;
   document.body.append(list);
   await list.updateComplete;
   return list;

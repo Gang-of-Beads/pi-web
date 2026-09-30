@@ -26,7 +26,6 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
    */
   @property({ attribute: false }) projectsLoad: "unloaded" | "loading" | "loaded" | "failed" = "unloaded";
   /** Ask the host to re-run the projects listing; wired to the Retry control. */
-  @property({ attribute: false }) onRetryLoad?: () => void;
   @state() private searchQuery = "";
   /**
    * The panel hides sections with the `hidden` attribute rather than removing
@@ -158,25 +157,18 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   /**
    * What the latest load did, under the rows. Rows are the last known truth
    * and render regardless; the empty claim may only follow a completed
-   * listing that returned zero, and a failure names itself and offers Retry —
-   * it must not look like an empty machine.
+   * listing that returned zero. Until the listing answers the list says
+   * nothing: the host retries by itself and its app row names a machine that
+   * goes unanswered (B48).
    */
   private renderListStatus() {
-    if (this.projectsLoad === "failed") {
-      return html`
-        <div class="load-failed" role="alert">
-          <span>Could not load projects.</span>
-          <button class="load-retry" @click=${() => { this.onRetryLoad?.(); }}>Retry</button>
-        </div>
-      `;
-    }
     if (this.searchQuery.trim() !== "") return null;
     if (this.projectsLoad === "loaded") {
       // A workspace list with no projects rendered nothing at all, reading as
       // a rendering bug rather than a state.
       return this.projects.length === 0 ? html`<div class="list-empty" role="status">No projects yet. Add one to start working here.</div>` : null;
     }
-    return html`<div class="list-loading" role="status">Loading projects…</div>`;
+    return null;
   }
 
   private handleProjectKeydown(event: KeyboardEvent, project: NavProjectSnapshot): void {
