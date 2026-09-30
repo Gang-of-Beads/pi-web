@@ -230,16 +230,18 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 - **Watcher (P3), after the owner's requested research** (run 8f558e71; VS Code's git extension, GitLens, lazygit, GitHub Desktop, JetBrains):
   - **Cause.** The watcher is a recursive `fs.watch` on the whole workspace with no filter (`workspaceWatcher.ts:39`). It publishes `workspace.changed` at most once per 250 ms burst (`:44`, `:92-99`). Every `.git/objects` write, every `index.lock`, `node_modules`, and the `.pi/tasks/*.output` logs that background tasks append continuously therefore become one git status plus one tree read up to 4 times a second, which is the storm [N §4].
   - Our own `git status` already runs with `--no-optional-locks` (`git/server-plugin.ts:195-201`), so our reads do not rewrite the index.
-  - **What the mature tools do, and PI WEB now does:**
-    - **Two watch sets.**
-      - A `.git` whitelist: `HEAD`, `index`, `packed-refs`, `refs/**`, `*_HEAD`, `MERGE_*`, `rebase-*/**`, `info/exclude` (the GitLens set). A terminal commit shows through `index` and `refs/**`, which is why `.git` is not ignored wholesale.
-      - The working tree, excluding `.git/`, `node_modules/`, `.pi/` and gitignored paths.
-    - **Always dropped:** `*.lock`, `objects/**`, `logs/**`, `.watchman-cookie-*`, `fsmonitor--daemon/`.
-    - **Two trailing windows:** 250 ms for `.git` (a commit shows fast) and 2.5 s for the tree (GitLens's numbers). One status in flight plus one queued per workspace (VS Code's throttle).
-    - **Our own git operations** (stage, commit through the git plugin) mark the workspace busy. Events that land meanwhile merge into one refresh when the operation ends (VS Code's `operations.isIdle()`).
-    - **Visibility gating:** a workspace with no visible panel keeps a dirty flag instead of refreshing, and refreshes once when a panel becomes visible or the tab regains focus (GitLens's suspend and resume, GitHub Desktop).
-    - **Head-based freshness:** status is cached per workspace, keyed by (HEAD, index mtime, tree generation). A request whose key has not moved is answered from the cache without spawning git.
-    - **Size cap:** above 10 000 status entries (VS Code's `git.statusLimit`), automatic status stops and the panel says so.
+  - **What the mature tools do.** Shipped in the watcher change (`workspaceChangeFilter.ts`, probe `probe-watch-noise.mjs`):
+    - **A `.git` whitelist:** `HEAD`, `index`, `packed-refs`, `config`, `shallow`, `refs/**`, `*_HEAD`, `MERGE_*`, `rebase-*/**`, `sequencer/**`, `info/exclude` (the GitLens set). A terminal commit shows through `index` and `refs/**`, which is why `.git` is not ignored wholesale. A linked worktree's state under `.git/worktrees/` is not news for the main workspace.
+    - **Always dropped:** `*.lock`, `objects/**`, `logs/**` and every other `.git` file; `node_modules` at any depth; the git directory of a nested clone; `.watchman-cookie-*`; `fsmonitor--daemon/`; pi's runtime logs (`.pi/tasks/`, `.pi/delegate/`).
+    - **The working tree is news, build output included** (`dist/`, `.next/`, `target/`). The tree and git panels show it, and a busy build publishes at most once per 2.5 s window. Checking `.gitignore` would cost a git spawn per event; add it only if a measurement shows build output on the budget.
+    - **Two trailing windows:** 250 ms for git state (a commit shows fast) and 2.5 s for the tree (GitLens's numbers). A git-state change brings a pending tree publish forward.
+    - **Visibility gating:** a hidden tab only remembers which workspace changed (machine and path), and refreshes it once when the tab is shown again, if it is still the one on screen.
+  - **Still to do (P3, after measuring):**
+    - one status in flight plus one queued per workspace (VS Code's throttle);
+    - our own git operations marking the workspace busy and merging the events they cause;
+    - status cached by (HEAD, index mtime, tree generation);
+    - the 10 000-entry cap;
+    - the Git panel's own 8 s poll (`git-panel.ts:40`, `:1223`), which still runs while hidden.
   - **Budget:** ≤ 8 git/tree reads a minute with the panel open and nothing changing, and a terminal commit visible within about 1 s.
 
 ### 1.17 Goal (D7)

@@ -48,7 +48,7 @@ import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { SessionUnreadController } from "../sessionUnread";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
-import { workspaceChangeVerdict } from "../workspaceChange";
+import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
 import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, MachineSectionContext } from "../plugins/types";
 import { CORE_PRO_LIGHT_THEME_ID, isNativeThemeId, applyNativeProLightTheme, CORE_PRO_THEME_ID, CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyNativeProTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
@@ -415,6 +415,7 @@ export class PiWebApp extends LitElement {
   private subagentRefreshArmedFor: string | undefined;
   private livenessTimer: number | undefined;
   private reconnectingShownAt: number | undefined;
+  private workspaceChangedWhileHidden: WorkspaceScope | undefined;
   private reconnectingRecheck: number | undefined;
   private lastInteractionLivenessAt = 0;
   private refreshingWorkspaceDeletionRuns = false;
@@ -689,6 +690,7 @@ export class PiWebApp extends LitElement {
     this.updateSubagentPolling();
     if (document.visibilityState === "visible") {
       this.projects.wake();
+      this.refreshWorkspaceChangedWhileHidden();
       void this.refreshSubagents();
       // Coming back to the tab is the moment a stale bundle bites next; a
       // server upgraded while the phone slept should be offered, not hidden.
@@ -2166,14 +2168,22 @@ export class PiWebApp extends LitElement {
       .map((machine) => machine.id));
   }
 
+  private refreshWorkspaceChangedWhileHidden(): void {
+    const deferred = this.workspaceChangedWhileHidden;
+    this.workspaceChangedWhileHidden = undefined;
+    if (refreshOnReturn(deferred, { selectedMachineId: selectedMachineId(this.state), selectedWorkspacePath: this.state.selectedWorkspace?.path })) void this.invalidateWorkspacePanels();
+  }
+
   private applyWorkspaceChanged(machineId: string, cwd: string): void {
     const verdict = workspaceChangeVerdict({
       eventMachineId: machineId,
       eventCwd: cwd,
       selectedMachineId: selectedMachineId(this.state),
       selectedWorkspacePath: this.state.selectedWorkspace?.path,
+      visible: document.visibilityState === "visible",
     });
     if (verdict.kind === "refresh") void this.invalidateWorkspacePanels();
+    if (verdict.kind === "defer") this.workspaceChangedWhileHidden = verdict.scope;
   }
 
   private handleMachineActivityEvent(machineId: string, event: BrowserRealtimeEvent): void {

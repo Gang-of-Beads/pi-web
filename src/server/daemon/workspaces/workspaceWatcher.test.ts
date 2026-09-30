@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { WorkspaceWatcher, type WorkspaceChangedEvent, type WorkspaceWatchHandle, type WorkspaceWatcherDependencies } from "./workspaceWatcher.js";
 
-function harness(options: { failPaths?: readonly string[] } = {}) {
+function harness(options: { failPaths?: readonly string[]; gitDirs?: Readonly<Record<string, string>> } = {}) {
   const published: WorkspaceChangedEvent[] = [];
-  const changeListeners = new Map<string, () => void>();
+  const changeListeners = new Map<string, (relativePath?: string) => void>();
   const errorListeners = new Map<string, () => void>();
   const closed: string[] = [];
-  const timers: { callback: () => void; handle: ReturnType<typeof setTimeout> }[] = [];
+  const timers: { callback: () => void; handle: ReturnType<typeof setTimeout>; delayMs: number }[] = [];
+  let now = 0;
   const dependencies: WorkspaceWatcherDependencies = {
     watchDirectory: (path, onChange) => {
       if (options.failPaths?.includes(path) === true) throw new Error(`ENOENT ${path}`);
@@ -17,12 +18,14 @@ function harness(options: { failPaths?: readonly string[] } = {}) {
       };
       return handle;
     },
-    setTimer: (callback) => {
+    setTimer: (callback, delayMs) => {
       const handle = setTimeout(() => undefined, 60_000);
       handle.unref();
-      timers.push({ callback, handle });
+      timers.push({ callback, handle, delayMs });
       return handle;
     },
+    now: () => now,
+    linkedGitDir: (path) => options.gitDirs?.[path],
     clearTimer: (timer) => {
       clearTimeout(timer);
       const index = timers.findIndex((entry) => entry.handle === timer);
@@ -30,10 +33,55 @@ function harness(options: { failPaths?: readonly string[] } = {}) {
     },
   };
   const fireTimers = (): void => { for (const timer of timers.splice(0)) timer.callback(); };
-  return { published, changeListeners, errorListeners, closed, timers, fireTimers, watcher: new WorkspaceWatcher((event) => published.push(event), dependencies) };
+  const advance = (ms: number): void => { now += ms; };
+  return { published, changeListeners, errorListeners, closed, timers, fireTimers, advance, watcher: new WorkspaceWatcher((event) => published.push(event), dependencies) };
 }
 
 describe("WorkspaceWatcher", () => {
+  it("publishes nothing for git's own churn, dependency folders or pi's task logs", () => {
+    const h = harness();
+    h.watcher.hold("s1", "/repo");
+    for (const path of [".git/objects/ab/cdef", ".git/index.lock", "node_modules/lit/index.js", ".pi/tasks/abc.output"]) h.changeListeners.get("/repo")?.(path);
+    expect(h.timers).toHaveLength(0);
+    h.fireTimers();
+    expect(h.published).toEqual([]);
+  });
+
+  it("publishes a git state change within 250 ms and a tree change within 2.5 s, and the sooner one wins", () => {
+    const h = harness();
+    h.watcher.hold("s1", "/repo");
+    h.changeListeners.get("/repo")?.("src/app.ts");
+    expect(h.timers.map((timer) => timer.delayMs)).toEqual([2500]);
+    h.advance(100);
+    h.changeListeners.get("/repo")?.("src/other.ts");
+    expect(h.timers.map((timer) => timer.delayMs)).toEqual([2500]);
+    h.changeListeners.get("/repo")?.(".git/index");
+    expect(h.timers.map((timer) => timer.delayMs)).toEqual([250]);
+    h.fireTimers();
+    expect(h.published).toEqual([{ type: "workspace.changed", cwd: "/repo" }]);
+  });
+
+  it("watches a linked worktree's git state where it lives, and reads it as the workspace's .git", () => {
+    const h = harness({ gitDirs: { "/wt": "/repo/.git/worktrees/wt" } });
+    h.watcher.hold("s1", "/wt");
+    h.changeListeners.get("/repo/.git/worktrees/wt")?.("logs/HEAD");
+    expect(h.timers).toHaveLength(0);
+    h.changeListeners.get("/repo/.git/worktrees/wt")?.("index");
+    expect(h.timers.map((timer) => timer.delayMs)).toEqual([250]);
+    h.fireTimers();
+    expect(h.published).toEqual([{ type: "workspace.changed", cwd: "/wt" }]);
+    h.watcher.release("s1", "/wt");
+    expect(h.closed).toEqual(["/wt", "/repo/.git/worktrees/wt"]);
+  });
+
+  it("keeps an earlier publish when a later-due change arrives", () => {
+    const h = harness();
+    h.watcher.hold("s1", "/repo");
+    h.changeListeners.get("/repo")?.(".git/index");
+    h.changeListeners.get("/repo")?.("src/app.ts");
+    expect(h.timers.map((timer) => timer.delayMs)).toEqual([250]);
+  });
+
   it("watches a held directory once and coalesces a burst into one event", () => {
     const h = harness();
     h.watcher.hold("s1", "/repo");

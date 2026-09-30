@@ -82,7 +82,7 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
   - After 2 s behind, a surface shows a thin "Catching up…" line.
   - When unknown, it shows "Offline · updated 00:51" instead of stale rows as if they were current.
   - The status line never claims a live state that the transcript head contradicts.
-- **No refresh storms.** A burst of `workspace.changed` coalesces into at most one git status and one tree read per 2 s per workspace. The web log showed about two a second.
+- **No refresh storms.** The watcher drops git's own churn, dependency folders and pi's runtime state, and coalesces a burst into one `workspace.changed` per window: 250 ms for git state, 2.5 s for the tree (object model §1.16). The web log showed about two a second before it.
 
 ### 5. Version skew is a state, not an accident
 

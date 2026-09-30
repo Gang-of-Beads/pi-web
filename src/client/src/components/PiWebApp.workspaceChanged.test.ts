@@ -36,7 +36,38 @@ describe("PiWebApp workspace.changed wiring", () => {
 
     expect(invalidated).toEqual([]);
   });
+
+  it("refreshes nothing while the tab is hidden, then refreshes once when it is shown again", () => {
+    const app = createApp();
+    const invalidated: unknown[] = [];
+    observeInvalidate(app, invalidated);
+    setAppState(app, { ...initialAppState(), selectedWorkspace: workspace, selectedMachine: local });
+    const visibility: { state: DocumentVisibilityState } = { state: "hidden" };
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility.state);
+    stubVisibleTabWork(app);
+
+    handleRealtimeEvent(app, "local", { type: "workspace.changed", cwd: "/repo" });
+    handleRealtimeEvent(app, "local", { type: "workspace.changed", cwd: "/repo/src" });
+    expect(invalidated).toEqual([]);
+
+    visibility.state = "visible";
+    showTab(app);
+    showTab(app);
+    expect(invalidated).toHaveLength(1);
+  });
 });
+
+function stubVisibleTabWork(app: PiWebApp): void {
+  for (const name of ["updateSubagentPolling", "refreshSubagents", "checkClientFreshness"]) {
+    if (!Reflect.set(app, name, () => Promise.resolve())) throw new Error(`Could not stub ${name}`);
+  }
+}
+
+function showTab(app: PiWebApp): void {
+  const handler: unknown = Reflect.get(app, "onDocumentVisibilityChange");
+  if (typeof handler !== "function") throw new Error("PiWebApp.onDocumentVisibilityChange is not callable");
+  handler.call(app);
+}
 
 function createApp(): PiWebApp {
   const storage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
