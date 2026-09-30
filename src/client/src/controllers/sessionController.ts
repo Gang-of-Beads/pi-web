@@ -1,4 +1,4 @@
-import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
+import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Project, type Workspace } from "../api";
 import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
@@ -116,7 +116,28 @@ export interface SessionControllerDependencies {
    * timer.
    */
   onBackgroundRunCountChanged?: (sessionId: string) => void;
+  /**
+   * Where a session opened from another project is placed from: the host's
+   * projects and workspaces listings, which keep reading until they answer
+   * (B48). Without it the lookup reads the API once, as it did before.
+   */
+  catalogue?: SessionCatalogue;
 }
+
+/**
+ * The listings a session's location is looked up in. Each read waits for an
+ * answer while `wanted` holds, and resolves undefined once it stops holding or
+ * the machine refused.
+ */
+export interface SessionCatalogue {
+  projects(machineId: string, wanted: () => boolean): Promise<readonly Project[] | undefined>;
+  workspaces(machineId: string, projectId: string, wanted: () => boolean): Promise<readonly Workspace[] | undefined>;
+}
+
+const directCatalogue: SessionCatalogue = {
+  projects: (machineId) => projectsApi.projects(machineId),
+  workspaces: (machineId, projectId) => workspacesApi.workspaces(projectId, machineId),
+};
 
 interface BulkSessionMutationResult {
   succeededIds: string[];
@@ -203,6 +224,7 @@ export class SessionController {
   private readonly onSelectedSessionReady: SessionControllerDependencies["onSelectedSessionReady"];
   private readonly onSelectedSessionIdle: SessionControllerDependencies["onSelectedSessionIdle"];
   private readonly onBackgroundRunCountChanged: SessionControllerDependencies["onBackgroundRunCountChanged"];
+  private readonly catalogue: SessionCatalogue;
   private selectionSeq = 0;
   private disposed = false;
   private refreshRetryCount = 0;
@@ -267,6 +289,7 @@ export class SessionController {
     this.onSelectedSessionReady = deps.onSelectedSessionReady;
     this.onSelectedSessionIdle = deps.onSelectedSessionIdle;
     this.onBackgroundRunCountChanged = deps.onBackgroundRunCountChanged;
+    this.catalogue = deps.catalogue ?? directCatalogue;
   }
 
   applyGlobalEvent(event: GlobalSessionEvent): void {
@@ -2009,12 +2032,15 @@ export class SessionController {
   private async locateAndApplySessionWorkspace(session: SessionInfo, machineId: string, seq: number): Promise<void> {
     const cwd = session.cwd;
     if (cwd === "") return;
+    const stillSelected = () => seq === this.selectionSeq && this.getState().selectedSession?.id === session.id;
+    let placed = false;
+    const wanted = () => !placed && stillSelected();
     const found = await locateSessionWorkspace(cwd, {
-      projects: () => projectsApi.projects(machineId),
-      workspaces: (projectId: string) => workspacesApi.workspaces(projectId, machineId),
+      projects: () => this.catalogue.projects(machineId, wanted),
+      workspaces: (projectId: string) => this.catalogue.workspaces(machineId, projectId, wanted),
     });
-    if (found === undefined || seq !== this.selectionSeq) return;
-    if (this.getState().selectedSession?.id !== session.id) return;
+    placed = true;
+    if (found === undefined || !stillSelected()) return;
     const state = this.getState();
     const workspaceMoved = found.workspace.id !== state.selectedWorkspace?.id || found.project.id !== state.selectedProject?.id;
     this.setState({

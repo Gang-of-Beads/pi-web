@@ -163,3 +163,114 @@ describe("ScopedResource", () => {
     expect(resource.entry("remote").known).toBe(false);
   });
 });
+
+describe("ScopedResource after a refusal or a dispose", () => {
+  it("treats a lost read after a refusal as no answer, not as the old refusal", async () => {
+    const { reads, resource } = projects();
+    resource.watch("local");
+    void resource.refresh("local");
+    reads.calls[0]?.reject(new HttpError("Forbidden", 403));
+    await flush();
+    void resource.refresh("local");
+    reads.calls[1]?.reject(lost());
+    await flush();
+    expect(resource.entry("local")).toMatchObject({ phase: "reconnecting", fact: { kind: "none" } });
+  });
+
+  it("settles a refresh asked for after dispose, and one that waited on a read in flight", async () => {
+    const { reads, resource } = projects();
+    resource.watch("local");
+    void resource.refresh("local");
+    let waited = false;
+    void resource.refresh("local").then(() => { waited = true; });
+    resource.dispose();
+    reads.calls[0]?.resolve(["a"]);
+    await flush();
+    expect(waited).toBe(true);
+    let late = false;
+    void resource.refresh("local").then(() => { late = true; });
+    await flush();
+    expect(late).toBe(true);
+  });
+});
+
+describe("ScopedResource.whenAnswered", () => {
+  it("reads now and waits through lost answers for the one that comes, retrying while it waits", async () => {
+    const { time, reads, resource } = projects();
+    let view: unknown = "pending";
+    void resource.whenAnswered("local", () => true).then((answer) => { view = answer; });
+    reads.calls[0]?.reject(lost());
+    await flush();
+    expect(view).toBe("pending");
+    expect(resource.entry("local").phase).toBe("reconnecting");
+    time.advance(1000);
+    reads.calls[1]?.resolve(["a"]);
+    await flush();
+    expect(view).toMatchObject({ phase: "live", known: true, data: ["a"] });
+    time.advance(60_000);
+    expect(reads.calls).toHaveLength(2);
+  });
+
+  it("counts a value known from an earlier read as the answer when the fresh read is lost", async () => {
+    const { reads, resource } = projects();
+    resource.watch("local");
+    void resource.refresh("local");
+    reads.calls[0]?.resolve(["a"]);
+    await flush();
+    const answer = resource.whenAnswered("local", () => true);
+    reads.calls[1]?.reject(lost());
+    await expect(answer).resolves.toMatchObject({ phase: "reconnecting", known: true, data: ["a"] });
+  });
+
+  it("answers with a refusal the server stated, which is an answer too", async () => {
+    const { reads, resource } = projects();
+    const answer = resource.whenAnswered("local", () => true);
+    reads.calls[0]?.reject(new HttpError("Forbidden", 403));
+    await expect(answer).resolves.toMatchObject({ known: false, fact: { kind: "forbidden" } });
+  });
+
+  it("stops waiting once the reader no longer wants the answer, and stops the retries it kept alive", async () => {
+    const { time, reads, resource } = projects();
+    let wanted = true;
+    let view: unknown = "pending";
+    void resource.whenAnswered("local", () => wanted).then((answer) => { view = answer; });
+    reads.calls[0]?.reject(lost());
+    await flush();
+    wanted = false;
+    time.advance(1000);
+    reads.calls[1]?.reject(lost());
+    await flush();
+    expect(view).toBeUndefined();
+    expect(time.pending()).toEqual([]);
+  });
+
+  it("does not read at all for a reader that no longer wants the answer", async () => {
+    const { reads, resource } = projects();
+    await expect(resource.whenAnswered("local", () => false)).resolves.toBeUndefined();
+    expect(reads.calls).toHaveLength(0);
+  });
+
+  it("lets a waiter re-check at once when the selection may have moved, without waiting for a read to settle", async () => {
+    const { reads, resource } = projects();
+    let wanted = true;
+    let view: unknown = "pending";
+    void resource.whenAnswered("local", () => wanted).then((answer) => { view = answer; });
+    reads.calls[0]?.reject(lost());
+    await flush();
+    wanted = false;
+    resource.recheckWaiters();
+    await flush();
+    expect(view).toBeUndefined();
+  });
+
+  it("lets go of a waiter when the resource is disposed", async () => {
+    const { reads, resource } = projects();
+    let view: unknown = "pending";
+    void resource.whenAnswered("local", () => true).then((answer) => { view = answer; });
+    reads.calls[0]?.reject(lost());
+    await flush();
+    resource.dispose();
+    await flush();
+    expect(view).toBeUndefined();
+  });
+});

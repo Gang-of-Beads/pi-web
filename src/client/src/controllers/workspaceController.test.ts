@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialAppState, type AppState } from "../appState";
 import type { Machine, Project, SessionInfo, Workspace } from "../api";
+import { HttpError } from "../api/http";
 import type { SessionController } from "./sessionController";
 import { WorkspaceController } from "./workspaceController";
 
@@ -40,7 +41,6 @@ interface Harness {
   state: () => AppState;
   clearActiveSession: ReturnType<typeof vi.fn>;
   updateUrl: ReturnType<typeof vi.fn>;
-  backgroundErrors: { message: string; error: unknown }[];
   setState: (patch: Partial<AppState>) => void;
 }
 
@@ -59,7 +59,6 @@ function harness(
     selectSession: vi.fn(),
   };
   const updateUrl = vi.fn();
-  const backgroundErrors: { message: string; error: unknown }[] = [];
   const controller = new WorkspaceController(
     () => state,
     setState,
@@ -71,15 +70,177 @@ function harness(
         workspaces: loadWorkspaces,
         sessions: vi.fn<(path: string, machineId?: string) => Promise<SessionInfo[]>>().mockResolvedValue([]),
       },
-      onBackgroundError: (message, error) => { backgroundErrors.push({ message, error }); },
       topologyRefreshDebounceMs: options.topologyRefreshDebounceMs ?? 0,
     },
   );
-  return { controller, state: () => state, clearActiveSession, updateUrl, backgroundErrors, setState };
+  return { controller, state: () => state, clearActiveSession, updateUrl, setState };
 }
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe("WorkspaceController.selectProject", () => {
+  /**
+   * B48: a lost answer used to paint the error banner and leave the project
+   * with no workspace list and nothing that would read it again, so the panel
+   * said "No workspaces found" for a project that has them.
+   */
+  it("keeps reading a project's workspaces until they answer, then opens the preferred one, and never reports the lost answer", async () => {
+    vi.useFakeTimers();
+    const repo = project("p1", "/repo");
+    const main = workspace(repo.id, repo.path, { isMain: true });
+    const loadWorkspaces = vi.fn<LoadWorkspaces>().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue([main]);
+    const test = harness({ selectedMachine: machine("local"), projects: [repo] }, loadWorkspaces);
+
+    const selecting = test.controller.selectProject(repo);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(test.state().isLoadingWorkspaces).toBe(true);
+    expect(test.state().workspaces).toEqual([]);
+    expect(test.state().error).toBe("");
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await selecting;
+
+    expect(loadWorkspaces).toHaveBeenCalledTimes(2);
+    expect(test.state().workspaces).toEqual([main]);
+    expect(test.state().isLoadingWorkspaces).toBe(false);
+    expect(test.state().selectedWorkspace?.id).toBe(main.id);
+    expect(test.state().error).toBe("");
+  });
+
+  it("stops reading a project the reader left while its workspaces went unanswered", async () => {
+    vi.useFakeTimers();
+    const left = project("p1", "/repo");
+    const chosen = project("p2", "/other");
+    const loadWorkspaces = vi.fn<LoadWorkspaces>((projectId) => projectId === left.id ? Promise.reject(new TypeError("Failed to fetch")) : Promise.resolve([workspace(chosen.id, chosen.path, { isMain: true })]));
+    const test = harness({ selectedMachine: machine("local"), projects: [left, chosen] }, loadWorkspaces);
+
+    const leaving = test.controller.selectProject(left);
+    await vi.advanceTimersByTimeAsync(0);
+    await test.controller.selectProject(chosen);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await leaving;
+
+    expect(loadWorkspaces.mock.calls.filter(([projectId]) => projectId === left.id)).toHaveLength(1);
+    expect(test.state().selectedProject?.id).toBe(chosen.id);
+    expect(test.state().selectedWorkspace?.projectId).toBe(chosen.id);
+  });
+
+  it("shows a refusal the machine stated as a notice, and does not claim the project has no workspaces", async () => {
+    const repo = project("p1", "/repo");
+    const loadWorkspaces = vi.fn<LoadWorkspaces>().mockRejectedValue(new HttpError("Forbidden", 403));
+    const test = harness({ selectedMachine: machine("local"), projects: [repo] }, loadWorkspaces);
+
+    await test.controller.selectProject(repo);
+
+    expect(test.state().error).toContain("refused");
+    expect(test.state().isLoadingWorkspaces).toBe(true);
+    expect(loadWorkspaces).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a list the machine already gave when it later refuses, and still opens a workspace", async () => {
+    const repo = project("p1", "/repo");
+    const other = project("p2", "/other");
+    const main = workspace(repo.id, repo.path, { isMain: true });
+    const loadWorkspaces = vi.fn<LoadWorkspaces>((projectId) => projectId === other.id ? Promise.resolve([workspace(other.id, other.path, { isMain: true })]) : Promise.resolve([main]));
+    const test = harness({ selectedMachine: machine("local"), projects: [repo, other] }, loadWorkspaces);
+    await test.controller.selectProject(repo);
+    await test.controller.selectProject(other);
+    loadWorkspaces.mockImplementation(() => Promise.reject(new HttpError("Forbidden", 403)));
+
+    const landed = await test.controller.selectProject(repo);
+
+    expect(landed).toBe(true);
+    expect(test.state().error).toContain("refused");
+    expect(test.state().workspaces).toEqual([main]);
+    expect(test.state().isLoadingWorkspaces).toBe(false);
+    expect(test.state().selectedWorkspace?.id).toBe(main.id);
+  });
+
+  it("gives up a pending pick at once when the reader taps another project, and says it did not land", async () => {
+    const left = project("p1", "/repo");
+    const chosen = project("p2", "/other");
+    const loadWorkspaces = vi.fn<LoadWorkspaces>((projectId) => projectId === left.id ? Promise.reject(new TypeError("Failed to fetch")) : new Promise<Workspace[]>(() => undefined));
+    const test = harness({ selectedMachine: machine("local"), projects: [left, chosen] }, loadWorkspaces);
+
+    let landed: boolean | undefined;
+    void test.controller.selectProject(left).then((result) => { landed = result; });
+    await Promise.resolve();
+    await Promise.resolve();
+    void test.controller.selectProject(chosen);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(landed).toBe(false);
+  });
+
+  it("yields a pending pick to a workspace the reader chose in the same project meanwhile", async () => {
+    vi.useFakeTimers();
+    const repo = project("p1", "/repo");
+    const main = workspace(repo.id, repo.path, { isMain: true });
+    const chosen = workspace(repo.id, "/repo-feature");
+    const loadWorkspaces = vi.fn<LoadWorkspaces>().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue([main, chosen]);
+    const test = harness({ selectedMachine: machine("local"), projects: [repo] }, loadWorkspaces);
+
+    const selecting = test.controller.selectProject(repo);
+    await vi.advanceTimersByTimeAsync(0);
+    test.setState({ selectedWorkspace: chosen, selectedSession: session(chosen.path) });
+    test.controller.selectionChanged();
+    const clearsBefore = test.clearActiveSession.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await expect(selecting).resolves.toBe(false);
+    expect(test.state().selectedWorkspace?.id).toBe(chosen.id);
+    expect(test.clearActiveSession.mock.calls.length).toBe(clearsBefore);
+    expect(test.state().workspaces).toEqual([main, chosen]);
+  });
+});
+
+describe("WorkspaceController follows the shown project", () => {
+  it("stops reading a project left behind by a machine switch", async () => {
+    vi.useFakeTimers();
+    const repo = project("p1", "/repo");
+    const loadWorkspaces = vi.fn<LoadWorkspaces>().mockRejectedValue(new TypeError("Failed to fetch"));
+    const test = harness({ selectedMachine: machine("remote"), projects: [repo] }, loadWorkspaces);
+    void test.controller.selectProject(repo);
+    await vi.advanceTimersByTimeAsync(3000);
+    const readsBefore = loadWorkspaces.mock.calls.length;
+
+    test.setState({ selectedMachine: machine("local"), selectedProject: undefined, selectedWorkspace: undefined, workspaces: [] });
+    test.controller.selectionChanged();
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    expect(readsBefore).toBeGreaterThan(1);
+    expect(loadWorkspaces.mock.calls.length).toBe(readsBefore);
+  });
+
+  it("shows a refusal that lands on a background refresh of the shown project", async () => {
+    const repo = project("p1", "/repo");
+    const main = workspace(repo.id, repo.path, { isMain: true });
+    const loadWorkspaces = vi.fn<LoadWorkspaces>().mockResolvedValueOnce([main]).mockRejectedValue(new HttpError("Forbidden", 403));
+    const test = harness({ selectedMachine: machine("local"), projects: [repo] }, loadWorkspaces);
+    await test.controller.selectProject(repo);
+    expect(test.state().error).toBe("");
+
+    await test.controller.refreshSelectedProjectTopology();
+
+    expect(test.state().error).toContain("refused");
+    expect(test.state().workspaces).toEqual([main]);
+  });
+
+  it("will not hand a deletion flow a stale list after a lost read", async () => {
+    const repo = project("p1", "/repo");
+    const main = workspace(repo.id, repo.path, { isMain: true });
+    const gone = workspace(repo.id, "/repo-gone");
+    const loadWorkspaces = vi.fn<LoadWorkspaces>().mockResolvedValueOnce([main, gone]).mockRejectedValue(new TypeError("Failed to fetch"));
+    const test = harness({ selectedMachine: machine("local"), projects: [repo] }, loadWorkspaces);
+    await test.controller.selectProject(repo);
+
+    await expect(test.controller.refreshProjectWorkspaces(repo.id)).rejects.toThrow("not answered");
+  });
 });
 
 describe("WorkspaceController.refreshSelectedProjectTopology", () => {
@@ -217,11 +378,12 @@ describe("WorkspaceController.refreshSelectedProjectTopology", () => {
     expect(test.state().workspacesByProjectId[repo.id]).toEqual([main]);
   });
 
-  it("reports a failed refresh to the background error sink without painting an error banner", async () => {
+  it("keeps the list through a lost refresh and reads again by itself until it answers, without painting an error", async () => {
+    vi.useFakeTimers();
     const repo = project("p1", "/repo");
     const main = workspace(repo.id, repo.path, { isMain: true });
-    const failure = new Error("git worktree list failed");
-    const loadWorkspaces = vi.fn().mockRejectedValue(failure);
+    const created = workspace(repo.id, "/repo-feature");
+    const loadWorkspaces = vi.fn<LoadWorkspaces>().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue([main, created]);
     const test = harness(
       {
         selectedMachine: machine("local"),
@@ -234,11 +396,19 @@ describe("WorkspaceController.refreshSelectedProjectTopology", () => {
       loadWorkspaces,
     );
 
-    await test.controller.refreshSelectedProjectTopology();
+    const refreshing = test.controller.refreshSelectedProjectTopology();
+    await vi.advanceTimersByTimeAsync(0);
+    await refreshing;
 
     expect(test.state().error).toBe("");
     expect(test.state().workspaces).toEqual([main]);
-    expect(test.backgroundErrors).toEqual([{ message: `Failed to refresh workspaces for project ${repo.id} on local`, error: failure }]);
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(loadWorkspaces).toHaveBeenCalledTimes(2);
+    expect(test.state().workspaces).toEqual([main, created]);
+    expect(test.state().workspacesByProjectId[repo.id]).toEqual([main, created]);
+    expect(test.state().error).toBe("");
   });
 
   it("re-points the selected workspace when its provider-authored label changed outside PI WEB", async () => {

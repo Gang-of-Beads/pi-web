@@ -1,6 +1,8 @@
 import { api as defaultApi, type Project, type Workspace } from "../api";
 import { resetWorkspaceScopedState, type AppState } from "../appState";
 import { errorNoticePatch } from "../errorNotice";
+import type { ReadFact } from "../sync/readPhase";
+import { ScopedResource, type ResourceClock } from "../sync/scopedResource";
 import { mergeCachedNewSessions } from "../cachedNewSessions";
 import { machineProjectKey } from "../machineKeys";
 import { cachedSessionsFor, rememberWorkspaceSessions } from "../workspaceSessionsCache";
@@ -13,14 +15,39 @@ const WORKSPACE_TOPOLOGY_REFRESH_DEBOUNCE_MS = 50;
 
 export interface WorkspaceControllerDependencies {
   api?: Pick<typeof defaultApi, "sessions" | "workspaces">;
-  onBackgroundError?: (message: string, error: unknown) => void;
   topologyRefreshDebounceMs?: number;
+  clock?: ResourceClock;
 }
+
+/** One project's workspace listing on one machine. */
+interface ProjectListingKey {
+  readonly machineId: string;
+  readonly projectId: string;
+}
+
+/** The longest a lost workspaces read waits before it is tried again: the quiet window. */
+const WORKSPACES_RETRY_CAP_MS = 15_000;
+
+/** A refusal the machine stated, in the reader's words (object model §0). */
+const FACT_WORDS = new Map<ReadFact["kind"], string>([
+  ["signed-out", "This machine asked you to sign in before it lists this project's workspaces."],
+  ["forbidden", "This machine refused to list this project's workspaces."],
+]);
 
 export class WorkspaceController {
   private readonly api: Pick<typeof defaultApi, "sessions" | "workspaces">;
-  private readonly onBackgroundError: (message: string, error: unknown) => void;
   private readonly topologyRefreshes: TrailingRefreshCoordinator<string>;
+  /**
+   * Each project's workspaces, read until answered (B48). A lost answer is
+   * read again by itself for as long as the project is the one shown; it is
+   * never painted as an error, and never as "No workspaces found".
+   */
+  private readonly listings: ScopedResource<ProjectListingKey, Workspace[]>;
+  private followed: { id: string; release: () => void } | undefined;
+  /** The listing value the state shows for the followed project, so one answer is applied once. */
+  private mirrored: Workspace[] | undefined;
+  private noticedFact: ReadFact["kind"] = "none";
+  private projectSelectionSeq = 0;
 
   constructor(
     private readonly getState: GetState,
@@ -31,13 +58,53 @@ export class WorkspaceController {
     deps: WorkspaceControllerDependencies = {},
   ) {
     this.api = deps.api ?? defaultApi;
-    this.onBackgroundError = deps.onBackgroundError ?? ((message, error) => { console.warn(message, error); });
     this.topologyRefreshes = new TrailingRefreshCoordinator(
       deps.topologyRefreshDebounceMs ?? WORKSPACE_TOPOLOGY_REFRESH_DEBOUNCE_MS,
     );
+    this.listings = new ScopedResource<ProjectListingKey, Workspace[]>({
+      keyId: (key) => machineProjectKey(key.machineId, key.projectId),
+      read: (key) => this.api.workspaces(key.projectId, key.machineId),
+      retryCapMs: WORKSPACES_RETRY_CAP_MS,
+      ...(deps.clock === undefined ? {} : { clock: deps.clock }),
+    });
+    this.listings.subscribe(() => { this.mirror(); });
+  }
+
+  /**
+   * The selection moved, by any writer: a project picked here, a session
+   * opened from another project, a machine switch. The shown project's listing
+   * is the one followed, so a project left behind stops being read, and every
+   * wait for an answer checks at once whether its reader is still there.
+   */
+  selectionChanged(): void {
+    const state = this.getState();
+    const project = state.selectedProject;
+    this.follow(project === undefined ? undefined : { machineId: selectedMachineId(state), projectId: project.id });
+    this.listings.recheckWaiters();
+  }
+
+  /** A sign of life: retry a lost workspaces read now instead of waiting out the backoff. */
+  wake(): void {
+    this.listings.wake();
+  }
+
+  dispose(): void {
+    this.listings.dispose();
+  }
+
+  /**
+   * A project's workspaces once the machine answers, for a reader that needs
+   * them before it can act (placing a session opened from another project).
+   * Undefined when the reader stopped wanting them first, or the machine
+   * refused.
+   */
+  async answeredWorkspaces(machineId: string, projectId: string, wanted: () => boolean): Promise<readonly Workspace[] | undefined> {
+    const view = await this.listings.whenAnswered({ machineId, projectId }, wanted);
+    return view?.data;
   }
 
   clearSelection(options?: { updateUrl?: boolean | undefined }) {
+    this.follow(undefined);
     this.sessions.clearActiveSession();
     this.setState({ selectedProject: undefined, selectedWorkspace: undefined, workspaces: [], isLoadingWorkspaces: false, ...resetWorkspaceScopedState() });
     if (options?.updateUrl !== false) this.updateUrl();
@@ -49,20 +116,36 @@ export class WorkspaceController {
     this.setState({ workspacesByProjectId });
   }
 
-  async selectProject(project: Project, target?: RouteTarget) {
+  /**
+   * Show a project and open its preferred workspace once its listing answers.
+   * A lost answer is not an outcome: the listing is read again by itself and
+   * the pick happens when it lands, unless the reader has moved on - another
+   * project, another machine, or a workspace chosen meanwhile. Until then the
+   * workspace list says nothing (B48). The answer itself reaches the state
+   * through the mirror, the one place that applies listings.
+   *
+   * Resolves whether the pick landed, so a caller that continues after it
+   * (a route restore) stops when the reader has moved on.
+   */
+  async selectProject(project: Project, target?: RouteTarget): Promise<boolean> {
     const machineId = selectedMachineId(this.getState());
+    const seq = ++this.projectSelectionSeq;
+    const key = { machineId, projectId: project.id };
     this.sessions.clearActiveSession();
     this.setState({ selectedProject: project, selectedWorkspace: undefined, workspaces: [], isLoadingWorkspaces: true, ...resetWorkspaceScopedState() });
-    try {
-      const workspaces = await this.api.workspaces(project.id, machineId);
-      if (selectedMachineId(this.getState()) !== machineId || this.getState().selectedProject?.id !== project.id) return;
-      this.setState({ workspaces, workspacesByProjectId: { ...this.getState().workspacesByProjectId, [project.id]: workspaces }, isLoadingWorkspaces: false });
-      const workspace = selectPreferredWorkspace(workspaces, { targetWorkspaceId: target?.workspaceId, latestWorkspaceId: this.workspaceSelection.latestWorkspaceId(machineProjectKey(machineId, project.id)) });
-      if (workspace) await this.selectWorkspace(workspace, { sessionId: target?.sessionId, updateUrl: target?.updateUrl });
-      else if (target?.updateUrl !== false) this.updateUrl();
-    } catch (error) {
-      if (selectedMachineId(this.getState()) === machineId && this.getState().selectedProject?.id === project.id) this.setState({ ...errorNoticePatch(error), isLoadingWorkspaces: false });
-    }
+    this.follow(key);
+    this.mirrored = undefined;
+    const stillChosen = () => {
+      const state = this.getState();
+      return seq === this.projectSelectionSeq && selectedMachineId(state) === machineId && state.selectedProject?.id === project.id && state.selectedWorkspace === undefined;
+    };
+    const view = await this.listings.whenAnswered(key, stillChosen);
+    const workspaces = view?.data;
+    if (workspaces === undefined || !stillChosen()) return false;
+    const workspace = selectPreferredWorkspace(workspaces, { targetWorkspaceId: target?.workspaceId, latestWorkspaceId: this.workspaceSelection.latestWorkspaceId(machineProjectKey(machineId, project.id)) });
+    if (workspace) await this.selectWorkspace(workspace, { sessionId: target?.sessionId, updateUrl: target?.updateUrl });
+    else if (target?.updateUrl !== false) this.updateUrl();
+    return true;
   }
 
   async selectWorkspace(workspace: Workspace, target?: { sessionId?: string | undefined; updateUrl?: boolean | undefined }) {
@@ -91,11 +174,21 @@ export class WorkspaceController {
     }
   }
 
+  /**
+   * Read one project's workspaces now, for an action that needs them. It
+   * throws when there is no answer to act on; the listing itself keeps being
+   * read by itself while the project is shown.
+   */
   async refreshProjectWorkspaces(projectId: string): Promise<Workspace[]> {
     const project = this.getState().projects.find((candidate) => candidate.id === projectId);
     if (project === undefined) throw new Error("Project not found");
-    const workspaces = await this.api.workspaces(project.id, selectedMachineId(this.getState()));
-    this.applyProjectWorkspaces(project.id, workspaces);
+    const machineId = selectedMachineId(this.getState());
+    const key = { machineId, projectId: project.id };
+    await this.listings.refresh(key);
+    const entry = this.listings.entry(key);
+    const workspaces = entry.data;
+    if (entry.phase !== "live" || entry.fact.kind !== "none" || workspaces === undefined) throw new Error(`${project.name}'s workspaces have not answered yet.`);
+    if (selectedMachineId(this.getState()) === machineId) this.applyProjectWorkspaces(project.id, workspaces);
     return workspaces;
   }
 
@@ -111,26 +204,21 @@ export class WorkspaceController {
    *
    * If the selected workspace disappeared, the selection is left alone: the user is
    * working there and the existing deletion path owns recovery.
+   *
+   * A lost answer keeps the list on screen and is read again by itself while the
+   * project stays selected (B48); the answer, whenever it comes, is applied by the
+   * listing's mirror for the selection it was read for.
    */
   async refreshSelectedProjectTopology(): Promise<void> {
     const state = this.getState();
     const project = state.selectedProject;
     if (project === undefined) return;
-    const machineId = selectedMachineId(state);
-    // Callers are independent (browser resume and the plugin-facing app refresh), so two
-    // refreshes for the same machine+project can overlap. Sharing one request keeps a slow
-    // earlier response from landing last and overwriting a newer list, which would make a
-    // just-created worktree disappear again.
-    await this.topologyRefreshes.request(machineProjectKey(machineId, project.id), async () => {
-      try {
-        const workspaces = await this.api.workspaces(project.id, machineId);
-        const current = this.getState();
-        if (selectedMachineId(current) !== machineId || current.selectedProject?.id !== project.id) return;
-        this.applyProjectWorkspaces(project.id, workspaces);
-      } catch (error) {
-        this.onBackgroundError(`Failed to refresh workspaces for project ${project.id} on ${machineId}`, error);
-      }
-    });
+    const key = { machineId: selectedMachineId(state), projectId: project.id };
+    this.follow(key);
+    // Callers are independent (browser resume and the plugin-facing app refresh), so a
+    // burst of refreshes is gathered into one read; a read asked for while one is in
+    // flight runs once after it, so a slow earlier answer never lands last.
+    await this.topologyRefreshes.request(machineProjectKey(key.machineId, key.projectId), () => this.listings.refresh(key));
   }
 
   async refreshAfterWorkspaceDeleted(projectId: string, workspaceId: string): Promise<void> {
@@ -143,6 +231,47 @@ export class WorkspaceController {
     else this.clearSelection();
   }
 
+  /**
+   * Keep the shown project's listing watched, so its lost reads retry; a
+   * project left behind stops being read, and whoever waited on it is told.
+   */
+  private follow(key: ProjectListingKey | undefined): void {
+    const id = key === undefined ? undefined : machineProjectKey(key.machineId, key.projectId);
+    if (this.followed?.id === id) return;
+    this.followed?.release();
+    this.followed = key === undefined || id === undefined ? undefined : { id, release: this.listings.watch(key) };
+    this.mirrored = undefined;
+    this.noticedFact = "none";
+    this.listings.recheckWaiters();
+  }
+
+  /**
+   * Show the followed project's listing as it stands: its rows once they are
+   * known (kept through a lost read or a refusal), and a refusal the machine
+   * stated as a notice in its own words. Only the selection's own key is
+   * applied, and each value once.
+   */
+  private mirror(): void {
+    const state = this.getState();
+    const project = state.selectedProject;
+    if (project === undefined) return;
+    const machineId = selectedMachineId(state);
+    if (this.followed?.id !== machineProjectKey(machineId, project.id)) return;
+    const entry = this.listings.entry({ machineId, projectId: project.id });
+    this.noticeFact(entry.fact.kind);
+    const workspaces = entry.data;
+    if (workspaces === undefined || workspaces === this.mirrored) return;
+    this.mirrored = workspaces;
+    this.applyProjectWorkspaces(project.id, workspaces);
+  }
+
+  private noticeFact(kind: ReadFact["kind"]): void {
+    if (kind === this.noticedFact) return;
+    this.noticedFact = kind;
+    const words = FACT_WORDS.get(kind);
+    if (words !== undefined) this.setState(errorNoticePatch(new Error(words)));
+  }
+
   private applyProjectWorkspaces(projectId: string, workspaces: Workspace[]): void {
     const state = this.getState();
     const workspacesByProjectId = { ...state.workspacesByProjectId, [projectId]: workspaces };
@@ -150,7 +279,7 @@ export class WorkspaceController {
       this.setState({ workspacesByProjectId });
       return;
     }
-    this.setState({ workspaces, workspacesByProjectId, ...this.refreshedSelection(state.selectedWorkspace, workspaces) });
+    this.setState({ workspaces, workspacesByProjectId, isLoadingWorkspaces: false, ...this.refreshedSelection(state.selectedWorkspace, workspaces) });
   }
 
   /**

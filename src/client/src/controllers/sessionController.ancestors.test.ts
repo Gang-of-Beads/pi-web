@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SessionController } from "./sessionController";
+import { SessionController, type SessionControllerDependencies } from "./sessionController";
 import * as ancestorLookup from "../sessionAncestorLookup";
 import { initialAppState } from "../appState";
 import { defaultApi, EmitSocket, emptyPage, MemoryStorage, oldSession, status, workspace, type AppState } from "./sessionController.testSupport";
@@ -21,14 +21,14 @@ function api(): typeof defaultApi {
   };
 }
 
-function controllerOver(patch: Partial<AppState>): { run: SessionController; read: () => AppState } {
+function controllerOver(patch: Partial<AppState>, deps: Pick<SessionControllerDependencies, "catalogue"> = {}): { run: SessionController; read: () => AppState } {
   let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedProject: here, ...patch };
   const run = new SessionController(
     () => state,
     (next) => { state = { ...state, ...next }; },
     () => undefined,
     undefined,
-    { api: api(), socket: new EmitSocket() },
+    { api: api(), socket: new EmitSocket(), ...deps },
   );
   return { run, read: () => state };
 }
@@ -150,5 +150,56 @@ describe("choosing a session from another workspace", () => {
     } finally {
       locate.mockRestore();
     }
+  });
+});
+
+describe("placing a session through the catalogue (B48)", () => {
+  /**
+   * The lookup read the projects and workspaces once and gave up on a lost
+   * answer: a session opened from another project then left every workspace
+   * panel answering for the project being left. It reads through the
+   * catalogue now, which keeps reading until an answer comes.
+   */
+  it("places the session once the catalogue answers, however late", async () => {
+    let answerProjects: ((projects: readonly Project[]) => void) | undefined;
+    const catalogue = {
+      projects: vi.fn(() => new Promise<readonly Project[] | undefined>((resolve) => { answerProjects = resolve; })),
+      workspaces: vi.fn((...[, projectId]: [string, string, () => boolean]) => Promise.resolve(projectId === there.id ? [elsewhere] : [workspace])),
+    };
+    const { run, read } = controllerOver({ workspaces: [workspace], projects: [here] }, { catalogue });
+
+    await run.selectSession(sessionOverThere, { updateUrl: false });
+    expect(read().selectedWorkspace?.id).toBe("workspace-1");
+    answerProjects?.([here, there]);
+
+    await vi.waitFor(() => {
+      if (read().selectedWorkspace?.id !== "workspace-2") throw new Error("the late answer has not placed the session yet");
+    });
+    expect(read().selectedProject?.id).toBe("project-2");
+    expect(catalogue.projects).toHaveBeenCalledWith("local", expect.any(Function));
+  });
+
+  it("stops placing a session the reader has already left", async () => {
+    let answer: (() => void) | undefined;
+    let wantedWhenAnswered: boolean | undefined;
+    const catalogue = {
+      projects: vi.fn((...[, wanted]: [string, () => boolean]) => new Promise<readonly Project[] | undefined>((resolve) => {
+        answer = () => {
+          wantedWhenAnswered = wanted();
+          resolve(wantedWhenAnswered ? [here, there] : undefined);
+        };
+      })),
+      workspaces: vi.fn((...[, projectId]: [string, string, () => boolean]) => Promise.resolve(projectId === there.id ? [elsewhere] : [workspace])),
+    };
+    const { run, read } = controllerOver({ workspaces: [workspace], projects: [here] }, { catalogue });
+
+    await run.selectSession(sessionOverThere, { updateUrl: false });
+    await run.selectSession(oldSession, { updateUrl: false });
+    answer?.();
+    await Promise.resolve();
+
+    expect(wantedWhenAnswered).toBe(false);
+    expect(read().selectedWorkspace?.id).toBe("workspace-1");
+    expect(catalogue.workspaces).not.toHaveBeenCalled();
   });
 });

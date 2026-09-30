@@ -98,7 +98,11 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 - **Events**: `machine.status`. `workspace.changed` names a cwd (`workspaceWatcher.ts:45`) and is filtered and coalesced in P3.
 - **Read**: `GET /api/machines/:m/projects/:id/workspaces` (`sessionDaemonWorkspaceCatalog.ts:65`, no deadline until P3); `statSync` per workspace on the web loop (`app.ts:139` [S §5.8]).
 - **Cache**: memory `workspacesByProjectId`, which becomes entries keyed by `(machine, project)`.
-- **Retention**: as in §1.3. A background refresh failure is only a `console.warn` today (`workspaceController.ts:34,131`) and becomes `reconnecting`.
+- **Retention**: as in §1.3. **Shipped (P1 slice 2)**: `WorkspaceController` reads each `(machine, project)` listing through a `ScopedResource`.
+  - **Following**: the followed key is derived from the selection on every selection change, whoever wrote it (`PiWebApp.setState` calls `selectionChanged`). The shown project's lost reads retry, and a project left behind, including by a machine switch, stops being read.
+  - **One writer**: a private mirror is the only place a listing reaches the state. It keeps known rows through a lost read or a refusal, ends loading on any value, and shows a refusal as a notice in its own words.
+  - **`selectProject`**: opens the preferred workspace when the answer lands, unless the reader has moved on (another project, another machine, or a workspace chosen meanwhile). It resolves whether it landed, so a route restore stops when the reader has moved on.
+  - **Locating a session**: `locateAndApplySessionWorkspace` reads through the projects and workspaces resources (`whenAnswered`, §2.1). It asks every project at once, so a project that never answers cannot hide the owner.
 
 ### 1.5 Session list / board
 
@@ -316,6 +320,7 @@ interface ScopedResource<K, V, E> {
 ```
 
 **Behaviour**
+- `whenAnswered(key, wanted)` (shipped in P1 slice 2) reads now and waits for an answer: a value, where one known from an earlier read counts when this read is lost, or a fact. The wait holds a watch, so lost reads keep retrying while it lasts. It ends with `undefined` when `wanted()` fails before the read, at a settle, or on `recheckWaiters()` (called whenever the selection moves), or on dispose. It serves readers that must act on an answer, such as placing a session opened from another project and opening a project's preferred workspace.
 - `watch(key)` adds a rendered consumer. The consumer count drives the app row (only watched entries count) and abort-on-unwatch: the last consumer leaving makes this reader leave the flight.
 - **Buffering**: an event for a key with no successful read is buffered (taken from `sessionController.ts:474-490`) and replayed through `readVerdict` when the read lands.
 - **`readVerdict`** (named pure classifier, taken from `statusOrder.statusReadVerdict`): `apply` when the read covers every event applied since the read began; `merge` when events newer than the read exist (`spec.merge`); `drop` when the read is older than the applied state.

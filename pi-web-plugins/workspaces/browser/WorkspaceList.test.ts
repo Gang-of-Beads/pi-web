@@ -268,14 +268,33 @@ describe("what a tile shows of a long branch name", () => {
  * matches) must say so instead of rendering a bare heading over nothing.
  */
 describe("workspace-list empty claims", () => {
-  it("claims an empty list instead of rendering nothing", async () => {
+  it("claims an empty list instead of rendering nothing, once the listing answered", async () => {
     const list = new WorkspaceList();
     list.workspaces = [];
+    list.workspacesLoad = "loaded";
     document.body.append(list);
     await list.updateComplete;
 
     const claim = list.shadowRoot?.querySelector(".empty-claim");
     expect(claim?.textContent).toContain("No workspaces here yet.");
+  });
+
+  /**
+   * B48: before the listing answers the list says nothing. The host keeps
+   * reading by itself, so there is no "Loading workspaces…" (owner: syncing
+   * is never shown), no failure with Retry, and no empty claim.
+   */
+  it("says nothing before the listing answers", async () => {
+    for (const workspacesLoad of ["unloaded", "loading"] as const) {
+      const list = new WorkspaceList();
+      list.workspaces = [];
+      list.workspacesLoad = workspacesLoad;
+      document.body.append(list);
+      await list.updateComplete;
+      const text = list.shadowRoot?.textContent ?? "";
+      expect({ workspacesLoad, loading: text.includes("Loading workspaces"), empty: text.includes("No workspaces here yet"), failed: text.includes("Could not load") }).toEqual({ workspacesLoad, loading: false, empty: false, failed: false });
+      list.remove();
+    }
   });
 
   it("says the search found nothing instead of the empty-list claim", async () => {

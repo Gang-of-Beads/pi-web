@@ -45,6 +45,34 @@ describe("PiWebApp workspace topology refresh wiring", () => {
   });
 });
 
+/**
+ * B48, review P2-4: a machine switch and a session opened from another project
+ * write the selection directly, so the workspace listings are told about every
+ * selection change here, not only through the controller's own entry points.
+ * Without it, the project left behind kept being read forever.
+ */
+describe("PiWebApp tells the workspace listings where the reader is", () => {
+  it("on a machine switch, a project change and a workspace change, and not on unrelated state", () => {
+    const app = createApp();
+    const controller: unknown = Reflect.get(app, "workspaces");
+    if (!(controller instanceof WorkspaceController)) throw new Error("PiWebApp WorkspaceController was unavailable");
+    const selectionChanged = vi.spyOn(controller, "selectionChanged").mockImplementation(() => undefined);
+    const setState: unknown = Reflect.get(app, "setState");
+    if (typeof setState !== "function") throw new Error("PiWebApp.setState is not callable");
+    const apply = (patch: object) => { try { Reflect.apply(setState, app, [patch]); } catch { return; } };
+    const project = { id: "p1", name: "p1", path: "/p1", createdAt: "now" };
+    const workspace = { id: "w1", projectId: "p1", path: "/p1", label: "p1", isMain: true, effectiveConfig: {} };
+
+    apply({ newerPendingCount: 3 });
+    expect(selectionChanged).not.toHaveBeenCalled();
+    apply({ selectedProject: project });
+    apply({ selectedWorkspace: workspace });
+    apply({ selectedMachine: { id: "remote", name: "remote", kind: "remote", createdAt: "now", updatedAt: "now" } });
+
+    expect(selectionChanged).toHaveBeenCalledTimes(3);
+  });
+});
+
 function createApp(): PiWebApp {
   const storage = {
     getItem: () => null,

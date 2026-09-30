@@ -39,12 +39,26 @@ describe("locating the workspace that owns a session", () => {
     expect(await locateSessionWorkspace("/p/nowhere", catalogue({ "proj-piweb": [piweb] }))).toBeUndefined();
   });
 
-  it("stops asking once it has found the owner", async () => {
-    const workspaces = vi.fn((projectId: string) => Promise.resolve(projectId === "proj-piweb" ? [piweb] : [other]));
+  /**
+   * B48: a project's workspaces are read until they answer, so a project that
+   * never answers must not stand in front of the one that owns the directory.
+   */
+  it("asks every project at once, so one that never answers does not hide the owner", async () => {
+    const workspaces = vi.fn((projectId: string) => projectId === "silent" ? new Promise<typeof piweb[]>(() => undefined) : Promise.resolve([other]));
 
-    await locateSessionWorkspace("/p/pi-web", { projects: () => Promise.resolve([{ id: "proj-piweb" }, { id: "proj-other" }]), workspaces });
+    const found = await locateSessionWorkspace("/p/other", { projects: () => Promise.resolve([{ id: "silent" }, { id: "proj-other" }]), workspaces });
 
-    expect(workspaces).toHaveBeenCalledTimes(1);
+    expect(found?.workspace.id).toBe("w-other");
+    expect(workspaces).toHaveBeenCalledTimes(2);
+  });
+
+  it("answers unknown once every project has answered without the directory", async () => {
+    const found = await locateSessionWorkspace("/p/nowhere", {
+      projects: () => Promise.resolve([{ id: "a" }, { id: "b" }]),
+      workspaces: (projectId: string) => projectId === "a" ? Promise.resolve(undefined) : Promise.resolve([other]),
+    });
+
+    expect(found).toBeUndefined();
   });
 
   /** One unreadable project must not hide the answer in the next one. */

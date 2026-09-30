@@ -49,7 +49,6 @@ function renderWorkspacesSection(context: NavSectionContext): TemplateResult {
     .selected=${selected}
     .statusSnapshot=${context.statusSnapshot}
     .workspacesLoad=${context.workspacesLoad}
-    .onRetryWorkspacesLoad=${() => { context.retryWorkspacesLoad(); }}
     .deletingWorkspaceIds=${context.deletingWorkspaceIds}
     .workspaceLabelItems=${(workspace: NavSectionContext["workspaces"][number]) => context.labelItems(workspace.id)}
     .workspaceTrust=${context.workspaceTrust}

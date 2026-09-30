@@ -337,7 +337,7 @@ export class PiWebApp extends LitElement {
   private committedChatIdentity: string | undefined;
   private readyChatIdentity: string | undefined;
 
-  private readonly sessions = new SessionController(
+  private readonly sessions: SessionController = new SessionController(
     () => this.state,
     (patch) => { this.setState(patch); },
     () => { this.updateUrl(); },
@@ -356,6 +356,10 @@ export class PiWebApp extends LitElement {
         if (selectedMachineId(this.state) !== machineId || this.state.selectedSession?.id !== sessionId) return;
         this.promptEditor?.replaceText(text);
       },
+      catalogue: {
+        projects: (machineId, wanted) => this.projects.answeredProjects(machineId, wanted),
+        workspaces: (machineId, projectId, wanted) => this.workspaces.answeredWorkspaces(machineId, projectId, wanted),
+      },
     },
   );
   private readonly machineStatus = new MachineStatusController(
@@ -368,14 +372,14 @@ export class PiWebApp extends LitElement {
     (status) => { this.sessions.applySessionStatus(status); },
     { noteDialogOpening: () => { this.pushModalLayerFrame(); } },
   );
-  private readonly workspaces = new WorkspaceController(
+  private readonly workspaces: WorkspaceController = new WorkspaceController(
     () => this.state,
     (patch) => { this.setState(patch); },
     () => { this.updateUrl(); },
     this.sessions,
     new SessionStorageWorkspaceSelectionMemory(),
   );
-  private readonly projects = new ProjectController(
+  private readonly projects: ProjectController = new ProjectController(
     () => this.state,
     (patch) => { this.setState(patch); },
     this.workspaces,
@@ -668,6 +672,7 @@ export class PiWebApp extends LitElement {
    */
   private readonly onBrowserOnline = () => {
     this.projects.wake();
+    this.workspaces.wake();
     this.realtime.reconnectNow();
     this.sessions.reconnectSocketNow();
     this.checkSocketLiveness();
@@ -690,6 +695,7 @@ export class PiWebApp extends LitElement {
     this.updateSubagentPolling();
     if (document.visibilityState === "visible") {
       this.projects.wake();
+      this.workspaces.wake();
       this.refreshWorkspaceChangedWhileHidden();
       void this.refreshSubagents();
       // Coming back to the tab is the moment a stale bundle bites next; a
@@ -1233,6 +1239,7 @@ export class PiWebApp extends LitElement {
     if (this.reconnectingRecheck !== undefined) window.clearTimeout(this.reconnectingRecheck);
     this.reconnectingRecheck = undefined;
     this.projects.dispose();
+    this.workspaces.dispose();
     if (this.livenessTimer !== undefined) window.clearInterval(this.livenessTimer);
     this.livenessTimer = undefined;
     window.removeEventListener("online", this.onBrowserOnline);
@@ -1255,6 +1262,7 @@ export class PiWebApp extends LitElement {
     if (machineUnreadInputsChanged(previous, this.state)) this.syncSessionUnreadMachines();
     this.syncUnreadSessionIds();
     this.handleActivityTransition(previous, this.state);
+    if (listingSelectionChanged(previous, this.state)) this.workspaces.selectionChanged();
     this.handleWorkspaceChange(previous, this.state);
     this.handleMachineChange(previous, this.state);
     if (machineActivitySubscriptionInputsChanged(previous, this.state)) this.syncMachineActivitySubscriptions();
@@ -1483,8 +1491,8 @@ export class PiWebApp extends LitElement {
         if (updateUrl) this.updateUrl();
         return;
       }
-      await this.workspaces.selectProject(project, { workspaceId: route.workspaceId, sessionId: route.sessionId, updateUrl: false });
-      if (!this.isCurrentRouteRestore(restoreSeq, intent)) return;
+      const landed = await this.workspaces.selectProject(project, { workspaceId: route.workspaceId, sessionId: route.sessionId, updateUrl: false });
+      if (!landed || !this.isCurrentRouteRestore(restoreSeq, intent)) return;
       this.setState({ selectedTerminalId: routeSurface.selectedTerminalId });
       this.restoreWorkspaceExpandedRoute(route, routeSurface, mainView);
       if (routeSurface.selectedTerminalId !== undefined) this.rememberSelectedTerminal(routeSurface.selectedTerminalId);
@@ -2985,7 +2993,10 @@ export class PiWebApp extends LitElement {
       this.setState(noticePatch(noticeForReader("The project this workspace belongs to is not in the project list.")));
       return;
     }
-    if (this.state.selectedProject?.id !== project.id) await this.workspaces.selectProject(project);
+    if (this.state.selectedProject?.id !== project.id) {
+      await this.workspaces.selectProject(project, { workspaceId: workspace.id });
+      return;
+    }
     await this.workspaces.selectWorkspace(workspace);
   }
 
@@ -3226,9 +3237,7 @@ export class PiWebApp extends LitElement {
       projects: state.projects.map((project) => ({ id: project.id, name: project.name, path: project.path })),
       projectsLoad: state.projectsLoad,
       workspaces: state.workspaces,
-      // A failed banner leaves the listing empty; naming it keeps the section
-      // from reading "no workspaces" for a project that has them (S6).
-      workspacesLoad: state.isLoadingWorkspaces ? "loading" : state.error !== "" ? "failed" : "loaded",
+      workspacesLoad: state.isLoadingWorkspaces ? "loading" : "loaded",
       selectedProjectId: state.selectedProject?.id,
       selectedWorkspaceId: state.selectedWorkspace?.id,
       machineId,
@@ -3244,7 +3253,7 @@ export class PiWebApp extends LitElement {
         const project = projectById(projectId);
         if (project === undefined) return;
         if (closeSheet) this.contextSheetOpen = false;
-        void this.withChatScrollTransition(() => this.workspaces.selectProject(project), () => true);
+        void this.withChatScrollTransition(async () => { await this.workspaces.selectProject(project); }, () => true);
       },
       closeProject: (projectId) => { void this.projects.closeProject(projectId); },
       addProject: () => {
@@ -3277,7 +3286,7 @@ export class PiWebApp extends LitElement {
         },
       },
       retryProjectsLoad: () => { void this.projects.loadProjects(); },
-      retryWorkspacesLoad: () => { const project = state.selectedProject; if (project !== undefined) void this.workspaces.refreshProjectWorkspaces(project.id); },
+      retryWorkspacesLoad: () => { void this.workspaces.refreshSelectedProjectTopology(); },
       toggleCollapsed: () => undefined,
       focusPreviousSection: () => undefined,
       focusNextSection: () => undefined,
@@ -4555,6 +4564,13 @@ function selectedChatIdentity(state: Pick<AppState, "selectedMachine" | "selecte
 
 function machineUnreadInputsChanged(previous: AppState, next: AppState): boolean {
   return previous.machines !== next.machines;
+}
+
+/** The selection the workspace listings follow moved: machine, project or workspace, by any writer. */
+function listingSelectionChanged(previous: AppState, next: AppState): boolean {
+  return selectedMachineId(previous) !== selectedMachineId(next)
+    || previous.selectedProject?.id !== next.selectedProject?.id
+    || previous.selectedWorkspace?.id !== next.selectedWorkspace?.id;
 }
 
 function machineActivitySubscriptionInputsChanged(previous: AppState, next: AppState): boolean {

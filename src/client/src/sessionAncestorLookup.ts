@@ -10,30 +10,45 @@
  * buttons, because its key still matched.
  *
  * Undefined means "nobody claims this directory", which the caller must treat
- * as unknown rather than as an empty workspace.
+ * as unknown rather than as an empty workspace. A catalogue read that resolves
+ * undefined had no answer the caller still wants.
+ *
+ * Every project is asked at once and the first owner wins: a project's read
+ * waits until it answers (B48), so asking in turn let one project that never
+ * answers hide the owner behind it.
  */
 export async function locateSessionWorkspace<W extends { path: string }, P extends { id: string }>(
   cwd: string,
-  catalogue: { projects: () => Promise<readonly P[]>; workspaces: (projectId: string) => Promise<readonly W[]> },
+  catalogue: { projects: () => Promise<readonly P[] | undefined>; workspaces: (projectId: string) => Promise<readonly W[] | undefined> },
 ): Promise<{ workspace: W; project: P; workspaces: readonly W[] } | undefined> {
   if (cwd === "") return undefined;
-  let projects: readonly P[];
+  let projects: readonly P[] | undefined;
   try {
     projects = await catalogue.projects();
   } catch {
-    // Offline or refused: the caller keeps treating the location as unknown.
     return undefined;
   }
-  for (const project of projects) {
-    let workspaces: readonly W[];
-    try {
-      workspaces = await catalogue.workspaces(project.id);
-    } catch {
-      // One unreadable project must not hide the answer in the next one.
-      continue;
+  if (projects === undefined || projects.length === 0) return undefined;
+  return firstOwner(cwd, projects, catalogue.workspaces);
+}
+
+function firstOwner<W extends { path: string }, P extends { id: string }>(
+  cwd: string,
+  projects: readonly P[],
+  workspacesOf: (projectId: string) => Promise<readonly W[] | undefined>,
+): Promise<{ workspace: W; project: P; workspaces: readonly W[] } | undefined> {
+  return new Promise((resolve) => {
+    let unsettled = projects.length;
+    for (const project of projects) {
+      workspacesOf(project.id)
+        .then((workspaces) => {
+          const workspace = workspaces?.find((candidate) => candidate.path === cwd);
+          if (workspace !== undefined && workspaces !== undefined) resolve({ workspace, project, workspaces });
+        }, () => undefined)
+        .finally(() => {
+          unsettled -= 1;
+          if (unsettled === 0) resolve(undefined);
+        });
     }
-    const workspace = workspaces.find((candidate) => candidate.path === cwd);
-    if (workspace !== undefined) return { workspace, project, workspaces };
-  }
-  return undefined;
+  });
 }

@@ -66,6 +66,7 @@ const UNREAD: ResourceEntryView<never> = { phase: "syncing", fact: NO_FACT, know
 export class ScopedResource<K, V> {
   private readonly entries = new Map<string, Entry<K, V>>();
   private readonly listeners = new Set<() => void>();
+  private readonly waiters = new Set<() => void>();
   private readonly clock: ResourceClock;
   private disposed = false;
 
@@ -94,6 +95,7 @@ export class ScopedResource<K, V> {
 
   /** Read now, or once more after the read in flight. Resolves when the attempt that covers this ask settles. */
   refresh(key: K): Promise<void> {
+    if (this.disposed) return Promise.resolve();
     const entry = this.ensure(key);
     const settled = new Promise<void>((resolve) => { entry.settled.push(resolve); });
     if (entry.inFlight) {
@@ -103,6 +105,39 @@ export class ScopedResource<K, V> {
     this.cancelRetry(entry);
     this.start(entry);
     return settled;
+  }
+
+  /**
+   * Read now and wait until the key has an answer: a value (one known from an
+   * earlier read counts when this read is lost) or a refusal the server
+   * stated. The wait holds a watch, so lost reads keep being retried while it
+   * lasts. It ends with undefined once the reader no longer wants the answer,
+   * which is checked before reading, each time a read settles and on
+   * `recheckWaiters`, or when the resource is disposed.
+   */
+  async whenAnswered(key: K, wanted: () => boolean): Promise<ResourceEntryView<V> | undefined> {
+    if (!this.stillWaiting(wanted)) return undefined;
+    const release = this.watch(key);
+    try {
+      await this.refresh(key);
+      while (this.stillWaiting(wanted)) {
+        const view = this.entry(key);
+        if (view.known || view.fact.kind !== "none") return view;
+        await this.nextSettle();
+      }
+      return undefined;
+    } finally {
+      release();
+    }
+  }
+
+  /**
+   * The reader's selection may have moved: every `whenAnswered` wait checks
+   * whether its answer is still wanted now, instead of at the next settle, which
+   * for a lost read can be the full retry cap away.
+   */
+  recheckWaiters(): void {
+    this.releaseWaiters();
   }
 
   /** A sign of life (the socket opened, the tab became visible, the browser is online): retry every watched key that is waiting. */
@@ -140,8 +175,26 @@ export class ScopedResource<K, V> {
 
   dispose(): void {
     this.disposed = true;
-    for (const entry of this.entries.values()) this.cancelRetry(entry);
+    for (const entry of this.entries.values()) {
+      this.cancelRetry(entry);
+      for (const resolve of entry.settled.splice(0)) resolve();
+    }
     this.listeners.clear();
+    this.releaseWaiters();
+  }
+
+  private stillWaiting(wanted: () => boolean): boolean {
+    return !this.disposed && wanted();
+  }
+
+  private nextSettle(): Promise<void> {
+    return new Promise((resolve) => { this.waiters.add(resolve); });
+  }
+
+  private releaseWaiters(): void {
+    const waiting = [...this.waiters];
+    this.waiters.clear();
+    for (const resolve of waiting) resolve();
   }
 
   private ensure(key: K): Entry<K, V> {
@@ -188,6 +241,7 @@ export class ScopedResource<K, V> {
       return;
     }
     entry.phase = "reconnecting";
+    entry.fact = NO_FACT;
     entry.firstMissAt ??= this.clock.now();
     if (!entry.dirty) this.scheduleRetry(entry);
     this.finish(entry, settled);
@@ -196,7 +250,12 @@ export class ScopedResource<K, V> {
   private finish(entry: Entry<K, V>, settled: readonly (() => void)[]): void {
     this.notify();
     for (const resolve of settled) resolve();
-    if (entry.dirty && !this.disposed) this.start(entry);
+    if (!entry.dirty) return;
+    if (this.disposed) {
+      for (const resolve of entry.settled.splice(0)) resolve();
+      return;
+    }
+    this.start(entry);
   }
 
   private scheduleRetry(entry: Entry<K, V>): void {
@@ -217,5 +276,6 @@ export class ScopedResource<K, V> {
 
   private notify(): void {
     for (const listener of [...this.listeners]) listener();
+    this.releaseWaiters();
   }
 }

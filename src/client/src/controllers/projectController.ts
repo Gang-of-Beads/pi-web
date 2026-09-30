@@ -76,6 +76,16 @@ export class ProjectController {
     await this.listings.refresh(machineId);
   }
 
+  /**
+   * A machine's projects once it answers, for a reader that needs them before
+   * it can act (placing a session opened from another project). Undefined when
+   * the reader stopped wanting them first, or the machine refused.
+   */
+  async answeredProjects(machineId: string, wanted: () => boolean): Promise<readonly Project[] | undefined> {
+    const view = await this.listings.whenAnswered(machineId, wanted);
+    return view?.data;
+  }
+
   /** A sign of life: retry a lost projects read now instead of waiting out the backoff. */
   wake(): void {
     this.listings.wake();

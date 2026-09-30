@@ -320,6 +320,8 @@ stateDiagram-v2
 | quick switcher | an empty meaning of kind `failed` | `QuickSwitcher.ts:244` |
 | the global banner | "Lost connection…", "A request timed out…", "Connection problem…" | `errorBanner.ts:95-125` |
 
+Done so far: projects on a machine (P1 slice 1); workspaces, and placing a session opened from another project (P1 slice 2).
+
 Plugins read through the host, so the rule reaches them as one host facility: a read the host runs for a panel reports syncing and reconnecting, and retries on the same schedule. A plugin never writes its own retry loop.
 
 **What the reader sees** (owner, 2026-09-30; the full contract is `object-model.md` §0 and §2.3):

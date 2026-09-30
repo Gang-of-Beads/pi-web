@@ -216,7 +216,12 @@ export interface NavProjectSnapshot {
   readonly path: string;
 }
 
-/** Whether the projects reaching the navigation sections have loaded, and how the latest load ended. */
+/**
+ * Whether a listing reaching the navigation sections has answered. The host
+ * no longer emits `"failed"`: a listing without an answer stays `"loading"`
+ * while the host reads it again by itself (B48). The member stays for
+ * sections built against earlier hosts.
+ */
 export type NavProjectsLoad = "unloaded" | "loading" | "loaded" | "failed";
 
 /** Activity flags for one node, keyed by qualified flag id; absent means not set. */
@@ -270,7 +275,9 @@ export interface NavSectionContext {
   readonly deleteWorkspace?: (workspaceId: string) => void;
   /** Host-provided trust reads and writes; absent means the rows omit trust. */
   readonly workspaceTrust?: NavWorkspaceTrustActions | undefined;
+  /** Read the listing again now. The host already retries a lost read by itself; a section needs no Retry control. */
   readonly retryProjectsLoad: () => void;
+  /** Read the listing again now. The host already retries a lost read by itself; a section needs no Retry control. */
   readonly retryWorkspacesLoad: () => void;
   readonly toggleCollapsed: () => void;
   readonly focusPreviousSection: () => void | Promise<void>;

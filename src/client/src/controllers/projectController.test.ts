@@ -49,10 +49,10 @@ describe("ProjectController", () => {
   it("adds the project to app state before selecting it", async () => {
     const addedProject = project("added", "/added");
     let state: AppState = { ...initialAppState() };
-    const selectProject = vi.fn((selected: Project): Promise<void> => {
+    const selectProject = vi.fn((selected: Project): Promise<boolean> => {
       expect(selected).toBe(addedProject);
       expect(state.projects).toEqual([addedProject]);
-      return Promise.resolve();
+      return Promise.resolve(true);
     });
     const controller = new ProjectController(
       () => state,
@@ -78,9 +78,9 @@ describe("ProjectController", () => {
     const addedWorkspace = workspace(addedProject.id, addedProject.path);
     let state: AppState = { ...initialAppState() };
     const setWorkspaceTrust = vi.fn().mockResolvedValue({ path: "/added", decision: true, trusted: true });
-    const selectProject = vi.fn((): Promise<void> => {
+    const selectProject = vi.fn((): Promise<boolean> => {
       state = { ...state, workspaces: [addedWorkspace] };
-      return Promise.resolve();
+      return Promise.resolve(true);
     });
     const controller = new ProjectController(
       () => state,
@@ -106,9 +106,9 @@ describe("ProjectController", () => {
     const addedProject = project("added", "/added");
     let state: AppState = { ...initialAppState() };
     const setWorkspaceTrust = vi.fn();
-    const selectProject = vi.fn((): Promise<void> => {
+    const selectProject = vi.fn((): Promise<boolean> => {
       state = { ...state, workspaces: [workspace(addedProject.id, addedProject.path)] };
-      return Promise.resolve();
+      return Promise.resolve(true);
     });
     const controller = new ProjectController(
       () => state,
