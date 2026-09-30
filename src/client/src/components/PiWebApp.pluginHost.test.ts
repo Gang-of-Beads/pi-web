@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Workspace } from "../api";
+import type { SessionInfo, SessionStatus, Workspace } from "../api";
 import { initialAppState } from "../appState";
 import { loadExternalPlugins, type PluginManifestEntry } from "../plugins/external";
 import { PluginRegistry } from "../plugins/registry";
@@ -56,6 +56,28 @@ describe("PiWebApp plugin host", () => {
     await Promise.resolve();
 
     expect(invalidated).toHaveBeenCalledTimes(5);
+  });
+
+  it("refreshes the open panel and tells plugins when the last background run of an idle session ends", async () => {
+    const app = createApp();
+    const selectedSession: SessionInfo = { id: "session-1", cwd: "/repo", path: "/repo/session-1.jsonl", created: "2026-07-20T00:00:00.000Z", modified: "2026-07-20T00:00:00.000Z", messageCount: 1, firstMessage: "hi" };
+    const idle: SessionStatus = { sessionId: "session-1", isStreaming: false, isCompacting: false, isBashRunning: false, pendingMessageCount: 0, queuedMessages: [], tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, cost: 0 };
+    const settledRuns = { ...initialAppState(), selectedWorkspace: workspace, workspaces: [workspace], workspaceTool: "browser-only:workspace.panel" as const, selectedSession, status: idle };
+    const runsGoing = { ...settledRuns, status: { ...idle, backgroundRunCount: 1 } };
+    setAppState(app, settledRuns);
+    const invalidated = vi.fn<(context: WorkspacePanelContext) => void>();
+    const heard = vi.fn<(sessionId: string) => void>();
+    appPluginRegistry(app).register({ id: "browser-only", plugin: pluginWithPanel("Browser only", invalidated) });
+    appPluginRegistry(app).register({
+      id: "listener",
+      plugin: { apiVersion: 2, name: "Listener", activate: ({ on }) => { on?.("session-activity-settled", (event) => { heard(event.sessionId); }); return { contributions: {} }; } },
+    });
+
+    callAppMethod(app, "handleActivityTransition", runsGoing, settledRuns);
+    callAppMethod(app, "handleActivityTransition", settledRuns, settledRuns);
+    await Promise.resolve();
+
+    expect({ invalidated: invalidated.mock.calls.length, heard: heard.mock.calls }).toEqual({ invalidated: 1, heard: [["session-1"]] });
   });
 
   it("keeps successful registrations while making an incomplete gateway load retryable", async () => {

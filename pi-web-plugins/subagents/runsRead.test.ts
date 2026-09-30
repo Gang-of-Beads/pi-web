@@ -16,6 +16,36 @@ const rows = (agent: string): unknown => ({ known: true, runs: [{ runId: agent, 
 const settle = async (): Promise<void> => { for (let index = 0; index < 4; index += 1) await Promise.resolve(); };
 
 describe("RunsRead", () => {
+  it("reads once more after the read on its way when asked to refresh, so a change is never answered by a read that predates it", async () => {
+    const { runs, calls } = reader();
+    runs.select("a");
+    runs.refresh();
+    runs.refresh();
+    const inFlightWhileTheFirstIsOut = calls.length;
+    calls[0]?.resolve(rows("before"));
+    await settle();
+    const afterTheFirstAnswer = calls.length;
+    calls[1]?.resolve(rows("after"));
+    await settle();
+
+    expect({ inFlightWhileTheFirstIsOut, afterTheFirstAnswer, total: calls.length, shown: JSON.stringify(runs.view("a")?.state).includes("after") }).toEqual({
+      inFlightWhileTheFirstIsOut: 1,
+      afterTheFirstAnswer: 2,
+      total: 2,
+      shown: true,
+    });
+  });
+
+  it("reads at once on a refresh with nothing on its way", () => {
+    const { runs, calls } = reader();
+    runs.select("a");
+    calls[0]?.resolve(rows("first"));
+    return settle().then(() => {
+      runs.refresh();
+      expect(calls.length).toBe(2);
+    });
+  });
+
   it("reads again after a read presumed dead, and drops that read's answer when it comes after a newer one", async () => {
     const { runs, calls, advance } = reader();
     runs.select("a");

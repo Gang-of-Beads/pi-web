@@ -88,6 +88,11 @@ export interface PluginActivationContext {
   readonly ui?: PluginHostUi;
 }
 
+/**
+ * Host facts a plugin can subscribe to with `on`. `session-activity-settled` fires for the
+ * selected session when its turn ends, and when the last of its background runs ends while no
+ * turn runs: work that may have changed what a panel shows is over.
+ */
 export type PluginLifecycleEvent =
   | { kind: "session-selected"; sessionId: string; machineId: string | undefined }
   | { kind: "session-left"; sessionId: string }
@@ -518,6 +523,18 @@ export interface PluginRuntimeState {
   workspaceTool?: string | undefined;
   mainView?: string | undefined;
   piWebStatus?: PiWebStatusResponse | undefined;
+  /** The selected session's status, as far as a plugin reads it; undefined until it has been read. */
+  status?: PluginSessionStatus | undefined;
+}
+
+/**
+ * The part of the selected session's status a plugin may read. `isStreaming` says a turn is
+ * running; `backgroundRunCount` counts its subagent runs, working subsessions and background
+ * tasks that are still going, and is absent when there are none.
+ */
+export interface PluginSessionStatus {
+  readonly isStreaming: boolean;
+  readonly backgroundRunCount?: number | undefined;
 }
 
 /** The add-project dialog's submitted answer. */

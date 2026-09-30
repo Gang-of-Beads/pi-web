@@ -1,6 +1,8 @@
 import type { HtmlTemplateTag, PiWebPlugin, PluginActivationContext, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { runPresentation, type SubagentListState } from "./runRows.js";
 import { RunsRead, type RunsView } from "./runsRead.js";
+import { followedAfter, runsActivityOf, runsPollingDecision, UNSEEN_ANSWERS_BEFORE_STOP, type FollowedActivity, type RunsActivity } from "./runsPolling.js";
+import { defineOnScreenMarker } from "./onScreenMarker.js";
 import { defineSupervisorCard } from "./supervisorCardElement.js";
 import { answeredReply, supervisorRequest } from "./supervisorRequest.js";
 import { noticeSummary } from "./noticeSummary.js";
@@ -63,10 +65,40 @@ const plugin: PiWebPlugin = {
     const callOperation = context.callOperation;
     let requestUpdate: () => void = () => undefined;
     let polling: ReturnType<typeof setInterval> | undefined;
+    let followed: { readonly sessionFile: string; readonly activity: RunsActivity } | undefined;
+    let unseenAnswers = 0;
+    let panelShown: boolean | undefined;
     const runs = new RunsRead(
       (sessionFile) => (callOperation === undefined ? Promise.reject(new Error("no operations")) : callOperation("runs.list", { sessionFile })),
-      () => { requestUpdate(); },
+      () => {
+        unseenAnswers += 1;
+        requestUpdate();
+      },
     );
+    const stopPolling = (): void => {
+      clearInterval(polling);
+      polling = undefined;
+    };
+    /**
+     * Each answer asks the host to draw, and that draw follows again while the panel or its
+     * badge is on screen. Answers nobody drew mean nothing shows the runs any more (the chat is
+     * open): stop, and forget what was seen so the next look reads. A read still on its way is
+     * no evidence either way, so a stalled read never stops a watched poll.
+     */
+    const poll = (): void => {
+      if (unseenAnswers >= UNSEEN_ANSWERS_BEFORE_STOP) {
+        stopPolling();
+        followed = undefined;
+        return;
+      }
+      runs.tick();
+    };
+    context.on?.("session-activity-settled", () => { followed = undefined; });
+    const onScreen = (shown: boolean): void => {
+      if (panelShown === shown) return;
+      panelShown = shown;
+      if (shown) requestUpdate();
+    };
     const shownFor = (panel: WorkspacePanelContext): SubagentListState | undefined => {
       const sessionFile = sessionFileOf(panel);
       return sessionFile === undefined ? undefined : runs.view(sessionFile)?.state;
@@ -75,26 +107,34 @@ const plugin: PiWebPlugin = {
     /**
      * Read the session the host is showing. The panel's render and the tab's badge both ask, so
      * the poll follows the selected session even while the panel is closed; it used to stay on
-     * the last session the panel drew (reads F7).
+     * the last session the panel drew (reads F7). A render of the panel while it is off screen
+     * is not a look: it reads nothing and keeps nothing alive.
      */
-    const follow = (panel: WorkspacePanelContext): string | undefined => {
+    const follow = (panel: WorkspacePanelContext, looking = true): string | undefined => {
       const sessionFile = sessionFileOf(panel);
       if (sessionFile === undefined) return undefined;
       requestUpdate = () => { panel.host.requestRender(); };
-      runs.select(sessionFile);
-      // A run list goes stale by the second while children work, so the panel
-      // keeps re-reading; the tab's running count depends on it too.
-      polling ??= setInterval(() => { runs.tick(); }, 3000);
+      if (!looking) return sessionFile;
+      unseenAnswers = 0;
+      const switched = runs.select(sessionFile);
+      const previous: FollowedActivity = followed?.sessionFile === sessionFile ? followed.activity : "unfollowed";
+      const activity = runsActivityOf(panel.state?.status);
+      const decision = runsPollingDecision(previous, activity);
+      followed = { sessionFile, activity: followedAfter(previous, activity) };
+      if (decision.read && !switched) runs.refresh();
+      if (decision.poll) polling ??= setInterval(poll, 3000);
+      else stopPolling();
       return sessionFile;
     };
 
     const ensure = (panel: WorkspacePanelContext): RunsView | undefined => {
-      const sessionFile = follow(panel);
+      const sessionFile = follow(panel, panelShown !== false);
       if (sessionFile === undefined) return { state: { kind: "unknown", reason: "Open a session to see its subagents." }, refreshFailed: false };
       return runs.view(sessionFile);
     };
 
     defineSupervisorCard();
+    defineOnScreenMarker();
     return {
       contributions: {
         messageRenderers: [
@@ -136,10 +176,11 @@ const plugin: PiWebPlugin = {
               if (state?.kind !== "rows") return undefined;
               return state.running > 0 ? `${String(state.running)} working` : `${String(state.rows.length)} finished`;
             },
-            render: (panel) => renderRuns(html, ensure(panel)),
+            render: (panel) => html`<pi-subagents-on-screen .onChange=${onScreen}></pi-subagents-on-screen>${renderRuns(html, ensure(panel))}`,
           },
         ],
       },
+      dispose: stopPolling,
     };
   },
 };

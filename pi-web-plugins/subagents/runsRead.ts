@@ -32,6 +32,7 @@ export class RunsRead {
   private issued = 0;
   private applied = 0;
   private inFlight: { seq: number; startedAt: number } | undefined;
+  private readAgain = false;
 
   constructor(
     private readonly ask: (sessionFile: string) => Promise<unknown>,
@@ -44,13 +45,29 @@ export class RunsRead {
     return this.sessionFile === sessionFile ? { state: this.shown, refreshFailed: this.refreshFailed } : undefined;
   }
 
-  /** The session on screen. A new one starts over and reads at once. */
-  select(sessionFile: string): void {
-    if (this.sessionFile === sessionFile) return;
+  /** The session on screen. A new one starts over and reads at once; says whether it did. */
+  select(sessionFile: string): boolean {
+    if (this.sessionFile === sessionFile) return false;
     this.sessionFile = sessionFile;
     this.shown = undefined;
     this.refreshFailed = false;
     this.inFlight = undefined;
+    this.readAgain = false;
+    this.read();
+    return true;
+  }
+
+  /**
+   * Something changed: read now, or, with a read already on its way, once more when it lands.
+   * That read may have been asked before the change, and a poll that stops on the change would
+   * otherwise keep its answer for good. There is still only ever one read in flight.
+   */
+  refresh(): void {
+    if (this.sessionFile === undefined) return;
+    if (this.inFlight !== undefined && this.now() - this.inFlight.startedAt < READ_PRESUMED_DEAD_MS) {
+      this.readAgain = true;
+      return;
+    }
     this.read();
   }
 
@@ -74,7 +91,13 @@ export class RunsRead {
 
   private settle(sessionFile: string, seq: number, answered: SubagentListState | undefined): void {
     if (this.sessionFile !== sessionFile) return;
-    if (this.inFlight?.seq === seq) this.inFlight = undefined;
+    if (this.inFlight?.seq === seq) {
+      this.inFlight = undefined;
+      if (this.readAgain) {
+        this.readAgain = false;
+        this.read();
+      }
+    }
     if (seq < this.applied) return;
     this.applied = seq;
     if (answered !== undefined) {

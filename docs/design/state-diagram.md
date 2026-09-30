@@ -278,6 +278,33 @@ stateDiagram-v2
   - **Efficiency:** heartbeats and head reads carry heads only, tens of bytes. Status frames carry what changed, not the whole status. Nothing polls on a timer while events are flowing.
 - **An aggregate list** (All projects) keeps one state per source. A source that has not answered shows as reconnecting; it never disappears into an empty list.
 
+### The subagents run list: read while watched, poll only while the session works (P3 slice b)
+
+Measured on 8505 before: 40-47 requests a minute with the git or files panel open on an idle session. The run list was read every 3 s for as long as the tab's badge followed a session, and each answer re-rendered the app, which re-read the pins. Until the run list has a head of its own (P4), it keeps a poll, but only while it can change and only while someone looks.
+
+The panel records what it last saw for the session it follows, and decides from that record and the status now:
+
+```mermaid
+stateDiagram-v2
+    [*] --> unfollowed
+    unfollowed --> idle: first look, status idle (read)
+    unfollowed --> working: first look, status working (read, poll)
+    unfollowed --> unknown: first look, no status yet (read)
+    unknown --> idle: status arrives idle
+    unknown --> working: status arrives working (poll)
+    idle --> working: a turn starts or a run is counted (read, poll)
+    working --> idle: the turn ends and no run is counted (read once more, stop)
+    idle --> unfollowed: the host announces the session's work settled
+    working --> unfollowed: two answers drawn by nobody (stop), or work settled
+```
+
+- **Working** means a turn is streaming or `backgroundRunCount` > 0. That count also covers background shell tasks, so a long-running dev server keeps the panel polling while it is on screen (as before this slice); the run list's own head removes that in P4.
+- **An unknown status is no news.** It neither starts a poll nor counts as a change, so the read a new selection already makes is not doubled when its status lands.
+- **Watched** is observed, not declared. The panel looks when its tab badge is drawn, or when the host draws the panel while it is on screen. The host keeps the active panel rendered while the phone shows the chat, so a render alone is not a look: a zero-height marker in the panel's own template reports, through an IntersectionObserver, whether the panel is shown (`subagents/onScreenMarker.ts`, the git review sections' precedent). Each answer asks the host to draw; two answers with no look in between stop the poll and forget the record. A read still on its way is no evidence, so a stalled read never stops a watched poll. Coming back on screen asks for a render, which reads if the record was forgotten.
+- **Work that happened out of sight** is caught by the host's `session-activity-settled`: the plugin forgets its record, and the next look reads. The host announces it when the selected session's turn ends and, since this slice, when the last of its background runs ends while no turn runs (`sessionWorkSettled.ts`). The open workspace tool is refreshed on the same edge.
+- **The read on an edge** never trusts a read already on its way, which may predate the edge: `RunsRead.refresh()` reads once more when that read lands. There is still one read in flight at most.
+- Measured on 8505 (60 s idle, 1440×900). Before (HEAD `d085e874`): the subagents panel 41 requests a minute, git 47, files 40, chat 1. After: subagents 1, git 14–16 (git status 7 and pins 7–8; the pins go in P5, the git poll to its own head), files 0, chat 0. `probe-subagents-quiet.mjs` at 393×850: HEAD fails 5 of 14 legs, this slice passes 14 of 14.
+
 ### A surface never gives up (B48)
 
 Owner, 2026-09-30, on "Couldn't read the projects on this machine." frozen on the phone board: "the page keeps trying to update itself, through event-based messages and, after n silent seconds, an active heartbeat that checks for messages from a newer version … so really there are only two states: trying to reconnect/sync, and syncing … the front end has to design well what it presents to the user".

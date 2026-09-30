@@ -21,6 +21,7 @@ import type { BackgroundTasksRead, PiWebFleetReport, PiWebFleetRunResponse } fro
 import type { AppAction } from "../actions";
 import { composerCwd, initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
+import { sessionWorkSettled } from "../sessionWorkSettled";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
@@ -2215,9 +2216,7 @@ export class PiWebApp extends LitElement {
   }
 
   private handleActivityTransition(previous: AppState, next: AppState) {
-    const wasActive = isActive(previous);
-    const nowActive = isActive(next);
-    if (wasActive && !nowActive) {
+    if (sessionWorkSettled(previous, next)) {
       this.refreshSelectedWorkspaceTool(this.state.workspaceTool);
       const sessionId = this.state.selectedSession?.id;
       if (typeof sessionId === "string" && sessionId !== "") {
@@ -4583,10 +4582,6 @@ function dedupeById<T extends { id: string }>(items: readonly T[]): T[] {
     deduped.push(item);
   }
   return deduped;
-}
-
-function isActive(state: Pick<AppState, "status" | "activity">): boolean {
-  return isSessionActive(state.status, state.activity);
 }
 
 function isTerminalEvent(event: BrowserRealtimeEvent): event is TerminalUiEvent {

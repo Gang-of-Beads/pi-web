@@ -247,7 +247,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 ### 1.15 Background runs, subagent runs, interrupted runs
 
 - **Background tasks**: keyed by the selected chat; `BackgroundTasksRead` (`backgroundTaskRows.ts:13`), cleared after a frame (`PiWebApp.ts:754-761`). Read `GET /sessions/:id/background-tasks`. **New**: the `backgroundWork` count on status is the head.
-- **Subagent runs**: key `sessionFile`; `setInterval(runs.tick, 3000)` started from render (`subagents/pi-web-plugin.ts:87`); `runs.list` 1,747 calls, p90 2 s [N §4]. **New**: a resource plus the generic `plugin.changed`; no `runs.changed` special case.
+- **Subagent runs**: key `sessionFile`; before P3b `setInterval(runs.tick, 3000)` from render, forever. Since P3b the poll runs only while the panel or its badge is drawn and the session works, with a read on each edge (state-diagram D5, "The subagents run list"; `subagents/runsPolling.ts`); `runs.list` 1,747 calls, p90 2 s [N §4]. **New**: a resource plus the generic `plugin.changed`; no `runs.changed` special case.
 - **Interrupted runs**: `GET /sessions/interrupted` is read-and-clear (`sessionRoutes.ts:118`). Its spec declares `effect: "read-and-clear"`: there is no client retry of a spent record; a lost answer is re-asked only through the ledger probe. It is included in the batched boot read with the same effect.
 
 ### 1.16 Plugin (D6) and plugin panel
@@ -525,9 +525,9 @@ Dependency direction: component → controller → `sync/*` → `api/http.ts`. P
 | `/api` at boot, background included | ~40 | ≤8 | P4 |
 | max `/api` concurrency | 13–15 | measure after P4 | 2.7 |
 | idle bytes/min, panels closed | ~0.4 KB | ≤1 KB | — |
-| idle, git/files panel open | ≤245 req/min | ≤8/min, plus head checks at 4/min | P3, P5 |
-| pins reads/min | 30 | ≤1 | P5 |
-| first transcript row, warm | 0.84 s | ≤400 ms | P6 |
+| idle, git/files panel open | ≤245 req/min; 40–47/min after the watcher fix (the subagents run list every 3 s, and the pins re-read on each render it caused); **files 0/min, git 14–16/min, subagents 1/min** after P3b (git status 7, pins 7–8) | ≤8/min, plus head checks at 4/min | P3, P5 |
+| pins reads/min | 30; 7 with the git panel open after P3b (re-read on each render older than 2 s) | ≤1 | P5 |
+| first transcript row, warm | 0.84 s; **0.33–0.38 s** after P2c + P3a | ≤400 ms | P6 |
 | first transcript row, cold 17.8 MB | 3.5–6.0 s; **1.11–1.34 s** after P2c + P3a (phone, daemon-cold, `probe-open-latency.mjs`) | ≤1.5 s | P2, P3 |
 | session read's wait on lists | 0.55–1.5 s | 0 (with `cwd`) | P2 |
 | board read p99 | 23 s (list) | ≤1 s | P3, P4 |
