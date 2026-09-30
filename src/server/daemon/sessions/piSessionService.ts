@@ -34,7 +34,7 @@ import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo, TranscriptHead 
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
-import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, isCutAssistant, transcriptHead, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
+import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, isCutAssistant, stoppedTurnMessage, transcriptHead, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
 import { runTranscriptMessages } from "../../../shared/subagentRunTranscript.js";
 import { readableMessageCount } from "./readableMessageCount.js";
 import { pluginSurfacePresence } from "./pluginSurfaces.js";
@@ -1441,8 +1441,8 @@ export class PiSessionService implements SessionRouteService {
   private customScreenStack: string | undefined;
   /** Open extension screens, by dialog id, so a keypress can find its component. */
   private readonly customScreens = new Map<string, (key: string) => void>();
-  /** Sessions whose running turn the reader stopped; cleared when that turn ends. */
-  private readonly stoppedByReader = new Set<string>();
+  /** Sessions whose running turn the reader stopped, with the moment recorded; settled once, at the latest when that turn ends. */
+  private readonly stoppedByReader = new Map<string, string>();
   private readonly dialogWaiters = new ExtensionDialogWaiters();
   private readonly catalogRefreshStatus: CatalogRefreshStatus | undefined;
   private readonly unreadPublicationRetryInitialMs: number;
@@ -3626,30 +3626,41 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * Remember that the reader stopped this turn, durably. The custom entry is what
-   * history reads after a reload (`branchMessages`); the set marks the live reply.
+   * Remember that the reader stopped this turn, durably and once. The custom entry is what
+   * history reads after a reload (`branchMessages`); the map marks the live reply.
    */
   private recordStopByReader(session: PiAgentSession): void {
-    this.stoppedByReader.add(session.sessionId);
+    if (this.stoppedByReader.has(session.sessionId)) return;
+    const at = new Date().toISOString();
+    this.stoppedByReader.set(session.sessionId, at);
     try {
-      session.sessionManager.appendCustomEntry?.(TURN_STOPPED_CUSTOM_TYPE, { by: "you" });
+      session.sessionManager.appendCustomEntry?.(TURN_STOPPED_CUSTOM_TYPE, { by: "you", at });
     } catch (error) {
       console.error("[stop] could not record the reader's stop", String(error));
     }
   }
 
-  /** The reply a reader's Stop cut says so on the live frame, as history will. */
-  private stampStoppedReply(session: PiAgentSession, event: unknown): void {
+  /**
+   * Settle the reader's Stop live, by the rule history reads (`stopOutcomes`): the first reply it
+   * cut carries the mark; a user message or the end of the work it stopped, reached first, settles
+   * it on its own, returned here as the message_end the transcript and the command watch both
+   * receive. pi schedules a retry after the failed run's `agent_end`, so a Stop during that wait
+   * is ended by `auto_retry_end`.
+   */
+  private settleStopByReader(session: PiAgentSession, event: unknown): unknown {
+    const at = this.stoppedByReader.get(session.sessionId);
+    if (at === undefined) return undefined;
     const eventType = getString(event, "type");
-    if (eventType === "agent_end") {
-      this.stoppedByReader.delete(session.sessionId);
-      return;
-    }
-    if (eventType !== "message_end" || !this.stoppedByReader.has(session.sessionId)) return;
     const message = getProperty(event, "message");
-    if (!isRecord(message) || !isCutAssistant(message)) return;
-    message["stoppedBy"] = "you";
+    if (eventType === "message_end" && isRecord(message) && isCutAssistant(message)) {
+      message["stoppedBy"] = "you";
+      this.stoppedByReader.delete(session.sessionId);
+      return undefined;
+    }
+    const reachedFirst = STOP_SETTLING_EVENTS.has(eventType ?? "") || (eventType === "message_end" && getString(message, "role") === "user");
+    if (!reachedFirst) return undefined;
     this.stoppedByReader.delete(session.sessionId);
+    return { type: "message_end", message: stoppedTurnMessage(at) };
   }
 
   private publishActivityChangeForToolEvent(session: PiAgentSession, event: unknown): void {
@@ -4373,8 +4384,6 @@ export class PiSessionService implements SessionRouteService {
     // strand the dialog until its timeout. Settling before the runtime abort
     // also means a failing or hung abort cannot strand the parked waiter.
     this.abortRunScopedExtensionDialogs(sessionId);
-    // Named before the abort: the failure row the browser builds from it has to
-    // be able to say who stopped the turn.
     this.events.publish(sessionId, { type: "session.stopped", cause: "user" });
     if (active.runtime.session.isStreaming) this.recordStopByReader(active.runtime.session);
     try {
@@ -4674,7 +4683,9 @@ export class PiSessionService implements SessionRouteService {
   private async stopHandoffInFlight(session: PiAgentSession): Promise<void> {
     if (!this.handing.has(session.sessionId) || this.handingCommands.has(session.sessionId)) return;
     const outcome = await withinHandoffBound(this.handoffChains.get(session.sessionId) ?? Promise.resolve());
-    if (outcome === "done" && session.isStreaming) await this.abortSessionOperations(session);
+    if (outcome !== "done" || !session.isStreaming) return;
+    this.recordStopByReader(session);
+    await this.abortSessionOperations(session);
   }
 
   /** Per-session inbox state. Safe to drop at close: no runtime can reopen the id until the close ends. */
@@ -5287,7 +5298,11 @@ export class PiSessionService implements SessionRouteService {
 
   private handleRuntimeEvent(session: PiAgentSession, event: unknown): void {
     this.stampCommittedUserMessage(session, event);
-    this.stampStoppedReply(session, event);
+    const settledStop = this.settleStopByReader(session, event);
+    if (settledStop !== undefined) {
+      this.events.publish(session.sessionId, { type: "message.end", message: getProperty(settledStop, "message") });
+      this.commandService.observeSessionEvent(session.sessionId, settledStop);
+    }
     this.observeInboxFacts(session, event);
     this.publishActivityChangeForToolEvent(session, event);
     this.events.publish(session.sessionId, toClientEvent(event, session.thinkingLevel));
@@ -6610,6 +6625,9 @@ function isStreamingDeltaEvent(event: unknown): boolean {
   const deltaType = getString(assistantMessageEvent, "type");
   return deltaType === "text_delta" || deltaType === "thinking_delta";
 }
+
+/** The events that end work a reader's Stop can land in without a reply to carry it. */
+const STOP_SETTLING_EVENTS: ReadonlySet<string> = new Set(["agent_end", "auto_retry_end"]);
 
 function toClientEvent(event: unknown, thinkingLevel?: string): SessionUiEvent {
   const eventType = getString(event, "type");

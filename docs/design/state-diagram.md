@@ -168,10 +168,16 @@ stateDiagram-v2
 - **Background work** is a count on the status, contributed by plugins (a `backgroundWork` contribution per plugin, summed by the daemon). The *category* is core. The *words* beside it ("2 background runs", "subagent: reviewing…") are the contributing plugin's appendage. A disabled plugin contributes neither count nor words.
 - **Sub-flags** (`compacting`, `bash`) qualify `working`. They are not categories.
 - **One `idle` per turn,** published at turn end only. `message_end` inside a turn is not idle.
-- **A cut turn settles visibly (B30).** A reply pi ended with `stopReason: "aborted"`, or with an error whose reason is an abort, always leaves exactly one settled row after whatever part it streamed. The partial text stays. The wording comes from one classifier:
-  - the daemon's mark (`stoppedBy: "you"`, from the `pi-web.turn.stopped` entry) gives "You stopped this turn", naming the tool when the cut reply was calling one;
-  - no mark gives "Interrupted before it finished". The mark is never guessed, so an old Stop written before the mark existed reads as an interruption (owner ruling, 2026-09-30: only "you stopped" and "interrupted").
-  - Before B30 only the error form had a row. A plain Stop (`aborted`, often with no content yet) rendered nothing, and the session went straight to idle.
+- **A cut turn settles visibly (B30); every producer.** The reader's Stop is owned by the daemon's `pi-web.turn.stopped` entry. That entry settles as exactly one row, "You stopped this turn", at one of two places:
+  1. **On the reply it cut:** a reply pi ended as aborted (or errored with an abort) after the entry. That reply carries the mark (`stoppedBy: "you"`), and its streamed part stays above the row.
+  2. **On its own,** when no cut reply follows it before the next user message or the end of the branch. The case: Stop during pi's retry backoff. pi only emits `auto_retry_end {success: false, finalError: "Retry cancelled"}`, and the failed attempt was already hidden as retried. History renders the lone entry as the settled row. Live, the daemon publishes the same row when the stopped work ends with the mark unconsumed: at `agent_end`, or at `auto_retry_end`, because pi schedules a retry after the failed run's `agent_end`.
+
+  Producers enumerated (review run 6cc25868):
+  - an `aborted` reply with no row (fixed);
+  - a Stop during a direct handoff, which aborts the run the handoff starts but did not record the Stop. The daemon now records it once the handoff's message commits;
+  - Stop during retry backoff (case 2 above).
+
+  Everything else that ends a turn without the reader's Stop reads "Interrupted before it finished". This covers `/compact` mid-turn, closing or archiving a session, and a parent-aborted child. It is true in each case. Old history written before the mark reads "Interrupted" by the owner's ruling.
 - **Context usage** carries the model and window it was measured against. After a model change it is `unknown` until measured again. It is never capped to hide a wrong number (B24).
 
 ### The status line narrates; it never parrots an event word

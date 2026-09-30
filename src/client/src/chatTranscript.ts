@@ -6,6 +6,7 @@ import { withoutRetriedAttempt } from "./retriedAttempt";
 import type { ChatLine, ToolExecutionPart } from "./components/shared";
 import { carryDeliveryForward, findTrackedUserLineIndex, isEchoOfTrackedMessage } from "./messageDelivery";
 import { appendShellChunk, finalizeShellMessage, shellStartMessage } from "./shellMessages";
+import { isCutAssistant } from "../../shared/branchMessages";
 import type { SessionUiEvent } from "./sessionSocket";
 
 type ToolResultImage = Extract<ChatLine["parts"][number], { type: "image" }>;
@@ -85,7 +86,31 @@ function applyFinalMessage(messages: ChatLine[], rawMessage: unknown): ChatLine[
     .map((line) => line.role === "assistant" ? withoutToolCalls(line) : line)
     .filter((line) => line.parts.length > 0);
   if (displayEnded.length === 0) return messages;
+  if (isCutAssistant(rawMessage)) {
+    const settled = displayEnded.filter((line) => line.role === "system");
+    if (settled.length > 0) return settleCutReply(messages, displayEnded.find((line) => line.role === "assistant"), settled);
+  }
   return displayEnded.reduce((next, line) => applyFinalLine(next, line, committedId), messages);
+}
+
+/**
+ * A reply that ended cut (an error, or a Stop) settles as one group: the reply, if pi kept any
+ * of it, and directly after it the row saying how it ended - where history puts them, so a
+ * message still queued behind the half-done line stays behind both. A copy of the same group
+ * applied earlier (a frame replayed across a rebuild) is replaced, never stood twice.
+ */
+function settleCutReply(messages: ChatLine[], reply: ChatLine | undefined, settled: ChatLine[]): ChatLine[] {
+  const stamp = settled[0]?.meta?.timestamp;
+  const earlierCopy = (line: ChatLine): boolean => stamp !== undefined && line.role === "system" && line.meta?.timestamp === stamp && settled.some((row) => sameMessageContent(row, line));
+  const rest = messages.filter((line) => !earlierCopy(line));
+  if (reply === undefined) {
+    const at = queuedTail(rest);
+    return [...rest.slice(0, at), ...settled, ...rest.slice(at)];
+  }
+  const at = turnTail(rest);
+  const head = rest.slice(0, at);
+  const kept = head.at(-1)?.role === "assistant" ? head.slice(0, -1) : head;
+  return [...kept, reply, ...settled, ...rest.slice(at)];
 }
 
 /** The sender-minted id the daemon stamped onto the committed copy. */
@@ -148,19 +173,24 @@ function turnTail(messages: ChatLine[]): number {
   let index = messages.length;
   while (index > 0) {
     const line = messages[index - 1];
-    if (line?.role === "tool") {
-      index -= 1;
-      continue;
-    }
-    if (line?.role !== "user") break;
-    const state = line.meta?.delivery?.state;
-    const unsettledDelivery = state !== undefined && !deliverySettled(state);
-    // The sender's own echo has no delivery record yet; it is just as
-    // unanswered as a queued send with one.
-    if (line.meta?.echo !== true && !unsettledDelivery) break;
+    if (line?.role !== "tool" && !isUnansweredUser(line)) break;
     index -= 1;
   }
   return index;
+}
+
+/** Where a row with no reply line of its own belongs: in front of the reader's unanswered messages only. */
+function queuedTail(messages: ChatLine[]): number {
+  let index = messages.length;
+  while (index > 0 && isUnansweredUser(messages[index - 1])) index -= 1;
+  return index;
+}
+
+/** The sender's own echo has no delivery record yet; it is just as unanswered as a queued send with one. */
+function isUnansweredUser(line: ChatLine | undefined): boolean {
+  if (line?.role !== "user") return false;
+  const state = line.meta?.delivery?.state;
+  return line.meta?.echo === true || (state !== undefined && !deliverySettled(state));
 }
 
 function reconcileFinalAskUserRecord(

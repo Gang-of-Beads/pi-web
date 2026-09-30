@@ -209,6 +209,26 @@ describe("applyTranscriptEvent", () => {
     ]);
   });
 
+  describe("a reply the reader stopped (B30)", () => {
+    const stopped = { role: "assistant", content: [{ type: "text", text: "tick 1." }], stopReason: "aborted", errorMessage: "Request was aborted", stoppedBy: "you", timestamp: "2026-09-30T09:00:00.000Z" };
+    const texts = (lines: ChatLine[] | undefined): string[] => (lines ?? []).map((line) => `${line.role}:${line.parts.map((part) => (part.type === "text" ? part.text : part.type)).join("")}`);
+
+    /** Review 6cc25868 F2: a frame applied twice across a rebuild stood the reply and its row twice. */
+    it("settles once when its message.end is applied twice", () => {
+      const once = applyTranscriptEvent([textMessage("user", "go")], { type: "message.end", message: stopped }) ?? [];
+      const twice = applyTranscriptEvent(once, { type: "message.end", message: stopped }) ?? once;
+      expect(texts(twice)).toEqual(["user:go", "assistant:tick 1.", "system:You stopped this turn."]);
+    });
+
+    /** Review 6cc25868 F3: live, the row went behind a queued message; history puts it right after the reply. */
+    it("puts its row right after the reply, ahead of a message still queued", () => {
+      const streaming = applyTranscriptEvent([textMessage("user", "go")], { type: "assistant.delta", text: "tick 1." }) ?? [];
+      const queued = applyTranscriptEvent(streaming, { type: "message.append", message: { role: "user", content: "next" }, echo: true }) ?? streaming;
+      const settled = applyTranscriptEvent(queued, { type: "message.end", message: stopped }) ?? queued;
+      expect(texts(settled)).toEqual(["user:go", "assistant:tick 1.", "system:You stopped this turn.", "user:next"]);
+    });
+  });
+
   it("appends finalized assistant errors that have no displayable content", () => {
     expect(applyTranscriptEvent([textMessage("user", "question")], {
       type: "message.end",

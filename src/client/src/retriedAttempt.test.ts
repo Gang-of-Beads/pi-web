@@ -10,6 +10,11 @@ const texts = (lines: ChatLine[] | undefined): string[] => (lines ?? []).map((li
 const ended = (lines: ChatLine[], message: unknown): ChatLine[] => applyTranscriptEvent(lines, { type: "message.end", message }) ?? lines;
 
 describe("a failure pi retries", () => {
+  it("never takes back the row of a turn the reader stopped (B30)", () => {
+    const stopped = ended([user("go")], { role: "assistant", content: [], stopReason: "aborted", stoppedBy: "you", timestamp: 1 });
+    expect(texts(applyTranscriptEvent(stopped, retry) ?? stopped)).toEqual(["go", "You stopped this turn."]);
+  });
+
   it("leaves the live transcript when the retry starts", () => {
     const shown = ended([user("go")], failure("overloaded", 1_000));
     expect(texts(shown)).toEqual(["go", "Model response failed: overloaded"]);

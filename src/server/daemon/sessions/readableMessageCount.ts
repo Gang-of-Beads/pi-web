@@ -19,13 +19,13 @@
  * cannot drift apart again.
  */
 
-import { isReadableBranchEntry, retriedAttemptIds } from "../../../shared/branchMessages.js";
+import { isReadableBranchEntry, retriedAttemptIds, stopOutcomes } from "../../../shared/branchMessages.js";
 
 export { isReadableBranchEntry as isReadableMessageEntry };
 
 export function readableMessageCount(branch: readonly unknown[]): number {
   const retried = retriedAttemptIds(branch);
-  let count = 0;
+  let count = stopOutcomes(branch).alone.size;
   for (const entry of branch) {
     if (isReadableBranchEntry(entry) && !retried.has(entryId(entry))) count += 1;
   }

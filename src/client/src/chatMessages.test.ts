@@ -176,6 +176,34 @@ describe("chat message normalization", () => {
     it("never calls an unmarked abort a stop the reader pressed", () => {
       expect(describeAssistantFailure(aborted, { content: [] })).not.toMatch(/stopped/iu);
     });
+
+    /**
+     * Owner, 2026-09-30: "现在手动interrupted没有任何提示，status/消息都没，直接就idle了" (B30).
+     * pi ends a reply the reader stopped with stopReason "aborted", not "error", and only the error
+     * form had a row. This is the record 8505 persisted for a Stop four seconds into a reply.
+     */
+    const stopped = { role: "assistant", content: [], stopReason: "aborted", errorMessage: "Request was aborted", stoppedBy: "you" };
+
+    it("settles a Stop the reader pressed as one row, even before any text", () => {
+      expect(normalizeMessage(stopped)).toEqual([textMessage("system", "You stopped this turn.")]);
+    });
+
+    it("keeps what the stopped reply had written, then says it was stopped", () => {
+      expect(normalizeMessage({ ...stopped, content: [{ type: "text", text: "tick 1. tick 2." }] })).toEqual([
+        textMessage("assistant", "tick 1. tick 2."),
+        textMessage("system", "You stopped this turn."),
+      ]);
+    });
+
+    /** Review 6cc25868 N3: pi may end an aborted reply with a reason that never says "aborted". */
+    it("reads the stop from stopReason, not from the words of the reason", () => {
+      expect(normalizeMessage({ ...stopped, errorMessage: "Request cancelled" })).toEqual([textMessage("system", "You stopped this turn.")]);
+      expect(normalizeMessage({ ...stopped, errorMessage: "Request cancelled", stoppedBy: undefined })).toEqual([textMessage("system", "Interrupted before it finished: Request cancelled")]);
+    });
+
+    it("calls an unmarked aborted reply interrupted", () => {
+      expect(normalizeMessage({ ...stopped, stoppedBy: undefined })).toEqual([textMessage("system", "Interrupted before it finished: Request was aborted")]);
+    });
   });
 
   it("keeps partial assistant content and adds a visible error line", () => {

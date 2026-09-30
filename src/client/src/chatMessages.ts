@@ -88,18 +88,22 @@ export function normalizeMessage(message: unknown): ChatLine[] {
   const lines = visible.length > 0 ? [withMessageMeta({ role: displayRole, parts: visible, ...(source === undefined ? {} : { source }) }, message)] : [];
   const errorLine = assistantErrorLine(message);
   if (errorLine === undefined) return lines;
-  return [...lines, withMessageMeta(errorLine, message)].map(asFailedAttempt);
+  const settled = [...lines, withMessageMeta(errorLine, message)];
+  return getString(message, "stopReason") === "error" ? settled.map(asFailedAttempt) : settled;
 }
 
-/** Rows of an assistant reply that ended in an error: pi may retry it, and then they go. */
+/** Rows of an assistant reply that ended in an error: pi may retry it, and then they go. A cut reply is never retried, so it stays. */
 function asFailedAttempt(line: ChatLine): ChatLine {
   return { ...line, meta: { ...line.meta, failedAttempt: true } };
 }
 
+const UNSTATED_REASON: ReadonlyMap<string, string> = new Map([["error", "The model returned an error."], ["aborted", "Request was aborted"]]);
+
 function assistantErrorLine(message: unknown): ChatLine | undefined {
-  if (getString(message, "role") !== "assistant" || getString(message, "stopReason") !== "error") return undefined;
+  const unstated = UNSTATED_REASON.get(getString(message, "stopReason") ?? "");
+  if (getString(message, "role") !== "assistant" || unstated === undefined) return undefined;
   const errorMessage = getString(message, "errorMessage")?.trim();
-  const detail = errorMessage === undefined || errorMessage === "" ? "The model returned an error." : errorMessage;
+  const detail = errorMessage === undefined || errorMessage === "" ? unstated : errorMessage;
   return textMessage("system", describeAssistantFailure(detail, message));
 }
 
@@ -116,7 +120,7 @@ export type FailureKind = "failed" | "unreplayable-thinking" | "stopped-by-you" 
 
 export function failureKind(detail: string, message: unknown): FailureKind {
   if (isUnreplayableThinkingFailure(detail)) return "unreplayable-thinking";
-  if (!/aborted/iu.test(detail)) return "failed";
+  if (!/aborted/iu.test(detail) && getString(message, "stopReason") !== "aborted") return "failed";
   return getString(message, "stoppedBy") === "you" ? "stopped-by-you" : "interrupted";
 }
 

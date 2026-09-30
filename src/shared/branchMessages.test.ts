@@ -31,9 +31,27 @@ describe("a turn the reader stopped, after a reload", () => {
     expect(stoppedBy(branchMessages([{ type: "message", id: "u1", message: { role: "user", content: "go" } }, stopped, cut("a1")]))).toEqual([undefined, "you"]);
   });
 
-  it("marks nothing in a later turn", () => {
+  it("marks nothing in a later turn; a Stop no reply followed settles on its own", () => {
     const later = [stopped, { type: "message", id: "u2", message: { role: "user", content: "again" } }, cut("a2")];
-    expect(stoppedBy(branchMessages(later))).toEqual([undefined, undefined]);
+    expect(stoppedBy(branchMessages(later))).toEqual(["you", undefined, undefined]);
+  });
+
+  /**
+   * B30, review run 6cc25868: a Stop pressed while pi waited to retry a failed attempt writes no
+   * reply at all - pi only ends the retry - and the failed attempt is hidden as retried. The Stop
+   * left nothing, which is the owner's report. The daemon's record of the Stop settles on its own.
+   */
+  it("settles a Stop pressed during a retry wait as the turn's one row", () => {
+    const duringBackoff = [
+      { type: "message", id: "u1", message: { role: "user", content: "go" } },
+      { type: "message", id: "a1", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "503 overloaded" } },
+      { type: "context_edit", id: "e1", targetId: "a1", replacement: null },
+      { ...stopped, data: { by: "you", at: "2026-09-30T09:00:00.000Z" } },
+    ];
+    const transcript = branchTranscript(duringBackoff);
+    expect(transcript.map((row) => row.entryId)).toEqual(["u1", "s1"]);
+    expect(transcript[1]?.message).toEqual({ role: "assistant", content: [], stopReason: "aborted", stoppedBy: "you", timestamp: "2026-09-30T09:00:00.000Z" });
+    expect(readableMessageCount(duringBackoff)).toBe(transcript.length);
   });
 
   it("marks only the first cut reply after the Stop", () => {

@@ -391,8 +391,8 @@ function eventField(value: unknown, key: string): string | undefined {
 /**
  * Whether this event puts something on the reader's screen. A user message is
  * the command's own echo; an assistant message counts only when it carries
- * text or an error, because the transcript renders an error line and renders
- * empty content as nothing at all.
+ * text or ended cut (an error, or a Stop), because the transcript settles a cut
+ * reply as a row and renders empty content as nothing at all.
  */
 function rendersInTranscript(event: unknown): boolean {
   const type = eventField(event, "type");
@@ -402,7 +402,8 @@ function rendersInTranscript(event: unknown): boolean {
   const record: Record<string, unknown> = { ...event };
   const message = record["message"];
   if (eventField(message, "role") !== "assistant") return false;
-  if (eventField(message, "stopReason") === "error") return true;
+  const stopReason = eventField(message, "stopReason");
+  if (stopReason === "error" || stopReason === "aborted") return true;
   if (typeof message !== "object" || message === null) return false;
   const messageRecord: Record<string, unknown> = { ...message };
   const content = messageRecord["content"];

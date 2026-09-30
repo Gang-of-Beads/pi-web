@@ -1031,6 +1031,9 @@ describe("ninth gate-lane findings", () => {
     releasePrompt();
     await stopping;
     expect(abortsOfTheRun).toBe(1);
+    const cut: Record<string, unknown> = { role: "assistant", content: [], stopReason: "aborted", errorMessage: "Request was aborted" };
+    fake.emit({ type: "message_end", message: cut });
+    expect(cut["stoppedBy"]).toBe("you");
     await service.dispose();
   });
 

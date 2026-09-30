@@ -38,6 +38,50 @@ function stoppedByYou(message: unknown): unknown {
 }
 
 /**
+ * The row a reader's Stop settles as when no reply followed it: the shape of a reply the Stop
+ * cut, with nothing in it, so the browser words it with the one classifier every cut reply goes
+ * through. pi writes no reply for a Stop pressed while it waits to retry a failed attempt, and
+ * that attempt is hidden as retried, so without this the Stop left nothing on screen (B30).
+ * The daemon publishes the same row live; `at` is the moment it recorded the Stop.
+ */
+export function stoppedTurnMessage(at: string | undefined): Record<string, unknown> {
+  return { role: "assistant", content: [], stopReason: "aborted", stoppedBy: "you", ...(at === undefined ? {} : { timestamp: at }) };
+}
+
+/**
+ * Where each Stop the reader pressed settles: on the first reply it cut, or on its own when a
+ * user message or the end of the branch comes first. One walk owns this so the transcript and
+ * the sidebar count read the same rule.
+ */
+export function stopOutcomes(entries: readonly unknown[]): { cutReplies: Set<string>; alone: Map<string, string | undefined> } {
+  const cutReplies = new Set<string>();
+  const alone = new Map<string, string | undefined>();
+  let pending: Record<string, unknown> | undefined;
+  const settleAlone = () => { if (pending !== undefined) alone.set(getString(pending, "id") ?? "", stopMoment(pending)); pending = undefined; };
+  for (const entry of entries) {
+    if (!isRecord(entry)) continue;
+    if (entry["type"] === "custom" && entry["customType"] === TURN_STOPPED_CUSTOM_TYPE) {
+      settleAlone();
+      pending = entry;
+      continue;
+    }
+    if (entry["type"] !== "message" || pending === undefined) continue;
+    const message = entry["message"];
+    if (isRecord(message) && message["role"] === "user") settleAlone();
+    else if (isCutAssistant(message)) {
+      cutReplies.add(getString(entry, "id") ?? "");
+      pending = undefined;
+    }
+  }
+  settleAlone();
+  return { cutReplies, alone };
+}
+
+function stopMoment(entry: Record<string, unknown>): string | undefined {
+  return getString(entry["data"], "at") ?? getString(entry, "timestamp");
+}
+
+/**
  * The failed attempts pi retried: an assistant message that ended in an error and
  * that a `context_edit` then removed with no replacement. That pair is pi's own
  * recovery signature (`auto_retry_start`, then `_omitRecoveryAttempt`), so nothing
@@ -101,19 +145,17 @@ export function transcriptHead(transcript: readonly TranscriptRow[]): Transcript
 export function branchTranscript(entries: Iterable<unknown>): TranscriptRow[] {
   const branch = [...entries];
   const retried = retriedAttemptIds(branch);
+  const stops = stopOutcomes(branch);
   const rows: TranscriptRow[] = [];
   const push = (entry: Record<string, unknown>, message: unknown) => { rows.push({ entryId: getString(entry, "id"), message }); };
   let thinkingLevel: string | undefined;
-  let stoppedByReader = false;
   for (const entry of branch) {
     if (!isRecord(entry)) continue;
-    if (entry["type"] === "custom" && entry["customType"] === TURN_STOPPED_CUSTOM_TYPE) stoppedByReader = true;
+    const id = getString(entry, "id") ?? "";
+    if (entry["type"] === "custom" && stops.alone.has(id)) push(entry, stoppedTurnMessage(stops.alone.get(id)));
     if (entry["type"] === "message") {
       const message = entry["message"];
-      if (isRecord(message) && message["role"] === "user") stoppedByReader = false;
-      const cut = stoppedByReader && isCutAssistant(message);
-      if (cut) stoppedByReader = false;
-      if (!retried.has(getString(entry, "id") ?? "")) push(entry, annotateAssistantThinkingLevel(cut ? stoppedByYou(message) : message, thinkingLevel));
+      if (!retried.has(id)) push(entry, annotateAssistantThinkingLevel(stops.cutReplies.has(id) ? stoppedByYou(message) : message, thinkingLevel));
     }
     else if (entry["type"] === "thinking_level_change") {
       const level = getString(entry, "thinkingLevel");

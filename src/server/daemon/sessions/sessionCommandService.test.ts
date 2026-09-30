@@ -535,6 +535,19 @@ describe("a forwarded command whose turn produced nothing visible", () => {
     expect(silence).toBeUndefined();
   });
 
+  it("counts a reply the reader stopped as visible, because the transcript settles it as a row (B30)", async () => {
+    const active = activeSession();
+    const events = eventPublisher();
+    const onSilentCommand = vi.fn<(sessionId: string, command: string) => void>();
+    const service = new SessionCommandService(() => getActive(active), vi.fn(promptAccepted), events, { onSilentCommand });
+
+    await service.run("s1", "/ext");
+    service.observeSessionEvent("s1", { type: "message_end", message: { role: "assistant", content: [], stopReason: "aborted", stoppedBy: "you" } });
+    service.observeSessionEvent("s1", { type: "agent_end" });
+
+    expect(onSilentCommand).not.toHaveBeenCalled();
+  });
+
   it("counts an error reply as visible, because the transcript renders it", async () => {
     const active = activeSession();
     const events = eventPublisher();
