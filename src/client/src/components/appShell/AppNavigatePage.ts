@@ -12,6 +12,9 @@ import { sessionStateBadgeStyles } from "../sessionStateBadgeStyles.js";
 import { actionMenuPanelStyle } from "../actionMenu";
 import { navigateRowActions, type NavigateRowActionId, type NavigateRowKind } from "../../navigateRowActions";
 import { sessionLabel } from "../../sessionLabels";
+import { machineSessionKey } from "../../machineKeys";
+import type { PendingNavigation } from "../../navigationIntent";
+import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningWords } from "../openingMark";
 
 /**
  * The one navigation surface: where you are, what is under it, and what you
@@ -52,6 +55,8 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onChoose?: (level: NavigateLevel, id: string) => void;
   @property({ attribute: false }) onWiden?: (level: NavigateLevel) => void;
   @property({ attribute: false }) onOpenSession?: (session: SessionInfo, machineId: string) => void;
+  /** The session the reader tapped and is waiting for; its row answers the tap (D8). */
+  @property({ attribute: false }) opening: PendingNavigation | undefined = undefined;
   @property({ attribute: false }) onCreateSession?: () => void;
   @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onClose?: () => void;
@@ -392,10 +397,12 @@ export class AppNavigatePage extends LitElement {
    *  state proved to be noise on a list whose job is to be scanned. */
   private renderSession(row: NavigateSessionRow) {
     const label = sessionLabel(row.session);
+    const key = machineSessionKey(row.machineId, row.session.id);
+    const opening = isOpeningKey(this.opening, key);
     return this.renderRowShell(`session:${row.machineId}:${row.session.id}`, "session", row.session.id, label, html`
-      <button type="button" class=${row.current ? "row session current" : "row session"} aria-current=${row.current ? "true" : "false"} title=${label} @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
-        <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${renderNavigateStateMark(row.state)}</span>
-        ${row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
+      <button type="button" class=${`row session${row.current ? " current" : ""}${opening ? " opening" : ""}`} aria-current=${row.current ? "true" : "false"} aria-busy=${opening ? "true" : "false"} title=${label} @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
+        <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>
+        ${this.opening?.key === key && this.opening.phase !== "going" ? html`<span class="row-path">${renderOpeningWords(this.opening, key)}</span>` : row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
       </button>
     `, { pinned: row.pinned, archived: row.session.archived === true, archivable: this.canArchiveSessions && row.session.persisted !== false });
   }
@@ -412,7 +419,8 @@ export class AppNavigatePage extends LitElement {
   }
 
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, sessionStateBadgeStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, sessionStateBadgeStyles, openingMarkStyles, css`
+    .row.session.opening { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row .row-title { flex: 1 1 auto; min-width: 0; }
     .row-name { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); line-height: 1.3; overflow-wrap: anywhere; }
     .row.session { display: grid; align-content: center; gap: var(--pi-space-2); }

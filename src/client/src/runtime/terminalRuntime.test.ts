@@ -51,6 +51,27 @@ describe("terminal runtime", () => {
     await expect(handle.completed).resolves.toEqual(succeededRun);
   });
 
+  /**
+   * D8, B29: the terminal opened after the command was accepted, so a reader who had moved on
+   * while the request was out was taken to the terminal anyway. The run still happens; the page
+   * does not move.
+   */
+  it("does not open the terminal when the reader has moved on while the command was being started", async () => {
+    const openTerminal = vi.fn();
+    let readerMoved = false;
+    const api = {
+      runTerminalCommand: vi.fn(() => { readerMoved = true; return Promise.resolve(succeededRun); }),
+      listCommandRuns: vi.fn(),
+      getCommandRun: vi.fn(),
+    };
+    const runtime = createTerminalCommandRunsRuntime("actions", { api, openTerminal, stillWanted: () => () => !readerMoved });
+
+    await runtime.runCommand({ workspace, title: "Build", command: "npm run build", open: true });
+
+    expect(api.runTerminalCommand).toHaveBeenCalledTimes(1);
+    expect(openTerminal).not.toHaveBeenCalled();
+  });
+
   it("passes through command-run lookup helpers and open requests", async () => {
     const filter: TerminalCommandRunFilter = {
       projectId: "p1",

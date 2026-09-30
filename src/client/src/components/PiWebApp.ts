@@ -1,4 +1,4 @@
-import { css, LitElement, html, type TemplateResult, unsafeCSS } from "lit";
+import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
 import { uiIconStyle, renderChatIcon, renderListIcon, renderPluginIcon } from "./uiIcons.js";
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
@@ -88,6 +88,7 @@ import "./appShell/AppNavigatePage";
 import type { AppNavigatePage, NavigateKind } from "./appShell/AppNavigatePage";
 import type { NavigateRowActionId, NavigateRowKind } from "../navigateRowActions";
 import { sessionLabel } from "../sessionLabels";
+import { NavigationIntents, openingAnnouncement } from "../navigationIntent";
 import { writeClipboardText } from "../clipboard";
 import type { NavigateInput, NavigateLevel } from "../navigateModel";
 import type { ShellToolTab } from "../appShell/shellToolTabs";
@@ -113,6 +114,10 @@ export interface PluginDialogEntry {
 }
 
 export const appStyles = css`${unsafeCSS(uiIconStyle)}
+  .navigation-announcer { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .navigation-progress { position: fixed; top: env(safe-area-inset-top); left: 0; right: 0; height: 2px; z-index: var(--pi-layer-dialog); pointer-events: none; overflow: hidden; }
+  .navigation-progress::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--pi-accent); animation: navigation-progress 1.1s ease-in-out infinite; }
+  @keyframes navigation-progress { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
   .plugin-dialog { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
   /* The fullscreen presentation is the plugin page form: edge-to-edge, no
      card chrome, so content authored against a large canvas survives direct
@@ -296,6 +301,8 @@ export class PiWebApp extends LitElement {
   @query("#navigation-panel") private navigationPanelFrame?: HTMLElement;
   @query("#workspace-panel") private workspacePanelFrame?: HTMLElement;
 
+  /** Where the reader is going: one counter for every navigation, and the tapped item's pending state (D8). */
+  private readonly navigation = new NavigationIntents(() => { this.requestUpdate(); });
   private readonly sessionUnread = new SessionUnreadController({
     onChange: (machineId) => {
       if (selectedMachineId(this.state) !== machineId) return;
@@ -403,11 +410,12 @@ export class PiWebApp extends LitElement {
   private readonly handledWorkspaceDeletionRunIds = new Set<string>();
   private readonly terminalCommandRunRuntimes = new Map<string, TerminalCommandRunsInternalRuntime>();
   private machineNavigationRestoreSeq = 0;
-  private navigationSelectionSeq = 0;
   private routeRestoreSeq = 0;
   private routeRestoreDepth = 0;
   private restoringRouteTerminalId: string | undefined;
   private pendingRemoteRouteRestore: ParsedAppRoute | undefined;
+  /** The reader's intent when a restore was deferred; a tap since then retires the retry (D8). */
+  private pendingRestoreIntent = 0;
   private remoteRouteRestoreTimer: number | undefined;
   private remoteRouteRestoreAttempt = 0;
   private remoteRouteRestoreInProgress = false;
@@ -560,6 +568,7 @@ export class PiWebApp extends LitElement {
     // still on the stack; its URL equals the current state, so there is
     // nothing to restore. Only a real navigation (URL changed) restores.
     if (this.currentRouteMatchesUrl()) return;
+    this.navigation.begin();
     void this.withChatScrollTransition(async () => {
       this.restoreSettingsRoute();
       await this.restoreRoute(false);
@@ -602,6 +611,7 @@ export class PiWebApp extends LitElement {
 
   /** Close the topmost modal layer; popstate is the only caller. */
   private closeModalLayer(): void {
+    this.navigation.cancel();
     if (this.quickSwitcherOpen) {
       this.quickSwitcherOpen = false;
       return;
@@ -1177,6 +1187,7 @@ export class PiWebApp extends LitElement {
 
   override disconnectedCallback(): void {
     observeTransportRecovery(undefined);
+    this.navigation.dispose();
     if (this.transientErrorTimer !== undefined) window.clearTimeout(this.transientErrorTimer);
     if (this.bannerHoldTimer !== undefined) window.clearTimeout(this.bannerHoldTimer);
     if (this.transientGraceTimer !== undefined) window.clearTimeout(this.transientGraceTimer);
@@ -1236,6 +1247,7 @@ export class PiWebApp extends LitElement {
   }
 
   private async loadProjectsAndRestoreRoute() {
+    const intent = this.navigation.latest();
     this.restoreSettingsRoute();
     const route = readRoute();
     await this.machines.loadMachines(route.machineId);
@@ -1246,13 +1258,14 @@ export class PiWebApp extends LitElement {
       // machine dimension. Defer to the retry loop instead - it re-lists
       // the machines and re-enters this boot path once the listing
       // recovers, leaving the URL untouched while it waits.
-      this.deferMachineLoadRestore(route);
+      this.deferMachineLoadRestore(route, intent);
       return;
     }
-    await this.restoreBootRoute(route);
+    await this.restoreBootRoute(route, intent);
   }
 
-  private async restoreBootRoute(route: ParsedAppRoute) {
+  /** `intent` is the reader's latest intent when the boot restore began; every step and deferral keeps it (D8). */
+  private async restoreBootRoute(route: ParsedAppRoute, intent: number) {
     const effectiveRoute = this.routeForSelectedMachine(route);
     const initialRouteMachineHealth = this.state.machineStatuses[effectiveRoute.machineId ?? "local"];
     if (effectiveRoute !== route) this.replaceRouteAndClearWorkspaceQuery(effectiveRoute);
@@ -1264,12 +1277,12 @@ export class PiWebApp extends LitElement {
     // re-lists the projects and re-restores the same route once the listing
     // recovers.
     if (effectiveRoute.projectId !== undefined && this.state.projectsLoad === "failed") {
-      this.deferRemoteRouteRestore(effectiveRoute);
+      this.deferRemoteRouteRestore(effectiveRoute, intent);
       await this.refreshWorkspaceDeletionRuns();
       return;
     }
-    await this.withChatScrollTransition(() => this.restoreRouteFor(effectiveRoute, false));
-    if (this.shouldDeferRemoteRouteRestore(effectiveRoute, initialRouteMachineHealth)) this.deferRemoteRouteRestore(effectiveRoute);
+    await this.withChatScrollTransition(() => this.restoreRouteFor(effectiveRoute, false, undefined, undefined, intent));
+    if (this.shouldDeferRemoteRouteRestore(effectiveRoute, initialRouteMachineHealth)) this.deferRemoteRouteRestore(effectiveRoute, intent);
     else {
       this.clearPendingRemoteRouteRestore();
       this.rememberCurrentMachineNavigation();
@@ -1403,7 +1416,12 @@ export class PiWebApp extends LitElement {
     this.rememberCurrentMachineNavigation();
   }
 
-  private async restoreRouteFor(parsedRoute: ParsedAppRoute, updateUrl: boolean, surface = this.readWorkspaceRouteSurface(parsedRoute), restoredMainView?: AppState["mainView"]) {
+  /**
+   * Restore a route: boot, back and forward, a machine switch, a deferred retry. `intent` is the
+   * reader's latest intent when the restore was asked for; a tap made since then wins, and the
+   * restore stops moving the page (D8, B29).
+   */
+  private async restoreRouteFor(parsedRoute: ParsedAppRoute, updateUrl: boolean, surface = this.readWorkspaceRouteSurface(parsedRoute), restoredMainView?: AppState["mainView"], intent = this.navigation.latest()) {
     const machineBeforeRestore = selectedMachineId(this.state);
     const routeSurface = parsedRoute.projectId === undefined || parsedRoute.projectId === "" ? emptyWorkspaceRouteSurface() : surface;
     const restoreSeq = ++this.routeRestoreSeq;
@@ -1412,7 +1430,7 @@ export class PiWebApp extends LitElement {
     try {
       await this.restoreRouteMachine(parsedRoute, false);
       await this.loadPluginsForSelectedMachine();
-      if (!this.isCurrentRouteRestore(restoreSeq)) return;
+      if (!this.isCurrentRouteRestore(restoreSeq, intent)) return;
       const route = resolveAppRoute(parsedRoute, (value) => this.plugins.resolveWorkspacePanelRouteId(value, selectedMachineId(this.state)));
       const mainView = this.resolveRestoredMainView(restoredMainView) ?? route.view ?? this.defaultRouteView(route);
       this.workspacePanelFullscreen = false;
@@ -1440,7 +1458,7 @@ export class PiWebApp extends LitElement {
       let project = this.state.projects.find((p) => p.id === route.projectId);
       if (!project) {
         project = await this.locateRouteProject(route.projectId);
-        if (!this.isCurrentRouteRestore(restoreSeq)) return;
+        if (!this.isCurrentRouteRestore(restoreSeq, intent)) return;
       }
       if (!project) {
         this.setState({ selectedTerminalId: undefined });
@@ -1448,7 +1466,7 @@ export class PiWebApp extends LitElement {
         return;
       }
       await this.workspaces.selectProject(project, { workspaceId: route.workspaceId, sessionId: route.sessionId, updateUrl: false });
-      if (!this.isCurrentRouteRestore(restoreSeq)) return;
+      if (!this.isCurrentRouteRestore(restoreSeq, intent)) return;
       this.setState({ selectedTerminalId: routeSurface.selectedTerminalId });
       this.restoreWorkspaceExpandedRoute(route, routeSurface, mainView);
       if (routeSurface.selectedTerminalId !== undefined) this.rememberSelectedTerminal(routeSurface.selectedTerminalId);
@@ -1461,8 +1479,8 @@ export class PiWebApp extends LitElement {
     }
   }
 
-  private isCurrentRouteRestore(restoreSeq: number): boolean {
-    return restoreSeq === this.routeRestoreSeq;
+  private isCurrentRouteRestore(restoreSeq: number, intent: number): boolean {
+    return restoreSeq === this.routeRestoreSeq && this.navigation.isCurrent(intent);
   }
 
   private readWorkspaceRouteSurface(route: ParsedAppRoute): WorkspaceRouteSurface {
@@ -1496,8 +1514,9 @@ export class PiWebApp extends LitElement {
     return this.state.selectedProject?.id !== route.projectId;
   }
 
-  private deferMachineLoadRestore(route: ParsedAppRoute): void {
+  private deferMachineLoadRestore(route: ParsedAppRoute, intent: number): void {
     this.pendingMachineLoadRestore = route;
+    this.pendingRestoreIntent = intent;
     this.machineLoadRestoreAttempt = 0;
     this.scheduleMachineLoadRestore();
   }
@@ -1534,7 +1553,7 @@ export class PiWebApp extends LitElement {
         return;
       }
       this.clearPendingMachineLoadRestore();
-      await this.restoreBootRoute(route);
+      await this.restoreBootRoute(route, this.pendingRestoreIntent);
     } finally {
       this.machineLoadRestoreInProgress = false;
     }
@@ -1542,7 +1561,7 @@ export class PiWebApp extends LitElement {
 
   private pendingMachineLoadRestoreStillCurrent(route: ParsedAppRoute): boolean {
     const machineId = route.machineId ?? "local";
-    return machineId !== "local" && readRoute().machineId === route.machineId && this.state.machines.some((machine) => machine.id === machineId);
+    return machineId !== "local" && readRoute().machineId === route.machineId && this.state.machines.some((machine) => machine.id === machineId) && this.navigation.isCurrent(this.pendingRestoreIntent);
   }
 
   private clearPendingMachineLoadRestore(): void {
@@ -1557,8 +1576,9 @@ export class PiWebApp extends LitElement {
     this.machineLoadRestoreTimer = undefined;
   }
 
-  private deferRemoteRouteRestore(route: ParsedAppRoute): void {
+  private deferRemoteRouteRestore(route: ParsedAppRoute, intent: number): void {
     this.pendingRemoteRouteRestore = route;
+    this.pendingRestoreIntent = intent;
     this.remoteRouteRestoreAttempt = 0;
     this.setRemoteRouteRestoreMessage(route);
     this.schedulePendingRemoteRouteRestore();
@@ -1614,7 +1634,7 @@ export class PiWebApp extends LitElement {
         return;
       }
 
-      await this.withChatScrollTransition(() => this.restoreRouteFor(route, false));
+      await this.withChatScrollTransition(() => this.restoreRouteFor(route, false, undefined, undefined, this.pendingRestoreIntent));
       if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
       this.clearPendingRemoteRouteRestore();
       this.rememberCurrentMachineNavigation();
@@ -1657,6 +1677,7 @@ export class PiWebApp extends LitElement {
   private pendingRemoteRouteRestoreStillCurrent(route: ParsedAppRoute): boolean {
     const machineId = route.machineId ?? "local";
     return this.pendingRemoteRouteRestore === route
+      && this.navigation.isCurrent(this.pendingRestoreIntent)
       && this.state.selectedMachine?.id === machineId
       && this.state.machines.some((machine) => machine.id === machineId);
   }
@@ -1831,12 +1852,14 @@ export class PiWebApp extends LitElement {
         getCommandRun: (runId) => terminalsApi.getCommandRun(runId, machineId),
       },
       openTerminal: (workspace, options) => { void this.openRuntimeTerminal(machineId, workspace, options); },
+      stillWanted: () => { const intent = this.navigation.latest(); return () => this.navigation.isCurrent(intent); },
     });
     this.terminalCommandRunRuntimes.set(key, runtime);
     return runtime;
   }
 
-  private async openRuntimeTerminal(machineId: string, workspace: Workspace | undefined, options?: { terminalId?: string | undefined }): Promise<void> {
+  /** Opens the terminal a run asked for; a reader who moved on while it was prepared stays where they are (D8). */
+  private async openRuntimeTerminal(machineId: string, workspace: Workspace | undefined, options?: { terminalId?: string | undefined }, intent = this.navigation.latest()): Promise<void> {
     if (selectedMachineId(this.state) !== machineId || (workspace !== undefined && (this.state.selectedWorkspace?.id !== workspace.id || this.state.selectedProject?.id !== workspace.projectId))) {
       if (!this.routeRestoreInProgress) this.rememberCurrentMachineNavigation();
       await this.restoreRouteFor({
@@ -1846,7 +1869,8 @@ export class PiWebApp extends LitElement {
         sessionId: undefined,
         tool: "core:workspace.terminal",
         view: "core:workspace.terminal",
-      }, false, { selectedTerminalId: options?.terminalId }, "core:workspace.terminal");
+      }, false, { selectedTerminalId: options?.terminalId }, "core:workspace.terminal", intent);
+      if (!this.navigation.isCurrent(intent)) return;
       if (selectedMachineId(this.state) !== machineId) {
         this.setState(noticePatch(noticeForReader("Machine not found for terminal command run")));
         return;
@@ -1877,7 +1901,13 @@ export class PiWebApp extends LitElement {
     return `${selectedMachineId(this.state)}:${workspace.path}`;
   }
 
+  /** The reader chose a view: it supersedes any open still loading (D8). */
   private selectMainView(view: AppState["mainView"]) {
+    this.navigation.begin();
+    this.showView(view);
+  }
+
+  private showView(view: AppState["mainView"]) {
     if (view !== "navigation" && view !== "chat") {
       this.openWorkspaceTool(view);
       return;
@@ -2375,13 +2405,6 @@ export class PiWebApp extends LitElement {
     }
   }
 
-  private async startSessionFromNavigation(): Promise<void> {
-    const seq = ++this.navigationSelectionSeq;
-    const isCurrentSelection = () => seq === this.navigationSelectionSeq;
-
-    await this.startSessionAndOpenChat(isCurrentSelection);
-  }
-
   private canStartSession(): boolean {
     return this.state.selectedWorkspace !== undefined;
   }
@@ -2579,6 +2602,7 @@ export class PiWebApp extends LitElement {
   }
 
   private openNavigate(): void {
+    this.navigation.begin();
     void this.loadQuickSwitcherData();
     void this.updateComplete.then(() => { this.navigatePage?.showEverything(); });
     dismissKeyboardIfRaised();
@@ -2650,6 +2674,7 @@ export class PiWebApp extends LitElement {
    * the key that returns does nothing on the layout that needs it most.
    */
   private leaveNavigate(): void {
+    this.navigation.begin();
     this.closeNavigate();
     if (this.state.mainView === "navigation" && this.state.selectedSession !== undefined) {
       this.setState({ mainView: "chat" });
@@ -2664,11 +2689,12 @@ export class PiWebApp extends LitElement {
       .onClose=${() => { this.leaveNavigate(); }}
       .onChoose=${(level: NavigateLevel, id: string) => { void this.navigateChoose(level, id); }}
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
-      .onOpenSession=${(session: SessionInfo) => { this.closeNavigate(); void this.openSessionFromQuickSwitcher(session); }}
+      .onOpenSession=${(session: SessionInfo, machineId: string) => { void this.openSessionFromQuickSwitcher(session, machineId); }}
+      .opening=${this.navigation.view()}
       .onCreateSession=${() => { this.closeNavigate(); void this.startSessionAndOpenChat(); }}
-      .onAddProject=${this.hasAddProjectEntry() ? () => { this.closeNavigate(); this.openProjectDialog(); } : undefined}
+      .onAddProject=${this.hasAddProjectEntry() ? () => { this.navigation.begin(); this.closeNavigate(); this.openProjectDialog(); } : undefined}
       .machineSessions=${this.quickSwitcherSessions}
-      .onOpenSettings=${() => { this.closeNavigate(); this.openSettings(); }}
+      .onOpenSettings=${() => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }}
       .onReload=${() => { this.hardReloadApp(); }}
       .loadingSessions=${this.quickSwitcherLoading && this.quickSwitcherSessions.length === 0}
       .loadingChoices=${this.state.projectsLoad === "loading" || this.state.isLoadingWorkspaces}
@@ -2700,7 +2726,6 @@ export class PiWebApp extends LitElement {
       if (kind === "session") {
         const session = this.listedSession(id);
         if (session === undefined) return;
-        this.closeNavigate();
         await this.openSessionFromQuickSwitcher(session);
         return;
       }
@@ -2748,6 +2773,7 @@ export class PiWebApp extends LitElement {
 
   private async navigateChoose(level: NavigateLevel, id: string): Promise<void> {
     if (level === "machine") { this.browseQuickSwitcherMachine(id); return; }
+    this.navigation.begin();
     const project = this.state.projects.find((entry) => entry.id === id);
     if (project !== undefined) await this.workspaces.selectProject(project);
   }
@@ -2755,6 +2781,7 @@ export class PiWebApp extends LitElement {
   /** Widening drops the level and everything under it; the page stays put. */
   private async navigateWiden(level: NavigateLevel): Promise<void> {
     if (level === "machine") return;
+    this.navigation.begin();
     this.workspaces.clearSelection();
     await this.loadQuickSwitcherData();
   }
@@ -2897,6 +2924,7 @@ export class PiWebApp extends LitElement {
 
   private browseQuickSwitcherMachine(machineId: string): void {
     if (this.quickSwitcherBrowseMachineId === machineId) return;
+    this.navigation.begin();
     this.quickSwitcherBrowseMachineId = machineId;
     // Empty is honest; the previous machine's rows under this tab are not.
     this.quickSwitcherSessions = [];
@@ -2934,7 +2962,15 @@ export class PiWebApp extends LitElement {
    * heard of it - the wrong-machine read the qwen presence lane found.
    */
   private async moveToBrowsedMachine(): Promise<boolean> {
-    const browsed = this.quickSwitcherMachineId ?? this.quickSwitcherBrowseMachineId;
+    return this.moveToMachine(this.quickSwitcherMachineId ?? this.quickSwitcherBrowseMachineId);
+  }
+
+  /** The machine the listed rows belong to: the one the list was read from. */
+  private rowsMachineId(): string {
+    return this.quickSwitcherMachineId ?? this.browsedMachineId();
+  }
+
+  private async moveToMachine(browsed: string): Promise<boolean> {
     if (browsed === "" || browsed === selectedMachineId(this.state)) return true;
     const target = this.state.machines.find((candidate) => candidate.id === browsed);
     if (target === undefined) {
@@ -2945,29 +2981,67 @@ export class PiWebApp extends LitElement {
     return true;
   }
 
-  private async openSessionFromQuickSwitcher(session: SessionInfo): Promise<void> {
-    // A session browsed on another machine's tab lives on that machine. The
-    // first version of these tabs could browse but not open: selecting ran
-    // against the machine the app was on, which had never heard of the
-    // session. Move first, then select.
-    const moved = await this.moveToBrowsedMachine();
-    if (!moved) return;
-    await this.sessions.selectSession(session);
-    await this.focusChatComposer();
+  /**
+   * Open a session the reader tapped (D8, B29). The page stays where it is and the tapped row
+   * answers until the session has something to show; then the list, the header and the
+   * conversation change together. Only the latest intent commits, so a slow read the reader has
+   * since walked away from moves nothing.
+   *
+   * A session browsed on another machine's tab lives on that machine: the app moves there
+   * first, then selects, in that order.
+   */
+  private async openSessionFromQuickSwitcher(session: SessionInfo, machineId = this.rowsMachineId()): Promise<void> {
+    const key = machineSessionKey(machineId, session.id);
+    if (this.navigation.isOpening(key)) return;
+    const seq = this.navigation.begin({ key, label: sessionLabel(session) });
+    if (!this.sessions.canOpenAtOnce(session, machineId)) {
+      try {
+        await this.sessions.readFirstPage(session, machineId);
+      } catch {
+        this.navigation.fail(seq);
+        return;
+      }
+      if (!this.navigation.isCurrent(seq)) return;
+    }
+    const moved = await this.moveToMachine(machineId);
+    if (!moved) {
+      this.navigation.fail(seq);
+      return;
+    }
+    if (!this.navigation.isCurrent(seq)) return;
+    this.closeNavigate();
+    this.quickSwitcherOpen = false;
+    this.showView("chat");
+    const selecting = this.sessions.selectSession(session);
+    this.navigation.settle(seq);
+    await selecting;
+    if (this.navigation.isCurrent(seq) && this.state.selectedSession?.id === session.id) await this.focusComposerAfterRender();
   }
 
+  /**
+   * A new session is a reader intent (D8): it supersedes an open still loading. `startSession()`
+   * stays in flight until the daemon resolves the session; the chat opens as soon as the
+   * controller has inserted the temporary row.
+   */
   private async startSessionAndOpenChat(shouldComplete: () => boolean = () => true): Promise<void> {
-    // `startSession()` remains in flight until the backend session resolves;
-    // open the chat as soon as the controller has inserted the temporary row.
+    const seq = this.navigation.begin();
+    const current = () => this.navigation.isCurrent(seq) && shouldComplete();
     const start = this.sessions.startSession().catch((error: unknown) => {
-      if (shouldComplete()) this.setState(errorNoticePatch(error));
+      if (current()) this.setState(errorNoticePatch(error));
     });
-    if (shouldComplete()) await this.focusChatComposer();
+    if (current()) {
+      if (this.state.mainView !== "chat") this.showView("chat");
+      await this.focusComposerAfterRender();
+    }
     void start;
   }
 
   private async focusChatComposer(): Promise<void> {
     if (this.state.mainView !== "chat") this.selectMainView("chat");
+    await this.focusComposerAfterRender();
+  }
+
+  private async focusComposerAfterRender(): Promise<void> {
     await this.updateComplete;
     await nextFrame();
     // The focus request may outlive the dialog transition that scheduled it.
@@ -2978,10 +3052,12 @@ export class PiWebApp extends LitElement {
   }
 
   private async navigateSessionTree(targetId: string, summaryChoice: SessionTreeSummaryChoice): Promise<SessionTreeNavigateResult> {
+    const intent = this.navigation.latest();
     const originMachineId = selectedMachineId(this.state);
     const originSessionId = this.state.selectedSession?.id;
     const result = await this.sessions.navigateTree(targetId, summaryChoice);
     if (!result.cancelled
+      && this.navigation.isCurrent(intent)
       && originSessionId !== undefined
       && selectedMachineId(this.state) === originMachineId
       && this.state.selectedSession?.id === originSessionId) {
@@ -3212,6 +3288,7 @@ export class PiWebApp extends LitElement {
         const machine = machineById(machineId);
         if (machine === undefined) return;
         if (closeSheet) this.contextSheetOpen = false;
+        this.navigation.begin();
         void this.selectMachineWithMemory(machine);
       },
       addMachine: () => {
@@ -3240,6 +3317,7 @@ export class PiWebApp extends LitElement {
           staleMachineNotice();
           return;
         }
+        this.navigation.begin();
         void this.machines.selectMachine(machine).then(() => Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]));
       },
       openMachine: (machineId) => {
@@ -3565,6 +3643,7 @@ export class PiWebApp extends LitElement {
           this.setState(errorNoticePatch(new Error("This machine is no longer listed.")));
           return;
         }
+        this.navigation.begin();
         void this.machines.selectMachine(machine).then(() => Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]));
       },
       openMachine: (machineId) => {
@@ -3611,6 +3690,7 @@ export class PiWebApp extends LitElement {
     if (removal === undefined || confirmation === undefined || !confirm(confirmation)) return;
 
     const machineId = selectedMachineId(this.state);
+    const intent = this.navigation.latest();
     try {
       const run = await workspacesApi.deleteWorkspace(
         workspace.projectId,
@@ -3622,7 +3702,7 @@ export class PiWebApp extends LitElement {
       this.recordWorkspaceDeletionRun(run, machineId);
       const commandWorkspace = await this.workspaceForCommandRun(run);
       if (selectedMachineId(this.state) !== machineId) return;
-      if (commandWorkspace !== undefined) void this.openRuntimeTerminal(machineId, commandWorkspace, { terminalId: run.terminalId });
+      if (commandWorkspace !== undefined && this.navigation.isCurrent(intent)) void this.openRuntimeTerminal(machineId, commandWorkspace, { terminalId: run.terminalId }, intent);
     } catch (error) {
       if (selectedMachineId(this.state) === machineId) this.setState(noticePatch(noticeForReader(`Failed to start workspace removal: ${describeError(error)}`)));
     }
@@ -4283,6 +4363,18 @@ export class PiWebApp extends LitElement {
     return html`<app-refresh-control .onReload=${() => { this.hardReloadApp(); }}></app-refresh-control>`;
   }
 
+  /**
+   * The chrome's half of a pending open (D8): a line at the top edge, visible whatever scrolled
+   * away, and the one spoken announcement, which names the target in every phase.
+   */
+  private renderNavigationProgress() {
+    const pending = this.navigation.view();
+    return html`
+      ${pending === undefined || pending.phase === "failed" ? nothing : html`<div class="navigation-progress" aria-hidden="true"></div>`}
+      <div class="navigation-announcer" role="status" aria-live="polite">${pending === undefined ? "" : openingAnnouncement(pending)}</div>
+    `;
+  }
+
   override render() {
     const state = this.state;
     // A phone with no session selected shows the navigation panel wherever the
@@ -4293,6 +4385,7 @@ export class PiWebApp extends LitElement {
     const displayView = this.displayMainView();
     return html`
       <div class=${`${this.panelCollapse.shellClass(displayView, state.selectedWorkspace !== undefined)}${this.workspacePanelFullscreen ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
+        ${this.renderNavigationProgress()}
         <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigatePage(false)}</aside>
         ${this.contextSheetOpen ? null : this.renderNavigationPanelEdgeControl()}
         <main class=${mainViewClass(displayView)}>
@@ -4339,6 +4432,8 @@ export class PiWebApp extends LitElement {
           .canStartSession=${!this.quickSwitcherBrowsingElsewhere() && this.canStartSession()}
           .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}
           .onOpenSession=${(session: SessionInfo) => { void this.openSessionFromQuickSwitcher(session); }}
+          .opening=${this.navigation.view()}
+          .rowsMachineId=${this.rowsMachineId()}
           .onSelectWorkspace=${(workspace: Workspace) => { void this.openWorkspaceFromQuickSwitcher(workspace); }}
           .onBrowse=${() => { this.openNavigateOn("project"); }}
           .onOpenSettings=${() => { this.openSettings(); }}
@@ -4348,7 +4443,7 @@ export class PiWebApp extends LitElement {
             this.applyRenameToQuickSwitcher(session.id, name);
             return this.sessions.renameSession(session, name);
           }}
-          .onClose=${() => { this.quickSwitcherOpen = false; }}
+          .onClose=${() => { this.navigation.cancel(); this.quickSwitcherOpen = false; }}
         ></quick-switcher>` : null}
         ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
         ${this.renderSessionTreeNavigator(state)}

@@ -2196,31 +2196,25 @@ export class SessionController {
    * justify telling the reader the message is gone.
    */
   /**
-   * Read a session's first page because the reader is about to open it.
-   *
-   * Hover and focus are the earliest honest signal of intent, and the cost is
-   * one read the click would have made anyway: concurrent reads for the same
-   * url share a flight, so opening does not repeat this. Failures are dropped
-   * on purpose - a prefetch that fails must never put an error on screen for
-   * something the reader has not asked for yet.
+   * Whether opening this session can show something at once (D8): its transcript is in this
+   * machine's cache, or it is still being started here and has nothing to read yet.
    */
-  prefetchSession(session: SessionRef): void {
-    const machineId = selectedMachineId(this.getState());
-    const key = `${machineId}:${session.id}`;
-    if (this.prefetched.has(key)) return;
-    // Forgotten on failure, so the next intent is a real attempt: the same
-    // rule the lazy surfaces follow. A prefetch that stays remembered after
-    // failing gives up warming permanently on one dropped request.
-    this.prefetched.add(key);
-    const forget = () => { this.prefetched.delete(key); };
-    void this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, machineId)
-      // Store it where opening the session will look: a prefetch that only warms
-      // an in-flight map saves nothing once it has settled.
-      .then((page) => { this.transcripts.mergeHistory(machineSessionKey(machineId, session.id), page); })
-      .catch(() => { forget(); });
+  canOpenAtOnce(session: SessionInfo, machineId: string): boolean {
+    return isClientPendingStartSessionInfo(session) || this.transcripts.rawHistoryPage(machineSessionKey(machineId, session.id)) !== undefined;
   }
 
-  private readonly prefetched = new Set<string>();
+  /**
+   * Read a session's first page before the page moves to it (D8, B29): the reader stays where
+   * they are, the tapped row answers, and the page moves once there is something to show.
+   * Stored where selecting the session looks, so the selection seeds from it in the same frame.
+   * Selecting still reads the page again as it joins the live stream; that second read runs
+   * behind a transcript already on screen, and B7 (heads) is what removes it. Rejects, so the
+   * tapped row can say it could not open.
+   */
+  async readFirstPage(session: SessionRef, machineId: string): Promise<void> {
+    const page = await this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, machineId);
+    this.transcripts.mergeHistory(machineSessionKey(machineId, session.id), page);
+  }
 
   /**
    * Ask the daemon's ledger about this session's unanswered sends on a clock that ends

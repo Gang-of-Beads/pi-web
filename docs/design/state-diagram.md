@@ -296,28 +296,45 @@ stateDiagram-v2
 
 - **Owner.** One navigation controller. Every move is an *intent*, stamped with a sequence number from one counter: reader taps, back and forward, boot restore and machine-switch restore all draw from it. An async step commits a visible change only while its intent is still the latest.
 - **The frame and its content change together.** The header, the page and everything actionable on it describe the same place at every moment. The previous place's content is never shown, and never actionable, under the next place's frame (owner, 2026-09-30: "切过去了但是页面内容没刷新，然后我又在上面继续操作…完全操作和实际不同步"). A seed from the destination's own cache (same key) is allowed; another place's content is not.
-- **Producers found (B29):**
-  1. `openSessionFromQuickSwitcher` (`PiWebApp.ts:2948`). The Sessions page closes at tap time (`closeNavigate`, `:2667`, `:2703`), which uncovers the *previous* session's chat, live and sendable. Then `moveToBrowsedMachine` and `selectSession` are awaited, and `selectSession` returns only after the whole transcript read. Finally `focusChatComposer` forces `mainView = "chat"` (`:2970`), even if the reader has gone elsewhere in the meantime.
-  2. `restoreRouteFor` (`:1406`), used by boot restore (`:1271`), back and forward (`:1617`), machine switch (`:1788`) and `:1842`. It awaits the machine and plugin loads, then sets `mainView`. `routeRestoreSeq` guards only against a newer restore, not against a reader tap made meanwhile.
+- **Producers found (B29), as they were before the fix:**
+  1. `openSessionFromQuickSwitcher` closed the Sessions page at tap time, uncovering the *previous* session's chat, live and sendable. It then awaited the machine move and `selectSession` (which returns only after the whole transcript read), and `focusChatComposer` forced the chat view even if the reader had gone elsewhere meanwhile.
+  2. `restoreRouteFor` (boot restore, back and forward, machine switch, a terminal's workspace) awaited the machine and plugin loads and then set the view. `routeRestoreSeq` guarded only against a newer restore, not against a reader tap made meanwhile.
   3. The deep link to a fresh session that opens another one (audit P0-1, B31): the restore falls back to a different session while the URL still names the requested one.
+  4. Deferred restores: a remote machine or project listing that failed at boot was retried on a timer, and the retry restored the boot route whenever it succeeded, however long after.
+  5. A terminal run started with `open: true`, or a workspace removal, opened its terminal after awaited requests, even if the reader had moved on meanwhile.
+  6. A second, half-built intent counter (`navigationSelectionSeq`) that only one unused method bumped.
 - **Only the reader's intent moves the page.** A late answer to a superseded intent, a background refresh, a restore that the reader already overtook, or a list that reloaded never changes where the reader is (owner, 2026-09-30: "我什么都没按…突然给我跳到一个不知道什么界面了"; B29).
 - **`going` stays in place and says so** (owner, 2026-09-30: "停在原地没问题，怎么让用户感知到他点了这个按钮呢"). The screen stays where it is, live and bound to the place it shows (React Navigation's pending-navigation model). The tap is acknowledged within Nielsen's limits:
-  - **within one frame (< 0.1 s):** the tapped item takes its `going` look: the selected highlight, and a spinner in place of its trailing mark, with `aria-busy` and an "Opening <name>" announcement. An indeterminate progress line runs under the context bar. It is chrome-owned, so it stays visible even if the item scrolls away;
+  - **within one frame (< 0.1 s):** the tapped item takes its `going` look: the selected highlight, and a spinner in place of its trailing mark, with `aria-busy` and an "Opening <name>" announcement. An indeterminate progress line runs along the top edge of the app. It is chrome-owned, so it stays visible even if the item scrolls away;
   - **after 1 s:** the item's text adds "Opening…";
-  - **after 10 s:** the item reads "Still opening · Cancel";
-  - **on failure:** the item reads "Couldn't open · Retry", and the screen stays;
+  - **after 10 s:** the item reads "Still opening…"; going anywhere else cancels it;
+  - **on failure:** the item reads "Couldn't open · retry" on its one secondary line (a tile never changes height), and the screen stays;
   - **a destination with a same-key seed** (a cached transcript, a loaded list) switches in the same frame. Only an unseeded destination waits, so the common case never waits;
-  - **a tap elsewhere supersedes:** the earlier item returns to normal. A second tap on the same item does nothing. Back or Escape first cancels `going`, and only a second press navigates.
+  - **a tap elsewhere supersedes:** the earlier item returns to normal. A second tap on the same item does nothing, and a tap on a failed item tries again. Back, Escape or closing the list cancels `going` and closes the layer as usual.
 - A tap that looks like it did nothing is how a later jump happens; `going` makes every tap visible.
 - **Implementation (B29):**
-  - One `NavigationIntent` owner holds the pending intent `{seq, target key, phase}`, where the phase is `going`, `slow`, `stalled` or `failed`. A pure `navigationPhase(elapsed, outcome)` classifier drives the words. Reader taps, back and forward, and restores all begin an intent.
+  - One owner, `NavigationIntents` (`src/client/src/navigationIntent.ts`), holds the counter and the pending intent `{seq, key, phase}`. The phase is `going`, `slow`, `stalled` or `failed`, from the pure `navigationPhase(elapsed, failed)` classifier. `OPENING_WORDS` is its text table for the row, and `openingAnnouncement` is the one spoken line, naming the target in every phase.
+  - Every reader navigation begins an intent:
+    - a view choice (`selectMainView`);
+    - opening or leaving the Sessions page;
+    - back and forward;
+    - closing a layer or the switcher (cancel);
+    - a session tap;
+    - choosing a project or widening;
+    - browsing another machine's tab;
+    - choosing or refreshing a machine;
+    - New session;
+    - opening Settings or Add project from the Sessions page.
+
+    Code that only shows a view on the reader's behalf uses `showView`, which begins nothing, so a restore or a commit never cancels itself.
   - Opening a session:
     1. begin an intent;
     2. if the transcript cache has a seed for the session, commit at once;
-    3. otherwise await the first page (today's unused `prefetchSession`, returning its promise) and commit only if the intent is still the latest.
+    3. otherwise await the first page (`readFirstPage`, stored where selecting looks) and commit only if the intent is still the latest.
 
-    "Commit" is closing the Sessions page, selecting the session and showing the chat, all in one render. Focusing the composer happens only inside a current commit.
-  - `restoreRouteFor` begins an intent and checks it before setting `mainView`, so a reader tap made during a restore wins.
+    "Commit" is closing the Sessions page and the switcher, showing the chat and selecting the session, in one synchronous step after the machine move, and only while the intent is current. The move goes to the machine the row was read from, whatever tab is showing when the read lands. Focusing the composer happens only inside a current commit. Selecting still reads the page again as it joins the live stream, behind the seeded transcript; B7 removes that second read.
+  - `restoreRouteFor` takes the intent current when it was asked for and checks it at every checkpoint. The boot restore captures its intent before its first await and hands the same intent to both deferrals, so a tap made at any point of a flaky boot retires the retry.
+  - A terminal run checks, once accepted, that the intent current at its start still is; `openRuntimeTerminal` checks again after restoring the terminal's workspace, and a workspace removal checks before opening its terminal.
   - The chrome draws the progress line from the intent. The tapped row draws its `going` look by comparing its key with the intent's target.
 - **A deep link to a session opens that session, or says why it cannot.** It never silently opens another one (audit, B31).
 

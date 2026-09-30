@@ -17,6 +17,9 @@ import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
 import { interactiveSurfaceStyles } from "./shared";
 import { actionMenuPanelStyle } from "./actionMenu.js";
+import { machineSessionKey } from "../machineKeys";
+import type { PendingNavigation } from "../navigationIntent";
+import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningWords } from "./openingMark";
 
 /**
  * One-surface session switcher for touch layouts.
@@ -61,6 +64,9 @@ export class QuickSwitcher extends LitElement {
   @property({ type: Boolean }) canStartSession = false;
   @property({ attribute: false }) onCreateSession?: () => void;
   @property({ attribute: false }) onOpenSession?: (session: SessionInfo) => void;
+  /** The session the reader tapped and is waiting for, and the machine these rows live on (D8). */
+  @property({ attribute: false }) opening: PendingNavigation | undefined = undefined;
+  @property({ attribute: false }) rowsMachineId = "";
   @property({ attribute: false }) onSelectWorkspace?: (workspace: Workspace) => void;
   @property({ attribute: false }) onBrowse?: () => void;
   /** Opens settings from the menu, so the phone's one menu key reaches it. */
@@ -297,8 +303,9 @@ export class QuickSwitcher extends LitElement {
     return html`
       <div class="row-wrap">
         <button
-          class=${`row session-row ${selected ? "selected" : ""} ${unread ? "unread" : ""}`}
+          class=${`row session-row ${selected ? "selected" : ""} ${unread ? "unread" : ""} ${isOpeningKey(this.opening, this.rowKey(session)) ? "opening" : ""}`}
           aria-current=${selected ? "true" : nothing}
+          aria-busy=${isOpeningKey(this.opening, this.rowKey(session)) ? "true" : "false"}
           ${scrollWhenSelected(selected, session.id)}
           @click=${() => { this.openSession(session); }}
           @contextmenu=${(event: MouseEvent) => { event.preventDefault(); this.openRowMenu(session.id, event.currentTarget); }}
@@ -308,8 +315,8 @@ export class QuickSwitcher extends LitElement {
           @pointercancel=${() => { this.longPress.cancel(); }}
         >
           <span class="row-title" dir="auto">${pinned ? html`<span class="pin-mark" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span> ` : nothing}${sessionLabel(session)}</span>
-          <span class="row-subtitle">${quickSwitcherSessionSubtitle(session, this.workspaces)}</span>
-          ${interrupted ? html`<span class="row-flag interrupted" title="A restart interrupted this run" aria-label="A restart interrupted this run"></span>` : html`<span class="row-state">${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread))}</span>`}
+          <span class="row-subtitle">${renderOpeningWords(this.opening, this.rowKey(session)) ?? quickSwitcherSessionSubtitle(session, this.workspaces)}</span>
+          ${isOpeningKey(this.opening, this.rowKey(session)) ? html`<span class="row-state">${renderOpeningSpinner()}</span>` : interrupted ? html`<span class="row-flag interrupted" title="A restart interrupted this run" aria-label="A restart interrupted this run"></span>` : html`<span class="row-state">${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread))}</span>`}
         </button>
         <button
           class="row-menu-toggle"
@@ -430,9 +437,14 @@ export class QuickSwitcher extends LitElement {
     this.onClose?.();
   }
 
+  /** The switcher stays open while the session loads; the app closes it when the session is on screen (D8). */
   private openSession(session: SessionInfo): void {
+    this.openMenuSessionId = undefined;
     this.onOpenSession?.(session);
-    this.onClose?.();
+  }
+
+  private rowKey(session: SessionInfo): string {
+    return machineSessionKey(this.rowsMachineId, session.id);
   }
 
   private selectWorkspace(workspace: Workspace): void {
@@ -452,7 +464,8 @@ export class QuickSwitcher extends LitElement {
     this.onClose?.();
   }
 
-  static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, css`${unsafeCSS(uiIconStyle)}
+  static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, openingMarkStyles, css`${unsafeCSS(uiIconStyle)}
+    .session-row.opening { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; --qs-menu-size: var(--pi-control-height); }
     @media (pointer: coarse) { :host { --qs-menu-size: var(--pi-control-height-touch, 44px); } }
     modal-surface {

@@ -8,6 +8,11 @@ type ClearTimer = (id: TimerId) => void;
 export interface TerminalCommandRunsRuntimeDependencies {
   api?: Pick<typeof defaultApi, "runTerminalCommand" | "listCommandRuns" | "getCommandRun">;
   openTerminal: (workspace: Workspace | undefined, options?: { terminalId?: string | undefined }) => void | Promise<void>;
+  /**
+   * Taken when a command is asked for: whether opening its terminal is still what the reader
+   * wants once the command has started. A reader who moved on meanwhile stays where they are (D8).
+   */
+  stillWanted?: () => () => boolean;
   pollIntervalMs?: number;
   setTimeout?: SetTimer;
   clearTimeout?: ClearTimer;
@@ -21,8 +26,9 @@ export function createTerminalCommandRunsRuntime(origin: string, deps: TerminalC
 
   return {
     async runCommand(input: RunTerminalCommandInput) {
+      const wanted = deps.stillWanted?.();
       const run = await api.runTerminalCommand(origin, input);
-      if (input.open === true) void deps.openTerminal(input.workspace, { terminalId: run.terminalId });
+      if (input.open === true && (wanted?.() ?? true)) void deps.openTerminal(input.workspace, { terminalId: run.terminalId });
       return { run, completed: waitForCommandRunCompletion(run, api, pollIntervalMs, setTimer, clearTimer) };
     },
     listCommandRuns: (filter?: TerminalCommandRunFilter) => api.listCommandRuns(filter),

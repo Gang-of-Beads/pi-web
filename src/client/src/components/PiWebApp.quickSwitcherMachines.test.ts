@@ -31,7 +31,9 @@ function createApp(): PiWebApp {
     vi.stubGlobal("document", { baseURI: "https://pi.example.test/", visibilityState: "visible", hasFocus: () => true, addEventListener: () => undefined, removeEventListener: () => undefined });
   }
   vi.stubGlobal("requestAnimationFrame", () => 1);
-  return new PiWebApp();
+  const app = new PiWebApp();
+  if (!Reflect.set(app, "updateUrl", () => undefined)) throw new Error("Could not replace updateUrl");
+  return app;
 }
 
 function callable(app: PiWebApp, name: string): (...args: unknown[]) => Promise<void> {
@@ -64,7 +66,8 @@ describe("opening a session from another machine's tab", () => {
     if (!Reflect.set(sessionsController, "selectSession", () => { order.push("session"); return Promise.resolve(); })) {
       throw new Error("Could not replace selectSession");
     }
-    if (!Reflect.set(app, "focusChatComposer", () => Promise.resolve())) throw new Error("Could not replace focusChatComposer");
+    if (!Reflect.set(sessionsController, "canOpenAtOnce", () => true)) throw new Error("Could not replace canOpenAtOnce");
+    if (!Reflect.set(app, "focusComposerAfterRender", () => Promise.resolve())) throw new Error("Could not replace focusComposerAfterRender");
 
     if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "remote-b")) throw new Error("Could not set the browse machine");
     await callable(app, "openSessionFromQuickSwitcher")(sessionOn("/home/hxd/project"));
@@ -88,7 +91,8 @@ describe("opening a session from another machine's tab", () => {
     if (!Reflect.set(sessionsController, "selectSession", () => { order.push("session"); return Promise.resolve(); })) {
       throw new Error("Could not replace selectSession");
     }
-    if (!Reflect.set(app, "focusChatComposer", () => Promise.resolve())) throw new Error("Could not replace focusChatComposer");
+    if (!Reflect.set(sessionsController, "canOpenAtOnce", () => true)) throw new Error("Could not replace canOpenAtOnce");
+    if (!Reflect.set(app, "focusComposerAfterRender", () => Promise.resolve())) throw new Error("Could not replace focusComposerAfterRender");
 
     if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "local")) throw new Error("Could not set the browse machine");
     await callable(app, "openSessionFromQuickSwitcher")(sessionOn("/home/hxd/project"));
