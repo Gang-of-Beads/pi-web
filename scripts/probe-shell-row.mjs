@@ -1,5 +1,5 @@
 /**
- * Minimal shell row + unified panel (bars-minimalism-design), measured in the
+ * Minimal shell row + unified panel (bars-minimalism-design.md, in git history at 042afd66), measured in the
  * real 8505 app at a phone viewport with a coarse pointer.
  *
  * The owner's report was about the screen: two bars, too much in them, content

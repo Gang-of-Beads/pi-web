@@ -87,7 +87,7 @@ hard-wired places (list badges `activityBadge`, the chat dock
 
 Design — **keep the fact, pluginize the rendering** (finalized after
   the bllm red/blue adjudication; see
-  `review-triage-activity-split-redblue.md` for the full record):
+  `reviews/review-triage-activity-split-redblue.md` in git history at 042afd66 for the full record):
 
 - **Core keeps**: the daemon-side derivation and the `activity.update`
   event. This is session truth in pi's sense (`pi.on("event")` facts), not
@@ -199,7 +199,7 @@ Design — **`pi-web-machines` (`runs: "web"` + browser facet)**:
   contribution carries the machine section); the quick-access surfaces
   themselves are shell chrome and are **not** pluginized — without the
   plugin they would still have to switch sessions.
-- Full record: `machines-axis-plugin-design.md`.
+- Full record: `machines-axis-plugin-design.md` in git history at 042afd66.
 - What makes this safe where earlier attempts were not: the machines
   plugin cannot touch session truth (it has no daemon facet; it only
   routes), and the scope law lives in the core URL/API contract the plugin

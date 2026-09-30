@@ -1,6 +1,6 @@
 # Review triage — UI polish convergence, rounds 8 to 14
 
-Rounds 1–7 are in `review-triage-uiux-round1.md`,
+Rounds 1–7 are in git history at 042afd66: `review-triage-uiux-round1.md`,
 `review-triage-uiux-rounds-2-3.md`, `review-triage-uiux-rounds-4-5.md` and
 `review-triage-uiux-rounds-6-7.md`. The convergence criterion is the owner's:
 run rounds until one whole round returns zero findings across all three lanes.
