@@ -107,9 +107,9 @@ Never report failed, incomplete, or skipped verification as passing. Identify an
 Every non-trivial change wave gets, before it is called done:
 
 1. **Multi-lane bllm max-thinking review**: anonymous parallel lanes on the
-   builtin `reviewer` shell with `botim-bllm/glm-5.3-flash:max` and
-   `botim-bllm/qwen3.8-flash-next:max` (two glm lanes with split focus plus a
-   qwen full pass is the working shape). Give each lane the diff, the live
+   builtin `reviewer` shell with `botim-bllm/deepseek-v4.1-flash:max` (two
+   split-focus lanes plus one full pass is the working shape). Give each
+   lane the diff, the live
    file paths, and a directed hunt list; require file:line findings with a
    minimal failure scenario and true/false adjudication of each suspicion.
    Triage in writing (fixed / not-fixed-with-reason / judged-not-true) before
