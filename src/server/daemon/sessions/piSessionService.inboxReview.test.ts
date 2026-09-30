@@ -199,6 +199,7 @@ describe("the idle batch (B33)", () => {
     await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A"]); });
     await vi.waitFor(async () => { expect(await queuedTexts(service, ref)).toEqual(["A", "B", "C"]); });
     expect(lane).toEqual([]);
+    expect(service.operationOutcomes("idle-refused", ["idle-refused-0", "idle-refused-1", "idle-refused-2"])).toEqual({ "idle-refused-0": "pending", "idle-refused-1": "pending", "idle-refused-2": "pending" });
 
     endRun(fake);
     await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A", "A"]); });
@@ -264,7 +265,7 @@ describe("the idle batch (B33)", () => {
   });
 
   it("puts a message pi refuses to queue back, with everything after it, and still starts the run", async () => {
-    const { fake, service, ref } = await waitedThroughARun("idle-steer-refused", ["A", "B", "C"]);
+    const { fake, service, ref, lane, dir, dataDir } = await waitedThroughARun("idle-steer-refused", ["A", "B", "C"]);
     fake.session.steer = (text: string) => {
       fake.calls.steer.push({ text });
       return Promise.reject(new Error("Extension commands cannot be queued"));
@@ -273,6 +274,9 @@ describe("the idle batch (B33)", () => {
     await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A"]); });
     expect(texts(fake.calls.steer)).toEqual(["B"]);
     expect(await queuedTexts(service, ref)).toEqual(["B", "C"]);
+    expect(lane).toEqual([]);
+    await vi.waitFor(async () => { expect((await new OwnedPromptQueue(dataDirInboxLocation(dataDir)).open("idle-steer-refused", dir)).map((entry) => entry.text)).toEqual(["B", "C"]); });
+    expect(service.operationOutcomes("idle-steer-refused", ["idle-steer-refused-1", "idle-steer-refused-2"])).toEqual({ "idle-steer-refused-1": "pending", "idle-steer-refused-2": "pending" });
     await service.dispose();
   });
 });

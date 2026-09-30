@@ -4,7 +4,8 @@
  * The owner's rule (docs/design/state-sync-redesign.md, 2026-09-29): while the agent runs,
  * every message is a steer. pi-web holds them - visible, recallable - and at the next gap
  * hands everything waiting to pi together, in the order the daemon accepted them. When the
- * agent is idle, the oldest waiting message starts the next run.
+ * agent is idle, the waiting messages up to the first extension command start the next run
+ * together (B33); a command at the head goes alone.
  *
  * The decision used to be made at request time from `isStreaming`, which the SDK sets only
  * after the prompt preflight awaits. A message accepted in that window read as "idle", was

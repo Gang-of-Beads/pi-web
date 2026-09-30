@@ -22,3 +22,21 @@ Live on 8505 (`scripts/probe-batch-handoff.mjs`, three messages waiting through 
 | D-P3d | DeepSeek | Mechanism items 2, 5 and 6 are commit 2's | true | The D1 "Order of work" names them; the diagram edge is marked |
 | D-test | DeepSeek | No batch test carries images; the probe swallowed a timeout | first: judged low (the restore path reuses the stored entry, images included); second: true | The probe's drain is now its own failing leg |
 | — | both | Head refused when the close rejects its preflight | pre-existing (`handDirect` identical) | Unchanged: the row shows it failed with Retry, never silently. Classifying "runtime gone" as transient risks a second run when pi committed after the listener was detached |
+
+## Bob pipeline (run b0df5a53) and the Playwright MCP run
+
+Bob's scouts reported four findings. Its skeptics refuted one and kept three. The fix stage did not run: the `worker` agent's model is not in the registry. The supervisor applied the three fixes in the follow-up commit.
+
+| id | finding | skeptic | action |
+|---|---|---|---|
+| bob-1 | The Clear test omits the head's outcome and never exercises Stop | refuted: the head never enters the steer batch; Stop's wait on the shared `steerBatches` is covered by the o4 and f3 tests | none |
+| bob-2 | The refused-oldest test never asserts that the three are waiting again | real | Asserts all three `pending` after the refusal |
+| bob-3 | The refused-steer test cannot tell a message held in the lane from one back in the inbox | real | Asserts an empty lane, the inbox file `[B, C]`, and both `pending` |
+| bob-4 | `promptHandoff.ts`'s module header still says "the oldest waiting message starts the next run" | real | Header reworded |
+
+Playwright MCP on 8505, rebuilt at `c20610ad`, 393x850:
+1. Through the composer: a long reply, then B, C and D sent with "Steer current response (queued if busy)". The page showed them as `Queued · 1/2/3`.
+2. The stack was restarted while they waited.
+3. The fixture recorded one request carrying the cut prompt with B, C and D. After a reload, the page shows B, C and D once each, in order, with one answer ("one answer for 4 messages").
+
+Found on the way: the restarted daemon listened 31 s after its plugins activated, with nothing logged in between. That went to the object-model triage as a startup-path finding.
