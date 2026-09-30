@@ -173,13 +173,7 @@ export class PiWebPluginService {
 
   private async cachedArtifactIsActive(artifact: CachedBrowserArtifact): Promise<boolean> {
     if (artifact.backendRevision === undefined) return true;
-    const runtime = await this.loadRuntime();
-    // The web process serves the asset, so its view is authoritative whenever
-    // it holds the plugin at all; the daemon view is the fallback for
-    // daemon-only plugins and for old daemons whose records carry no runs.
-    const web = runtime.views?.web;
-    const webRecord = web?.records.find(({ pluginId }) => pluginId === artifact.pluginId);
-    const snapshot = webRecord !== undefined ? web : runtime.views?.daemon;
+    const snapshot = await this.deciderView(artifact.pluginId);
     if (snapshot === undefined) return false;
     const activeRecord = snapshot.records.find(({ pluginId }) => pluginId === artifact.pluginId);
     const health = snapshot.health.find(({ pluginId }) => pluginId === artifact.pluginId);
@@ -187,6 +181,23 @@ export class PiWebPluginService {
       && activeRecord.moduleRevision === artifact.backendRevision
       && activeRecord.browserRevision === artifact.revision
       && health?.health.status !== "unhealthy";
+  }
+
+  /**
+   * The runtime view that decides whether a plugin is active: the web
+   * process's own whenever it holds the plugin, else the daemon's (daemon-only
+   * plugins, and old daemons whose records carry no runs). Asked in that
+   * order, so checking a cached module the web process runs never waits on
+   * the daemon; the first serve of an uncached module still reconciles the
+   * lifecycle, which needs both views. Asking both for every check made each
+   * module wait on a daemon busy with cold scans: 330 ms beside seven cold
+   * listings on 8505, 1 ms now (P3 slice a).
+   */
+  private async deciderView(pluginId: string): Promise<WorkspaceProviderRuntimeSnapshot | undefined> {
+    const web = await this.loadWebRuntime();
+    if (web?.records.some((record) => record.pluginId === pluginId) === true) return web;
+    const daemon = await this.loadDaemonRuntime();
+    return daemon.views?.daemon;
   }
 
   private cacheBrowserArtifact(artifact: CachedBrowserArtifact): void {

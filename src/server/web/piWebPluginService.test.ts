@@ -379,6 +379,31 @@ describe("PiWebPluginService", () => {
     expect(pinned?.content.toString("utf8")).toBe("export const value = 'r1';");
   });
 
+  it("serves a plugin the web process runs without waiting on the daemon (P3 slice a)", async () => {
+    const pluginDir = join(tempDir, "plugins", "web-hosted");
+    await writePlugin(pluginDir, {
+      packageJson: { piWeb: { plugins: [{ id: "web-hosted", browserRoot: ".", module: "browser.js", serverModule: "server.js", runs: "web" }] } },
+      files: { "browser.js": "export const value = 'r1';", "server.js": "export default {};" },
+    });
+    const catalog = new PiWebPluginCatalog({ roots: [{ path: join(tempDir, "plugins"), source: "test", scope: "local" }], packageProvider: false });
+    const entry = (await catalog.snapshot()).plugins.find(({ id }) => id === "web-hosted");
+    if (entry?.serverModule === undefined || entry.browserModule === undefined) throw new Error("fixture plugin was not discovered");
+    const record = { pluginId: entry.id, source: entry.source, scope: entry.scope, runs: "web" as const, moduleRevision: entry.serverModule.revision, browserRevision: entry.browserModule.revision, settingsRevision: entry.settingsRevision, machineSpecific: entry.machineSpecific, state: "active" as const };
+    const webRuntime = createWorkspaceProviderRuntimeSnapshot([record], [{ pluginId: entry.id, health: { status: "healthy" } }]);
+    let daemonAsks = 0;
+    const service = new PiWebPluginService({
+      catalog,
+      runtimeProvider: { providerRuntime: () => { daemonAsks += 1; return Promise.resolve(createWorkspaceProviderRuntimeSnapshot([], [])); } },
+      webRuntimeProvider: () => Promise.resolve(webRuntime),
+    });
+    await service.readAsset("web-hosted", "browser.js");
+    daemonAsks = 0;
+
+    const served = await Promise.all([1, 2, 3].map(async () => (await service.readAsset("web-hosted", "browser.js"))?.content.toString("utf8")));
+
+    expect({ served, daemonAsks }).toEqual({ served: ["export const value = 'r1';", "export const value = 'r1';", "export const value = 'r1';"], daemonAsks: 0 });
+  });
+
   it("withholds server-backed browser modules and reports an incompatible sessiond protocol", async () => {
     await writePlugin(join(tempDir, "plugins", "dual"), {
       packageJson: { piWeb: { plugins: [{ id: "dual", browserRoot: ".", module: "browser.js", serverModule: "server.js" }] } },
