@@ -1,0 +1,11 @@
+{
+  "srcPaths": ["src/", "pi-web-plugins/", "extensions/"],
+  "writePaths": ["src/server/", "src/shared/", "src/client/src/controllers/", "src/client/src/api/"],
+  "verifyCommand": "npm run verify",
+  "scoutAgent": "scout",
+  "fixerAgent": "worker",
+  "qaAgent": "scout",
+  "maxFindings": 4,
+  "chunkSize": 3,
+  "archRules": "src/server/web/ never imports src/server/daemon/ and the reverse (shared code lives in src/server/shared/); a plugin under pi-web-plugins/ imports nothing from the host source; core never special-cases a plugin by id; states have fixed owners and plugins may only append information to them; no state is decided by comparing display text; no new inline comments."
+}
