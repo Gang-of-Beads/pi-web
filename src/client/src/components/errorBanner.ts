@@ -1,6 +1,7 @@
 import { html, type TemplateResult } from "lit";
 import type { RetiredBy } from "../notice.js";
 import { renderCrossIcon } from "./uiIcons.js";
+import type { ReadMiss } from "../sync/readPhase.js";
 
 /**
  * The shared error banner. It leaves when the user dismisses it, another
@@ -40,13 +41,30 @@ export function errorBanner(
   </div>`;
 }
 
+type MissKind = ReadMiss["kind"];
+type MissOf<K extends MissKind> = Extract<ReadMiss, { kind: K }>;
+type MachineName = (machineId: string) => string;
+
+/** The row's words for each miss (object model §2.3); a machine is named, and a server error keeps its own words (owner Q9). */
+const UNANSWERED_WORDS: { readonly [K in MissKind]: (miss: MissOf<K>, nameOf: MachineName) => string } = {
+  "link-down": () => "Reconnecting…",
+  "machine-unanswering": (miss, nameOf) => `${nameOf(miss.machineId)} is unavailable; reconnecting…`,
+  "server-error": (miss, nameOf) => `${nameOf(miss.machineId)}: ${miss.reason}`,
+};
+
+export function unansweredRowText<K extends MissKind>(miss: MissOf<K>, nameOf: MachineName): string {
+  const words: (miss: MissOf<K>, nameOf: MachineName) => string = UNANSWERED_WORDS[miss.kind];
+  return words(miss, nameOf);
+}
+
 /**
- * The app row while the machine in use goes unanswered (B48). It has no cross
- * and no expiry: it leaves when an answer comes, and the page retries by itself,
- * so there is nothing to press (owner, 2026-09-30).
+ * The app row while a read for the machine in use goes unanswered (B48),
+ * saying why. It has no cross and no expiry: it leaves when an answer comes,
+ * and the page retries by itself, so there is nothing to press (owner,
+ * 2026-09-30).
  */
-export function reconnectingRow(): TemplateResult {
-  return html`<div class="error transient" role="status"><span class="error-text">Reconnecting…</span></div>`;
+export function unansweredRow(miss: ReadMiss, nameOf: MachineName): TemplateResult {
+  return html`<div class="error transient" role="status"><span class="error-text">${unansweredRowText(miss, nameOf)}</span></div>`;
 }
 
 /**

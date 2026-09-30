@@ -363,10 +363,29 @@ type RowCause = { kind: "link-down" } | { kind: "machine-unanswering"; machineId
 type RowState = "hidden" | "grace" | "shown" | "holding";
 ```
 
+**Where a cause comes from** (shipped in P1 slice 4 as `ReadMiss`, decided once by the pure `classifyReadError`; `daemon-restarting` has no producer among the reads the row watches yet and arrives with the P2 session reads):
+
+| a read that failed with | outcome | retries |
+|---|---|---|
+| no status: a dropped connection, a reader deadline | `link-down` | yes |
+| 401 / 403 | fact `signed-out` / `forbidden` | no |
+| 502, 503 or 504 whose body names a remote machine (PI WEB's gateway adds `machineId`; a proxy's own 502 page does not) | `machine-unanswering(machineId)` | yes |
+| any other 502, 503 or 504 (a proxy in front of PI WEB, a restarting process), or no status at all (0) | `link-down` | yes |
+| any other status (500, a protocol 404, …) | `server-error(machineId, reason)`, the reason being the error's own words | yes |
+
+Each entry keeps its latest miss; `unanswered(keys)` answers since when the earliest watched key has gone unanswered and why. A read's server error rides the same lifecycle as reconnecting: it retires when an answer comes, with no cross and no expiry. An action's server error stays a notice (§1.11).
+
+The machine health and runtime reads, and the deep-link ladder, speak through the same classifier. These reads are answered by the web process in use, which reports a down remote as `ok:false`, so a failed read is never evidence about the remote:
+- nothing answered: no notice (the row speaks), unless the reader asked (Settings);
+- the gateway said the remote did not answer: the machine, named;
+- a server error or a refusal: its own words.
+
+A remote's health whose read failed is `unknown`, and the ladder names the machine only when the web process answered that it is down.
+
 | Cause | Wording |
 |---|---|
 | `link-down` | "Reconnecting…" |
-| `machine-unanswering(m)` | "*m* is not answering; reconnecting…" |
+| `machine-unanswering(m)` | "*m* is unavailable; reconnecting…" (the owner's composed form, already used by the machine health notice) |
 | `daemon-restarting` | "*m* is restarting; reconnecting…" |
 | `server-error(m, reason)` | "*m*: *reason*" (the error's own words; never "reconnecting", Q9) |
 | another machine, or one project or workspace, not answering | nothing: silent background retries (Q3) |
@@ -376,7 +395,7 @@ type RowState = "hidden" | "grace" | "shown" | "holding";
 - `hidden → grace` on the first miss; `grace → shown` after 4 s (`TRANSIENT_GRACE_MS`) if still unanswered; `shown → holding` on an answer; `holding → hidden` after the minimum visible time (`BANNER_MIN_VISIBLE_MS`, 1.5 s).
 - **No expiry** (`TRANSIENT_ERROR_TIMEOUT_MS` does not apply) and **no dismiss** (no cross) for the reconnecting claim.
 - It renders above the dialog layer (portalled to the top layer, above `--pi-layer-dialog`, `SettingsDialog.ts:790`).
-- **One claim at a time** (owner, Q1: a definite failure is a different meaning from "not synced", and only one shows at a time). A definite claim (an action failed, an outcome unknown, a server error reason) holds the row until it is dismissed or retired. The reconnecting claim returns afterwards if it is still true. The pure classifier takes both inputs and names the one it shows.
+- **One claim at a time** (owner, Q1: a definite failure is a different meaning from "not synced", and only one shows at a time). A definite claim (an action failed, an outcome unknown, an action's server error) holds the row until it is dismissed or retired; a read's server error retires itself when an answer comes. The reconnecting claim returns afterwards if it is still true. The pure classifier takes both inputs and names the one it shows.
 
 **Time to row**: deadline + grace (3 s + 4 s = 7 s for small critical reads; 8 s + 4 s = 12 s for the board and transcript).
 
@@ -594,7 +613,7 @@ Each phase ships green, is probed on 8505 (393×850 coarse pointer where it matt
 - **Q8, archived or deleted by link**: read-only with Restore, or the reason and a way back (§1.18).
 - **Q9, server errors**: the row shows the error reason, not reconnecting (§0, §2.3).
 - **Q10/Q11, pins** (B49): pins stay global and keep working after their project closes; opening one does not reopen the project; closing says nothing (§1.14). The owner's follow-up: global and project pins are two separate kinds (§1.14).
-- Engineering calls, not asked: legacy drafts adopted lazily (§1.20); third-party plugin polling deprecated for one release (§1.16).
+- Engineering calls, not asked: legacy drafts adopted lazily (§1.20); third-party plugin polling deprecated for one release (§1.16); a read's server error in the row retires itself when an answer comes, like reconnecting, rather than holding the row until dismissed (§2.3, P1 slice 4).
 
 ---
 

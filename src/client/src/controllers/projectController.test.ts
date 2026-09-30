@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { HttpError } from "../api/http";
 import type { AppState } from "../appState";
 import { initialAppState } from "../appState";
 import type { Project, Workspace } from "../api";
@@ -208,6 +209,23 @@ describe("ProjectController.loadProjects", () => {
     await vi.waitFor(() => { expect(state.projectsLoad).toBe("loaded"); });
     expect(state.projects).toEqual([listed]);
     expect(projects).toHaveBeenCalledTimes(2);
+  });
+
+  it("says why the projects went unanswered, a server error in its own words, and still writes no error", async () => {
+    let state: AppState = { ...initialAppState() };
+    const projects = vi.fn().mockRejectedValue(new HttpError("Project store is locked", 500, "local"));
+    const controller = new ProjectController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      { selectProject: vi.fn(), forgetProject: vi.fn(), clearSelection: vi.fn() },
+      { api: { projects, addProject: vi.fn(), closeProject: vi.fn(), setWorkspaceTrust: vi.fn() }, clock: { now: () => 5, setTimer: () => () => undefined } },
+    );
+
+    await controller.loadProjects();
+
+    expect(controller.unanswered()).toEqual({ since: 5, miss: { kind: "server-error", machineId: "local", reason: "Project store is locked" } });
+    expect(state.error).toBe("");
+    controller.dispose();
   });
 
   it("marks a completed listing loaded", async () => {

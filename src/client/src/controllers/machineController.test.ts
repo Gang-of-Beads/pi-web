@@ -160,22 +160,32 @@ describe("MachineController", () => {
     expect(state.error).toContain("Remote is unavailable");
   });
 
-  it("records offline health without falling back when the routed remote health request rejects", async () => {
-    let state: AppState = initialAppState();
-    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
-    const updateUrl = vi.fn();
-    const projects = { loadProjects: vi.fn() };
-
-    vi.spyOn(api, "machines").mockResolvedValue([localMachine, remoteMachine]);
-    vi.spyOn(api, "health").mockRejectedValue(new Error("Internal Server Error"));
-
-    const controller = new MachineController(() => state, setState, updateUrl, projects);
-
-    await controller.loadMachines(remoteMachine.id);
-
-    expect(state.selectedMachine).toEqual(remoteMachine);
-    expect(state.machineStatuses[remoteMachine.id]).toMatchObject({ machineId: remoteMachine.id, ok: false, status: "offline", error: "Internal Server Error" });
-    expect(state.error).toContain("Remote is unavailable");
+  /**
+   * The routed machine stays selected when its health read fails; falling
+   * back to local would flatten the deep link. The failed read is not
+   * evidence about the remote (review 98e437b2): its health is unknown, and
+   * the notice follows the classifier the app row uses.
+   */
+  it("keeps the routed remote selected when its health read fails, and does not blame the remote for it", async () => {
+    const outcomes: Record<string, { selected: string | undefined; status: string | undefined; error: string }> = {};
+    for (const [label, failure] of [
+      ["nothing answered", new TypeError("Failed to fetch")],
+      ["a server error", new HttpError("Internal Server Error", 500, remoteMachine.id)],
+    ] as const) {
+      let state: AppState = initialAppState();
+      const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
+      vi.spyOn(api, "machines").mockResolvedValue([localMachine, remoteMachine]);
+      vi.spyOn(api, "health").mockRejectedValue(failure);
+      vi.spyOn(api, "runtime").mockResolvedValue({ machineId: remoteMachine.id, ok: true, checkedAt: "now" });
+      const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
+      await controller.loadMachines(remoteMachine.id);
+      outcomes[label] = { selected: state.selectedMachine?.id, status: state.machineStatuses[remoteMachine.id]?.status, error: state.error };
+      controller.dispose();
+    }
+    expect(outcomes).toEqual({
+      "nothing answered": { selected: remoteMachine.id, status: "unknown", error: "" },
+      "a server error": { selected: remoteMachine.id, status: "unknown", error: "Internal Server Error" },
+    });
   });
 
   it("drops the status snapshot of a machine that is no longer configured", async () => {
@@ -318,7 +328,7 @@ describe("MachineController load discipline", () => {
     expect(state.machinesLoad).toBe("loading");
     expect(state.machines).toEqual([localMachine]);
     expect(state.error).toBe("");
-    expect(controller.unansweredSince()).toBeDefined();
+    expect(controller.unanswered()?.miss).toEqual({ kind: "link-down" });
 
     await vi.advanceTimersByTimeAsync(1000);
 
@@ -327,7 +337,7 @@ describe("MachineController load discipline", () => {
     expect(state.machines).toEqual([localMachine, remoteMachine]);
     expect(state.selectedMachine).toEqual(localMachine);
     expect(state.error).toBe("");
-    expect(controller.unansweredSince()).toBeUndefined();
+    expect(controller.unanswered()).toBeUndefined();
     controller.dispose();
   });
 
@@ -480,6 +490,68 @@ describe("MachineController selects what the reader wants when the roster lands"
 
     expect(state.selectedMachine?.id).toBe(addedMachine.id);
     expect(state.machines.map((machine) => machine.id)).toEqual(["local", addedMachine.id]);
+    controller.dispose();
+  });
+});
+
+/**
+ * Review 98e437b2 (DeepSeek P2-1): a machine's health and runtime are read
+ * from the local web process, which answers 200 with ok:false when a remote is
+ * down. A failed health read is therefore never evidence about the remote
+ * machine: a proxy in front of PI WEB answering 502 during a reload named the
+ * remote "unavailable" in a notice that outranked the app row. The notice
+ * follows the one classifier the row uses.
+ */
+describe("MachineController says what a failed health or runtime read means", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function selectedRemote() {
+    let state: AppState = { ...initialAppState(), machines: [localMachine, remoteMachine], selectedMachine: remoteMachine };
+    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
+    const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
+    return { controller, read: () => state };
+  }
+
+  it("writes nothing for a read nothing answered: the app row speaks for it", async () => {
+    const outcomes: Record<string, string> = {};
+    for (const [label, error] of [
+      ["a proxy's bare 502", new HttpError("Bad Gateway", 502, remoteMachine.id)],
+      ["a dropped connection", new TypeError("Failed to fetch")],
+    ] as const) {
+      vi.spyOn(api, "health").mockRejectedValueOnce(error);
+      vi.spyOn(api, "runtime").mockRejectedValueOnce(error);
+      const { controller, read } = selectedRemote();
+      await controller.refreshMachineHealth(remoteMachine.id);
+      await controller.refreshMachineRuntime(remoteMachine.id);
+      outcomes[label] = read().error;
+      controller.dispose();
+    }
+    expect(outcomes).toEqual({ "a proxy's bare 502": "", "a dropped connection": "" });
+  });
+
+  it("names the machine only when the gateway said it did not answer", async () => {
+    vi.spyOn(api, "health").mockRejectedValueOnce(new HttpError("Remote machine unavailable (connect ECONNREFUSED)", 502, remoteMachine.id, "gateway"));
+    const { controller, read } = selectedRemote();
+    await controller.refreshMachineHealth(remoteMachine.id);
+    expect(read().error).toBe("Remote is unavailable; reconnecting… connect ECONNREFUSED");
+    controller.dispose();
+  });
+
+  it("shows a server error in its own words", async () => {
+    vi.spyOn(api, "health").mockRejectedValueOnce(new HttpError("Machine not found", 404, remoteMachine.id));
+    const { controller, read } = selectedRemote();
+    await controller.refreshMachineHealth(remoteMachine.id);
+    expect(read().error).toContain("Machine not found");
+    controller.dispose();
+  });
+
+  it("still answers a runtime read the reader asked for, even when nothing answered", async () => {
+    vi.spyOn(api, "runtime").mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const { controller, read } = selectedRemote();
+    await controller.refreshMachineRuntime(remoteMachine.id, { requireSelected: false });
+    expect(read().error).not.toBe("");
     controller.dispose();
   });
 });

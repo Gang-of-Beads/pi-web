@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { errorBanner, isTransientError } from "./errorBanner";
+import { errorBanner, isTransientError, unansweredRowText } from "./errorBanner";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -178,5 +178,28 @@ describe("a reader-retired banner offers a way to try again", () => {
     render(errorBanner("remote machine request cancelled", () => undefined, "reply", () => undefined), host);
 
     expect(host.querySelector(".error-retry")).toBeNull();
+  });
+});
+
+/**
+ * Owner Q9: a server that answered with an error shows its reason, never
+ * "reconnecting"; a remote machine that does not answer is named, in the
+ * composed form the machine health notice already uses (B48, P1 slice 4).
+ */
+describe("what the app row says while a read goes unanswered", () => {
+  it("says why, for every miss, naming the machine and falling back to its id", () => {
+    const names = new Map([["local", "hxd-work-mbp"], ["ubuntu", "hxd-pc-ubuntu"]]);
+    const nameOf = (machineId: string) => names.get(machineId) ?? machineId;
+    expect({
+      "link-down": unansweredRowText({ kind: "link-down" }, nameOf),
+      "machine-unanswering": unansweredRowText({ kind: "machine-unanswering", machineId: "ubuntu" }, nameOf),
+      "server-error": unansweredRowText({ kind: "server-error", machineId: "local", reason: "Project store is locked" }, nameOf),
+      "server-error, unknown machine": unansweredRowText({ kind: "server-error", machineId: "gone-1", reason: "Internal Server Error" }, nameOf),
+    }).toEqual({
+      "link-down": "Reconnecting…",
+      "machine-unanswering": "hxd-pc-ubuntu is unavailable; reconnecting…",
+      "server-error": "hxd-work-mbp: Project store is locked",
+      "server-error, unknown machine": "gone-1: Internal Server Error",
+    });
   });
 });

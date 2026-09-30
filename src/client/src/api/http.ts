@@ -3,8 +3,15 @@ import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { deadlineSignal, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
 import { dedupeKey, shareInFlight } from "./inFlight";
 
+/**
+ * Who answered with the error, when it is known. Only PI WEB's gateway names
+ * the machine it failed for in its body; a proxy in front of PI WEB answering
+ * for a remote machine's URL says nothing about that machine.
+ */
+export type HttpErrorOrigin = "gateway";
+
 export class HttpError extends Error {
-  constructor(message: string, readonly status: number, readonly machineId?: string) {
+  constructor(message: string, readonly status: number, readonly machineId?: string, readonly answeredBy?: HttpErrorOrigin) {
     super(message);
     this.name = "HttpError";
   }
@@ -68,9 +75,10 @@ async function readResponse(url: string, response: Response): Promise<unknown> {
     // names: the local proxy's 502 speaks about that machine's daemon, and
     // without the fallback it lands as a page claim that any other machine's
     // success would erase.
-    const machineId = typeof fields["machineId"] === "string" ? fields["machineId"] : machineIdFromUrl(url);
+    const namedMachineId = typeof fields["machineId"] === "string" ? fields["machineId"] : undefined;
+    const machineId = namedMachineId ?? machineIdFromUrl(url);
     const text = detail === undefined || detail === "" ? label : `${label} (${detail})`;
-    throw new HttpError(errorMessage({ error: text }) ?? text, response.status, machineId);
+    throw new HttpError(errorMessage({ error: text }) ?? text, response.status, machineId, namedMachineId === undefined ? undefined : "gateway");
   }
   const body: unknown = await response.json();
   return body;

@@ -169,7 +169,7 @@ describe("PiWebApp remote route restore while the machine does not answer", () =
     const delays: number[] = [];
     if (!Reflect.set(app, "schedulePendingRemoteRouteRestore", (delayMs?: number) => { delays.push(delayMs ?? -1); })) throw new Error("Could not replace the restore scheduler");
     const machines: unknown = Reflect.get(app, "machines");
-    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "refreshMachineHealth", () => Promise.resolve({ machineId: "remote-1", ok: false, checkedAt: "now", status: "offline" }))) {
+    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "refreshMachineHealth", () => answeredHealth(app, { machineId: "remote-1", ok: false, checkedAt: "now", status: "offline" }))) {
       throw new Error("Could not replace machines.refreshMachineHealth");
     }
     const route = { machineId: "remote-1", projectId: "93ebd97a" };
@@ -196,7 +196,7 @@ describe("PiWebApp remote route restore while the machine does not answer", () =
     setState.call(app, { machines: [remote], selectedMachine: remote });
     if (!Reflect.set(app, "schedulePendingRemoteRouteRestore", () => undefined)) throw new Error("Could not replace the restore scheduler");
     const machines: unknown = Reflect.get(app, "machines");
-    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "refreshMachineHealth", () => Promise.resolve({ machineId: "remote-1", ok: false, checkedAt: "now", status: "offline", error: "timed out" }))) {
+    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "refreshMachineHealth", () => answeredHealth(app, { machineId: "remote-1", ok: false, checkedAt: "now", status: "offline", error: "timed out" }))) {
       throw new Error("Could not replace machines.refreshMachineHealth");
     }
     const navigation: unknown = Reflect.get(app, "navigation");
@@ -212,6 +212,38 @@ describe("PiWebApp remote route restore while the machine does not answer", () =
     await retry.call(app);
 
     expect(errorNow()).toBe("");
+  });
+});
+
+/**
+ * Review 98e437b2: the ladder named the remote "unavailable" after any try
+ * whose health was not ok - including a health read that failed on the way,
+ * which says nothing about the remote. It names the machine only when the web
+ * process answered that the remote is down.
+ */
+describe("PiWebApp remote route restore when the health read itself fails", () => {
+  it("keeps trying without blaming the remote", async () => {
+    const app = createApp();
+    stubWindowLocation("?machine=remote-1&project=93ebd97a");
+    const remote = { id: "remote-1", name: "Remote one", kind: "remote" };
+    const setState = unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState");
+    setState.call(app, { machines: [remote], selectedMachine: remote, machineStatuses: { "remote-1": { machineId: "remote-1", ok: false, checkedAt: "now", status: "unknown", error: "Failed to fetch" } } });
+    const delays: number[] = [];
+    if (!Reflect.set(app, "schedulePendingRemoteRouteRestore", (delayMs: number) => { delays.push(delayMs); })) throw new Error("Could not replace the restore scheduler");
+    const machines: unknown = Reflect.get(app, "machines");
+    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "refreshMachineHealth", () => Promise.resolve(undefined))) {
+      throw new Error("Could not replace machines.refreshMachineHealth");
+    }
+    const navigation: unknown = Reflect.get(app, "navigation");
+    if (typeof navigation !== "object" || navigation === null) throw new Error("PiWebApp navigation was unavailable");
+    unknownFunction(Reflect.get(app, "deferRemoteRouteRestore"), "PiWebApp.deferRemoteRouteRestore").call(app, { machineId: "remote-1", projectId: "93ebd97a" }, unknownFunction(Reflect.get(navigation, "latest"), "navigation.latest").call(navigation));
+    await unknownFunction(Reflect.get(app, "retryPendingRemoteRouteRestore"), "PiWebApp.retryPendingRemoteRouteRestore").call(app);
+
+    const state: unknown = Reflect.get(app, "state");
+    const error = typeof state === "object" && state !== null ? String(Reflect.get(state, "error")) : "";
+    expect(error).not.toContain("is unavailable");
+    expect(Reflect.get(app, "pendingRemoteRouteRestore")).toBeDefined();
+    expect(delays.length).toBe(2);
   });
 });
 
@@ -232,6 +264,12 @@ describe("PiWebApp banner Retry", () => {
     expect(asked).toEqual(["remote-1"]);
   });
 });
+
+/** A health read the web process answered, written to the state as the real read writes it. */
+function answeredHealth(app: PiWebApp, health: { machineId: string; ok: boolean; checkedAt: string; status: string; error?: string }): Promise<typeof health> {
+  unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { machineStatuses: { [health.machineId]: health } });
+  return Promise.resolve(health);
+}
 
 function searchParams(): string {
   const location: unknown = window.location;

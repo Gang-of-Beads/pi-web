@@ -1,4 +1,6 @@
 import { BANNER_MIN_VISIBLE_MS, TRANSIENT_GRACE_MS } from "../components/bannerHold";
+import type { ReadMiss } from "./readPhase";
+import type { Unanswered } from "./scopedResource";
 
 /**
  * What the app's one row says (object model §2.3).
@@ -9,13 +11,15 @@ import { BANNER_MIN_VISIBLE_MS, TRANSIENT_GRACE_MS } from "../components/bannerH
  * until the reader dismisses it or its owner retires it; reconnecting comes
  * back afterwards if it is still true.
  *
- * Reconnecting is counted from the first read that went without an answer and
- * lasts until one arrives, so a retry that is itself still waiting never
- * blinks the row. It waits out the same grace as every transport claim - a
- * single lost answer that the next retry recovers shows nothing - and once
- * shown it stays for the minimum visible time, so it never flashes.
+ * An unanswered read is counted from the first try that went without an
+ * answer and lasts until one arrives, so a retry that is itself still waiting
+ * never blinks the row; it says why the latest try got none (a link down, a
+ * machine not answering, a server error in its own words). It waits out the
+ * same grace as every transport claim - a single miss that the next retry
+ * recovers shows nothing - and once shown it stays for the minimum visible
+ * time, with the last reason shown, so it never flashes.
  */
-export type RowClaim = "none" | "notice" | "reconnecting";
+export type RowClaim = { readonly kind: "none" } | { readonly kind: "notice" } | { readonly kind: "unanswered"; readonly miss: ReadMiss };
 
 export interface RowDecision {
   readonly claim: RowClaim;
@@ -23,26 +27,35 @@ export interface RowDecision {
   readonly recheckInMs?: number;
 }
 
+/** The unanswered row on screen: since when, and the reason it shows. */
+export interface ShownUnanswered {
+  readonly at: number;
+  readonly miss: ReadMiss;
+}
+
 export interface RowInput {
   /** A definite notice is on screen: the reader must retire it. */
   readonly notice: boolean;
-  /** Since when the machine in use has gone without an answer, if it has. */
-  readonly unansweredSince: number | undefined;
-  /** When the reconnecting row appeared, if it is showing. */
-  readonly reconnectingShownAt: number | undefined;
+  /** Since when the machine in use has gone without an answer, and why, if it has. */
+  readonly unanswered: Unanswered | undefined;
+  /** The unanswered row, if it is showing. */
+  readonly shown: ShownUnanswered | undefined;
   readonly now: number;
 }
 
+const NONE: RowClaim = { kind: "none" };
+
 export function rowDecision(input: RowInput): RowDecision {
-  if (input.notice) return { claim: "notice" };
-  if (input.unansweredSince !== undefined) return unansweredRow(input.now - input.unansweredSince, input.reconnectingShownAt !== undefined);
-  if (input.reconnectingShownAt === undefined) return { claim: "none" };
-  const shownFor = input.now - input.reconnectingShownAt;
-  if (shownFor >= BANNER_MIN_VISIBLE_MS) return { claim: "none" };
-  return { claim: "reconnecting", recheckInMs: BANNER_MIN_VISIBLE_MS - shownFor };
+  if (input.notice) return { claim: { kind: "notice" } };
+  if (input.unanswered !== undefined) return unansweredRow(input.unanswered, input.now, input.shown !== undefined);
+  if (input.shown === undefined) return { claim: NONE };
+  const shownFor = input.now - input.shown.at;
+  if (shownFor >= BANNER_MIN_VISIBLE_MS) return { claim: NONE };
+  return { claim: { kind: "unanswered", miss: input.shown.miss }, recheckInMs: BANNER_MIN_VISIBLE_MS - shownFor };
 }
 
-function unansweredRow(waited: number, alreadyShown: boolean): RowDecision {
-  if (alreadyShown || waited >= TRANSIENT_GRACE_MS) return { claim: "reconnecting" };
-  return { claim: "none", recheckInMs: TRANSIENT_GRACE_MS - waited };
+function unansweredRow(unanswered: Unanswered, now: number, alreadyShown: boolean): RowDecision {
+  const waited = now - unanswered.since;
+  if (alreadyShown || waited >= TRANSIENT_GRACE_MS) return { claim: { kind: "unanswered", miss: unanswered.miss } };
+  return { claim: NONE, recheckInMs: TRANSIENT_GRACE_MS - waited };
 }

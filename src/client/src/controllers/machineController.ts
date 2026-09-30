@@ -1,9 +1,9 @@
-import { api, HttpError, type Machine, type MachineHealth, type MachineRuntime } from "../api";
+import { api, type Machine, type MachineHealth, type MachineRuntime } from "../api";
 import { resetWorkspaceScopedState, type AppState } from "../appState";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { describeError, noticeForReader, noticeFromTransport } from "../notice";
-import { QUIET_WINDOW_MS, type ReadFact } from "../sync/readPhase";
-import { ScopedResource } from "../sync/scopedResource";
+import { classifyReadError, QUIET_WINDOW_MS, type ReadFact, type ReadMiss, type ReadOutcome } from "../sync/readPhase";
+import { ScopedResource, type Unanswered } from "../sync/scopedResource";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import type { ProjectController } from "./projectController";
 
@@ -23,6 +23,44 @@ interface MachinePreference {
 }
 
 const ALWAYS = () => true;
+
+/** Whether the reader asked for this read (Settings), or it runs in the background. */
+type ReadAsker = "reader" | "background";
+
+type NoticePatch = Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId">;
+
+/**
+ * What a failed health or runtime read says (review 98e437b2). These are read
+ * from the web process in use, which answers for a down remote with ok:false,
+ * so a failed read is never evidence about the remote itself. The one
+ * classifier the app row uses decides:
+ * - nothing answered: the row speaks for it, unless the reader asked;
+ * - the gateway said the remote did not answer: that machine, named;
+ * - a server error or a refusal: its own words.
+ */
+const READ_FAILURE_NOTICE = new Map<Exclude<ReadMiss["kind"], "machine-unanswering"> | "fact", Readonly<Record<ReadAsker, "none" | "words">>>([
+  ["fact", { reader: "words", background: "words" }],
+  ["link-down", { reader: "words", background: "none" }],
+  ["server-error", { reader: "words", background: "words" }],
+]);
+
+type ReadFailure = { readonly notice: "none" } | { readonly notice: "words" } | { readonly notice: "machine"; readonly machineId: string };
+
+function readFailureNotice(outcome: ReadOutcome, asker: ReadAsker): ReadFailure {
+  if (outcome.kind === "fact") return fromTable("fact", asker);
+  const miss = outcome.miss;
+  if (miss.kind === "machine-unanswering") return { notice: "machine", machineId: miss.machineId };
+  return fromTable(miss.kind, asker);
+}
+
+function fromTable(key: Exclude<ReadMiss["kind"], "machine-unanswering"> | "fact", asker: ReadAsker): ReadFailure {
+  return READ_FAILURE_NOTICE.get(key)?.[asker] === "none" ? { notice: "none" } : { notice: "words" };
+}
+
+/** The web process in use answered that this remote machine is down; an unknown health is not that answer. */
+export function remoteReportedDown(health: MachineHealth | undefined): boolean {
+  return health !== undefined && !health.ok && health.status !== "unknown";
+}
 
 /** A refusal the web process stated, in the reader's words (object model §0). */
 const FACT_WORDS = new Map<ReadFact["kind"], string>([
@@ -83,9 +121,9 @@ export class MachineController {
     return view?.data !== undefined && wanted();
   }
 
-  /** Since when the roster has gone without an answer, for the app row: the web process in use serves it. */
-  unansweredSince(): number | undefined {
-    return this.roster.unansweredSince([ROSTER]);
+  /** Since when the roster has gone without an answer, and why, for the app row: the web process in use serves it. */
+  unanswered(): Unanswered | undefined {
+    return this.roster.unanswered([ROSTER]);
   }
 
   /** A sign of life: retry a lost roster read now instead of waiting out the backoff. */
@@ -241,10 +279,9 @@ export class MachineController {
    * the anonymous "Reconnecting to the machine…" erased the one fact (which
    * machine) the reader could not see anywhere else.
    */
-  private machineDownNotice(machineId: string, error: unknown): Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId"> | undefined {
-    if (!(error instanceof HttpError) || error.machineId === undefined) return undefined;
+  private machineDownNotice(machineId: string, error: unknown): NoticePatch {
     const machine = this.getState().machines.find((candidate) => candidate.id === machineId);
-    const detail = /\((.*)\)/.exec(error.message)?.[1];
+    const detail = error instanceof Error ? /\((.*)\)/.exec(error.message)?.[1] : undefined;
     const text = `${machine?.name ?? machineId} is unavailable; reconnecting…${detail === undefined ? "" : ` ${detail}`}`;
     return noticePatch(noticeFromTransport(text, machineId));
   }
@@ -266,9 +303,15 @@ export class MachineController {
       // the project and session controllers use - is what stops a late
       // failure from painting machine A's complaint onto machine B.
       if (selectedMachineId(this.getState()) !== machineId) return undefined;
-      this.setState(this.machineDownNotice(machineId, error) ?? errorNoticePatch(error));
+      this.noticeReadFailure(error, "background");
       return undefined;
     }
+  }
+
+  private noticeReadFailure(error: unknown, asker: ReadAsker): void {
+    const failure = readFailureNotice(classifyReadError(error), asker);
+    if (failure.notice === "none") return;
+    this.setState(failure.notice === "machine" ? this.machineDownNotice(failure.machineId, error) : errorNoticePatch(error));
   }
 
   /**
@@ -291,7 +334,7 @@ export class MachineController {
     } catch (error) {
       if (this.runtimeRefreshSeqByMachine.get(machineId) !== seq) return undefined;
       if (options.requireSelected !== false && selectedMachineId(this.getState()) !== machineId) return undefined;
-      this.setState(this.machineDownNotice(machineId, error) ?? errorNoticePatch(error));
+      this.noticeReadFailure(error, options.requireSelected === false ? "reader" : "background");
       return undefined;
     }
   }
@@ -307,20 +350,26 @@ export class MachineController {
       // Reply-retired and machine-scoped: the claim is that this machine's
       // link is down, so only a success from that machine disproves it - a
       // poll from anywhere else may not speak for it.
-      ...(health.ok ? {} : noticePatch(noticeFromTransport(`${requestedMachine.name} is unavailable; reconnecting…`, requestedMachine.id))),
+      ...(remoteReportedDown(health) ? noticePatch(noticeFromTransport(`${requestedMachine.name} is unavailable; reconnecting…`, requestedMachine.id)) : {}),
     });
     return requestedMachine;
   }
 
+  /**
+   * A remote machine's health as the web process in use answered it. A read
+   * that failed on the way says nothing about the remote: its health is
+   * unknown, and the failure speaks as the app row's classifier says.
+   */
   private async safeRemoteHealth(machine: Machine): Promise<MachineHealth> {
     try {
       return await api.health(machine.id);
     } catch (error) {
+      this.noticeReadFailure(error, "background");
       return {
         machineId: machine.id,
         ok: false,
         checkedAt: new Date().toISOString(),
-        status: "offline",
+        status: "unknown",
         error: describeError(error),
       };
     }

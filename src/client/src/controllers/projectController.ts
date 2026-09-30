@@ -2,7 +2,7 @@ import { api as defaultApi, type Project } from "../api";
 import { errorNoticePatch } from "../errorNotice";
 import { describeError } from "../notice";
 import { QUIET_WINDOW_MS, type ReadFact } from "../sync/readPhase";
-import { ScopedResource, type ResourceClock } from "../sync/scopedResource";
+import { ScopedResource, type ResourceClock, type Unanswered } from "../sync/scopedResource";
 import { selectedMachineId, type GetState, type SetState } from "./types";
 import type { WorkspaceController } from "./workspaceController";
 
@@ -93,9 +93,9 @@ export class ProjectController {
     this.listings.dispose();
   }
 
-  /** Since when the selected machine's projects have gone without an answer, for the app row. */
-  unansweredSince(): number | undefined {
-    return this.listings.unansweredSince([selectedMachineId(this.getState())]);
+  /** Since when the selected machine's projects have gone without an answer, and why, for the app row. */
+  unanswered(): Unanswered | undefined {
+    return this.listings.unanswered([selectedMachineId(this.getState())]);
   }
 
   private watch(machineId: string): void {

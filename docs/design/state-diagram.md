@@ -321,14 +321,22 @@ stateDiagram-v2
 | quick switcher | an empty meaning of kind `failed` | `QuickSwitcher.ts:244` |
 | the global banner | "Lost connection…", "A request timed out…", "Connection problem…" | `errorBanner.ts:95-125` |
 
-Done so far: projects on a machine (P1 slice 1); workspaces, and placing a session opened from another project (P1 slice 2); the machines roster, and a deep link to a remote machine, which keeps retrying with the shared backoff while it is still the reader's intent (P1 slice 3).
+Done so far: projects on a machine (P1 slice 1); workspaces, and placing a session opened from another project (P1 slice 2); the machines roster, and a deep link to a remote machine, which keeps retrying with the shared backoff while it is still the reader's intent (P1 slice 3); the row names why a read is unanswered (P1 slice 4).
 
 Plugins read through the host, so the rule reaches them as one host facility: a read the host runs for a panel reports syncing and reconnecting, and retries on the same schedule. A plugin never writes its own retry loop.
 
 **What the reader sees** (owner, 2026-09-30; the full contract is `object-model.md` §0 and §2.3):
 - One app-level row, the existing yellow one, shows one claim at a time. A definite failure is not reconnecting, and holds the row until it is dismissed or retired.
 - Reconnecting shows only for the machine the reader is using. Another machine, or one project or workspace, that does not answer retries silently.
-- A server that answers with an error shows its reason, never "reconnecting".
+- A server that answers with an error shows its reason, never "reconnecting". Why a read went unanswered is one typed value (`ReadMiss`, object model §2.3):
+
+  | miss | the row says |
+  |---|---|
+  | `link-down`: no status, or a 502/503/504 that PI WEB's gateway did not claim | "Reconnecting…" |
+  | `machine-unanswering(m)`: a 502/503/504 whose body names a remote machine (the gateway) | "*m* is unavailable; reconnecting…" |
+  | `server-error(m, reason)`: any other status | "*m*: *reason*" |
+
+  All three keep retrying and retire when an answer comes; only a fact (401, 403) stops the retries.
 - Syncing is never visible, except "Loading this session…" during a transcript's first read with nothing known. The tap acknowledgement (row spinner, "Opening…", the progress line) stays. "Still opening…" and the Loading titles go.
 - There is no Try now; the page retries by itself. Known data stays live and usable. Other actions fire now and show as pending, and are never replayed.
 - A tapped session opens unless it was deleted (the reason, and a way back) or archived (read-only, with Restore).

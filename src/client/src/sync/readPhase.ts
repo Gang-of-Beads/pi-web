@@ -1,4 +1,5 @@
 import { HttpError } from "../api/http";
+import { LOCAL_MACHINE_ID } from "../machineKeys";
 
 /**
  * Where a read of one shown value stands (object model §0, B48).
@@ -20,19 +21,49 @@ export type ReadFact = { kind: "none" } | { kind: "signed-out" } | { kind: "forb
 
 export const NO_FACT: ReadFact = { kind: "none" };
 
+/**
+ * Why a read went without a usable answer (object model §2.3). Every miss is
+ * retried; the app row says which one it is (owner Q9: a server error shows
+ * its reason, never "reconnecting").
+ * - `link-down`: nothing answered - a dropped connection, a reader deadline,
+ *   or a proxy in front of PI WEB answering for it;
+ * - `machine-unanswering`: the web process in use answered for a remote
+ *   machine that did not;
+ * - `server-error`: a server answered with an error, in its own words.
+ */
+export type ReadMiss =
+  | { readonly kind: "link-down" }
+  | { readonly kind: "machine-unanswering"; readonly machineId: string }
+  | { readonly kind: "server-error"; readonly machineId: string; readonly reason: string };
+
+/** What a failed read means: a fact that ends retrying, or a miss that is retried. */
+export type ReadOutcome = { readonly kind: "fact"; readonly fact: ReadFact } | { readonly kind: "miss"; readonly miss: ReadMiss };
+
 const FACT_BY_STATUS = new Map<number, ReadFact>([
   [401, { kind: "signed-out" }],
   [403, { kind: "forbidden" }],
 ]);
 
+/** The statuses a hop answers with when what is behind it did not answer. */
+const HOP_STATUSES = new Set([502, 503, 504]);
+
+const LINK_DOWN: ReadOutcome = { kind: "miss", miss: { kind: "link-down" } };
+
 /**
- * What a failed read means. Only a refusal the server stated is a fact; a
- * dropped connection, a deadline, a 5xx or a restarting daemon is no answer,
- * and the read is tried again.
+ * What a failed read means, decided once. Only a refusal the server stated is
+ * a fact. No status (0) is a transport failure. A hop status is a remote
+ * machine not answering only when PI WEB's gateway said so for a machine it
+ * named; any other hop - a proxy in front of PI WEB, the local daemon - means
+ * nothing answered. Any other status is a server error, in its own words.
  */
-export function classifyReadError(error: unknown): "no-answer" | ReadFact {
-  if (!(error instanceof HttpError)) return "no-answer";
-  return FACT_BY_STATUS.get(error.status) ?? "no-answer";
+export function classifyReadError(error: unknown): ReadOutcome {
+  if (!(error instanceof HttpError) || error.status === 0) return LINK_DOWN;
+  const fact = FACT_BY_STATUS.get(error.status);
+  if (fact !== undefined) return { kind: "fact", fact };
+  const machineId = error.machineId ?? LOCAL_MACHINE_ID;
+  if (!HOP_STATUSES.has(error.status)) return { kind: "miss", miss: { kind: "server-error", machineId, reason: error.message === "" ? `HTTP ${String(error.status)}` : error.message } };
+  const remoteUnanswering = error.answeredBy === "gateway" && machineId !== LOCAL_MACHINE_ID;
+  return remoteUnanswering ? { kind: "miss", miss: { kind: "machine-unanswering", machineId } } : LINK_DOWN;
 }
 
 export const FIRST_RETRY_MS = 1000;

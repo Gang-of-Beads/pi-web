@@ -140,15 +140,28 @@ describe("ScopedResource", () => {
     expect(time.pending()).toEqual([]);
   });
 
-  it("reports since when the watched keys went without an answer, for the app row", async () => {
-    const { reads, resource } = projects();
+  it("reports since when the watched keys went without an answer, and why, for the app row", async () => {
+    const { time, reads, resource } = projects();
     resource.watch("local");
+    resource.watch("remote");
     void resource.refresh("local");
-    expect(resource.unansweredSince(["local"])).toBeUndefined();
+    expect(resource.unanswered(["local"])).toBeUndefined();
     reads.calls[0]?.reject(lost());
     await flush();
-    expect(resource.unansweredSince(["local"])).toBe(1_000_000);
-    expect(resource.unansweredSince(["remote"])).toBeUndefined();
+    expect(resource.unanswered(["local"])).toEqual({ since: 1_000_000, miss: { kind: "link-down" } });
+    expect(resource.unanswered(["remote"])).toBeUndefined();
+    time.advance(1000);
+    reads.calls[1]?.reject(new HttpError("Project store is locked", 500, "local"));
+    await flush();
+    expect(resource.unanswered(["local"])).toEqual({ since: 1_000_000, miss: { kind: "server-error", machineId: "local", reason: "Project store is locked" } });
+    void resource.refresh("remote");
+    reads.calls[2]?.reject(new HttpError("Remote machine timeout", 504, "ubuntu", "gateway"));
+    await flush();
+    expect(resource.unanswered(["remote", "local"])).toEqual({ since: 1_000_000, miss: { kind: "server-error", machineId: "local", reason: "Project store is locked" } });
+    time.advance(2000);
+    reads.calls[3]?.resolve(["a"]);
+    await flush();
+    expect(resource.unanswered(["remote", "local"])).toEqual({ since: 1_001_000, miss: { kind: "machine-unanswering", machineId: "ubuntu" } });
   });
 
   it("applies this client's own writes to a known value and leaves an unknown key unknown", async () => {

@@ -25,7 +25,7 @@ import type { SessionStateBadgeKind } from "./activityBadge";
 import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { AuthController } from "../controllers/authController";
-import { MachineController } from "../controllers/machineController";
+import { MachineController, remoteReportedDown } from "../controllers/machineController";
 import { MachineStatusController } from "../controllers/machineStatusController";
 import { ProjectController } from "../controllers/projectController";
 import { PiWebStatusController } from "../controllers/piWebStatusController";
@@ -101,8 +101,9 @@ import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } fr
 import { readPinnedProjectIds, togglePinnedProjectId, writePinnedProjectIds } from "../projectPins";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
-import { errorBanner, normalizeTransientError, reconnectingRow, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
-import { rowDecision } from "../sync/connectionSummary";
+import { errorBanner, normalizeTransientError, unansweredRow, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
+import { rowDecision, type ShownUnanswered } from "../sync/connectionSummary";
+import { earliestUnanswered } from "../sync/scopedResource";
 import { QUIET_WINDOW_MS, retryDelayMs } from "../sync/readPhase";
 import { interruptedRunsReadPlan } from "../interruptedRunsRead";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
@@ -418,7 +419,7 @@ export class PiWebApp extends LitElement {
   private workspaceDeletionPollTimer: number | undefined;
   private subagentRefreshArmedFor: string | undefined;
   private livenessTimer: number | undefined;
-  private reconnectingShownAt: number | undefined;
+  private unansweredShown: ShownUnanswered | undefined;
   private workspaceChangedWhileHidden: WorkspaceScope | undefined;
   private reconnectingRecheck: number | undefined;
   private lastInteractionLivenessAt = 0;
@@ -1638,8 +1639,9 @@ export class PiWebApp extends LitElement {
     // machine wording would promise a reconnect this ladder never performs.
     if ((route.machineId ?? "local") === "local") return;
     const machineId = route.machineId ?? "local";
-    const machineName = this.state.machines.find((machine) => machine.id === machineId)?.name ?? this.state.selectedMachine?.name ?? "Remote machine";
     const health = this.state.machineStatuses[machineId];
+    if (!remoteReportedDown(health)) return;
+    const machineName = this.state.machines.find((machine) => machine.id === machineId)?.name ?? this.state.selectedMachine?.name ?? "Remote machine";
     // The detail is what the health read reported - never this banner's own
     // previous text, which the retry ladder would otherwise paste into itself
     // once per attempt.
@@ -4166,20 +4168,20 @@ export class PiWebApp extends LitElement {
    */
   private renderAppRow(error: string, retiredBy: RetiredBy) {
     const notice = this.renderErrorBanner(error, retiredBy);
-    const row = this.renderReconnectingRow(notice !== null);
+    const row = this.renderUnansweredRow(notice !== null);
     return notice ?? row;
   }
 
-  private renderReconnectingRow(noticeShown: boolean) {
-    const decision = rowDecision({ notice: noticeShown, unansweredSince: earliest(this.projects.unansweredSince(), this.machines.unansweredSince()), reconnectingShownAt: this.reconnectingShownAt, now: Date.now() });
+  private renderUnansweredRow(noticeShown: boolean) {
+    const decision = rowDecision({ notice: noticeShown, unanswered: earliestUnanswered(this.projects.unanswered(), this.machines.unanswered()), shown: this.unansweredShown, now: Date.now() });
     if (this.reconnectingRecheck !== undefined) window.clearTimeout(this.reconnectingRecheck);
     this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : window.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
-    if (decision.claim !== "reconnecting") {
-      this.reconnectingShownAt = undefined;
+    if (decision.claim.kind !== "unanswered") {
+      this.unansweredShown = undefined;
       return null;
     }
-    this.reconnectingShownAt ??= Date.now();
-    return reconnectingRow();
+    this.unansweredShown = { at: this.unansweredShown?.at ?? Date.now(), miss: decision.claim.miss };
+    return unansweredRow(decision.claim.miss, (machineId) => this.state.machines.find((machine) => machine.id === machineId)?.name ?? machineId);
   }
 
   private renderErrorBanner(error: string, retiredBy: RetiredBy) {
@@ -4506,13 +4508,6 @@ function selectedChatIdentity(state: Pick<AppState, "selectedMachine" | "selecte
 
 function machineUnreadInputsChanged(previous: AppState, next: AppState): boolean {
   return previous.machines !== next.machines;
-}
-
-/** The earlier of two times something went unanswered, or undefined when neither did. */
-function earliest(first: number | undefined, second: number | undefined): number | undefined {
-  if (first === undefined) return second;
-  if (second === undefined) return first;
-  return Math.min(first, second);
 }
 
 /** The selection the workspace listings follow moved: machine, project or workspace, by any writer. */

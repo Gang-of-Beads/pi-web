@@ -1,4 +1,4 @@
-import { classifyReadError, NO_FACT, retryDelayMs, type ReadFact, type ReadPhase } from "./readPhase";
+import { classifyReadError, NO_FACT, retryDelayMs, type ReadFact, type ReadMiss, type ReadPhase } from "./readPhase";
 
 /**
  * One shown value per key, kept current by reads that never give up (object
@@ -37,6 +37,19 @@ export interface ScopedResourceSpec<K, V> {
   clock?: ResourceClock;
 }
 
+/** Since when a watched key has gone without an answer, and why the latest try got none. */
+export interface Unanswered {
+  readonly since: number;
+  readonly miss: ReadMiss;
+}
+
+/** The one that has gone unanswered longer, or whichever exists; the first wins a tie. */
+export function earliestUnanswered(first: Unanswered | undefined, second: Unanswered | undefined): Unanswered | undefined {
+  if (first === undefined) return second;
+  if (second === undefined) return first;
+  return second.since < first.since ? second : first;
+}
+
 export interface ResourceEntryView<V> {
   readonly phase: ReadPhase;
   readonly fact: ReadFact;
@@ -56,6 +69,7 @@ interface Entry<K, V> {
   dirty: boolean;
   attempt: number;
   firstMissAt: number | undefined;
+  miss: ReadMiss | undefined;
   consumers: number;
   timer: (() => void) | undefined;
   settled: (() => void)[];
@@ -157,13 +171,13 @@ export class ScopedResource<K, V> {
     this.notify();
   }
 
-  /** The earliest time any of these watched keys went without an answer, while none has come. */
-  unansweredSince(keys: readonly K[]): number | undefined {
-    let earliest: number | undefined;
+  /** The watched key among these that has gone longest without an answer, with why its latest try got none. */
+  unanswered(keys: readonly K[]): Unanswered | undefined {
+    let earliest: Unanswered | undefined;
     for (const key of keys) {
       const entry = this.entries.get(this.spec.keyId(key));
-      if (entry === undefined || entry.consumers === 0 || entry.firstMissAt === undefined) continue;
-      earliest = earliest === undefined ? entry.firstMissAt : Math.min(earliest, entry.firstMissAt);
+      if (entry === undefined || entry.consumers === 0 || entry.firstMissAt === undefined || entry.miss === undefined) continue;
+      earliest = earliestUnanswered(earliest, { since: entry.firstMissAt, miss: entry.miss });
     }
     return earliest;
   }
@@ -201,7 +215,7 @@ export class ScopedResource<K, V> {
     const id = this.spec.keyId(key);
     const existing = this.entries.get(id);
     if (existing !== undefined) return existing;
-    const entry: Entry<K, V> = { key, phase: "syncing", fact: NO_FACT, known: false, data: undefined, inFlight: false, dirty: false, attempt: 0, firstMissAt: undefined, consumers: 0, timer: undefined, settled: [] };
+    const entry: Entry<K, V> = { key, phase: "syncing", fact: NO_FACT, known: false, data: undefined, inFlight: false, dirty: false, attempt: 0, firstMissAt: undefined, miss: undefined, consumers: 0, timer: undefined, settled: [] };
     this.entries.set(id, entry);
     return entry;
   }
@@ -226,22 +240,25 @@ export class ScopedResource<K, V> {
     entry.fact = NO_FACT;
     entry.attempt = 0;
     entry.firstMissAt = undefined;
+    entry.miss = undefined;
     this.finish(entry, settled);
   }
 
   private missed(entry: Entry<K, V>, error: unknown, settled: readonly (() => void)[]): void {
     entry.inFlight = false;
-    const answer = classifyReadError(error);
-    if (answer !== "no-answer") {
-      entry.fact = answer;
+    const outcome = classifyReadError(error);
+    if (outcome.kind === "fact") {
+      entry.fact = outcome.fact;
       entry.phase = "live";
       entry.attempt = 0;
       entry.firstMissAt = undefined;
+      entry.miss = undefined;
       this.finish(entry, settled);
       return;
     }
     entry.phase = "reconnecting";
     entry.fact = NO_FACT;
+    entry.miss = outcome.miss;
     entry.firstMissAt ??= this.clock.now();
     if (!entry.dirty) this.scheduleRetry(entry);
     this.finish(entry, settled);
