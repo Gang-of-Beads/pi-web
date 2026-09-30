@@ -276,7 +276,53 @@ stateDiagram-v2
 - **Efficiency and latency** (owner, 2026-09-30: "保证极致的消息效率，以及低延迟"). The budgets are measured by the phase probes, and a regression fails them:
   - **Latency:** a frame reaches the screen within one animation frame of its arrival. A catch-up after *T* costs one head read plus the missing entries, never a page reload.
   - **Efficiency:** heartbeats and head reads carry heads only, tens of bytes. Status frames carry what changed, not the whole status. Nothing polls on a timer while events are flowing.
-- **An aggregate list** (All projects) keeps one state per source. A workspace whose read failed shows as unknown with a retry; it never disappears into an empty list.
+- **An aggregate list** (All projects) keeps one state per source. A source that has not answered shows as reconnecting; it never disappears into an empty list.
+
+### A surface never gives up (B48)
+
+Owner, 2026-09-30, on "Couldn't read the projects on this machine." frozen on the phone board: "页面一直尝试动态更新，通过 event based 消息和静默 n 秒后主动心跳看是否有落后版本的消息 … 所以其实只有正在尝试重连/同步，同步中两个状态 … 前端展示要设计好给用户什么样的呈现".
+
+Measured: 8504 answered both projects reads at 15:21:46 and 15:21:47 with 200 in under 10 ms. The answer was lost on the phone's link, and the page stopped at `projectsLoad: "failed"` with nothing that would read again.
+
+**The rule.** A read that got no answer is not an outcome. A surface is in one of three states, and none of them is final:
+
+```mermaid
+stateDiagram-v2
+    [*] --> syncing
+    syncing --> live: an answer for this key
+    syncing --> reconnecting: no answer (network, timeout, 5xx, daemon restarting)
+    reconnecting --> syncing: the next try (backoff, socket reopens, tab visible, online, a head arrives, the reader taps)
+    live --> syncing: a head is ahead, T passes quietly, or the key changes
+    live --> live: an event applied in order
+```
+
+- **live**: the surface shows what it knows for its key and applies events as they come. Nothing extra is drawn.
+- **syncing**: a read for this key is in flight. Data already known for the same key stays on screen.
+- **reconnecting**: the last try got no answer. The surface keeps what it knows for the same key and tries again by itself. Tries back off 1, 2, 4, 8 s, capped at *T* (15 s), and any sign of life (the socket reopening, the tab becoming visible, the browser going online, a head on the keepalive) tries at once.
+- **An answer is never "failed".** A server that answered with a refusal has stated a fact, and the fact is shown as itself: 401 opens sign-in, 404 says the project or session is gone. Only "no answer" is reconnecting.
+- **Scope.** Retained data belongs to its key (machine + project + workspace + session). On a key change the old data is not shown, and the new key starts at syncing.
+
+**Every producer of a dead end today** (each becomes the three states; none keeps a "failed" of its own):
+
+| surface | today | where |
+|---|---|---|
+| projects on a machine | "Couldn't read the projects on this machine." / "Projects could not be loaded." | `projectController.ts:51`, `PiWebApp.ts:2701`, `:3158`, `ProjectList.ts:165` |
+| workspaces | `workspacesLoad: "failed"`, derived from the global `error` string | `PiWebApp.ts:3206`, `WorkspaceList.ts:201` |
+| machines | `machinesLoad: "failed"` | `machineController.ts:33`, `PiWebApp.ts:1254` |
+| sessions | `sessionsLoad` | `appState.ts:27` |
+| a session's transcript and status | the failure panel with `transcriptFailed` / `statusReadFailed` | `sessionController.ts:506`, `ChatView.ts:1831`, `PiWebApp.ts:4165` |
+| opening a session (D8) | "Couldn't open · retry" | `navigationIntent.ts` `OPENING_WORDS.failed` |
+| files | "Couldn't read this workspace's files: …" | `files/explorer.ts:89`, `filesPanelElement.ts:134` |
+| goals | "Goal records could not …" | `goals/pi-web-plugin.ts:79`, `goalsSectionElement.ts:90` |
+| background runs | "This machine could not read the background runs." | `PiWebApp.ts:920`, `backgroundTaskRows.ts:90` |
+| subagent runs | "This machine could not be asked for the runs." | `subagents/runsRead.ts:26` |
+| interrupted runs | "…the read failed. Reconnect to read it again." | `PiWebApp.ts:259` |
+| quick switcher | an empty meaning of kind `failed` | `QuickSwitcher.ts:244` |
+| the global banner | "Lost connection…", "A request timed out…", "Connection problem…" | `errorBanner.ts:95-125` |
+
+Plugins read through the host, so the rule reaches them as one host facility: a read the host runs for a panel reports syncing and reconnecting, and retries on the same schedule. A plugin never writes its own retry loop.
+
+**What the reader sees** is the owner's decision; the proposal is recorded here and the questions are open (ask of 2026-09-30).
 
 ## D6. A plugin
 
@@ -465,6 +511,8 @@ Every owner report, the domain it breaks, and its producers (file:line in the in
 | B45 | desktop first boot says "Select a project" beside a populated list | D8 | the empty centre says what to do next | `workspacePanelEmptyState` | navigation |
 | B46 | the board's grid key is a no-op | D8 | a key does something or is absent | `aria-pressed` with no effect | navigation |
 | B47 | `machineSections` is never rendered | D6 | render it or remove it | no caller of `getMachineSections` | plugin-lifecycle |
+| B48 | a read that got no answer freezes a surface at "Couldn't read…" | D5 | a surface is live, syncing or reconnecting, never failed; it retries by itself | `projectsLoad: "failed"` and twelve siblings (D5 table) | sync |
+| B49 | a pinned session in a closed project vanishes from PINNED, and a link to it lands on the board | D8 | owner decision pending (ask of 2026-09-30); pins name sessions, and every session opens by id | PINNED is built from the open projects lists; the pin stays in `session-pins.json` | live-surfaces |
 | Fixed | Enter picking an IME word sent the message | composer | the IME owns its key | fixed in `3c449543` | done |
 | Fixed | the row menu did not fold on a second tap; no Archive or Delete | menus | one transition per tap | fixed in `a97f6c60` | done |
 
