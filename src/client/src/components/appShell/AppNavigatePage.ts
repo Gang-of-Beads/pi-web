@@ -73,6 +73,8 @@ export class AppNavigatePage extends LitElement {
   /** What the row menu does; the page names the action, the host performs it. */
   @property({ attribute: false }) onRowAction?: (kind: NavigateRowKind, id: string, action: NavigateRowActionId) => void;
   @property({ attribute: false }) canRenameSession = false;
+  /** Whether the host can archive, restore and delete sessions of the machine this page lists. */
+  @property({ attribute: false }) canArchiveSessions = false;
   @property({ attribute: false }) canCloseProject = false;
   /** Project ids the reader pinned; the host owns the store. */
   @property({ attribute: false }) pinnedProjectIds: ReadonlySet<string> = new Set();
@@ -107,6 +109,8 @@ export class AppNavigatePage extends LitElement {
   @state() private kind: NavigateKind = "sessions";
   /** The project the reader stepped into on this page, if any. */
   @state() private pathProjectId: string | undefined = undefined;
+  /** Owner, 2026-09-30: archived sessions sit in a group at the bottom, collapsed until asked for. */
+  @state() private archivedOpen = false;
   @state() private openMenuRowId: string | undefined = undefined;
   @state() private menuStyle = "";
 
@@ -233,7 +237,7 @@ export class AppNavigatePage extends LitElement {
         <div class="body">
           ${showsSessions
             ? html`
-                ${this.orderedSections(model.sections).map((section) => html`
+                ${this.orderedSections(model.sections).map((section) => section.id === "archived" ? this.renderArchivedSection(section) : html`
                   <h3 class="section-title">${section.title}</h3>
                   ${section.rows.map((row) => this.renderSession(row))}
                 `)}
@@ -342,7 +346,7 @@ export class AppNavigatePage extends LitElement {
     id: string,
     label: string,
     row: unknown,
-    facts: { pinned?: boolean; hasPath?: boolean; closable?: boolean },
+    facts: { pinned?: boolean; hasPath?: boolean; closable?: boolean; archived?: boolean; archivable?: boolean },
   ) {
     const actions = navigateRowActions(kind, {
       ...facts,
@@ -366,7 +370,7 @@ export class AppNavigatePage extends LitElement {
         ${open ? html`
           <div
             class="menu-scrim"
-            @pointerdown=${(event: PointerEvent) => { event.preventDefault(); this.openMenuRowId = undefined; }}
+            @click=${() => { this.openMenuRowId = undefined; }}
           ></div>
           <div class="action-menu-panel" role="menu" aria-label=${`Actions for ${label}`} style=${this.menuStyle}>
             <p class="action-menu-subject">${label}</p>
@@ -393,7 +397,18 @@ export class AppNavigatePage extends LitElement {
         <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${renderNavigateStateMark(row.state)}</span>
         ${row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
       </button>
-    `, { pinned: row.pinned });
+    `, { pinned: row.pinned, archived: row.session.archived === true, archivable: this.canArchiveSessions && row.session.persisted !== false });
+  }
+
+  /**
+   * The Archived group: one key that says how many there are and opens the rows. Collapsed
+   * by default, because the list is scanned for what the reader works in.
+   */
+  private renderArchivedSection(section: NavigateSection) {
+    return html`
+      <button type="button" class="archived-toggle section-title" aria-expanded=${this.archivedOpen ? "true" : "false"} @click=${() => { this.archivedOpen = !this.archivedOpen; }}>Archived (${String(section.rows.length)})</button>
+      ${this.archivedOpen ? section.rows.map((row) => this.renderSession(row)) : nothing}
+    `;
   }
 
 
@@ -484,6 +499,9 @@ export class AppNavigatePage extends LitElement {
     .section-title, .empty { grid-column: 1 / -1; }
     .row-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .section-title { margin: var(--pi-space-4) 0 var(--pi-space-1); color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
+    .archived-toggle { justify-self: start; box-sizing: border-box; min-height: var(--pi-control-height); padding: 0 var(--pi-space-2); border: 1px solid transparent; border-radius: var(--pi-radius-md); background: transparent; cursor: pointer; text-align: start; }
+    .archived-toggle:focus-visible { border-color: var(--pi-accent); }
+    @media (pointer: coarse) { .archived-toggle { min-height: var(--pi-control-height-touch, 44px); } }
     .row { box-sizing: border-box; display: grid; gap: var(--pi-space-2); width: 100%; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); padding: var(--pi-space-4) calc(var(--tile-menu-size) + var(--pi-space-2)) var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
     .row.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row-title { min-width: 0; overflow: hidden; }

@@ -33,6 +33,28 @@ const base: NavigateInput = {
 
 const sectionIds = (input: NavigateInput) => navigateModel(input).sections.map((section) => section.id);
 
+describe("archived sessions (owner, 2026-09-30: a collapsed Archived group at the bottom)", () => {
+  const archived = { ...session("z", "/repos/pi-web", "old spike"), archived: true, archivedAt: "2026-09-02T00:00:00.000Z" };
+  const withArchived: NavigateInput = { ...base, sessions: [...base.sessions, archived] };
+
+  it("lists them in their own section after the sessions, never under Recent", () => {
+    const model = navigateModel(withArchived);
+    const ids = model.sections.map((section) => section.id);
+    expect(ids.indexOf("archived")).toBe(ids.indexOf("recent") + 1);
+    expect(model.sections.find((section) => section.id === "recent")?.rows.map((entry) => entry.session.id)).not.toContain("z");
+    expect(model.sections.find((section) => section.id === "archived")?.rows.map((entry) => entry.session.id)).toEqual(["z"]);
+  });
+
+  it("narrows them with the path and the search like any other session", () => {
+    expect(sectionIds({ ...withArchived, query: "login" })).not.toContain("archived");
+    expect(sectionIds({ ...withArchived, scope: { ...base.scope, projectId: "p2" } })).not.toContain("archived");
+  });
+
+  it("has no section when nothing is archived", () => {
+    expect(sectionIds(base)).not.toContain("archived");
+  });
+});
+
 describe("navigateModel", () => {
   it("offers projects and every session while the path is empty", () => {
     const model = navigateModel(base);

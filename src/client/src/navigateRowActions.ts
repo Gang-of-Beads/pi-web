@@ -9,7 +9,7 @@
 
 export type NavigateRowKind = "session" | "project" | "machine";
 
-export type NavigateRowActionId = "open" | "pin" | "unpin" | "rename" | "copy-path" | "close-project";
+export type NavigateRowActionId = "open" | "pin" | "unpin" | "rename" | "archive" | "restore" | "delete-archived" | "copy-path" | "close-project";
 
 export interface NavigateRowAction {
   id: NavigateRowActionId;
@@ -19,6 +19,9 @@ export interface NavigateRowAction {
 export interface NavigateRowFacts {
   pinned?: boolean;
   renamable?: boolean;
+  /** The host can change this session's archive state: persisted, and on the machine it acts on. */
+  archivable?: boolean;
+  archived?: boolean;
   closable?: boolean;
   hasPath?: boolean;
 }
@@ -31,9 +34,14 @@ const OPEN: Record<NavigateRowKind, string> = {
 
 export function navigateRowActions(kind: NavigateRowKind, facts: NavigateRowFacts = {}): NavigateRowAction[] {
   const actions: NavigateRowAction[] = [{ id: "open", label: OPEN[kind] }];
+  if (kind === "session" && facts.archived === true) {
+    if (facts.archivable === true) actions.push({ id: "restore", label: "Restore" }, { id: "delete-archived", label: "Delete permanently" });
+    return actions;
+  }
   if (kind === "session") {
     actions.push(facts.pinned === true ? { id: "unpin", label: "Unpin" } : { id: "pin", label: "Pin to top" });
     if (facts.renamable === true) actions.push({ id: "rename", label: "Rename" });
+    if (facts.archivable === true) actions.push({ id: "archive", label: "Archive" });
   }
   if (kind === "project") {
     actions.push(facts.pinned === true ? { id: "unpin", label: "Unpin" } : { id: "pin", label: "Pin to top" });

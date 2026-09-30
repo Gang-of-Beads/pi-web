@@ -87,6 +87,7 @@ import "./appShell/AppContextBar";
 import "./appShell/AppNavigatePage";
 import type { AppNavigatePage, NavigateKind } from "./appShell/AppNavigatePage";
 import type { NavigateRowActionId, NavigateRowKind } from "../navigateRowActions";
+import { sessionLabel } from "../sessionLabels";
 import { writeClipboardText } from "../clipboard";
 import type { NavigateInput, NavigateLevel } from "../navigateModel";
 import type { ShellToolTab } from "../appShell/shellToolTabs";
@@ -2673,6 +2674,7 @@ export class PiWebApp extends LitElement {
       .loadingChoices=${this.state.projectsLoad === "loading" || this.state.isLoadingWorkspaces}
       .loadError=${this.state.projectsLoad === "failed" ? "Couldn't read the projects on this machine." : undefined}
       .canRenameSession=${true}
+      .canArchiveSessions=${!this.quickSwitcherBrowsingElsewhere()}
       .canCloseProject=${true}
       .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => { void this.runNavigateRowAction(kind, id, action); }}
     ></app-navigate-page>`;
@@ -2716,6 +2718,11 @@ export class PiWebApp extends LitElement {
       if (session !== undefined) this.renameFromBar = session;
       return;
     }
+    if (action === "archive" || action === "restore" || action === "delete-archived") {
+      const session = this.listedSession(id);
+      if (session !== undefined) await this.changeArchiveState(action, session);
+      return;
+    }
     const project = this.state.projects.find((entry) => entry.id === id);
     if (project === undefined) return;
     if (action === "copy-path") {
@@ -2723,6 +2730,20 @@ export class PiWebApp extends LitElement {
       return;
     }
     await this.projects.closeProject(project.id);
+  }
+
+  /**
+   * Archive, restore or delete for good, then re-read the machine-wide list the page draws.
+   * The controller updates the selected project's list; without the re-read an archived row
+   * stayed under Recent until something else refreshed the page. Deleting asks first: it
+   * removes the transcript file (owner, 2026-09-30: archive first, then delete).
+   */
+  private async changeArchiveState(action: "archive" | "restore" | "delete-archived", session: SessionInfo): Promise<void> {
+    if (action === "delete-archived" && !confirm(`Permanently delete archived session “${sessionLabel(session)}”? This cannot be undone.`)) return;
+    if (action === "archive") await this.sessions.archiveSessions([session]);
+    else if (action === "restore") await this.sessions.restoreSession(session);
+    else await this.sessions.deleteArchivedSessions([session]);
+    await this.loadQuickSwitcherData(true);
   }
 
   private async navigateChoose(level: NavigateLevel, id: string): Promise<void> {

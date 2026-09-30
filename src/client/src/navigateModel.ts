@@ -61,7 +61,7 @@ export interface NavigateSessionRow {
 }
 
 export interface NavigateSection {
-  id: "pinned" | "waiting" | "running" | "recent" | "choices";
+  id: "pinned" | "waiting" | "running" | "recent" | "archived" | "choices";
   title: string;
   rows: NavigateSessionRow[];
   choices: NavigateChoice[];
@@ -101,6 +101,10 @@ export function navigateModel(input: NavigateInput): NavigateModel {
   const rows = scoped
     .filter((session) => session.archived !== true)
     .map((session) => row(session, input.scope.machineId, input));
+  const archivedRows = scoped
+    .filter((session) => session.archived === true)
+    .map((session) => row(session, input.scope.machineId, input))
+    .filter((entry) => matches(entry, input.query));
   const matching = rows.filter((entry) => matches(entry, input.query));
 
   const sections: NavigateSection[] = [];
@@ -120,6 +124,11 @@ export function navigateModel(input: NavigateInput): NavigateModel {
 
   const rest = unpinned.filter((entry) => !waiting.includes(entry) && !running.includes(entry));
   if (rest.length > 0) sections.push({ id: "recent", title: "Recent", rows: rest, choices: [] });
+
+  // Owner, 2026-09-30: archived sessions live in a collapsed group at the bottom, where
+  // they can be restored or deleted for good. They are not counted as matches: the empty
+  // state speaks about the sessions a reader works in.
+  if (archivedRows.length > 0) sections.push({ id: "archived", title: "Archived", rows: archivedRows, choices: [] });
 
   // Every level's choices, not just the next one: the page lists one kind at a
   // time, and asking for Machines while standing in a project used to answer

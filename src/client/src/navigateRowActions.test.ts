@@ -25,6 +25,17 @@ describe("navigateRowActions", () => {
     expect(ids("project", { hasPath: true, closable: true })).toEqual(["open", "pin", "copy-path", "close-project"]);
   });
 
+  it("offers Archive on a session that can be archived (owner, 2026-09-30)", () => {
+    expect(ids("session", { archivable: true })).toContain("archive");
+    expect(ids("session", { archivable: false })).not.toContain("archive");
+  });
+
+  it("offers an archived session Restore and Delete permanently, and nothing that edits it", () => {
+    expect(ids("session", { archived: true, pinned: false, renamable: true, archivable: true })).toEqual(["open", "restore", "delete-archived"]);
+    expect(navigateRowActions("session", { archived: true, archivable: true }).find((action) => action.id === "delete-archived")?.label).toBe("Delete permanently");
+    expect(ids("session", { archived: true, archivable: false })).toEqual(["open"]);
+  });
+
   it("names the machine action for what it does", () => {
     expect(navigateRowActions("machine")[0]?.label).toBe("Switch to this machine");
   });

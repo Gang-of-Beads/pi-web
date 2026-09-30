@@ -165,6 +165,51 @@ describe("app-navigate-page", () => {
     expect(picked[0] ?? "").toMatch(/^project:.*:close-project$/u);
   });
 
+  it("closes the row menu on a second tap of its key, instead of closing and reopening it", async () => {
+    const page = await mount();
+    const toggle = page.renderRoot.querySelector<HTMLButtonElement>(".action-menu-toggle");
+    press(toggle);
+    await page.updateComplete;
+    const scrim = page.renderRoot.querySelector<HTMLElement>(".menu-scrim");
+    if (scrim === null) throw new Error("the open menu has no scrim");
+    scrim.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, composed: true }));
+    await page.updateComplete;
+    expect(page.renderRoot.querySelector(".action-menu-panel")).not.toBeNull();
+    scrim.click();
+    await page.updateComplete;
+    expect(page.renderRoot.querySelector(".action-menu-panel")).toBeNull();
+  });
+
+  it("keeps archived sessions in a collapsed group at the bottom that opens on a tap", async () => {
+    const old = { ...session("z", "/repos/pi-web", "old spike"), archived: true };
+    const page = await mount({}, input({ sessions: [session("a", "/repos/pi-web", "fix login"), old] }));
+    const group = page.renderRoot.querySelector<HTMLButtonElement>(".archived-toggle");
+    expect(group?.textContent.trim()).toBe("Archived (1)");
+    expect(group?.getAttribute("aria-expanded")).toBe("false");
+    expect(texts(page, ".row.session .row-name")).toEqual(["fix login"]);
+    press(group);
+    await page.updateComplete;
+    expect(texts(page, ".row.session .row-name")).toEqual(["fix login", "old spike"]);
+  });
+
+  it("offers Archive on a live session and Restore / Delete permanently on an archived one", async () => {
+    const old = { ...session("z", "/repos/pi-web", "old spike"), archived: true };
+    const page = await mount({ canArchiveSessions: true }, input({ sessions: [session("a", "/repos/pi-web", "fix login"), old] }));
+    press(page.renderRoot.querySelector<HTMLButtonElement>(".archived-toggle"));
+    await page.updateComplete;
+    const menuOf = async (name: string) => {
+      const wrap = [...page.renderRoot.querySelectorAll<HTMLElement>(".row-wrap")].find((row) => row.textContent.includes(name));
+      press(wrap?.querySelector<HTMLButtonElement>(".action-menu-toggle"));
+      await page.updateComplete;
+      const items = texts(page, '[role="menuitem"]');
+      press(page.renderRoot.querySelector<HTMLElement>(".menu-scrim"));
+      await page.updateComplete;
+      return items;
+    };
+    expect(await menuOf("fix login")).toContain("Archive");
+    expect(await menuOf("old spike")).toEqual(["Open", "Restore", "Delete permanently"]);
+  });
+
   it("says it is reading rather than claiming the scope is empty", async () => {
     const page = await mount({ loadingSessions: true }, { ...input(), sessions: [] });
     expect(page.renderRoot.textContent).toContain("Loading sessions…");
