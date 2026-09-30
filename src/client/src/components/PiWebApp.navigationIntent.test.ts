@@ -233,16 +233,20 @@ describe("a boot restore deferred while a remote machine is unreachable", () => 
     const app = createApp("?machine=remote-b");
     call(app, "setState", { machines: [local, remote], selectedMachine: local, mainView: "chat" });
     const listed = deferred();
-    replace(member(app, "machines"), "loadMachines", async () => { await listed.promise; call(app, "setState", { machinesLoad: "failed" }); });
-    replace(app, "scheduleMachineLoadRestore", () => undefined);
+    let wantedAfterTap: boolean | undefined;
+    replace(member(app, "machines"), "loadMachines", () => { call(app, "setState", { machinesLoad: "loading" }); return Promise.resolve(); });
+    replace(member(app, "machines"), "rosterAnswered", async (wanted: () => boolean) => { await listed.promise; wantedAfterTap = wanted(); return wantedAfterTap; });
+    let restored = 0;
+    replace(app, "restoreBootRoute", () => { restored += 1; return Promise.resolve(); });
 
     const booting = call(app, "loadProjectsAndRestoreRoute");
+    await Promise.resolve();
     call(app, "selectMainView", "chat");
     listed.resolve();
     await booting;
 
-    const deferredIntent: unknown = Reflect.get(app, "pendingRestoreIntent");
-    expect(call(member(app, "navigation"), "isCurrent", deferredIntent)).toBe(false);
+    expect(wantedAfterTap).toBe(false);
+    expect(restored).toBe(0);
   });
 });
 

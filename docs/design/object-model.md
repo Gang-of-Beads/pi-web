@@ -56,13 +56,17 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 
 - **Key**: `machineId`; the roster is global.
 - **Props**: `Machine {id,name,kind,createdAt,updatedAt}`, `MachineHealth {ok,status,error?}`, `MachineRuntime {ok,checkedAt}` [S §2.9]; client `machines`, `selectedMachine`, `machineStatuses`, `machineRuntimes` [C row 1–2].
-- **States**: roster `ReadPhase`. Today it is `machinesLoad: unloaded|loading|loaded|failed`, with a sticky `failed` (`machineController.ts:29-33` [C row 1]) and a redundant `isLoadingMachines` (`appState.ts:11`). Health per machine is `reachable | unreachable | unknown` (**new** as an enum).
+- **States**: roster `ReadPhase`. Before P1 slice 3 it was `machinesLoad: unloaded|loading|loaded|failed`, with a sticky `failed` and a redundant `isLoadingMachines`; now `machinesLoad` is `unloaded|loading|loaded`, derived from the roster entry, and `isLoadingMachines` is gone. Health per machine is `reachable | unreachable | unknown` (**new** as an enum).
 - **Owner**: client `controllers/machineController.ts`; server web process, with the registry contributed by the machines plugin (`serverPluginRuntime.machineRegistry()`, `shared/plugins/serverPluginRuntime.ts:186` [S §2.9]).
 - **Head**: **new** `machines` head source. The web writer nudges the daemon through `shared/sessiondClient` (§2.5, P5).
 - **Events**: none today. **New**: `machines.changed` on the global scope, published by the daemon hub after a web nudge.
 - **Read**: `GET /api/machines`, `/api/machines/:id/health|runtime`; part of the batched boot read (P4).
 - **Cache**: memory only.
-- **Retention**: kept on no answer; the phase goes to `reconnecting`.
+- **Retention**: kept on no answer; the phase goes to `reconnecting`. **Shipped (P1 slice 3)**:
+  - `MachineController` reads the roster through a `ScopedResource` with one key. Its mirror is the one writer of the roster into the state. An answer selects the machine the reader asked for only while they still want it (a deep link while it is the current intent), and otherwise keeps the machine they are on, decided again after a remote health read that may have taken seconds. Machines this client adds or removes change the known roster at once and read it again, so an answer read before the change cannot undo it.
+  - A lost read is never an error and never `failed`; `machinesLoad` is `unloaded | loading | loaded`, and `isLoadingMachines` is gone. The roster counts for the app row, because the web process in use serves it.
+  - A remote deep link waits for the roster while it is still the reader's intent (`rosterAnswered`) instead of a five-try ladder.
+  - The remote route ladder never exhausts while the route is current. It uses the shared backoff (1, 2, 4, 8 s, capped at 15 s), and "still unavailable" is gone. Its notice is raised again only when its words change, so a dismissed one stays dismissed.
 - **Presentation**: the app row only, with cause `machine-unanswering(machineId)` for a remote machine.
 
 ### 1.2 Machine status projection (carries projects and workspaces)
@@ -336,7 +340,7 @@ interface ScopedResource<K, V, E> {
 
 **Absorbs**: `transcriptLoadingOwnership.ts`; `controllers/trailingRefreshCoordinator.ts` (becomes one flight + a dirty flag; stop awaiting every trailing rerun, `:59-72`); read state in `projectController.ts`, `machineController.ts`, `workspaceController.ts`, `sessionController.ts:1114-1127,506-518`, `statusReadFailed`, `:1195-1197`, background tasks (`PiWebApp.ts:754-761,921`), quick switcher (`:2866-2933`), route-restore ladder (`:261,1669-1677`), goals, subagents `runsRead.ts`, `files/explorer.ts:89`, SettingsDialog ×5, fleet.
 
-**Deleted**: `ProjectsLoadState`, `MachinesLoadState`, `SessionsLoadState`, `isLoadingWorkspaces`, `isLoadingMachines`, `transcriptFailed`, `statusReadFailed`, `BackgroundTasksRead`, the goals `read` enum, `OPENING_WORDS.failed`, the ladder constants.
+**Deleted** (in the end; P1 keeps the load unions without `failed` while their readers move to the resource): `ProjectsLoadState`, `MachinesLoadState`, `SessionsLoadState`, `isLoadingWorkspaces`, `isLoadingMachines` (gone in P1 slice 3), `transcriptFailed`, `statusReadFailed`, `BackgroundTasksRead`, the goals `read` enum, `OPENING_WORDS.failed`, the ladder constants.
 
 ### 2.2 Client: `HubRouter` (a static handler table)
 

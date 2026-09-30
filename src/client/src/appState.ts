@@ -8,8 +8,7 @@ import type { QualifiedContributionId } from "./plugins/ids";
 export interface AppState {
   machines: Machine[];
   selectedMachine: Machine | undefined;
-  isLoadingMachines: boolean;
-  /** Four-state load discipline threaded from the machines roster; see MachineController.loadMachines. */
+  /** Whether the machines roster has answered; see MachineController.loadMachines. */
   machinesLoad: MachinesLoadState;
   machineStatuses: Record<string, MachineHealth>;
   machineRuntimes: Record<string, MachineRuntime>;
@@ -173,8 +172,13 @@ export type SessionsLoadState = "unloaded" | "loading" | "loaded";
 
 export type ProjectsLoadState = "unloaded" | "loading" | "loaded" | "failed";
 
-/** Four-state load discipline for the machines roster; mirrors ProjectsLoadState. */
-export type MachinesLoadState = "unloaded" | "loading" | "loaded" | "failed";
+/**
+ * Whether the machines roster has answered. There is no "failed": a roster
+ * read without an answer stays "loading" while it is read again by itself
+ * (B48). A refusal the web process stated also leaves it "loading", with the
+ * refusal shown as a notice; the roster is not read again until asked.
+ */
+export type MachinesLoadState = "unloaded" | "loading" | "loaded";
 
 export type WorkspaceScopedStateReset = Pick<AppState,
   | "sessions"
@@ -231,7 +235,6 @@ export function initialAppState(): AppState {
     selfUpdate: undefined,
     selfUpdateApplying: false,
     selectedMachine: undefined,
-    isLoadingMachines: false,
     machinesLoad: "unloaded",
     machineStatuses: {},
     machineRuntimes: {},

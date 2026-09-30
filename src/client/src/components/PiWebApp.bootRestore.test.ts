@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PiWebApp, REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS } from "./PiWebApp";
+import { PiWebApp } from "./PiWebApp";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -54,140 +54,182 @@ describe("PiWebApp boot route restore with a failed projects listing", () => {
  * Caught live alongside the projects-listing failure above: the machines
  * roster failed on boot while the URL carried a remote machine's deep link.
  * The boot rewrote the route to the local machine, flattening the machine,
- * project and session out of the address bar. A failed roster is a reason to
- * retry the boot, not to flatten the link.
+ * project and session out of the address bar. A roster without an answer is a
+ * reason to wait for it, not to flatten the link - and, since B48, not a
+ * reason to give up after five tries either: the boot waits for the roster
+ * for as long as the deep link is still what the reader wants.
  */
-describe("PiWebApp boot route restore with a failed machines roster", () => {
-  it("defers a non-local deep link for retry instead of rewriting the URL", async () => {
-    const app = createApp();
-    stubWindowLocation("?machine=remote-1&project=93ebd97a&workspace=0fc561d6");
-    stubBackgroundRefreshes(app);
+describe("PiWebApp boot route restore while the machines roster has not answered", () => {
+  it("waits for the roster on a remote deep link, and leaves the URL alone meanwhile", async () => {
+    const boot = bootWithUnansweredRoster("?machine=remote-1&project=93ebd97a&workspace=0fc561d6");
 
-    let loadMachinesCalls = 0;
-    const machines: unknown = Reflect.get(app, "machines");
-    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "loadMachines", () => {
-      loadMachinesCalls += 1;
-      unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { machinesLoad: "failed" });
-      return Promise.resolve();
-    })) {
-      throw new Error("Could not replace machines.loadMachines");
-    }
+    const booting = boot.run();
+    await flushMicrotasks();
 
-    const restore = unknownFunction(Reflect.get(app, "loadProjectsAndRestoreRoute"), "PiWebApp.loadProjectsAndRestoreRoute");
-    await restore.call(app);
-
-    const pending: unknown = Reflect.get(app, "pendingMachineLoadRestore");
-    expect(pending).toBeDefined();
-    expect(loadMachinesCalls).toBe(1);
+    expect(boot.rosterWaits()).toBe(1);
+    expect(boot.restores()).toBe(0);
     expect(searchParams()).toContain("machine=remote-1");
+    expect(searchParams()).toContain("project=93ebd97a");
+    boot.answer(false);
+    await booting;
   });
 
-  it("retries the roster and re-enters the boot restore once it loads", async () => {
-    const app = createApp();
-    stubWindowLocation("?machine=remote-1&project=93ebd97a&workspace=0fc561d6");
-    stubBackgroundRefreshes(app);
+  it("restores the deep link once the roster answers", async () => {
+    const boot = bootWithUnansweredRoster("?machine=remote-1&project=93ebd97a&workspace=0fc561d6");
 
-    let loadMachinesCalls = 0;
-    const machines: unknown = Reflect.get(app, "machines");
-    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "loadMachines", () => {
-      loadMachinesCalls += 1;
-      const setState = unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState");
-      setState.call(app, loadMachinesCalls === 1
-        ? { machinesLoad: "failed" }
-        : { machinesLoad: "loaded", selectedMachine: { id: "remote-1", name: "remote-1", kind: "remote" } });
-      return Promise.resolve();
-    })) {
-      throw new Error("Could not replace machines.loadMachines");
-    }
-    const projects: unknown = Reflect.get(app, "projects");
-    if (typeof projects !== "object" || projects === null || !Reflect.set(projects, "loadProjects", () => {
-      unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { projectsLoad: "loaded" });
-      return Promise.resolve(undefined);
-    })) {
-      throw new Error("Could not replace projects.loadProjects");
-    }
-    if (!Reflect.set(app, "loadPluginsForSelectedMachine", () => Promise.resolve())) {
-      throw new Error("Could not replace plugin loading");
-    }
-    if (!Reflect.set(app, "withChatScrollTransition", (task: () => Promise<void>) => task())) {
-      throw new Error("Could not replace the chat scroll transition");
-    }
-    if (!Reflect.set(app, "restoreRouteFor", () => Promise.resolve())) {
-      throw new Error("Could not replace route restoration");
-    }
+    const booting = boot.run();
+    await flushMicrotasks();
+    boot.setState({ machinesLoad: "loaded", machines: [{ id: "remote-1", name: "remote-1", kind: "remote" }], selectedMachine: { id: "remote-1", name: "remote-1", kind: "remote" } });
+    boot.answer(true);
+    await booting;
 
-    const boot = unknownFunction(Reflect.get(app, "loadProjectsAndRestoreRoute"), "PiWebApp.loadProjectsAndRestoreRoute");
-    await boot.call(app);
-    expect(Reflect.get(app, "pendingMachineLoadRestore")).toBeDefined();
-
-    const retry = unknownFunction(Reflect.get(app, "retryMachineLoadRestore"), "PiWebApp.retryMachineLoadRestore");
-    await retry.call(app);
-
-    expect(loadMachinesCalls).toBe(2);
-    expect(Reflect.get(app, "pendingMachineLoadRestore")).toBeUndefined();
+    expect(boot.restores()).toBe(1);
     expect(searchParams()).toContain("machine=remote-1");
     expect(searchParams()).toContain("project=93ebd97a");
   });
 
-  it("exhausts the ladder with the URL and the failed panel untouched", async () => {
-    const app = createApp();
-    stubWindowLocation("?machine=remote-1");
-    stubBackgroundRefreshes(app);
+  it("restores nothing, and leaves the URL alone, when the reader moved on before the roster answered", async () => {
+    const boot = bootWithUnansweredRoster("?machine=remote-1&project=93ebd97a");
 
-    const machines: unknown = Reflect.get(app, "machines");
-    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "loadMachines", () => {
-      unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { machinesLoad: "failed" });
-      return Promise.resolve();
-    })) {
-      throw new Error("Could not replace machines.loadMachines");
-    }
+    const booting = boot.run();
+    await flushMicrotasks();
+    boot.answer(false);
+    await booting;
 
-    const boot = unknownFunction(Reflect.get(app, "loadProjectsAndRestoreRoute"), "PiWebApp.loadProjectsAndRestoreRoute");
-    await boot.call(app);
-    expect(Reflect.get(app, "pendingMachineLoadRestore")).toBeDefined();
-
-    const retry = unknownFunction(Reflect.get(app, "retryMachineLoadRestore"), "PiWebApp.retryMachineLoadRestore");
-    Reflect.set(app, "machineLoadRestoreAttempt", REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS.length - 1);
-    await retry.call(app);
-
-    expect(Reflect.get(app, "pendingMachineLoadRestore")).toBeUndefined();
+    expect(boot.restores()).toBe(0);
     expect(searchParams()).toContain("machine=remote-1");
   });
 
-  it("leaves a local-machine route alone when the roster fails", async () => {
-    const app = createApp();
-    stubWindowLocation("?project=93ebd97a");
-    stubBackgroundRefreshes(app);
-    const projects: unknown = Reflect.get(app, "projects");
-    if (typeof projects !== "object" || projects === null || !Reflect.set(projects, "loadProjects", () => {
-      unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { projectsLoad: "loaded" });
-      return Promise.resolve(undefined);
-    })) {
-      throw new Error("Could not replace projects.loadProjects");
-    }
-    if (!Reflect.set(app, "loadPluginsForSelectedMachine", () => Promise.resolve())) {
-      throw new Error("Could not replace plugin loading");
-    }
-    if (!Reflect.set(app, "withChatScrollTransition", (task: () => Promise<void>) => task())) {
-      throw new Error("Could not replace the chat scroll transition");
-    }
-    if (!Reflect.set(app, "restoreRouteFor", () => Promise.resolve())) {
-      throw new Error("Could not replace route restoration");
-    }
+  it("does not wait for the roster on a local route", async () => {
+    const boot = bootWithUnansweredRoster("?project=93ebd97a");
 
+    await boot.run();
+
+    expect(boot.rosterWaits()).toBe(0);
+    expect(boot.restores()).toBe(1);
+    expect(searchParams()).toContain("project=93ebd97a");
+  });
+});
+
+/** A boot whose roster read has not answered; the test says when, and whether, it does. */
+function bootWithUnansweredRoster(search: string) {
+  const app = createApp();
+  stubWindowLocation(search);
+  stubBackgroundRefreshes(app);
+  const setState = (patch: object) => { unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, patch); };
+  let rosterWaits = 0;
+  let restores = 0;
+  let answer: (answered: boolean) => void = () => undefined;
+  const machines: unknown = Reflect.get(app, "machines");
+  if (typeof machines !== "object" || machines === null) throw new Error("PiWebApp MachineController was unavailable");
+  if (!Reflect.set(machines, "loadMachines", () => {
+    setState({ machinesLoad: "loading" });
+    return Promise.resolve();
+  })) throw new Error("Could not replace machines.loadMachines");
+  if (!Reflect.set(machines, "rosterAnswered", () => {
+    rosterWaits += 1;
+    return new Promise<boolean>((resolve) => { answer = resolve; });
+  })) throw new Error("Could not replace machines.rosterAnswered");
+  const projects: unknown = Reflect.get(app, "projects");
+  if (typeof projects !== "object" || projects === null || !Reflect.set(projects, "loadProjects", () => {
+    setState({ projectsLoad: "loaded" });
+    return Promise.resolve(undefined);
+  })) throw new Error("Could not replace projects.loadProjects");
+  if (!Reflect.set(app, "loadPluginsForSelectedMachine", () => Promise.resolve())) throw new Error("Could not replace plugin loading");
+  if (!Reflect.set(app, "withChatScrollTransition", (task: () => Promise<void>) => task())) throw new Error("Could not replace the chat scroll transition");
+  if (!Reflect.set(app, "restoreRouteFor", () => {
+    restores += 1;
+    return Promise.resolve();
+  })) throw new Error("Could not replace route restoration");
+  const boot = unknownFunction(Reflect.get(app, "loadProjectsAndRestoreRoute"), "PiWebApp.loadProjectsAndRestoreRoute");
+  return {
+    run: async () => { await boot.call(app); },
+    answer: (answered: boolean) => { answer(answered); },
+    setState,
+    rosterWaits: () => rosterWaits,
+    restores: () => restores,
+  };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+}
+
+/**
+ * B48: a remote deep link used to stop after five tries with "is still
+ * unavailable." and drop the restore. It keeps trying, on the shared backoff
+ * capped at the quiet window, for as long as the route is current.
+ */
+describe("PiWebApp remote route restore while the machine does not answer", () => {
+  it("keeps scheduling past the old fifth try, capped at 15 s, and never says it gave up", async () => {
+    const app = createApp();
+    stubWindowLocation("?machine=remote-1&project=93ebd97a");
+    const remote = { id: "remote-1", name: "Remote one", kind: "remote" };
+    unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { machines: [remote], selectedMachine: remote });
+    const delays: number[] = [];
+    if (!Reflect.set(app, "schedulePendingRemoteRouteRestore", (delayMs?: number) => { delays.push(delayMs ?? -1); })) throw new Error("Could not replace the restore scheduler");
     const machines: unknown = Reflect.get(app, "machines");
-    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "loadMachines", () => {
-      unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { machinesLoad: "failed" });
-      return Promise.resolve();
-    })) {
+    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "refreshMachineHealth", () => Promise.resolve({ machineId: "remote-1", ok: false, checkedAt: "now", status: "offline" }))) {
+      throw new Error("Could not replace machines.refreshMachineHealth");
+    }
+    const route = { machineId: "remote-1", projectId: "93ebd97a" };
+    unknownFunction(Reflect.get(app, "deferRemoteRouteRestore"), "PiWebApp.deferRemoteRouteRestore").call(app, route, unknownFunction(Reflect.get(Reflect.get(app, "navigation"), "latest"), "navigation.latest").call(Reflect.get(app, "navigation")));
+    delays.length = 0;
+
+    const retry = unknownFunction(Reflect.get(app, "retryPendingRemoteRouteRestore"), "PiWebApp.retryPendingRemoteRouteRestore");
+    for (let attempt = 0; attempt < 8; attempt += 1) await retry.call(app);
+
+    expect(Reflect.get(app, "pendingRemoteRouteRestore")).toBeDefined();
+    expect(delays).toEqual([2000, 4000, 8000, 15000, 15000, 15000, 15000, 15000]);
+    const state: unknown = Reflect.get(app, "state");
+    const error: unknown = typeof state === "object" && state !== null ? Reflect.get(state, "error") : undefined;
+    expect(String(error)).not.toContain("still unavailable");
+    expect(String(error)).toContain("Remote one is unavailable; reconnecting");
+  });
+
+  /** Review 6088e664: a notice the ladder raises again on every try brought a dismissed banner back every 15 s, for as long as the reader stayed. */
+  it("does not raise the same notice again after the reader dismissed it", async () => {
+    const app = createApp();
+    stubWindowLocation("?machine=remote-1&project=93ebd97a");
+    const remote = { id: "remote-1", name: "Remote one", kind: "remote" };
+    const setState = unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState");
+    setState.call(app, { machines: [remote], selectedMachine: remote });
+    if (!Reflect.set(app, "schedulePendingRemoteRouteRestore", () => undefined)) throw new Error("Could not replace the restore scheduler");
+    const machines: unknown = Reflect.get(app, "machines");
+    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "refreshMachineHealth", () => Promise.resolve({ machineId: "remote-1", ok: false, checkedAt: "now", status: "offline", error: "timed out" }))) {
+      throw new Error("Could not replace machines.refreshMachineHealth");
+    }
+    const navigation: unknown = Reflect.get(app, "navigation");
+    if (typeof navigation !== "object" || navigation === null) throw new Error("PiWebApp navigation was unavailable");
+    unknownFunction(Reflect.get(app, "deferRemoteRouteRestore"), "PiWebApp.deferRemoteRouteRestore").call(app, { machineId: "remote-1", projectId: "93ebd97a" }, unknownFunction(Reflect.get(navigation, "latest"), "navigation.latest").call(navigation));
+    const retry = unknownFunction(Reflect.get(app, "retryPendingRemoteRouteRestore"), "PiWebApp.retryPendingRemoteRouteRestore");
+    await retry.call(app);
+    const errorNow = () => { const state: unknown = Reflect.get(app, "state"); return typeof state === "object" && state !== null ? String(Reflect.get(state, "error")) : ""; };
+    expect(errorNow()).toContain("Remote one is unavailable; reconnecting");
+
+    setState.call(app, { error: "", errorRetiredBy: undefined, errorMachineId: undefined });
+    await retry.call(app);
+    await retry.call(app);
+
+    expect(errorNow()).toBe("");
+  });
+});
+
+/** Review 6088e664: Retry on the banner re-read the roster and moved a reader on a remote machine to the local one. */
+describe("PiWebApp banner Retry", () => {
+  it("re-reads the roster for the machine the reader is on", async () => {
+    const app = createApp();
+    const remote = { id: "remote-1", name: "Remote one", kind: "remote" };
+    unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { machines: [remote], selectedMachine: remote });
+    const asked: unknown[] = [];
+    const machines: unknown = Reflect.get(app, "machines");
+    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "loadMachines", (machineId: unknown) => { asked.push(machineId); return Promise.resolve(); })) {
       throw new Error("Could not replace machines.loadMachines");
     }
 
-    const restore = unknownFunction(Reflect.get(app, "loadProjectsAndRestoreRoute"), "PiWebApp.loadProjectsAndRestoreRoute");
-    await restore.call(app);
+    await unknownFunction(Reflect.get(app, "retryAfterError"), "PiWebApp.retryAfterError").call(app);
 
-    expect(Reflect.get(app, "pendingMachineLoadRestore")).toBeUndefined();
-    expect(searchParams()).toContain("project=93ebd97a");
+    expect(asked).toEqual(["remote-1"]);
   });
 });
 

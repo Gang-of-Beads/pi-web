@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, type Machine, type MachineHealth } from "../api";
+import { api, HttpError, type Machine, type MachineHealth } from "../api";
 import { initialAppState, type AppState } from "../appState";
 import { machineStatusSnapshot } from "../machineStatus.testSupport";
 import { MachineController } from "./machineController";
@@ -279,6 +279,7 @@ describe("MachineController", () => {
 describe("MachineController load discipline", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it("moves machinesLoad through loading to loaded on a successful roster", async () => {
@@ -298,52 +299,187 @@ describe("MachineController load discipline", () => {
     expect(state.machines).toEqual([localMachine]);
   });
 
-  it("keeps the previous roster and answers failed when the listing rejects", async () => {
-    let state: AppState = {
-      ...initialAppState(),
-      machines: [localMachine, remoteMachine],
-      selectedMachine: localMachine,
-      machinesLoad: "loaded",
-    };
+  /**
+   * B48: a roster read that got no answer is not an outcome. It used to set
+   * machinesLoad "failed" and paint the banner; now the known roster stays,
+   * nothing is reported, and the read runs again by itself.
+   */
+  it("keeps the known roster through a lost read, reports nothing, and applies the answer its own retry gets", async () => {
+    vi.useFakeTimers();
+    let state: AppState = { ...initialAppState(), machines: [localMachine], selectedMachine: localMachine };
     const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
-
-    vi.spyOn(api, "machines").mockRejectedValue(new Error("listing refused"));
-
-    const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
-    await controller.loadMachines();
-
-    expect(state.machinesLoad).toBe("failed");
-    expect(state.machines).toEqual([localMachine, remoteMachine]);
-    expect(state.selectedMachine).toEqual(localMachine);
-    expect(state.error).toContain("listing refused");
-  });
-
-  it("returns to loaded when a retry succeeds after a failure", async () => {
-    let state: AppState = {
-      ...initialAppState(),
-      machines: [localMachine],
-      selectedMachine: localMachine,
-      machinesLoad: "failed",
-    };
-    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
-
-    const machinesMock = vi.spyOn(api, "machines");
-    let callCount = 0;
-    machinesMock.mockImplementation(() => {
-      callCount += 1;
-        return callCount === 1 ? Promise.reject(new Error("still refused")) : Promise.resolve([localMachine, remoteMachine]);
-    });
+    const machinesMock = vi.spyOn(api, "machines").mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue([localMachine, remoteMachine]);
     vi.spyOn(api, "health").mockResolvedValue({ machineId: "local", ok: true, checkedAt: "2026-05-26T00:00:01.000Z", status: "online" });
     vi.spyOn(api, "runtime").mockResolvedValue({ machineId: "local", ok: true, checkedAt: "2026-05-26T00:00:02.000Z" });
 
     const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
-    await controller.loadMachines();
-    expect(state.machinesLoad).toBe("failed");
+    await controller.loadMachines("local");
 
-    await controller.loadMachines();
+    expect(state.machinesLoad).toBe("loading");
+    expect(state.machines).toEqual([localMachine]);
+    expect(state.error).toBe("");
+    expect(controller.unansweredSince()).toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(1000);
 
     expect(machinesMock).toHaveBeenCalledTimes(2);
     expect(state.machinesLoad).toBe("loaded");
     expect(state.machines).toEqual([localMachine, remoteMachine]);
+    expect(state.selectedMachine).toEqual(localMachine);
+    expect(state.error).toBe("");
+    expect(controller.unansweredSince()).toBeUndefined();
+    controller.dispose();
+  });
+
+  it("shows a refusal the server stated in its own words, and does not read it again", async () => {
+    let state: AppState = initialAppState();
+    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
+    const machinesMock = vi.spyOn(api, "machines").mockRejectedValue(new HttpError("Forbidden", 403));
+
+    const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
+    await controller.loadMachines();
+
+    expect(state.error).toContain("refused to list the machines");
+    expect(state.machinesLoad).toBe("loading");
+    expect(machinesMock).toHaveBeenCalledOnce();
+    controller.dispose();
+  });
+
+  it("answers a remote deep link once the roster answers, selecting the machine it names", async () => {
+    vi.useFakeTimers();
+    let state: AppState = initialAppState();
+    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
+    vi.spyOn(api, "machines").mockRejectedValueOnce(new TypeError("Failed to fetch")).mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue([localMachine, remoteMachine]);
+    vi.spyOn(api, "health").mockResolvedValue({ machineId: remoteMachine.id, ok: true, checkedAt: "2026-05-26T00:00:01.000Z", status: "online" });
+    vi.spyOn(api, "runtime").mockResolvedValue({ machineId: remoteMachine.id, ok: true, checkedAt: "2026-05-26T00:00:02.000Z" });
+
+    const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
+    await controller.loadMachines(remoteMachine.id);
+    let answered: boolean | undefined;
+    void controller.rosterAnswered(() => true).then((result) => { answered = result; });
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(answered).toBe(true);
+    expect(state.selectedMachine?.id).toBe(remoteMachine.id);
+    expect(state.machinesLoad).toBe("loaded");
+    controller.dispose();
+  });
+
+  it("stops waiting for the roster once the reader no longer wants it", async () => {
+    vi.useFakeTimers();
+    let state: AppState = initialAppState();
+    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
+    vi.spyOn(api, "machines").mockRejectedValue(new TypeError("Failed to fetch"));
+
+    const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
+    await controller.loadMachines();
+    let wanted = true;
+    let answered: boolean | undefined;
+    void controller.rosterAnswered(() => wanted).then((result) => { answered = result; });
+    wanted = false;
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(answered).toBe(false);
+    controller.dispose();
+  });
+});
+
+/**
+ * Review 6088e664: a roster answer can land long after it was asked for - a
+ * retry after a lost read, or a remote machine's health read in between. It
+ * must select the machine the reader wants when it lands, not the one asked
+ * for when the read began.
+ */
+describe("MachineController selects what the reader wants when the roster lands", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("keeps the current selection once the deep link it was asked for is no longer wanted", async () => {
+    vi.useFakeTimers();
+    let state: AppState = initialAppState();
+    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
+    vi.spyOn(api, "machines").mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue([localMachine, remoteMachine]);
+    vi.spyOn(api, "health").mockResolvedValue({ machineId: "local", ok: true, checkedAt: "now", status: "online" });
+    vi.spyOn(api, "runtime").mockResolvedValue({ machineId: "local", ok: true, checkedAt: "now" });
+    let wanted = true;
+
+    const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
+    await controller.loadMachines(remoteMachine.id, () => wanted);
+    wanted = false;
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(state.machinesLoad).toBe("loaded");
+    expect(state.selectedMachine?.id).toBe("local");
+    controller.dispose();
+  });
+
+  it("keeps a machine the reader chose while the answer waited on a health read", async () => {
+    let state: AppState = initialAppState();
+    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
+    vi.spyOn(api, "machines").mockResolvedValue([localMachine, remoteMachine]);
+    let answerHealth: (health: MachineHealth) => void = () => undefined;
+    vi.spyOn(api, "health").mockImplementation((machineId) => machineId === remoteMachine.id && state.selectedMachine === undefined
+      ? new Promise<MachineHealth>((resolve) => { answerHealth = resolve; })
+      : Promise.resolve({ machineId, ok: true, checkedAt: "now", status: "online" }));
+    vi.spyOn(api, "runtime").mockResolvedValue({ machineId: "local", ok: true, checkedAt: "now" });
+    const loadProjects = vi.fn();
+
+    const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects });
+    const loading = controller.loadMachines(remoteMachine.id);
+    await Promise.resolve();
+    await Promise.resolve();
+    await controller.selectMachine(localMachine);
+    answerHealth({ ...offlineHealth, ok: true, status: "online" });
+    await loading;
+
+    expect(state.selectedMachine?.id).toBe("local");
+    expect(loadProjects).toHaveBeenCalledOnce();
+    controller.dispose();
+  });
+
+  it("ends with a removed machine gone, even when an answer read before the removal lands after it", async () => {
+    let state: AppState = initialAppState();
+    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
+    const reads: ((machines: Machine[]) => void)[] = [];
+    vi.spyOn(api, "machines").mockImplementation(() => new Promise<Machine[]>((resolve) => { reads.push(resolve); }));
+    vi.spyOn(api, "deleteMachine").mockResolvedValue(undefined);
+    vi.spyOn(api, "health").mockResolvedValue({ machineId: "local", ok: true, checkedAt: "now", status: "online" });
+    vi.spyOn(api, "runtime").mockResolvedValue({ machineId: "local", ok: true, checkedAt: "now" });
+
+    const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
+    const booting = controller.loadMachines("local");
+    reads[0]?.([localMachine, remoteMachine]);
+    await booting;
+    const rereading = controller.loadMachines("local");
+    await controller.deleteMachine(remoteMachine);
+    reads[1]?.([localMachine, remoteMachine]);
+    await rereading;
+    await vi.waitFor(() => { if (reads.length < 3) throw new Error("the roster has not been read again after the removal"); });
+    reads[2]?.([localMachine]);
+    await vi.waitFor(() => { if (state.machines.length !== 1) throw new Error("the removed machine is still listed"); });
+
+    expect(state.machines).toEqual([localMachine]);
+    expect(state.selectedMachine?.id).toBe("local");
+    controller.dispose();
+  });
+
+  it("lists and selects a machine the reader added, through the roster", async () => {
+    let state: AppState = initialAppState();
+    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
+    vi.spyOn(api, "machines").mockResolvedValueOnce([localMachine]).mockResolvedValue([localMachine, addedMachine]);
+    vi.spyOn(api, "addMachine").mockResolvedValue(addedMachine);
+    vi.spyOn(api, "health").mockResolvedValue({ machineId: addedMachine.id, ok: true, checkedAt: "now", status: "online" });
+    vi.spyOn(api, "runtime").mockResolvedValue({ machineId: addedMachine.id, ok: true, checkedAt: "now" });
+
+    const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
+    await controller.loadMachines("local");
+    await controller.addMachine({ name: addedMachine.name, baseUrl: "https://new-remote.example.test" });
+    await vi.waitFor(() => { if (state.machines.length !== 2) throw new Error("the added machine is not listed"); });
+
+    expect(state.selectedMachine?.id).toBe(addedMachine.id);
+    expect(state.machines.map((machine) => machine.id)).toEqual(["local", addedMachine.id]);
+    controller.dispose();
   });
 });

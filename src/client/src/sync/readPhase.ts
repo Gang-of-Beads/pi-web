@@ -37,6 +37,9 @@ export function classifyReadError(error: unknown): "no-answer" | ReadFact {
 
 export const FIRST_RETRY_MS = 1000;
 
+/** The longest any read waits before it is tried again: the quiet window *T* (object model §0). */
+export const QUIET_WINDOW_MS = 15_000;
+
 /** The wait before retry number `attempt` (0-based): 1, 2, 4, 8 s, capped at the quiet window. */
 export function retryDelayMs(attempt: number, capMs: number): number {
   return Math.min(FIRST_RETRY_MS * 2 ** Math.max(0, attempt), capMs);

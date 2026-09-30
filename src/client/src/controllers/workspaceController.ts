@@ -1,7 +1,7 @@
 import { api as defaultApi, type Project, type Workspace } from "../api";
 import { resetWorkspaceScopedState, type AppState } from "../appState";
 import { errorNoticePatch } from "../errorNotice";
-import type { ReadFact } from "../sync/readPhase";
+import { QUIET_WINDOW_MS, type ReadFact } from "../sync/readPhase";
 import { ScopedResource, type ResourceClock } from "../sync/scopedResource";
 import { mergeCachedNewSessions } from "../cachedNewSessions";
 import { machineProjectKey } from "../machineKeys";
@@ -25,8 +25,6 @@ interface ProjectListingKey {
   readonly projectId: string;
 }
 
-/** The longest a lost workspaces read waits before it is tried again: the quiet window. */
-const WORKSPACES_RETRY_CAP_MS = 15_000;
 
 /** A refusal the machine stated, in the reader's words (object model §0). */
 const FACT_WORDS = new Map<ReadFact["kind"], string>([
@@ -64,7 +62,7 @@ export class WorkspaceController {
     this.listings = new ScopedResource<ProjectListingKey, Workspace[]>({
       keyId: (key) => machineProjectKey(key.machineId, key.projectId),
       read: (key) => this.api.workspaces(key.projectId, key.machineId),
-      retryCapMs: WORKSPACES_RETRY_CAP_MS,
+      retryCapMs: QUIET_WINDOW_MS,
       ...(deps.clock === undefined ? {} : { clock: deps.clock }),
     });
     this.listings.subscribe(() => { this.mirror(); });

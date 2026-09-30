@@ -2,43 +2,154 @@ import { api, HttpError, type Machine, type MachineHealth, type MachineRuntime }
 import { resetWorkspaceScopedState, type AppState } from "../appState";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { describeError, noticeForReader, noticeFromTransport } from "../notice";
+import { QUIET_WINDOW_MS, type ReadFact } from "../sync/readPhase";
+import { ScopedResource } from "../sync/scopedResource";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import type { ProjectController } from "./projectController";
+
+/** The roster has one key: the web process in use serves it. */
+const ROSTER = "roster";
+
+/**
+ * What the next roster answer selects. A roster answer can land long after it
+ * was asked for (a retry after a lost read, a remote machine's health read in
+ * between), so it selects the machine the reader asked for only while they
+ * still want it, and otherwise the machine they are on.
+ */
+interface MachinePreference {
+  /** Undefined asks for the local machine. */
+  readonly machineId: string | undefined;
+  readonly wanted: () => boolean;
+}
+
+const ALWAYS = () => true;
+
+/** A refusal the web process stated, in the reader's words (object model §0). */
+const FACT_WORDS = new Map<ReadFact["kind"], string>([
+  ["signed-out", "PI WEB asked you to sign in before it lists the machines."],
+  ["forbidden", "PI WEB refused to list the machines."],
+]);
 
 export class MachineController {
   private readonly healthRefreshSeqByMachine = new Map<string, number>();
   private readonly runtimeRefreshSeqByMachine = new Map<string, number>();
+  /**
+   * The machines roster, read until answered (B48). A lost read keeps the
+   * known roster, reports nothing, and is read again by itself; the app is
+   * always its reader, so it is always watched.
+   */
+  private readonly roster: ScopedResource<typeof ROSTER, Machine[]>;
+  private preference: MachinePreference = { machineId: undefined, wanted: ALWAYS };
+  private mirrored: Machine[] | undefined;
+  private applying: Promise<void> = Promise.resolve();
+  private noticedFact: ReadFact["kind"] = "none";
 
-  constructor(private readonly getState: GetState, private readonly setState: SetState, private readonly updateUrl: UpdateUrl, private readonly projects: Pick<ProjectController, "loadProjects">) {}
+  constructor(
+    private readonly getState: GetState,
+    private readonly setState: SetState,
+    private readonly updateUrl: UpdateUrl,
+    private readonly projects: Pick<ProjectController, "loadProjects">,
+  ) {
+    this.roster = new ScopedResource<typeof ROSTER, Machine[]>({
+      keyId: () => ROSTER,
+      read: () => api.machines(),
+      retryCapMs: QUIET_WINDOW_MS,
+    });
+    this.roster.watch(ROSTER);
+    this.roster.subscribe(() => { this.mirror(); });
+  }
 
-  async loadMachines(routeMachineId?: string): Promise<void> {
-    this.setState({ ...clearErrorPatch(), isLoadingMachines: true, machinesLoad: "loading" });
-    try {
-      const machines = await api.machines();
-      const previous = this.getState().selectedMachine?.id;
-      const selectedMachine = await this.selectInitialMachine(machines, routeMachineId);
-      const machineIds = new Set(machines.map((machine) => machine.id));
-      this.setState({
-        machines,
-        selectedMachine,
-        machinesLoad: "loaded",
-        machineRuntimes: filterKeys(this.getState().machineRuntimes, machineIds),
-        machineStatusSnapshots: filterKeys(this.getState().machineStatusSnapshots, machineIds),
-      });
-      void this.refreshMachineHealthFor(machines);
-      void this.refreshMachineRuntimeFor(machines);
-      if (previous !== undefined && selectedMachine?.id !== previous) void this.projects.loadProjects();
-    } catch (error) {
-      // The previous roster stays on screen — a failed listing is not
-      // evidence that the machines are gone — and `failed` sticks until a
-      // load succeeds, mirroring projectsLoad's discipline.
-      this.setState({ ...errorNoticePatch(error), machinesLoad: "failed" });
-    } finally {
-      this.setState({ isLoadingMachines: false });
-    }
+  /**
+   * Read the roster and select `routeMachineId` (the local machine when none
+   * is named) once it answers, while `wanted` holds. Resolves after this
+   * attempt settles; a lost attempt keeps being retried in the background, and
+   * its answer is applied when it comes. Nothing here reports a lost read (B48).
+   */
+  async loadMachines(routeMachineId?: string, wanted: () => boolean = ALWAYS): Promise<void> {
+    this.preference = { machineId: routeMachineId, wanted };
+    if (!this.roster.entry(ROSTER).known) this.setState({ machinesLoad: "loading" });
+    await this.roster.refresh(ROSTER);
+    await this.applying;
+  }
+
+  /**
+   * Wait until the roster has answered and been applied, for a reader that
+   * cannot go on without it (a deep link to a remote machine). Resolves false
+   * once the reader no longer wants it, or when the web process refused.
+   */
+  async rosterAnswered(wanted: () => boolean): Promise<boolean> {
+    const view = await this.roster.whenAnswered(ROSTER, wanted);
+    await this.applying;
+    return view?.data !== undefined && wanted();
+  }
+
+  /** Since when the roster has gone without an answer, for the app row: the web process in use serves it. */
+  unansweredSince(): number | undefined {
+    return this.roster.unansweredSince([ROSTER]);
+  }
+
+  /** A sign of life: retry a lost roster read now instead of waiting out the backoff. */
+  wake(): void {
+    this.roster.wake();
+  }
+
+  dispose(): void {
+    this.roster.dispose();
+  }
+
+  /** The one place a roster answer reaches the state; a refusal is shown in its own words. */
+  private mirror(): void {
+    const entry = this.roster.entry(ROSTER);
+    this.noticeFact(entry.fact.kind);
+    const machines = entry.data;
+    if (machines === undefined || machines === this.mirrored) return;
+    this.mirrored = machines;
+    this.applying = this.applyRoster(machines);
+  }
+
+  private async applyRoster(machines: Machine[]): Promise<void> {
+    const asked = this.preferredMachineId();
+    const initial = await this.selectInitialMachine(machines, asked);
+    if (machines !== this.mirrored) return;
+    const chosen = this.preferredMachineId();
+    const selectedMachine = chosen === asked ? initial : machines.find((machine) => machine.id === (chosen ?? "local")) ?? this.localMachine(machines);
+    const previous = this.getState().selectedMachine?.id;
+    this.preference = { machineId: selectedMachine?.id, wanted: ALWAYS };
+    const machineIds = new Set(machines.map((machine) => machine.id));
+    this.setState({
+      machines,
+      selectedMachine,
+      machinesLoad: "loaded",
+      machineRuntimes: filterKeys(this.getState().machineRuntimes, machineIds),
+      machineStatusSnapshots: filterKeys(this.getState().machineStatusSnapshots, machineIds),
+    });
+    void this.refreshMachineHealthFor(machines);
+    void this.refreshMachineRuntimeFor(machines);
+    if (previous !== undefined && selectedMachine?.id !== previous) void this.projects.loadProjects();
+  }
+
+  private preferredMachineId(): string | undefined {
+    return this.preference.wanted() ? this.preference.machineId : this.getState().selectedMachine?.id;
+  }
+
+  /**
+   * A machine this client added or removed: the known roster changes now, and
+   * is read again, so an answer read before the change cannot leave it undone.
+   */
+  private rosterChanged(change: (machines: Machine[]) => Machine[]): void {
+    this.roster.update(ROSTER, change);
+    void this.roster.refresh(ROSTER);
+  }
+
+  private noticeFact(kind: ReadFact["kind"]): void {
+    if (kind === this.noticedFact) return;
+    this.noticedFact = kind;
+    const words = FACT_WORDS.get(kind);
+    if (words !== undefined) this.setState(errorNoticePatch(new Error(words)));
   }
 
   async selectMachine(machine: Machine, options: { updateUrl?: boolean | undefined } = {}): Promise<void> {
+    this.preference = { machineId: machine.id, wanted: ALWAYS };
     if (this.getState().selectedMachine?.id === machine.id) return;
     this.setState({
       selectedMachine: machine,
@@ -86,6 +197,7 @@ export class MachineController {
       const machine = await api.addMachine(input);
       this.setState({ machines: [...this.getState().machines.filter((candidate) => candidate.id !== machine.id), machine] });
       await this.selectMachine(machine);
+      this.rosterChanged((listed) => [...listed.filter((candidate) => candidate.id !== machine.id), machine]);
       return machine;
     } catch (error) {
       this.setState(errorNoticePatch(error));
@@ -103,6 +215,7 @@ export class MachineController {
     try {
       const wasSelected = this.getState().selectedMachine?.id === machine.id;
       await api.deleteMachine(machine.id);
+      this.rosterChanged((listed) => listed.filter((candidate) => candidate.id !== machine.id));
       // The claim about this machine can never be disproved now - its scope
       // has no future replies - so it is retired with the machine rather than
       // left on screen describing something that no longer exists.

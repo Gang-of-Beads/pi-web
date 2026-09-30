@@ -103,6 +103,7 @@ import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
 import { errorBanner, normalizeTransientError, reconnectingRow, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { rowDecision } from "../sync/connectionSummary";
+import { QUIET_WINDOW_MS, retryDelayMs } from "../sync/readPhase";
 import { interruptedRunsReadPlan } from "../interruptedRunsRead";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { interactiveSurfaceStyles } from "./shared";
@@ -266,7 +267,6 @@ const INTERACTION_LIVENESS_THROTTLE_MS = 2_000;
 
 const INTERRUPTED_RUNS_UNKNOWN_MESSAGE = "Interrupted-run status is unknown: the read failed. Reconnect to read it again.";
 const PI_WEB_STATUS_DEFER_MS = 750;
-export const REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000, 30_000] as const;
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
 const THEME_AUTO_ON_VALUE = "auto:on";
 const THEME_AUTO_OFF_VALUE = "auto:off";
@@ -434,11 +434,9 @@ export class PiWebApp extends LitElement {
   private pendingRestoreIntent = 0;
   private remoteRouteRestoreTimer: number | undefined;
   private remoteRouteRestoreAttempt = 0;
+  /** The notice the deep-link ladder last raised: raised again only when its words change, so a dismissed one stays dismissed. */
+  private remoteRouteRestoreNotice: string | undefined;
   private remoteRouteRestoreInProgress = false;
-  private pendingMachineLoadRestore: ParsedAppRoute | undefined;
-  private machineLoadRestoreTimer: number | undefined;
-  private machineLoadRestoreAttempt = 0;
-  private machineLoadRestoreInProgress = false;
   private readonly plugins = createPluginRegistry({ showDialog: (dialog) => this.openPluginDialog(dialog) });
   private readonly loadedMachinePluginIds = new Set<string>();
   private readonly machinePluginLoadPromises = new Map<string, Promise<void>>();
@@ -673,6 +671,7 @@ export class PiWebApp extends LitElement {
   private readonly onBrowserOnline = () => {
     this.projects.wake();
     this.workspaces.wake();
+    this.machines.wake();
     this.realtime.reconnectNow();
     this.sessions.reconnectSocketNow();
     this.checkSocketLiveness();
@@ -696,6 +695,7 @@ export class PiWebApp extends LitElement {
     if (document.visibilityState === "visible") {
       this.projects.wake();
       this.workspaces.wake();
+      this.machines.wake();
       this.refreshWorkspaceChangedWhileHidden();
       void this.refreshSubagents();
       // Coming back to the tab is the moment a stale bundle bites next; a
@@ -1240,13 +1240,13 @@ export class PiWebApp extends LitElement {
     this.reconnectingRecheck = undefined;
     this.projects.dispose();
     this.workspaces.dispose();
+    this.machines.dispose();
     if (this.livenessTimer !== undefined) window.clearInterval(this.livenessTimer);
     this.livenessTimer = undefined;
     window.removeEventListener("online", this.onBrowserOnline);
     window.removeEventListener("pointerdown", this.onInteractionLivenessProbe, { capture: true });
     document.removeEventListener("visibilitychange", this.onDocumentVisibilityChange);
     this.clearPendingRemoteRouteRestore();
-    this.clearPendingMachineLoadRestore();
     super.disconnectedCallback();
   }
 
@@ -1272,20 +1272,23 @@ export class PiWebApp extends LitElement {
     if (previous.selectedSession?.id !== this.state.selectedSession?.id) this.updateSubagentPolling();
   }
 
+  /**
+   * The boot: list the machines, then restore the route. A roster without an
+   * answer cannot resolve a remote route's machine, and restoring then would
+   * flatten a machine+project+session deep link to the local machine - how a
+   * reload on a flaky connection once lost the whole machine dimension. So a
+   * remote deep link waits for the roster, retried by itself, for as long as
+   * it is still the reader's intent (B48); the URL is untouched meanwhile. A
+   * local route needs no roster and goes on at once.
+   */
   private async loadProjectsAndRestoreRoute() {
     const intent = this.navigation.latest();
     this.restoreSettingsRoute();
     const route = readRoute();
-    await this.machines.loadMachines(route.machineId);
-    if (this.state.machinesLoad === "failed" && (route.machineId ?? "local") !== "local") {
-      // A failed roster cannot resolve the route's machine: rewriting now
-      // would flatten a machine+project+session deep link to the local
-      // machine, which is how a reload on a flaky connection lost the whole
-      // machine dimension. Defer to the retry loop instead - it re-lists
-      // the machines and re-enters this boot path once the listing
-      // recovers, leaving the URL untouched while it waits.
-      this.deferMachineLoadRestore(route, intent);
-      return;
+    await this.machines.loadMachines(route.machineId, () => this.navigation.isCurrent(intent) && readRoute().machineId === route.machineId);
+    if (this.state.machinesLoad !== "loaded" && (route.machineId ?? "local") !== "local") {
+      const answered = await this.machines.rosterAnswered(() => this.navigation.isCurrent(intent) && readRoute().machineId === route.machineId);
+      if (!answered) return;
     }
     await this.restoreBootRoute(route, intent);
   }
@@ -1540,74 +1543,13 @@ export class PiWebApp extends LitElement {
     return this.state.selectedProject?.id !== route.projectId;
   }
 
-  private deferMachineLoadRestore(route: ParsedAppRoute, intent: number): void {
-    this.pendingMachineLoadRestore = route;
-    this.pendingRestoreIntent = intent;
-    this.machineLoadRestoreAttempt = 0;
-    this.scheduleMachineLoadRestore();
-  }
-
-  private scheduleMachineLoadRestore(delayMs = remoteRouteRestoreRetryDelay(this.machineLoadRestoreAttempt)): void {
-    if (this.pendingMachineLoadRestore === undefined) return;
-    this.clearMachineLoadRestoreTimer();
-    this.machineLoadRestoreTimer = window.setTimeout(() => {
-      this.machineLoadRestoreTimer = undefined;
-      void this.retryMachineLoadRestore();
-    }, delayMs);
-  }
-
-  private async retryMachineLoadRestore(): Promise<void> {
-    if (this.machineLoadRestoreInProgress) return;
-    const route = this.pendingMachineLoadRestore;
-    if (route === undefined) return;
-    this.machineLoadRestoreInProgress = true;
-    try {
-      await this.machines.loadMachines(route.machineId);
-      if (this.pendingMachineLoadRestore !== route) return;
-      if (this.state.machinesLoad !== "loaded") {
-        this.machineLoadRestoreAttempt += 1;
-        if (this.machineLoadRestoreAttempt >= REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS.length) {
-          this.setRemoteRouteRestoreMessage(route, { exhausted: true });
-          this.clearPendingMachineLoadRestore();
-          return;
-        }
-        this.scheduleMachineLoadRestore();
-        return;
-      }
-      if (!this.pendingMachineLoadRestoreStillCurrent(route)) {
-        this.clearPendingMachineLoadRestore();
-        return;
-      }
-      this.clearPendingMachineLoadRestore();
-      await this.restoreBootRoute(route, this.pendingRestoreIntent);
-    } finally {
-      this.machineLoadRestoreInProgress = false;
-    }
-  }
-
-  private pendingMachineLoadRestoreStillCurrent(route: ParsedAppRoute): boolean {
-    const machineId = route.machineId ?? "local";
-    return machineId !== "local" && readRoute().machineId === route.machineId && this.state.machines.some((machine) => machine.id === machineId) && this.navigation.isCurrent(this.pendingRestoreIntent);
-  }
-
-  private clearPendingMachineLoadRestore(): void {
-    this.clearMachineLoadRestoreTimer();
-    this.pendingMachineLoadRestore = undefined;
-    this.machineLoadRestoreAttempt = 0;
-  }
-
-  private clearMachineLoadRestoreTimer(): void {
-    if (this.machineLoadRestoreTimer === undefined) return;
-    window.clearTimeout(this.machineLoadRestoreTimer);
-    this.machineLoadRestoreTimer = undefined;
-  }
-
   private deferRemoteRouteRestore(route: ParsedAppRoute, intent: number): void {
     this.pendingRemoteRouteRestore = route;
     this.pendingRestoreIntent = intent;
     this.remoteRouteRestoreAttempt = 0;
+    this.remoteRouteRestoreNotice = undefined;
     this.setRemoteRouteRestoreMessage(route);
-    this.schedulePendingRemoteRouteRestore();
+    this.schedulePendingRemoteRouteRestore(retryDelayMs(0, QUIET_WINDOW_MS));
   }
 
   /**
@@ -1624,7 +1566,7 @@ export class PiWebApp extends LitElement {
     this.schedulePendingRemoteRouteRestore(0);
   }
 
-  private schedulePendingRemoteRouteRestore(delayMs = remoteRouteRestoreRetryDelay(this.remoteRouteRestoreAttempt)): void {
+  private schedulePendingRemoteRouteRestore(delayMs: number): void {
     if (this.pendingRemoteRouteRestore === undefined) return;
     this.clearPendingRemoteRouteRestoreTimer();
     this.remoteRouteRestoreTimer = window.setTimeout(() => {
@@ -1679,19 +1621,18 @@ export class PiWebApp extends LitElement {
     }
   }
 
+  /**
+   * One more try later, on the shared backoff capped at the quiet window. It
+   * never gives up while the route is current (B48): the restore ends when
+   * the machine answers, or when the reader goes elsewhere.
+   */
   private scheduleNextRemoteRouteRestoreAttempt(route: ParsedAppRoute): void {
     this.remoteRouteRestoreAttempt += 1;
-    const local = (route.machineId ?? "local") === "local";
-    if (!local && this.remoteRouteRestoreAttempt >= REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS.length) {
-      this.setRemoteRouteRestoreMessage(route, { exhausted: true });
-      this.clearPendingRemoteRouteRestore();
-      return;
-    }
     this.setRemoteRouteRestoreMessage(route);
-    this.schedulePendingRemoteRouteRestore();
+    this.schedulePendingRemoteRouteRestore(retryDelayMs(this.remoteRouteRestoreAttempt, QUIET_WINDOW_MS));
   }
 
-  private setRemoteRouteRestoreMessage(route: ParsedAppRoute, options: { exhausted?: boolean } = {}): void {
+  private setRemoteRouteRestoreMessage(route: ParsedAppRoute): void {
     // A local route waits on the projects listing, which retries by itself
     // and is named by the app row while it goes unanswered (B48); the
     // machine wording would promise a reconnect this ladder never performs.
@@ -1703,10 +1644,10 @@ export class PiWebApp extends LitElement {
     // previous text, which the retry ladder would otherwise paste into itself
     // once per attempt.
     const detail = health?.error;
-    const prefix = options.exhausted === true
-      ? `${machineName} is still unavailable.`
-      : `${machineName} is unavailable; reconnecting…`;
-    this.setState(noticePatch(noticeFromTransport(`${prefix}${detail === undefined ? "" : ` ${detail}`}`, machineId)));
+    const text = `${machineName} is unavailable; reconnecting…${detail === undefined ? "" : ` ${detail}`}`;
+    if (text === this.remoteRouteRestoreNotice) return;
+    this.remoteRouteRestoreNotice = text;
+    this.setState(noticePatch(noticeFromTransport(text, machineId)));
   }
 
   private pendingRemoteRouteRestoreStillCurrent(route: ParsedAppRoute): boolean {
@@ -1721,6 +1662,7 @@ export class PiWebApp extends LitElement {
     this.clearPendingRemoteRouteRestoreTimer();
     this.pendingRemoteRouteRestore = undefined;
     this.remoteRouteRestoreAttempt = 0;
+    this.remoteRouteRestoreNotice = undefined;
   }
 
   private clearPendingRemoteRouteRestoreTimer(): void {
@@ -4214,7 +4156,7 @@ export class PiWebApp extends LitElement {
     this.setState(clearErrorPatch());
     const session = this.state.selectedSession;
     if (session !== undefined) { await this.sessions.selectSession(session); return; }
-    await this.machines.loadMachines();
+    await this.machines.loadMachines(selectedMachineId(this.state));
   }
 
   /**
@@ -4229,7 +4171,7 @@ export class PiWebApp extends LitElement {
   }
 
   private renderReconnectingRow(noticeShown: boolean) {
-    const decision = rowDecision({ notice: noticeShown, unansweredSince: this.projects.unansweredSince(), reconnectingShownAt: this.reconnectingShownAt, now: Date.now() });
+    const decision = rowDecision({ notice: noticeShown, unansweredSince: earliest(this.projects.unansweredSince(), this.machines.unansweredSince()), reconnectingShownAt: this.reconnectingShownAt, now: Date.now() });
     if (this.reconnectingRecheck !== undefined) window.clearTimeout(this.reconnectingRecheck);
     this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : window.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
     if (decision.claim !== "reconnecting") {
@@ -4566,6 +4508,13 @@ function machineUnreadInputsChanged(previous: AppState, next: AppState): boolean
   return previous.machines !== next.machines;
 }
 
+/** The earlier of two times something went unanswered, or undefined when neither did. */
+function earliest(first: number | undefined, second: number | undefined): number | undefined {
+  if (first === undefined) return second;
+  if (second === undefined) return first;
+  return Math.min(first, second);
+}
+
 /** The selection the workspace listings follow moved: machine, project or workspace, by any writer. */
 function listingSelectionChanged(previous: AppState, next: AppState): boolean {
   return selectedMachineId(previous) !== selectedMachineId(next)
@@ -4631,11 +4580,6 @@ function emptyWorkspaceRouteSurface(): WorkspaceRouteSurface {
 
 function machineScopedKey(machineId: string, value: string): string {
   return JSON.stringify([machineId, value]);
-}
-
-function remoteRouteRestoreRetryDelay(attempt: number): number {
-  const index = Math.min(attempt, REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS.length - 1);
-  return REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS[index] ?? 30_000;
 }
 
 function omitWorkspaceDeletionRun(runs: Record<string, TerminalCommandRun>, workspaceId: string): Record<string, TerminalCommandRun> {

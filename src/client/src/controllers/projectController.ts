@@ -1,7 +1,7 @@
 import { api as defaultApi, type Project } from "../api";
 import { errorNoticePatch } from "../errorNotice";
 import { describeError } from "../notice";
-import type { ReadFact } from "../sync/readPhase";
+import { QUIET_WINDOW_MS, type ReadFact } from "../sync/readPhase";
 import { ScopedResource, type ResourceClock } from "../sync/scopedResource";
 import { selectedMachineId, type GetState, type SetState } from "./types";
 import type { WorkspaceController } from "./workspaceController";
@@ -23,8 +23,6 @@ export interface ProjectControllerDependencies {
   onListingChange?: () => void;
 }
 
-/** The longest a lost projects read waits before it is tried again: the quiet window. */
-const PROJECTS_RETRY_CAP_MS = 15_000;
 
 /**
  * A refusal the machine stated, in the reader's words. Shown as a notice until
@@ -54,7 +52,7 @@ export class ProjectController {
     this.listings = new ScopedResource<string, Project[]>({
       keyId: (machineId) => machineId,
       read: (machineId) => this.api.projects(machineId),
-      retryCapMs: PROJECTS_RETRY_CAP_MS,
+      retryCapMs: QUIET_WINDOW_MS,
       ...(deps.clock === undefined ? {} : { clock: deps.clock }),
     });
     this.listings.subscribe(() => {
