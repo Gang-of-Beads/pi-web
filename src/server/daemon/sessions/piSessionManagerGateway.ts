@@ -111,10 +111,10 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
   async findSession(cwd: string, sessionId: string): Promise<PiSessionListEntry | undefined> {
     const envSessionDir = this.resolver.globalEnvSessionDir();
     const nearDirs = [...new Set([this.resolver.resolve(cwd).sessionDir, ...(envSessionDir === undefined ? [] : [envSessionDir])])];
-    const near = (await Promise.all(nearDirs.map(async (dir) => this.summaryScanner.scanSessionSummariesInDir(dir)))).flat();
+    const near = (await Promise.all(nearDirs.map(async (dir) => this.summaryScanner.scanSessionSummariesInDirNow(dir)))).flat();
     const nearExact = near.find((session) => session.id === sessionId);
     if (nearExact !== undefined) return withStoredCwdFacts(nearExact);
-    const stored = await scanStoreSessionSummaries(this.resolver.defaultSessionsRoot(), readSessionDirNames, async (dir) => this.summaryScanner.scanSessionSummariesInDir(dir));
+    const stored = await scanStoreSessionSummaries(this.resolver.defaultSessionsRoot(), readSessionDirNames, async (dir) => this.summaryScanner.scanSessionSummariesInDirNow(dir));
     return withStoredCwdFacts(sessionByIdOrUniquePrefix([...near, ...stored], sessionId));
   }
 

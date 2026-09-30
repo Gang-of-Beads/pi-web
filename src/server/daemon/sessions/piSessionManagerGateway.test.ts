@@ -1,3 +1,4 @@
+import * as fsPromises from "node:fs/promises";
 import { appendFile, chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { scanStoreSessionSummaries } from "./piSessionManagerGateway";
 import { tmpdir } from "node:os";
@@ -9,6 +10,9 @@ import type { PiSessionManager } from "./piSessionService.js";
 import { readSessionHeaderSummary } from "./sessionFileHeader.js";
 import { rewriteHeaderWithoutParentSession } from "./sessionFileRewrite.testSupport.js";
 import { sep } from "node:path";
+
+// Route node:fs/promises through a plain copy so a test can count directory reads with vi.spyOn.
+vi.mock("node:fs/promises", async (importOriginal) => ({ ...(await importOriginal<typeof fsPromises>()) }));
 
 let tempDir: string;
 let agentDir: string;
@@ -149,6 +153,22 @@ describe("Pi session manager gateway", () => {
     await expect(gateway.findSession(cwd, "in-env-dir-t")).resolves.toMatchObject({ id: "in-env-dir-two" });
     await expect(gateway.findSession(cwd, "in-")).resolves.toBeUndefined();
     await expect(gateway.findSession(cwd, "nowhere")).resolves.toBeUndefined();
+  });
+
+  it("looks a session up with a scan that starts after it asked, never one a listing already started (P3 slice a)", async () => {
+    await writeSessionFile(defaultPiSessionDir(cwd, agentDir), "listed", cwd);
+    const gateway = createPiSessionManagerGateway(piProfileOptions());
+    const ownDir = defaultPiSessionDir(cwd, agentDir);
+    const readdirSpy = vi.spyOn(fsPromises, "readdir");
+    try {
+      const listing = gateway.list(cwd);
+      const lookup = gateway.findSession(cwd, "listed");
+      await Promise.all([listing, lookup]);
+
+      expect(readdirSpy.mock.calls.filter(([path]) => path === ownDir).length).toBeGreaterThanOrEqual(2);
+    } finally {
+      readdirSpy.mockRestore();
+    }
   });
 
   it("lists only sessions for the requested cwd when a custom Pi sessionDir is shared", async () => {

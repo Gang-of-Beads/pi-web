@@ -105,6 +105,47 @@ describe("session summary scanner parity with the SDK listing", () => {
   });
 });
 
+describe("scans that overlap (object model §4.6, P3)", () => {
+  it("never joins a pass already under way for a lookup that must see every file written before it asked", async () => {
+    await writeSession("2026-01-01T00-00-00-000Z_one.jsonl", [headerLine({ id: "one", cwd: WORKSPACE })]);
+    const readdirSpy = vi.spyOn(fsPromises, "readdir");
+    try {
+      const scanner = new SessionSummaryScanner();
+
+      const listing = scanner.scanSessionSummariesInDir(sessionDir);
+      const lookup = scanner.scanSessionSummariesInDirNow(sessionDir);
+      await Promise.all([listing, lookup]);
+
+      expect(readdirSpy.mock.calls.filter(([path]) => path === sessionDir).length).toBe(2);
+    } finally {
+      readdirSpy.mockRestore();
+    }
+  });
+
+  it("share one pass over a directory, and each caller gets its own list", async () => {
+    for (const id of ["one", "two", "three"]) await writeSession(`2026-01-01T00-00-00-000Z_${id}.jsonl`, [headerLine({ id, cwd: WORKSPACE })]);
+    const openSpy = vi.spyOn(fsPromises, "open");
+    try {
+      await new SessionSummaryScanner().scanSessionSummariesInDir(sessionDir);
+      const oneScan = openSpy.mock.calls.length;
+      openSpy.mockClear();
+      const scanner = new SessionSummaryScanner();
+
+      const lists = await Promise.all([1, 2, 3].map(() => scanner.scanSessionSummariesInDir(sessionDir)));
+      const again = await scanner.scanSessionSummariesInDir(sessionDir);
+
+      expect({
+        opens: openSpy.mock.calls.length,
+        ids: lists.map((list) => list.map((session) => session.id).sort()),
+        ownLists: new Set(lists).size,
+        later: again.length,
+      }).toEqual({ opens: oneScan, ids: [["one", "three", "two"], ["one", "three", "two"], ["one", "three", "two"]], ownLists: 3, later: 3 });
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+});
+
 describe("session summary scanner name handling", () => {
   it("keeps the latest non-empty session_info name", async () => {
     const path = await writeSession("renamed.jsonl", [

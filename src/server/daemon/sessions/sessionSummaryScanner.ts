@@ -108,6 +108,7 @@ export interface SessionSummaryScannerOptions {
  */
 export class SessionSummaryScanner {
   private readonly memo = new Map<string, MemoizedSessionSummary>();
+  private readonly passes = new Map<string, Promise<PiSessionListEntry[]>>();
   private readonly chunkBytes: number;
 
   constructor(options: SessionSummaryScannerOptions = {}) {
@@ -140,6 +141,36 @@ export class SessionSummaryScanner {
    * directory are answered from the memo (one stat each) instead of being read.
    */
   async scanSessionSummariesInDir(sessionDir: string): Promise<PiSessionListEntry[]> {
+    return [...await this.sharedPass(sessionDir)];
+  }
+
+  /**
+   * One pass over a directory for every scan of it that overlaps (object
+   * model §4.6). A workspace listing scans the whole store, and the board asks
+   * for several at once: on a cold daemon each read every file, so seven
+   * listings did the store's work seven times over and each took about a
+   * second (8505, P3). A scan that joins a pass already under way can miss a
+   * file written during that pass; the next listing has it, and the sessions
+   * this daemon starts are announced as they are created.
+   */
+  /**
+   * A pass that starts now, for a lookup of one session: joining a pass
+   * already under way could miss a file written before the lookup asked, and
+   * a lookup's "not there" is taken as "gone" (`locate`, P2 slice b).
+   */
+  async scanSessionSummariesInDirNow(sessionDir: string): Promise<PiSessionListEntry[]> {
+    return this.scanDirectory(sessionDir);
+  }
+
+  private sharedPass(sessionDir: string): Promise<PiSessionListEntry[]> {
+    const running = this.passes.get(sessionDir);
+    if (running !== undefined) return running;
+    const pass = this.scanDirectory(sessionDir).finally(() => { this.passes.delete(sessionDir); });
+    this.passes.set(sessionDir, pass);
+    return pass;
+  }
+
+  private async scanDirectory(sessionDir: string): Promise<PiSessionListEntry[]> {
     const files = await listSessionFilesInDir(sessionDir);
     this.pruneEntriesRemovedFrom(sessionDir, files);
     const summaries = await scanSessionFilesWithBoundedConcurrency(files, this.chunkBytes, (file, chunkBuffer) => this.scanFileWithMemo(file, chunkBuffer));

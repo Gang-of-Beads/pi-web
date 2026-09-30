@@ -2798,7 +2798,7 @@ export class PiSessionService implements SessionRouteService {
   async messagesPassive(ref: PiSessionRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage | undefined> {
     const active = this.activeForRef(ref);
     if (active !== undefined) return transcriptPage(active.runtime.session.sessionManager.getBranch(), page);
-    const listed = (await this.sessionManager.list(ref.cwd)).find((session) => session.id === ref.id);
+    const listed = await this.sessionManager.findSession(ref.cwd, ref.id);
     if (listed === undefined) return undefined;
     const entries = await readSessionFileEntries(listed.path);
     if (entries === undefined) return undefined;
