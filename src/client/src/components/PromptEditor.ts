@@ -1,6 +1,7 @@
 import type { EditorView } from "@codemirror/view";
 import { renderCrossIcon, renderUpIcon, uiIconStyle } from "./uiIcons.js";
 import type { ComposerEditorHandle } from "./composerEditorSetup";
+import { keyBelongsToInputMethod } from "./keyboardEventTarget";
 
 type ComposerEditorModule = typeof import("./composerEditorSetup");
 import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues } from "lit";
@@ -1085,7 +1086,7 @@ export class PromptEditor extends LitElement {
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") this.historyIndex = undefined;
       return false;
     }
-    if (event.defaultPrevented || event.isComposing || view.composing) return false;
+    if (event.defaultPrevented || keyBelongsToInputMethod(event) || view.composing) return false;
 
     const shiftKey = shouldUsePromptEnterShiftShortcut(event.shiftKey, this.explicitShiftKeyActive, this.mobilePromptEnterMedia);
     this.explicitShiftKeyActive = false;

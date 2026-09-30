@@ -4,6 +4,7 @@ import type { FileSuggestion } from "@gang-of-beads/pi-web/plugin-api";
 import { css } from "lit";
 import { describeError } from "./errors";
 import { renderHostCloseIcon, adoptWorkspacesHostStyles } from "./hostUi";
+import { keyBelongsToInputMethod } from "./inputMethodKey";
 
 /** The submitted trust answer; `changed` is false for the pre-filled value. */
 export interface ProjectTrustChoice {
@@ -252,7 +253,7 @@ export class ProjectDialog extends LitElement {
   // before the migration — so Enter/Tab on the footer buttons and checkbox keep
   // their native behavior.
   private onKeyDown(event: KeyboardEvent) {
-    if (event.target !== this.pathInput) return;
+    if (event.target !== this.pathInput || keyBelongsToInputMethod(event)) return;
     if (event.key === "Enter") {
       event.preventDefault();
       this.submit();

@@ -12,7 +12,7 @@ import { renderSessionRowIndicator, sessionRowIndicator } from "./sessionRowIndi
 import type { SessionStateBadgeKind } from "./activityBadge";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import { sessionLabel } from "../sessionLabels";
-import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
+import { keyBelongsToInputMethod, keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
 import { interactiveSurfaceStyles } from "./shared";
@@ -389,7 +389,7 @@ export class QuickSwitcher extends LitElement {
   // single remaining match, which is what makes "type two letters, hit go" work
   // on a phone keyboard without reaching for the list.
   private handleKeyDown(event: KeyboardEvent): void {
-    if (event.key !== "Enter" || keyboardEventOriginatesFromNativeActivationControl(event)) return;
+    if (event.key !== "Enter" || keyBelongsToInputMethod(event) || keyboardEventOriginatesFromNativeActivationControl(event)) return;
     const first = this.model().groups[0]?.sessions[0];
     if (first === undefined) return;
     event.preventDefault();

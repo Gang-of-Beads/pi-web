@@ -3,7 +3,7 @@ import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import { searchPromptHistory } from "../promptHistory";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
-import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
+import { keyBelongsToInputMethod, keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import { scrollWhenSelected } from "./scrollWhenSelected";
 import "./ModalSurface";
 
@@ -90,6 +90,7 @@ export class PromptHistoryPanel extends LitElement {
   }
 
   private handleKeyDown(event: KeyboardEvent, entries: readonly string[], selected: number): void {
+    if (keyBelongsToInputMethod(event)) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       if (entries.length === 0) return;
       event.preventDefault();

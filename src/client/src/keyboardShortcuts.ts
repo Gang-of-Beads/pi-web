@@ -1,4 +1,5 @@
 import type { AppAction } from "./actions";
+import { keyBelongsToInputMethod } from "./components/keyboardEventTarget";
 
 export const shortcutSequenceTimeoutMs = 1200;
 
@@ -15,6 +16,7 @@ export interface ShortcutKeyEvent {
   altKey: boolean;
   shiftKey: boolean;
   isComposing: boolean;
+  keyCode: number;
   target: EventTarget | null;
 }
 
@@ -165,7 +167,7 @@ export function formatShortcut(shortcut: string): string {
 }
 
 export function shortcutTokenFromEvent(event: ShortcutKeyEvent): string | undefined {
-  if (event.isComposing) return undefined;
+  if (keyBelongsToInputMethod(event)) return undefined;
   const key = normalizeKey(event.key);
   if (key === undefined) return undefined;
   const modifiers: string[] = [];

@@ -3,7 +3,7 @@ import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../actions";
 import { formatShortcut } from "../keyboardShortcuts";
-import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
+import { keyBelongsToInputMethod, keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import { matchesAllQueryWords, normalizeSearchQuery } from "../searchMatching";
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
@@ -78,7 +78,7 @@ export class ActionPalette extends LitElement {
   // `onCancel`). Search-input keys retain the action-list navigation idiom,
   // while focused native buttons keep their own semantics.
   private handleKeyDown(event: KeyboardEvent) {
-    if (keyboardEventOriginatesFromNativeActivationControl(event)) return;
+    if (keyBelongsToInputMethod(event) || keyboardEventOriginatesFromNativeActivationControl(event)) return;
     const actions = this.filteredActions();
     if (event.key === "ArrowDown") {
       event.preventDefault();

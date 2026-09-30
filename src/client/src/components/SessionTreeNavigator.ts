@@ -1,5 +1,6 @@
 import { LitElement, css, html, nothing, unsafeCSS, type PropertyValues, type TemplateResult } from "lit";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
+import { keyBelongsToInputMethod } from "./keyboardEventTarget.js";
 import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNodeKind, SessionTreeSnapshot, SessionTreeSummaryChoice } from "../api";
@@ -334,6 +335,7 @@ export class SessionTreeNavigator extends LitElement {
   }
 
   private handleTreeKeyDown(event: KeyboardEvent): void {
+    if (keyBelongsToInputMethod(event)) return;
     // The modal surface owns Escape everywhere; the pure model still maps it for
     // consumers that drive a tree without the surface.
     if (event.key === "Escape") return;

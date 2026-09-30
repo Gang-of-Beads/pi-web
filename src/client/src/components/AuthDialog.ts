@@ -5,7 +5,7 @@ import type { AuthDialogState } from "../appState";
 import type { AuthProviderOption, OAuthFlowState } from "../api";
 import { LOCAL_MACHINE_ID } from "../machineKeys";
 import { matchesAllQueryWords, normalizeSearchQuery } from "../searchMatching";
-import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
+import { keyBelongsToInputMethod, keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import "./ModalSurface";
 import type { ModalSurface } from "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
@@ -233,7 +233,7 @@ export class AuthDialog extends LitElement {
   // their focused Enter behavior remains authoritative.
   private handleKeyDown(event: KeyboardEvent): void {
     const state = this.state;
-    if (state === undefined || keyboardEventOriginatesFromNativeActivationControl(event)) return;
+    if (state === undefined || keyBelongsToInputMethod(event) || keyboardEventOriginatesFromNativeActivationControl(event)) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       const options = this.visibleOptions(state);
       if (options.length === 0) return;

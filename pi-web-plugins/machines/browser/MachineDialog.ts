@@ -2,6 +2,7 @@ import { LitElement, css, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import type { MachineCreateInput } from "@gang-of-beads/pi-web/plugin-api";
 import { renderHostCloseIcon, adoptMachinesHostStyles } from "./hostUi";
+import { keyBelongsToInputMethod } from "./inputMethodKey";
 
 /**
  * The add-machine form, rendered inside the shell's dialog surface. A submit
@@ -53,6 +54,7 @@ export class MachineDialog extends LitElement {
   // Escape and backdrop presses are owned by the dialog surface (routed to
   // `onCancel`); this handler keeps the form's Enter-to-advance behavior.
   private handleKeyDown(event: KeyboardEvent): void {
+    if (keyBelongsToInputMethod(event)) return;
     if (event.key === "Enter" && event.target instanceof HTMLInputElement && event.target.name === "baseUrl" && machineBaseUrlValidationMessage(this.url) === undefined) {
       event.preventDefault();
       void this.updateComplete.then(() => {

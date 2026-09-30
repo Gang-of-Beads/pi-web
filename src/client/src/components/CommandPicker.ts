@@ -3,7 +3,7 @@ import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { CommandOption } from "../api";
 import { fuzzyRank } from "../fuzzyMatch";
-import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
+import { keyBelongsToInputMethod, keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
 import { interactiveSurfaceStyles } from "./shared";
@@ -80,7 +80,7 @@ export class CommandPicker extends LitElement {
   // `onCancel`). Search and list-container keys retain the broadened option
   // navigation idiom, while focused native buttons keep their own semantics.
   private handleKeyDown(event: KeyboardEvent) {
-    if (keyboardEventOriginatesFromNativeActivationControl(event)) return;
+    if (keyBelongsToInputMethod(event) || keyboardEventOriginatesFromNativeActivationControl(event)) return;
     const options = this.filteredOptions();
     if (event.key === "ArrowDown") {
       event.preventDefault();

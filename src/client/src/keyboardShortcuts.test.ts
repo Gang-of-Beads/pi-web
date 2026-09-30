@@ -10,6 +10,7 @@ function keyEvent(key: string, modifiers: Partial<ShortcutKeyEvent> = {}): Short
     altKey: false,
     shiftKey: false,
     isComposing: false,
+    keyCode: 0,
     target: null,
     ...modifiers,
   };

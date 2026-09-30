@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { CommandOption, SessionModelCatalogEntry } from "../api";
-import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
+import { keyBelongsToInputMethod, keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import { matchesAllQueryWords, normalizeSearchQuery } from "../searchMatching";
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
@@ -213,7 +213,7 @@ export class ModelPicker extends LitElement {
   // `onCancel`). Search and list-container keys retain the broadened option
   // navigation idiom, while focused native buttons keep their own semantics.
   private handleKeyDown(event: KeyboardEvent) {
-    if (keyboardEventOriginatesFromNativeActivationControl(event)) return;
+    if (keyBelongsToInputMethod(event) || keyboardEventOriginatesFromNativeActivationControl(event)) return;
     const rows = this.visibleRows();
     if (event.key === "ArrowDown") {
       event.preventDefault();
