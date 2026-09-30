@@ -11,7 +11,7 @@ import { dedupeKey, shareInFlight } from "./inFlight";
 export type HttpErrorOrigin = "gateway";
 
 export class HttpError extends Error {
-  constructor(message: string, readonly status: number, readonly machineId?: string, readonly answeredBy?: HttpErrorOrigin) {
+  constructor(message: string, readonly status: number, readonly machineId?: string, readonly answeredBy?: HttpErrorOrigin, readonly code?: string) {
     super(message);
     this.name = "HttpError";
   }
@@ -78,10 +78,17 @@ async function readResponse(url: string, response: Response): Promise<unknown> {
     const namedMachineId = typeof fields["machineId"] === "string" ? fields["machineId"] : undefined;
     const machineId = namedMachineId ?? machineIdFromUrl(url);
     const text = detail === undefined || detail === "" ? label : `${label} (${detail})`;
-    throw new HttpError(errorMessage({ error: text }) ?? text, response.status, machineId, namedMachineId === undefined ? undefined : "gateway");
+    throw new HttpError(errorMessage({ error: text }) ?? text, response.status, machineId, namedMachineId === undefined ? undefined : "gateway", errorCode(body));
   }
   const body: unknown = await response.json();
   return body;
+}
+
+/** The typed code an error body names, such as the daemon's missing session (object model §1.6). */
+export function errorCode(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const code = value["code"];
+  return typeof code === "string" ? code : undefined;
 }
 
 function errorMessage(value: unknown): string | undefined {

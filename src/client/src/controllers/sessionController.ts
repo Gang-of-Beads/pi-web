@@ -7,6 +7,7 @@ import { SessionGapRepair, type StreamFrontier } from "../sessionGapRepair";
 import { describeError, noticeForReader, RetiredBy } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
+import { isSessionNotFoundError } from "../sessionNotFound";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { resetWorkspaceScopedState, type AppState, type ClosedExtensionDialog } from "../appState";
@@ -3162,10 +3163,6 @@ function isHighFrequencyTranscriptEvent(event: SessionUiEvent): boolean {
  */
 function gapsSeenByTheRepair(): void {
   return undefined;
-}
-
-function isSessionNotFoundError(error: unknown): boolean {
-  return error instanceof Error && error.message.toLowerCase().includes("session not found");
 }
 
 /**

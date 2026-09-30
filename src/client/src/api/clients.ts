@@ -1,7 +1,7 @@
 import type { AskUserSubmission, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse } from "../../../shared/apiTypes";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
-import { HttpError, request } from "./http";
+import { errorCode, HttpError, request } from "./http";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { fetchWithDeadline, isTransportFailure } from "./requestDeadline";
 import {
@@ -421,7 +421,7 @@ async function requestSessionTreeFork(session: SessionRef, fork: SessionTreeFork
       if (!response.ok) {
         const body: unknown = await response.json().catch((): unknown => ({}));
         if (isMissingSessionTreeForkRoute(response.status, body)) throw new SessionTreeForkUnavailableError();
-        throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(sessionPath(session, "tree/fork", machineId)));
+        throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(sessionPath(session, "tree/fork", machineId)), undefined, errorCode(body));
       }
       return parseSessionTreeForkResult(await response.json());
     });
@@ -448,7 +448,7 @@ async function getOptionalTerminalCommandRun(runId: string, machineId: string): 
       if (response.status === 404) return undefined;
       if (!response.ok) {
         const body: unknown = await response.json().catch((): unknown => ({}));
-        throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineId);
+        throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineId, undefined, errorCode(body));
       }
       return parseTerminalCommandRun(await response.json());
     });

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HttpError } from "./http";
 import type { PiWebConfigValues, TerminalCommandRun, Workspace } from "../../../shared/apiTypes";
 import { configApi, filesApi, machinesApi, piPackagesApi, piWebApi, pluginsApi, SessionTreeForkUnavailableError, sessionsApi, terminalsApi, workspacesApi } from "./clients";
 
@@ -404,6 +405,14 @@ describe("session API compatibility", () => {
 
     await expect(request).rejects.toThrow(message);
     await expect(request).rejects.not.toBeInstanceOf(SessionTreeForkUnavailableError);
+  });
+
+  it("keeps the code a missing session answers a fork with", async () => {
+    stubResponseFetch(new Response(JSON.stringify({ error: "Session not found", code: "session-not-found" }), { status: 404, headers: { "content-type": "application/json" } }));
+
+    const failure: unknown = await sessionsApi.forkTree({ id: "s-1", cwd: "/repo" }, { entryId: "entry-1", expectedLeafId: "leaf-1" }).catch((error: unknown) => error);
+
+    expect(failure instanceof HttpError ? failure.code : "not an HttpError").toBe("session-not-found");
   });
 
   it("reads a session stream snapshot through an encoded machine route with cwd context", async () => {

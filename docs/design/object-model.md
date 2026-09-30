@@ -136,6 +136,13 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 - **Owner**: client `sessionController.ts` (≈10 writers of status/pendingAsk [C §2.5]); server daemon `PiSessionService`.
 - **Head**: `streamPosition {epoch, seq}` (exists).
 - **Not found (P2 precondition, daemon restart)**: the daemon answers `{code:"session-not-found"}` from a typed error, and every other failure is a 5xx. Archived comes from session data. `HttpError` carries `code`; `classify` keys on the code first, then on the status; a protocol 404 (no code) is `no-answer`.
+  - **Shipped (P2 slice a)**:
+    - `daemon/sessions/sessionErrors.ts`: `SessionNotFoundError` (with `code: "session-not-found"`) is thrown wherever the daemon found no session. Its message text is unchanged, so older clients keep working.
+    - A session route answers 404 with the code for it, and keeps its own status for any other failure: 500 for the transcript, status and model reads (before, every read failure there was a 404), 503 for the child-work reads (subsessions, subagent runs, background tasks), 400 for mutations and the notification read. A 503 from the local machine is a server error to the client, not a machine that did not answer: that needs the gateway's word (§2.3).
+    - A session directory the daemon could not read is a failure, not an empty directory; only one that does not exist lists no sessions.
+    - The client parses `code` into `HttpError.code`, and `classifyReadError` maps it to the fact `gone`.
+    - The client's session-not-found check keys on the code. It keeps the old text match only for a coded-less 404, for a remote machine on an older daemon; the one-release fallback is to be removed after a release has shipped this.
+    - The presentation of `gone` (the reason and a way back, owner Q8) is P2 slice b.
 - **Events**: `status.update`, `activity.update`, `activity.changed`, `session.startup|stopped|error` [S §2.1]. Silent: inbox pushes between heartbeats (2 s, `publishHeartbeats`, `piSessionService.ts:5529`).
 - **Read**: `GET /sessions/:id/status` (opens the session if cold, O(branch) [S §2.6, §5.3]); `GET /sessions/statuses` (in the batched boot read).
 - **Cache**: memory, seeded synchronously on select from the catalog map (`sessionController.ts:401-409`).

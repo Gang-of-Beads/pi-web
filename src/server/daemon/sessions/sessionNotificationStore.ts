@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { SessionNotFoundError } from "./sessionErrors.js";
 import {
   SESSION_NOTIFICATION_LIMIT,
   SESSION_NOTIFICATION_MESSAGE_BYTES,
@@ -460,13 +461,13 @@ export class SessionNotificationStore {
 
   private requireProjection(sessionId: string, cwd: string): NotificationProjection {
     const state = this.statesBySessionId.get(sessionId);
-    if (state === undefined) throw new Error("Session not found");
+    if (state === undefined) throw new SessionNotFoundError();
     const projection = state.activeProjection.sessionId === sessionId
       ? state.activeProjection
       : state.candidate?.projection.sessionId === sessionId
         ? state.candidate.projection
         : undefined;
-    if (projection === undefined) throw new Error("Session not found");
+    if (projection === undefined) throw new SessionNotFoundError();
     if (projection.cwd !== cwd) throw new Error("Session cwd mismatch");
     return projection;
   }

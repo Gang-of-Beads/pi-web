@@ -413,6 +413,9 @@ export const SESSION_UNREAD_CWD_MAX_LENGTH = 32 * 1024;
 export const SESSION_UNREAD_CATALOG_ID_MAX_LENGTH = 512;
 export const SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH = 64;
 
+/** The code a daemon answers with for a session it does not have (object model §1.6). */
+export const SESSION_NOT_FOUND_CODE = "session-not-found";
+
 export interface SessionUnreadSummary {
   sessionId: string;
   cwd: string;

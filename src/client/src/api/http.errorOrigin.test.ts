@@ -38,3 +38,15 @@ describe("who answered a failed read", () => {
     expect({ status: error.status, machineId: error.machineId, answeredBy: error.answeredBy }).toEqual({ status: 502, machineId: "ubuntu", answeredBy: undefined });
   });
 });
+
+/** P2 slice a: the daemon names a missing session with a code; the client keys on it, not on the words. */
+describe("the code a failed read carries", () => {
+  it("keeps the code the body names, and none when it names none", async () => {
+    answering(404, JSON.stringify({ error: "Session not found", code: "session-not-found" }));
+    const coded = await failure("api/machines/local/sessions/s1/messages?cwd=%2Frepo");
+    resetInFlight();
+    answering(404, JSON.stringify({ error: "Session not found" }));
+    const uncoded = await failure("api/machines/local/sessions/s1/messages?cwd=%2Frepo");
+    expect([coded.code, uncoded.code]).toEqual(["session-not-found", undefined]);
+  });
+});

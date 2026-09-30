@@ -1,4 +1,4 @@
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { scanStoreSessionSummaries } from "./piSessionManagerGateway";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -291,6 +291,25 @@ describe("gateway session-file resolution by id", () => {
     const renamedPath = await writeNamedSessionFile(sharedSessionDir, "hand-renamed.jsonl", { id: "renamed-session", cwd });
 
     await expect(resolveSessionFileInDir(sharedSessionDir, cwd, "renamed-session", readSessionHeaderSummary)).resolves.toEqual({ id: "renamed-session", cwd, path: renamedPath });
+  });
+
+  /**
+   * P2 slice a: a directory that does not exist holds no sessions, but one the
+   * daemon could not read says nothing about them. Swallowed, a permissions or
+   * descriptor error answered "Session not found", and the client recreated a
+   * session that was still there.
+   */
+  it("finds nothing in a directory that does not exist, and fails for one it cannot read", async () => {
+    await expect(resolveSessionFileInDir(join(tempDir, "never-created"), cwd, "any-id", readSessionHeaderSummary)).resolves.toBeUndefined();
+    const locked = join(tempDir, "locked-sessions");
+    await writeNamedSessionFile(locked, "2026-01-01T00-00-00-000Z_locked-id.jsonl", { id: "locked-id", cwd });
+    await chmod(locked, 0o000);
+    try {
+      if (process.getuid?.() === 0) return;
+      await expect(resolveSessionFileInDir(locked, cwd, "locked-id", readSessionHeaderSummary)).rejects.toMatchObject({ code: "EACCES" });
+    } finally {
+      await chmod(locked, 0o700);
+    }
   });
 
   it("trusts the header over a file name that embeds a different session id", async () => {

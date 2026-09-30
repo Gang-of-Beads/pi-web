@@ -319,14 +319,28 @@ function embeddedFileNameSessionId(fileName: string): string | undefined {
   return candidate === "" ? undefined : candidate;
 }
 
+/**
+ * A directory that does not exist holds no sessions. One the daemon could not
+ * read says nothing about them, so that failure is passed on rather than
+ * answered as "no session here" - swallowed, a permissions or descriptor error
+ * read as a deleted session (P2 slice a).
+ */
 async function listSessionFiles(sessionDir: string): Promise<string[]> {
   try {
     const names = await readdir(sessionDir);
     return names.filter((name) => name.endsWith(".jsonl")).map((name) => join(sessionDir, name));
-  } catch {
-    // Matches the SDK listing behavior: an unreadable directory lists nothing.
-    return [];
+  } catch (error) {
+    if (ABSENT_DIRECTORY_CODES.has(errorCode(error))) return [];
+    throw error;
   }
+}
+
+const ABSENT_DIRECTORY_CODES: ReadonlySet<string | undefined> = new Set(["ENOENT", "ENOTDIR"]);
+
+function errorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const code: unknown = Reflect.get(error, "code");
+  return typeof code === "string" ? code : undefined;
 }
 
 function uniqueSessionsByPath(sessions: readonly PiSessionListEntry[]): PiSessionListEntry[] {

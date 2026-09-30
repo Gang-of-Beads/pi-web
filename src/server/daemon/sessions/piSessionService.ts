@@ -119,6 +119,7 @@ import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, m
 import { deferToolResultImages, findToolResultImage } from "./toolResultImages.js";
 import { boundToolResultText } from "./toolResultBounds.js";
 import { correlateQueuedPromptIds } from "./queuedPromptIdentity.js";
+import { SessionNotFoundError } from "./sessionErrors.js";
 
 interface ActiveSession<TRuntime> {
   runtime: TRuntime;
@@ -2576,18 +2577,18 @@ export class PiSessionService implements SessionRouteService {
 
   private async getOrOpenTrackedSubsession(sessionId: string): Promise<PiAgentSession> {
     const link = this.subsessionLinks.get(sessionId);
-    if (link === undefined) throw new Error("Session not found");
+    if (link === undefined) throw new SessionNotFoundError();
 
     const active = this.activeChildForSubsessionLink(link);
     if (active !== undefined) return active.runtime.session;
 
     if (link.childSessionFile !== undefined) {
-      if (!(await sessionFileHeaderMatches(link.childSessionFile, { sessionId, parentSessionFile: link.parentSessionFile }))) throw new Error("Session not found");
+      if (!(await sessionFileHeaderMatches(link.childSessionFile, { sessionId, parentSessionFile: link.parentSessionFile }))) throw new SessionNotFoundError();
       const sessionManager = this.sessionManager.open(link.childSessionFile);
       return (await this.create(sessionManager, link.cwd ?? sessionManager.getCwd())).runtime.session;
     }
 
-    throw new Error("Session not found");
+    throw new SessionNotFoundError();
   }
 
   private async subsessionSummaryFields(childSessionId: string): Promise<{ cwd: string; status: SubsessionStatus }> {
@@ -4124,7 +4125,7 @@ export class PiSessionService implements SessionRouteService {
 
   async restore(ref: PiSessionRef): Promise<void> {
     const archived = await this.getArchived(ref);
-    if (archived === undefined) throw new Error("Session not found");
+    if (archived === undefined) throw new SessionNotFoundError({ archived: true });
     await this.closeActive(archived.sessionId, { kind: "clear", reason: "restore" });
     await this.archiveStore.restore(archived.sessionId);
     await this.forgetUnreadSessions([archived]);
@@ -4863,7 +4864,7 @@ export class PiSessionService implements SessionRouteService {
     // workspace. `getActive` routes prompt/shell/runCommand, so coupling it to
     // the listing would let an in-flight listing serialize unrelated sends.
     const match = await this.sessionManager.resolveSessionFile(ref.cwd, ref.id);
-    if (!match) throw new Error("Session not found");
+    if (!match) throw new SessionNotFoundError();
     return this.openExistingSession(match.id, match.cwd, () => this.sessionManager.open(match.path), options);
   }
 
@@ -4918,7 +4919,7 @@ export class PiSessionService implements SessionRouteService {
    */
   private activeSessionRef(sessionId: string): PiSessionRef {
     const active = this.active.get(sessionId);
-    if (active === undefined) throw new Error("Session not found");
+    if (active === undefined) throw new SessionNotFoundError();
     return { id: sessionId, cwd: active.runtime.cwd };
   }
 

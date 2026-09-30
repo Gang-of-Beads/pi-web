@@ -39,6 +39,7 @@ import { SessionNotificationStore } from "./sessionNotificationStore.js";
 import type { SessionRouteRef, SessionRouteService } from "./sessionService.js";
 import type { ClientSession } from "../../shared/types.js";
 import { quietWindowMs, registerSessionRoutes } from "./sessionRoutes.js";
+import { SessionNotFoundError } from "./sessionErrors.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
@@ -413,7 +414,7 @@ describe("session routes", () => {
       expect(mismatch.statusCode).toBe(400);
       expect(mismatch.json()).toEqual({ error: "Session cwd mismatch" });
       expect(missing.statusCode).toBe(404);
-      expect(missing.json()).toEqual({ error: "Session not found" });
+      expect(missing.json()).toEqual({ error: "Session not found", code: "session-not-found" });
     } finally {
       await routeService.dispose();
       await routeApp.close();
@@ -642,10 +643,10 @@ describe("session routes", () => {
     const payload = { cwd: "/repo", entryId: "entry-2", expectedLeafId: "leaf-1" };
 
     try {
-      routeService.forkFromTreeError = new Error("Session not found");
+      routeService.forkFromTreeError = new SessionNotFoundError();
       const missing = await routeApp.inject({ method: "POST", url: "/sessions/session-1/tree/fork", payload });
       expect(missing.statusCode).toBe(404);
-      expect(missing.json()).toEqual({ error: "Session not found" });
+      expect(missing.json()).toEqual({ error: "Session not found", code: "session-not-found" });
 
       routeService.forkFromTreeError = new Error("Stop current session activity before forking the session tree");
       const active = await routeApp.inject({ method: "POST", url: "/sessions/session-1/tree/fork", payload });
@@ -738,14 +739,14 @@ describe("session routes", () => {
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
     const routeService = new CapturingRouteSessionService();
-    routeService.askError = new Error("Session not found");
+    routeService.askError = new SessionNotFoundError();
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     try {
       const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/ask/submit", payload: { cwd: "/repo", askId: "ask-1", answers: [] } });
 
       expect(response.statusCode).toBe(404);
-      expect(response.json()).toEqual({ error: "Session not found" });
+      expect(response.json()).toEqual({ error: "Session not found", code: "session-not-found" });
     } finally {
       await routeService.dispose();
       await routeApp.close();
@@ -829,14 +830,14 @@ describe("session routes", () => {
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
     const routeService = new CapturingRouteSessionService();
-    routeService.dialogError = new Error("Session not found");
+    routeService.dialogError = new SessionNotFoundError();
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     try {
       const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/dialogs/answer", payload: { cwd: "/repo", dialogId: "dialog-1", value: true } });
 
       expect(response.statusCode).toBe(404);
-      expect(response.json()).toEqual({ error: "Session not found" });
+      expect(response.json()).toEqual({ error: "Session not found", code: "session-not-found" });
     } finally {
       await routeService.dispose();
       await routeApp.close();
@@ -909,14 +910,14 @@ describe("session routes", () => {
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
     const routeService = new CapturingRouteSessionService();
-    routeService.modelCatalogError = new Error("Session not found");
+    routeService.modelCatalogError = new SessionNotFoundError();
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     try {
       const response = await routeApp.inject({ method: "GET", url: `/sessions/session-1/models/catalog?cwd=${encodeURIComponent(resolve("/repo"))}` });
 
       expect(response.statusCode).toBe(404);
-      expect(response.json()).toEqual({ error: "Session not found" });
+      expect(response.json()).toEqual({ error: "Session not found", code: "session-not-found" });
     } finally {
       await routeService.dispose();
       await routeApp.close();
@@ -995,13 +996,13 @@ describe("session routes", () => {
 
     try {
       const payload = { cwd: resolve("/repo"), provider: "anthropic", modelId: "claude-opus-4-6", enabled: true };
-      routeService.setModelEnabledError = new Error("Session not found");
+      routeService.setModelEnabledError = new SessionNotFoundError();
       const missing = await routeApp.inject({ method: "POST", url: "/sessions/session-1/models/enabled", payload });
       routeService.setModelEnabledError = new Error("Model not found: anthropic/nope");
       const unknown = await routeApp.inject({ method: "POST", url: "/sessions/session-1/models/enabled", payload });
 
       expect(missing.statusCode).toBe(404);
-      expect(missing.json()).toEqual({ error: "Session not found" });
+      expect(missing.json()).toEqual({ error: "Session not found", code: "session-not-found" });
       expect(unknown.statusCode).toBe(400);
       expect(unknown.json()).toEqual({ error: "Model not found: anthropic/nope" });
     } finally {
@@ -1186,14 +1187,14 @@ describe("session routes", () => {
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
     const routeService = new CapturingRouteSessionService();
-    routeService.streamSnapshot = () => Promise.reject(new Error("Session not found"));
+    routeService.streamSnapshot = () => Promise.reject(new SessionNotFoundError());
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     try {
       const response = await routeApp.inject({ method: "GET", url: `/sessions/missing/stream-snapshot?cwd=${encodeURIComponent("/repo")}` });
 
       expect(response.statusCode).toBe(404);
-      expect(response.json()).toEqual({ error: "Session not found" });
+      expect(response.json()).toEqual({ error: "Session not found", code: "session-not-found" });
     } finally {
       await routeService.dispose();
       await routeApp.close();
@@ -1867,6 +1868,58 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function unusedRouteMethod(name: string): Error {
   return new Error(`Route test did not expect ${name} to be called`);
 }
+
+/**
+ * P2 slice a: a missing session is a typed answer. Before, a read route
+ * answered 404 for any failure, so a daemon error read as a deleted session.
+ */
+describe("what a session read answers when it fails", () => {
+  const readRoutes = ["messages", "status", "stream-snapshot", "models", "models/catalog", "thinking-levels", "commands", "subsessions", "background-tasks", "subagent-runs/run-1/messages", "subagent-runs/run-1/output"];
+
+  it("answers 404 with the code for a session the daemon does not have, on every read route", async () => {
+    const answers: Record<string, unknown> = {};
+    for (const route of readRoutes) {
+      const response = await app.inject({ method: "GET", url: `/sessions/no-such-session/${route}?cwd=${encodeURIComponent(resolve("/repo"))}` });
+      const body: unknown = response.json();
+      answers[route] = { status: response.statusCode, code: isRecord(body) ? body["code"] : undefined };
+    }
+    expect(answers).toEqual(Object.fromEntries(readRoutes.map((route) => [route, { status: 404, code: "session-not-found" }])));
+  });
+
+  it("keeps 503 for the child-work reads when they fail for another reason", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const routeService = new CapturingRouteSessionService();
+    routeService.subsessions = () => Promise.reject(new Error("EIO: i/o error, read"));
+    registerSessionRoutes(routeApp, routeService, new SessionEventHub());
+    try {
+      const response = await routeApp.inject({ method: "GET", url: `/sessions/session-1/subsessions?cwd=${encodeURIComponent(resolve("/repo"))}` });
+      const body: unknown = response.json();
+      expect({ status: response.statusCode, body }).toEqual({ status: 503, body: { error: "EIO: i/o error, read" } });
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
+  it("answers 500, not 404, when the read failed for another reason", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const routeService = new CapturingRouteSessionService();
+    routeService.streamSnapshot = () => Promise.reject(new Error("EIO: i/o error, read"));
+    routeService.modelCatalogError = new Error("EIO: i/o error, read");
+    registerSessionRoutes(routeApp, routeService, new SessionEventHub());
+    try {
+      const snapshot = await routeApp.inject({ method: "GET", url: `/sessions/session-1/stream-snapshot?cwd=${encodeURIComponent(resolve("/repo"))}` });
+      const catalog = await routeApp.inject({ method: "GET", url: `/sessions/session-1/models/catalog?cwd=${encodeURIComponent(resolve("/repo"))}` });
+      expect([snapshot.statusCode, catalog.statusCode]).toEqual([500, 500]);
+      expect(snapshot.json()).toEqual({ error: "EIO: i/o error, read" });
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+});
 
 describe("tool-result image route", () => {
   async function routeAppFor(routeService: CapturingRouteSessionService) {

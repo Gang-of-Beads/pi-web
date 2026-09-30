@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { HttpError } from "../api/http";
 import { initialAppState } from "../appState";
 import { isCachedNewSessionInfo, loadCachedNewSessions, markCachedNewSessionInfo, rememberCachedNewSession } from "../cachedNewSessions";
 import { loadDraft, saveDraft } from "../promptDraftStorage";
@@ -88,7 +89,7 @@ describe("SessionController cached-new sessions", () => {
       ...defaultApi,
       startSession: () => Promise.resolve(replacementSession),
       messages: (session) => {
-        if (sessionLookupId(session) === oldSession.id) return Promise.reject(new Error("Session not found"));
+        if (sessionLookupId(session) === oldSession.id) return Promise.reject(new HttpError("Session not found", 404, "local", undefined, "session-not-found"));
         return Promise.resolve(emptyPage);
       },
       status: (session) => Promise.resolve(status(sessionLookupId(session))),
@@ -112,6 +113,31 @@ describe("SessionController cached-new sessions", () => {
     expect(urlUpdates).toEqual([{ replace: true }]);
   });
 
+  /**
+   * P2 slice a: only the daemon's code says a session is gone. A daemon error
+   * that happens to carry the old words must not recreate the session - that
+   * would move the reader's draft to a new session while the old one exists.
+   */
+  it("does not recreate a cached new session for a daemon error that carries the old words", async () => {
+    const storage = new MemoryStorage();
+    Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+    rememberCachedNewSession(oldSession);
+    saveDraft(sessionKey(oldSession.id), "draft text");
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [markCachedNewSessionInfo(oldSession)] };
+    let started = 0;
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      startSession: () => { started += 1; return Promise.resolve(replacementSession); },
+      messages: () => Promise.reject(new HttpError("Session not found", 500, "local")),
+      status: (session) => Promise.resolve(status(sessionLookupId(session))),
+    };
+    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api, socket: new FakeSocket() });
+
+    await controller.selectSession(markCachedNewSessionInfo(oldSession), { updateUrl: false });
+
+    expect({ started, draft: loadDraft(sessionKey(oldSession.id)), selected: state.selectedSession?.id }).toEqual({ started: 0, draft: "draft text", selected: oldSession.id });
+  });
+
   it("moves a recreated session's draft and unsent messages under its own machine even when the reader switched machine meanwhile", async () => {
     const storage = new MemoryStorage();
     Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
@@ -128,7 +154,7 @@ describe("SessionController cached-new sessions", () => {
         return Promise.resolve(replacementSession);
       },
       messages: (session) => {
-        if (sessionLookupId(session) === oldSession.id) return Promise.reject(new Error("Session not found"));
+        if (sessionLookupId(session) === oldSession.id) return Promise.reject(new HttpError("Session not found", 404, "local", undefined, "session-not-found"));
         return Promise.resolve(emptyPage);
       },
       status: (session) => Promise.resolve(status(sessionLookupId(session))),

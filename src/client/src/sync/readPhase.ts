@@ -1,5 +1,6 @@
 import { HttpError } from "../api/http";
 import { LOCAL_MACHINE_ID } from "../machineKeys";
+import { SESSION_NOT_FOUND_CODE } from "../../../shared/apiTypes";
 
 /**
  * Where a read of one shown value stands (object model §0, B48).
@@ -17,7 +18,7 @@ export type ReadPhase = "syncing" | "live" | "reconnecting";
  * A definite answer that ends retrying for a key. It comes only from a server
  * that answered, never from a missing answer, and is shown as itself.
  */
-export type ReadFact = { kind: "none" } | { kind: "signed-out" } | { kind: "forbidden" };
+export type ReadFact = { kind: "none" } | { kind: "signed-out" } | { kind: "forbidden" } | { kind: "gone" };
 
 export const NO_FACT: ReadFact = { kind: "none" };
 
@@ -39,6 +40,11 @@ export type ReadMiss =
 /** What a failed read means: a fact that ends retrying, or a miss that is retried. */
 export type ReadOutcome = { readonly kind: "fact"; readonly fact: ReadFact } | { readonly kind: "miss"; readonly miss: ReadMiss };
 
+/** Facts a server names by code, checked before any status: the daemon's missing session (P2 slice a). */
+const FACT_BY_CODE = new Map<string, ReadFact>([
+  [SESSION_NOT_FOUND_CODE, { kind: "gone" }],
+]);
+
 const FACT_BY_STATUS = new Map<number, ReadFact>([
   [401, { kind: "signed-out" }],
   [403, { kind: "forbidden" }],
@@ -58,7 +64,7 @@ const LINK_DOWN: ReadOutcome = { kind: "miss", miss: { kind: "link-down" } };
  */
 export function classifyReadError(error: unknown): ReadOutcome {
   if (!(error instanceof HttpError) || error.status === 0) return LINK_DOWN;
-  const fact = FACT_BY_STATUS.get(error.status);
+  const fact = (error.code === undefined ? undefined : FACT_BY_CODE.get(error.code)) ?? FACT_BY_STATUS.get(error.status);
   if (fact !== undefined) return { kind: "fact", fact };
   const machineId = error.machineId ?? LOCAL_MACHINE_ID;
   if (!HOP_STATUSES.has(error.status)) return { kind: "miss", miss: { kind: "server-error", machineId, reason: error.message === "" ? `HTTP ${String(error.status)}` : error.message } };

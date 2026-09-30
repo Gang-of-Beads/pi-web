@@ -26,6 +26,8 @@ describe("classifyReadError", () => {
       "remote protocol 404": classifyReadError(new HttpError("Not Found", 404, "ubuntu")),
       "401": classifyReadError(new HttpError("Unauthorized", 401, "local")),
       "403": classifyReadError(new HttpError("Forbidden", 403, "ubuntu")),
+      "a missing session": classifyReadError(new HttpError("Session not found", 404, "local", undefined, "session-not-found")),
+      "a missing session behind the gateway": classifyReadError(new HttpError("Session not found", 404, "ubuntu", "gateway", "session-not-found")),
     };
     const linkDown = { kind: "miss", miss: { kind: "link-down" } };
     expect(table).toEqual({
@@ -44,6 +46,8 @@ describe("classifyReadError", () => {
       "remote protocol 404": { kind: "miss", miss: { kind: "server-error", machineId: "ubuntu", reason: "Not Found" } },
       "401": { kind: "fact", fact: { kind: "signed-out" } },
       "403": { kind: "fact", fact: { kind: "forbidden" } },
+      "a missing session": { kind: "fact", fact: { kind: "gone" } },
+      "a missing session behind the gateway": { kind: "fact", fact: { kind: "gone" } },
     });
   });
 });
