@@ -31,22 +31,8 @@ dist/
 /test-results/
 /playwright-report/
 
-# Local agent runtime artifacts (background task logs, delegate sessions)
-.pi/tasks/
-.pi/delegate/
-# Runtime state, not project material. `.pi/prompts` and `.pi/skills` are
-# committed on purpose: they are things this project decided. Goals, the goal
-# ledger and queued prompt frames are the record of one machine's session, and
-# committing them meant every checkout inherited somebody else's half-finished
-# work - five goals whose task lists all read as incomplete because the plugin
-# had stopped recording against them.
-# Derived cache the goal extension rebuilds from the goal files themselves.
-.pi/.goals-pool-snapshot.json
-.pi/goals/
-.pi/queued-prompt-frames.json
-# The rule for the whole directory: `.pi` holds two kinds of file. Things the
-# project decided - prompts, skills - are committed. Things a session produced
-# while running - goals, ledgers, task logs, working notes like HANDOFF.md and
-# TRACK.md - are one machine's state and stay out of the index.
-.pi/HANDOFF.md
-.pi/TRACK.md
+# `.pi` is one machine's pi state: goals, ledgers, task logs, delegate sessions,
+# queued prompt frames and working notes. None of it is project material, and
+# committing it meant every checkout inherited somebody else's half-finished
+# work - five goals whose task lists all read as incomplete.
+/.pi/
