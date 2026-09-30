@@ -27,7 +27,10 @@ dist/
 # Dev docs site staging output (scripts/build-docs-dev.mjs).
 /docs/.deploy/
 
-# Playwright e2e artefacts
+# The Playwright e2e suite is kept on the owner's machine and run there (owner,
+# 2026-09-30): CI never ran it, and the 8505 probes are the verified path.
+/e2e/
+/playwright.config.ts
 /test-results/
 /playwright-report/
 
