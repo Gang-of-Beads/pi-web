@@ -1,6 +1,6 @@
 # PI WEB object model
 
-Status: revised design, 2026-09-30. Applies every "accept" in `docs/design/reviews/review-triage-object-model.md`; owner points carry **Pending owner answer Qn**. Builds on `docs/design/state-diagram.md` (rules 1–7, D1–D8, B1–B48, with the B48 draft under D5), `docs/design/sync-convergence.md` (heads, B28 board read, keepalive head) and `docs/design/state-sync-redesign.md` (one FIFO, facts not copies).
+Status: revised design, 2026-09-30, with the owner's decisions of the same day (§7). Applies every "accept" in `docs/design/reviews/review-triage-object-model.md`. Builds on `docs/design/state-diagram.md` (rules 1–7, D1–D8, B1–B49, with B48 under D5), `docs/design/sync-convergence.md` (heads, B28 board read, keepalive head) and `docs/design/state-sync-redesign.md` (one FIFO, facts not copies).
 
 ## Summary
 
@@ -19,9 +19,9 @@ Evidence sources (the inventories and reviews of design run `7b4fe5b7`, kept as 
 
 Anything that does not exist today is marked **new**. Where the inventories lack evidence, the text says so.
 
-**Presentation (binding, owner 2026-09-30).** Only *reconnecting* is ever shown, and only in one app-level row (`components/errorBanner.ts`, rendered by `PiWebApp.renderErrorBanner`, `PiWebApp.ts:4186`, `:4394`). Syncing is never visible. There is no per-panel marker, no "Try now" and no skeleton. Known same-key data stays live and actionable. A panel with nothing known shows no empty-state text until a read has answered. Opening a session fails only for *deleted* or *archived*, and each is shown as itself.
+**Presentation (binding, owner 2026-09-30).** The one app-level row (`components/errorBanner.ts`, rendered by `PiWebApp.renderErrorBanner`, `PiWebApp.ts:4186`, `:4394`) shows one claim at a time: reconnecting for the machine in use, a definite failure, or a server's error reason. Syncing is never visible. The one exception is the first read of a transcript with nothing known, which shows "Loading this session…" (§1.7). There is no per-panel marker, no "Try now" and no skeleton. Known same-key data stays live and actionable. A panel with nothing known shows no empty-state text until a read has answered. Opening a session fails only for *deleted* or *archived*, and each is shown as itself.
 
-**Intent acknowledgement is not sync state.** The D8 progress line and "Opening…" stay for about the first second. "Still opening…" (`navigationIntent.ts:130-135`) and "Loading projects…" / "Loading workspaces…" (`PiWebApp.ts:3117-3137`) are deleted. **Pending owner answer Q2** (recommended: keep the progress line and "Opening…"; delete "Still opening…" and the Loading titles; a transcript with nothing known stays blank and never shows "Start the conversation", `ChatView.ts:1810-1818`).
+**Intent acknowledgement is not sync state** (owner, Q2). The row spinner, "Opening…" after 1 s and the D8 progress line stay: they answer "did my tap register". "Still opening…" (`navigationIntent.ts:130-135`) and "Loading projects…" / "Loading workspaces…" (`PiWebApp.ts:3117-3137`) are deleted; after the grace period the app row speaks.
 
 ---
 
@@ -42,7 +42,7 @@ any  ──► fact : typed refusal (401, 403, {code:"session-not-found"}, archi
 
 - `ReadPhase = "syncing" | "live" | "reconnecting"`. There is no `failed`.
 - A **fact** is separate from the phase: `ReadFact = none | signed-out | gone(deleted|archived|project-removed) | forbidden`. A fact ends retrying for that key and is rendered as itself.
-- A repeating non-transport failure (a 5xx for the same read on a live link) stays `reconnecting` and is typed in the row cause. **Pending owner answer Q9** (recommended: after 3 consecutive 5xx on a live link, the row cause becomes `server-error(machineId)`, worded "*X* is answering with errors; retrying…". It keeps retrying, with no Retry button, and it is not a `ReadFact`).
+- A server that answers with an error (a 5xx on a live link) is not a network problem, and the row says so (owner, Q9). The row cause is `server-error(machineId, reason)` and shows the error's reason itself, for example "*hxd-work-mbp*: <reason>". It never says "Reconnecting". The read keeps retrying on the same schedule, with no Retry button, and it is not a `ReadFact`.
 - `value` is either `{ known: true, key, head?, data, source }` or `{ known: false, key }`. Old-key values never render (I1).
 - `T` is the existing quiet window setting (default 15 s), reused as the retry cap. There is no separate setting.
 
@@ -108,11 +108,11 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 - **Owner**: client **new** `controllers/sessionBoard.ts` (today 17+ writers across 4 modules [C §2.5]); server daemon `PiSessionService.list` over `SessionSummaryScanner`.
 - **Head**: board `{namespace: daemonInstanceId, value: revision}`, with per-project revisions echoed so that a moved head re-reads only what moved. Today: per-workspace `payloadRevision` (`payloadRevision.ts:8`, `sessionController.ts:1068-1076`).
 - **Events**: `session.created`, `session.name` (`sessionController.ts:274-275`); `status.update`/`activity.update` for badges. Silent today: archive/restore/delete (`piSessionService.ts:3985,4000,4133,4225` [S §4.5]) and foreign session files [S §2.1]. **New**: `session.archived|deleted|restored`; `lastActivityAt` on every global `status.update`.
-- **Ordering**: sorted by `lastActivityAt`. **Pending owner answer Q7** (recommended: a row keeps its position unless its activity bucket changes, and the order is frozen while a touch or scroll is in flight; heartbeats arrive every 2 s per working session [S §2.2]).
+- **Ordering**: sorted by `lastActivityAt`. Rows re-sort live, but positions hold while a touch or scroll is in flight and settle when it ends (owner, Q7). Heartbeats arrive every 2 s per working session [S §2.2].
 - **Read**: today `GET /api/sessions?cwd=` does a whole-store scan per request with no single-flight; 22 concurrent identical scans were observed at 10.7–11.0 s (`piSessionManagerGateway.ts:85-100`, `sessionSummaryScanner.ts:516` [S §3, §5.2]); p50 600 ms, p99 23 s [N §4]. The read also writes (`piSessionService.ts:1726-1744` [S §4.4]). **New**: `GET /api/sessions/board` (§4.5).
 - **Cache**: memory `workspaceSessionsCache` (`workspaceSessionsCache.ts:17-19` [C row 6], deleted in P4); `cachedNewSessions.ts` in localStorage [C row 15]. No persistent board seed until measured.
 - **Retention**: on a key change, old rows are not rendered. With no answer, rows are kept and the phase is `reconnecting`, with no retry limit.
-- **Presentation**: a source that has not answered stays as a row group. **Pending owner answer Q3** (recommended: no marker on the group; the app row shows while any rendered source is reconnecting and names it, "Waiting for *machine/workspace*…").
+- **Presentation**: a source that has not answered stays as a row group, with no marker, and retries in the background (owner, Q3). The app row speaks only for the machine the reader is using. Another machine that stopped answering, or one project or workspace that did not answer, retries silently. The owner's example: working in the MacBook's sessions while the Ubuntu machine is down shows nothing.
 
 ### 1.6 Session (runtime identity), activity and status
 
@@ -141,7 +141,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 - **Read (P2)**: the first tail page comes from `messagesPassive`, which reads the file, returns `head` and never creates a runtime. The runtime opens in parallel for `status`. Transcript and status each become `live` independently; there is no `Promise.all(messages, status, streamSnapshot)` gate and no serial `streamSync`→`status` (`sessionController.ts:1688-1750` [C §3a.3]). Today: p99 10.7 s on 8504; 1.55 s TTFB daemon-cold on 17.8 MB [N §2].
 - **Cache**: memory LRU 12, span cap 400 (`chatTranscriptStore.ts:26,33`), looked up synchronously first. Today there is also localStorage `pi-web:chat-history:v2:` (TTL 7 d, ≤512 KB/entry, sync parse, `chatHistoryCache.ts:1,10,22,115-135`). **New (P6)**: an IndexedDB tail seed (last N rows + head, written together, writes debounced during streaming) replaces the localStorage path. It is never replayed from a persisted watermark.
 - **Retention**: a same-key memory seed renders in the select frame. An IndexedDB seed takes one async hop; the previous key's pixels stay until the next key's seed or read resolves, and they are not actionable meanwhile (I1). Seed → read is executed by D4 `bottomAnchorAction`.
-- **Presentation**: with nothing known, blank (Q2). While reconnecting, no text and the app row.
+- **Presentation** (owner, Q3 of the ask): with nothing known and the first read in flight, the transcript shows "Loading this session…", the one visible syncing text. It never shows "Start the conversation" before a read answered (`ChatView.ts:1810-1818`). While reconnecting it shows no text, and the app row speaks.
 
 ### 1.8 Stream (per-session event sequence)
 
@@ -178,7 +178,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 - **Key**: `sessionKey` = machine + session (`pendingOutbox.ts:57-59`).
 - **Props**: `PendingPrompt {clientMessageId,text,attachments,delivery,at}`; stored in localStorage, durable.
 - **While reconnecting**: sends are enqueued (owner decision 2). Only `notSent` from this device younger than 10 min is resent automatically (D1). `VERIFY_AFTER_MS` (`sessionController.ts:2224-2235`).
-- **Other actions while reconnecting**: **Pending owner answer Q4** (recommended: fire now under the mutation deadline and show the control as pending; never queue for replay; with no answer, show a reader-retired notice "outcome unknown" and re-check through the operations ledger probe).
+- **Other actions while reconnecting** (owner, Q4): they fire now under the mutation deadline and the control shows as pending. They are never queued for replay. With no answer, a notice says the outcome is unknown, and the operations ledger probe re-checks it. That notice is a definite claim, so it takes the row as in §2.3.
 
 ### 1.12 Docked card (D2)
 
@@ -203,6 +203,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 - **Key**: projects global (`projectPins.ts:12`); sessions per machine (`sessionPins.ts:18,45`); server `shared/storage/sessionPinStore.ts`, route `web/sessionPinRoutes.ts`.
 - **Head/events**: none today (`sessionPinRoutes.ts:22`). **New (P5)**: a `pins` head source and `pins.changed`, from a web nudge through `shared/sessiondClient`.
 - **Read**: `GET /api/session-pins`, re-read on render when older than 2 s (`PIN_REFRESH_MS`) → 30/min on 8504 [N §3, §4]. **New**: the batched boot read, then event and head only.
+- **Pins outlive projects (B49, owner Q10/Q11).** A pin names a session; it is global per machine and does not depend on which projects are open. A project exists to create new sessions in its directory and to open its own session list, nothing more. So the global PINNED group is resolved by the daemon from the pinned ids (the board read carries the pinned sessions whatever projects are open), and tapping a pinned session opens it without reopening its project. Closing a project says nothing about its pins. Today the row vanishes silently, because PINNED is built from the open projects' lists (verified on 8505).
 
 ### 1.15 Background runs, subagent runs, interrupted runs
 
@@ -220,8 +221,8 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
   - Plugins get `host.resource(spec)`. The server half emits `plugin.changed {pluginId, scope, revision}` through the host.
   - Every open panel keeps a head and verifies it every *T* (4 reads a minute per open panel), which covers workspaces without a watcher.
   - A repo test forbids `setInterval` in first-party plugin browser code; voice is on the allowlist.
-  - Third-party plugins: **Pending owner answer Q8** (recommended: a deprecation warning for one release, then removal).
-- **Watcher (P3)**: `workspace.changed` ignores `.pi/` and writes owned by the app, and keeps only `HEAD`, `refs/` and `index` under `.git/`. It is coalesced to ≤1 tree + ≤1 git read per 2 s per workspace. Git status + tree are 86 % of 8504 traffic, ~245 req/min [N §4]; the storm reproduced once on 8505.
+  - Third-party plugins: a deprecation warning for one release, then removal. This is an engineering call; the API cannot enforce it in the browser.
+- **Watcher (P3)**: `workspace.changed` ignores `.pi/` and writes owned by the app, and keeps only `HEAD`, `refs/` and `index` under `.git/`. It is coalesced to ≤1 tree + ≤1 git read per 2 s per workspace. Git status + tree are 86 % of 8504 traffic, ~245 req/min [N §4]; the storm reproduced once on 8505. **Owner (Q6): research how VS Code's git extension and GitLens watch first** (research run 8f558e71); the filter follows what the mature tools do.
 
 ### 1.17 Goal (D7)
 
@@ -234,7 +235,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 - **Key**: counter `seq`; target `(machine, project, workspace, session, view)`.
 - **States**: D8 `restoring|at|going`. Today the phase is `going|slow|stalled|failed` (`navigationIntent.ts`).
 - **Change (owner decision 6)**: `failed` and "Couldn't open · retry" are removed. The outcomes are `at`, `gone(deleted|archived)` (from the typed fact, §1.6), or `going` continuing while the read reconnects. The route-restore ladder (1/3/8/15/30 s, `PiWebApp.ts:261,1669-1677`) is deleted. `stalled` wording is deleted (Q2).
-- **Archived by link**: **Pending owner answer Q5** (recommended: a read-only transcript, the "Archived" reason and Restore; deleted shows its reason and a way back to the board; `archivedRuntimes` keeps archived transcripts readable).
+- **Archived by link** (owner, Q8 of the ask): a read-only transcript, the "Archived" reason and Restore. Deleted shows "This session was deleted" and a way back to the board. `archivedRuntimes` keeps archived transcripts readable.
 - **Critical path**: the app writes `cwd` into every session link it makes. A route with `cwd` starts the session reads immediately (+0.55–1.5 s saved [N §2]; `PiWebApp.ts:1253-1432`, `workspaceController.ts:57,78`). Without `cwd`, it falls back to the project → workspace → session chain.
 
 ### 1.19 Terminal
@@ -245,7 +246,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 
 | Object | Key today | Defect | Change |
 |---|---|---|---|
-| Prompt / ask drafts | sessionId only (`promptDraftStorage.ts:1-4`, `askDrafts.ts:16-20`) | no machine in the key | **new** key `machine:session[:ask]`. **Pending owner answer Q6** (recommended: lazy adoption: when X opens on M and a legacy key X exists, adopt it as `M:X`; never drop) |
+| Prompt / ask drafts | sessionId only (`promptDraftStorage.ts:1-4`, `askDrafts.ts:16-20`) | no machine in the key | **new** key `machine:session[:ask]`. Lazy adoption: when X opens on M and a legacy key X exists, it is adopted as `M:X`. Drafts are never dropped (engineering call, not asked) |
 | Route/selection memories | per machine+project, sessionStorage | — | unchanged |
 | UI preferences | per module localStorage | — | adds *T* |
 | Quick switcher | own loading/error, 30 s staleness (`PiWebApp.ts:452-454,531-539,2866-2908`) | fourth copy of the list read | reads the board resource (P4) |
@@ -326,10 +327,10 @@ const handlers = { /* one entry per frame type */ } satisfies { [T in SessionUiE
 
 ### 2.3 Client: `ConnectionSummary` and the app-row contract
 
-**Input**: watched entries in `reconnecting` + socket state, reduced to a typed cause:
+**Input**: watched entries of the machine in use in `reconnecting`, plus that machine's socket state, reduced to a typed cause. A definite notice (§1.11, §2.1 facts) is the second input; only one is shown at a time:
 
 ```ts
-type RowCause = { kind: "link-down" } | { kind: "machine-unanswering"; machineId: string } | { kind: "daemon-restarting" } | { kind: "server-error"; machineId: string } /* Q9 */;
+type RowCause = { kind: "link-down" } | { kind: "machine-unanswering"; machineId: string } | { kind: "daemon-restarting" } | { kind: "server-error"; machineId: string; reason: string };
 type RowState = "hidden" | "grace" | "shown" | "holding";
 ```
 
@@ -338,15 +339,15 @@ type RowState = "hidden" | "grace" | "shown" | "holding";
 | `link-down` | "Reconnecting…" |
 | `machine-unanswering(m)` | "*m* is not answering; reconnecting…" |
 | `daemon-restarting` | "*m* is restarting; reconnecting…" |
-| `server-error(m)` | "*m* is answering with errors; retrying…" (Q9) |
-| aggregate source unknown | "Waiting for *machine/workspace*…" (Q3) |
+| `server-error(m, reason)` | "*m*: *reason*" (the error's own words; never "reconnecting", Q9) |
+| another machine, or one project or workspace, not answering | nothing: silent background retries (Q3) |
 
 **Lifecycle** (pure classifier, extends `components/bannerHold.ts`):
 - The **sub-state** `unanswered-since-first-miss` begins at the first miss and persists through retries, so the row does not flicker per retry.
 - `hidden → grace` on the first miss; `grace → shown` after 4 s (`TRANSIENT_GRACE_MS`) if still unanswered; `shown → holding` on an answer; `holding → hidden` after the minimum visible time (`BANNER_MIN_VISIBLE_MS`, 1.5 s).
 - **No expiry** (`TRANSIENT_ERROR_TIMEOUT_MS` does not apply) and **no dismiss** (no cross) for the reconnecting claim.
 - It renders above the dialog layer (portalled to the top layer, above `--pi-layer-dialog`, `SettingsDialog.ts:790`).
-- **Precedence with a real one-shot notice**: **Pending owner answer Q1** (recommended: stacked, two rows; the notice keeps its own `error` slot and cross).
+- **One claim at a time** (owner, Q1: a definite failure is a different meaning from "not synced", and only one shows at a time). A definite claim (an action failed, an outcome unknown, a server error reason) holds the row until it is dismissed or retired. The reconnecting claim returns afterwards if it is still true. The pure classifier takes both inputs and names the one it shows.
 
 **Time to row**: deadline + grace (3 s + 4 s = 7 s for small critical reads; 8 s + 4 s = 12 s for the board and transcript).
 
@@ -552,19 +553,19 @@ Each phase ships green, is probed on 8505 (393×850 coarse pointer where it matt
 
 ---
 
-## 7. Pending owner answers
+## 7. Owner decisions (2026-09-30)
 
-Each is designed around its recommendation above; an answer changes one line.
-
-- **Q1**: row precedence against a real notice (§2.3).
-- **Q2**: which cues are tap acknowledgement; blank transcript (header, §1.7, §1.18).
-- **Q3**: marker for an unanswered aggregate source (§1.5).
-- **Q4**: non-send actions while reconnecting (§1.11).
-- **Q5**: archived session opened by link (§1.18).
-- **Q6**: legacy draft keys (§1.20).
-- **Q7**: board re-sort under the finger (§1.5).
-- **Q8**: third-party plugin polling (§1.16).
-- **Q9**: how a repeating server error reads (§0, §2.3).
+- **Q1, the row**: one claim at a time; a definite failure is not reconnecting (§2.3).
+- **Q2, tap acknowledgement**: the spinner, "Opening…" and the progress line stay; "Still opening…" and the Loading titles go (header, §1.18).
+- **Q3, the first transcript read**: "Loading this session…" (§1.7).
+- **Q4, an unanswered source**: only the machine in use shows in the row; other machines and single sources retry silently (§1.5, §2.3).
+- **Q5, other actions**: fire now, pending, never replayed; an unknown outcome is said (§1.11).
+- **Q6, the git watcher**: research VS Code and GitLens first (§1.16).
+- **Q7, board order**: live, held while touching or scrolling (§1.5).
+- **Q8, archived or deleted by link**: read-only with Restore, or the reason and a way back (§1.18).
+- **Q9, server errors**: the row shows the error reason, not reconnecting (§0, §2.3).
+- **Q10/Q11, pins** (B49): pins stay global and keep working after their project closes; opening one does not reopen the project; closing says nothing (§1.14). The owner's follow-up question, whether global and project pins should be separate, is open.
+- Engineering calls, not asked: legacy drafts adopted lazily (§1.20); third-party plugin polling deprecated for one release (§1.16).
 
 ---
 

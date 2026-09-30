@@ -322,7 +322,13 @@ stateDiagram-v2
 
 Plugins read through the host, so the rule reaches them as one host facility: a read the host runs for a panel reports syncing and reconnecting, and retries on the same schedule. A plugin never writes its own retry loop.
 
-**What the reader sees** is the owner's decision; the proposal is recorded here and the questions are open (ask of 2026-09-30).
+**What the reader sees** (owner, 2026-09-30; the full contract is `object-model.md` §0 and §2.3):
+- One app-level row, the existing yellow one, shows one claim at a time. A definite failure is not reconnecting, and holds the row until it is dismissed or retired.
+- Reconnecting shows only for the machine the reader is using. Another machine, or one project or workspace, that does not answer retries silently.
+- A server that answers with an error shows its reason, never "reconnecting".
+- Syncing is never visible, except "Loading this session…" during a transcript's first read with nothing known. The tap acknowledgement (row spinner, "Opening…", the progress line) stays. "Still opening…" and the Loading titles go.
+- There is no Try now; the page retries by itself. Known data stays live and usable. Other actions fire now and show as pending, and are never replayed.
+- A tapped session opens unless it was deleted (the reason, and a way back) or archived (read-only, with Restore).
 
 ## D6. A plugin
 
@@ -512,7 +518,7 @@ Every owner report, the domain it breaks, and its producers (file:line in the in
 | B46 | the board's grid key is a no-op | D8 | a key does something or is absent | `aria-pressed` with no effect | navigation |
 | B47 | `machineSections` is never rendered | D6 | render it or remove it | no caller of `getMachineSections` | plugin-lifecycle |
 | B48 | a read that got no answer freezes a surface at "Couldn't read…" | D5 | a surface is live, syncing or reconnecting, never failed; it retries by itself | `projectsLoad: "failed"` and twelve siblings (D5 table) | sync |
-| B49 | a pinned session in a closed project vanishes from PINNED, and a link to it lands on the board | D8 | owner decision pending (ask of 2026-09-30); pins name sessions, and every session opens by id | PINNED is built from the open projects lists; the pin stays in `session-pins.json` | live-surfaces |
+| B49 | a pinned session in a closed project vanishes from PINNED, and a link to it lands on the board | D8 | pins are global and outlive projects: PINNED is resolved from the pinned ids by the daemon, tapping opens the session without reopening its project, and closing a project says nothing about pins (owner, 2026-09-30) | PINNED is built from the open projects' lists; the pin stays in `session-pins.json` | live-surfaces |
 | Fixed | Enter picking an IME word sent the message | composer | the IME owns its key | fixed in `3c449543` | done |
 | Fixed | the row menu did not fold on a second tap; no Archive or Delete | menus | one transition per tap | fixed in `a97f6c60` | done |
 
