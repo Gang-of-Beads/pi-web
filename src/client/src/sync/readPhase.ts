@@ -4,7 +4,7 @@ import { HttpError } from "../api/http";
  * Where a read of one shown value stands (object model §0, B48).
  *
  * The owner, 2026-09-30: a surface keeps updating itself, and there is no final
- * "failed" - "其实只有正在尝试重连/同步，同步中两个状态". A read that got no
+ * "failed" - "really there are only two states: trying to reconnect/sync, and syncing". A read that got no
  * answer is not an outcome; it is a retry that has not happened yet.
  * - `syncing`: a read for this key is in flight and nothing newer is known.
  * - `live`: an answer for this key arrived; events and heads keep it current.

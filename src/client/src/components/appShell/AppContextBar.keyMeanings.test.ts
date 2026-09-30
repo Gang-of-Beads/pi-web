@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import { navigationKeyLabel } from "./AppContextBar";
 
 /**
- * Owner report: "三个横杠应该是 go to 菜单，四个格子是左边选机器 project/session
- * 的导航页" - the desktop had grown a lone hamburger that toggled a panel,
+ * Owner report: "the three bars should be the Go to menu, and the four squares the navigation page for
+ * picking machine/project/session on the left" - the desktop had grown a lone hamburger that toggled a panel,
  * so the same two glyphs meant different things depending on the width. The
  * meanings are fixed now; only the wording follows the surface each layout
  * actually opens.

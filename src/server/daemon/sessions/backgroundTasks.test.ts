@@ -22,7 +22,7 @@ const RUNNING_PID = process.pid;
 
 /** The probe a healthy world offers: the runner's pid was born with the seeded start. */
 const fakeProbe = (pid: number): Promise<number | undefined> =>
-  // 健康世界:runner 的 pid 出生时间 ≈ 种子里 5 秒前的 startTime
+  // Healthy world: the runner's pid was born ≈ at the seeded startTime, 5 seconds ago
   Promise.resolve(pid === RUNNING_PID ? Date.now() - 5_000 : undefined);
 
 async function fixture(): Promise<string> {
@@ -35,8 +35,8 @@ async function fixture(): Promise<string> {
     command: "bash scripts/deploy.sh",
     status: "running",
     outputPath: ".pi/tasks/session-494694-494694/b96da5ec8.output",
-    // 活任务的开始时间必须是现实的:出生时间核对会把一个声称 2023 年就
-    // 开始、进程却刚出生的记录判成 pid 复用 —— 那正是新规则要抓的情形。
+    // A live task's start time must be realistic: the birth-time check judges a record that claims
+    // a 2023 start while its process was just born as pid reuse - exactly what the new rule catches.
     startTime: Date.now() - 5_000,
     pid: RUNNING_PID,
     bytesWritten: 0,
@@ -247,12 +247,12 @@ describe("a running record whose pid was recycled", () => {
     const cwd = await fixture();
     const tenDays = 10 * 24 * 60 * 60 * 1000;
     const recent = Date.now() - 60 * 1000;
-    // 把 running 记录的 startTime 挪到 10 天前;pid 仍是本测试进程(活着,
-    // 但出生时间远晚于任务开始 —— 与实测的复用现场同构)。
+    // Move the running record's startTime 10 days back; the pid is still this test process (alive,
+    // but born long after the task started - the same shape as the observed reuse).
     const file = join(cwd, ".pi", "tasks", "session-494694-494694", "b96da5ec8.json");
-    // 把 running 记录的 startTime 挪到 10 天前;pid 仍是本测试进程(活着,
-    // 但出生时间远晚于任务开始 —— 与实测的复用现场同构)。与 fixture 相同的
-    // 记录整体重写,只改开始时间。
+    // Move the running record's startTime 10 days back; the pid is still this test process (alive,
+    // but born long after the task started - the same shape as the observed reuse). The record is
+    // rewritten whole, identical to the fixture, with only the start time changed.
     await writeFile(file, JSON.stringify({
       id: "b96da5ec8",
       name: "deploy 1.202608.13",

@@ -1,6 +1,6 @@
 # Long press selects: one bulk mode for every list
 
-Owner, 2026-09-30: "长按一个元素（任何列表页）都是bulk操作页，你设计下". (Long-pressing an item on any list page opens a bulk-operation page. Design it.)
+Owner, 2026-09-30: "Long-pressing an item on any list page opens a bulk-operation page. Design it."
 
 ## What exists today
 
@@ -63,7 +63,7 @@ Owner, 2026-09-30: "长按一个元素（任何列表页）都是bulk操作页�
 
 1. **Phone:** a long press turns the page into multi-select, with the bulk actions at the top. An action returns to the original list. There must be an exit key, so an accidental long press can always go back: `✕ Done` in the bar, the back gesture, and Escape.
 2. **Desktop** does it in its own way: Shift/Ctrl-click, plus a quiet "Select" key in the list header. The menu stays on ⋯ and right-click.
-3. **Scope:** "你先逐个review，能做的都做，有问题随时问我" (review every list, do everything that can be done, and ask when something is unclear). The review is below.
+3. **Scope:** "review every list, do everything that can be done, and ask when something is unclear". The review is below.
 4. **The actions table is approved.**
 
 ## Review of every list (2026-09-30)

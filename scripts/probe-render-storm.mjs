@@ -2,7 +2,7 @@
 /**
  * How much work the idle app does, and how many times it asks for pins.
  *
- * Report: "感觉越来越多bug了" / "总是回弹". Measured root cause: pinnedSessionIdsFor
+ * Report: "it feels like there are more and more bugs" / "it keeps bouncing back". Measured root cause: pinnedSessionIdsFor
  * runs while rendering, and every read it started ended in a render that asked
  * again - 7,127 requests to /api/session-pins in five seconds, 1,425 a second,
  * with the whole app re-rendering just as often. On v2.202609.11 (before the

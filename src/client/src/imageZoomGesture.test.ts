@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { IDENTITY_ZOOM, MAX_ZOOM, pinchZoom, panZoom, wheelZoom } from "./imageZoomGesture";
 
 /**
- * Owner request: "照片预览加一个pinch放大缩小功能吧". The picture is opened at fit
+ * Owner request: "add pinch-to-zoom to the photo preview". The picture is opened at fit
  * size, so a screenshot's small print is unreadable on a phone; pinch is the
  * gesture that fixes it, and the maths has to anchor on the fingers rather than
  * on the picture's centre or the thing being read swims away.

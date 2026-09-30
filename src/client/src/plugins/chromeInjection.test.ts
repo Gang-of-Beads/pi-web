@@ -6,8 +6,8 @@ import type { PiWebPlugin } from "./types";
 /**
  * PI WEB owns the chrome around the transcript (docs/design/state-diagram.md, rule 7).
  *
- * Owner, 2026-09-30: "pi web就不该支持这里注入任何bar以及元素 … 插件声明后，出来一个新的插件的按钮点击进去是
- * 插件自定义的显示". The session drawer let a plugin draw a bar between the header and the transcript;
+ * Owner, 2026-09-30: "pi web should not support injecting any bar or element here … once a plugin declares it, a new
+ * plugin button appears, and tapping it opens the plugin's own custom display". The session drawer let a plugin draw a bar between the header and the transcript;
  * it is gone. A plugin that still declares it is refused at registration with the replacement named.
  * The refusal reaches only the browser console today; showing browser registration failures on the
  * plugin card is B38.

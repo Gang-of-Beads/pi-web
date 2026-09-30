@@ -87,7 +87,7 @@ function stopMoment(entry: Record<string, unknown>): string | undefined {
  * recovery signature (`auto_retry_start`, then `_omitRecoveryAttempt`), so nothing
  * else an extension edits out of the model's context is hidden by it.
  *
- * Owner, 2026-09-30: "完全重试失败之前的错误不要显示出来" - a failure the retry then
+ * Owner, 2026-09-30: "don't show the errors from before the retries have completely failed" - a failure the retry then
  * replaced is not the turn's outcome; only the attempt nobody retried is.
  */
 export function retriedAttemptIds(entries: readonly unknown[]): Set<string> {

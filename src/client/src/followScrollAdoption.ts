@@ -5,7 +5,7 @@
  * event that arrives afterwards is not mistaken for the reader leaving the bottom.
  * The remembered target was kept until matched, which is where it went wrong: a
  * reader who scrolled up was dragged back the moment their position happened to
- * coincide with a target we wrote minutes earlier - the "回弹" the owner reported as
+ * coincide with a target we wrote minutes earlier - the "bounce back" the owner reported as
  * happening for no reason. Scrolling up had already said "not the bottom"; the wheel
  * decided, a coincidental equality should not overrule it.
  *

@@ -2,8 +2,8 @@
 /**
  * Live check of D8 (docs/design/state-diagram.md), B29, at 393x850 under touch.
  *
- * Owner, 2026-09-30: "我点了一个页面，但是页面没加载出来呢，pi web急于切页面，切过去了但是页面内容没刷新，
- * 然后我又在上面继续操作，但是过了一会内容刷新好了，pi web才现场改页面内容". He chose: stay in place,
+ * Owner, 2026-09-30: "I tapped a page, but it hadn't loaded. pi web hurried to switch pages; it switched,
+ * but the content hadn't refreshed. I kept operating on it, then the content refreshed and pi web changed the page in place". He chose: stay in place,
  * and make the tap visible.
  *
  * Two probe sessions get unique names so their rows can be found, and their first-page reads

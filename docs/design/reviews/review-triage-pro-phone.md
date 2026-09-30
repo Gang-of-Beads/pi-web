@@ -29,7 +29,7 @@ pile-up perception has three real mechanisms:
    machine first" beside "Loading sessions…") - layout-legal but incoherent;
    deferred to the quick-switcher redesign with the note.
 
-## Same-category size unification (the "变大/变小" verdict)
+## Same-category size unification (the "bigger/smaller" verdict)
 
 - **Context chips**: the value text stepped down by container width -
   ~103px in the projects nav, ~150px in the sessions drawer - so the same

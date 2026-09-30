@@ -119,16 +119,16 @@ describe("a read that never answers", () => {
       let calls = 0;
       const polled = oneReadAtATime(() => {
         calls += 1;
-        // 第一次读永远不回来;之后的读照常应答。
-        return calls === 1 ? new Promise<void>(() => { /* 这一次读被网络吞掉,永不落定 */ }) : Promise.resolve();
+        // The first read never returns; later reads answer normally.
+        return calls === 1 ? new Promise<void>(() => { /* the network swallows this read; it never settles */ }) : Promise.resolve();
       });
 
-      void polled(); // 挂死的第一次
+      void polled(); // the first read, which hangs
       await vi.advanceTimersByTimeAsync(0);
-      void polled(); // 挂死期间到来的 tick,只记账
+      void polled(); // a tick that arrives while it hangs is only recorded
       await vi.advanceTimersByTimeAsync(READ_SETTLE_TIMEOUT_MS + 1_000);
 
-      void polled(); // 锁应已放开,这次读要真正执行
+      void polled(); // the lock should be released by now, so this read really runs
       await vi.advanceTimersByTimeAsync(0);
       expect(calls).toBeGreaterThan(1);
     } finally {

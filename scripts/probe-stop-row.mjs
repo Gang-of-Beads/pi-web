@@ -5,7 +5,7 @@ import { chromium } from "@playwright/test";
 /**
  * A Stop the reader presses leaves a visible settled row, live and after a reload (B30).
  *
- * Owner, 2026-09-30: "现在手动interrupted没有任何提示，status/消息都没，直接就idle了". pi ends a
+ * Owner, 2026-09-30: "a manual interrupt now shows nothing: no status, no message, it goes straight to idle". pi ends a
  * reply the reader stopped with stopReason "aborted", and only the "error" form had a row.
  *
  * Serves the `pi-web-probe/flaky` model (ui-custom-probe fixture on 8505). Two producers:

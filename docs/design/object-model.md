@@ -204,7 +204,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 - **Head/events**: none today (`sessionPinRoutes.ts:22`). **New (P5)**: a `pins` head source and `pins.changed`, from a web nudge through `shared/sessiondClient`.
 - **Read**: `GET /api/session-pins`, re-read on render when older than 2 s (`PIN_REFRESH_MS`) → 30/min on 8504 [N §3, §4]. **New**: the batched boot read, then event and head only.
 - **Pins outlive projects (B49, owner Q10/Q11).** A pin names a session; it is global per machine and does not depend on which projects are open. A project exists to create new sessions in its directory and to open its own session list, nothing more. So the global PINNED group is resolved by the daemon from the pinned ids (the board read carries the pinned sessions whatever projects are open), and tapping a pinned session opens it without reopening its project. Closing a project says nothing about its pins. Today the row vanishes silently, because PINNED is built from the open projects' lists (verified on 8505).
-- **Two kinds of pin** (owner, 2026-09-30, asked after Q11: "全局pin和project pin是否要分开呢？", answered "two pins"):
+- **Two kinds of pin** (owner, 2026-09-30, asked after Q11: "should global pins and project pins be separate?", answered "two pins"):
   - **Global pin**: machine-wide. It is listed in the global board's PINNED, whatever projects are open. It is today's pin, stored in `session-pins.json`.
   - **Project pin**: kept at the top of its own project's session list. **New**. It is stored per machine and per project, next to the global pins, so every device sees it.
   - The row menu offers "Pin globally" and "Pin in this project" as two separate toggles, and a session may carry both.

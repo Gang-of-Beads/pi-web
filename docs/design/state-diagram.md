@@ -1,6 +1,6 @@
 # PI WEB state diagram: one owner per state, every bug on the map
 
-Owner, 2026-09-30: "强烈建议你用一个状态流转图，开发的过程中如果遇到新的状态，要考虑其合理性然后并到图里，这样你一直能有一个全局状态的view……所有问题都应该能在状态图中体现". (Use a state-transition diagram. When development hits a new state, judge whether it is reasonable and merge it in, so there is always a global view. Every problem should show on the diagram.)
+Owner, 2026-09-30: "Use a state-transition diagram. When development hits a new state, judge whether it is reasonable and merge it in, so there is always a global view. Every problem should show on the diagram."
 
 This is the map. Code follows it; it does not follow code.
 
@@ -24,7 +24,7 @@ This is the map. Code follows it; it does not follow code.
 4. **Plugins append; they do not own.** A plugin adds information to a fixed core state through a declared contribution point. It never adds a core state and never replaces one. A disabled plugin's appendages disappear, and its open cards are cancelled.
 5. **Unknown is a state.** The absence of an answer is `unknown`, never `empty`, `idle` or `current`. A failed read is `unknown` for the source that failed, shown with a retry.
 6. **New state, new arrow, here first.** A change that needs a state, a transition or a wire frame not drawn here adds it to this document, with its reason, in the same commit as the code.
-7. **PI WEB owns the chrome.** Nothing is injected between the header and the transcript, or between the transcript and the composer. The only exceptions are the status line and the back-to-bottom key (owner, 2026-09-30: "pi web就不该支持这里注入任何bar以及元素").
+7. **PI WEB owns the chrome.** Nothing is injected between the header and the transcript, or between the transcript and the composer. The only exceptions are the status line and the back-to-bottom key (owner, 2026-09-30: "pi web should not support injecting any bar or element here").
 
 ## D1. A message (one record per `clientMessageId`)
 
@@ -204,7 +204,7 @@ stateDiagram-v2
 
 ### The status line narrates; it never parrots an event word
 
-Owner, 2026-09-30 12:06, after "message queued · 10m 51s" stood while the agent worked and two queued messages waited with no reason given: "这种不明所以的状态为什么要存在？…给用户呈现出来的，应该是一个用户可以理解的，pi web/pi正在处理的一个状态". (Why does this incomprehensible state exist? What the user sees should be a state they understand: what pi web or pi is working on.)
+Owner, 2026-09-30 12:06, after "message queued · 10m 51s" stood while the agent worked and two queued messages waited with no reason given: "Why does this incomprehensible state exist? What the user sees should be a state they understand: what pi web or pi is working on."
 
 The status line answers three questions, every time, from live typed facts:
 
@@ -269,18 +269,18 @@ stateDiagram-v2
 - **Owner.** Each surface has a head (docs/design/sync-convergence.md): the transcript `{n, leaf}`, the stream `{epoch, seq}`, and the list and card revisions. The page compares heads and never assumes.
 - **Socket:** `connecting` → `open` → `closed`, plus `dead` when nothing at all arrives for 2 × the heartbeat interval.
 - **A cached page is a seed,** `unknown` until the first head comparison. A persisted page and its watermark are always written together.
-- **Every surface is live** (owner, 2026-09-30: "每个界面都应该无时不刻接受event based的更新"). This covers everything on screen: session rows and their state, latest activity, whether a session waits for the reader, and a list's order.
+- **Every surface is live** (owner, 2026-09-30: "every screen should take event-based updates at all times"). This covers everything on screen: session rows and their state, latest activity, whether a session waits for the reader, and a list's order.
   - Each surface subscribes to the events that change it and applies them as they arrive.
   - The same quiet window *T* applies: nothing received for *T* makes the surface compare its head and pull only what changed.
   - A session list is ordered by latest activity, a daemon fact carried on the list head. It re-sorts when an activity event arrives, never only when the list is refetched (B28).
-- **Efficiency and latency** (owner, 2026-09-30: "保证极致的消息效率，以及低延迟"). The budgets are measured by the phase probes, and a regression fails them:
+- **Efficiency and latency** (owner, 2026-09-30: "guarantee maximal message efficiency and low latency"). The budgets are measured by the phase probes, and a regression fails them:
   - **Latency:** a frame reaches the screen within one animation frame of its arrival. A catch-up after *T* costs one head read plus the missing entries, never a page reload.
   - **Efficiency:** heartbeats and head reads carry heads only, tens of bytes. Status frames carry what changed, not the whole status. Nothing polls on a timer while events are flowing.
 - **An aggregate list** (All projects) keeps one state per source. A source that has not answered shows as reconnecting; it never disappears into an empty list.
 
 ### A surface never gives up (B48)
 
-Owner, 2026-09-30, on "Couldn't read the projects on this machine." frozen on the phone board: "页面一直尝试动态更新，通过 event based 消息和静默 n 秒后主动心跳看是否有落后版本的消息 … 所以其实只有正在尝试重连/同步，同步中两个状态 … 前端展示要设计好给用户什么样的呈现".
+Owner, 2026-09-30, on "Couldn't read the projects on this machine." frozen on the phone board: "the page keeps trying to update itself, through event-based messages and, after n silent seconds, an active heartbeat that checks for messages from a newer version … so really there are only two states: trying to reconnect/sync, and syncing … the front end has to design well what it presents to the user".
 
 Measured: 8504 answered both projects reads at 15:21:46 and 15:21:47 with 200 in under 10 ms. The answer was lost on the phone's link, and the page stopped at `projectsLoad: "failed"` with nothing that would read again.
 
@@ -349,7 +349,7 @@ stateDiagram-v2
 
 - **Owner.** The plugin runtime of each process, reconciled against config. A toggle takes effect live (owner, 2026-09-30). In-flight work is aborted.
 - For a plugin that runs in both processes, the page shows the worse of the two states (`failed` beats `enabled`) and names the process.
-- **Where a plugin shows, and nowhere else** (owner, 2026-09-30: "插件声明后，出来一个新的插件的按钮点击进去是插件自定义的显示"):
+- **Where a plugin shows, and nowhere else** (owner, 2026-09-30: "once a plugin declares it, a new plugin button appears, and tapping it opens the plugin's own custom display"):
   - **A page.** A declared entry in the ≡ Go to page. Tapping it opens the plugin's own page, which the plugin draws.
   - **Appendages to fixed core states:** status-line notes and counts, row actions, docked cards (D2) and a settings page.
   - Nothing else: no bars, strips or drawers over or under the transcript (rule 7). The `drawerSections` contribution point is removed.
@@ -369,7 +369,7 @@ stateDiagram-v2
 ```
 
 - **Owner.** One navigation controller. Every move is an *intent*, stamped with a sequence number from one counter: reader taps, back and forward, boot restore and machine-switch restore all draw from it. An async step commits a visible change only while its intent is still the latest.
-- **The frame and its content change together.** The header, the page and everything actionable on it describe the same place at every moment. The previous place's content is never shown, and never actionable, under the next place's frame (owner, 2026-09-30: "切过去了但是页面内容没刷新，然后我又在上面继续操作…完全操作和实际不同步"). A seed from the destination's own cache (same key) is allowed; another place's content is not.
+- **The frame and its content change together.** The header, the page and everything actionable on it describe the same place at every moment. The previous place's content is never shown, and never actionable, under the next place's frame (owner, 2026-09-30: "it switched but the page content hadn't refreshed, then I kept operating on it… what I operate on is completely out of sync with what is really there"). A seed from the destination's own cache (same key) is allowed; another place's content is not.
 - **Producers found (B29), as they were before the fix:**
   1. `openSessionFromQuickSwitcher` closed the Sessions page at tap time, uncovering the *previous* session's chat, live and sendable. It then awaited the machine move and `selectSession` (which returns only after the whole transcript read), and `focusChatComposer` forced the chat view even if the reader had gone elsewhere meanwhile.
   2. `restoreRouteFor` (boot restore, back and forward, machine switch, a terminal's workspace) awaited the machine and plugin loads and then set the view. `routeRestoreSeq` guarded only against a newer restore, not against a reader tap made meanwhile.
@@ -377,8 +377,8 @@ stateDiagram-v2
   4. Deferred restores: a remote machine or project listing that failed at boot was retried on a timer, and the retry restored the boot route whenever it succeeded, however long after.
   5. A terminal run started with `open: true`, or a workspace removal, opened its terminal after awaited requests, even if the reader had moved on meanwhile.
   6. A second, half-built intent counter (`navigationSelectionSeq`) that only one unused method bumped.
-- **Only the reader's intent moves the page.** A late answer to a superseded intent, a background refresh, a restore that the reader already overtook, or a list that reloaded never changes where the reader is (owner, 2026-09-30: "我什么都没按…突然给我跳到一个不知道什么界面了"; B29).
-- **`going` stays in place and says so** (owner, 2026-09-30: "停在原地没问题，怎么让用户感知到他点了这个按钮呢"). The screen stays where it is, live and bound to the place it shows (React Navigation's pending-navigation model). The tap is acknowledged within Nielsen's limits:
+- **Only the reader's intent moves the page.** A late answer to a superseded intent, a background refresh, a restore that the reader already overtook, or a list that reloaded never changes where the reader is (owner, 2026-09-30: "I didn't press anything… it suddenly jumped me to some screen I didn't recognise"; B29).
+- **`going` stays in place and says so** (owner, 2026-09-30: "staying in place is fine, but how does the user perceive that they tapped this button?"). The screen stays where it is, live and bound to the place it shows (React Navigation's pending-navigation model). The tap is acknowledged within Nielsen's limits:
   - **within one frame (< 0.1 s):** the tapped item takes its `going` look: the selected highlight, and a spinner in place of its trailing mark, with `aria-busy` and an "Opening <name>" announcement. An indeterminate progress line runs along the top edge of the app. It is chrome-owned, so it stays visible even if the item scrolls away;
   - **after 1 s:** the item's text adds "Opening…";
   - **after 10 s:** the item reads "Still opening…"; going anywhere else cancels it;

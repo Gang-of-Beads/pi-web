@@ -1,7 +1,7 @@
 /**
  * The live half of hiding a failure pi retried.
  *
- * Owner, 2026-09-30: "完全重试失败之前的错误不要显示出来". A retried attempt is not
+ * Owner, 2026-09-30: "don't show the errors from before the retries have completely failed". A retried attempt is not
  * the turn's outcome. The daemon drops it from history pages (`retriedAttemptIds`),
  * but the browser watching the turn has already drawn it from `message.end`. pi then
  * announces the retry (`auto_retry_start`) without naming the message.

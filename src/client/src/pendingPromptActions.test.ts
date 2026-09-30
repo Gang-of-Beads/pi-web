@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { pendingPromptActions, trayState, type PendingPromptState } from "./pendingPromptActions";
 
 /**
- * Owner report: "已经确认开始处理的消息，还怎么还可能有 retry/discard 呢？有些状态
- * 就不可能一起存在". A message on its way cannot be re-sent, and a message the
+ * Owner report: "a message already confirmed as being processed - how can it still
+ * have retry/discard? Some states simply cannot exist together". A message on its way cannot be re-sent, and a message the
  * daemon confirmed is no longer a tray row at all. The words are the bubble's
  * (owner, 2026-09-30): Sending… / Receiving… / Not sent / Not received.
  */

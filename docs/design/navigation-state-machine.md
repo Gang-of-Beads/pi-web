@@ -2,8 +2,8 @@
 
 Every surface the reader can be on, every control that moves between them, and
 the rule each transition obeys. Written because four navigation surfaces grew
-independently and the owner could reach a page with no way back: "各种 machine
-project 页面跳来跳去我都不知道怎么回去".
+independently and the owner could reach a page with no way back: "jumping around between all the machine
+and project pages, I don't know how to get back".
 
 The machine has two layers that must not be confused:
 

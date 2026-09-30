@@ -2,7 +2,7 @@
 /**
  * A failed send keeps it in the outbox, shows it once, and its row acts on it alone.
  *
- * Owner reports: "已经确认开始处理的消息，还怎么还可能有 retry/discard 呢？" and one message
+ * Owner reports: "a message already confirmed as being processed - how can it still have retry/discard?" and one message
  * drawn twice ("Sending" in the transcript, "Sending · Discard" above the composer). The
  * review of the one-row fix then found Retry resending the whole outbox, Retry doing nothing
  * offline, and the probe itself posting into whichever session the navigation board listed

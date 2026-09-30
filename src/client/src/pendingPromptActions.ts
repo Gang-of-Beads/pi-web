@@ -11,7 +11,7 @@ import { deliveryWords, type DeliveryFailureCause, type DeliveryWordKey } from "
  * the tray and the bubble cannot name one message differently.
  *
  * A message the daemon has confirmed is never a tray row - which is what the
- * reader meant by "已经确认开始处理的消息，还怎么还可能有 retry/discard".
+ * reader meant by "a message already confirmed as being processed - how can it still have retry/discard".
  */
 export type PendingPromptState = Extract<DeliveryWordKey, "sending" | "unverifiable" | "not-sent" | "not-received">;
 

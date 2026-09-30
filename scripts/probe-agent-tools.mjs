@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 /**
  * PI WEB gives the agent no tools of its own, and delegation works as routes.
  *
- * Owner, 2026-09-30: "pi web不要给ai任何多余工具都应该由用户自己插件定义". This probe
+ * Owner, 2026-09-30: "pi web should not give the AI any extra tools; those should all be defined by the user's own plugins". This probe
  * serves the `pi-web-probe/flaky` model that the 8505-only fixture extension
  * registers (~/.pi/agent/extensions/ui-custom-probe.ts), so it sees exactly the tool
  * list a real session sends to the model. It then drives the delegation routes

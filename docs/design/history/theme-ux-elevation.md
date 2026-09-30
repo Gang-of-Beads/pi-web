@@ -1,6 +1,6 @@
 # Theme & UX elevation — research digest, live audit, and proposals
 
-The owner's report: the base theme feels bare ("基础theme感觉很简陋"), and the UI/UX
+The owner's report: the base theme feels bare ("the base theme feels very crude"), and the UI/UX
 work should be organized around user journeys. This document records what the
 skills research actually contributes, audits the live 8505 surfaces with
 screenshots, inventories the user journeys with their frictions, and proposes
@@ -249,7 +249,7 @@ ChatView's dock strip) to avoid double-touching the same file in two waves.
   screenshots contract is already scripted (`probe-shell-row.mjs`).
 - **B**'s chat-side pieces fold into the pi-web-activity wave (step ② of the
   migration order); B's non-chat pieces (panel, empty states, ask card) can
-  run as their own small wave after ① 投影缝.
+  run as their own small wave after ① (the projection seam).
 - **C** items 1/3/5/6 are small and independent; item 4 belongs to the
   activity wave's ruling.
 

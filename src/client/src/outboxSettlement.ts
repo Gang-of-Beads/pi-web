@@ -6,8 +6,8 @@
  * message itself arrives: the POST times out, or the socket carrying
  * `prompt.accepted` drops. The outbox then kept an "Unsent / Retry" row for a
  * message sitting in the transcript under a running turn - two states that
- * cannot coexist, and the reader's own words: 既然是 running 怎么可能还有
- * retry/discard.
+ * cannot coexist, and the reader's own words: if it is running, how can there still be
+ * retry/discard?
  *
  * The transcript is the proof that needs no frame: a delivered message carries
  * the id the browser minted, so a row whose id is already settled is not unsent

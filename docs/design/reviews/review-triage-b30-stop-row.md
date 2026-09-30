@@ -1,6 +1,6 @@
 # Review triage: B30, a Stop always leaves a visible row
 
-Report (owner, 2026-09-30): "现在手动interrupted没有任何提示，status/消息都没，直接就idle了". A manual interrupt showed nothing: no status, no message, straight to idle.
+Report (owner, 2026-09-30): "a manual interrupt now shows nothing: no status, no message, it goes straight to idle".
 
 Cause: pi ends a reply the reader stopped with `stopReason: "aborted"`. The browser had a row only for `"error"`. The daemon already recorded the Stop (`pi-web.turn.stopped`, `stoppedBy: "you"`), but nothing rendered it. Commit `af070d94` chose that on purpose ("A reply pi ended with stopReason aborted never had one"); the owner's report overrules it.
 

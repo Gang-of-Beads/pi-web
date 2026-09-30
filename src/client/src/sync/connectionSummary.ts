@@ -3,7 +3,7 @@ import { BANNER_MIN_VISIBLE_MS, TRANSIENT_GRACE_MS } from "../components/bannerH
 /**
  * What the app's one row says (object model §2.3).
  *
- * Owner, 2026-09-30: "action failed 并不是重连啊，这个是明确的失败，和消息没被同步是两个语义吧？同一时间只有一个能显示"
+ * Owner, 2026-09-30: "action failed is not reconnecting - it is a definite failure, and a message not yet synced means something else, right? Only one of them can show at a time"
  * - a definite failure and "not synced" mean different things, and the row shows
  * one of them at a time. A definite notice (an action failed) holds the row
  * until the reader dismisses it or its owner retires it; reconnecting comes

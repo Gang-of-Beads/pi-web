@@ -1,6 +1,6 @@
 # Extension screens: native when declared, a parsed card otherwise
 
-Owner, 2026-09-30, on the goal extension's questionnaire and "Confirm Goal Draft" screens mirrored as a terminal dump: "又丑，我也没法选，点了没反应，还不原生，完全背离了我们插件写原生UI的初衷". Then: "需要使用 pi web UI 的插件入口，这才是正确的；如果只有 TUI 的 ui.custom 只能退化，给一个通用兜底；一个插件可能同时有 pi web UI 的入口和 TUI 的入口，不要显示两次".
+Owner, 2026-09-30, on the goal extension's questionnaire and "Confirm Goal Draft" screens mirrored as a terminal dump: "It's ugly, I can't select anything, tapping does nothing, and it isn't native - it completely betrays our goal of plugins writing native UI". Then: "It needs to use the pi web UI plugin entry; that is the right way. If there is only the TUI ui.custom, it can only degrade, so give a generic fallback. A plugin may have both a pi web UI entry and a TUI entry; don't show it twice".
 
 ## What happens today
 
@@ -12,12 +12,12 @@ Both screenshots are pi-goal screens: `runGoalQuestionnaire` (the "Write your ow
 - **Taps do nothing.** An option that wraps or carries a description line makes the line distance differ from the option distance. The walk lands on a line that is not an option, and the tap returns without a word.
 - **Not native.** The goal extension has a pi-web plugin (the Goals drawer section), yet its dialogs bypass it entirely.
 
-Before 2f4e41e0, `ctx.ui.custom` resolved `undefined` in pi-web. pi-goal then fell back to `select`/`input`, which pi-web draws as native cards. That is the "以前很原生的页面".
+Before 2f4e41e0, `ctx.ui.custom` resolved `undefined` in pi-web. pi-goal then fell back to `select`/`input`, which pi-web draws as native cards. That is the "page that used to be so native".
 
 ## What pi-web already draws natively (confirmed with the owner, 2026-09-30)
 
 - **The Questions card** (`AskUserCard`): several questions, options with details, a Custom free-text choice, Back/Next and progress. pi-web's own `ask_user` uses it.
-- **The dialog cards** for `ctx.ui.select`, `input` and `confirm` (`ExtensionDialogCard`). pi-goal and pi-ask-user fall back to these when `ctx.ui.custom` resolves `undefined`. Today the owner reaches them only by closing the mirrored screen first: "显示两遍，需要先 cancel TUI 那一层".
+- **The dialog cards** for `ctx.ui.select`, `input` and `confirm` (`ExtensionDialogCard`). pi-goal and pi-ask-user fall back to these when `ctx.ui.custom` resolves `undefined`. Today the owner reaches them only by closing the mirrored screen first: "it shows twice; I have to cancel the TUI layer first".
 
 Only `ctx.ui.custom`, a terminal component, has no native form. The goal questionnaire (its drafting questions and the draft confirmation) is exactly the Questions card's shape, so it reuses that card instead of getting a new one.
 

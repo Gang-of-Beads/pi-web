@@ -463,7 +463,7 @@ describe("a dialog whose text is longer than the room it was given", () => {
  * footer stayed pinned at y=845 at scrollTop 0 and hit-testing returned the
  * footer for the centres of Options 7 and 8, and at deeper scrolls the pinned
  * header covered Skip and Option 4. The owner's decision is flow everywhere:
- * "手机和桌面都回文档流，桌面也不悬浮" - phones and desktop both return
+ * "phone and desktop both go back to the document flow; desktop doesn't float either" - phones and desktop both return
  * to document flow, desktop does not float either. happy-dom has no layout, so
  * this pins the rule that the browser measurement showed to be the cause; the
  * probe re-measures the geometry itself.

@@ -2,7 +2,7 @@
 /**
  * Does an open question form move the transcript under the reader?
  *
- * Report: "总是回弹" and the hunch that it is tied to ask_user. The form is a
+ * Report: "it keeps bouncing back" and the hunch that it is tied to ask_user. The form is a
  * real row of the layout, and while it is open the activity dock is removed -
  * so the scroller gains its height, then loses it again when the form settles.
  * This opens a form through the model, scrolls away from the bottom, and

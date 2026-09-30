@@ -19,7 +19,7 @@ const record = (overrides: Partial<GoalRecordSummary> = {}): GoalRecordSummary =
 
 describe("the Goals page", () => {
   /**
-   * Owner, 2026-09-30: "不要单加一个goal这个bar…应该在三个横杠的goto菜单里。插件声明后，出来一个新的插件的按钮点击进去是插件自定义的显示".
+   * Owner, 2026-09-30: "don't add a separate goal bar… it belongs in the three-bar Go to menu. Once a plugin declares it, a new plugin button appears, and tapping it opens the plugin's own custom display".
    * Goals is one entry in the Go to page, opening its own page; nothing sits over the transcript.
    */
   it("is a Go to page entry named Goals, and no bar over the transcript", () => {

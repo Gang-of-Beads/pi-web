@@ -79,7 +79,7 @@ Live: rebuilt 8505; `scripts/probe-selection-composers.mjs` PASS (both flows).
 Regression first: 96a0eaea added adoptSheets to the PluginHostUi contract
 without implementing it on the runtime object — every plugin wrapper
 routing adoption through the host silently no-opped, and the context
-sheet rendered unstyled (the owner's "不能要了" screenshot). Fixed in
+sheet rendered unstyled (the owner's "this is unusable" screenshot). Fixed in
 3a159233; the three lanes below then reviewed the whole seam.
 
 | Finding | Adj. | Fix |

@@ -61,7 +61,7 @@ export function renderCustomScreen(component: CustomScreenComponent, width = CUS
  *
  * `ctx.ui.custom` carries no title and the UI context is shared by every
  * extension in the session, so a bare "Extension screen" told the reader nothing
- * about who opened it - the owner's "不知道是什么". The factory runs inside the
+ * about who opened it - the owner's "no idea what this is". The factory runs inside the
  * extension's own module, so its frame is the extension: the first path that is
  * not this host's and not the SDK's.
  */

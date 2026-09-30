@@ -920,8 +920,8 @@ function createRuntimeWithOneShotSessionOptions(
 
 /**
  * The tools PI WEB puts on a session: pi's own `edit`, wrapped to compute a diff
- * preview, and nothing it adds. Owner, 2026-09-30: "pi web不要给ai任何多余工具
- * 都应该由用户自己插件定义" - delegation is a session route (docs/design/no-builtin-agent-tools.md).
+ * preview, and nothing it adds. Owner, 2026-09-30: "pi web should not give the AI any
+ * extra tools; those should all be defined by the user's own plugins" - delegation is a session route (docs/design/no-builtin-agent-tools.md).
  */
 export function createPiWebCustomToolDefinitions(cwd: string, askUser?: AskUserToolDeps) {
   return [

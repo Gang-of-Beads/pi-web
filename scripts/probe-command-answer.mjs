@@ -2,7 +2,7 @@
 /**
  * Does a command's answer reach the screen?
  *
- * Owner report: "/goal-list 不理我" - the command ran (its bubble settled to
+ * Owner report: "/goal-list ignores me" - the command ran (its bubble settled to
  * "Read") and answered into an extension notification, which was written to the
  * notification store and never read: `notificationInbox` had no caller. The
  * answer now also lands in the transcript as a command-output row.

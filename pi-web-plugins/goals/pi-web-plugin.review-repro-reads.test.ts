@@ -137,7 +137,7 @@ describe("the goals section read", () => {
   });
 
   /**
-   * Owner, 2026-09-30: "就说没有goal啊". A workspace with no goals says so and keeps its refresh; the
+   * Owner, 2026-09-30: "just say there are no goals". A workspace with no goals says so and keeps its refresh; the
    * section used to leave the drawer, and nothing read it again, so a goal created later in the
    * same session never appeared.
    */

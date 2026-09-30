@@ -44,7 +44,7 @@ removes that surface. The delivery pipeline (server-side warning filing) is
 untouched; the question is purely where a warning becomes visible: the error
 notice bar already shows failures, but persisted warnings would only be
 reachable through a future plugin page. Decision wanted: accept the gap until a
-plugin builds a page (the goal's "不转换" reading), or keep a minimal warnings
+plugin builds a page (the goal's "do not convert" reading), or keep a minimal warnings
 strip somewhere native.
 
 ## Entanglement 3 — the subagent conversation view
@@ -69,7 +69,7 @@ would be the future home.
 
 ## Ruling and execution record
 
-The owner ruled "不转换": the notifications and activity drawer pages leave the
+The owner ruled "do not convert": the notifications and activity drawer pages leave the
 shell without becoming plugin sections. The three defaults were executed as
 written:
 

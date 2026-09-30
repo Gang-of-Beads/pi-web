@@ -178,7 +178,7 @@ describe("chat message normalization", () => {
     });
 
     /**
-     * Owner, 2026-09-30: "现在手动interrupted没有任何提示，status/消息都没，直接就idle了" (B30).
+     * Owner, 2026-09-30: "a manual interrupt now shows nothing: no status, no message, it goes straight to idle" (B30).
      * pi ends a reply the reader stopped with stopReason "aborted", not "error", and only the error
      * form had a row. This is the record 8505 persisted for a Stop four seconds into a reply.
      */

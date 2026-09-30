@@ -1,7 +1,7 @@
 /**
  * Background runs have a readable home in the ≡ menu, owned by their plugin.
  *
- * The owner: "三个横杠下来也可以看具体的细节，每个插件可以自己加自己的列表/显示". The first list
+ * The owner: "the three-bar menu should also show the details, and each plugin can add its own list/display". The first list
  * the plugin drew read "Install pi-web .26 when publishedlost" - name and status run together
  * - over the transcript. The background-tasks answer is served at the network layer so the
  * real poll -> state -> plugin panel path runs; the probe opens the ≡ "Go to a view" sheet,

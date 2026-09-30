@@ -2,7 +2,7 @@
  * Read an extension's screen as the shape it is, so it can be rendered natively.
  *
  * A TUI component draws with a frame, a cursor and no semantics: what the reader
- * sees is a terminal dump ("这是啥啊"). But the shapes are recognisable - a menu is a
+ * sees is a terminal dump ("what is this"). But the shapes are recognisable - a menu is a
  * cursor plus its siblings, a confirmation is a heading plus a body plus those
  * options - and once read, they render as the same native card the ask and confirm
  * flows use: real buttons, real text, no box-drawing characters.

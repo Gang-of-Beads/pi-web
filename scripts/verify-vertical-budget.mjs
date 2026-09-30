@@ -37,7 +37,7 @@ if (budget === undefined) {
 } else {
   const chrome = budget.screen - budget.conversation;
   const share = Math.round((budget.conversation / budget.screen) * 100);
-  console.log(`屏高=${String(budget.screen)}  对话=${String(budget.conversation)} (${String(share)}%)  上下文条=${String(budget.contextBar)}  输入区=${String(budget.composer)}  状态条=${String(budget.statusBar)}  非对话共=${String(chrome)}`);
+  console.log(`screen=${String(budget.screen)}  conversation=${String(budget.conversation)} (${String(share)}%)  contextBar=${String(budget.contextBar)}  composer=${String(budget.composer)}  statusBar=${String(budget.statusBar)}  chromeTotal=${String(chrome)}`);
   if (share < 50) { console.error(`FAIL: the conversation gets ${String(share)}% of the screen`); process.exitCode = 1; }
   else console.log("PASS");
 }

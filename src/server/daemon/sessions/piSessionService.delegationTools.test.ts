@@ -3,7 +3,7 @@ import { createPiWebCustomToolDefinitions, PiSessionService } from "./piSessionS
 import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, fakeSessionManager, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModel, testModelRuntime } from "./piSessionService.testSupport.js";
 
 /**
- * Owner, 2026-09-30: "pi web不要给ai任何多余工具都应该由用户自己插件定义".
+ * Owner, 2026-09-30: "pi web should not give the AI any extra tools; those should all be defined by the user's own plugins".
  * Delegation is a session route now (docs/design/no-builtin-agent-tools.md): the
  * agent gets no spawn or subsession tool from PI WEB, and a route passes the
  * parent's identity, model and thinking level exactly as the retired tools did.

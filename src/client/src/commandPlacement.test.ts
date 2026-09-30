@@ -3,7 +3,7 @@ import { placeCommands } from "./commandPlacement";
 import type { CommandLedgerEntry } from "./commandLedger";
 
 /**
- * Owner report: "为啥这个slash消息一直在这" - a `/goal` that started the turn was
+ * Owner report: "why does this slash message stay here forever" - a `/goal` that started the turn was
  * drawn after every message, under the reply it caused, and read as pending.
  */
 function command(id: string, issuedAt: number): CommandLedgerEntry {

@@ -1,26 +1,25 @@
 # Sync that converges: compare heads, never trust the stream alone
 
-Owner, 2026-09-30 01:02: "页面假死……用消息序号/索引/版本来检查哪些消息没被更新……保证状态同步，
-保证一致性，保证网络不稳定后也能恢复，而不是消息丢了就丢了，页面死了也不刷新". (The page froze.
+Owner, 2026-09-30 01:02: "The page froze.
 Use message sequence numbers, indices or versions to check which messages weren't updated.
 Guarantee sync, consistency, and recovery after the network drops, instead of a lost message
-staying lost and a dead page never refreshing.)
+staying lost and a dead page never refreshing."
 
 ## What happened (2026-09-30, 00:58–01:02, production 8504)
 
 | Surface | What the phone showed | What the daemon had |
 |---|---|---|
 | pi web session (`01a04701`) | Last row: "CI passed on da9cb17e", hours old. Status "turn in progress · 1h 20m". | Hundreds of later entries. A fresh page load showed them all and followed live frames. |
-| playria session (`01a059ee`) | "跑了么？" (00:51:01), then only "agent running 7m 36s". | Reply text at 00:54:44 and tool calls every ~30 s from 00:52 onwards, all on disk and in `/messages`. |
+| playria session (`01a059ee`) | "Is it running?" (00:51:01), then only "agent running 7m 36s". | Reply text at 00:54:44 and tool calls every ~30 s from 00:52 onwards, all on disk and in `/messages`. |
 | All projects list | Only the pinned session. | Not yet investigated. |
 
 Evidence:
 - The daemon's status and transcript were correct in both sessions (disk tail, `/status`, `/messages?limit=100`).
 - A fresh browser page on the same build showed the correct rows, and its gap repair applied live frames (frontier 304067 → 304084 in 20 s; a new row appeared).
 - The phone re-read `/messages?limit=100` and `/stream-snapshot` at 20:58:56 (web log) and still showed rows from hours earlier.
-- Production ran web `2.202609.28` against a sessiond still on `2.202609.27`. The `.27` daemon sends frames with `seq` but no `epoch`, no join frame, and no `streamPosition` or `revision` in status. Phases 1–5 depend on all of these. The daemon was not restarted because the restart-when-idle watcher waits for all sessions to go idle, and six were busy the whole time. That contradicts the owner's ruling "更新直接都重启" (updates restart everything).
+- Production ran web `2.202609.28` against a sessiond still on `2.202609.27`. The `.27` daemon sends frames with `seq` but no `epoch`, no join frame, and no `streamPosition` or `revision` in status. Phases 1–5 depend on all of these. The daemon was not restarted because the restart-when-idle watcher waits for all sessions to go idle, and six were busy the whole time. That contradicts the owner's ruling "updates restart everything".
 - The daemon itself has no single head. Status `messageCount` counts readable messages (16372 for playria) and `/messages` `total` counts branch messages (16392). The two disagree by definition, so no client can compare "what I have" with "what the daemon has".
-- The same phone re-read playria's git status and file tree about twice a second while its agent wrote files. That is a refresh storm and a candidate for the "假死" (the page looked frozen).
+- The same phone re-read playria's git status and file tree about twice a second while its agent wrote files. That is a refresh storm and a candidate for the "frozen page".
 
 The exact line that kept the phone's stale rows is **not reproduced**: that needs the phone's cache. The candidate, from the code, is `refreshByDeltaReplay`:
 1. The page cites a persisted watermark `seq`.
@@ -93,7 +92,7 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
 ## Owner decisions (2026-09-30 01:20)
 
 1. **Direction approved** as written above.
-2. **The quiet window *T* is a setting**, shown on the Settings page, default 15 s. Owner: "15s内完全没收到任何消息才主动拉" (pull only when nothing at all has arrived for 15 s). So there is **no periodic poll while visible**, which replaces the "at least every *T* seconds" line in section 3:
+2. **The quiet window *T* is a setting**, shown on the Settings page, default 15 s. Owner: "pull only when nothing at all has arrived for 15 s". So there is **no periodic poll while visible**, which replaces the "at least every *T* seconds" line in section 3:
    - Any frame resets the page's quiet timer. A page pulls `/api/heads` only when *T* passes with nothing received, and on `visibilitychange`, `online` and `pageshow`.
    - **The heartbeat is that frame, and it stays tiny.** The daemon sends it only on a socket that has been quiet, at an interval below *T* (the page names its *T* when it subscribes), so a healthy idle session never triggers a pull. It carries only the compact heads, a few tens of bytes. Measured today: an idle socket carries one 20-byte keepalive per 20 s. The status frames sent while streaming (284 in 45 s on playria) are the real traffic; phase A measures them and sends deltas.
    - *T* is per device (phone and desktop may want different values), stored with the browser's other preferences.
@@ -120,7 +119,7 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
 
 ## Every surface is live (B28, owner 2026-09-30)
 
-Owner: "每个界面都应该无时不刻接受event based的更新 … 15s内（根据设置）没消息接收到主动探活看版本主动拉最新的更新", and "保证极致的消息效率，以及低延迟". Every surface should take event-based updates at all times, and when nothing arrives within T (default 15 s) the page should probe the heads and pull the latest changes.
+Owner: "every screen should take event-based updates at all times … when no message arrives within 15 s (per the setting), actively probe liveness, check the versions and pull the latest updates", and "guarantee maximal message efficiency and low latency". Every surface should take event-based updates at all times, and when nothing arrives within T (default 15 s) the page should probe the heads and pull the latest changes.
 
 **What is wrong today** (traced, `PiWebApp.ts:2833-2880`):
 - The machine-wide session list costs 1 + P + W requests: projects, then workspaces per project, then sessions per workspace.

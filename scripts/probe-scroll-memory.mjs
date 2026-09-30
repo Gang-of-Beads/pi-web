@@ -2,8 +2,8 @@
 /**
  * Reopening a session must land where the reader left it.
  *
- * Reported: "有些窗口状态可以记录下…我有时候打开还要滑到最底下" and "总是回弹，给我
- * 弹到很上面". Both are one bug: a reader 40px above the bottom saved an
+ * Reported: "some window state could be remembered… sometimes when I open it I still have to scroll to the bottom" and "it keeps bouncing back,
+ * throwing me way up". Both are one bug: a reader 40px above the bottom saved an
  * *anchor*, and an anchor that is not in the loaded window sends the restore to
  * the top to page history in - so opening a session flung them far above.
  *

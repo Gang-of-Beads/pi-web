@@ -37,7 +37,7 @@ export class PanelCollapseController implements ReactiveController {
 
   constructor(private readonly host: ReactiveControllerHost) {
     // The fold is a layout preference, so it survives reload - coming back to
-    // a panel state the reader folded away last session is the "违和" this
+    // a panel state the reader folded away last session is the "feels off" this
     // exists to end. A global key: the fold is about the reader's screen, not
     // about a machine or workspace's data.
     const stored = readStoredPanelCollapse();

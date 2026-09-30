@@ -25,7 +25,7 @@ describe("the browser's record of an issued command", () => {
   });
 
   /**
-   * The owner's ruling (2026-08-31, "不要自动离场"): a settled row is the
+   * The owner's ruling (2026-08-31, "don't make it leave automatically"): a settled row is the
    * user's receipt of what THEY sent and what ran — it does not leave on a
    * timer. The only eviction is the capacity cap, which drops settled rows
    * first and never a pending one.

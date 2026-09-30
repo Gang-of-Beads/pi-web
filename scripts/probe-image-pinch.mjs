@@ -2,7 +2,7 @@
 /**
  * Does a two-finger pinch zoom the photo preview?
  *
- * Owner request: "照片预览加一个pinch放大缩小功能吧". The preview opens at fit size,
+ * Owner request: "add pinch-to-zoom to the photo preview". The preview opens at fit size,
  * which on a phone leaves a screenshot's small print unreadable.
  *
  * Fails loudly: no image, no preview dialog, or no transform change. Pointer

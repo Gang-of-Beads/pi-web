@@ -1,6 +1,6 @@
 # Review triage: B29, only the reader's intent moves the page
 
-Report (owner, 2026-09-30): "我点了一个页面，但是页面没加载出来呢，pi web急于切页面，切过去了但是页面内容没刷新，然后我又在上面继续操作，但是过了一会内容刷新好了，pi web才现场改页面内容". The owner's choice: stay in place, and make the tap perceptible ("停在原地没问题，怎么让用户感知到他点了这个按钮呢").
+Report (owner, 2026-09-30): "I tapped a page, but it hadn't loaded. pi web hurried to switch pages; it switched, but the page content hadn't refreshed. I kept operating on it, and after a while the content refreshed, and only then did pi web change the page content in place". The owner's choice: stay in place, and make the tap perceptible ("staying in place is fine, but how does the user perceive that they tapped this button?").
 
 Design: D8 in `state-diagram.md`. Review run `c336e7e7`: two lanes on the builtin `reviewer`, Opus (`anthropic/claude-opus-5-5`) and DeepSeek (`botim-bllm/deepseek-v4.1-flash:max`), with ponytail-review and the bob lenses. Brief: `/tmp/b29-review-task.md`.
 

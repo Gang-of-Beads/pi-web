@@ -4,8 +4,8 @@
  * Owner, 2026-09-30: pages "jumped" with nothing pressed. A tap on a session closed
  * the list at once, uncovering the previous chat, and the destination arrived seconds
  * later and forced the chat view over whatever the reader had moved on to. The owner
- * chose to stay in place and make the tap visible ("停在原地没问题，怎么让用户感知到他点了
- * 这个按钮呢").
+ * chose to stay in place and make the tap visible ("staying in place is fine, but how does the user
+ * perceive that they tapped this button?").
  *
  * Every navigation is an intent with a sequence number from this one counter. Only
  * the latest intent may move the page, so an answer that arrives after the reader has

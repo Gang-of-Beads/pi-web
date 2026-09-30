@@ -2,7 +2,7 @@
 /**
  * Does a slash command stay where it was issued?
  *
- * Owner report: "为啥这个slash消息一直在这" - a `/goal` that started the turn was
+ * Owner report: "why does this slash message stay here forever" - a `/goal` that started the turn was
  * drawn in the transcript tail, under the reply it caused, where it read as
  * something still pending. The row is a message: it belongs at the moment it
  * was issued. Fails loudly if it is still sitting after the later message.

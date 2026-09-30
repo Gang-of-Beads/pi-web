@@ -57,10 +57,10 @@ re-litigated; only genuinely open items end in the ruling questions.
 | Element | Home | Verdict |
 |---|---|---|
 | Transcript host (groups, event groups, scroll anchoring, reading position) | `ChatView.ts`, `chatTranscript.ts`, `chatMessages.ts`, `readingAnchor.ts`, `bottomAnchor.ts` | native — the product's host |
-| Message rendering | `ToolExecutionView.ts`, `FormattedText.ts` + `messageRenderers` seam | native host, plugin renderers already supported ✓ (owner confirmed 2026-09-07: audit wins over the goal's original \"迁出\" wording — the transcript host stays native) |
+| Message rendering | `ToolExecutionView.ts`, `FormattedText.ts` + `messageRenderers` seam | native host, plugin renderers already supported ✓ (owner confirmed 2026-09-07: audit wins over the goal's original \"move out\" wording — the transcript host stays native) |
 | Role headers / log voice | `ChatView.ts` `.label`, `.drawer-tab`, `.subagent-kind` | native |
-| **Activity drawer content** (subagents, background tasks, their output) | removed from the shell in `e12be019` (wave D, owner ruled \"不转换\") | removed — the dock pill skeleton stays native; a plugin page is the future home |
-| **Notifications drawer content** (per-session notifications, dismiss) | removed from the shell in `e12be019` (wave D, owner ruled \"不转换\") | removed — server-side warning filing untouched; a plugin page is the future home |
+| **Activity drawer content** (subagents, background tasks, their output) | removed from the shell in `e12be019` (wave D, owner ruled \"do not convert\") | removed — the dock pill skeleton stays native; a plugin page is the future home |
+| **Notifications drawer content** (per-session notifications, dismiss) | removed from the shell in `e12be019` (wave D, owner ruled \"do not convert\") | removed — server-side warning filing untouched; a plugin page is the future home |
 | Activity dock (waiting/sending/turn clock/reveal) | `ChatView.ts` `.activity-dock`, `turnActiveState` | native skeleton (ruled); plugin contributions land behind `activityDock` |
 | Conversation meter (progress bar) | `ConversationMeter.ts` | native — transcript chrome |
 | Ask-user card | `AskUserCard.ts` | native — the `askUser` tool is a core host contract |
@@ -92,7 +92,7 @@ keeps only their seams.
 ## Rulings needed
 
 1. **Self-update banner** — first framing conflated two domains. The banner
-   updates pi-web itself ("pi-web 有新版本：X → Y", 60s poll,
+   updates pi-web itself ("pi-web update available: X → Y", 60s poll,
    `renderSelfUpdateBanner`, PiWebApp.ts:852); the updates plugin updates pi
    CLI packages. The banner is a sibling of the stale-client reload banner it
    shares CSS with — both guard the app's own lifecycle. Ruling re-asked with
@@ -109,7 +109,7 @@ keeps only their seams.
 
 ### The update re-prompt bug (root cause)
 
-Reported: "每次都要点但是点了切别的 session 还有要更新". Mechanism, verified
+Reported: "I have to tap it every time, and after tapping and switching to another session it still asks to update". Mechanism, verified
 against source:
 
 - The in-session updater dialog is the pi-updater pi extension

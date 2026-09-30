@@ -3,7 +3,7 @@ export const BANNER_MIN_VISIBLE_MS = 1500;
 /**
  * How long a transport claim must stand before it earns the banner: long
  * enough that one failed poll mid-restart never flashes (the owner's
- * "经常闪一下也没意义"), short enough that a real outage is named quickly.
+ * "flashing up all the time means nothing"), short enough that a real outage is named quickly.
  * Recovery inside the window shows nothing at all.
  */
 export const TRANSIENT_GRACE_MS = 4000;

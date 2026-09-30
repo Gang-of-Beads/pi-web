@@ -1,8 +1,8 @@
 /**
  * Phone and desktop geometry cannot move each other without saying so.
  *
- * The owner, after the question card lost 20px a side on his phone: "手机版之前都调好的，你为了
- * 改desktop全给变了 ... 手机端和desktop端要么分开改，要么你就保证别互相影响". This measures the
+ * The owner, after the question card lost 20px a side on his phone: "the phone layout was all tuned before,
+ * and changing desktop changed all of it ... either change phone and desktop separately, or make sure they don't affect each other". This measures the
  * surfaces a reader lines up by eye - message box and label inset, the event summary, the
  * rows (and so the tool boxes) inside a live-events group, the open question card and the
  * extension dialog card - at a

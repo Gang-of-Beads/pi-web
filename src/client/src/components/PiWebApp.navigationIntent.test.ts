@@ -3,9 +3,9 @@ import { PiWebApp } from "./PiWebApp";
 import type { Machine, SessionInfo } from "../api";
 
 /**
- * D8 in docs/design/state-diagram.md, B29. Owner, 2026-09-30: "我点了一个页面，但是页面没加载出来呢，
- * pi web急于切页面，切过去了但是页面内容没刷新，然后我又在上面继续操作，但是过了一会内容刷新好了，
- * pi web才现场改页面内容". The page moved before its content existed, and moved again later over
+ * D8 in docs/design/state-diagram.md, B29. Owner, 2026-09-30: "I tapped a page, but it hadn't
+ * loaded. pi web hurried to switch pages; it switched but the content hadn't refreshed, I kept operating
+ * on it, and later the content refreshed and pi web changed the page in place". The page moved before its content existed, and moved again later over
  * whatever the reader had gone on to do. The owner chose: stay in place, make the tap visible.
  */
 

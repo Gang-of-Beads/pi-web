@@ -1,6 +1,6 @@
 # PI WEB gives the agent no tools of its own
 
-Owner, 2026-09-30, on sub-sessions filling the session list: "spawn sub session如果是pi web自己的，都去掉，pi web只支持接口操作，但是不要默认给ai这个工具，pi web不要给ai任何多余工具都应该由用户自己插件定义". On `ask_user`, PI WEB's own question tool, he chose: move it into a pi extension shipped with PI WEB, off until enabled.
+Owner, 2026-09-30, on sub-sessions filling the session list: "If spawn sub session is pi web's own, remove all of it. pi web only supports it as an API operation, but don't give the AI this tool by default. pi web should not give the AI any extra tools; those should all be defined by the user's own plugins". On `ask_user`, PI WEB's own question tool, he chose: move it into a pi extension shipped with PI WEB, off until enabled.
 
 ## What the agent gets from PI WEB today
 

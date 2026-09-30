@@ -1,6 +1,6 @@
 # Plugin lifecycle hooks, and Subagents as an official plugin
 
-Owner, 2026-09-30: "pi subagents这个插件，我们没自己抽出来自己做插件吗？……做成官方插件，可以在插件管理配置enable/disable，注意enable disable这个配置是不是可以固定调用初始化插件/teardown插件等操作……有一个固定的注入位置，这样插件开发者可以明确各个行为的表现". (Have we not extracted the pi subagents plugin into our own plugin? Make it an official plugin that can be enabled and disabled in plugin management. Check whether enable/disable can always call the plugin's init and teardown, with a fixed injection point, so plugin developers know exactly what each behavior does.)
+Owner, 2026-09-30: "Have we not extracted the pi subagents plugin into our own plugin? Make it an official plugin that can be enabled and disabled in plugin management. Check whether enable/disable can always call the plugin's init and teardown, with a fixed injection point, so plugin developers know exactly what each behavior does."
 
 ## What exists today
 

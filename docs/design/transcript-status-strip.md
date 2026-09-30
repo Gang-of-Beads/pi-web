@@ -36,7 +36,7 @@ message.
 - Contains one chip per contributed surface that has something to say (`summary` or
   `badge` - the plugin's own words, core stays ignorant).
 - A chip with nothing running is quiet: no dot, no pulse, muted text. A chip with a
-  running thing shows one dot and pulses **that chip only**. This is the fix for "一直闪":
+  running thing shows one dot and pulses **that chip only**. This is the fix for "it keeps flashing":
   the artefact was a pulsing dot on a *stale* git chip, which is not a live thing.
 - Tapping a chip opens that contributed surface's own body, as a dropdown under the strip,
   full width, capped height with its own scroll - the plugin renders its rows, the core
@@ -62,7 +62,7 @@ The rule the desktop already follows, restated so the phone stops disagreeing wi
 
 So the phone change is exactly one value: `--pi-row-inset` from `0` to `var(--pi-space-5)`
 on the phone, so bare-row text lands where card-row text lands (18px in the current phone
-shot). The cards themselves keep their current padding - that was his "margin 太大"
+shot). The cards themselves keep their current padding - that was his "margin too big"
 complaint, and it was about cards.
 
 The guard is the existing probe: it measures where each row kind's text starts, on both

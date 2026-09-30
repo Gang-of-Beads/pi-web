@@ -611,7 +611,7 @@ export class ExtensionDialogCard extends LitElement {
     .dialog-footer {
       /* The card sits in the transcript, which is already the scroller. The
          footer and header therefore read from normal document flow, at every
-         pointer type: the owner's decision is "手机和桌面都回文档流，桌面也不悬浮"
+         pointer type: the owner's decision is "phone and desktop both go back to the document flow; desktop doesn't float either"
          - phones and desktop both return to document flow, desktop does not
          float either. A bottom-sticky footer is held at the viewport bottom
          for as long as the card's end is below the fold, so it necessarily

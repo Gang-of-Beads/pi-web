@@ -2,7 +2,7 @@
 /**
  * Can two question forms be open and answered?
  *
- * Reported: "一个没回答完，下一个来了，前一个就没法回答了" - a second `ask_user`
+ * Reported: "one isn't answered yet, the next one arrives, and the first can no longer be answered" - a second `ask_user`
  * superseded the first, which closed it and left the earlier form a read-only
  * record. Both stay open now.
  *

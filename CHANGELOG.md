@@ -50,7 +50,7 @@ factory, { web: { kind: "menu", title, body, options } })` — and the browser d
 - b17b771: A panel whose answer starts arriving but then stalls no longer stays on "Reading…": the 30-second request deadline now covers the whole answer, not just its first bytes, so the read fails honestly and can be tried again.
 - 07d0a64: The transcript stops bouncing and stop losing the reader.
 
-  Two defects behind the owner's "偶尔回弹" and "莫名其妙弹到 session 中部":
+  Two defects behind the owner's "it occasionally bounces back" and "it jumps to the middle of the session for no reason":
 
   - A follow scroll wrote its target and the _next_ scroll event adopted it back,
     overruling a pin the reader's own wheel or finger had already dropped. The target
@@ -184,8 +184,8 @@ factory, { web: { kind: "menu", title, body, options } })` — and the browser d
   The send call and the daemon acceptance frame are two reports of one fact, and
   on a phone over a tailnet both can go missing while the message itself arrives.
   The outbox then kept an "Unsent / Retry / Discard" row under a running turn with
-  the message visible in the transcript above it - the reader: 既然是 running 怎么
-  可能还有 retry/discard.
+  the message visible in the transcript above it - the reader: if it is running, how
+  can there still be retry/discard?
 
   The transcript is the proof that needs no frame: a delivered message carries the
   id the browser minted, so a stored outbox entry whose id is settled is retired.

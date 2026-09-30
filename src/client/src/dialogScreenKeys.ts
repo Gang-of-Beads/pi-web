@@ -4,8 +4,8 @@
  * A component draws a menu - a cursor line, "Enter to select · ↑↓ to navigate" -
  * and on a desktop that is true: the arrows and Enter are on the keyboard. On a
  * phone there is no keyboard and a `<pre>` raises none, so the screen rendered
- * perfectly and could not be driven at all: the owner's "我根本没法选择…你这是原生
- * 的插件吗".
+ * perfectly and could not be driven at all: the owner's "I can't select anything at all… is this
+ * your native plugin?".
  *
  * Two ways in, both translating to the keys the component already understands:
  * tapping a line walks the cursor to it and selects, and a key row covers
