@@ -1455,6 +1455,17 @@ export interface MessagePage {
   messages: unknown[];
   start: number;
   total: number;
+  /** Where the transcript stood when this page was read (docs/design/sync-convergence.md). */
+  head?: TranscriptHead;
+}
+
+/**
+ * Where a transcript stands: how many messages it projects to and the entry id of the last.
+ * The value a page compares with the daemon's, never a count the page made itself.
+ */
+export interface TranscriptHead {
+  n: number;
+  leaf: string | null;
 }
 
 /**

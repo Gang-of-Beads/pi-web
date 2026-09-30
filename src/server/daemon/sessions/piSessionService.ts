@@ -34,7 +34,7 @@ import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../..
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
-import { annotateAssistantThinkingLevel, branchMessages, isCutAssistant, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
+import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, isCutAssistant, transcriptHead, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
 import { runTranscriptMessages } from "../../../shared/subagentRunTranscript.js";
 import { readableMessageCount } from "./readableMessageCount.js";
 import { pluginSurfacePresence } from "./pluginSurfaces.js";
@@ -2697,7 +2697,7 @@ export class PiSessionService implements SessionRouteService {
 
   async messages(ref: PiSessionRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage> {
     const session = await this.getOrOpen(ref);
-    return pageMessagesAtSafeBoundary(historyMessages(session), page);
+    return transcriptPage(session.sessionManager.getBranch(), page);
   }
 
   /**
@@ -2743,12 +2743,12 @@ export class PiSessionService implements SessionRouteService {
    */
   async messagesPassive(ref: PiSessionRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage | undefined> {
     const active = this.active.get(ref.id);
-    if (active !== undefined) return pageMessagesAtSafeBoundary(historyMessages(active.runtime.session), page);
+    if (active !== undefined) return transcriptPage(active.runtime.session.sessionManager.getBranch(), page);
     const listed = (await this.sessionManager.list(ref.cwd)).find((session) => session.id === ref.id);
     if (listed === undefined) return undefined;
     const entries = await readSessionEntries(listed.path);
     if (entries === undefined) return undefined;
-    return pageMessagesAtSafeBoundary(historyMessagesFromEntries(entries), page);
+    return transcriptPage(entries, page);
   }
 
   /** The bytes behind a deferred tool-result image, read from the session file on demand. */
@@ -6511,6 +6511,23 @@ function historyMessages(session: PiAgentSession): unknown[] {
  */
 function historyMessagesFromEntries(entries: readonly unknown[]): unknown[] {
   return branchMessages(entries).map(boundToolResultMessage);
+}
+
+/**
+ * A transcript page with the head it was read at, each message naming its entry.
+ *
+ * Ids are attached to the page's slice only: a 69k-message branch is not copied a second time
+ * to label messages nobody asked for.
+ */
+function transcriptPage(entries: readonly unknown[], page?: { before?: number; limit?: number }): ClientMessagePage {
+  const rows = branchTranscript(entries);
+  const paged = pageMessagesAtSafeBoundary(rows.map((row) => boundToolResultMessage(row.message)), page);
+  const messages = paged.messages.map((message, index) => withEntryId(message, rows[paged.start + index]?.entryId));
+  return { ...paged, messages, head: transcriptHead(rows) };
+}
+
+function withEntryId(message: unknown, entryId: string | undefined): unknown {
+  return entryId === undefined || !isRecord(message) ? message : { ...message, entryId };
 }
 
 function boundToolResultMessage(message: unknown): unknown {

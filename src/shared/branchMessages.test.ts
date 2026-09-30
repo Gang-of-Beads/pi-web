@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readableMessageCount } from "../server/daemon/sessions/readableMessageCount.js";
-import { branchMessages } from "./branchMessages.js";
+import { branchMessages, branchTranscript, transcriptHead } from "./branchMessages.js";
 
 /**
  * Shaped after a real transcript (2026-09-29, 14:21-14:24): pi retried two
@@ -48,6 +48,22 @@ describe("retried attempts in the transcript", () => {
 
   it("keeps the sidebar count in step with the transcript", () => {
     expect(readableMessageCount(branch)).toBe(branchMessages(branch).length);
+  });
+
+  it("names the entry every message came from, in the same order", () => {
+    const transcript = branchTranscript(branch);
+    expect(transcript.map((row) => row.entryId)).toEqual(["u1", "a3"]);
+    expect(transcript.map((row) => row.message)).toEqual(branchMessages(branch));
+  });
+
+  it("moves the head back when a retry removes the attempt it ended on", () => {
+    const beforeRetry = [branch[0], failed("a1", "overloaded")];
+    expect(transcriptHead(branchTranscript(beforeRetry))).toEqual({ n: 2, leaf: "a1" });
+    expect(transcriptHead(branchTranscript([...beforeRetry, omit("e1", "a1")]))).toEqual({ n: 1, leaf: "u1" });
+  });
+
+  it("has an empty head for an empty branch", () => {
+    expect(transcriptHead(branchTranscript([]))).toEqual({ n: 0, leaf: null });
   });
 
   it("hides nothing an edit removed for another reason", () => {

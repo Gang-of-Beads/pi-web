@@ -1,3 +1,4 @@
+import type { TranscriptHead } from "./apiTypes.js";
 /**
  * The transcript as the browser receives it, from the entries of a branch.
  *
@@ -77,9 +78,31 @@ export function isReadableBranchEntry(entry: unknown): boolean {
  * message.
  */
 export function branchMessages(entries: Iterable<unknown>): unknown[] {
+  return branchTranscript(entries).map((row) => row.message);
+}
+
+/** One transcript message and the id of the session entry it was projected from. */
+export interface TranscriptRow {
+  entryId: string | undefined;
+  message: unknown;
+}
+
+/**
+ * Where a transcript stands. Entry ids are written into the session file, so a head survives
+ * a daemon restart and needs no epoch. The projection is not append-only - a later
+ * `context_edit` removes a retried attempt - so a head can move back as well as forward; a
+ * reader compares heads by value (docs/design/sync-convergence.md).
+ */
+export function transcriptHead(transcript: readonly TranscriptRow[]): TranscriptHead {
+  return { n: transcript.length, leaf: transcript.at(-1)?.entryId ?? null };
+}
+
+/** {@link branchMessages}, with each message's entry id beside it. */
+export function branchTranscript(entries: Iterable<unknown>): TranscriptRow[] {
   const branch = [...entries];
   const retried = retriedAttemptIds(branch);
-  const messages: unknown[] = [];
+  const rows: TranscriptRow[] = [];
+  const push = (entry: Record<string, unknown>, message: unknown) => { rows.push({ entryId: getString(entry, "id"), message }); };
   let thinkingLevel: string | undefined;
   let stoppedByReader = false;
   for (const entry of branch) {
@@ -90,17 +113,17 @@ export function branchMessages(entries: Iterable<unknown>): unknown[] {
       if (isRecord(message) && message["role"] === "user") stoppedByReader = false;
       const cut = stoppedByReader && isCutAssistant(message);
       if (cut) stoppedByReader = false;
-      if (!retried.has(getString(entry, "id") ?? "")) messages.push(annotateAssistantThinkingLevel(cut ? stoppedByYou(message) : message, thinkingLevel));
+      if (!retried.has(getString(entry, "id") ?? "")) push(entry, annotateAssistantThinkingLevel(cut ? stoppedByYou(message) : message, thinkingLevel));
     }
     else if (entry["type"] === "thinking_level_change") {
       const level = getString(entry, "thinkingLevel");
       if (level !== undefined) thinkingLevel = level;
     }
-    else if (entry["type"] === "custom_message" && entry["display"] === true) messages.push({ role: "custom", content: entry["content"], customType: entry["customType"], details: entry["details"] });
-    else if (entry["type"] === "compaction") messages.push({ role: "system", source: "compaction", content: `Compacted history:\n\n${stringValue(entry["summary"])}` });
-    else if (entry["type"] === "branch_summary") messages.push({ role: "system", source: "branch_summary", content: `Branch summary:\n\n${stringValue(entry["summary"])}` });
+    else if (entry["type"] === "custom_message" && entry["display"] === true) push(entry, { role: "custom", content: entry["content"], customType: entry["customType"], details: entry["details"] });
+    else if (entry["type"] === "compaction") push(entry, { role: "system", source: "compaction", content: `Compacted history:\n\n${stringValue(entry["summary"])}` });
+    else if (entry["type"] === "branch_summary") push(entry, { role: "system", source: "branch_summary", content: `Branch summary:\n\n${stringValue(entry["summary"])}` });
   }
-  return messages;
+  return rows;
 }
 
 /**
