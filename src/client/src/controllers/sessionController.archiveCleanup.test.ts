@@ -30,7 +30,7 @@ describe("SessionController archive and cleanup", () => {
     expect(state.sessions).toHaveLength(1);
     expect(state.sessions[0]).toMatchObject({ ...oldSession, archived: true });
     expect(typeof state.sessions[0]?.archivedAt).toBe("string");
-    expect(controller.preferredSession(workspace.path, state.sessions, undefined)).toBeUndefined();
+    expect(controller.preferredSession(workspace.path, state.sessions)).toBeUndefined();
     expect(urlUpdates).toEqual([undefined]);
   });
 

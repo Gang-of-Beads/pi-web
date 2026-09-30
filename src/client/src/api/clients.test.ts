@@ -407,6 +407,29 @@ describe("session API compatibility", () => {
     await expect(request).rejects.not.toBeInstanceOf(SessionTreeForkUnavailableError);
   });
 
+  it("locates a session through an encoded machine route with the asking workspace", async () => {
+    const located = { id: "s /?", path: "/sessions/s.jsonl", cwd: "/repo/packages/app", created: "2026-01-01T00:00:00.000Z", modified: "2026-01-01T00:01:00.000Z", messageCount: 2, firstMessage: "hello", archived: true, archivedAt: "2026-01-02T00:00:00.000Z" };
+    const fetchMock = stubJsonFetch(located);
+
+    const location = await sessionsApi.locateSession({ id: "s /?", cwd: "/repo with spaces" }, "remote /?");
+
+    expect(fetchCall(fetchMock, 0)[0]).toBe("https://pi.example.test/api/machines/remote%20%2F%3F/sessions/s%20%2F%3F/locate?cwd=%2Frepo+with+spaces");
+    expect(location.kind === "found" ? { id: location.session.id, cwd: location.session.cwd, archived: location.session.archived } : location).toEqual({ id: "s /?", cwd: "/repo/packages/app", archived: true });
+  });
+
+  it("answers a daemon without the locate route as unsupported, and a missing session with its code", async () => {
+    stubSequenceFetch([
+      new Response(JSON.stringify({ statusCode: 404, error: "Not Found", message: "Route GET:/sessions/s-1/locate not found" }), { status: 404, headers: { "content-type": "application/json" } }),
+      new Response(JSON.stringify({ error: "Session not found", code: "session-not-found" }), { status: 404, headers: { "content-type": "application/json" } }),
+    ]);
+
+    const old = await sessionsApi.locateSession({ id: "s-1", cwd: "/repo" });
+    const missing: unknown = await sessionsApi.locateSession({ id: "s-1", cwd: "/repo" }).catch((error: unknown) => error);
+
+    expect(old).toEqual({ kind: "unsupported" });
+    expect(missing instanceof HttpError ? { status: missing.status, code: missing.code } : missing).toEqual({ status: 404, code: "session-not-found" });
+  });
+
   it("keeps the code a missing session answers a fork with", async () => {
     stubResponseFetch(new Response(JSON.stringify({ error: "Session not found", code: "session-not-found" }), { status: 404, headers: { "content-type": "application/json" } }));
 

@@ -440,6 +440,7 @@ describe("PiSessionService daemon-owned unread state", () => {
       sessionManager: {
         create: () => parentManager,
         list: () => Promise.resolve([]),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => Promise.resolve([]),
         invalidateSessionFile: () => undefined,
         resolveSessionFile: () => Promise.resolve(undefined),
@@ -487,6 +488,7 @@ describe("PiSessionService daemon-owned unread state", () => {
       sessionManager: {
         create: () => parentManager,
         list: () => Promise.resolve([]),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => Promise.resolve([]),
         invalidateSessionFile: () => undefined,
         resolveSessionFile: () => Promise.resolve(undefined),
@@ -548,6 +550,7 @@ describe("PiSessionService daemon-owned unread state", () => {
       sessionManager: {
         create: () => childManager,
         list: () => Promise.resolve([childRecord]),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => Promise.resolve([childRecord]),
         invalidateSessionFile: () => undefined,
         resolveSessionFile: resolveSessionFileFromList(() => Promise.resolve([childRecord])),
@@ -615,6 +618,7 @@ describe("PiSessionService daemon-owned unread state", () => {
       sessionManager: {
         create: () => fakeSessionManager(),
         list: () => Promise.resolve([sessionRecord("listed-idle"), sessionRecord("active-idle"), sessionRecord("busy")]),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => Promise.resolve([]),
         invalidateSessionFile: () => undefined,
         resolveSessionFile: resolveSessionFileFromList(() => Promise.resolve([sessionRecord("listed-idle"), sessionRecord("active-idle"), sessionRecord("busy")])),
@@ -677,6 +681,7 @@ describe("PiSessionService daemon-owned unread state", () => {
       sessionManager: {
         create: () => fakeSessionManager(),
         list: () => Promise.resolve([root, directChild, archivedChild, grandchild]),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => Promise.resolve([]),
         invalidateSessionFile: () => undefined,
         resolveSessionFile: resolveSessionFileFromList(() => Promise.resolve([root, directChild, archivedChild, grandchild])),
@@ -721,6 +726,7 @@ describe("PiSessionService daemon-owned unread state", () => {
       sessionManager: {
         create: () => fakeSessionManager(),
         list: () => Promise.resolve([]),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => Promise.resolve([sessionRecord("cleanup-archive", oldProjectCwd)]),
         invalidateSessionFile: () => undefined,
         resolveSessionFile: () => Promise.resolve(undefined),

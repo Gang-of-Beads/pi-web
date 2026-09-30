@@ -53,10 +53,11 @@ function harness(
   let state: AppState = { ...initialAppState(), ...initial };
   const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
   const clearActiveSession = vi.fn();
-  const sessions: Pick<SessionController, "clearActiveSession" | "preferredSession" | "selectSession"> = {
+  const sessions: Pick<SessionController, "clearActiveSession" | "preferredSession" | "selectSession" | "openNamedSession"> = {
     clearActiveSession,
     preferredSession: vi.fn(),
     selectSession: vi.fn(),
+    openNamedSession: vi.fn(),
   };
   const updateUrl = vi.fn();
   const controller = new WorkspaceController(

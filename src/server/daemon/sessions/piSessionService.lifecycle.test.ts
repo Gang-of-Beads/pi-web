@@ -211,6 +211,7 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     const gateway: SessionGateway = {
       create: () => fakeSessionManager(),
       list,
+      findSession: () => Promise.resolve(undefined),
       listAll: () => Promise.resolve([]),
       invalidateSessionFile: () => undefined,
       resolveSessionFile,
@@ -272,6 +273,7 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
       sessionManager: {
         create: (createCwd: string) => realGateway.create(createCwd),
         list: (listCwd: string) => realGateway.list(listCwd),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => realGateway.listAll(),
         resolveSessionFile: (refCwd: string, refId: string) => realGateway.resolveSessionFile(refCwd, refId),
         invalidateSessionFile: (sessionFile: string) => {
@@ -295,6 +297,7 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     const gateway: SessionGateway = {
       create: () => fakeSessionManager(),
       list: () => Promise.resolve([]),
+      findSession: () => Promise.resolve(undefined),
       listAll: () => Promise.resolve([]),
       invalidateSessionFile: () => undefined,
       resolveSessionFile: () => Promise.resolve(undefined),
@@ -830,6 +833,7 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
           { ...sessionRecord("active"), messageCount: 1, firstMessage: "hello", allMessagesText: "hello" },
           { ...sessionRecord("archived"), messageCount: 2, firstMessage: "bye", allMessagesText: "bye" },
         ]),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => Promise.resolve([]),
         invalidateSessionFile: () => undefined,
         resolveSessionFile: () => Promise.resolve(undefined),
@@ -864,6 +868,7 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
       sessionManager: {
         create: () => fakeSessionManager(),
         list: () => Promise.resolve([{ ...sessionRecord("active"), messageCount: 1, firstMessage: "hello", allMessagesText: "hello", cwdMissing: true }]),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => Promise.resolve([]),
         invalidateSessionFile: () => undefined,
         resolveSessionFile: () => Promise.resolve(undefined),
@@ -892,6 +897,7 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
       sessionManager: {
         create: () => fakeSessionManager(),
         list: () => Promise.resolve([{ ...sessionRecord("active"), messageCount: 1, firstMessage: "hello", allMessagesText: "hello" }]),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => Promise.resolve([]),
         invalidateSessionFile: () => undefined,
         resolveSessionFile: () => Promise.resolve(undefined),
@@ -1170,6 +1176,7 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
       sessionManager: {
         create: () => fakeSessionManager(),
         list: () => Promise.resolve([]),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => Promise.resolve([]),
         invalidateSessionFile: () => undefined,
         resolveSessionFile: () => Promise.resolve(undefined),

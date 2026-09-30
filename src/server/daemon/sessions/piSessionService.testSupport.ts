@@ -274,6 +274,7 @@ export function sessionGateway(records: ReturnType<typeof sessionRecord>[]): Ses
     create: (cwd) => fakeSessionManager(cwd),
     list: () => Promise.resolve(records),
     listAll: () => Promise.resolve(records),
+    findSession: (_cwd, sessionId) => Promise.resolve(records.find((record) => record.id === sessionId) ?? records.find((record) => record.id.startsWith(sessionId))),
     invalidateSessionFile: () => undefined,
     resolveSessionFile: resolveSessionFileFromList(() => Promise.resolve(records)),
     open: () => fakeSessionManager(),

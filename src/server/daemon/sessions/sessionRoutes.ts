@@ -275,6 +275,16 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
+  app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/locate`, async (request, reply) => {
+    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
+    if (ref === undefined) return reply;
+    try {
+      return await sessions.locate(ref);
+    } catch (error) {
+      return sendError(reply, sessionErrorReply(error, 500));
+    }
+  });
+
   app.get<{ Params: { sessionId: string }; Querystring: StreamSnapshotQuery }>(`${prefix}/sessions/:sessionId/stream-snapshot`, async (request, reply) => {
     const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
     if (ref === undefined) return reply;

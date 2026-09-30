@@ -129,6 +129,28 @@ describe("Pi session manager gateway", () => {
     }
   });
 
+  it("finds one session by its whole id, or the one id it begins, in any store the workspace or the machine keeps", async () => {
+    const envSessionDir = join(tempDir, "env-sessions");
+    const subCwd = join(cwd, "packages", "app");
+    await writeSessionFile(defaultPiSessionDir(subCwd, agentDir), "in-subdirectory", subCwd);
+    await writeSessionFile(envSessionDir, "in-env-dir", cwd);
+    await writeSessionFile(envSessionDir, "in-env-dir-two", cwd);
+    await mkdir(join(cwd, ".pi"), { recursive: true });
+    await writeFile(join(cwd, ".pi", "settings.json"), `${JSON.stringify({ sessionDir: ".workspace-sessions" })}\n`, "utf8");
+    await writeSessionFile(join(cwd, ".workspace-sessions"), "in-project-dir", cwd);
+    const gateway = createPiSessionManagerGateway(piProfileOptions({ PI_CODING_AGENT_SESSION_DIR: envSessionDir }));
+    const projectGateway = createPiSessionManagerGateway(piProfileOptions());
+
+    await expect(gateway.findSession(cwd, "in-subdirectory")).resolves.toMatchObject({ id: "in-subdirectory", cwd: subCwd });
+    await expect(gateway.findSession(cwd, "in-env-dir")).resolves.toMatchObject({ id: "in-env-dir", cwd });
+    await expect(projectGateway.findSession(cwd, "in-project-dir")).resolves.toMatchObject({ id: "in-project-dir", cwd });
+    await expect(gateway.findSession(cwd, "in-subdir")).resolves.toMatchObject({ id: "in-subdirectory" });
+    await expect(gateway.findSession(cwd, "in-env-dir")).resolves.toMatchObject({ id: "in-env-dir" });
+    await expect(gateway.findSession(cwd, "in-env-dir-t")).resolves.toMatchObject({ id: "in-env-dir-two" });
+    await expect(gateway.findSession(cwd, "in-")).resolves.toBeUndefined();
+    await expect(gateway.findSession(cwd, "nowhere")).resolves.toBeUndefined();
+  });
+
   it("lists only sessions for the requested cwd when a custom Pi sessionDir is shared", async () => {
     const sharedSessionDir = join(tempDir, "shared-sessions");
     const otherCwd = join(tempDir, "other-workspace");

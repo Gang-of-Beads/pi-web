@@ -1700,6 +1700,11 @@ class CapturingRouteSessionService implements SessionRouteService {
     });
   }
 
+  locate(lookup: SessionRouteRef): Promise<ClientSession> {
+    this.calls.push(lookup);
+    return Promise.reject(new SessionNotFoundError());
+  }
+
   streamSnapshot(lookup: SessionRouteRef): Promise<SessionStreamSnapshot> {
     this.streamSnapshotCalls.push(lookup);
     return Promise.resolve(this.streamSnapshotResponse);
@@ -1828,6 +1833,10 @@ class RejectingSessionManager implements PiSessionManagerGateway {
     return Promise.resolve(undefined);
   }
 
+  findSession() {
+    return Promise.resolve(undefined);
+  }
+
   invalidateSessionFile() {
     /* no memo to drop in this fake */
   }
@@ -1874,7 +1883,7 @@ function unusedRouteMethod(name: string): Error {
  * answered 404 for any failure, so a daemon error read as a deleted session.
  */
 describe("what a session read answers when it fails", () => {
-  const readRoutes = ["messages", "status", "stream-snapshot", "models", "models/catalog", "thinking-levels", "commands", "subsessions", "background-tasks", "subagent-runs/run-1/messages", "subagent-runs/run-1/output"];
+  const readRoutes = ["messages", "status", "stream-snapshot", "models", "models/catalog", "thinking-levels", "commands", "subsessions", "background-tasks", "subagent-runs/run-1/messages", "subagent-runs/run-1/output", "locate"];
 
   it("answers 404 with the code for a session the daemon does not have, on every read route", async () => {
     const answers: Record<string, unknown> = {};
@@ -1884,6 +1893,24 @@ describe("what a session read answers when it fails", () => {
       answers[route] = { status: response.statusCode, code: isRecord(body) ? body["code"] : undefined };
     }
     expect(answers).toEqual(Object.fromEntries(readRoutes.map((route) => [route, { status: 404, code: "session-not-found" }])));
+  });
+
+  it("locates a session by id and answers what it is and where it lives", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const routeService = new CapturingRouteSessionService();
+    const located: SessionInfo = { id: "in-sub", path: "/sessions/in-sub.jsonl", cwd: resolve("/repo/packages/app"), created: "2026-01-01T00:00:00.000Z", modified: "2026-01-01T00:01:00.000Z", messageCount: 2, firstMessage: "hello", archived: true, archivedAt: "2026-01-02T00:00:00.000Z" };
+    routeService.locate = (ref) => ref.id === "in-sub" ? Promise.resolve(located) : Promise.reject(new Error("unexpected id"));
+    registerSessionRoutes(routeApp, routeService, new SessionEventHub());
+    try {
+      const response = await routeApp.inject({ method: "GET", url: `/sessions/in-sub/locate?cwd=${encodeURIComponent(resolve("/repo"))}` });
+      const body: unknown = response.json();
+      const missingCwd = await routeApp.inject({ method: "GET", url: "/sessions/in-sub/locate" });
+      expect({ status: response.statusCode, body, missingCwd: missingCwd.statusCode }).toEqual({ status: 200, body: located, missingCwd: 400 });
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
   });
 
   it("keeps 503 for the child-work reads when they fail for another reason", async () => {

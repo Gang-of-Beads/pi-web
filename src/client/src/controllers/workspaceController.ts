@@ -51,7 +51,7 @@ export class WorkspaceController {
     private readonly getState: GetState,
     private readonly setState: SetState,
     private readonly updateUrl: UpdateUrl,
-    private readonly sessions: Pick<SessionController, "clearActiveSession" | "preferredSession" | "selectSession">,
+    private readonly sessions: Pick<SessionController, "clearActiveSession" | "preferredSession" | "selectSession" | "openNamedSession">,
     private readonly workspaceSelection: WorkspaceSelectionMemory = new InMemoryWorkspaceSelectionMemory(),
     deps: WorkspaceControllerDependencies = {},
   ) {
@@ -160,7 +160,13 @@ export class WorkspaceController {
       if (selectedMachineId(this.getState()) !== machineId || this.getState().selectedWorkspace?.id !== workspace.id || this.getState().selectedProject?.id !== workspace.projectId) return;
       rememberWorkspaceSessions(machineId, workspace.path, sessions);
       this.setState({ sessions, sessionsLoad: "loaded" });
-      const session = this.sessions.preferredSession(workspace.path, sessions, target?.sessionId);
+      const named = target?.sessionId;
+      if (named !== undefined && named !== "") {
+        await this.sessions.openNamedSession(named, workspace, sessions, { updateUrl: target?.updateUrl });
+        if (target?.updateUrl !== false && this.getState().selectedSession === undefined) this.updateUrl();
+        return;
+      }
+      const session = this.sessions.preferredSession(workspace.path, sessions);
       if (session) await this.sessions.selectSession(session, { updateUrl: target?.updateUrl });
       else if (target?.updateUrl !== false) this.updateUrl();
     } catch (error) {

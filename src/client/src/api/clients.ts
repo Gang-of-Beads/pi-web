@@ -1,4 +1,4 @@
-import type { AskUserSubmission, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse } from "../../../shared/apiTypes";
+import type { AskUserSubmission, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse } from "../../../shared/apiTypes";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
 import { errorCode, HttpError, request } from "./http";
@@ -355,6 +355,7 @@ export const sessionsApi = {
     body: sessionBody(session, { targetId: navigation.targetId, expectedLeafId: navigation.expectedLeafId, summary: navigation.summary }),
   }),
   forkTree: (session: SessionRef, fork: SessionTreeForkRequest, machineId = "local") => requestSessionTreeFork(session, fork, machineId),
+  locateSession: (session: SessionRef, machineId = "local") => requestSessionLocation(session, machineId),
   /**
    * Ask what became of identities this browser could not settle. Identities the
    * daemon has no row for are absent from the answer, which keeps "unknown"
@@ -434,10 +435,38 @@ async function requestSessionTreeFork(session: SessionRef, fork: SessionTreeFork
 }
 
 function isMissingSessionTreeForkRoute(status: number, value: unknown): boolean {
+  return isMissingDaemonRoute(status, value, /^Route POST:.*\/tree\/fork not found$/i);
+}
+
+/**
+ * Where a session is, machine-wide (P2 slice b): the daemon's answer, or
+ * `unsupported` from a daemon older than the route. A missing session is the
+ * typed error, which the read classifier turns into `gone`.
+ */
+export type SessionLocation = { kind: "found"; session: SessionInfo } | { kind: "unsupported" };
+
+async function requestSessionLocation(session: SessionRef, machineId: string): Promise<SessionLocation> {
+  const path = sessionQueryPath(session, "locate", machineId);
+  try {
+    return await fetchWithDeadline(resolveAppUrl(path), { cache: "no-store" }, async (response): Promise<SessionLocation> => {
+      reportTransportReachable(path);
+      if (response.ok) return { kind: "found", session: parseSessionInfo(await response.json()) };
+      const body: unknown = await response.json().catch((): unknown => ({}));
+      if (isMissingDaemonRoute(response.status, body, /^Route GET:.*\/locate(\?.*)? not found$/i)) return { kind: "unsupported" };
+      throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(path), undefined, errorCode(body));
+    });
+  } catch (error) {
+    if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, machineId);
+    throw error;
+  }
+}
+
+/** Fastify's own not-found envelope for a route this daemon does not have; an older daemon answers it for a newer route. */
+function isMissingDaemonRoute(status: number, value: unknown, route: RegExp): boolean {
   if (status !== 404 || !isRecord(value)) return false;
   if (value["statusCode"] !== 404 || value["error"] !== "Not Found") return false;
   const message = value["message"];
-  return typeof message === "string" && /^Route POST:.*\/tree\/fork not found$/i.test(message);
+  return typeof message === "string" && route.test(message);
 }
 
 async function getOptionalTerminalCommandRun(runId: string, machineId: string): Promise<TerminalCommandRun | undefined> {

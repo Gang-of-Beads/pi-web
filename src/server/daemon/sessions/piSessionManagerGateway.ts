@@ -108,6 +108,16 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
     return resolveSessionFileInDir(resolution.sessionDir, cwd, sessionId, readSessionHeaderSummary);
   }
 
+  async findSession(cwd: string, sessionId: string): Promise<PiSessionListEntry | undefined> {
+    const envSessionDir = this.resolver.globalEnvSessionDir();
+    const nearDirs = [...new Set([this.resolver.resolve(cwd).sessionDir, ...(envSessionDir === undefined ? [] : [envSessionDir])])];
+    const near = (await Promise.all(nearDirs.map(async (dir) => this.summaryScanner.scanSessionSummariesInDir(dir)))).flat();
+    const nearExact = near.find((session) => session.id === sessionId);
+    if (nearExact !== undefined) return withStoredCwdFacts(nearExact);
+    const stored = await scanStoreSessionSummaries(this.resolver.defaultSessionsRoot(), readSessionDirNames, async (dir) => this.summaryScanner.scanSessionSummariesInDir(dir));
+    return withStoredCwdFacts(sessionByIdOrUniquePrefix([...near, ...stored], sessionId));
+  }
+
   invalidateSessionFile(sessionFile: string): void {
     // Detach is the only flow that rewrites a session file in place (keeping
     // the inode), and the summary memo cannot detect such rewrites from
@@ -184,6 +194,21 @@ export async function scanStoreSessionSummaries(
   const names = await readSessionDirNames(storeRoot);
   const perDir = await Promise.all(names.map(async (name) => scanDir(join(storeRoot, name))));
   return perDir.flat().sort((a, b) => b.modified.getTime() - a.modified.getTime());
+}
+
+/** A found session with the facts a listing stamps: its canonical cwd, and whether that folder still exists. */
+function withStoredCwdFacts(session: PiSessionListEntry | undefined): PiSessionListEntry | undefined {
+  if (session === undefined) return undefined;
+  const cwd = canonicalizeStoredCwd(session.cwd);
+  return { ...session, cwd, ...(directoryExists(cwd) ? {} : { cwdMissing: true }) };
+}
+
+/** The session with this whole id, else the only one whose id it begins: the precedence `resolveSessionFileInDir` uses, and the one a listing's link accepts. */
+function sessionByIdOrUniquePrefix(sessions: readonly PiSessionListEntry[], sessionId: string): PiSessionListEntry | undefined {
+  const exact = sessions.find((session) => session.id === sessionId);
+  if (exact !== undefined) return exact;
+  const prefixed = new Map(sessions.filter((session) => session.id.startsWith(sessionId)).map((session) => [session.id, session]));
+  return prefixed.size === 1 ? [...prefixed.values()][0] : undefined;
 }
 
 /** The store keeps one directory per working directory; a missing store is empty, not an error. */

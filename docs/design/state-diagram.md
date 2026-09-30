@@ -448,6 +448,43 @@ stateDiagram-v2
   - The chrome draws the progress line from the intent. The tapped row draws its `going` look by comparing its key with the intent's target.
 - **A deep link to a session opens that session, or says why it cannot.** It never silently opens another one (audit, B31).
 
+### The target of a session link (P2 slice b, B31; owner Q8)
+
+A link, a boot restore, a switcher pick or a board pick names one session. Whether it can be opened is one value, `SessionTarget`, decided by one pure classifier from typed answers only:
+
+```mermaid
+stateDiagram-v2
+    [*] --> open: listed, not archived
+    [*] --> archived: listed and archived
+    [*] --> asking: not in the answered listing
+    asking --> open: the daemon locates it (created after the listing, or recorded elsewhere)
+    asking --> archived: the daemon locates it, archived
+    asking --> gone: 404 with code session-not-found
+    asking --> unknown: no answer (ReadMiss)
+    unknown --> asking: the retry ladder or a wake
+    open --> gone: a read or Stop answers the code
+    archived --> open: Restore succeeds
+```
+
+| state | the chat surface | the composer slot | the URL |
+|---|---|---|---|
+| `open` | the transcript | the composer | names the session |
+| `archived` | the transcript, read-only | "This session is archived." with Restore | names the session |
+| `asking` | "Loading this session…" | nothing | names the target |
+| `unknown` | "Loading this session…"; the app row says why (`ReadMiss`) | nothing | names the target |
+| `gone` | "This session no longer exists on *machine*." with a way back to the workspace's sessions | nothing | names the target |
+| `not-listed` (an older daemon) | "This session isn't in *workspace* on *machine*." with the way back | nothing | names the target |
+| `folder-gone` | "This session's folder no longer exists, so it cannot be opened." with the way back | nothing | names the target |
+| `refused` | "*machine* asked you to sign in before it opens this session.", or "*machine* refused to open this session.", with the way back | nothing | names the target |
+
+The way back forgets the target: the URL stops naming it, and the phone shows the workspace's Sessions page.
+
+- **Absence is not negation.** A target missing from the listing is `asking`: the daemon is asked where that id is, machine-wide (`GET /sessions/:id/locate`), because the listing is of one workspace's tree and a read by the workspace's cwd cannot see a session recorded in a subdirectory, or an archived one recorded there. Only the daemon's code makes it `gone`. A located session opens where it lives, as a switcher pick does. The fallback to the latest session applies only when no session was named.
+- **An older daemon without the locate route** answers the route-not-found envelope. For one release, the answered listing is then the evidence, and the words say only what it proves: "This session isn't in *workspace* on *machine*."
+- **Nothing else is selected** while the target is `asking`, `unknown` or `gone`. On the phone, the chat view stays on screen for the target instead of falling back to the Sessions page, so the answer is visible.
+- **`gone` is final for that id** until the reader navigates. It is not retried, and it never becomes another session.
+- **Producers before the fix:** `selectPreferredSession` fell through to the latest session (seen on 8505: a link to a deleted id opened "probe warm reply" while the URL kept the deleted id); a refresh of the open session that answered the code read "Couldn't load this session."; a pick of a row deleted since the board was read read "Couldn't open"; an archived session opened with a disabled composer and no reason; Stop on a missing session answered "stopped".
+
 ## D7. A goal (our own goal plugin, replacing pi-goal's flow)
 
 ```mermaid

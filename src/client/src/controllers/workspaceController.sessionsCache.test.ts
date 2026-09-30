@@ -91,10 +91,11 @@ function harness() {
     selectedProject: project(),
   };
   const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
-  const sessionsController: Pick<SessionController, "clearActiveSession" | "preferredSession" | "selectSession"> = {
+  const sessionsController: Pick<SessionController, "clearActiveSession" | "preferredSession" | "selectSession" | "openNamedSession"> = {
     clearActiveSession: vi.fn(),
     preferredSession: vi.fn(),
     selectSession: vi.fn(),
+    openNamedSession: vi.fn(),
   };
   const sessionsApi = vi.fn<(path: string, machineId?: string) => Promise<SessionInfo[]>>();
   const controller = new WorkspaceController(

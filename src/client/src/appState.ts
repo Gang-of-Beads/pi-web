@@ -4,6 +4,7 @@ import type { CommandLedgerEntry } from "./commandLedger";
 import { RetiredBy } from "./notice";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { QualifiedContributionId } from "./plugins/ids";
+import type { ScopedSessionTarget } from "./sessionTarget";
 
 export interface AppState {
   machines: Machine[];
@@ -59,6 +60,14 @@ export interface AppState {
   selectedProject: Project | undefined;
   selectedWorkspace: Workspace | undefined;
   selectedSession: SessionInfo | undefined;
+  /**
+   * The session a link, a restore or a pick named, while it is not selected:
+   * still being asked about, unanswered, or answered as one that cannot be
+   * opened (state-diagram D8, "The target of a session link"). Only the
+   * session target resolver writes it, and it renders only while its machine
+   * and workspace are the selection.
+   */
+  sessionTarget: ScopedSessionTarget | undefined;
   backgroundTasks: readonly SessionBackgroundTaskInfo[];
   backgroundTasksRead: BackgroundTasksRead;
   /**
@@ -259,6 +268,7 @@ export function initialAppState(): AppState {
     selectedProject: undefined,
     selectedWorkspace: undefined,
     selectedSession: undefined,
+    sessionTarget: undefined,
     backgroundTasks: [],
     backgroundTasksRead: "unread",
     transcriptFailed: undefined,

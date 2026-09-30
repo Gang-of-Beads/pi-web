@@ -39,6 +39,8 @@ import { SessionStorageTerminalSelectionMemory } from "../controllers/terminalSe
 import { SessionStorageWorkspaceSelectionMemory } from "../controllers/workspaceSelection";
 import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
 import { selectedMachineId } from "../controllers/types";
+import { placeSessionId, targetInScope, targetUnanswered, type ScopedSessionTarget } from "../sessionTarget";
+import { sessionTargetView, type SessionTargetNames } from "../sessionTargetView";
 import { recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { keyboardInset, visualViewportOffsetTop } from "../appShell/keyboardInset";
 import { machineSessionKey } from "../machineKeys";
@@ -614,10 +616,10 @@ export class PiWebApp extends LitElement {
       {
         project: state.selectedProject?.id,
         workspace: state.selectedWorkspace?.id,
-        session: state.selectedSession?.id,
+        session: placeSessionId(state),
         view: state.mainView,
       },
-      this.appShell.defaultRouteView({ sessionId: state.selectedSession?.id }),
+      this.appShell.defaultRouteView({ sessionId: placeSessionId(state) }),
     );
   }
 
@@ -1713,7 +1715,7 @@ export class PiWebApp extends LitElement {
       && route.workspaceId !== ""
       && this.state.selectedProject?.id === route.projectId
       && this.state.selectedWorkspace?.id === route.workspaceId
-      && this.state.selectedSession?.id === route.sessionId;
+      && placeSessionId(this.state) === route.sessionId;
   }
 
   private restoreWorkspaceExpandedRoute(route: AppRoute, surface: WorkspaceRouteSurface, mainView: AppState["mainView"]): void {
@@ -1773,7 +1775,7 @@ export class PiWebApp extends LitElement {
       machineId: this.state.selectedMachine?.id,
       projectId: this.state.selectedProject?.id,
       workspaceId: this.state.selectedWorkspace?.id,
-      sessionId: this.state.selectedSession?.id,
+      sessionId: placeSessionId(this.state),
       tool: this.state.selectedWorkspace === undefined ? undefined : this.state.workspaceTool,
       view: this.state.mainView === "navigation" ? undefined : this.state.mainView,
     }, options);
@@ -2689,7 +2691,7 @@ export class PiWebApp extends LitElement {
   private leaveNavigate(): void {
     this.navigation.begin();
     this.closeNavigate();
-    if (this.state.mainView === "navigation" && this.state.selectedSession !== undefined) {
+    if (this.state.mainView === "navigation" && this.hasChatSubject()) {
       this.setState({ mainView: "chat" });
     }
   }
@@ -2698,7 +2700,7 @@ export class PiWebApp extends LitElement {
     return html`<app-navigate-page
       .input=${this.navigateInput()}
       .pinnedProjectIds=${this.pinnedProjectIds}
-      ?returnable=${overlay || (this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined)}
+      ?returnable=${overlay || (this.appShell.isMobileNavigationLayout && this.hasChatSubject())}
       .onClose=${() => { this.leaveNavigate(); }}
       .onChoose=${(level: NavigateLevel, id: string) => { void this.navigateChoose(level, id); }}
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
@@ -4165,7 +4167,8 @@ export class PiWebApp extends LitElement {
   }
 
   private renderUnansweredRow(noticeShown: boolean) {
-    const decision = rowDecision({ notice: noticeShown, unanswered: earliestUnanswered(this.projects.unanswered(), this.machines.unanswered()), shown: this.unansweredShown, now: Date.now() });
+    const unanswered = earliestUnanswered(earliestUnanswered(this.projects.unanswered(), this.machines.unanswered()), targetUnanswered(this.namedTargetInScope()));
+    const decision = rowDecision({ notice: noticeShown, unanswered, shown: this.unansweredShown, now: Date.now() });
     if (this.reconnectingRecheck !== undefined) window.clearTimeout(this.reconnectingRecheck);
     this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : window.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
     if (decision.claim.kind !== "unanswered") {
@@ -4293,7 +4296,7 @@ export class PiWebApp extends LitElement {
         .toggleTarget=${"menu"}
         .navigationTarget=${this.appShell.isMobileNavigationLayout ? "page" : "panel"}
         ?panelToggleHidden=${panelToggleHiddenState({ mobileLayout: this.appShell.isMobileNavigationLayout, displayView: this.displayMainView() })}
-        .onTogglePanel=${this.appShell.isMobileNavigationLayout && this.state.selectedSession !== undefined ? () => { this.openNavigate(); } : () => { this.toggleShellPanel(); }}
+        .onTogglePanel=${this.appShell.isMobileNavigationLayout && this.hasChatSubject() ? () => { this.openNavigate(); } : () => { this.toggleShellPanel(); }}
         .onOpenContext=${() => { this.openContextSheet(); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
       ></app-context-bar>
@@ -4303,7 +4306,37 @@ export class PiWebApp extends LitElement {
   /** Whether the collapsible panel is currently presented on this layout. */
   /** The view the shell actually renders: on the phone an empty chat shows the panel. */
   private displayMainView(): AppState["mainView"] {
-    return this.appShell.isMobileNavigationLayout && this.state.mainView === "chat" && this.state.selectedSession === undefined ? "navigation" : this.state.mainView;
+    return this.appShell.isMobileNavigationLayout && this.state.mainView === "chat" && !this.hasChatSubject() ? "navigation" : this.state.mainView;
+  }
+
+  /**
+   * Whether the chat surface has something to show: a selected session, or a
+   * named one it is waiting on or has an answer about (D8). On the phone every
+   * "is there a chat behind this page" decision asks this one question.
+   */
+  private hasChatSubject(): boolean {
+    return placeSessionId(this.state) !== undefined;
+  }
+
+  private namedTargetInScope(): ScopedSessionTarget | undefined {
+    return targetInScope(this.state);
+  }
+
+  private renderNoSession(): TemplateResult {
+    const named = this.namedTargetInScope();
+    const view = named === undefined ? undefined : sessionTargetView(named.target, this.sessionTargetNames(named));
+    if (view === undefined) return html`<div class="empty"><p>${this.sessionEmptyMessage()}</p>${this.renderEmptyStateAction()}</div>`;
+    return html`
+      <div class="empty session-target" role=${view.role}>
+        <p>${view.text}</p>
+        ${view.wayBack === undefined ? nothing : html`<button type="button" @click=${() => { this.sessions.forgetNamedSession(); }}>${view.wayBack}</button>`}
+      </div>
+    `;
+  }
+
+  private sessionTargetNames(named: ScopedSessionTarget): SessionTargetNames {
+    const machine = this.state.machines.find((candidate) => candidate.id === named.machineId)?.name ?? named.machineId;
+    return { machine, workspace: this.state.selectedWorkspace?.label ?? named.cwd };
   }
 
   private shellPanelOpen(): boolean {
@@ -4314,7 +4347,7 @@ export class PiWebApp extends LitElement {
 
   private toggleShellPanel(): void {
     if (this.appShell.isMobileNavigationLayout) {
-      if (this.state.selectedSession === undefined) {
+      if (!this.hasChatSubject()) {
         this.selectMainView("navigation");
         return;
       }
@@ -4396,7 +4429,7 @@ export class PiWebApp extends LitElement {
             ${state.commandDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} .title=${state.commandDialog.title} .options=${state.commandDialog.options} .onPick=${(value: string) => this.sessions.respondToCommand(state.commandDialog?.requestId ?? "", value)} .onCancel=${() => { this.sessions.cancelCommand(); }}></command-picker>` : null}
             ${state.modelDialog !== undefined ? html`<model-picker ?abovedialog=${this.settingsOpen} title=${state.modelDialog.title} .options=${state.modelDialog.options} .catalog=${state.modelDialog.catalog} .selectedValue=${state.modelDialog.selectedValue} .onPick=${(value: string) => { void this.pickModel(value); }} .onToggleEnabled=${this.handleToggleModelEnabled} .onCancel=${() => { this.setState({ modelDialog: undefined }); }}></model-picker>` : null}
             ${state.thinkingDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.thinkingDialog.title} .options=${state.thinkingDialog.options} .selectedValue=${state.thinkingDialog.selectedValue} .onPick=${(value: string) => { void this.pickThinking(value); }} .onCancel=${() => { this.setState({ thinkingDialog: undefined }); }}></command-picker>` : null}
-          ` : html`<div class="empty"><p>${this.sessionEmptyMessage()}</p>${this.renderEmptyStateAction()}</div>`}
+          ` : this.renderNoSession()}
         </main>
         ${this.contextSheetOpen ? null : this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}

@@ -541,6 +541,12 @@ export interface PiSessionManagerGateway {
    * `resolveSessionFile`.
    */
   listAll(): Promise<PiSessionListEntry[]>;
+  /**
+   * One session by its whole id, wherever this machine keeps it: the asking
+   * workspace's own session directory, the env-configured one, then every
+   * directory of the default store. Undefined when none holds it.
+   */
+  findSession(cwd: string, sessionId: string): Promise<PiSessionListEntry | undefined>;
   open(path: string): PiSessionManager;
 }
 
@@ -1747,6 +1753,33 @@ export class PiSessionService implements SessionRouteService {
     return this.startSession(cwd, options);
   }
 
+  /**
+   * Where a session is, machine-wide, and whether it is archived (P2 slice b).
+   *
+   * A link names a session and the workspace it was opened in. The workspace
+   * listing covers that workspace's tree, and a read by its cwd sees only the
+   * session directory of that exact cwd, so neither absence is an answer: a
+   * session recorded in a subdirectory, or archived there, would read as
+   * deleted. This answers with the session, or with the typed error when no
+   * store holds it. A new session not written to disk yet is found among the
+   * open ones.
+   */
+  async locate(ref: PiSessionRef): Promise<ClientSession> {
+    const entry = await this.sessionManager.findSession(ref.cwd, ref.id);
+    const archived = await this.archiveStore.get(entry?.id ?? ref.id);
+    const archivedSession = archived === undefined ? undefined : clientSessionFromArchivedRecord(archived, entry);
+    if (archivedSession !== undefined) return archivedSession;
+    if (entry !== undefined) return clientSessionFromListEntry(entry);
+    const unwritten = this.unwrittenSession(ref.id);
+    if (unwritten !== undefined) return unwritten;
+    throw new SessionNotFoundError();
+  }
+
+  private unwrittenSession(sessionId: string): ClientSession | undefined {
+    const runtime = this.active.get(sessionId)?.runtime;
+    return runtime === undefined ? undefined : freshClientSession(runtime.session, runtime.cwd);
+  }
+
   private async startSession(cwd: string, options: InternalStartSessionOptions): Promise<ClientSession> {
     try {
       return await this.startSessionCreating(cwd, options);
@@ -1773,16 +1806,8 @@ export class PiSessionService implements SessionRouteService {
         ...(options.creationProvenance === undefined ? {} : { creationProvenance: options.creationProvenance }),
       },
     );
-    const { session } = active.runtime;
     const created: ClientSession = {
-      id: session.sessionId,
-      path: session.sessionFile ?? "",
-      cwd,
-      persisted: sessionFileExists(session.sessionFile),
-      created: new Date().toISOString(),
-      modified: new Date().toISOString(),
-      messageCount: readableMessageCount(session.sessionManager.getBranch()),
-      firstMessage: "",
+      ...freshClientSession(active.runtime.session, cwd),
       // Include the parent so listeners can nest the new session in the tree
       // immediately, instead of showing it flat until the next reload.
       ...(options.parentSession === undefined ? {} : { parentSessionPath: options.parentSession }),
@@ -6101,6 +6126,21 @@ function notificationIdentityForSession(session: PiAgentSession): { sessionId: s
   return {
     sessionId: session.sessionId,
     cwd: canonicalizeStoredCwd(session.sessionManager.getCwd()),
+  };
+}
+
+/** A session the daemon holds open, as a listing row, before its file says more about it. */
+function freshClientSession(session: PiAgentSession, cwd: string): ClientSession {
+  const now = new Date().toISOString();
+  return {
+    id: session.sessionId,
+    path: session.sessionFile ?? "",
+    cwd,
+    persisted: sessionFileExists(session.sessionFile),
+    created: now,
+    modified: now,
+    messageCount: readableMessageCount(session.sessionManager.getBranch()),
+    firstMessage: "",
   };
 }
 

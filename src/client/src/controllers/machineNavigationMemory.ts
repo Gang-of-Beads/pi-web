@@ -1,6 +1,7 @@
 import type { AppState } from "../appState";
 import { LOCAL_MACHINE_ID } from "../machineKeys";
 import type { AppRoute } from "../route";
+import { placeSessionId } from "../sessionTarget";
 import { browserSessionStorage, PersistentValueMap, type KeyValueStorage } from "./sessionStorageMemory";
 
 export interface WorkspaceRouteSurface {
@@ -75,7 +76,7 @@ export function machineNavigationSnapshotFromState(state: AppState): MachineNavi
     machineId: state.selectedMachine?.id ?? LOCAL_MACHINE_ID,
     projectId: state.selectedProject?.id,
     workspaceId: state.selectedWorkspace?.id,
-    sessionId: state.selectedSession?.id,
+    sessionId: placeSessionId(state),
     tool: state.workspaceTool,
     view: state.mainView,
     surface: {

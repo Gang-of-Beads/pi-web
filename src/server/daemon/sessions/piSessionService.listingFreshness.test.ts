@@ -52,6 +52,7 @@ describe("PiSessionService listing of replaced session files", () => {
       sessionManager: {
         create: () => fakeSessionManager(),
         list: (refCwd: string) => realGateway.list(refCwd),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => realGateway.listAll(),
         resolveSessionFile: (refCwd: string, sessionId: string) => realGateway.resolveSessionFile(refCwd, sessionId),
         invalidateSessionFile: (sessionFile: string) => {
@@ -118,6 +119,7 @@ describe("PiSessionService.detachParent summary memo", () => {
       sessionManager: {
         create: () => fakeSessionManager(),
         list: (refCwd: string) => realGateway.list(refCwd),
+        findSession: () => Promise.resolve(undefined),
         listAll: () => realGateway.listAll(),
         resolveSessionFile: (refCwd: string, sessionId: string) => realGateway.resolveSessionFile(refCwd, sessionId),
         invalidateSessionFile: (sessionFile: string) => {

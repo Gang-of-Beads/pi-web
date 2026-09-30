@@ -107,6 +107,18 @@ describe("machineNavigationSnapshotFromState", () => {
     });
   });
 
+  it("remembers the named session a place is showing, not only a selected one (P2 slice b)", () => {
+    const state: AppState = {
+      ...initialAppState(),
+      selectedMachine: machine("remote"),
+      selectedProject: project("project"),
+      selectedWorkspace: workspace("workspace", "project"),
+      sessionTarget: { machineId: "remote", workspaceId: "workspace", cwd: "/workspace", sessionId: "deleted", target: { kind: "gone", sessionId: "deleted" } },
+    };
+
+    expect(machineNavigationSnapshotFromState(state).sessionId).toBe("deleted");
+  });
+
   it("does not carry workspace surface without a selected workspace", () => {
     const state: AppState = {
       ...initialAppState(),

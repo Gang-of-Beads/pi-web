@@ -106,12 +106,12 @@ describe("SessionController reload and selection", () => {
     );
 
     await controller.selectSession(archivedSession, { updateUrl: false });
-    expect(controller.preferredSession(workspace.path, state.sessions, undefined)).toBe(archivedSession);
+    expect(controller.preferredSession(workspace.path, state.sessions)).toBe(archivedSession);
 
     controller.clearSelectionAfterArchivedCollapse();
 
     expect(state.selectedSession).toBeUndefined();
-    expect(controller.preferredSession(workspace.path, state.sessions, undefined)).toBeUndefined();
+    expect(controller.preferredSession(workspace.path, state.sessions)).toBeUndefined();
     expect(urlUpdates).toEqual([undefined]);
   });
 });

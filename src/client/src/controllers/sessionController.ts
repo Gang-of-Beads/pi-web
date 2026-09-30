@@ -7,6 +7,8 @@ import { SessionGapRepair, type StreamFrontier } from "../sessionGapRepair";
 import { describeError, noticeForReader, RetiredBy } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
+import { targetInListing } from "../sessionTarget";
+import { SessionTargetResolver, type SessionTargetOpenOptions } from "./sessionTargetResolver";
 import { isSessionNotFoundError } from "../sessionNotFound";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
@@ -220,6 +222,7 @@ function ledgerUnreachable(error: unknown): boolean {
 export class SessionController {
   private readonly socket: SessionEventSocket;
   private readonly api: typeof defaultApi;
+  private readonly targets: SessionTargetResolver;
   private readonly transcripts: ChatTranscriptStore;
   private readonly replacePromptEditorText: SessionControllerDependencies["replacePromptEditorText"];
   private readonly onSelectedSessionReady: SessionControllerDependencies["onSelectedSessionReady"];
@@ -280,6 +283,7 @@ export class SessionController {
     deps: SessionControllerDependencies = {},
   ) {
     this.setState = (patch) => {
+      if (patch.selectedSession !== undefined) this.targets.drop();
       writeState(patch);
       if (patch.messages !== undefined) this.retireTakenRecords(this.getState().messages);
     };
@@ -291,6 +295,12 @@ export class SessionController {
     this.onSelectedSessionIdle = deps.onSelectedSessionIdle;
     this.onBackgroundRunCountChanged = deps.onBackgroundRunCountChanged;
     this.catalogue = deps.catalogue ?? directCatalogue;
+    this.targets = new SessionTargetResolver({
+      locate: (ref, machineId) => this.api.locateSession(ref, machineId),
+      publish: (sessionTarget) => { this.setState({ sessionTarget }); },
+      open: (session, openOptions) => this.selectSession(session, openOptions),
+      reportError: (error) => { this.setState(errorNoticePatch(error)); },
+    });
   }
 
   applyGlobalEvent(event: GlobalSessionEvent): void {
@@ -303,6 +313,7 @@ export class SessionController {
 
   dispose() {
     this.disposed = true;
+    this.targets.dispose();
     this.selectionSeq += 1;
     this.socket.close();
     this.clearPendingUpdates();
@@ -313,6 +324,7 @@ export class SessionController {
   }
 
   clearActiveSession() {
+    this.targets.drop();
     this.selectionSeq += 1;
     this.socket.close();
     this.streamWatermark = undefined;
@@ -360,12 +372,30 @@ export class SessionController {
     }
   }
 
-  preferredSession(cwd: string, sessions: SessionInfo[], targetSessionId: string | undefined): SessionInfo | undefined {
-    return selectPreferredSession(sessions, { targetSessionId, latestSessionId: this.sessionSelection.latestSessionId(this.workspaceSelectionKey(cwd)) });
+  preferredSession(cwd: string, sessions: SessionInfo[]): SessionInfo | undefined {
+    return selectPreferredSession(sessions, { latestSessionId: this.sessionSelection.latestSessionId(this.workspaceSelectionKey(cwd)) });
+  }
+
+  /** The reader took the way back from a named session that cannot be shown: forget it, and the URL stops naming it. */
+  forgetNamedSession(): void {
+    this.targets.drop();
+    this.updateUrl();
+  }
+
+  /**
+   * Open the session a link or a restore named in this workspace, or say why
+   * it cannot be opened (P2 slice b). Never another session in its place: the
+   * fallback to the latest session is only for a workspace opened without a
+   * named session (B31).
+   */
+  async openNamedSession(sessionId: string, workspace: Workspace, sessions: readonly SessionInfo[], options: SessionTargetOpenOptions = {}): Promise<void> {
+    const scope = { machineId: selectedMachineId(this.getState()), workspaceId: workspace.id, cwd: workspace.path, sessionId };
+    await this.targets.follow(scope, targetInListing(sessions, sessionId), options);
   }
 
   async selectSession(session: SessionInfo, options?: { updateUrl?: boolean | undefined; preserveTreeDialog?: boolean | undefined; propagateRefreshError?: boolean | undefined }) {
     if (this.disposed) return;
+    this.targets.drop();
     // The row refuses to open when its folder is gone (the list stamps it);
     // keyboard and deep-link paths route through here, so the guard lives
     // where every path converges. The reader gets the fact, not a red
