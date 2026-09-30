@@ -2,9 +2,6 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionRenameDialog } from "./SessionRenameDialog";
-import "./SessionList";
-import { SessionList } from "./SessionList";
-import type { SessionInfo } from "../api";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -80,61 +77,3 @@ describe("the session rename dialog", () => {
   });
 });
 
-function session(id: string, name: string | undefined): SessionInfo {
-  const info: SessionInfo = {
-    id,
-    path: `/tmp/${id}.pi`,
-    cwd: "/tmp",
-    archived: false,
-    created: "2026-07-20T10:00:00.000Z",
-    modified: "2026-07-20T10:00:00.000Z",
-    messageCount: 1,
-    firstMessage: "hello",
-  };
-  return name === undefined ? info : { ...info, name };
-}
-
-describe("the session list hosts the rename dialog", () => {
-  it("opens the project's own dialog instead of the native prompt", async () => {
-    const list = new SessionList();
-    list.sessions = [session("s1", "Old name")];
-    document.body.append(list);
-    await list.updateComplete;
-    const menuToggle = required([...list.renderRoot.querySelectorAll("button")].find((candidate) => candidate.getAttribute("title") === "Session actions"), "no session actions menu toggle rendered".slice(1, -1));
-    menuToggle.click();
-    await list.updateComplete;
-    const menuButton = required([...list.renderRoot.querySelectorAll("button")].find((candidate) => candidate.getAttribute("title") === "Rename"), "no Rename menu button rendered".slice(1, -1));
-    menuButton.click();
-    await list.updateComplete;
-    const dialog = required(list.renderRoot.querySelector("session-rename-dialog"), "the rename dialog did not open".slice(1, -1));
-    expect(dialog.sessionName).toBe("Old name");
-  });
-
-  it("hands the submitted name to onRename and closes", async () => {
-    const onRename = vi.fn<(session: SessionInfo, name: string) => Promise<void>>();
-    const list = new SessionList();
-    list.sessions = [session("s1", "Old name")];
-    list.onRename = onRename;
-    document.body.append(list);
-    await list.updateComplete;
-    const menuToggle = required([...list.renderRoot.querySelectorAll("button")].find((candidate) => candidate.getAttribute("title") === "Session actions"), "no session actions menu toggle rendered".slice(1, -1));
-    menuToggle.click();
-    await list.updateComplete;
-    const menuButton = required([...list.renderRoot.querySelectorAll("button")].find((candidate) => candidate.getAttribute("title") === "Rename"), "no Rename menu button rendered".slice(1, -1));
-    menuButton.click();
-    await list.updateComplete;
-    const dialog = required(list.renderRoot.querySelector<SessionRenameDialog>("session-rename-dialog"), "the rename dialog did not open".slice(1, -1));
-    const field = required(dialog.shadowRoot?.querySelector<HTMLInputElement>("input"), "the dialog rendered no input".slice(1, -1));
-    field.value = "New name";
-    field.dispatchEvent(new Event("input"));
-    await dialog.updateComplete;
-    const send = required([...(dialog.shadowRoot?.querySelectorAll("button") ?? [])].find((candidate) => candidate.textContent.trim() === "Rename"), "the dialog rendered no Rename button".slice(1, -1));
-    send.click();
-    await list.updateComplete;
-    expect(onRename).toHaveBeenCalledTimes(1);
-    // The wiring must hand over the row the menu belonged to, not just any name.
-    expect(onRename.mock.calls[0]?.[0]).toMatchObject({ id: "s1" });
-    expect(onRename.mock.calls[0]?.[1]).toBe("New name");
-    expect(list.renderRoot.querySelector("session-rename-dialog")).toBeNull();
-  });
-});

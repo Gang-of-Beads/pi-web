@@ -78,9 +78,7 @@ describe("every bar producer", () => {
     expect(css).toContain(".actions { min-height: var(--pi-panel-header-height); gap: var(--pi-space-3); }");
   });
 
-  it("the sessions list header and the settings and sheet headers ride the same tokens", () => {
-    expect(rule(read("./SessionList.ts"), "h2 { min-height: var(--pi-panel-header-height)")).toBeTruthy();
-    expect(read("./SessionList.ts")).toContain(".start-session-button { min-width: 0; height: var(--pi-panel-header-control-height); line-height: var(--pi-panel-header-control-height); }");
+  it("the settings and sheet headers ride the same tokens", () => {
     expect(read("./SettingsDialog.ts")).toContain(".settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left));");
     expect(read("./SettingsDialog.ts")).toContain(".close-button { box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); display: grid; place-items: center; border: 1px solid var(--pi-border); background: var(--pi-surface);");
     expect(read("./appShell/ContextSwitcherSheet.ts")).toContain("margin-inline: 0; padding-inline: var(--pi-bar-inset);");
@@ -110,9 +108,6 @@ describe("controls inside bars", () => {
   it("are one control tall, never the touch floor that would fill the bar", () => {
     const contextBar = read("./appShell/AppContextBar.ts");
     expect(contextBar).not.toMatch(/\.panel-toggle\s*\{[^}]*var\(--pi-control-height-touch\)/u);
-    const sessionList = read("./SessionList.ts");
-    expect(sessionList).toContain(".bulk-select-entry { width: var(--pi-panel-header-control-height); min-width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }");
-    expect(sessionList).toContain(".action-menu-toggle { min-width: var(--pi-panel-header-control-height); min-height: var(--pi-panel-header-control-height); }");
     expect(read("./shared.ts")).toContain(".toolbar button { margin-left: auto; box-sizing: border-box; min-height: var(--pi-panel-header-control-height); }");
   });
 });

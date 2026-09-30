@@ -55,16 +55,6 @@ export function handleSelectableRowKeyboard(event: SelectableNavigationKeyboardE
   return false;
 }
 
-export function focusSelectedOrFirstSelectableRow(root: ParentNode, options: { fallbackSelector?: string | undefined } = {}): boolean {
-  const target = root.querySelector<HTMLElement>(".action-row.selected")
-    ?? root.querySelector<HTMLElement>(".action-row")
-    ?? (options.fallbackSelector === undefined ? undefined : root.querySelector<HTMLElement>(options.fallbackSelector));
-  if (target === undefined || target === null) return false;
-  target.focus();
-  target.scrollIntoView({ block: "nearest" });
-  return true;
-}
-
 function handleRowFocusKey(event: SelectableNavigationKeyboardEvent, action: () => void): true {
   event.preventDefault();
   event.stopPropagation?.();
