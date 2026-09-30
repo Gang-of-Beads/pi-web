@@ -3,6 +3,7 @@ import { renderCheckIcon, renderChevronRightIcon, renderCrossIcon, renderPinIcon
 import { quickSwitcherFilterProjects } from "../quickSwitcher";
 import { reconcileBreadcrumbFilter, switcherBreadcrumb, type BreadcrumbLevel } from "../switcherBreadcrumb";
 import { switcherEmptyMeaning, switcherScopeNotice } from "../switcherEmptyMeaning";
+import type { BoardAnswer } from "../sync/sessionBoard";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, Project, SessionInfo, Workspace } from "../api";
@@ -32,7 +33,8 @@ import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningWor
  */
 @customElement("quick-switcher")
 export class QuickSwitcher extends LitElement {
-  @property({ type: Boolean }) loading = false;
+  /** How much of the machine-wide board has answered; emptiness is claimed only for a complete one. */
+  @property({ attribute: false }) boardAnswer: BoardAnswer = "none";
   @property({ attribute: false }) sessions: readonly SessionInfo[] = [];
   @property({ attribute: false }) workspaces: readonly Workspace[] = [];
   @property({ attribute: false }) selectedSession?: SessionInfo;
@@ -51,7 +53,6 @@ export class QuickSwitcher extends LitElement {
   @property({ attribute: false }) machines: readonly Machine[] = [];
   @property({ attribute: false }) browseMachineId = "";
   @property({ attribute: false }) onSelectMachine?: (machineId: string) => void;
-  @property({ attribute: false }) loadError?: string;
   @property({ type: Boolean }) browsingElsewhere = false;
 
   protected override willUpdate(changed: Map<string, unknown>): void {
@@ -234,14 +235,13 @@ export class QuickSwitcher extends LitElement {
   /** The empty state, named rather than asserted; see `switcherEmptyMeaning`. */
   private renderEmptyMeaning(matchCount: number) {
     const meaning = switcherEmptyMeaning({
-      loadError: this.loadError,
-      loading: this.loading,
+      answer: this.boardAnswer,
       matchCount,
       query: this.query,
       scoped: this.filter.projectId !== undefined || this.filter.workspacePath !== undefined,
     });
-    if (meaning.kind === "none") return nothing;
-    return html`<p class="empty" role=${meaning.kind === "failed" ? "alert" : "status"}>
+    if (meaning.kind === "none" || meaning.kind === "unknown") return nothing;
+    return html`<p class="empty" role="status">
       <span>${meaning.message}</span>
       ${meaning.kind === "scope" ? html`<button type="button" class="empty-widen" @click=${() => { this.filter = {}; this.openLevel = undefined; }}>Show every project</button>` : nothing}
     </p>`;

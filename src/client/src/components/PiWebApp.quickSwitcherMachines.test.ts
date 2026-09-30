@@ -256,3 +256,50 @@ describe("the navigation board's listing", () => {
     expect(loads.length).toBe(2);
   });
 });
+
+/**
+ * Review 3eeecb09: the board heard about a projects change only through
+ * wake(), which does nothing on a live board. A machine switch from the
+ * machine list left the old machine's rows under the new one, and a project
+ * added on the machine did not reach the board until it went stale.
+ */
+describe("the session board follows the machine's projects", () => {
+  function boardAsks(app: PiWebApp): { force: boolean | undefined; machineId: string }[] {
+    const asks: { force: boolean | undefined; machineId: string }[] = [];
+    const boards: unknown = Reflect.get(app, "sessionBoards");
+    if (typeof boards !== "object" || boards === null || !Reflect.set(boards, "browse", (machineId: string, options?: { force?: boolean }) => { asks.push({ machineId, force: options?.force }); return Promise.resolve(); })) {
+      throw new Error("Could not replace sessionBoards.browse");
+    }
+    return asks;
+  }
+  const project = (id: string) => ({ id, name: id, path: `/${id}`, createdAt: "now" });
+
+  it("shows the new machine's board once its projects answer, clearing the old machine's rows", () => {
+    const app = createApp();
+    applyState(app, { machines: [machine("local"), machine("remote-b")], selectedMachine: machine("local"), projects: [project("a")], projectsLoad: "loaded" });
+    const asks = boardAsks(app);
+    if (!Reflect.set(app, "quickSwitcherSessions", [sessionOn("/a")])) throw new Error("Could not seed sessions");
+    if (!Reflect.set(app, "quickSwitcherMachineId", "local")) throw new Error("Could not seed the rows machine");
+    applyState(app, { selectedMachine: machine("remote-b"), projects: [project("b")], projectsLoad: "loaded" });
+
+    void callable(app, "onProjectsListingChange")();
+
+    expect(Reflect.get(app, "quickSwitcherSessions")).toEqual([]);
+    expect(asks.at(-1)).toEqual({ machineId: "remote-b", force: false });
+  });
+
+  it("reads the board whole when the machine's projects change, and not on every settle", () => {
+    const app = createApp();
+    applyState(app, { machines: [machine("local")], selectedMachine: machine("local"), projects: [project("a")], projectsLoad: "loaded" });
+    const asks = boardAsks(app);
+    const changed = () => { void callable(app, "onProjectsListingChange")(); };
+
+    changed();
+    changed();
+    applyState(app, { projects: [project("a"), project("new")] });
+    changed();
+    changed();
+
+    expect(asks.map((ask) => ask.force)).toEqual([false, false, true, false]);
+  });
+});

@@ -35,6 +35,12 @@ export interface ScopedResourceSpec<K, V> {
   read(key: K): Promise<V>;
   retryCapMs: number;
   clock?: ResourceClock;
+  /**
+   * Whether an answer covers every source it is read from. An incomplete one is
+   * shown and read again on the shared backoff while the key is watched, as a
+   * miss is, but it is an answer: it records no miss, so the app row stays quiet.
+   */
+  complete?(value: V): boolean;
 }
 
 /** Since when a watched key has gone without an answer, and why the latest try got none. */
@@ -73,6 +79,8 @@ interface Entry<K, V> {
   consumers: number;
   timer: (() => void) | undefined;
   settled: (() => void)[];
+  /** Resolved when the attempt in flight settles. */
+  current: (() => void)[];
 }
 
 const UNREAD: ResourceEntryView<never> = { phase: "syncing", fact: NO_FACT, known: false, data: undefined, firstMissAt: undefined };
@@ -105,6 +113,18 @@ export class ScopedResource<K, V> {
       if (entry.consumers > 0) return;
       this.cancelRetry(entry);
     };
+  }
+
+  /**
+   * Wait for the read in flight, without asking for another after it: for a
+   * reader who needs an answer that is already being read. Undefined when
+   * nothing is in flight.
+   */
+  join(key: K): Promise<void> | undefined {
+    const entry = this.entries.get(this.spec.keyId(key));
+    if (entry?.inFlight !== true) return undefined;
+    const current = entry.current;
+    return new Promise<void>((resolve) => { current.push(resolve); });
   }
 
   /** Read now, or once more after the read in flight. Resolves when the attempt that covers this ask settles. */
@@ -215,7 +235,7 @@ export class ScopedResource<K, V> {
     const id = this.spec.keyId(key);
     const existing = this.entries.get(id);
     if (existing !== undefined) return existing;
-    const entry: Entry<K, V> = { key, phase: "syncing", fact: NO_FACT, known: false, data: undefined, inFlight: false, dirty: false, attempt: 0, firstMissAt: undefined, miss: undefined, consumers: 0, timer: undefined, settled: [] };
+    const entry: Entry<K, V> = { key, phase: "syncing", fact: NO_FACT, known: false, data: undefined, inFlight: false, dirty: false, attempt: 0, firstMissAt: undefined, miss: undefined, consumers: 0, timer: undefined, settled: [], current: [] };
     this.entries.set(id, entry);
     return entry;
   }
@@ -226,6 +246,7 @@ export class ScopedResource<K, V> {
     entry.dirty = false;
     if (entry.firstMissAt === undefined && entry.phase !== "live") entry.phase = "syncing";
     const settled = entry.settled.splice(0);
+    entry.current = settled;
     this.spec.read(entry.key).then(
       (data) => { this.answered(entry, data, settled); },
       (error: unknown) => { this.missed(entry, error, settled); },
@@ -236,11 +257,17 @@ export class ScopedResource<K, V> {
     entry.inFlight = false;
     entry.known = true;
     entry.data = data;
-    entry.phase = "live";
     entry.fact = NO_FACT;
-    entry.attempt = 0;
     entry.firstMissAt = undefined;
     entry.miss = undefined;
+    if (this.spec.complete?.(data) === false) {
+      entry.phase = "reconnecting";
+      if (!entry.dirty) this.scheduleRetry(entry);
+      this.finish(entry, settled);
+      return;
+    }
+    entry.phase = "live";
+    entry.attempt = 0;
     this.finish(entry, settled);
   }
 

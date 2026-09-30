@@ -26,6 +26,8 @@ import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/ca
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { AuthController } from "../controllers/authController";
 import { MachineController, remoteReportedDown } from "../controllers/machineController";
+import { SessionBoardController } from "../controllers/sessionBoardController";
+import type { BoardAnswer } from "../sync/sessionBoard";
 import { MachineStatusController } from "../controllers/machineStatusController";
 import { ProjectController } from "../controllers/projectController";
 import { PiWebStatusController } from "../controllers/piWebStatusController";
@@ -229,15 +231,6 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
 const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
 // Surface backed up: the pi-web runtime status readout (header health, self-
 // update banner). Nothing events it; the tab re-reads on this slow cadence.
-/**
- * How often the open session re-reads its subagents, tool runs and background
- * tasks. Fast enough that a child spawned mid-conversation shows up while the
- * reader is still looking at the answer that announced it, cheap enough to run
- * for as long as the tab is in front.
- *
- * Surface backed up: the activity dock's subagent run, background task and
-/** Reopen within this window serves the list the last open just fetched. */
-const QUICK_SWITCHER_REFRESH_MS = 30_000;
 const EMPTY_ID_SET: ReadonlySet<string> = new Set();
 
 /**
@@ -392,6 +385,11 @@ export class PiWebApp extends LitElement {
     () => { this.updateUrl(); },
     this.projects,
   );
+  /** The machine-wide session board the navigation page and the quick switcher list (B48, P1 slice 5). */
+  private readonly sessionBoards: SessionBoardController = new SessionBoardController({
+    knownProjects: (machineId) => machineId === selectedMachineId(this.state) && this.state.projectsLoad === "loaded" ? this.state.projects : undefined,
+  });
+  private readonly unsubscribeSessionBoards = this.sessionBoards.subscribe(() => { this.mirrorSessionBoard(); });
   private readonly piWebStatusController = new PiWebStatusController(
     () => this.state,
     (patch) => { this.setState(patch); },
@@ -464,9 +462,9 @@ export class PiWebApp extends LitElement {
   @state() private goToSheetOpen = false;
   /** The session whose name the bar title hold asked to change. */
   @state() private renameFromBar: SessionInfo | undefined;
-  @state() private quickSwitcherLoading = false;
+  /** How much of the browsed machine's board has answered; the lists claim emptiness only for a complete one. */
+  @state() private quickSwitcherBoardAnswer: BoardAnswer = "none";
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
-  private quickSwitcherFetchedAt = 0;
   /**
    * Pins for the machine on screen. A pin is keyed by machine because session
    * ids are unique per machine; the cache is re-read whenever the selection
@@ -551,7 +549,6 @@ export class PiWebApp extends LitElement {
    * session that lives elsewhere moves the app there first.
    */
   @state() private quickSwitcherBrowseMachineId = "";
-  @state() private quickSwitcherError: string | undefined;
   @state() private staleClientServerVersion: string | undefined;
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private pluginDialogs: readonly PluginDialogEntry[] = [];
@@ -673,6 +670,7 @@ export class PiWebApp extends LitElement {
     this.projects.wake();
     this.workspaces.wake();
     this.machines.wake();
+    this.sessionBoards.wake();
     this.realtime.reconnectNow();
     this.sessions.reconnectSocketNow();
     this.checkSocketLiveness();
@@ -697,6 +695,7 @@ export class PiWebApp extends LitElement {
       this.projects.wake();
       this.workspaces.wake();
       this.machines.wake();
+      this.sessionBoards.wake();
       this.refreshWorkspaceChangedWhileHidden();
       void this.refreshSubagents();
       // Coming back to the tab is the moment a stale bundle bites next; a
@@ -1242,6 +1241,8 @@ export class PiWebApp extends LitElement {
     this.projects.dispose();
     this.workspaces.dispose();
     this.machines.dispose();
+    this.unsubscribeSessionBoards();
+    this.sessionBoards.dispose();
     if (this.livenessTimer !== undefined) window.clearInterval(this.livenessTimer);
     this.livenessTimer = undefined;
     window.removeEventListener("online", this.onBrowserOnline);
@@ -1559,8 +1560,33 @@ export class PiWebApp extends LitElement {
    */
   private onProjectsListingChange(): void {
     this.requestUpdate();
+    this.followProjectsOnBoard();
     if (this.state.projectsLoad === "loaded") this.retryPendingRemoteRouteRestoreSoon();
   }
+
+  /**
+   * The board lists what the selected machine's projects hold (review
+   * 3eeecb09). Once they answer, the board of the machine now browsed is shown
+   * and read, which also clears another machine's rows after a switch from
+   * the machine list; a project added or closed on the same machine reads it
+   * whole. A settle that changed nothing costs nothing: a fresh board is not
+   * read again, and a read in flight is joined.
+   */
+  private followProjectsOnBoard(): void {
+    if (this.state.projectsLoad !== "loaded") {
+      this.sessionBoards.wake();
+      return;
+    }
+    const machineId = selectedMachineId(this.state);
+    const projectIds = this.state.projects.map((project) => project.id).sort().join("\n");
+    const previous = this.boardProjects;
+    this.boardProjects = { machineId, projectIds };
+    const projectsChanged = previous?.machineId === machineId && previous.projectIds !== projectIds;
+    void this.loadQuickSwitcherData(projectsChanged);
+  }
+
+  /** The selected machine's projects as the board last followed them. */
+  private boardProjects: { machineId: string; projectIds: string } | undefined;
 
   private retryPendingRemoteRouteRestoreSoon(): void {
     if (this.pendingRemoteRouteRestore === undefined) return;
@@ -2683,7 +2709,7 @@ export class PiWebApp extends LitElement {
       .machineSessions=${this.quickSwitcherSessions}
       .onOpenSettings=${() => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }}
       .onReload=${() => { this.hardReloadApp(); }}
-      .loadingSessions=${this.quickSwitcherLoading && this.quickSwitcherSessions.length === 0}
+      .boardAnswer=${this.quickSwitcherBoardAnswer}
       .loadingChoices=${this.state.projectsLoad !== "loaded" || this.state.isLoadingWorkspaces}
       .canRenameSession=${true}
       .canArchiveSessions=${!this.quickSwitcherBrowsingElsewhere()}
@@ -2806,7 +2832,7 @@ export class PiWebApp extends LitElement {
    * switcher goes on offering the name the user just renamed away from.
    */
   private applyRenameToQuickSwitcher(sessionId: string, name: string): void {
-    this.quickSwitcherSessions = renameSessionInList(this.quickSwitcherSessions, sessionId, name);
+    this.sessionBoards.update(this.browsedMachineId(), (board) => ({ ...board, sessions: renameSessionInList(board.sessions, sessionId, name) }));
   }
 
   /**
@@ -2843,56 +2869,26 @@ export class PiWebApp extends LitElement {
     return this.quickSwitcherBrowseMachineId === "" ? selectedMachineId(this.state) : this.quickSwitcherBrowseMachineId;
   }
 
+  /**
+   * Show the browsed machine's board, and read it unless a complete one was
+   * read moments ago; `force` reads it now, after a change this client made.
+   * A board without every answer keeps being read by itself while it is the
+   * one browsed (B48).
+   */
   private async loadQuickSwitcherData(force = false): Promise<void> {
+    this.mirrorSessionBoard();
+    await this.sessionBoards.browse(this.browsedMachineId(), { force });
+    this.mirrorSessionBoard();
+  }
+
+  /** The browsed machine's board as it stands: its rows only, and how much of it answered. */
+  private mirrorSessionBoard(): void {
     const machineId = this.browsedMachineId();
-    if (this.quickSwitcherMachineId !== undefined && this.quickSwitcherMachineId !== machineId) {
-      this.quickSwitcherSessions = [];
-      this.quickSwitcherWorkspaces = [];
-      this.quickSwitcherMachineId = undefined;
-      this.quickSwitcherError = undefined;
-    }
-    if (!force && this.quickSwitcherMachineId === machineId
-        && this.quickSwitcherError === undefined
-        && (this.quickSwitcherSessions.length > 0 || this.quickSwitcherWorkspaces.length > 0)
-        && Date.now() - this.quickSwitcherFetchedAt < QUICK_SWITCHER_REFRESH_MS) {
-      return;
-    }
-    this.quickSwitcherLoading = true;
-    try {
-      // The in-memory project list belongs to the machine the app is on;
-      // browsing another machine's tab must ask that machine, not reuse this
-      // one's projects as if every machine shared them.
-      const projects = machineId === selectedMachineId(this.state) && this.state.projects.length > 0
-        ? this.state.projects
-        : await projectsApi.projects(machineId);
-      const workspaceLists = await Promise.all(projects.map(async (project) => {
-        try {
-          return await workspacesApi.workspaces(project.id, machineId);
-        } catch {
-          return [];
-        }
-      }));
-      const workspaces = dedupeById(workspaceLists.flat());
-      const sessionLists = await Promise.all(workspaces.map(async (workspace) => {
-        try {
-          return await sessionsApi.sessions(workspace.path, machineId);
-        } catch {
-          return [];
-        }
-      }));
-      // A late answer for a tab the reader has left renders the wrong machine.
-      if (this.browsedMachineId() !== machineId) return;
-      this.quickSwitcherMachineId = machineId;
-      this.quickSwitcherFetchedAt = Date.now();
-      this.quickSwitcherWorkspaces = workspaces;
-      this.quickSwitcherSessions = dedupeById(sessionLists.flat()).sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
-      this.quickSwitcherError = undefined;
-    } catch (error) {
-      // The app banner renders behind this modal; the failure belongs here.
-      if (this.browsedMachineId() === machineId) this.quickSwitcherError = `Failed to load sessions: ${describeError(error)}`;
-    } finally {
-      if (this.browsedMachineId() === machineId) this.quickSwitcherLoading = false;
-    }
+    const board = this.sessionBoards.board(machineId);
+    this.quickSwitcherMachineId = board === undefined ? undefined : machineId;
+    this.quickSwitcherSessions = board?.sessions ?? [];
+    this.quickSwitcherWorkspaces = board?.workspaces ?? [];
+    this.quickSwitcherBoardAnswer = this.sessionBoards.answer(machineId);
   }
 
   /**
@@ -2912,11 +2908,7 @@ export class PiWebApp extends LitElement {
     if (this.quickSwitcherBrowseMachineId === machineId) return;
     this.navigation.begin();
     this.quickSwitcherBrowseMachineId = machineId;
-    // Empty is honest; the previous machine's rows under this tab are not.
-    this.quickSwitcherSessions = [];
-    this.quickSwitcherWorkspaces = [];
-    this.quickSwitcherMachineId = undefined;
-    this.quickSwitcherError = undefined;
+    this.mirrorSessionBoard();
     void this.loadQuickSwitcherData();
   }
 
@@ -4411,7 +4403,7 @@ export class PiWebApp extends LitElement {
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
         ${this.navigateOpen ? html`<div class="navigate-overlay">${this.renderNavigatePage(true)}</div>` : null}
         ${this.quickSwitcherOpen ? html`<quick-switcher
-          .loading=${this.quickSwitcherLoading}
+          .boardAnswer=${this.quickSwitcherBoardAnswer}
           .sessions=${this.quickSwitcherSessions}
           .workspaces=${this.quickSwitcherWorkspaces}
           .selectedSession=${this.quickSwitcherBrowsingElsewhere() ? undefined : state.selectedSession}
@@ -4427,7 +4419,6 @@ export class PiWebApp extends LitElement {
           .projects=${this.quickSwitcherBrowsingElsewhere() ? [] : state.projects}
           .machines=${state.machines}
           .browseMachineId=${this.quickSwitcherBrowseMachineId}
-          .loadError=${this.quickSwitcherError}
           .browsingElsewhere=${this.quickSwitcherBrowsingElsewhere()}
           .onSelectMachine=${(machineId: string) => { this.browseQuickSwitcherMachine(machineId); }}
           .canStartSession=${!this.quickSwitcherBrowsingElsewhere() && this.canStartSession()}

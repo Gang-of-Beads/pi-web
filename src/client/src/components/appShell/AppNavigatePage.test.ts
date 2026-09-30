@@ -45,6 +45,7 @@ async function mount(patch: Partial<AppNavigatePage> = {}, modelInput = input())
   // The page opens on the machine's whole list, which the host supplies
   // separately; tests that care about a narrowed path set it themselves.
   page.machineSessions = modelInput.sessions;
+  page.boardAnswer = "complete";
   Object.assign(page, patch);
   document.body.append(page);
   await page.updateComplete;
@@ -210,10 +211,20 @@ describe("app-navigate-page", () => {
     expect(await menuOf("old spike")).toEqual(["Open", "Restore", "Delete permanently"]);
   });
 
-  it("says it is reading rather than claiming the scope is empty", async () => {
-    const page = await mount({ loadingSessions: true }, { ...input(), sessions: [] });
-    expect(page.renderRoot.textContent).toContain("Loading sessions…");
-    expect(page.renderRoot.textContent).not.toContain("No sessions");
+  /**
+   * B48, found live on 8505: with the projects read answering 500, the board
+   * said "No sessions yet." for a machine that has sessions. The board claims
+   * emptiness only once every source answered, and never says it is reading.
+   */
+  it("claims nothing about an empty board until every source answered", async () => {
+    const said: Record<string, { reading: boolean; empty: boolean }> = {};
+    for (const boardAnswer of ["none", "partial", "complete"] as const) {
+      const page = await mount({ boardAnswer }, { ...input(), sessions: [] });
+      const text = page.renderRoot.textContent;
+      said[boardAnswer] = { reading: text.includes("Loading sessions"), empty: text.includes("No sessions yet") };
+      page.remove();
+    }
+    expect(said).toEqual({ none: { reading: false, empty: false }, partial: { reading: false, empty: false }, complete: { reading: false, empty: true } });
   });
 
   it("says nothing while the choices for a kind have not answered: no reading text, no empty claim, no failure (B48)", async () => {

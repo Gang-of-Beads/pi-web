@@ -30,6 +30,21 @@ const TAPPED_PROJECT_NAME = process.env.PROBE_TAPPED_PROJECT_NAME ?? "repo";
 const workspacesRead = (projectId) => new RegExp(`/api/machines/local/projects/${projectId}/workspaces$`, "u");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Wait until the session board's reads at boot have settled. The board reads
+ * every project's workspaces, and a tap made while that read is in flight
+ * joins it rather than asking again, so the tap's own read would never be
+ * seen by the interception installed after it.
+ */
+async function boardReadsQuiet(page) {
+  let lastRead = Date.now();
+  const onRequest = (request) => { if (/\/workspaces$|\/sessions\?cwd=/u.test(request.url())) lastRead = Date.now(); };
+  page.on("request", onRequest);
+  const started = Date.now();
+  while (Date.now() - lastRead < 1500 && Date.now() - started < 20_000) await sleep(200);
+  page.off("request", onRequest);
+}
+
 const results = [];
 function leg(name, ok, detail = "") {
   results.push(ok);
@@ -44,6 +59,7 @@ async function openProjectWhileLosing(page, { lossMs, tap = false }) {
     await page.goto(`${BASE}/?view=sessions`, { waitUntil: "domcontentloaded" });
     await page.locator("nav.kinds button:visible", { hasText: /^\s*Projects\s*$/u }).first().click({ timeout: 10_000 });
     await page.locator("button.row:visible", { hasText: new RegExp(`^\\s*${TAPPED_PROJECT_NAME}\\b`, "u") }).first().waitFor({ timeout: 10_000 });
+    await boardReadsQuiet(page);
     before = await page.evaluate(() => document.querySelector("pi-web-app")?.state?.selectedProject?.id);
   }
   let aborted = 0;

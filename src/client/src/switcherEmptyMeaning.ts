@@ -1,25 +1,26 @@
+import type { BoardAnswer } from "./sync/sessionBoard";
+
 /**
  * What an empty quick-access menu means.
  *
- * "No sessions yet." was said for four different situations: sessions still
- * loading, a failed read, a search with no match, and a context path narrowed
- * to a scope that happens to hold nothing. Only the last of those is about
- * this scope, and only the first two are about not knowing - absence is not
- * negation, so each state is named and the one the reader can undo offers the
- * undo.
+ * "No sessions yet." was said for situations that were not about emptiness:
+ * sessions still being read, a failed read, a search with no match, and a
+ * context path narrowed to a scope that holds nothing. Absence is not
+ * negation (B48, P1 slice 5): while any source of the board has not answered,
+ * a missing row may be in it, so the menu says nothing - it retries by itself
+ * and never says it is reading or that it failed. Once every source answered,
+ * each empty state is named, and the one the reader can undo offers the undo.
  */
 
 export type SwitcherEmptyMeaning =
-  | { kind: "loading"; message: string }
-  | { kind: "failed"; message: string }
+  | { kind: "unknown" }
   | { kind: "query"; message: string }
   | { kind: "scope"; message: string; widen: true }
   | { kind: "empty"; message: string }
   | { kind: "none" };
 
 interface EmptyInput {
-  loadError: string | undefined;
-  loading: boolean;
+  answer: BoardAnswer;
   matchCount: number;
   query: string;
   /** Whether the context path narrows to something smaller than the machine. */
@@ -27,9 +28,8 @@ interface EmptyInput {
 }
 
 export function switcherEmptyMeaning(input: EmptyInput): SwitcherEmptyMeaning {
-  if (input.loadError !== undefined) return { kind: "failed", message: input.loadError };
-  if (input.loading) return { kind: "loading", message: "Loading sessions…" };
   if (input.matchCount > 0) return { kind: "none" };
+  if (input.answer !== "complete") return { kind: "unknown" };
   const query = input.query.trim();
   if (query !== "") return { kind: "query", message: `No sessions match “${query}”.` };
   if (input.scoped) return { kind: "scope", message: "No sessions in this part of the path.", widen: true };

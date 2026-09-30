@@ -318,10 +318,27 @@ stateDiagram-v2
 | background runs | "This machine could not read the background runs." | `PiWebApp.ts:920`, `backgroundTaskRows.ts:90` |
 | subagent runs | "This machine could not be asked for the runs." | `subagents/runsRead.ts:26` |
 | interrupted runs | "…the read failed. Reconnect to read it again." | `PiWebApp.ts:259` |
-| quick switcher | an empty meaning of kind `failed` | `QuickSwitcher.ts:244` |
+| quick switcher and the navigation board | an empty meaning of kind `failed`, "Loading sessions…", and "No sessions yet." after a lost projects read; a workspace whose read failed was dropped without a trace | `QuickSwitcher.ts:244`, `AppNavigatePage.ts:279`, `PiWebApp.loadQuickSwitcherData` |
 | the global banner | "Lost connection…", "A request timed out…", "Connection problem…" | `errorBanner.ts:95-125` |
 
-Done so far: projects on a machine (P1 slice 1); workspaces, and placing a session opened from another project (P1 slice 2); the machines roster, and a deep link to a remote machine, which keeps retrying with the shared backoff while it is still the reader's intent (P1 slice 3); the row names why a read is unanswered (P1 slice 4).
+Done so far: projects on a machine (P1 slice 1); workspaces, and placing a session opened from another project (P1 slice 2); the machines roster, and a deep link to a remote machine, which keeps retrying with the shared backoff while it is still the reader's intent (P1 slice 3); the row names why a read is unanswered (P1 slice 4); the session board across the machine (P1 slice 5).
+
+**The session board** (P1 slice 5) is read from many sources: the projects, each project's workspaces, and each workspace's sessions. It answers in three degrees, `BoardAnswer`:
+- `none`: nothing answered yet;
+- `partial`: rows from the sources that answered, while others did not;
+- `complete`: every source answered.
+
+A source that did not answer is kept as unknown and read again on the shared backoff, never dropped; a retry asks only those sources. The list claims only what it knows:
+
+| board | rows match | the list says |
+|---|---|---|
+| any | some | nothing extra |
+| `none` or `partial` | none | nothing: a source may still hold them |
+| `complete` | none, with a query | "No sessions match “q”." |
+| `complete` | none, narrowed by the path | "No sessions in this part of the path.", with a way to widen |
+| `complete` | none | "No sessions yet." |
+
+The board is not a cause for the app row: the row already speaks for the machine's projects and roster, and a single unanswered source retries silently (owner Q4).
 
 Plugins read through the host, so the rule reaches them as one host facility: a read the host runs for a panel reports syncing and reconnecting, and retries on the same schedule. A plugin never writes its own retry loop.
 

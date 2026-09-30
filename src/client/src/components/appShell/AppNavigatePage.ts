@@ -8,6 +8,7 @@ import { createStableRowOrder } from "../../stableRowOrder";
 import { renderChatIcon, renderChevronRightIcon, renderGearIcon, renderGridIcon, renderMachineIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
+import type { BoardAnswer } from "../../sync/sessionBoard";
 import { sessionStateBadgeStyles } from "../sessionStateBadgeStyles.js";
 import { actionMenuPanelStyle } from "../actionMenu";
 import { navigateRowActions, type NavigateRowActionId, type NavigateRowKind } from "../../navigateRowActions";
@@ -83,8 +84,8 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) canCloseProject = false;
   /** Project ids the reader pinned; the host owns the store. */
   @property({ attribute: false }) pinnedProjectIds: ReadonlySet<string> = new Set();
-  /** What the host is still reading, so the page says "loading" instead of "none". */
-  @property({ attribute: false }) loadingSessions = false;
+  /** How much of the machine-wide board has answered; emptiness is claimed only for a complete one. */
+  @property({ attribute: false }) boardAnswer: BoardAnswer = "none";
   @property({ attribute: false }) loadingChoices = false;
   /**
    * Whether there is somewhere to go back to. The desktop rail is the page's
@@ -277,13 +278,12 @@ export class AppNavigatePage extends LitElement {
    */
   private renderSessionsEmptyState(matchCount: number) {
     const meaning = switcherEmptyMeaning({
-      loadError: undefined,
-      loading: this.loadingSessions,
+      answer: this.boardAnswer,
       matchCount,
       query: this.query,
       scoped: this.pathProjectId !== undefined,
     });
-    if (meaning.kind === "none") return nothing;
+    if (meaning.kind === "none" || meaning.kind === "unknown") return nothing;
     return html`<p class="empty" role="status">${meaning.message}</p>`;
   }
 

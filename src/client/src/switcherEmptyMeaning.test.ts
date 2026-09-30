@@ -1,35 +1,37 @@
 import { describe, expect, it } from "vitest";
 import { switcherEmptyMeaning, switcherScopeNotice } from "./switcherEmptyMeaning";
 
-const base = { loadError: undefined, loading: false, matchCount: 0, query: "", scoped: false };
+const base = { answer: "complete" as const, matchCount: 0, query: "", scoped: false };
 
+/**
+ * B48, P1 slice 5: the list claims only what it knows. It never says
+ * "Loading sessions…" (owner Q2) or a failure, and it says nothing while any
+ * source of the board has not answered - a missing row may be in it.
+ */
 describe("switcherEmptyMeaning", () => {
-  it("says nothing while rows are on screen", () => {
-    expect(switcherEmptyMeaning({ ...base, matchCount: 3 })).toEqual({ kind: "none" });
-  });
-
-  it("reports a failed read rather than an empty list", () => {
-    expect(switcherEmptyMeaning({ ...base, loadError: "Machine unreachable" })).toEqual({ kind: "failed", message: "Machine unreachable" });
-  });
-
-  it("prefers the failure over the loading state", () => {
-    expect(switcherEmptyMeaning({ ...base, loadError: "boom", loading: true }).kind).toBe("failed");
-  });
-
-  it("says loading while nothing is known", () => {
-    expect(switcherEmptyMeaning({ ...base, loading: true })).toEqual({ kind: "loading", message: "Loading sessions…" });
-  });
-
-  it("names the query when a search matched nothing", () => {
-    expect(switcherEmptyMeaning({ ...base, query: " bill " })).toEqual({ kind: "query", message: "No sessions match “bill”." });
-  });
-
-  it("names the scope and offers to widen when the path narrowed to nothing", () => {
-    expect(switcherEmptyMeaning({ ...base, scoped: true })).toEqual({ kind: "scope", message: "No sessions in this part of the path.", widen: true });
-  });
-
-  it("claims emptiness only for a loaded, unscoped, unsearched machine", () => {
-    expect(switcherEmptyMeaning(base)).toEqual({ kind: "empty", message: "No sessions yet." });
+  it("names every combination of the board's answer, matches, query and scope", () => {
+    const table = {
+      "rows on screen": switcherEmptyMeaning({ ...base, matchCount: 3 }),
+      "rows on a partial board": switcherEmptyMeaning({ ...base, answer: "partial", matchCount: 3 }),
+      "nothing answered": switcherEmptyMeaning({ ...base, answer: "none" }),
+      "nothing answered, with a query": switcherEmptyMeaning({ ...base, answer: "none", query: "bill" }),
+      "partial, no rows": switcherEmptyMeaning({ ...base, answer: "partial" }),
+      "partial, a query that matched nothing": switcherEmptyMeaning({ ...base, answer: "partial", query: "bill" }),
+      "complete, a query that matched nothing": switcherEmptyMeaning({ ...base, query: " bill " }),
+      "complete, narrowed to nothing": switcherEmptyMeaning({ ...base, scoped: true }),
+      "complete and empty": switcherEmptyMeaning(base),
+    };
+    expect(table).toEqual({
+      "rows on screen": { kind: "none" },
+      "rows on a partial board": { kind: "none" },
+      "nothing answered": { kind: "unknown" },
+      "nothing answered, with a query": { kind: "unknown" },
+      "partial, no rows": { kind: "unknown" },
+      "partial, a query that matched nothing": { kind: "unknown" },
+      "complete, a query that matched nothing": { kind: "query", message: "No sessions match “bill”." },
+      "complete, narrowed to nothing": { kind: "scope", message: "No sessions in this part of the path.", widen: true },
+      "complete and empty": { kind: "empty", message: "No sessions yet." },
+    });
   });
 });
 

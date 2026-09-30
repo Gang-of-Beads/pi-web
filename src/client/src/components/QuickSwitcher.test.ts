@@ -202,6 +202,7 @@ async function mount(props: MountProps): Promise<QuickSwitcher> {
   const switcher = new QuickSwitcher();
   switcher.sessions = props.sessions;
   switcher.workspaces = props.workspaces ?? [];
+  switcher.boardAnswer = "complete";
   if (props.selectedWorkspace !== undefined) switcher.selectedWorkspace = props.selectedWorkspace;
   switcher.canStartSession = props.canStartSession ?? true;
   if (props.onCreateSession !== undefined) switcher.onCreateSession = props.onCreateSession;

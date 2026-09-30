@@ -287,3 +287,47 @@ describe("ScopedResource.whenAnswered", () => {
     expect(view).toBeUndefined();
   });
 });
+
+/**
+ * P1 slice 5: a read built from many sources can answer for some of them. The
+ * resource shows that answer and reads again on the shared backoff while the
+ * key is watched, without calling it a miss - the app row stays quiet.
+ */
+describe("ScopedResource with an incomplete answer", () => {
+  function partialReads() {
+    const time = fakeClock();
+    const reads = scriptedReads<{ rows: string[]; complete: boolean }>();
+    const resource = new ScopedResource<string, { rows: string[]; complete: boolean }>({ keyId: (key) => key, read: reads.read, retryCapMs: 15_000, clock: time.clock, complete: (value) => value.complete });
+    return { time, reads, resource };
+  }
+
+  it("shows the rows it has, reads again by itself, and becomes complete", async () => {
+    const { time, reads, resource } = partialReads();
+    resource.watch("local");
+    void resource.refresh("local");
+    reads.calls[0]?.resolve({ rows: ["a"], complete: false });
+    await flush();
+    expect(resource.entry("local")).toMatchObject({ known: true, data: { rows: ["a"], complete: false } });
+    expect(resource.unanswered(["local"])).toBeUndefined();
+    expect(time.pending()).toEqual([1000]);
+    time.advance(1000);
+    reads.calls[1]?.resolve({ rows: ["a"], complete: false });
+    await flush();
+    expect(time.pending()).toEqual([2000]);
+    time.advance(2000);
+    reads.calls[2]?.resolve({ rows: ["a", "b"], complete: true });
+    await flush();
+    expect(resource.entry("local")).toMatchObject({ phase: "live", data: { rows: ["a", "b"], complete: true } });
+    expect(time.pending()).toEqual([]);
+  });
+
+  it("stops reading an incomplete key nobody watches", async () => {
+    const { time, reads, resource } = partialReads();
+    const release = resource.watch("local");
+    void resource.refresh("local");
+    reads.calls[0]?.resolve({ rows: ["a"], complete: false });
+    await flush();
+    release();
+    expect(time.pending()).toEqual([]);
+  });
+});

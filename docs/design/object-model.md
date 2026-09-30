@@ -119,7 +119,10 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 - **Ordering**: sorted by `lastActivityAt`. Rows re-sort live, but positions hold while a touch or scroll is in flight and settle when it ends (owner, Q7). Heartbeats arrive every 2 s per working session [S §2.2].
 - **Read**: today `GET /api/sessions?cwd=` does a whole-store scan per request with no single-flight; 22 concurrent identical scans were observed at 10.7–11.0 s (`piSessionManagerGateway.ts:85-100`, `sessionSummaryScanner.ts:516` [S §3, §5.2]); p50 600 ms, p99 23 s [N §4]. The read also writes (`piSessionService.ts:1726-1744` [S §4.4]). **New**: `GET /api/sessions/board` (§4.5).
 - **Cache**: memory `workspaceSessionsCache` (`workspaceSessionsCache.ts:17-19` [C row 6], deleted in P4); `cachedNewSessions.ts` in localStorage [C row 15]. No persistent board seed until measured.
-- **Retention**: on a key change, old rows are not rendered. With no answer, rows are kept and the phase is `reconnecting`, with no retry limit.
+- **Retention**: on a key change, old rows are not rendered. With no answer, rows are kept and the phase is `reconnecting`, with no retry limit. **Shipped (P1 slice 5)**, ahead of the P4 board read:
+  - `SessionBoardController` reads the machine-wide board through a `ScopedResource<machineId, SessionBoard>`.
+  - The read composes the listings and keeps a source that did not answer as unknown. A board with unknown sources is a partial answer: it renders its rows and is read again on the shared backoff while it is watched, with no miss for the row. A retry of a partial board asks only its unknown sources (`completeSessionBoard`), because each sessions listing is a whole-store scan on the daemon. A whole read happens when the reader forces one (after an archive, restore or delete), when the selected machine's project set changes, or when the board is more than 30 s old; a browse during a read in flight joins it (`ScopedResource.join`). A source that states a refusal (401, 403) makes the board read a fact, which ends its retries; the refusal's words come from the workspaces controller when a project is opened.
+  - The quick switcher and the navigation board claim emptiness only for a complete answer (`BoardAnswer`, state-diagram B48).
 - **Presentation**: a source that has not answered stays as a row group, with no marker, and retries in the background (owner, Q3). The app row speaks only for the machine the reader is using. Another machine that stopped answering, or one project or workspace that did not answer, retries silently. The owner's example: working in the MacBook's sessions while the Ubuntu machine is down shows nothing.
 
 ### 1.6 Session (runtime identity), activity and status
@@ -324,6 +327,7 @@ interface ScopedResource<K, V, E> {
 ```
 
 **Behaviour**
+- `spec.complete(value)` (shipped in P1 slice 5): an answer the read marks incomplete keeps its value, reads again on the shared backoff while watched, and records no miss. The session board is the first reader.
 - `whenAnswered(key, wanted)` (shipped in P1 slice 2) reads now and waits for an answer: a value, where one known from an earlier read counts when this read is lost, or a fact. The wait holds a watch, so lost reads keep retrying while it lasts. It ends with `undefined` when `wanted()` fails before the read, at a settle, or on `recheckWaiters()` (called whenever the selection moves), or on dispose. It serves readers that must act on an answer, such as placing a session opened from another project and opening a project's preferred workspace.
 - `watch(key)` adds a rendered consumer. The consumer count drives the app row (only watched entries count) and abort-on-unwatch: the last consumer leaving makes this reader leave the flight.
 - **Buffering**: an event for a key with no successful read is buffered (taken from `sessionController.ts:474-490`) and replayed through `readVerdict` when the read lands.
