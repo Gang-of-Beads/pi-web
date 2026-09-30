@@ -295,20 +295,9 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     fake.session.isCompacting = false;
     fake.emit({ type: "compaction_end" });
     await vi.waitFor(() => {
-      expect(fake.calls.prompt.map((call) => call.text)).toEqual(["Start task 1"]);
+      expect(fake.calls.prompt.map((call) => [call.text, handedAs(call)])).toEqual([["Start task 1", undefined]]);
     });
-    await expect(service.status(sessionRef("compacting-session"))).resolves.toMatchObject({
-      pendingMessageCount: 1,
-      queuedMessages: [{ kind: "steer", text: "Then task 2" }],
-    });
-
-    fake.emit({ type: "turn_end" });
-    await vi.waitFor(() => {
-      expect(fake.calls.prompt.map((call) => [call.text, handedAs(call)])).toEqual([
-        ["Start task 1", undefined],
-        ["Then task 2", "steer"],
-      ]);
-    });
+    expect(fake.calls.steer.map((call) => call.text)).toEqual(["Then task 2"]);
     await expect(service.status(sessionRef("compacting-session"))).resolves.toMatchObject({
       pendingMessageCount: 0,
       queuedMessages: [],

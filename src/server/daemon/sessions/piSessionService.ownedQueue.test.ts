@@ -91,14 +91,15 @@ describe("the daemon owns the queue", () => {
     await service.dispose();
   });
 
-  it("hands the next held message once the previous direct send is the runtime's", async () => {
+  it("hands every held message together at idle: the oldest starts the run, the rest are queued behind it (B33)", async () => {
     const { fake, service } = await busyService("own-two");
     await service.prompt(sessionRef("own-two"), "first parked", "followUp", undefined, { clientMessageId: "c-two-1" });
     await service.prompt(sessionRef("own-two"), "second parked", "followUp", undefined, { clientMessageId: "c-two-2" });
 
     fake.session.isStreaming = false;
     fake.emit({ type: "agent_settled" });
-    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["first parked", "second parked"]); });
+    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["first parked"]); });
+    expect(fake.calls.steer.map((call) => call.text)).toEqual(["second parked"]);
     await service.dispose();
   });
 

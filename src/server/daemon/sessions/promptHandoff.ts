@@ -71,6 +71,17 @@ const BY_RUN_STATE: Record<RunState, (facts: HandoffFacts) => Handoff> = {
   idle: () => ({ kind: "direct" }),
 };
 
+/**
+ * How many waiting messages the idle injection point hands together (D1, B33): everything up to
+ * the first extension command. A command is its own handoff, because pi runs it before it
+ * considers queueing and `steer` refuses one; so a command at the head goes alone.
+ */
+export function idleBatchSize(isCommand: readonly boolean[]): number {
+  const firstCommand = isCommand.indexOf(true);
+  if (firstCommand === 0) return 1;
+  return firstCommand === -1 ? isCommand.length : firstCommand;
+}
+
 export function nextHandoff(facts: HandoffFacts): Handoff {
   if (facts.waiting === 0) return WAIT;
   return BY_RUN_STATE[facts.run](facts);

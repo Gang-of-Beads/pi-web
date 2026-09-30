@@ -47,7 +47,7 @@ describe("ordering lane repros", () => {
     await svc.dispose();
   });
 
-  it("I1: a refused drain does not let the next idle prompt jump the parked queue", async () => {
+  it("I1: a refused drain does not let the next idle prompt jump the parked queue: P1 starts the run, P2 is queued behind it (B33)", async () => {
     const { fake, svc } = await service("refused-drain");
     await svc.prompt(ref("refused-drain"), "P1 parked", undefined, undefined, { clientMessageId: "p1" });
     let refuseOnce = true;
@@ -62,7 +62,7 @@ describe("ordering lane repros", () => {
     await settle();
     await svc.prompt(ref("refused-drain"), "P2 sent next", undefined, undefined, { clientMessageId: "p2" });
     await settle();
-    expect(consumed).toEqual(["P1 parked", "P2 sent next"]);
+    expect({ prompted: consumed, queuedBehind: fake.calls.steer.map((call) => call.text) }).toEqual({ prompted: ["P1 parked"], queuedBehind: ["P2 sent next"] });
     await svc.dispose();
   });
 

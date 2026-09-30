@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SETTLE_GRACE_MS, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffTrigger, type RunState } from "./promptHandoff.js";
+import { SETTLE_GRACE_MS, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffTrigger, type RunState } from "./promptHandoff.js";
 
 const RUN_STATES: RunState[] = ["compacting", "handing", "running", "settling", "idle"];
 const TRIGGERS: HandoffTrigger[] = ["gap", "settled", "nudge"];
@@ -24,6 +24,13 @@ describe("nextHandoff", () => {
 
   it("hands everything waiting at a gap, not only the head", () => {
     expect(nextHandoff({ waiting: 3, run: "running", trigger: "gap" })).toEqual({ kind: "steer", count: 3 });
+  });
+});
+
+describe("idleBatchSize", () => {
+  it("takes everything up to the first extension command, and a command at the head alone", () => {
+    const table = [[], [false], [false, false, false], [false, false, true, false], [false, true], [true, false, false], [true]].map((isCommand) => idleBatchSize(isCommand));
+    expect(table).toEqual([0, 1, 3, 2, 1, 1, 1]);
   });
 });
 

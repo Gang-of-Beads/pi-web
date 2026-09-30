@@ -96,7 +96,7 @@ import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
-import { HANDOFF_RUN_STATE, HANDOFF_TRIGGER_BY_EVENT, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffTrigger, type HandoffVerdict, type RunState } from "./promptHandoff.js";
+import { HANDOFF_RUN_STATE, HANDOFF_TRIGGER_BY_EVENT, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffTrigger, type HandoffVerdict, type RunState } from "./promptHandoff.js";
 import { createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { OwnedPromptQueue, dataDirInboxLocation, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry } from "./ownedPromptQueue.js";
@@ -627,6 +627,8 @@ export interface PiAgentSession {
   getToolDefinition(name: string): { parameters: unknown } | undefined;
   getContextUsage(): ClientSessionStatus["contextUsage"] | undefined;
   prompt(text: string, options?: { streamingBehavior?: "steer" | "followUp"; images?: ImageContent[]; preflightResult?: (success: boolean) => void }): Promise<void>;
+  /** Queue a message in pi's steering lane whatever the run state; input handlers and expansion run first. Refuses an extension command. */
+  steer(text: string, images?: ImageContent[]): Promise<void>;
   sendCustomMessage(message: { customType: string; content: string; display: boolean; details?: unknown }, options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" }): Promise<void>;
   executeBash(command: string, onChunk?: (chunk: string) => void, options?: { excludeFromContext?: boolean }): Promise<{ output: string; exitCode: number | undefined; cancelled: boolean; truncated: boolean; fullOutputPath?: string }>;
   navigateTree?(targetId: string, options?: { summarize?: boolean; customInstructions?: string }): Promise<{ editorText?: string; cancelled: boolean; aborted?: boolean; summaryEntry?: unknown }>;
@@ -3207,7 +3209,85 @@ export class PiSessionService implements SessionRouteService {
       await this.handSteerBatch(session, decision.count);
       return;
     }
-    await this.handDirect(session);
+    await this.handIdleBatch(session);
+  }
+
+  /**
+   * The idle injection point (D1, B33): everything waiting up to the first extension command
+   * reaches the model in one request. pi's run polls its steering queue once it has emitted the
+   * prompt's own entry, so the later messages are queued with `session.steer` before the oldest
+   * starts the run, and that first poll takes them all. Measured before: three messages that
+   * waited through a restart became three runs.
+   */
+  private async handIdleBatch(session: PiAgentSession): Promise<void> {
+    const sessionId = session.sessionId;
+    const size = idleBatchSize(this.ownedQueue.entries(sessionId).map((entry) => this.isExtensionCommand(session, entry.text)));
+    if (size <= 1) {
+      await this.handDirect(session);
+      return;
+    }
+    const [head, ...rest] = await this.ownedQueue.take(sessionId, size);
+    if (head === undefined) return;
+    this.handing.add(sessionId);
+    session.agent.steeringMode = "all";
+    let verdict: HandoffVerdict;
+    try {
+      await this.steerAheadOf(session, rest);
+      verdict = await this.handToRuntime(session, head, undefined);
+    } catch (error: unknown) {
+      await this.takeBackHeldMessages(session);
+      await this.ownedQueue.restoreFront(sessionId, [head]);
+      throw error;
+    } finally {
+      this.handing.delete(sessionId);
+    }
+    if (verdict !== "handed") await this.takeBackHeldMessages(session);
+    if (verdict === "transient") await this.ownedQueue.restoreFront(sessionId, [head]);
+    this.publishStatus(session);
+    if (verdict !== "transient") this.pumpInbox(session, "nudge");
+  }
+
+  /**
+   * Queue the rest of an idle batch in pi's lane, oldest first, as a steer batch: Stop and Clear
+   * wait for it, so none of them lands after they emptied the queues. What pi refuses goes back
+   * to the inbox with everything after it.
+   */
+  private async steerAheadOf(session: PiAgentSession, entries: readonly OwnedQueueEntry[]): Promise<void> {
+    const sessionId = session.sessionId;
+    await this.asSteerBatch(sessionId, async () => {
+      for (const [index, entry] of entries.entries()) {
+        if (await this.steerAhead(session, entry)) continue;
+        await this.ownedQueue.restoreFront(sessionId, entries.slice(index));
+        return;
+      }
+    });
+  }
+
+  /**
+   * Queue one message of an idle batch ahead of the run that will read it. It lands like a
+   * running steer: in pi's lane (held, so recall and take-back find it), or taken by an input
+   * handler. False when pi refused it; it and the rest of the batch then wait.
+   */
+  private async steerAhead(session: PiAgentSession, entry: OwnedQueueEntry): Promise<boolean> {
+    const sessionId = session.sessionId;
+    if (!this.servesSessionId(session)) return false;
+    const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
+    const { clientMessageId } = entry;
+    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text: entry.text, imageCount: images.length });
+    const growthAtCall = this.laneGrowth.get(sessionId) ?? 0;
+    try {
+      await session.steer(entry.text, images);
+    } catch {
+      if (clientMessageId !== undefined) this.committedExpectations.withdraw(sessionId, clientMessageId);
+      return false;
+    }
+    if ((this.laneGrowth.get(sessionId) ?? 0) > growthAtCall) {
+      if (this.ownsSessionId(session)) this.holdSteer(sessionId, entry, images);
+      return true;
+    }
+    if (clientMessageId !== undefined) this.committedExpectations.withdraw(sessionId, clientMessageId);
+    this.settleSucceeded(sessionId, clientMessageId);
+    return true;
   }
 
   /**
@@ -3234,21 +3314,33 @@ export class PiSessionService implements SessionRouteService {
   private async handSteerBatch(session: PiAgentSession, count: number): Promise<void> {
     const sessionId = session.sessionId;
     session.agent.steeringMode = "all";
+    try {
+      await this.asSteerBatch(sessionId, async () => {
+        const entries = await this.ownedQueue.take(sessionId, count);
+        for (const [index, entry] of entries.entries()) {
+          if (await this.handToRuntime(session, entry, "steer") !== "transient") continue;
+          await this.ownedQueue.restoreFront(sessionId, entries.slice(index));
+          return;
+        }
+      });
+    } finally {
+      this.publishStatus(session);
+    }
+  }
+
+  /**
+   * Run `work` as the session's steer batch. Stop and Clear wait for it before they empty the
+   * queues, so no message is between the inbox and pi's lane when they look.
+   */
+  private async asSteerBatch(sessionId: string, work: () => Promise<void>): Promise<void> {
     let finished = (): void => undefined;
     const batch = new Promise<void>((resolve) => { finished = resolve; });
     this.steerBatches.set(sessionId, batch);
     try {
-      const entries = await this.ownedQueue.take(sessionId, count);
-      for (const [index, entry] of entries.entries()) {
-        if (await this.handToRuntime(session, entry, "steer") === "transient") {
-          await this.ownedQueue.restoreFront(sessionId, entries.slice(index));
-          return;
-        }
-      }
+      await work();
     } finally {
       if (this.steerBatches.get(sessionId) === batch) this.steerBatches.delete(sessionId);
       finished();
-      this.publishStatus(session);
     }
   }
 
@@ -4659,6 +4751,11 @@ export class PiSessionService implements SessionRouteService {
    * hand goes back to the inbox, see `servesSessionId`), then take back what pi holds
    * unread into the inbox file, where the next runtime - or the next daemon - hands it again.
    * Steers the agent loop already holds stay; the abort lets the loop commit them.
+   *
+   * A handoff that does not settle within the bound (an idle batch whose oldest message is in a
+   * long pre-prompt compaction) does not delay the take-back: the close empties pi's lanes next,
+   * and a take-back after that would read the messages missing from them as read (review of the
+   * idle batch, B33).
    */
   private async keepWhatThePiHolds(session: PiAgentSession): Promise<void> {
     try {
@@ -4666,7 +4763,10 @@ export class PiSessionService implements SessionRouteService {
         await this.handoffChains.get(session.sessionId);
         await this.takeBackHeldMessages(session);
       })());
-      if (outcome === "timed out") console.warn(`[inbox] ${session.sessionId}: a handoff did not settle within ${String(TEARDOWN_TAKE_BACK_MS)} ms; messages pi still holds go with the runtime`);
+      if (outcome === "timed out") {
+        console.warn(`[inbox] ${session.sessionId}: a handoff did not settle within ${String(TEARDOWN_TAKE_BACK_MS)} ms; taking back what pi holds without it`);
+        await this.takeBackHeldMessages(session);
+      }
     } catch (error: unknown) {
       console.warn(`[inbox] ${session.sessionId}: keeping pi's unread messages failed: ${error instanceof Error ? error.message : String(error)}`);
     }

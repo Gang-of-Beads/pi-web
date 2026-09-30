@@ -32,6 +32,11 @@ async function inboxService(sessionId: string, options: { dataDir?: string; dir?
     },
   });
   fake.session.getSteeringMessages = () => [...lane];
+  fake.session.steer = (text: string) => {
+    fake.calls.steer.push({ text });
+    lane.push(text);
+    return Promise.resolve();
+  };
   fake.session.clearQueue = () => {
     fake.calls.clearQueue += 1;
     const steering = [...lane];
@@ -131,13 +136,143 @@ describe("nothing is handed while a run is settling (O2)", () => {
     fake.emit({ type: "agent_end" });
     await vi.waitFor(() => { expect(lane).toEqual(["S stranded"]); });
     fake.session.isStreaming = false;
+    const handToIdle = fake.session.prompt.bind(fake.session);
+    fake.session.prompt = async (text: string, options?: PromptOptions) => {
+      await handToIdle(text, options);
+      if (options?.streamingBehavior === undefined) fake.session.isStreaming = true;
+    };
     await service.prompt(ref, "A newer", undefined, undefined, { clientMessageId: "o2-a-0001" });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(texts(fake.calls.prompt)).toEqual(["S stranded"]);
 
     fake.emit({ type: "agent_settled" });
-    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["S stranded", "S stranded", "A newer"]); });
-    expect(fake.calls.prompt.map(handedAs)).toEqual(["steer", undefined, undefined]);
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["S stranded", "S stranded"]); });
+    expect(fake.calls.prompt.map(handedAs)).toEqual(["steer", undefined]);
+    expect(texts(fake.calls.steer)).toEqual(["A newer"]);
+    await service.dispose();
+  });
+});
+
+/**
+ * The idle injection point (D1, B33): messages that waited for a run reach the model in one
+ * request. The oldest starts the run and the rest are queued behind it in pi's lane, which the
+ * run reads at its first poll. The fake stands in for pi: a direct prompt starts a run.
+ */
+describe("the idle batch (B33)", () => {
+  async function waitedThroughARun(sessionId: string, messages: readonly string[]) {
+    const setup = await inboxService(sessionId);
+    const { fake, service, ref } = setup;
+    const handToIdle = fake.session.prompt.bind(fake.session);
+    fake.session.prompt = async (text: string, options?: PromptOptions) => {
+      await handToIdle(text, options);
+      if (options?.streamingBehavior === undefined) fake.session.isStreaming = true;
+    };
+    for (const [index, text] of messages.entries()) await service.prompt(ref, text, undefined, undefined, { clientMessageId: `${sessionId}-${String(index)}` });
+    return setup;
+  }
+  const endRun = (fake: ReturnType<typeof fakeRuntime>) => {
+    fake.session.isStreaming = false;
+    fake.emit({ type: "agent_settled" });
+  };
+  const queuedTexts = async (service: PiSessionService, ref: ReturnType<typeof sessionRef>) => (await service.status(ref)).queuedMessages.map((entry) => entry.text);
+
+  it("starts the run with the oldest and queues the rest behind it, in order", async () => {
+    const { fake, service, ref, lane } = await waitedThroughARun("idle-batch", ["A", "B", "C"]);
+    endRun(fake);
+    await vi.waitFor(() => { expect(lane).toEqual(["B", "C"]); });
+    expect({ prompted: texts(fake.calls.prompt), queuedBehind: texts(fake.calls.steer) }).toEqual({ prompted: ["A"], queuedBehind: ["B", "C"] });
+    expect(await queuedTexts(service, ref)).toEqual(["B", "C"]);
+    await service.dispose();
+  });
+
+  it("takes the queued ones back when the oldest is refused, and keeps the order for the next try", async () => {
+    const { fake, service, ref, lane } = await waitedThroughARun("idle-refused", ["A", "B", "C"]);
+    const handToIdle = fake.session.prompt.bind(fake.session);
+    let refuse = true;
+    fake.session.prompt = (text: string, options?: PromptOptions) => {
+      if (!refuse) return handToIdle(text, options);
+      refuse = false;
+      fake.calls.prompt.push({ text, options });
+      return Promise.reject(new Error("Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion."));
+    };
+    endRun(fake);
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A"]); });
+    await vi.waitFor(async () => { expect(await queuedTexts(service, ref)).toEqual(["A", "B", "C"]); });
+    expect(lane).toEqual([]);
+
+    endRun(fake);
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A", "A"]); });
+    expect({ queuedBehind: texts(fake.calls.steer), lane }).toEqual({ queuedBehind: ["B", "C", "B", "C"], lane: ["B", "C"] });
+    await service.dispose();
+  });
+
+  it("ends the batch at the first extension command, which waits its own turn", async () => {
+    const { fake, service, ref } = await waitedThroughARun("idle-command", ["A", "B", "/kickoff", "C"]);
+    fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "kickoff" }];
+    endRun(fake);
+    await vi.waitFor(() => { expect(texts(fake.calls.steer)).toEqual(["B"]); });
+    expect(texts(fake.calls.prompt)).toEqual(["A"]);
+    expect(await queuedTexts(service, ref)).toEqual(["B", "/kickoff", "C"]);
+    await service.dispose();
+  });
+
+  it("lets Clear wait for the batch being queued, so no message lands after the queues were emptied", async () => {
+    const { fake, service, ref, lane } = await waitedThroughARun("idle-clear", ["A", "B", "C"]);
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    fake.session.steer = async (text: string) => {
+      fake.calls.steer.push({ text });
+      if (text === "B") await held;
+      lane.push(text);
+    };
+    endRun(fake);
+    await vi.waitFor(() => { expect(texts(fake.calls.steer)).toEqual(["B"]); });
+    const cleared = service.clearQueue(ref);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    release();
+    await cleared;
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A"]); });
+    expect({ lane, queued: await queuedTexts(service, ref) }).toEqual({ lane: [], queued: [] });
+    expect(service.operationOutcomes("idle-clear", ["idle-clear-1", "idle-clear-2"])).toEqual({ "idle-clear-1": "withdrawn", "idle-clear-2": "withdrawn" });
+    await service.dispose();
+  });
+
+  it("keeps the queued ones in the inbox file when the session closes while the oldest is still in preflight", async () => {
+    const { fake, service, ref, lane, dir, dataDir } = await waitedThroughARun("idle-teardown", ["A", "B", "C"]);
+    let endPreflight = (): void => undefined;
+    fake.session.prompt = (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      return new Promise<void>((_resolve, reject) => { endPreflight = () => { reject(new Error("session disposed")); }; });
+    };
+    endRun(fake);
+    await vi.waitFor(() => { expect({ lane, prompted: texts(fake.calls.prompt) }).toEqual({ lane: ["B", "C"], prompted: ["A"] }); });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const closed = service.stop(ref);
+      await vi.advanceTimersByTimeAsync(5_100);
+      vi.useRealTimers();
+      endPreflight();
+      await closed;
+    } finally {
+      vi.useRealTimers();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const kept = await new OwnedPromptQueue(dataDirInboxLocation(dataDir)).open("idle-teardown", dir);
+    expect(kept.map((entry) => entry.text)).toEqual(["B", "C"]);
+    expect(service.operationOutcomes("idle-teardown", ["idle-teardown-0", "idle-teardown-1", "idle-teardown-2"])).toEqual({ "idle-teardown-0": "failed", "idle-teardown-1": "pending", "idle-teardown-2": "pending" });
+    await service.dispose();
+  });
+
+  it("puts a message pi refuses to queue back, with everything after it, and still starts the run", async () => {
+    const { fake, service, ref } = await waitedThroughARun("idle-steer-refused", ["A", "B", "C"]);
+    fake.session.steer = (text: string) => {
+      fake.calls.steer.push({ text });
+      return Promise.reject(new Error("Extension commands cannot be queued"));
+    };
+    endRun(fake);
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A"]); });
+    expect(texts(fake.calls.steer)).toEqual(["B"]);
+    expect(await queuedTexts(service, ref)).toEqual(["B", "C"]);
     await service.dispose();
   });
 });
@@ -287,6 +422,7 @@ describe("fresh-lane findings over the fixes", () => {
         fake.session.isStreaming = false;
       }
       options?.preflightResult?.(true);
+      if (options?.streamingBehavior === undefined) fake.session.isStreaming = true;
     };
     await service.prompt(ref, "A", undefined, undefined, { clientMessageId: "f2-a-0001" });
     await service.prompt(ref, "B", undefined, undefined, { clientMessageId: "f2-b-0001" });
@@ -295,8 +431,9 @@ describe("fresh-lane findings over the fixes", () => {
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(texts(fake.calls.prompt)).toEqual(["A"]);
     fake.emit({ type: "agent_settled" });
-    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A", "A", "B"]); });
-    expect(fake.calls.prompt.map(handedAs)).toEqual(["steer", undefined, undefined]);
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A", "A"]); });
+    expect(fake.calls.prompt.map(handedAs)).toEqual(["steer", undefined]);
+    expect(texts(fake.calls.steer)).toEqual(["B"]);
     await service.dispose();
   });
 
