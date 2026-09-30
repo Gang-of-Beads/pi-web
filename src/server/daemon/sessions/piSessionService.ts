@@ -30,7 +30,7 @@ import {
   type ProjectTrustEventResult,
   type ResourceDiagnostic,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes.js";
+import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo, TranscriptHead } from "../../../shared/apiTypes.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
@@ -1313,6 +1313,8 @@ function isCustomScreenComponent(value: unknown): value is CustomScreenComponent
 
 export class PiSessionService implements SessionRouteService {
   private readonly active = new Map<string, ActiveSession<PiSessionRuntime>>();
+  /** Transcript heads by session manager, valid while its leaf is the one they were computed at. */
+  private readonly transcriptHeads = new WeakMap<object, { leafId: string | null; head: TranscriptHead }>();
   private readonly pendingSessionOpens = new Map<string, PendingSessionOpen>();
   /**
    * Sessions whose extension binding is still in flight. A `session_start`
@@ -2714,6 +2716,25 @@ export class PiSessionService implements SessionRouteService {
    * copy of a status frame - that socket has no per-session seq, and without the position its
    * copy could land after a newer read and overwrite it.
    */
+  /**
+   * Where a held session's transcript stands, for the heartbeat (docs/design/sync-convergence.md).
+   *
+   * Only an appended entry changes the projection, and every append moves pi's leaf, so the head
+   * is cached by leaf: a heartbeat on a 69k-entry branch does not walk it again. Keyed by the
+   * session manager, so a reopened session starts a fresh entry. Undefined when the daemon does
+   * not hold the session: a head it cannot see is unknown, not empty.
+   */
+  transcriptHeadFor(sessionId: string): TranscriptHead | undefined {
+    const manager = this.active.get(sessionId)?.runtime.session.sessionManager;
+    if (manager === undefined) return undefined;
+    const leafId = manager.getLeafId();
+    const cached = this.transcriptHeads.get(manager);
+    if (cached?.leafId === leafId) return cached.head;
+    const head = transcriptHead(branchTranscript(manager.getBranch()));
+    this.transcriptHeads.set(manager, { leafId, head });
+    return head;
+  }
+
   private streamPosition(sessionId: string): { seq: number; epoch: string } {
     return { seq: this.events.currentSeq(sessionId), epoch: this.events.currentEpoch(sessionId) };
   }

@@ -38,7 +38,7 @@ import { testModelRuntime } from "./piSessionService.testSupport.js";
 import { SessionNotificationStore } from "./sessionNotificationStore.js";
 import type { SessionRouteRef, SessionRouteService } from "./sessionService.js";
 import type { ClientSession } from "../../shared/types.js";
-import { registerSessionRoutes } from "./sessionRoutes.js";
+import { quietWindowMs, registerSessionRoutes } from "./sessionRoutes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
@@ -1903,5 +1903,20 @@ describe("tool-result image route", () => {
     } finally {
       await routeApp.close();
     }
+  });
+});
+
+describe("the quiet window a page names on its event socket", () => {
+  it.each([
+    { quiet: "15", ms: 15_000 },
+    { quiet: "600", ms: 600_000 },
+    { quiet: "0", ms: undefined },
+    { quiet: "601", ms: undefined },
+    { quiet: "1.5", ms: undefined },
+    { quiet: "-3", ms: undefined },
+    { quiet: "abc", ms: undefined },
+    { quiet: undefined, ms: undefined },
+  ])("quiet=$quiet reads as $ms ms", ({ quiet, ms }) => {
+    expect(quietWindowMs(quiet)).toBe(ms);
   });
 });

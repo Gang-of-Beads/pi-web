@@ -70,6 +70,35 @@ describe("PiSessionService", () => {
       await service.dispose();
     });
 
+    it("answers the heartbeat's transcript head from a cache that only a new leaf invalidates", async () => {
+      const branch: unknown[] = [{ type: "message", id: "u1", message: { role: "user", content: "go" } }];
+      let leaf = "u1";
+      let walks = 0;
+      const fake = fakeRuntime("session-1", {
+        sessionFile: "/tmp/session-1.jsonl",
+        sessionManager: fakeSessionManager("/workspace", { getBranch: () => { walks += 1; return branch; }, getLeafId: () => leaf }),
+      });
+      const service = new PiSessionService(new CapturingSessionEventHub(), {
+        agentDir: TEST_AGENT_DIR,
+        modelRuntime: testModelRuntime,
+        createAgentRuntime: runtimeCreator(fake.runtime),
+        sessionManager: sessionGateway([sessionRecord("session-1")]),
+        heartbeatIntervalMs: 60_000,
+      });
+      expect(service.transcriptHeadFor("session-1")).toBeUndefined();
+      await service.status(sessionRef("session-1"));
+
+      expect(service.transcriptHeadFor("session-1")).toEqual({ n: 1, leaf: "u1" });
+      const walksAfterFirst = walks;
+      expect(service.transcriptHeadFor("session-1")).toEqual({ n: 1, leaf: "u1" });
+      expect(walks).toBe(walksAfterFirst);
+
+      branch.push({ type: "message", id: "a1", message: { role: "assistant", content: [] } });
+      leaf = "a1";
+      expect(service.transcriptHeadFor("session-1")).toEqual({ n: 2, leaf: "a1" });
+      await service.dispose();
+    });
+
     it("annotates live assistant message.end events with the session's current thinking level", async () => {
       const { fake, service, events } = messagesService([], { thinkingLevel: "high" });
       await service.status(sessionRef("session-1")); // bring the session online so it publishes events

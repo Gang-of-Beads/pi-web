@@ -1,4 +1,4 @@
-import type { GlobalSessionEvent, RealtimeEvent, SessionNotificationSummaryEvent, SessionUiEvent } from "../../../shared/apiTypes.js";
+import type { GlobalSessionEvent, RealtimeEvent, SessionNotificationSummaryEvent, SessionUiEvent, TranscriptHead } from "../../../shared/apiTypes.js";
 import { randomUUID } from "node:crypto";
 import { projectBrowserSessionEvent } from "../browserMessageProjection.js";
 
@@ -24,6 +24,29 @@ export interface RealtimeSocket {
  */
 export { KEEPALIVE_INTERVAL_MS } from "./keepaliveInterval.js";
 import { KEEPALIVE_INTERVAL_MS } from "./keepaliveInterval.js";
+/** How often the hub looks for sockets that have gone quiet long enough to need a heartbeat. */
+const HEARTBEAT_TICK_MS = 1_000;
+const HEARTBEAT_FLOOR_MS = 3_000;
+
+/**
+ * The heartbeat interval for a page whose quiet window is `quietMs`.
+ *
+ * Owner, 2026-09-30: a page pulls only after its quiet window T (default 15 s) passes with
+ * nothing received, and heartbeats must stay small. A heartbeat at 0.6 T keeps a healthy idle
+ * socket from ever reaching T, with room for one late frame. A page that names no window gets
+ * the 20 s keepalive it always had; the floor keeps a tiny window from becoming a stream.
+ */
+export function heartbeatIntervalMs(quietMs?: number): number {
+  if (quietMs === undefined || !Number.isFinite(quietMs)) return KEEPALIVE_INTERVAL_MS;
+  return Math.min(KEEPALIVE_INTERVAL_MS, Math.max(HEARTBEAT_FLOOR_MS, Math.round(quietMs * 0.6)));
+}
+
+/** When a socket last carried anything, and how long it may stay quiet before a heartbeat. */
+interface SocketCadence {
+  intervalMs: number;
+  lastSentAt: number;
+}
+
 /** A slower browser reconnects and repairs rather than buffering without bound. */
 export const MAX_SOCKET_BUFFERED_BYTES = 1024 * 1024;
 /** Inactive sessions beyond this LRU bound fall back to an authoritative resync. */
@@ -52,23 +75,50 @@ export class SessionEventHub {
   private globalSeq = 0;
   private globalJoinFrame: (() => RealtimeEvent) | undefined;
   private keepaliveTimer: ReturnType<typeof setInterval> | undefined;
+  private readonly cadence = new WeakMap<RealtimeSocket, SocketCadence>();
+  private readonly now: () => number;
+  private transcriptHeadSource: ((sessionId: string) => TranscriptHead | undefined) | undefined;
 
-  constructor(options?: { replayBufferLimit?: number; replaySessionLimit?: number; maxSocketBufferedBytes?: number }) {
+  constructor(options?: { replayBufferLimit?: number; replaySessionLimit?: number; maxSocketBufferedBytes?: number; now?: () => number }) {
     this.replayBufferLimit = options?.replayBufferLimit ?? 256;
     this.replaySessionLimit = Math.max(1, options?.replaySessionLimit ?? MAX_REPLAY_SESSIONS);
     this.maxSocketBufferedBytes = Math.max(0, options?.maxSocketBufferedBytes ?? MAX_SOCKET_BUFFERED_BYTES);
+    this.now = options?.now ?? Date.now;
   }
 
   /**
-   * Start sending keepalives. Separate from the constructor so tests and
-   * short-lived hubs are not left holding a timer, and unref'd so it never
-   * keeps the process alive on its own.
+   * Where a session's transcript stands, for the heartbeat. The hub knows streams, not
+   * transcripts, so the session service answers; undefined means it does not hold the session.
    */
-  startKeepalive(intervalMs = KEEPALIVE_INTERVAL_MS): void {
+  setTranscriptHeadSource(source: (sessionId: string) => TranscriptHead | undefined): void {
+    this.transcriptHeadSource = source;
+  }
+
+  /**
+   * Start the heartbeat. Separate from the constructor so tests and short-lived hubs are not
+   * left holding a timer, and unref'd so it never keeps the process alive on its own. The timer
+   * only looks; each socket is sent a heartbeat when it has itself been quiet for its interval.
+   */
+  startKeepalive(tickMs = HEARTBEAT_TICK_MS): void {
     if (this.keepaliveTimer !== undefined) return;
-    const timer = setInterval(() => { this.sendKeepalive(); }, intervalMs);
+    const timer = setInterval(() => { this.heartbeatTick(); }, tickMs);
     if (typeof timer === "object" && "unref" in timer) timer.unref();
     this.keepaliveTimer = timer;
+  }
+
+  /** One look: a heartbeat to every socket that has been quiet for its own interval. */
+  heartbeatTick(): void {
+    const now = this.now();
+    const due = (socket: RealtimeSocket) => {
+      const cadence = this.cadence.get(socket);
+      return cadence !== undefined && now - cadence.lastSentAt >= cadence.intervalMs;
+    };
+    for (const [sessionId, sockets] of this.socketsBySession) {
+      const quiet = [...sockets].filter(due);
+      if (quiet.length > 0) this.sendToEach(sockets, quiet, this.keepalivePayload(sessionId));
+    }
+    const quietGlobal = [...this.globalSockets].filter(due);
+    if (quietGlobal.length > 0) this.sendToEach(this.globalSockets, quietGlobal, JSON.stringify({ type: "keepalive" }));
   }
 
   stopKeepalive(): void {
@@ -77,20 +127,37 @@ export class SessionEventHub {
     this.keepaliveTimer = undefined;
   }
 
-  /** One tick: a keepalive to every subscriber, session-scoped and global. */
+  /** A keepalive to every subscriber at once, session-scoped and global. */
   sendKeepalive(): void {
-    const payload = JSON.stringify({ type: "keepalive" });
-    for (const sockets of this.socketsBySession.values()) this.sendToSockets(sockets, payload);
-    this.sendToSockets(this.globalSockets, payload);
+    for (const [sessionId, sockets] of this.socketsBySession) this.sendToSockets(sockets, this.keepalivePayload(sessionId));
+    this.sendToSockets(this.globalSockets, JSON.stringify({ type: "keepalive" }));
   }
 
-  add(sessionId: string, socket: RealtimeSocket): void {
+  /**
+   * A session's heartbeat: the stream position and the transcript head, nested under `head`.
+   *
+   * Never a top-level `seq`: the page's gap repair reads that as a frame, and with exactly one
+   * frame missing it would mark the heartbeat as the missed frame and lose the real one. The
+   * epoch is read, not minted - a session that has published nothing has no stream to report.
+   */
+  private keepalivePayload(sessionId: string): string {
+    const epoch = this.epochBySession.get(sessionId);
+    const transcript = this.transcriptHeadSource?.(sessionId);
+    const head = {
+      ...(epoch === undefined ? {} : { seq: this.currentSeq(sessionId), epoch }),
+      ...(transcript ?? {}),
+    };
+    return JSON.stringify(Object.keys(head).length === 0 ? { type: "keepalive" } : { type: "keepalive", head });
+  }
+
+  add(sessionId: string, socket: RealtimeSocket, options: { quietMs?: number } = {}): void {
     let sockets = this.socketsBySession.get(sessionId);
     if (!sockets) {
       sockets = new Set();
       this.socketsBySession.set(sessionId, sockets);
     }
     sockets.add(socket);
+    this.cadence.set(socket, { intervalMs: heartbeatIntervalMs(options.quietMs), lastSentAt: this.now() });
     socket.on("close", () => {
       sockets.delete(socket);
       if (sockets.size === 0 && this.socketsBySession.get(sessionId) === sockets) this.socketsBySession.delete(sessionId);
@@ -110,6 +177,7 @@ export class SessionEventHub {
 
   addGlobal(socket: RealtimeSocket): void {
     this.globalSockets.add(socket);
+    this.cadence.set(socket, { intervalMs: heartbeatIntervalMs(), lastSentAt: this.now() });
     socket.on("close", () => this.globalSockets.delete(socket));
     const joinFrame = this.globalJoinFrame?.();
     if (joinFrame !== undefined) this.sendToSocket(this.globalSockets, socket, JSON.stringify(joinFrame));
@@ -259,6 +327,10 @@ export class SessionEventHub {
     for (const socket of sockets) this.sendToSocket(sockets, socket, payload);
   }
 
+  private sendToEach(sockets: Set<RealtimeSocket>, targets: readonly RealtimeSocket[], payload: string): void {
+    for (const socket of targets) this.sendToSocket(sockets, socket, payload);
+  }
+
   private sendToSocket(sockets: Set<RealtimeSocket>, socket: RealtimeSocket, payload: string): void {
     if (socket.readyState !== socket.OPEN) return;
     if (socket.bufferedAmount > this.maxSocketBufferedBytes) {
@@ -267,6 +339,8 @@ export class SessionEventHub {
     }
     try {
       socket.send(payload);
+      const cadence = this.cadence.get(socket);
+      if (cadence !== undefined) cadence.lastSentAt = this.now();
     } catch {
       this.removeAndTerminate(sockets, socket);
     }

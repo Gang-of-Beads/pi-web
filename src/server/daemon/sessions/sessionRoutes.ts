@@ -14,6 +14,11 @@ interface SessionQuery {
   cwd?: string;
 }
 
+interface EventsQuery extends SessionQuery {
+  /** The page's quiet window in seconds: how long it waits with nothing received before it asks. */
+  quiet?: string;
+}
+
 interface SessionsListQuery extends SessionQuery {
   /** A revision the client stored from a previous listing: matching answers unchanged. */
   revision?: string;
@@ -706,10 +711,11 @@ app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unkn
     }
   });
 
-  app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/events`, { websocket: true }, (socket, request) => {
-    // Only the id matters for event subscription; cwd is intentionally ignored
-    // so a malformed value cannot throw inside the websocket handler.
-    eventHub.add(request.params.sessionId, socket);
+  app.get<{ Params: { sessionId: string }; Querystring: EventsQuery }>(`${prefix}/sessions/:sessionId/events`, { websocket: true }, (socket, request) => {
+    // cwd is intentionally ignored so a malformed value cannot throw inside the websocket
+    // handler; a malformed quiet window reads as none, which keeps the default heartbeat.
+    const quietMs = quietWindowMs(request.query.quiet);
+    eventHub.add(request.params.sessionId, socket, quietMs === undefined ? {} : { quietMs });
   });
 
   app.get(`${prefix}/sessions/events`, { websocket: true }, (socket) => {
@@ -946,6 +952,13 @@ function optionalNumber(value: string | undefined): number | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** A quiet window in whole seconds, 1 to 600; anything else is no window. */
+export function quietWindowMs(value: string | undefined): number | undefined {
+  if (value === undefined || !/^\d{1,3}$/.test(value)) return undefined;
+  const seconds = Number(value);
+  return seconds >= 1 && seconds <= 600 ? seconds * 1000 : undefined;
 }
 
 function mutationErrorStatus(error: unknown): 400 | 404 {
