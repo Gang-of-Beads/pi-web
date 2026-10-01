@@ -33,6 +33,44 @@ export function piWebUpdateOffer(input: {
   return { kind: "offer", running: input.running, latest };
 }
 
+/** What the offer reads from a machine's `pi-web/status` answer. */
+export interface PiWebOfferFacts {
+  running: string | undefined;
+  release: PiWebRelease;
+  command: string | undefined;
+}
+
+/**
+ * The offer's facts from a `pi-web/status` answer. The version the machine runs is the web
+ * component's installed version, else its runtime version: the same version the server compares
+ * the latest release against when it says `updateAvailable` (`src/server/shared/piWebStatus.ts`).
+ * The status has no top-level `version`; reading one left `running` unknown on every machine, so
+ * the offer stayed silent from the day it shipped (fd56eb53) until this fix.
+ */
+export function piWebOfferFacts(status: unknown): PiWebOfferFacts {
+  const record = recordAt(status);
+  const release = recordAt(record["release"]);
+  const web = recordAt(recordAt(record["components"])["web"]);
+  const latestVersion = nonEmptyString(release["latestVersion"]);
+  const updateAvailable = release["updateAvailable"];
+  return {
+    running: nonEmptyString(web["installedVersion"]) ?? nonEmptyString(web["runtimeVersion"]),
+    release: {
+      ...(latestVersion === undefined ? {} : { latestVersion }),
+      ...(typeof updateAvailable === "boolean" ? { updateAvailable } : {}),
+    },
+    command: nonEmptyString(recordAt(record["commands"])["update"]),
+  };
+}
+
+function recordAt(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? Object.fromEntries(Object.entries(value)) : {};
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
 /** The answered set after this machine settles one version, newest last. */
 export function withAnsweredVersion(answered: readonly string[], version: string): string[] {
   return [...answered.filter((entry) => entry !== version), version].slice(-16);

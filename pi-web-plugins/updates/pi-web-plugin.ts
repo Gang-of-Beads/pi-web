@@ -1,5 +1,5 @@
 import type { TemplateResult } from "lit";
-import { piWebUpdateOffer } from "./piWebUpdateOffer.js";
+import { piWebOfferFacts, piWebUpdateOffer } from "./piWebUpdateOffer.js";
 import { showPiWebUpdateNotice, showPiWebUpdateOffer } from "./updateOfferDialog.js";
 import type { HtmlTemplateTag, PiWebComponentStatus, PiWebPlugin, PluginActivationContext, PiWebStatusResponse, PluginRuntimeState, WorkspacePanelTerminal } from "@gang-of-beads/pi-web/plugin-api";
 import { additionalCommands, fallbackDockerStatus, formatVersion, installationLabel, messageCount, recommendedCommand, shouldShowUpdatesPanel, statusFor, type UpdatesRuntimeHint } from "./updatesLogic.js";
@@ -176,23 +176,13 @@ function offerPiWebUpdate(context: PluginActivationContext): void {
   const status = context.readPiWebStatus?.() ?? fetchJson("api/pi-web/status");
   void Promise.all([status, callOperation("offer.answered")])
     .then(([status, answered]) => {
-      const release = isRecord(status) && isRecord(status["release"]) ? status["release"] : undefined;
-      const commands = isRecord(status) && isRecord(status["commands"]) ? status["commands"] : undefined;
-      const running = isRecord(status) && typeof status["version"] === "string" ? status["version"] : undefined;
+      const facts = piWebOfferFacts(status);
       const answeredVersions = isRecord(answered) && Array.isArray(answered["answeredVersions"])
         ? answered["answeredVersions"].filter((entry): entry is string => typeof entry === "string")
         : [];
-      const verdict = piWebUpdateOffer({
-        running,
-        release: {
-          ...(typeof release?.["latestVersion"] === "string" ? { latestVersion: release["latestVersion"] } : {}),
-          ...(typeof release?.["updateAvailable"] === "boolean" ? { updateAvailable: release["updateAvailable"] } : {}),
-        },
-        answeredVersions,
-      });
+      const verdict = piWebUpdateOffer({ running: facts.running, release: facts.release, answeredVersions });
       if (verdict.kind !== "offer") return;
-      const command = typeof commands?.["update"] === "string" && commands["update"] !== "" ? commands["update"] : undefined;
-      showPiWebUpdateOffer({ running: verdict.running, latest: verdict.latest, command }, {
+      showPiWebUpdateOffer({ running: verdict.running, latest: verdict.latest, command: facts.command }, {
         ui,
         html: context.html,
         answer: async (version) => { await callOperation("offer.answer", { version }); },

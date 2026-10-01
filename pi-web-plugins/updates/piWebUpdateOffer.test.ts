@@ -1,11 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { piWebUpdateOffer, withAnsweredVersion } from "./piWebUpdateOffer";
+import { piWebOfferFacts, piWebUpdateOffer, withAnsweredVersion } from "./piWebUpdateOffer";
 
 /**
  * Owner's ruling: one popup per version per machine, closing it answers it,
  * and the offer is about PI WEB - which is what carries the pi the sessions
  * actually run.
  */
+describe("the offer's facts, read from a machine's pi-web/status answer", () => {
+  const status = (web: Record<string, unknown>, release: Record<string, unknown>) => ({
+    packageName: "@gang-of-beads/pi-web",
+    generatedAt: "2026-10-01T14:09:11.652Z",
+    components: { web: { component: "web", label: "Web/UI", piVersion: "0.99.2", stale: false, available: true, ...web }, sessiond: { component: "sessiond", runtimeVersion: "2.202609.1" } },
+    release: { packageName: "@gang-of-beads/pi-web", checkedAt: "2026-10-01T13:41:34.536Z", ...release },
+    commands: { update: "pi-web update" },
+    messages: [],
+  });
+
+  it("reads the version the server compared the release against, so an available update is offered", () => {
+    const facts = piWebOfferFacts(status({ runtimeVersion: "2.202609.28", installedVersion: "2.202609.28" }, { latestVersion: "2.202610.1", updateAvailable: true }));
+
+    expect({ facts, verdict: piWebUpdateOffer({ running: facts.running, release: facts.release, answeredVersions: [] }) }).toEqual({
+      facts: { running: "2.202609.28", release: { latestVersion: "2.202610.1", updateAvailable: true }, command: "pi-web update" },
+      verdict: { kind: "offer", running: "2.202609.28", latest: "2.202610.1" },
+    });
+  });
+
+  it("prefers the installed version, and falls back to the runtime version when none is installed", () => {
+    expect([
+      piWebOfferFacts(status({ runtimeVersion: "2.202609.27", installedVersion: "2.202609.28" }, {})).running,
+      piWebOfferFacts(status({ runtimeVersion: "2.202609.27" }, {})).running,
+    ]).toEqual(["2.202609.28", "2.202609.27"]);
+  });
+
+  it("knows nothing from an answer of another shape", () => {
+    expect([piWebOfferFacts(undefined), piWebOfferFacts({ version: "1.0.0", release: "x", components: [] })]).toEqual([
+      { running: undefined, release: {}, command: undefined },
+      { running: undefined, release: {}, command: undefined },
+    ]);
+  });
+});
+
 describe("the PI WEB update offer", () => {
   it("offers an available version nobody has answered", () => {
     expect(piWebUpdateOffer({
