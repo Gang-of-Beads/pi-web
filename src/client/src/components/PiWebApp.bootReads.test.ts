@@ -73,7 +73,8 @@ describe("PiWebApp boot reads (P6 slice a)", () => {
     const app = new PiWebApp();
     enableUnread(app);
     const realtime = objectField(app, "realtime");
-    const connectingSince = Date.now();
+    const connectingSince = 50_000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(connectingSince);
     Reflect.set(realtime, "phaseFor", () => ({ kind: "connecting", since: connectingSince }));
     setAppState(app, { ...initialAppState(), selectedMachine: machine("local") });
 
@@ -82,13 +83,130 @@ describe("PiWebApp boot reads (P6 slice a)", () => {
     await settle();
     const withinGrace = { unread: reads(fetchMock, "/sessions/unread"), pins: reads(fetchMock, "/session-pins"), fallbackDelays: timers.map((timer) => timer.delay) };
 
-    vi.spyOn(Date, "now").mockReturnValue(connectingSince + 1_500);
+    clock.mockReturnValue(connectingSince + 1_500);
     timers[0]?.run();
     await settle();
 
     expect({ withinGrace, afterGrace: { unread: reads(fetchMock, "/sessions/unread"), pins: reads(fetchMock, "/session-pins") } }).toEqual({
       withinGrace: { unread: 0, pins: 0, fallbackDelays: [1_500] },
       afterGrace: { unread: 1, pins: 1 },
+    });
+  });
+
+  it("reads nothing for a machine that left the roster before its grace was over (review 44fc106b)", async () => {
+    const fetchMock = stubFetch();
+    const timers = stubWindow();
+    const app = new PiWebApp();
+    enableUnread(app);
+    const remote = { ...machine("remote-1"), kind: "remote" as const, baseUrl: "https://remote.example.test" };
+    const connectingSince = 50_000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(connectingSince);
+    Reflect.set(objectField(app, "realtime"), "phaseFor", () => ({ kind: "absent" }));
+    const activity = { phaseFor: () => ({ kind: "connecting", since: connectingSince }), close: () => undefined };
+    objectMap(app, "machineRealtimeSockets").set("remote-1", activity);
+    setAppState(app, { ...initialAppState(), selectedMachine: machine("local"), machines: [machine("local"), remote] });
+
+    call(app, "ensureMachinePins", "remote-1");
+    await settle();
+    const armed = timers.length;
+    setAppState(app, { ...appState(app), machines: [machine("local")] });
+    clock.mockReturnValue(connectingSince + 1_500);
+    timers[0]?.run();
+    await settle();
+
+    expect({ armed, remoteReads: fetchMock.mock.calls.filter(([input]) => requestUrl(input).includes("/machines/remote-1/")).length }).toEqual({ armed: 1, remoteReads: 0 });
+  });
+
+  it("sends no deletion runs read for a project the reader left while an earlier read was on its way (review 44fc106b)", async () => {
+    stubFetch();
+    stubWindow();
+    const app = new PiWebApp();
+    const asked: unknown[] = [];
+    const answers: (() => void)[] = [];
+    stubDeletionRuns(app, (filter) => { asked.push(filter.projectId); return new Promise((resolve) => { answers.push(() => { resolve([]); }); }); });
+
+    setState(app, { selectedProject: project("alpha"), selectedWorkspace: workspace("alpha", "main") });
+    await settle();
+    void call(app, "refreshWorkspaceDeletionRuns");
+    setState(app, { selectedProject: project("beta"), selectedWorkspace: workspace("beta", "main") });
+    await settle();
+    for (const answer of answers.splice(0)) answer();
+    await settle();
+
+    expect(asked).toEqual(["alpha", "beta"]);
+  });
+
+  it("leaves a remote machine's unread set to its activity socket when the roster brings both at once (review 44fc106b)", async () => {
+    const fetchMock = stubFetch();
+    stubWindow();
+    const sockets: { url: string; onopen: (() => void) | null }[] = [];
+    vi.stubGlobal("WebSocket", class {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      readyState = 0;
+      onopen: (() => void) | null = null;
+      onmessage: unknown = null;
+      onerror: unknown = null;
+      onclose: unknown = null;
+      constructor(readonly url: string) { sockets.push(this); }
+      close(): void { this.readyState = 3; }
+    });
+    const app = new PiWebApp();
+    enableUnread(app);
+    Reflect.set(objectField(app, "realtime"), "phaseFor", () => ({ kind: "open" }));
+    const remote: Machine = { ...machine("remote-1"), kind: "remote", baseUrl: "https://remote.example.test" };
+    setAppState(app, { ...initialAppState(), selectedMachine: machine("local") });
+
+    setState(app, { machines: [machine("local"), remote] });
+    await settle();
+    const remoteReads = () => fetchMock.mock.calls.filter(([input]) => requestUrl(input).endsWith("/machines/remote-1/sessions/unread")).length;
+    const beforeOpen = remoteReads();
+    sockets.find((socket) => socket.url.includes("/machines/remote-1/events"))?.onopen?.();
+    await settle();
+
+    expect({ sockets: sockets.length, beforeOpen, afterOpen: remoteReads() }).toEqual({ sockets: 1, beforeOpen: 0, afterOpen: 1 });
+  });
+
+  it("tries a failed deletion runs read again on the shared backoff while the project stays selected, and stops when it is left (review 44fc106b)", async () => {
+    stubFetch();
+    const timers = stubWindow();
+    const app = new PiWebApp();
+    const asked: unknown[] = [];
+    let fail = true;
+    stubDeletionRuns(app, (filter) => {
+      asked.push(filter.projectId);
+      return fail ? Promise.reject(new Error("machine not answering")) : Promise.resolve([deletionRun(filter.projectId ?? "", "w-1")]);
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    setState(app, { selectedProject: project("alpha"), selectedWorkspace: workspace("alpha", "main") });
+    await settle();
+    const firstRetry = timers.map((timer) => timer.delay);
+    timers.splice(0)[0]?.run();
+    await settle();
+    const secondRetry = timers.map((timer) => timer.delay);
+    fail = false;
+    timers.splice(0)[0]?.run();
+    await settle();
+    const shown = Object.keys(appState(app).workspaceDeletionRuns);
+    const afterAnswer = timers.length;
+    fail = true;
+    setState(app, { selectedProject: project("beta"), selectedWorkspace: workspace("beta", "main") });
+    await settle();
+    const betaRetry = timers.splice(0);
+    setState(app, { selectedProject: project("gamma"), selectedWorkspace: workspace("gamma", "main") });
+    await settle();
+    const askedBeforeStale = asked.length;
+    betaRetry[0]?.run();
+    await settle();
+
+    expect({ asked: asked.slice(0, askedBeforeStale), firstRetry, secondRetry, shown, afterAnswer, staleRetryReads: asked.length - askedBeforeStale }).toEqual({
+      asked: ["alpha", "alpha", "alpha", "beta", "gamma"],
+      firstRetry: [1000],
+      secondRetry: [2000],
+      shown: ["w-1"],
+      afterAnswer: 0,
+      staleRetryReads: 0,
     });
   });
 
@@ -246,6 +364,12 @@ function call(app: PiWebApp, name: string, ...args: unknown[]): unknown {
   if (typeof method !== "function") throw new Error(`PiWebApp.${name} is not callable`);
   const result: unknown = method.apply(app, args);
   return result;
+}
+
+function objectMap(app: PiWebApp, name: string): { set(key: string, value: unknown): unknown } {
+  const value: unknown = Reflect.get(app, name);
+  if (!(value instanceof Map)) throw new Error(`PiWebApp.${name} is not a map`);
+  return { set: (key, entry) => value.set(key, entry) };
 }
 
 function enableUnread(app: PiWebApp): void {

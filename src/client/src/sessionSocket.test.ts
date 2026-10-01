@@ -609,6 +609,46 @@ describe("dark-launch seq gap counting", () => {
   });
 });
 
+describe("RealtimeSocket phase after a liveness drop (review 44fc106b)", () => {
+  beforeEach(() => {
+    FakeWebSocket.instances.length = 0;
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
+    vi.stubGlobal("clearTimeout", vi.fn());
+    vi.stubGlobal("setTimeout", vi.fn(() => 1));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps the first wait's start when a connection that never opened is dropped for a slow handshake, and starts again when an open one goes silent", () => {
+    let now = 1_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const realtime = new RealtimeSocket();
+    realtime.connect(() => undefined, undefined, "m1");
+    const hung = FakeWebSocket.instances[0];
+    if (hung === undefined) throw new Error("expected a realtime socket");
+    hung.readyState = 0;
+    now = 12_000;
+    realtime.checkLiveness(now);
+    const afterHandshakeDrop = realtime.phaseFor("m1");
+
+    realtime.reconnectNow();
+    const opened = FakeWebSocket.instances[1];
+    if (opened === undefined) throw new Error("expected a reconnect");
+    opened.onopen?.();
+    now = 60_000;
+    realtime.checkLiveness(now);
+
+    expect({ afterHandshakeDrop, afterSilenceDrop: realtime.phaseFor("m1") }).toEqual({
+      afterHandshakeDrop: { kind: "connecting", since: 1_000 },
+      afterSilenceDrop: { kind: "connecting", since: 60_000 },
+    });
+  });
+});
+
 describe("RealtimeSocket phase (P6 slice a)", () => {
   beforeEach(() => {
     FakeWebSocket.instances.length = 0;

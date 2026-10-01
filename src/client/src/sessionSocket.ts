@@ -230,7 +230,7 @@ export class RealtimeSocket {
     // Same as SessionSocket: the quiet close detaches onclose, so this must
     // schedule the reconnect itself or the drop is permanent.
     this.socket = undefined;
-    this.waitingSince = now;
+    if (this.openedSocket === socket) this.waitingSince = now;
     closeSocketQuietly(socket);
     this.scheduleReconnect();
   }

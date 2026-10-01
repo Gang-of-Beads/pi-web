@@ -11,7 +11,11 @@ import { chromium } from "@playwright/test";
  *   and the deletion runs;
  * - with the realtime socket held shut (its URL rewritten to a closed port, so it never opens; a
  *   routeWebSocket mock would open it), the unread set and the pins are still read, about 1.5 s
- *   after boot, and only once.
+ *   after boot, and only once;
+ * - with a second machine on the roster (8505 registered as its own remote, removed at the end,
+ *   as in probe-pins-remote.mjs), that machine's unread set is read once too: the roster used to
+ *   read it before its activity socket existed, and the socket's open read it again (review
+ *   44fc106b).
  * Controls: the socket opened in the first leg, the unread set and the pins answered (the page
  * holds an unread projection and adopted pins), and the deletion runs answered 200.
  */
@@ -23,7 +27,7 @@ const check = (name, pass, detail) => {
   console.log(`${pass ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : ` (${detail})`}`);
 };
 
-async function boot(browser, { holdSocketShut }) {
+async function boot(browser, { holdSocketShut, remoteId }) {
   const context = await browser.newContext({ viewport: { width: 393, height: 850 }, hasTouch: true, isMobile: true });
   await context.route(/\/api\/machines\/prod-8504-waveb\//u, (route) => route.abort("blockedbyclient"));
   const page = await context.newPage();
@@ -39,11 +43,13 @@ async function boot(browser, { holdSocketShut }) {
   }
   const started = Date.now();
   const reads = [];
+  const remoteReads = [];
   const answers = [];
   let socketOpenedAt;
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
     if (path.endsWith("/machines/local/sessions/unread") || path.endsWith("/machines/local/session-pins") || path.endsWith("/machines/local/terminal-command-runs")) reads.push({ path, at: Date.now() - started });
+    if (remoteId !== undefined && path.endsWith(`/machines/${encodeURIComponent(remoteId)}/sessions/unread`)) remoteReads.push(Date.now() - started);
   });
   page.on("response", (response) => {
     const path = new URL(response.url()).pathname;
@@ -62,7 +68,7 @@ async function boot(browser, { holdSocketShut }) {
   await context.close();
   const count = (suffix) => reads.filter((read) => read.path.endsWith(suffix)).length;
   const firstAt = (suffix) => reads.find((read) => read.path.endsWith(suffix))?.at;
-  return { unread: count("/sessions/unread"), pins: count("/session-pins"), runs: count("/terminal-command-runs"), unreadAt: firstAt("/sessions/unread"), pinsAt: firstAt("/session-pins"), answers, socketOpenedAt, held };
+  return { unread: count("/sessions/unread"), pins: count("/session-pins"), runs: count("/terminal-command-runs"), unreadAt: firstAt("/sessions/unread"), pinsAt: firstAt("/session-pins"), answers, socketOpenedAt, held, remoteReads };
 }
 
 const browser = await chromium.launch();
@@ -79,6 +85,19 @@ try {
   check("control: the realtime socket stayed shut", shut.socketOpenedAt === undefined && shut.held.socketPhase !== "open", `first frame ${String(shut.socketOpenedAt)}, phase ${shut.held.socketPhase}`);
   check("with the socket shut, the unread set and the pins are still read", shut.held.unreadKnown && shut.held.pinsAdopted, JSON.stringify({ unreadKnown: shut.held.unreadKnown, pinsAdopted: shut.held.pinsAdopted }));
   check("with the socket shut, each is read once, after the grace", shut.unread === 1 && shut.pins === 1 && (shut.unreadAt ?? 0) >= 1_400 && (shut.pinsAt ?? 0) >= 1_400, `unread ${String(shut.unread)} at ${String(shut.unreadAt)} ms, pins ${String(shut.pins)} at ${String(shut.pinsAt)} ms`);
+
+  const added = await fetch(`${BASE}/api/machines`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "probe-boot-self", baseUrl: `${BASE}/` }) });
+  const addedBody = added.ok ? await added.json() : undefined;
+  const selfId = addedBody?.machine?.id ?? addedBody?.id;
+  check("precondition: 8505 is on its own roster as a second machine", typeof selfId === "string", `${String(added.status)} ${String(selfId)}`);
+  if (typeof selfId === "string") {
+    try {
+      const withRemote = await boot(browser, { holdSocketShut: false, remoteId: selfId });
+      check("a boot reads a second machine's unread set once", withRemote.remoteReads.length === 1, `${String(withRemote.remoteReads.length)} reads at ${withRemote.remoteReads.join(", ")} ms`);
+    } finally {
+      await fetch(`${BASE}/api/machines/${encodeURIComponent(selfId)}`, { method: "DELETE" });
+    }
+  }
 } finally {
   await browser.close();
 }

@@ -79,7 +79,14 @@ function createApp(): PiWebApp {
     setItem: () => undefined,
     removeItem: () => undefined,
   };
-  vi.stubGlobal("window", { location: { search: "" }, localStorage: storage });
+  vi.stubGlobal("window", {
+    location: { search: "" },
+    localStorage: storage,
+    setTimeout: () => 0,
+    clearTimeout: () => undefined,
+    setInterval: () => 0,
+    clearInterval: () => undefined,
+  });
   return new PiWebApp();
 }
 

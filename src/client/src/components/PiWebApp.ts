@@ -430,6 +430,7 @@ export class PiWebApp extends LitElement {
   private lastInteractionLivenessAt = 0;
   private readonly workspaceDeletionRunReads = new TrailingRefreshCoordinator<string>();
   private readonly firstOpenFallbacks = new Map<string, number>();
+  private workspaceDeletionRetry: { key: string; attempt: number; timer: number } | undefined;
   private readonly handledWorkspaceDeletionRunIds = new Set<string>();
   private readonly terminalCommandRunRuntimes = new Map<string, TerminalCommandRunsInternalRuntime>();
   private machineNavigationRestoreSeq = 0;
@@ -1247,6 +1248,7 @@ export class PiWebApp extends LitElement {
     this.sessionUnread.retainMachines(new Set<string>());
     for (const timer of this.firstOpenFallbacks.values()) window.clearTimeout(timer);
     this.firstOpenFallbacks.clear();
+    this.cancelWorkspaceDeletionRetry();
     window.removeEventListener("popstate", this.onPopState);
     window.removeEventListener("pageshow", this.onPageShow);
     this.browserResume.disconnect();
@@ -1287,20 +1289,21 @@ export class PiWebApp extends LitElement {
       this.committedChatIdentity = undefined;
       this.readyChatIdentity = undefined;
     }
-    if (machineUnreadInputsChanged(previous, this.state)) this.syncSessionUnreadMachines();
     this.syncUnreadSessionIds();
     this.handleActivityTransition(previous, this.state);
     if (listingSelectionChanged(previous, this.state)) this.workspaces.selectionChanged();
     this.handleWorkspaceChange(previous, this.state);
     if (workspaceDeletionRunsKey(previous) !== workspaceDeletionRunsKey(this.state)) {
+      this.cancelWorkspaceDeletionRetry();
       if (Object.keys(this.state.workspaceDeletionRuns).length > 0) this.setState({ workspaceDeletionRuns: {} });
       void this.refreshWorkspaceDeletionRuns();
     }
     this.handleMachineChange(previous, this.state);
     if (machineActivitySubscriptionInputsChanged(previous, this.state)) this.syncMachineActivitySubscriptions();
-    // Only the timer here: `setState` must stay free of network side effects,
-    // and the selection paths that can afford an immediate read already ask for
-    // one. The poll picks up every other path within its interval.
+    if (machineUnreadInputsChanged(previous, this.state)) this.syncSessionUnreadMachines();
+    // Only the timer here: the selection paths that can afford an immediate
+    // read already ask for one, and the poll picks up every other path within
+    // its interval.
     if (previous.selectedSession?.id !== this.state.selectedSession?.id) this.updateSubagentPolling();
   }
 
@@ -2115,14 +2118,20 @@ export class PiWebApp extends LitElement {
     const phase = machineId === selectedMachineId(this.state) ? this.realtime.phaseFor(machineId) : this.machineRealtimeSockets.get(machineId)?.phaseFor(machineId) ?? { kind: "absent" as const };
     const now = Date.now();
     const verdict = anchoredRead(phase, now);
-    if (verdict === "await-open" && !this.firstOpenFallbacks.has(machineId)) {
-      this.firstOpenFallbacks.set(machineId, window.setTimeout(() => {
-        this.firstOpenFallbacks.delete(machineId);
-        this.syncSessionUnreadMachines();
-        void this.ensureMachinePins(machineId);
-      }, graceRemaining(phase, now)));
-    }
+    if (verdict === "await-open") this.armFirstOpenFallback(machineId, graceRemaining(phase, now));
     return verdict;
+  }
+
+  /** Ask once more for a machine's socket-kept facts after the grace, while that machine is still one the page shows. */
+  private armFirstOpenFallback(machineId: string, delayMs: number): void {
+    if (this.firstOpenFallbacks.has(machineId)) return;
+    this.firstOpenFallbacks.set(machineId, window.setTimeout(() => {
+      this.firstOpenFallbacks.delete(machineId);
+      const shown = machineId === selectedMachineId(this.state) || this.state.machines.some((machine) => machine.id === machineId);
+      if (!shown) return;
+      this.syncSessionUnreadMachines();
+      void this.ensureMachinePins(machineId);
+    }, delayMs));
   }
 
   private connectRealtime(): void {
@@ -3792,13 +3801,16 @@ export class PiWebApp extends LitElement {
       this.updateWorkspaceDeletionPolling();
       return;
     }
-    await this.workspaceDeletionRunReads.request(key, () => this.readWorkspaceDeletionRuns(selectedMachineId(this.state), project.id, key));
+    const machineId = selectedMachineId(this.state);
+    await this.workspaceDeletionRunReads.request(key, () => this.readWorkspaceDeletionRuns(machineId, project.id, key));
   }
 
   private async readWorkspaceDeletionRuns(machineId: string, projectId: string, key: string): Promise<void> {
+    if (workspaceDeletionRunsKey(this.state) !== key) return;
     try {
       const runs = await this.terminalCommandRunsForOrigin("core", machineId).listCommandRuns(workspaceDeletionRunFilter(projectId));
       if (workspaceDeletionRunsKey(this.state) !== key) return;
+      this.cancelWorkspaceDeletionRetry();
       const latestRuns = latestWorkspaceDeletionRuns(runs);
       this.setState({ workspaceDeletionRuns: latestRuns });
       for (const run of Object.values(latestRuns)) {
@@ -3806,9 +3818,32 @@ export class PiWebApp extends LitElement {
       }
     } catch (error) {
       console.warn("Failed to refresh workspace deletion runs", error);
+      if (workspaceDeletionRunsKey(this.state) === key) this.retryWorkspaceDeletionRuns(key);
     } finally {
       this.updateWorkspaceDeletionPolling();
     }
+  }
+
+  /**
+   * A failed read leaves the selected project's deletion runs unknown, not empty: the runs shown
+   * were cleared when the project was selected, so the poll that a pending run keeps alive is
+   * gone too. The read is tried again on the shared backoff (1, 2, 4, 8 s, capped at the quiet
+   * window) for as long as the project stays selected (B48).
+   */
+  private retryWorkspaceDeletionRuns(key: string): void {
+    const attempt = this.workspaceDeletionRetry?.key === key ? this.workspaceDeletionRetry.attempt + 1 : 0;
+    this.cancelWorkspaceDeletionRetry();
+    const timer = window.setTimeout(() => {
+      if (workspaceDeletionRunsKey(this.state) !== key) return;
+      this.workspaceDeletionRetry = { key, attempt, timer: 0 };
+      void this.refreshWorkspaceDeletionRuns();
+    }, retryDelayMs(attempt, QUIET_WINDOW_MS));
+    this.workspaceDeletionRetry = { key, attempt, timer };
+  }
+
+  private cancelWorkspaceDeletionRetry(): void {
+    if (this.workspaceDeletionRetry !== undefined) window.clearTimeout(this.workspaceDeletionRetry.timer);
+    this.workspaceDeletionRetry = undefined;
   }
 
   private updateWorkspaceDeletionPolling(): void {
