@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { existsSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,7 +31,7 @@ import { mountServerPluginRoutes } from "./plugins/serverPluginRouteMount.js";
 import { createActiveProfilePiPackageService, type PiPackageService } from "./piPackageService.js";
 import { registerPiPackageRoutes } from "./piPackageRoutes.js";
 import { registerSessionPinRoutes } from "./sessionPinRoutes.js";
-import { daemonSessionListing, registerSessionBoardRoutes, type SessionBoardSources } from "./sessionBoardRoutes.js";
+import { daemonSessionListing, daemonSessionLocate, registerSessionBoardRoutes, type SessionBoardSources } from "./sessionBoardRoutes.js";
 import { nudgeChange } from "../shared/sessiondClient/changeNudge.js";
 import { SessionPinStore, sessionPinStorePath } from "../shared/storage/sessionPinStore.js";
 import { createPiWebStatusCache, type PiWebStatusCache } from "./piWebStatusCache.js";
@@ -277,6 +278,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     projects: () => projects.list(),
     workspaces: (project) => resolveWorkspacesWithEffectiveConfig(project, workspaces, configService),
     sessions: daemonSessionListing(sessionDaemon),
+    pinned: { ids: () => sessionPins.list(), locate: daemonSessionLocate(sessionDaemon, homedir()) },
   };
   registerSessionBoardRoutes(app, sessionBoardSources);
   registerSessionBoardRoutes(app, sessionBoardSources, "/api/machines/local");

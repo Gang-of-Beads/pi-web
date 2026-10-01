@@ -40,6 +40,34 @@ describe("parseSessionBoardAnswer", () => {
     });
   });
 
+  it("parses the pinned sessions no listing holds, keeping one that does not parse unknown (B49)", () => {
+    const parsed = parseSessionBoardAnswer({
+      projects: [],
+      listings: [],
+      pinned: [
+        { sessionId: "a1", session },
+        { sessionId: "gone", gone: true },
+        { sessionId: "slow", unknown: true },
+        { sessionId: "broken", session: { id: 7 } },
+        { sessionId: "other", session },
+        { session },
+        "not an entry",
+      ],
+    });
+
+    expect(parsed.pinned).toEqual([
+      { sessionId: "a1", session },
+      { sessionId: "gone", gone: true },
+      { sessionId: "slow", unknown: true },
+      { sessionId: "broken", unknown: true },
+      { sessionId: "other", unknown: true },
+    ]);
+  });
+
+  it("reads an answer without pinned entries as saying nothing about pins", () => {
+    expect(parseSessionBoardAnswer({ projects: [], listings: [] }).pinned).toBeUndefined();
+  });
+
   it("refuses an answer that is not a board", () => {
     const shapes = ["<!doctype html>", [], { projects: [] }, { listings: [] }, { projects: [{}], listings: [] }, { projects: [], listings: [{ sessions: [] }] }];
     expect(shapes.map((shape) => { try { parseSessionBoardAnswer(shape); return "parsed"; } catch (error) { return error instanceof UnexpectedBoardAnswer ? "refused" : "other"; } }))

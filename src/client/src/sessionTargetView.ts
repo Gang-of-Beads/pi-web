@@ -1,9 +1,9 @@
 import type { SessionTarget } from "./sessionTarget";
 
-/** The names a target's words need: the machine and the workspace it was asked in. */
+/** The names a target's words need: the machine, and the workspace it was asked in, if it was asked in one. */
 export interface SessionTargetNames {
   readonly machine: string;
-  readonly workspace: string;
+  readonly workspace: string | undefined;
 }
 
 /**
@@ -35,7 +35,7 @@ const WORDS = {
   asking: () => loading(),
   unknown: () => loading(),
   gone: (_target, names) => answered(`This session no longer exists on ${names.machine}.`),
-  "not-listed": (_target, names) => answered(`This session isn't in ${names.workspace} on ${names.machine}.`),
+  "not-listed": (_target, names) => answered(names.workspace === undefined ? `This session isn't listed on ${names.machine}.` : `This session isn't in ${names.workspace} on ${names.machine}.`),
   "folder-gone": () => answered("This session's folder no longer exists, so it cannot be opened."),
   refused: (target, names) => answered(target.kind === "refused" ? REFUSAL_WORDS[target.fact](names.machine) : `${names.machine} refused to open this session.`),
 } satisfies Record<ShownTarget["kind"], (target: ShownTarget, names: SessionTargetNames) => Omit<SessionTargetView, "wayBack"> & { answered: boolean }>;
@@ -43,5 +43,5 @@ const WORDS = {
 export function sessionTargetView(target: SessionTarget, names: SessionTargetNames): SessionTargetView | undefined {
   if (target.kind === "open" || target.kind === "archived") return undefined;
   const { answered: hasAnswer, ...words } = WORDS[target.kind](target, names);
-  return { ...words, wayBack: hasAnswer ? `Go to ${names.workspace}'s sessions` : undefined };
+  return { ...words, wayBack: hasAnswer ? `Go to ${names.workspace ?? names.machine}'s sessions` : undefined };
 }

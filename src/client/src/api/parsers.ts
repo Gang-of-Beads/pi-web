@@ -262,6 +262,8 @@ function requireWorkspaceEffectiveConfig(value: unknown): WorkspaceEffectiveConf
 export interface SessionBoardAnswer {
   readonly projects: readonly ({ readonly projectId: string; readonly workspaces: readonly Workspace[] } | { readonly projectId: string; readonly unknown: true })[];
   readonly listings: readonly ({ readonly cwd: string; readonly sessions: readonly SessionInfo[] } | { readonly cwd: string; readonly unknown: true })[];
+  /** Pinned sessions no listing holds (B49); absent when the machine said nothing about its pins. */
+  readonly pinned?: readonly ({ readonly sessionId: string; readonly session: SessionInfo } | { readonly sessionId: string; readonly gone: true } | { readonly sessionId: string; readonly unknown: true })[];
 }
 
 /** The answer is not a board: the machine's web process does not know the route (P4 slice a). */
@@ -279,10 +281,26 @@ export class UnexpectedBoardAnswer extends Error {
  */
 export function parseSessionBoardAnswer(value: unknown): SessionBoardAnswer {
   if (!isRecord(value) || !Array.isArray(value["projects"]) || !Array.isArray(value["listings"])) throw new UnexpectedBoardAnswer();
+  const pinned = value["pinned"];
   return {
     projects: value["projects"].map(parseBoardProject),
     listings: value["listings"].map(parseBoardListing),
+    ...(Array.isArray(pinned) ? { pinned: pinned.flatMap(parseBoardPin) } : {}),
   };
+}
+
+/** One pinned entry; an entry that names no session is dropped, since a pin with no id cannot be shown, kept or asked about again. */
+function parseBoardPin(value: unknown): NonNullable<SessionBoardAnswer["pinned"]>[number][] {
+  const sessionId = isRecord(value) ? value["sessionId"] : undefined;
+  if (!isRecord(value) || typeof sessionId !== "string" || sessionId === "") return [];
+  if (value["gone"] === true) return [{ sessionId, gone: true }];
+  if (value["session"] === undefined) return [{ sessionId, unknown: true }];
+  try {
+    const session = parseSessionInfo(value["session"]);
+    return [session.id === sessionId ? { sessionId, session } : { sessionId, unknown: true }];
+  } catch {
+    return [{ sessionId, unknown: true }];
+  }
 }
 
 function parseBoardProject(value: unknown): SessionBoardAnswer["projects"][number] {

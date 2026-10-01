@@ -30,13 +30,21 @@ describe("locating the workspace that owns a session", () => {
   it("finds it in a project that was never loaded", async () => {
     const found = await locateSessionWorkspace("/p/other", catalogue({ "proj-piweb": [piweb], "proj-other": [other] }));
 
-    expect(found?.workspace.id).toBe("w-other");
-    expect(found?.project.id).toBe("proj-other");
-    expect(found?.workspaces).toEqual([other]);
+    expect(found).toEqual({ kind: "found", workspace: other, project: { id: "proj-other" }, workspaces: [other] });
   });
 
-  it("returns undefined when no project owns the directory", async () => {
-    expect(await locateSessionWorkspace("/p/nowhere", catalogue({ "proj-piweb": [piweb] }))).toBeUndefined();
+  it("is outside every open project when every project answered without the directory, or there are none (B49)", async () => {
+    expect([
+      await locateSessionWorkspace("/p/nowhere", catalogue({ "proj-piweb": [piweb] })),
+      await locateSessionWorkspace("/p/nowhere", catalogue({})),
+    ]).toEqual([{ kind: "outside" }, { kind: "outside" }]);
+  });
+
+  it("finds the deepest workspace a subdirectory lies under, once every project answered", async () => {
+    const root = { id: "w-root", path: "/p", projectId: "proj-root" };
+    const found = await locateSessionWorkspace("/p/other/src", catalogue({ "proj-root": [root], "proj-other": [other] }));
+
+    expect(found).toEqual({ kind: "found", workspace: other, project: { id: "proj-other" }, workspaces: [other] });
   });
 
   /**
@@ -48,17 +56,17 @@ describe("locating the workspace that owns a session", () => {
 
     const found = await locateSessionWorkspace("/p/other", { projects: () => Promise.resolve([{ id: "silent" }, { id: "proj-other" }]), workspaces });
 
-    expect(found?.workspace.id).toBe("w-other");
+    expect(found).toEqual({ kind: "found", workspace: other, project: { id: "proj-other" }, workspaces: [other] });
     expect(workspaces).toHaveBeenCalledTimes(2);
   });
 
-  it("answers unknown once every project has answered without the directory", async () => {
+  it("is unknown, not outside, while a project has not answered", async () => {
     const found = await locateSessionWorkspace("/p/nowhere", {
       projects: () => Promise.resolve([{ id: "a" }, { id: "b" }]),
       workspaces: (projectId: string) => projectId === "a" ? Promise.resolve(undefined) : Promise.resolve([other]),
     });
 
-    expect(found).toBeUndefined();
+    expect(found).toEqual({ kind: "unknown" });
   });
 
   /** One unreadable project must not hide the answer in the next one. */
@@ -67,8 +75,12 @@ describe("locating the workspace that owns a session", () => {
       projects: () => Promise.resolve([{ id: "broken" }, { id: "proj-other" }]),
       workspaces: (projectId: string) => projectId === "broken" ? Promise.reject(new Error("nope")) : Promise.resolve([other]),
     });
+    const nowhere = await locateSessionWorkspace("/p/nowhere", {
+      projects: () => Promise.resolve([{ id: "broken" }, { id: "proj-other" }]),
+      workspaces: (projectId: string) => projectId === "broken" ? Promise.reject(new Error("nope")) : Promise.resolve([other]),
+    });
 
-    expect(found?.workspace.id).toBe("w-other");
+    expect({ found: found.kind, nowhere }).toEqual({ found: "found", nowhere: { kind: "unknown" } });
   });
 
   it("gives up quietly when the project list itself fails", async () => {
@@ -77,13 +89,13 @@ describe("locating the workspace that owns a session", () => {
       workspaces: () => Promise.resolve([]),
     });
 
-    expect(found).toBeUndefined();
+    expect(found).toEqual({ kind: "unknown" });
   });
 
   it("does not look up an empty directory", async () => {
     const projects = vi.fn(() => Promise.resolve([{ id: "proj-piweb" }]));
 
-    expect(await locateSessionWorkspace("", { projects, workspaces: () => Promise.resolve([]) })).toBeUndefined();
+    expect(await locateSessionWorkspace("", { projects, workspaces: () => Promise.resolve([]) })).toEqual({ kind: "unknown" });
     expect(projects).not.toHaveBeenCalled();
   });
 });

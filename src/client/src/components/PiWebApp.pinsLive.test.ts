@@ -143,4 +143,75 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
 
     expect({ afterReopen, afterResume: pins.mock.calls.map((args) => args[0]) }).toEqual({ afterReopen: ["remote-1", "remote-1"], afterResume: ["remote-1"] });
   });
+
+  it("lists a pinned session whose project is closed in Pinned and the quick switcher, and drops it once unpinned (B49)", async () => {
+    vi.spyOn(sessionPinsApi, "pins").mockResolvedValue(["elsewhere"]);
+    const app = createApp();
+    const elsewhere = { id: "elsewhere", cwd: "/closed", path: "/closed/elsewhere.jsonl", created: "2026-09-01", modified: "2026-09-01", messageCount: 1, firstMessage: "kept" };
+    const listed = { id: "listed", cwd: "/alpha", path: "/alpha/listed.jsonl", created: "2026-09-02", modified: "2026-09-02", messageCount: 1, firstMessage: "open" };
+    const boards: unknown = Reflect.get(app, "sessionBoards");
+    if (typeof boards !== "object" || boards === null) throw new Error("no session boards");
+    Reflect.set(boards, "board", () => ({ sessions: [listed], workspaces: [], unknownSources: [], pinnedElsewhere: [elsewhere] }));
+    Reflect.set(boards, "answer", () => "complete");
+    call(app, "pinnedSessionIdsFor", "local");
+    await flush();
+    call(app, "mirrorSessionBoard");
+    const idOf = (value: unknown): unknown => (typeof value === "object" && value !== null ? Reflect.get(value, "id") : undefined);
+    const idsOf = (value: unknown): unknown => (Array.isArray(value) ? value.map(idOf) : value);
+    const pinnedRows = (): unknown => {
+      const input: unknown = call(app, "navigateInput");
+      const pinned: unknown = typeof input === "object" && input !== null ? Reflect.get(input, "pinned") : undefined;
+      return Array.isArray(pinned) ? pinned.map((entry: unknown) => idOf(typeof entry === "object" && entry !== null ? Reflect.get(entry, "session") : undefined)) : pinned;
+    };
+    const pinnedFound = { pinned: pinnedRows(), switcher: idsOf(call(app, "quickSwitcherSessionsWithPins")), menuFinds: idOf(call(app, "listedSession", "elsewhere")) };
+
+    call(app, "applyMachinePins", "local", []);
+    const unpinned = { pinned: pinnedRows(), switcher: idsOf(call(app, "quickSwitcherSessionsWithPins")) };
+
+    expect({ pinnedFound, unpinned }).toEqual({
+      pinnedFound: { pinned: ["elsewhere"], switcher: ["listed", "elsewhere"], menuFinds: "elsewhere" },
+      unpinned: { pinned: [], switcher: ["listed"] },
+    });
+  });
+
+  it("keeps another machine's pinned rows on that machine's switcher tab, by that machine's pins (B49)", async () => {
+    vi.spyOn(sessionPinsApi, "pins").mockImplementation((machineId) => Promise.resolve(machineId === "remote-1" ? ["far"] : []));
+    const app = createApp();
+    const far = { id: "far", cwd: "/closed", path: "/closed/far.jsonl", created: "2026-09-01", modified: "2026-09-01", messageCount: 1, firstMessage: "far" };
+    const unpinned = { ...far, id: "unpinned-far" };
+    Reflect.set(app, "browsedMachineId", () => "remote-1");
+    Reflect.set(app, "quickSwitcherPinnedElsewhere", [far, unpinned]);
+    Reflect.set(app, "quickSwitcherSessions", []);
+    call(app, "pinnedSessionIdsFor", "remote-1");
+    await flush();
+    const rows: unknown = call(app, "quickSwitcherSessionsWithPins");
+
+    const ids: unknown = Array.isArray(rows) ? rows.map((row: unknown): unknown => (typeof row === "object" && row !== null ? Reflect.get(row, "id") : row)) : rows;
+    expect(ids).toEqual(["far"]);
+  });
+
+  it("renames a listed row on the machine it lives on, in the board's listed and pinned rows alike (B49)", async () => {
+    const app = createApp();
+    const renamedOn: unknown[] = [];
+    const sessions: unknown = Reflect.get(app, "sessions");
+    if (typeof sessions !== "object" || sessions === null) throw new Error("no session controller");
+    Reflect.set(sessions, "renameSession", (_session: unknown, _name: string, machineId: string) => { renamedOn.push(machineId); return Promise.resolve(); });
+    const boards: unknown = Reflect.get(app, "sessionBoards");
+    if (typeof boards !== "object" || boards === null) throw new Error("no session boards");
+    const far = { id: "far", cwd: "/closed", path: "/closed/far.jsonl", created: "2026-09-01", modified: "2026-09-01", messageCount: 1, firstMessage: "far" };
+    const board = { sessions: [{ ...far, id: "near", cwd: "/alpha" }], workspaces: [], unknownSources: [], pinnedElsewhere: [far] };
+    const updatedOn: unknown[] = [];
+    let updated: unknown;
+    Reflect.set(boards, "update", (machineId: string, change: (value: typeof board) => unknown) => { updatedOn.push(machineId); updated = change(board); });
+
+    await call(app, "renameListedSession", far, "remote-1", "Kept far");
+    const names = (list: unknown): unknown => (Array.isArray(list) ? list.map((row: unknown): unknown => (typeof row === "object" && row !== null ? Reflect.get(row, "name") : row)) : list);
+
+    expect({
+      renamedOn,
+      updatedOn,
+      listed: names(typeof updated === "object" && updated !== null ? Reflect.get(updated, "sessions") : undefined),
+      elsewhere: names(typeof updated === "object" && updated !== null ? Reflect.get(updated, "pinnedElsewhere") : undefined),
+    }).toEqual({ renamedOn: ["remote-1"], updatedOn: ["remote-1"], listed: [undefined], elsewhere: ["Kept far"] });
+  });
 });

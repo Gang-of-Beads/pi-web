@@ -102,7 +102,7 @@ describe("choosing a session from another workspace", () => {
   it("keeps an explicit broad selection when it contains the session", async () => {
     const nested: Workspace = { ...workspace, id: "workspace-3", projectId: "project-3", path: "/repo/nested", label: "nested" };
     const deeper: Project = { id: "project-3", name: "nested", path: "/repo/nested", createdAt: "2026-05-15T00:00:00.000Z" };
-    const locate = vi.spyOn(ancestorLookup, "locateSessionWorkspace").mockResolvedValue({ workspace: nested, project: deeper, workspaces: [nested] });
+    const locate = vi.spyOn(ancestorLookup, "locateSessionWorkspace").mockResolvedValue({ kind: "found", workspace: nested, project: deeper, workspaces: [nested] });
     try {
       const { run, read } = controllerOver({ workspaces: [workspace], projects: [here] });
 
@@ -125,7 +125,7 @@ describe("choosing a session from another workspace", () => {
    */
   it("carries the whole project and workspace scope when the locator moves the selection", async () => {
     const sibling = { ...elsewhere, id: "workspace-3", path: "/elsewhere/sibling", label: "sibling" };
-    const locate = vi.spyOn(ancestorLookup, "locateSessionWorkspace").mockResolvedValue({ workspace: elsewhere, project: there, workspaces: [elsewhere, sibling] });
+    const locate = vi.spyOn(ancestorLookup, "locateSessionWorkspace").mockResolvedValue({ kind: "found", workspace: elsewhere, project: there, workspaces: [elsewhere, sibling] });
     try {
       const { run, read } = controllerOver({
         workspaces: [workspace],
@@ -201,5 +201,57 @@ describe("placing a session through the catalogue (B48)", () => {
     expect(wantedWhenAnswered).toBe(false);
     expect(read().selectedWorkspace?.id).toBe("workspace-1");
     expect(catalogue.workspaces).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The catalogue answers only while the session is still the selected one. The placement used to
+   * be asked before the selection named the session, so it found none selected and gave up at
+   * once: a session opened from a project that was not loaded never took its project with it.
+   */
+  it("places a session from a project that was not loaded, through a catalogue that answers only while it is selected", async () => {
+    const catalogue = {
+      projects: (_machineId: string, wanted: () => boolean) => Promise.resolve(wanted() ? [here, there] : undefined),
+      workspaces: (_machineId: string, projectId: string, wanted: () => boolean) => Promise.resolve(wanted() ? (projectId === there.id ? [elsewhere] : [workspace]) : undefined),
+    };
+    const { run, read } = controllerOver({ workspaces: [workspace], projects: [here], sessions: [oldSession], sessionsLoad: "loaded" }, { catalogue });
+
+    await run.selectSession(sessionOverThere, { updateUrl: false });
+    for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+
+    expect({ project: read().selectedProject?.id, workspace: read().selectedWorkspace?.id }).toEqual({ project: "project-2", workspace: "workspace-2" });
+  });
+
+  /**
+   * B49: a pin outlives its project, and opening it does not reopen the project. The session
+   * then sits outside every open project, and the page stopped naming the project the reader was
+   * in only if it knew so: it kept that project, its workspace and its sessions under the session,
+   * and wrote them into the URL. While a project has not answered, nothing moves.
+   */
+  it("leaves the project it was in for a session outside every open project, and keeps it while one has not answered", async () => {
+    const closedSession = { ...oldSession, id: "closed-project-session", cwd: "/closed" };
+    const answered = {
+      projects: (_machineId: string, wanted: () => boolean) => Promise.resolve(wanted() ? [here, there] : undefined),
+      workspaces: (_machineId: string, projectId: string, wanted: () => boolean) => Promise.resolve(wanted() ? (projectId === there.id ? [elsewhere] : [workspace]) : undefined),
+    };
+    const silent = {
+      projects: (_machineId: string, wanted: () => boolean) => Promise.resolve(wanted() ? [here, there] : undefined),
+      workspaces: (_machineId: string, projectId: string, wanted: () => boolean) => (projectId === there.id || !wanted() ? Promise.resolve(undefined) : Promise.resolve([workspace])),
+    };
+    const urls: number[] = [];
+    let outsideState: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedProject: here, workspaces: [workspace], projects: [here], sessions: [oldSession], sessionsLoad: "loaded" };
+    const outside = new SessionController(() => outsideState, (next) => { outsideState = { ...outsideState, ...next }; }, () => { urls.push(1); }, undefined, { api: api(), socket: new EmitSocket(), catalogue: answered });
+    const unknown = controllerOver({ workspaces: [workspace], projects: [here], sessions: [oldSession], sessionsLoad: "loaded" }, { catalogue: silent });
+
+    await outside.selectSession(closedSession, { updateUrl: false });
+    await unknown.run.selectSession(closedSession, { updateUrl: false });
+    for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+
+    expect({
+      outside: { session: outsideState.selectedSession?.id, project: outsideState.selectedProject?.id, workspace: outsideState.selectedWorkspace?.id, sessions: outsideState.sessions.length, urlWritten: urls.length > 0 },
+      unknown: { session: unknown.read().selectedSession?.id, project: unknown.read().selectedProject?.id, workspace: unknown.read().selectedWorkspace?.id },
+    }).toEqual({
+      outside: { session: "closed-project-session", project: undefined, workspace: undefined, sessions: 0, urlWritten: true },
+      unknown: { session: "closed-project-session", project: "project-1", workspace: "workspace-1" },
+    });
   });
 });

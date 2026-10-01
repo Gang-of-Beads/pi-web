@@ -143,6 +143,52 @@ describe("the board in one read", () => {
     });
   });
 
+  it("keeps the pinned sessions no open project lists, leaves out a gone one, and stays partial for an unanswered one (B49)", async () => {
+    const answer: SessionBoardAnswer = {
+      projects: [{ projectId: "alpha", workspaces: [alphaMain] }],
+      listings: [{ cwd: "/alpha", sessions: [session("a1", "/alpha", "2026-09-01")] }],
+      pinned: [
+        { sessionId: "elsewhere", session: session("elsewhere", "/closed", "2026-09-02") },
+        { sessionId: "gone", gone: true },
+        { sessionId: "slow", unknown: true },
+      ],
+    };
+    const board = await readSessionBoard({ board: () => Promise.resolve(answer), projects: unasked, workspaces: unasked, sessions: unasked });
+
+    expect({ ids: board.sessions.map((entry) => entry.id), elsewhere: board.pinnedElsewhere?.map((entry) => entry.id), unknown: board.unknownSources, answer: boardAnswer(board) }).toEqual({ ids: ["a1"], elsewhere: ["elsewhere"], unknown: [{ kind: "pin", sessionId: "slow" }], answer: "partial" });
+  });
+
+  it("keeps a pin whose place did not answer as an unknown source, and asks only it again (B49)", async () => {
+    const answer: SessionBoardAnswer = {
+      projects: [{ projectId: "alpha", workspaces: [alphaMain] }],
+      listings: [{ cwd: "/alpha", sessions: [session("a1", "/alpha", "2026-09-01")] }],
+      pinned: [{ sessionId: "slow", unknown: true }, { sessionId: "deleted", unknown: true }, { sessionId: "still-slow", unknown: true }],
+    };
+    const board = await readSessionBoard({ board: () => Promise.resolve(answer), projects: unasked, workspaces: unasked, sessions: unasked });
+    const located: string[] = [];
+    const completed = await completeSessionBoard(board, {
+      projects: unasked,
+      workspaces: unasked,
+      sessions: unasked,
+      locatePin: (sessionId) => {
+        located.push(sessionId);
+        if (sessionId === "slow") return Promise.resolve(session("slow", "/closed", "2026-09-02"));
+        if (sessionId === "deleted") return Promise.resolve("gone");
+        return lost();
+      },
+    });
+
+    expect({
+      first: { unknown: board.unknownSources, answer: boardAnswer(board) },
+      located,
+      completed: { elsewhere: completed.pinnedElsewhere?.map((entry) => entry.id), unknown: completed.unknownSources, ids: completed.sessions.map((entry) => entry.id) },
+    }).toEqual({
+      first: { unknown: [{ kind: "pin", sessionId: "slow" }, { kind: "pin", sessionId: "deleted" }, { kind: "pin", sessionId: "still-slow" }], answer: "partial" },
+      located: ["slow", "deleted", "still-slow"],
+      completed: { elsewhere: ["slow"], unknown: [{ kind: "pin", sessionId: "still-slow" }], ids: ["a1"] },
+    });
+  });
+
   it("reads source by source when the machine cannot answer the board", async () => {
     const board = await readSessionBoard({
       board: () => Promise.resolve("unsupported"),

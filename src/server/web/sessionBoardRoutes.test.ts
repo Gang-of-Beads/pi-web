@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Project, Workspace, WorkspaceProviderResolution } from "../../shared/apiTypes.js";
-import { daemonSessionListing, registerSessionBoardRoutes, type SessionBoardSources } from "./sessionBoardRoutes.js";
+import { daemonSessionListing, daemonSessionLocate, registerSessionBoardRoutes, type SessionBoardSources } from "./sessionBoardRoutes.js";
 
 /**
  * The board is one read (P4 slice a; state-diagram D5, object model §4.4). The page used to make
@@ -112,6 +112,71 @@ describe("the session board route", () => {
         projects: [{ projectId: "alpha", resolution: resolution("alpha", [workspace("alpha", "/alpha"), workspace("alpha", "/alpha-slow")]) }, { projectId: "beta", unknown: true }],
         listings: [{ cwd: "/alpha", sessions: [{ id: "a1" }] }, { cwd: "/alpha-slow", unknown: true }],
       },
+    });
+  });
+
+  it("locates each pinned session no listing holds, and says which are gone or unanswered (B49)", async () => {
+    const located: string[] = [];
+    const never = () => new Promise<never>(() => undefined);
+    const app = boardApp({
+      projects: () => Promise.resolve([project("alpha")]),
+      workspaces: () => Promise.resolve(resolution("alpha", [workspace("alpha", "/alpha")])),
+      sessions: () => Promise.resolve([{ id: "listed" }]),
+      pinned: {
+        ids: () => Promise.resolve(["listed", "closed-project", "deleted", "slow"]),
+        locate: (sessionId) => {
+          located.push(sessionId);
+          if (sessionId === "closed-project") return Promise.resolve({ session: { id: "closed-project", cwd: "/closed" } });
+          if (sessionId === "deleted") return Promise.resolve({ gone: true });
+          return never();
+        },
+      },
+    }, 40);
+
+    const answer = await app.inject({ method: "GET", url: "/api/session-board" });
+    const body: unknown = answer.json();
+
+    const pinned: unknown = typeof body === "object" && body !== null ? Reflect.get(body, "pinned") : undefined;
+    expect({ located, pinned }).toEqual({
+      located: ["closed-project", "deleted", "slow"],
+      pinned: [
+        { sessionId: "closed-project", session: { id: "closed-project", cwd: "/closed" } },
+        { sessionId: "deleted", gone: true },
+        { sessionId: "slow", unknown: true },
+      ],
+    });
+  });
+
+  it("answers no pinned entries when the pins cannot be read, rather than claiming there are none", async () => {
+    const app = boardApp({
+      projects: () => Promise.resolve([]),
+      workspaces: () => Promise.reject(new Error("not asked")),
+      sessions: () => Promise.reject(new Error("not asked")),
+      pinned: { ids: () => Promise.reject(new Error("pin store unreadable")), locate: () => Promise.reject(new Error("not asked")) },
+    });
+
+    const answer = await app.inject({ method: "GET", url: "/api/session-board" });
+    const body: unknown = answer.json();
+
+    expect({ status: answer.statusCode, body }).toEqual({ status: 200, body: { projects: [], listings: [] } });
+  });
+
+  it("locates a pinned session through the daemon, telling a deleted one from one that did not answer", async () => {
+    const asked: string[] = [];
+    const locate = daemonSessionLocate({
+      request: (method, path) => {
+        asked.push(`${method} ${path}`);
+        if (path.startsWith("/sessions/found")) return Promise.resolve({ statusCode: 200, headers: {}, body: JSON.stringify({ id: "found" }) });
+        if (path.startsWith("/sessions/deleted")) return Promise.resolve({ statusCode: 404, headers: {}, body: JSON.stringify({ error: "Session not found", code: "session-not-found" }) });
+        return Promise.resolve({ statusCode: 404, headers: {}, body: JSON.stringify({ error: "Route not found" }) });
+      },
+    }, "/home/reader", 20);
+
+    const results = await Promise.allSettled([locate("found"), locate("deleted"), locate("old-daemon")]);
+
+    expect({ asked, results: results.map((result) => (result.status === "fulfilled" ? result.value : "unknown")) }).toEqual({
+      asked: ["GET /sessions/found/locate?cwd=%2Fhome%2Freader", "GET /sessions/deleted/locate?cwd=%2Fhome%2Freader", "GET /sessions/old-daemon/locate?cwd=%2Fhome%2Freader"],
+      results: [{ session: { id: "found" } }, { gone: true }, "unknown"],
     });
   });
 

@@ -83,4 +83,26 @@ describe("a link that names a session (P2 slice b, B31)", () => {
 
     expect({ selected: state().selectedSession?.id, asked: locateSession.mock.calls.length }).toEqual({ selected: oldSession.id, asked: 0 });
   });
+
+  /**
+   * B49: a session outside every open project is named by a route with no project. A reload of
+   * that route opened nothing; it now asks the daemon where the session is, machine-wide, opens it,
+   * and says so when it is gone - in no workspace's name, since it was asked in none.
+   */
+  it("opens a session named with no workspace once the daemon locates it, and says so when it is gone", async () => {
+    const located: SessionInfo = { ...oldSession, id: "outside-session", cwd: "/closed" };
+    const asked: { id: string; cwd: string }[] = [];
+    const found = harness({ locateSession: (ref) => { asked.push({ id: ref.id, cwd: ref.cwd }); return Promise.resolve({ kind: "found", session: located }); } });
+    const gone = harness({ locateSession: () => Promise.reject(new HttpError("Session not found", 404, "local", undefined, "session-not-found")) });
+
+    await found.sessions.openSessionAlone("outside-session", { updateUrl: false });
+    await gone.sessions.openSessionAlone("deleted-session", { updateUrl: false });
+    await settle();
+
+    expect({ asked, opened: found.state().selectedSession?.id, gone: gone.state().sessionTarget }).toEqual({
+      asked: [{ id: "outside-session", cwd: "/" }],
+      opened: "outside-session",
+      gone: { machineId: "local", workspaceId: undefined, cwd: "/", sessionId: "deleted-session", target: { kind: "gone", sessionId: "deleted-session" } },
+    });
+  });
 });

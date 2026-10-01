@@ -1,4 +1,6 @@
-import { projectsApi, sessionsApi, workspacesApi, type Project } from "../api";
+import { projectsApi, sessionsApi, workspacesApi, type Project, type SessionInfo } from "../api";
+import { isSessionNotFoundError } from "../sessionNotFound";
+import { MACHINE_WIDE_LOCATE_START } from "../sessionTarget";
 import { QUIET_WINDOW_MS } from "../sync/readPhase";
 import { ScopedResource, type ResourceClock } from "../sync/scopedResource";
 import { boardAnswer, completeSessionBoard, oneReadBoard, readSessionBoard, type BoardAnswer, type SessionBoard, type SessionBoardSources } from "../sync/sessionBoard";
@@ -138,5 +140,18 @@ function defaultSources(knownProjects: SessionBoardControllerDependencies["known
     },
     workspaces: (projectId) => workspacesApi.workspaces(projectId, machineId),
     sessions: (workspacePath) => sessionsApi.sessions(workspacePath, machineId),
+    locatePin: (sessionId) => locatePinned(sessionId, machineId),
   });
+}
+
+/** Where a pinned session is, from the daemon's machine-wide locate (B49); a daemon without the route has no answer. */
+async function locatePinned(sessionId: string, machineId: string): Promise<SessionInfo | "gone"> {
+  try {
+    const location = await sessionsApi.locateSession({ id: sessionId, cwd: MACHINE_WIDE_LOCATE_START }, machineId);
+    if (location.kind === "found") return location.session;
+    throw new Error("The machine cannot locate a session");
+  } catch (error) {
+    if (isSessionNotFoundError(error)) return "gone";
+    throw error;
+  }
 }

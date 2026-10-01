@@ -7,7 +7,7 @@ import { SessionGapRepair, type StreamFrontier } from "../sessionGapRepair";
 import { describeError, noticeForReader, RetiredBy } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
-import { targetInListing, type SessionTarget } from "../sessionTarget";
+import { MACHINE_WIDE_LOCATE_START, targetInListing, type SessionTarget } from "../sessionTarget";
 import { SessionTargetResolver, type SessionTargetOpenOptions } from "./sessionTargetResolver";
 import type { SessionTranscriptTail } from "../../../shared/apiTypes";
 import { isSessionNotFoundError, sessionFailureRoute } from "../sessionNotFound";
@@ -402,6 +402,18 @@ export class SessionController {
     await this.targets.follow(scope, targetInListing(sessions, sessionId), options);
   }
 
+  /**
+   * Open the session a route names with no project (B49): one outside every
+   * open project, or a link written that way. Before, such a route opened
+   * nothing on a reload. The daemon locates it machine-wide, starting from the
+   * root; the open then places it among the open projects, or outside them.
+   * Deleted, refused or unanswered, it says so as any named session does (D8).
+   */
+  async openSessionAlone(sessionId: string, options: SessionTargetOpenOptions = {}): Promise<void> {
+    const scope = { machineId: selectedMachineId(this.getState()), workspaceId: undefined, cwd: MACHINE_WIDE_LOCATE_START, sessionId };
+    await this.targets.follow(scope, { kind: "asking", sessionId }, options);
+  }
+
   async selectSession(session: SessionInfo, options?: { updateUrl?: boolean | undefined; preserveTreeDialog?: boolean | undefined; propagateRefreshError?: boolean | undefined }) {
     if (this.disposed) return;
     this.targets.drop();
@@ -435,14 +447,6 @@ export class SessionController {
     const ancestors = ancestorsForSession(session, { workspaces: state.workspaces, projects: state.projects });
     const workspaceMoved = ancestors !== undefined
       && (ancestors.workspace.id !== state.selectedWorkspace?.id || ancestors.workspace.projectId !== state.selectedProject?.id);
-    // A session whose workspace is not in the loaded catalogue belongs to a
-    // project that was never fetched. Leaving the previous selection in place
-    // kept every workspace-scoped panel answering for the project being left,
-    // so the missing one is fetched instead; until it lands the location is
-    // unknown, which is what the panels are told.
-    if (ancestors === undefined && sessionLocationVerdict(session.cwd, state.selectedWorkspace?.path) === "unknown" && session.cwd !== "") {
-      void this.locateAndApplySessionWorkspace(session, machineId, seq);
-    }
     this.setState({
       ...(workspaceMoved ? resetWorkspaceScopedState() : {}),
       selectedSession: session,
@@ -474,6 +478,16 @@ export class SessionController {
       availableThinkingLevels: [],
       newerPendingCount: 0,
     });
+    // A session whose workspace is not in the loaded catalogue belongs to a
+    // project that was never fetched, or to none that is open (B49). Leaving
+    // the previous selection in place kept every workspace-scoped panel
+    // answering for the project being left, so its place is asked for, once
+    // the selection names it: the placement only acts while this session is
+    // the one selected, and asked earlier it found no session selected and
+    // gave up at once.
+    if (ancestors === undefined && sessionLocationVerdict(session.cwd, state.selectedWorkspace?.path) === "unknown" && session.cwd !== "") {
+      void this.locateAndApplySessionWorkspace(session, machineId, seq);
+    }
     // The seeded list is the cache's best guess; the workspace's own listing
     // replaces it. Race-guarded inside against a newer selection.
     if (workspaceMoved) void this.refreshCurrentWorkspaceSessions(machineId);
@@ -2148,7 +2162,11 @@ export class SessionController {
 
   /**
    * Fetch the project that owns a session directory the loaded catalogue could
-   * not place, then adopt it as the selection.
+   * not place, then adopt it as the selection. A session outside every open
+   * project - a pin whose project was closed (B49) - leaves the project and
+   * workspace selection empty: the page must not go on naming, and answering
+   * for, the project the reader was in. While a project has not answered,
+   * nothing moves.
    *
    * Guarded on the selection counter and on the session still being selected:
    * a lookup that lands after the user has moved on must not drag the view back.
@@ -2164,7 +2182,12 @@ export class SessionController {
       workspaces: (projectId: string) => this.catalogue.workspaces(machineId, projectId, wanted),
     });
     placed = true;
-    if (found === undefined || !stillSelected()) return;
+    if (!stillSelected()) return;
+    if (found.kind === "outside") {
+      this.leaveOpenProjects();
+      return;
+    }
+    if (found.kind !== "found") return;
     const state = this.getState();
     const workspaceMoved = found.workspace.id !== state.selectedWorkspace?.id || found.project.id !== state.selectedProject?.id;
     this.setState({
@@ -2183,6 +2206,13 @@ export class SessionController {
         : {}),
     });
     if (workspaceMoved) void this.refreshCurrentWorkspaceSessions(machineId);
+  }
+
+  private leaveOpenProjects(): void {
+    const state = this.getState();
+    if (state.selectedProject === undefined && state.selectedWorkspace === undefined) return;
+    this.setState({ ...resetWorkspaceScopedState(), selectedProject: undefined, selectedWorkspace: undefined, workspaces: [], isLoadingWorkspaces: false });
+    this.updateUrl({ replace: true });
   }
 
   private applyReleasedCreatedSessions(sessions: readonly SessionInfo[], machineId: string): void {

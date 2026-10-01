@@ -22,10 +22,20 @@ export interface SessionBoard {
   readonly workspaces: readonly Workspace[];
   /** Sources that did not answer. */
   readonly unknownSources: readonly UnknownSource[];
+  /** Pinned sessions no open project lists, such as one whose project was closed (B49). */
+  readonly pinnedElsewhere?: readonly SessionInfo[];
 }
 
-/** A source of the board that did not answer: a project's workspaces, or a workspace's sessions. */
-export type UnknownSource = { readonly kind: "project"; readonly projectId: string } | { readonly kind: "workspace"; readonly path: string };
+/**
+ * A source of the board that did not answer: a project's workspaces, a
+ * workspace's sessions, or where a pinned session is when no open project lists
+ * it (B49). An unanswered pin keeps the board partial, so it is asked again
+ * rather than silently left out of Pinned.
+ */
+export type UnknownSource =
+  | { readonly kind: "project"; readonly projectId: string }
+  | { readonly kind: "workspace"; readonly path: string }
+  | { readonly kind: "pin"; readonly sessionId: string };
 
 /** How much of a board has answered (state-diagram B48, the session board). */
 export type BoardAnswer = "none" | "partial" | "complete";
@@ -36,6 +46,8 @@ export interface SessionBoardSources {
   projects(): Promise<readonly Project[]>;
   workspaces(projectId: string): Promise<readonly Workspace[]>;
   sessions(workspacePath: string): Promise<readonly SessionInfo[]>;
+  /** Where a pinned session is, when the board could not say (B49): the session, gone, or a throw when there was no answer. */
+  locatePin?(sessionId: string): Promise<SessionInfo | "gone">;
 }
 
 type Listed<T> = { readonly listed: readonly T[] } | { readonly unknown: UnknownSource };
@@ -58,10 +70,30 @@ export async function readSessionBoard(sources: SessionBoardSources): Promise<Se
  * already has. On 8504 each sessions listing is a whole-store scan on the
  * daemon, so filling one gap must not read every workspace again.
  */
-export function completeSessionBoard(board: SessionBoard, sources: SessionBoardSources): Promise<SessionBoard> {
+export async function completeSessionBoard(board: SessionBoard, sources: SessionBoardSources): Promise<SessionBoard> {
   const projectIds = board.unknownSources.flatMap((source) => (source.kind === "project" ? [source.projectId] : []));
   const workspacePaths = board.unknownSources.flatMap((source) => (source.kind === "workspace" ? [source.path] : []));
-  return readSources(sources, projectIds, workspacePaths, { ...board, unknownSources: [] });
+  const pinIds = board.unknownSources.flatMap((source) => (source.kind === "pin" ? [source.sessionId] : []));
+  const refilled = await readSources(sources, projectIds, workspacePaths, { ...board, unknownSources: [] });
+  return pinIds.length === 0 ? refilled : locatePins(refilled, pinIds, sources);
+}
+
+async function locatePins(board: SessionBoard, pinIds: readonly string[], sources: SessionBoardSources): Promise<SessionBoard> {
+  const answers = await mapWithLanes(pinIds, BOARD_LANES, async (sessionId): Promise<{ sessionId: string; found?: SessionInfo; gone?: true }> => {
+    if (sources.locatePin === undefined) return { sessionId };
+    try {
+      const located = await sources.locatePin(sessionId);
+      return located === "gone" ? { sessionId, gone: true } : { sessionId, found: located };
+    } catch (error) {
+      if (classifyReadError(error).kind === "fact") throw error;
+      return { sessionId };
+    }
+  });
+  const listed = new Set(board.sessions.map((session) => session.id));
+  const found = answers.flatMap((answer) => (answer.found !== undefined && !listed.has(answer.found.id) ? [answer.found] : []));
+  const unknownPins = answers.flatMap((answer): UnknownSource[] => (answer.found === undefined && answer.gone === undefined ? [{ kind: "pin", sessionId: answer.sessionId }] : []));
+  const pinnedElsewhere = dedupeById([...(board.pinnedElsewhere ?? []), ...found]);
+  return { ...board, unknownSources: [...board.unknownSources, ...unknownPins], ...(pinnedElsewhere.length === 0 ? {} : { pinnedElsewhere }) };
 }
 
 async function readSources(sources: SessionBoardSources, projectIds: readonly string[], workspacePaths: readonly string[], known: SessionBoard): Promise<SessionBoard> {
@@ -75,7 +107,11 @@ async function readSources(sources: SessionBoardSources, projectIds: readonly st
 function boardFromAnswer(answer: SessionBoardAnswer): SessionBoard {
   const workspaceLists = answer.projects.map((entry): Listed<Workspace> => ("workspaces" in entry ? { listed: entry.workspaces } : { unknown: { kind: "project", projectId: entry.projectId } }));
   const sessionLists = answer.listings.map((entry): Listed<SessionInfo> => ("sessions" in entry ? { listed: entry.sessions } : { unknown: { kind: "workspace", path: entry.cwd } }));
-  return assembleBoard({ sessions: [], workspaces: [], unknownSources: [] }, workspaceLists, sessionLists);
+  const board = assembleBoard({ sessions: [], workspaces: [], unknownSources: [] }, workspaceLists, sessionLists);
+  const listed = new Set(board.sessions.map((session) => session.id));
+  const pinnedElsewhere = (answer.pinned ?? []).flatMap((entry) => ("session" in entry && !listed.has(entry.session.id) ? [entry.session] : []));
+  const unknownPins = (answer.pinned ?? []).flatMap((entry): UnknownSource[] => ("unknown" in entry ? [{ kind: "pin", sessionId: entry.sessionId }] : []));
+  return { ...board, unknownSources: [...board.unknownSources, ...unknownPins], ...(pinnedElsewhere.length === 0 ? {} : { pinnedElsewhere }) };
 }
 
 function assembleBoard(known: SessionBoard, workspaceLists: readonly Listed<Workspace>[], sessionLists: readonly Listed<SessionInfo>[]): SessionBoard {
@@ -83,7 +119,9 @@ function assembleBoard(known: SessionBoard, workspaceLists: readonly Listed<Work
   const sessions = dedupeById([...known.sessions, ...sessionLists.flatMap((entry) => ("listed" in entry ? entry.listed : []))])
     .sort((left, right) => Date.parse(right.modified) - Date.parse(left.modified));
   const unknownSources = [...known.unknownSources, ...[...workspaceLists, ...sessionLists].flatMap((entry) => ("unknown" in entry ? [entry.unknown] : []))];
-  return { sessions, workspaces: dedupeById([...known.workspaces, ...listedWorkspaces]), unknownSources };
+  const listed = new Set(sessions.map((session) => session.id));
+  const pinnedElsewhere = (known.pinnedElsewhere ?? []).filter((session) => !listed.has(session.id));
+  return { sessions, workspaces: dedupeById([...known.workspaces, ...listedWorkspaces]), unknownSources, ...(pinnedElsewhere.length === 0 ? {} : { pinnedElsewhere }) };
 }
 
 /** Whether a failed board read means the machine has no such route, or is a read that failed. */

@@ -24,10 +24,14 @@ export type SessionTarget =
   | { readonly kind: "not-listed"; readonly sessionId: string }
   | { readonly kind: "refused"; readonly sessionId: string; readonly fact: "signed-out" | "forbidden" };
 
-/** Where a named session was asked for: the machine, the workspace and its cwd, and the id. */
+/**
+ * Where a named session was asked for: the machine, the workspace and its cwd, and the id. A
+ * session named with no workspace (B49: outside every open project) has no workspace id, and its
+ * cwd is only where the daemon's machine-wide locate starts.
+ */
 export interface SessionTargetScope {
   readonly machineId: string;
-  readonly workspaceId: string;
+  readonly workspaceId: string | undefined;
   readonly cwd: string;
   readonly sessionId: string;
 }
@@ -38,6 +42,9 @@ export interface ScopedSessionTarget extends SessionTargetScope {
   /** When the locate first went unanswered, for the app row's grace; retries do not restart it. */
   readonly unansweredSince?: number | undefined;
 }
+
+/** Where the daemon's locate starts for a session named without a workspace; it then scans the whole store (B49). */
+export const MACHINE_WIDE_LOCATE_START = "/";
 
 /** The parts of the selection a target is scoped by. */
 export interface TargetSelection {

@@ -466,10 +466,13 @@ export class PiWebApp extends LitElement {
   @state() private contextSheetOpen = false;
   @state() private goToSheetOpen = false;
   /** The session whose name the bar title hold asked to change. */
-  @state() private renameFromBar: SessionInfo | undefined;
+  /** The session the rename dialog names, with the machine it lives on: a row of a browsed machine is renamed there. */
+  @state() private renameFromBar: { session: SessionInfo; machineId: string } | undefined;
   /** How much of the browsed machine's board has answered; the lists claim emptiness only for a complete one. */
   @state() private quickSwitcherBoardAnswer: BoardAnswer = "none";
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
+  /** Pinned sessions of the browsed machine that no open project lists (B49). */
+  @state() private quickSwitcherPinnedElsewhere: readonly SessionInfo[] = [];
   /**
    * Pins for the machine on screen. A pin is keyed by machine because session
    * ids are unique per machine; the cache is re-read whenever the selection
@@ -1490,6 +1493,7 @@ export class PiWebApp extends LitElement {
         selectedTerminalId: routeSurface.selectedTerminalId,
       });
       if (route.projectId === undefined || route.projectId === "") {
+        if (route.sessionId !== undefined && route.sessionId !== "" && placeSessionId(this.state) !== route.sessionId) await this.sessions.openSessionAlone(route.sessionId, { updateUrl: false });
         if (updateUrl) this.updateUrl();
         return;
       }
@@ -2694,7 +2698,7 @@ export class PiWebApp extends LitElement {
       // Pins answer for the machine, not for the project the reader happens to
       // stand in: a session pinned from the global list vanished from Pinned
       // as soon as the page listed a project's sessions.
-      pinned: dedupeById(browsingElsewhere ? [...this.quickSwitcherSessions] : [...this.quickSwitcherSessions, ...sessions])
+      pinned: dedupeById(browsingElsewhere ? [...this.quickSwitcherSessions, ...this.quickSwitcherPinnedElsewhere] : [...this.quickSwitcherSessions, ...sessions, ...this.quickSwitcherPinnedElsewhere])
         .filter((session) => pinnedIds.has(session.id))
         .map((session) => ({ session, machineId })),
       waitingSessionIds: this.waitingSessionIds(),
@@ -2749,7 +2753,8 @@ export class PiWebApp extends LitElement {
    */
   private listedSession(id: string): SessionInfo | undefined {
     return this.state.sessions.find((entry) => entry.id === id)
-      ?? this.quickSwitcherSessions.find((entry) => entry.id === id);
+      ?? this.quickSwitcherSessions.find((entry) => entry.id === id)
+      ?? this.quickSwitcherPinnedElsewhere.find((entry) => entry.id === id);
   }
 
   /**
@@ -2775,7 +2780,7 @@ export class PiWebApp extends LitElement {
     }
     if (action === "rename") {
       const session = this.listedSession(id);
-      if (session !== undefined) this.renameFromBar = session;
+      if (session !== undefined) this.renameFromBar = { session, machineId: this.browsedMachineId() };
       return;
     }
     if (action === "archive" || action === "restore" || action === "delete-archived") {
@@ -2849,13 +2854,25 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * Keep the switcher's own copy of a session in step with a rename.
+   * Keep the board's copy of a session in step with a rename: its listed rows,
+   * and the pinned rows no open project lists (B49).
    *
-   * It holds a separate list from the navigation panel, so without this the
-   * switcher goes on offering the name the user just renamed away from.
+   * The board is a separate list from the navigation panel's, so without this
+   * the switcher and Pinned go on offering the name the user just renamed away
+   * from.
    */
-  private applyRenameToQuickSwitcher(sessionId: string, name: string): void {
-    this.sessionBoards.update(this.browsedMachineId(), (board) => ({ ...board, sessions: renameSessionInList(board.sessions, sessionId, name) }));
+  private applyRenameToQuickSwitcher(sessionId: string, name: string, machineId = this.browsedMachineId()): void {
+    this.sessionBoards.update(machineId, (board) => ({
+      ...board,
+      sessions: renameSessionInList(board.sessions, sessionId, name),
+      ...(board.pinnedElsewhere === undefined ? {} : { pinnedElsewhere: renameSessionInList(board.pinnedElsewhere, sessionId, name) }),
+    }));
+  }
+
+  /** Rename a listed session on the machine it lives on, and keep that machine's board in step. */
+  private async renameListedSession(session: SessionInfo, machineId: string, name: string): Promise<void> {
+    this.applyRenameToQuickSwitcher(session.id, name, machineId);
+    await this.sessions.renameSession(session, name, machineId);
   }
 
   /**
@@ -2904,12 +2921,26 @@ export class PiWebApp extends LitElement {
     this.mirrorSessionBoard();
   }
 
+  /**
+   * The quick switcher's rows: the board's sessions, and the pinned ones no
+   * open project lists, while the browsed machine still pins them (B49). On the
+   * machine the app is on they land in Pinned; on another machine's tab, whose
+   * rows carry no badges, they land by recency. An unpinned one leaves at once
+   * rather than at the next read.
+   */
+  private quickSwitcherSessionsWithPins(): readonly SessionInfo[] {
+    if (this.quickSwitcherPinnedElsewhere.length === 0) return this.quickSwitcherSessions;
+    const pinnedIds = this.pinnedSessionIdsFor(this.browsedMachineId());
+    return dedupeById([...this.quickSwitcherSessions, ...this.quickSwitcherPinnedElsewhere.filter((session) => pinnedIds.has(session.id))]);
+  }
+
   /** The browsed machine's board as it stands: its rows only, and how much of it answered. */
   private mirrorSessionBoard(): void {
     const machineId = this.browsedMachineId();
     const board = this.sessionBoards.board(machineId);
     this.quickSwitcherMachineId = board === undefined ? undefined : machineId;
     this.quickSwitcherSessions = board?.sessions ?? [];
+    this.quickSwitcherPinnedElsewhere = board?.pinnedElsewhere ?? [];
     this.quickSwitcherWorkspaces = board?.workspaces ?? [];
     this.quickSwitcherBoardAnswer = this.sessionBoards.answer(machineId);
   }
@@ -4314,7 +4345,7 @@ export class PiWebApp extends LitElement {
         .session=${this.state.selectedSession}
         .activeSurface=${this.activeSurfaceLabel()}
         .onOpenGoTo=${() => { this.toggleGoToSheet(); }}
-        .onRenameRequest=${(session: SessionInfo) => { this.renameFromBar = session; }}
+        .onRenameRequest=${(session: SessionInfo) => { this.renameFromBar = { session, machineId: selectedMachineId(this.state) }; }}
         ?panelOpen=${this.shellPanelOpen()}
         .toggleTarget=${"menu"}
         .navigationTarget=${this.appShell.isMobileNavigationLayout ? "page" : "panel"}
@@ -4375,7 +4406,7 @@ export class PiWebApp extends LitElement {
 
   private sessionTargetNames(named: ScopedSessionTarget): SessionTargetNames {
     const machine = this.state.machines.find((candidate) => candidate.id === named.machineId)?.name ?? named.machineId;
-    return { machine, workspace: this.state.selectedWorkspace?.label ?? named.cwd };
+    return { machine, workspace: this.state.selectedWorkspace?.label ?? (named.workspaceId === undefined ? undefined : named.cwd) };
   }
 
   private shellPanelOpen(): boolean {
@@ -4476,7 +4507,7 @@ export class PiWebApp extends LitElement {
         ${this.navigateOpen ? html`<div class="navigate-overlay">${this.renderNavigatePage(true)}</div>` : null}
         ${this.quickSwitcherOpen ? html`<quick-switcher
           .boardAnswer=${this.quickSwitcherBoardAnswer}
-          .sessions=${this.quickSwitcherSessions}
+          .sessions=${this.quickSwitcherSessionsWithPins()}
           .workspaces=${this.quickSwitcherWorkspaces}
           .selectedSession=${this.quickSwitcherBrowsingElsewhere() ? undefined : state.selectedSession}
           .selectedWorkspace=${this.quickSwitcherBrowsingElsewhere() ? undefined : state.selectedWorkspace}
@@ -4523,8 +4554,8 @@ export class PiWebApp extends LitElement {
         .onClose=${() => { this.contextSheetOpen = false; }}
       ></context-switcher-sheet>` : null}
       ${this.renameFromBar === undefined ? null : html`<session-rename-dialog
-        .sessionName=${this.renameFromBar.name ?? ""}
-        .onSubmit=${(name: string) => { const target = this.renameFromBar; this.renameFromBar = undefined; if (target !== undefined) void this.sessions.renameSession(target, name); }}
+        .sessionName=${this.renameFromBar.session.name ?? ""}
+        .onSubmit=${(name: string) => { const target = this.renameFromBar; this.renameFromBar = undefined; if (target !== undefined) void this.renameListedSession(target.session, target.machineId, name); }}
         .onCancel=${() => { this.renameFromBar = undefined; }}
       ></session-rename-dialog>`}
       ${this.goToSheetOpen ? html`<app-go-to-sheet
