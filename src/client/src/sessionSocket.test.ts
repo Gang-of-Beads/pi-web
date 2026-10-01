@@ -194,20 +194,6 @@ describe("a lost global announcement (state-diagram D5, B28 slice H1)", () => {
     expect({ bare, skipped: socket.missed() }).toEqual({ bare: 0, skipped: 1 });
   });
 
-  it("tells its open handler whether the open is a reopen of the same connection (B28 slice H2)", () => {
-    const realtime = new RealtimeSocket();
-    const opens: boolean[] = [];
-    realtime.connect(() => undefined, (reopened) => { opens.push(reopened); });
-    FakeWebSocket.instances[0]?.onopen?.();
-    FakeWebSocket.instances[0]?.onclose?.();
-    realtime.reconnectNow();
-    FakeWebSocket.instances[1]?.onopen?.();
-    realtime.connect(() => undefined, (reopened) => { opens.push(reopened); }, "remote-1");
-    FakeWebSocket.instances[2]?.onopen?.();
-
-    expect(opens).toEqual([false, true, false]);
-  });
-
   it("takes a heartbeat before any frame as the baseline, so a later heartbeat ahead of it is a miss", async () => {
     const socket = opened();
     await socket.deliver({ type: "keepalive", head: { seq: 9 } });

@@ -27,7 +27,7 @@ import { failPendingPrompt, forgetPendingPrompt, forgetReservedPrompt, isNetwork
 import { claimAfterMiss, isClaimOf, provenRowStep, VERIFY_AFTER_MS, VERIFY_RETRY_MS, verificationStep } from "../sendVerification";
 import { classifyReadError, type ReadMiss } from "../sync/readPhase";
 import { statusReadVerdict, type StatusPosition } from "../statusOrder";
-import { activitiesAfterStatuses } from "../activityAfterStatus";
+import { activitiesAfterStatuses, activityOutlivesStatus } from "../activityAfterStatus";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
@@ -282,10 +282,13 @@ export class SessionController {
   private readonly pendingStatusPositions = new Map<string, StatusPosition>();
   /** The stream position of the last status applied for the selected session, frame or read. */
   private statusPosition: (StatusPosition & { sessionId: string }) | undefined;
-  private statusFramesApplied = 0;
-  /** When each session's last status frame was applied, on `statusFrameClock`: a catalog read answered after it keeps the frame. */
+  /**
+   * When each session's last status frame and activity frame was applied, on one clock: a read
+   * answered after a frame keeps the frame, which is the later fact.
+   */
   private readonly statusFrameMarks = new Map<string, number>();
-  private statusFrameClock = 0;
+  private readonly activityFrameMarks = new Map<string, number>();
+  private frameClock = 0;
   private pendingActivityBySession = new Map<string, SessionActivity>();
   private pendingFrame: number | undefined;
   private pendingFlushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1290,7 +1293,7 @@ export class SessionController {
    * session ids say nothing about the current one.
    */
   async hydrateSessionStatuses(machineId = selectedMachineId(this.getState()), options?: { replaceKnown?: boolean }): Promise<void> {
-    const framesAtRequest = this.statusFrameClock;
+    const framesAtRequest = this.frameClock;
     let snapshot;
     try {
       snapshot = await this.api.statusCatalog(machineId);
@@ -1339,7 +1342,10 @@ export class SessionController {
     const selectedDialogs = selectedId === undefined ? [] : next[selectedId]?.pendingDialogs ?? [];
     this.setState({
       sessionStatuses: next,
-      sessionActivities: activitiesAfterStatuses(this.getState().sessionActivities, next, { retractsMissing: replaceKnown || daemonReplaced }),
+      sessionActivities: activitiesAfterStatuses(this.getState().sessionActivities, next, {
+        retractsMissing: replaceKnown || daemonReplaced,
+        keeps: (sessionId) => this.pendingSessionStarts.has(sessionId) || (this.activityFrameMarks.get(sessionId) ?? 0) > framesAtRequest,
+      }),
       ...(selectedId === undefined || selectedDialogs.length === 0 ? {} : { pendingDialogs: openDialogsAfterDismissals(selectedDialogs, this.getState().dismissedDialogIds) }),
     });
   }
@@ -1840,7 +1846,7 @@ export class SessionController {
       const sync = await this.api.streamSync(target.session, watermark.seq, target.machineId, watermark.epoch).catch(() => undefined);
       if (!this.isCurrentRefreshTarget(target)) return true;
       if (sync?.kind !== "replay") return false;
-      const framesAtRequest = this.statusFramesApplied;
+      const framesAtRequest = this.frameClock;
       const status = await this.api.status(target.session, target.machineId);
       if (!this.isCurrentRefreshTarget(target)) return true;
       const statusIsFresh = !this.statusReadIsStale(status, framesAtRequest);
@@ -1885,7 +1891,7 @@ export class SessionController {
       if (!this.isCurrentRefreshTarget(target)) return;
       this.flushPendingUpdates();
       if (this.transcripts.watermark(key) !== undefined && await this.refreshByDeltaReplay(target, key)) return;
-      const framesAtRequest = this.statusFramesApplied;
+      const framesAtRequest = this.frameClock;
       const tailRead = this.readTranscriptTail(target);
       const statusRead = settled(this.api.status(target.session, target.machineId));
       let tail: SessionTranscriptTail;
@@ -2375,6 +2381,8 @@ export class SessionController {
   }
 
   private applyActivity(activity: SessionActivity) {
+    this.frameClock += 1;
+    this.activityFrameMarks.set(activity.sessionId, this.frameClock);
     this.setState({
       sessionActivities: { ...this.getState().sessionActivities, [activity.sessionId]: activity },
       activity: this.getState().selectedSession?.id === activity.sessionId ? activity : this.getState().activity,
@@ -2390,8 +2398,7 @@ export class SessionController {
     const runtimeIdle = !status.isStreaming && !status.isCompacting && status.pendingMessageCount === 0;
     const messages = isSelected ? applyQueueToDelivery(state.messages, status.queuedMessages, runtimeIdle) : state.messages;
     const commandLedger = runtimeIdle ? settleAcceptedCommands(state.commandLedger, machineSessionKey(selectedMachineId(state), status.sessionId), Date.now()) : state.commandLedger;
-    const activities = activitiesAfterStatuses(state.sessionActivities, { [status.sessionId]: status }, { retractsMissing: false });
-    const clearsStaleActivity = Object.keys(activities).length !== Object.keys(state.sessionActivities).length;
+    const clearsStaleActivity = activityOutlivesStatus(state.sessionActivities[status.sessionId], status);
     // Falling edge only: a turn that just ended is the one moment worth
     // re-reading the goal directory for, and every other status update would
     // make it a poll.
@@ -2410,7 +2417,7 @@ export class SessionController {
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
       ...sessionMessageCountPatch(state, status.sessionId, status.messageCount),
-      ...(clearsStaleActivity ? { sessionActivities: activities } : {}),
+      ...(clearsStaleActivity ? { sessionActivities: omitSessionActivity(state.sessionActivities, status.sessionId) } : {}),
       status: isSelected ? status : state.status,
       ...(isSelected ? { statusReadFailed: undefined } : {}),
       activity: isSelected && clearsStaleActivity ? undefined : state.activity,
@@ -2966,17 +2973,16 @@ export class SessionController {
     const known = this.statusPosition?.sessionId === status.sessionId ? this.statusPosition : undefined;
     if (selected && position !== undefined && known !== undefined && known.epoch === position.epoch && position.seq <= known.seq) return;
     this.applyStatus(status);
-    this.statusFrameClock += 1;
-    this.statusFrameMarks.set(status.sessionId, this.statusFrameClock);
+    this.frameClock += 1;
+    this.statusFrameMarks.set(status.sessionId, this.frameClock);
     if (!selected) return;
-    this.statusFramesApplied += 1;
     if (position !== undefined) this.statusPosition = { sessionId: status.sessionId, ...position };
   }
 
   /** Whether a status read of the selected session lost the race to a newer status fact. */
   private statusReadIsStale(status: SessionStatus, framesAtRequest: number): boolean {
     const known = this.statusPosition?.sessionId === status.sessionId ? this.statusPosition : undefined;
-    return statusReadVerdict({ position: status.streamPosition, frameAppliedWhileReading: this.statusFramesApplied !== framesAtRequest }, known) === "stale";
+    return statusReadVerdict({ position: status.streamPosition, frameAppliedWhileReading: (this.statusFrameMarks.get(status.sessionId) ?? 0) > framesAtRequest }, known) === "stale";
   }
 
   /** Apply a status read that is not stale, and remember the position it was computed at. */

@@ -73,6 +73,31 @@ describe("SessionController.hydrateSessionStatuses", () => {
     expect(state().sessionActivities).toEqual({});
   });
 
+  it("keeps an activity frame applied while a replacing read was on its way, though the read says idle", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { controller, state } = harness({ statuses: [{ ...status("other-session"), isStreaming: false }], gate });
+    const read = controller.hydrateSessionStatuses("local", { replaceKnown: true });
+    controller.applyGlobalEvent({ type: "activity.update", activity: { sessionId: "other-session", phase: "active", label: "running bash", at: "2026-10-01T00:00:00.000Z" } });
+    runPendingAnimationFrames();
+    release();
+    await read;
+
+    expect(state().sessionActivities["other-session"]?.label).toBe("running bash");
+  });
+
+  it("keeps the activity of a session this page is still starting, which no catalog can list yet", async () => {
+    const { controller, state, setStateRaw } = harness({ statuses: [] });
+    const starts: unknown = Reflect.get(controller, "pendingSessionStarts");
+    if (!(starts instanceof Map)) throw new Error("no pending starts");
+    starts.set("pending-session-1", {});
+    setStateRaw({ sessionActivities: { "pending-session-1": { sessionId: "pending-session-1", phase: "active", label: "Creating session", at: "2026-10-01T00:00:00.000Z" } } });
+
+    await controller.hydrateSessionStatuses("local", { replaceKnown: true });
+
+    expect(state().sessionActivities["pending-session-1"]?.label).toBe("Creating session");
+  });
+
   it("does not write state when the snapshot adds nothing", async () => {
     const { controller, setState } = harness({ statuses: [] });
 

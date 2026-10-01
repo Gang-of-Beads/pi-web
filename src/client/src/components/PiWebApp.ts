@@ -2157,15 +2157,7 @@ export class PiWebApp extends LitElement {
     this.refreshInterruptedRuns(machineId);
     this.realtime.connect(
       (event) => { this.handleRealtimeEvent(machineId, event); },
-      (reopened) => {
-        // The proxies accept the upgrade first and bridge upstream second, so
-        // onopen proves the web process is alive - not that this machine's
-        // daemon answered anything. Retiring the claim here retracted a
-        // daemon-down banner half a second after it was raised, for as long
-        // as the outage lasted; the reads below fire the reports that are
-        // allowed to retire claims.
-        void this.sessionUnread.refresh(machineId);
-        this.refreshMachinePins(machineId);
+      () => {
         // A self-update restart is the one "reconnecting…" that ends with the
         // socket coming back to the same page: the applying strip's exit is
         // the reconnect itself, and the restart is exactly when the running
@@ -2175,6 +2167,19 @@ export class PiWebApp extends LitElement {
           this.setState({ selfUpdateApplying: false });
           void this.checkClientFreshness();
         }
+        this.refreshInterruptedRuns(machineId, { adoptEmpty: false });
+        if (this.openMissedSome(machineId)) {
+          this.rereadAnnounced(machineId);
+          return;
+        }
+        // The proxies accept the upgrade first and bridge upstream second, so
+        // onopen proves the web process is alive - not that this machine's
+        // daemon answered anything. Retiring the claim here retracted a
+        // daemon-down banner half a second after it was raised, for as long
+        // as the outage lasted; the reads below fire the reports that are
+        // allowed to retire claims.
+        void this.sessionUnread.refresh(machineId);
+        this.refreshMachinePins(machineId);
         // Status updates that landed during the gap are gone for good, so this
         // has to overwrite what the browser holds rather than fill gaps: a
         // session that finished while disconnected kept its "working" state
@@ -2183,16 +2188,27 @@ export class PiWebApp extends LitElement {
         // The list itself can be stale too - sessions created, renamed or
         // archived during the gap were announced on the socket that was down.
         void this.sessions.refreshCurrentWorkspaceSessions(machineId);
-        this.refreshInterruptedRuns(machineId, { adoptEmpty: false });
         const workspace = this.state.selectedWorkspace;
         if (workspace !== undefined) void this.refreshActiveTerminals(workspace);
-        if (!reopened) return;
-        this.sessionBoards.missedAnnouncements(machineId);
-        void this.invalidateWorkspacePanels();
       },
       machineId,
       () => { this.rereadAnnounced(machineId); },
     );
+  }
+
+  /** The machines a socket of this page has opened for. */
+  private readonly machinesHeard = new Set<string>();
+
+  /**
+   * Whether this open follows a time the page heard the machine before (state-diagram D5, "A reopen
+   * is a miss too"): a reopen of the same socket, or a handoff between the machine's sockets on a
+   * machine switch, when frames went to no socket for one handshake. The page's first open of a
+   * machine is not: the boot reads its board once already (`loadQuickSwitcherData`).
+   */
+  private openMissedSome(machineId: string): boolean {
+    const heard = this.machinesHeard.has(machineId);
+    this.machinesHeard.add(machineId);
+    return heard;
   }
 
   /**
@@ -2215,8 +2231,11 @@ export class PiWebApp extends LitElement {
     const reads: Promise<unknown>[] = [this.sessionUnread.refresh(machineId), this.machineStatus.refresh(machineId)];
     if (machineId === selectedMachineId(this.state)) {
       const workspace = this.state.selectedWorkspace;
-      reads.push(this.sessions.hydrateSessionStatuses(machineId, { replaceKnown: true }), this.sessions.refreshCurrentWorkspaceSessions(machineId), this.invalidateWorkspacePanels());
-      if (workspace !== undefined) reads.push(this.refreshActiveTerminals(workspace));
+      reads.push(this.sessions.hydrateSessionStatuses(machineId, { replaceKnown: true }), this.sessions.refreshCurrentWorkspaceSessions(machineId));
+      if (workspace !== undefined) {
+        reads.push(this.refreshActiveTerminals(workspace));
+        this.applyWorkspaceChanged(machineId, workspace.path);
+      }
     }
     await Promise.allSettled(reads);
   }
@@ -2235,10 +2254,13 @@ export class PiWebApp extends LitElement {
       const socket = new RealtimeSocket();
       socket.connect(
         (event) => { this.handleMachineActivityEvent(machineId, event); },
-        (reopened) => {
+        () => {
+          if (this.openMissedSome(machineId)) {
+            this.rereadAnnounced(machineId);
+            return;
+          }
           void this.sessionUnread.refresh(machineId);
           this.refreshMachinePins(machineId);
-          if (reopened) this.sessionBoards.missedAnnouncements(machineId);
         },
         machineId,
         () => { this.rereadAnnounced(machineId); },

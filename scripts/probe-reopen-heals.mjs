@@ -94,7 +94,7 @@ try {
   }
   check("precondition: the board listed the session under its first name, it was renamed while the socket was down, and the socket reopened", readsBeforeReopen >= 1 && before?.name === firstName && renamed.status === 200 && whileDown?.name === firstName && opens === 2, JSON.stringify({ readsBeforeReopen, before, renamed: renamed.status, whileDown, opens }));
   check("after the reopen the board shows the new name within 8 s", shownAfter !== undefined && shownAfter <= 8_000, JSON.stringify({ shownAfterMs: shownAfter ?? "never (15 s)", row: await boardRow(started.id) }));
-  check("control: the board was read whole once more, not on every frame", boardReads.length - readsBeforeReopen <= 1, String(boardReads.length - readsBeforeReopen));
+  check("control: the board was read whole exactly once more: the heal came from that read, and no second one", boardReads.length - readsBeforeReopen === 1, String(boardReads.length - readsBeforeReopen));
   await page.screenshot({ path: "/var/folders/2x/hqbz74zs7fvdxf_53693r26h0000gp/T/.playwright-mcp/h2-reopen-heals-phone.png" });
 } finally {
   await browser.close();

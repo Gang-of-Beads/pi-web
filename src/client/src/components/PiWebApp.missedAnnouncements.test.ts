@@ -14,32 +14,66 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("a machine's socket that reopened (B28 slice H2)", () => {
-  it("marks the board stale and refreshes the open panels on a reopen, not on the first open", async () => {
+describe("an open after the page heard the machine (B28 slice H2)", () => {
+  it("reads again what the frames keep live on a reopen and on a handoff between the machine's sockets, and not on the page's first open", async () => {
     vi.spyOn(sessionPinsApi, "pins").mockResolvedValue([]);
-    const opens = new Map<string, (reopened: boolean) => void>();
-    vi.spyOn(RealtimeSocket.prototype, "connect").mockImplementation((_onEvent, onOpen, machineId = "local") => { if (onOpen !== undefined) opens.set(machineId, onOpen); });
+    const opens: { machineId: string; open: () => void }[] = [];
+    vi.spyOn(RealtimeSocket.prototype, "connect").mockImplementation((_onEvent, onOpen, machineId = "local") => { if (onOpen !== undefined) opens.push({ machineId, open: onOpen }); });
     const app = createApp();
     const calls: string[] = [];
     spyOn(app, "sessionUnread", ["refresh"], calls);
+    spyOn(app, "machineStatus", ["refresh"], calls);
     spyOn(app, "sessionBoards", ["missedAnnouncements"], calls);
     spyOn(app, "sessions", ["hydrateSessionStatuses", "refreshCurrentWorkspaceSessions"], calls);
     spyOn(app, "", ["invalidateWorkspacePanels", "refreshInterruptedRuns"], calls);
     const local = { id: "local", name: "Local", kind: "local" };
-    call(app, "setState", { machines: [local, { id: "remote-1", name: "Remote", kind: "remote", status: "online" }], selectedMachine: local });
+    const remote = { id: "remote-1", name: "Remote", kind: "remote", status: "online" };
+    call(app, "setState", { machines: [local, remote], selectedMachine: local });
     call(app, "connectRealtime");
     call(app, "syncMachineActivitySubscriptions");
-    const marks = (): string[] => calls.filter((entry) => entry.startsWith("sessionBoards.") || entry.startsWith("invalidateWorkspacePanels"));
+    const marks = (): string[] => calls.filter((entry) => entry.startsWith("sessionBoards.") || entry.startsWith("machineStatus."));
+    const openFirst = (machineId: string): void => { opens.find((entry) => entry.machineId === machineId)?.open(); };
 
-    opens.get("local")?.(false);
-    opens.get("remote-1")?.(false);
+    openFirst("local");
+    openFirst("remote-1");
     await flush();
     const firstOpens = marks();
-    opens.get("local")?.(true);
-    opens.get("remote-1")?.(true);
+    openFirst("local");
+    await flush();
+    const reopen = marks();
+    const state: unknown = Reflect.get(app, "state");
+    Reflect.set(app, "state", { ...Object(state), selectedMachine: remote });
+    call(app, "syncMachineActivitySubscriptions");
+    const handoff = opens.at(-1);
+    handoff?.open();
     await flush();
 
-    expect({ firstOpens, reopens: marks() }).toEqual({ firstOpens: [], reopens: ["sessionBoards.missedAnnouncements(local)", "invalidateWorkspacePanels()", "sessionBoards.missedAnnouncements(remote-1)"] });
+    expect({ firstOpens, reopen, handoffMachine: handoff?.machineId, handoff: marks() }).toEqual({
+      firstOpens: [],
+      reopen: ["sessionBoards.missedAnnouncements(local)", "machineStatus.refresh(local)"],
+      handoffMachine: "local",
+      handoff: ["sessionBoards.missedAnnouncements(local)", "machineStatus.refresh(local)", "sessionBoards.missedAnnouncements(local)", "machineStatus.refresh(local)"],
+    });
+  });
+
+  it("leaves the open workspace panels to the hidden tab's return, as a live workspace.changed does", async () => {
+    vi.spyOn(sessionPinsApi, "pins").mockResolvedValue([]);
+    const missed = new Map<string, () => void>();
+    vi.spyOn(RealtimeSocket.prototype, "connect").mockImplementation((_onEvent, _onOpen, machineId = "local", onMissed) => { if (onMissed !== undefined) missed.set(machineId, onMissed); });
+    const app = createApp("hidden");
+    const calls: string[] = [];
+    spyOn(app, "sessionUnread", ["refresh"], calls);
+    spyOn(app, "machineStatus", ["refresh"], calls);
+    spyOn(app, "sessions", ["hydrateSessionStatuses", "refreshCurrentWorkspaceSessions"], calls);
+    spyOn(app, "", ["invalidateWorkspacePanels", "refreshInterruptedRuns", "refreshActiveTerminals"], calls);
+    const workspace = { id: "w1", projectId: "p1", path: "/repo", label: "repo", isMain: true, effectiveConfig: {} };
+    call(app, "setState", { selectedWorkspace: workspace });
+    call(app, "connectRealtime");
+
+    missed.get("local")?.();
+    await flush();
+
+    expect({ panels: calls.filter((entry) => entry.startsWith("invalidateWorkspacePanels")), deferred: Reflect.get(app, "workspaceChangedWhileHidden") !== undefined }).toEqual({ panels: [], deferred: true });
   });
 });
 
@@ -75,7 +109,7 @@ describe("a burst of lost announcements", () => {
   });
 });
 
-function createApp(): PiWebApp {
+function createApp(visibility: "visible" | "hidden" = "visible"): PiWebApp {
   const storage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
   vi.stubGlobal("window", {
     location: { search: "", href: "https://pi.example.test/" },
@@ -89,9 +123,7 @@ function createApp(): PiWebApp {
     setTimeout: () => 0,
     clearTimeout: () => undefined,
   });
-  if (typeof document === "undefined") {
-    vi.stubGlobal("document", { baseURI: "https://pi.example.test/", visibilityState: "visible", hasFocus: () => true, addEventListener: () => undefined, removeEventListener: () => undefined });
-  }
+  vi.stubGlobal("document", { baseURI: "https://pi.example.test/", visibilityState: visibility, hasFocus: () => true, addEventListener: () => undefined, removeEventListener: () => undefined });
   vi.stubGlobal("requestAnimationFrame", () => 1);
   return new PiWebApp();
 }

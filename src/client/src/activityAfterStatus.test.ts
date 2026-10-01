@@ -17,6 +17,11 @@ describe("activitiesAfterStatuses (state-diagram D3)", () => {
     expect(Object.keys(after).sort()).toEqual(["quiet", "runs"]);
   });
 
+  it("keeps what the read cannot speak for, whatever the read says", () => {
+    const after = activitiesAfterStatuses({ framed: active("framed"), starting: active("starting") }, { framed: status("framed", false) }, { retractsMissing: true, keeps: (sessionId) => sessionId === "framed" || sessionId === "starting" });
+    expect(Object.keys(after).sort()).toEqual(["framed", "starting"]);
+  });
+
   it("keeps an active activity with no status unless the caller replaces what it knew", () => {
     const activities = { unlisted: active("unlisted") };
     expect({

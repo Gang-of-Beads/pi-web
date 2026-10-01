@@ -120,7 +120,7 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
 
   it("reads a machine's pins when its activity socket reopens, and every answered machine's when the tab resumes", async () => {
     const pins = vi.spyOn(sessionPinsApi, "pins").mockResolvedValue([]);
-    const opens: ((reopened: boolean) => void)[] = [];
+    const opens: (() => void)[] = [];
     vi.spyOn(RealtimeSocket.prototype, "connect").mockImplementation((_onEvent, onOpen) => { if (onOpen !== undefined) opens.push(onOpen); });
     const app = createApp();
     quietAll(Reflect.get(app, "sessionUnread"), ["refresh", "refreshAll"]);
@@ -129,7 +129,7 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
     call(app, "pinnedSessionIdsFor", "remote-1");
     await flush();
     call(app, "syncMachineActivitySubscriptions");
-    for (const open of opens) open(true);
+    for (const open of opens) open();
     await flush();
     const afterReopen = pins.mock.calls.map((args) => args[0]);
 
