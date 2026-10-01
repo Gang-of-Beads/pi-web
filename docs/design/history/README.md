@@ -27,7 +27,6 @@ Chinese-language records removed from this folder on 2026-09-30 stay readable in
 | [plugin-presence.md](plugin-presence.md) | 2026-09-02 task-1 finding on plugin-installed detection; one-off. | [plugin-architecture.md](../plugin-architecture.md) |
 | [quick-access-and-parity.md](quick-access-and-parity.md) | 2026-09-02 task-3/4 findings; one-off. | [desktop-phone-parity.md](desktop-phone-parity.md) |
 | [terminal-native-plan.md](terminal-native-plan.md) | Wave UX-B terminal-native token plan; replaced by pro-native theme decisions. | [pro-native-theme.md](../pro-native-theme.md) |
-| [testing-skill-compliance-audit.md](testing-skill-compliance-audit.md) | 2026-07-17 relay-input audit; one-off. | — |
 | [theme-ux-elevation.md](theme-ux-elevation.md) | Research digest and audit proposing theme scopes; one-off. | [pro-native-theme.md](../pro-native-theme.md) |
 | [ui-foundation-research.md](ui-foundation-research.md) | 2026-08-20 UI foundation decision; superseded by later theme work. | [pro-native-theme.md](../pro-native-theme.md) |
 | [upstream-issue-drafts.md](upstream-issue-drafts.md) | Upstream issue drafts pinned to an Aug 2026 snapshot; stale. | — |
