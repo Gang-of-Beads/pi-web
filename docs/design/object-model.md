@@ -254,7 +254,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 
 - **Plugin key**: `(machineId, pluginId, process)`; catalog `revision` (`piWebPluginCatalog.ts:34`); runtime `active|failed|incompatible|disabled`.
 - **Panel key**: `(pluginId, machineId, projectId, workspaceId[, sessionId])`.
-- **Panel data today**: git polls every 8 s (`git-panel.ts:1223`), terminal command-runs every 1 s (`TerminalPanel.ts:288`), goals use a single slot with a terminal `failed` (`goals/pi-web-plugin.ts:71-90`), tasks use `configCache` [C rows 25–29].
+- **Panel data today**: git polls every 8 s while on screen (`git-panel.ts`, `GIT_POLL_INTERVAL_MS`), terminal command-runs every 1 s (`TerminalPanel.ts:288`), goals use a single slot with a terminal `failed` (`goals/pi-web-plugin.ts:71-90`), tasks use `configCache` [C rows 25–29].
 - **Server**: operations run with no timeout and no cap (`serverPluginRuntime.ts:202`); `plugin-backends` re-resolves the provider on every call and calls `onWorkspacesMutated()` (`workspaceProviderRegistry.ts:379-500`, `pluginBackendRoutes.ts:99`) [S §4.4].
 - **New**:
   - Plugins get `host.resource(spec)`. The server half emits `plugin.changed {pluginId, scope, revision}` through the host.
@@ -275,7 +275,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
     - our own git operations marking the workspace busy and merging the events they cause;
     - status cached by (HEAD, index mtime, tree generation);
     - the 10 000-entry cap;
-    - the Git panel's own 8 s poll (`git-panel.ts:40`, `:1223`), which still runs while hidden.
+    - the Git panel's own 8 s poll (`git-panel.ts:40`): since P5 slice c it runs only while the panel is on screen and the tab is visible; ending it needs a watch for the workspace on screen, not only for the open sessions' directories.
   - **Budget:** ≤ 8 git/tree reads a minute with the panel open and nothing changing, and a terminal commit visible within about 1 s.
 
 ### 1.17 Goal (D7)

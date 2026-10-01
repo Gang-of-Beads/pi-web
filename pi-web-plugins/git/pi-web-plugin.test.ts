@@ -386,6 +386,90 @@ describe("bundled Git browser plugin", () => {
     await vi.advanceTimersByTimeAsync(8_000);
     expect(backend.request).toHaveBeenCalledTimes(callsAfterDisconnect);
   });
+
+  it("watches the panel's own section, and forgets it when the panel goes", async () => {
+    vi.useFakeTimers();
+    const observed: Element[] = [];
+    let disconnects = 0;
+    let tell: (entries: { target: Element; isIntersecting: boolean }[]) => void = () => undefined;
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(callback: (entries: { target: Element; isIntersecting: boolean }[]) => void) { tell = callback; }
+      observe(target: Element): void { observed.push(target); }
+      unobserve(): void { /* no-op */ }
+      disconnect(): void { disconnects += 1; }
+    });
+    const backend = backendFixture();
+    const panel = requiredPanel(activate("git-observed"));
+    const context = panelContext(backend.request);
+    panel.visible?.(context);
+    const container = document.createElement("div");
+    document.body.append(container);
+    renderAsHost(panel, context, container);
+    await settleBackend();
+    const statusReads = () => backend.request.mock.calls.filter(([operation]) => operation === "status").length;
+    const section = container.querySelector("section.git-panel");
+    if (section === null) throw new Error("no git panel section");
+
+    tell([{ target: section, isIntersecting: false }]);
+    const offFrom = statusReads();
+    await vi.advanceTimersByTimeAsync(24_000);
+    await settleBackend();
+    const whileOff = statusReads() - offFrom;
+    tell([{ target: section, isIntersecting: true }]);
+    await settleBackend();
+    const onReturn = statusReads() - offFrom;
+    tell([{ target: section, isIntersecting: false }]);
+    render(null, container);
+    const goneFrom = statusReads();
+    tell([{ target: section, isIntersecting: true }]);
+    await vi.advanceTimersByTimeAsync(16_000);
+    await settleBackend();
+
+    expect({ watchesSection: observed.includes(section), whileOff, onReturn, forgotten: disconnects === 1, afterGone: statusReads() - goneFrom }).toEqual({ watchesSection: true, whileOff: 0, onReturn: 1, forgotten: true, afterGone: 0 });
+  });
+
+  it("reads status only while the panel is on screen and the tab is visible, and at once on coming back", async () => {
+    vi.useFakeTimers();
+    const backend = backendFixture();
+    const panel = requiredPanel(activate("git"));
+    const context = panelContext(backend.request);
+    panel.visible?.(context);
+    const container = document.createElement("div");
+    document.body.append(container);
+    renderAsHost(panel, context, container);
+    await settleBackend();
+    const statusReads = () => backend.request.mock.calls.filter(([operation]) => operation === "status").length;
+    const activity = container.querySelector("pi-web-git-panel-activity");
+    const report = (shown: boolean): void => {
+      const method: unknown = Reflect.get(activity ?? {}, "reportShown");
+      if (typeof method !== "function") throw new Error("the panel cannot be told whether it is on screen");
+      Reflect.apply(method, activity, [shown]);
+    };
+
+    const shownFrom = statusReads();
+    await vi.advanceTimersByTimeAsync(16_000);
+    await settleBackend();
+    const whileShown = statusReads() - shownFrom;
+
+    report(false);
+    const offFrom = statusReads();
+    await vi.advanceTimersByTimeAsync(60_000);
+    await settleBackend();
+    const whileOffScreen = statusReads() - offFrom;
+    report(true);
+    await settleBackend();
+    const onReturn = statusReads() - offFrom;
+
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const tabHiddenFrom = statusReads();
+    await vi.advanceTimersByTimeAsync(24_000);
+    await settleBackend();
+    const whileTabHidden = statusReads() - tabHiddenFrom;
+    visibility.mockRestore();
+    render(null, container);
+
+    expect({ whileShown, whileOffScreen, onReturn, whileTabHidden }).toEqual({ whileShown: 2, whileOffScreen: 0, onReturn: 1, whileTabHidden: 0 });
+  });
 });
 
 function activate(pluginId: string, runtimePluginId = pluginId) {

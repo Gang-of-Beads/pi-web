@@ -62,6 +62,8 @@ interface GitWorkspaceUiState {
   error: string | undefined;
   expandedDirectories: Set<string>;
   statusRequest: Promise<void> | undefined;
+  /** A change was announced while a status read was on its way, which may have been answered before it. */
+  statusReadAgain: boolean;
   diffRequestSequence: number;
   viewStateCache: GitViewStateCache | undefined;
   history: GitHistoryResponse | undefined;
@@ -209,12 +211,14 @@ export class GitUiController {
     const state = this.stateFor(context);
     state.stale = state.status !== undefined;
     this.requestRender(state);
+    if (state.statusRequest !== undefined) state.statusReadAgain = true;
     return this.refresh(context);
   }
 
   refresh(context: WorkspacePanelContext): Promise<void> {
     const state = this.stateFor(context);
     if (state.statusRequest !== undefined) return state.statusRequest;
+    state.statusReadAgain = false;
     state.statusLoading = true;
     this.requestRender(state);
 
@@ -244,6 +248,7 @@ export class GitUiController {
         state.statusRequest = undefined;
         state.statusLoading = false;
         this.requestRender(state);
+        if (state.statusReadAgain && state.retained) void this.refresh(context);
       });
     state.statusRequest = request;
     return request;
@@ -450,6 +455,7 @@ export class GitUiController {
       error: undefined,
       expandedDirectories: new Set(),
       statusRequest: undefined,
+      statusReadAgain: false,
       diffRequestSequence: 0,
       viewStateCache: undefined,
       history: undefined,
@@ -1186,12 +1192,28 @@ function buildViewState(status: GitStatusResponse | undefined, view: GitFileView
   return { nodes: [], listModel, expandablePaths: listModel.submodules.map((group) => group.path) };
 }
 
+/**
+ * Keeps the panel's git status fresh while someone looks at it.
+ *
+ * The status was read every 8 s for as long as the panel was rendered, and
+ * the host keeps the active workspace panel rendered while the phone shows
+ * the chat, so the poll ran on unseen (7 reads a minute on 8505). The poll
+ * now runs only while the panel is on screen and the tab is visible; coming
+ * back on screen reads at once. A change made while it was off screen still
+ * arrives through `workspace.changed`, which invalidates the panel, and the
+ * read on return covers a workspace no open session watches. The panel's
+ * section is observed rather than this element, which has no box; where the
+ * page cannot observe, the panel counts as shown: one read too many, never
+ * one too few.
+ */
 function defineGitPanelActivityElement(): void {
   if (typeof customElements === "undefined" || typeof HTMLElement === "undefined" || customElements.get(activityElementTag) !== undefined) return;
   class GitPanelActivityElement extends HTMLElement {
     private controllerValue: GitUiController | undefined;
     private contextValue: WorkspacePanelContext | undefined;
     private pollTimer: number | undefined;
+    private shown = true;
+    private panelObserver: IntersectionObserver | undefined;
 
     set controller(value: GitUiController | undefined) {
       if (this.controllerValue === value) return;
@@ -1207,22 +1229,57 @@ function defineGitPanelActivityElement(): void {
 
     connectedCallback(): void {
       window.addEventListener("popstate", this.onPopState);
+      this.observePanel();
       this.restart();
     }
 
     disconnectedCallback(): void {
       window.removeEventListener("popstate", this.onPopState);
+      this.panelObserver?.disconnect();
+      this.panelObserver = undefined;
       if (this.controllerValue !== undefined && this.contextValue !== undefined) this.controllerValue.disconnect(this.contextValue);
       this.stopTimer();
+    }
+
+    /** Whether the panel is on screen. Coming back reads at once; going away stops the poll. */
+    reportShown(shown: boolean): void {
+      if (!this.isConnected || this.shown === shown) return;
+      this.shown = shown;
+      if (!shown) {
+        this.stopTimer();
+        return;
+      }
+      this.poll();
+      this.startTimer();
+    }
+
+    private observePanel(): void {
+      const panel = this.parentElement;
+      if (panel === null || typeof IntersectionObserver === "undefined") return;
+      this.panelObserver = new IntersectionObserver((entries) => {
+        const latest = entries.at(-1);
+        if (latest !== undefined) this.reportShown(latest.isIntersecting);
+      });
+      this.panelObserver.observe(panel);
     }
 
     private restart(): void {
       this.stopTimer();
       if (!this.isConnected || this.controllerValue === undefined || this.contextValue === undefined) return;
       this.controllerValue.connect(this.contextValue);
+      if (this.shown) this.startTimer();
+    }
+
+    private startTimer(): void {
+      this.stopTimer();
+      if (!this.isConnected) return;
       this.pollTimer = window.setInterval(() => {
-        if (this.controllerValue !== undefined && this.contextValue !== undefined) this.controllerValue.poll(this.contextValue);
+        if (document.visibilityState !== "hidden") this.poll();
       }, GIT_POLL_INTERVAL_MS);
+    }
+
+    private poll(): void {
+      if (this.controllerValue !== undefined && this.contextValue !== undefined) this.controllerValue.poll(this.contextValue);
     }
 
     private stopTimer(): void {

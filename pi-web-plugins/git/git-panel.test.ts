@@ -166,3 +166,34 @@ describe("Git history panel controller", () => {
     expect(controller.state(current).commitDiffLoading).toBe(true);
   });
 });
+
+describe("Git status reads", () => {
+  it("reads once more after a read that was on its way when a change was announced, and once for a burst", async () => {
+    const controller = new GitUiController("git", route);
+    const answers: ((value: JsonValue) => void)[] = [];
+    let reads = 0;
+    const current = context("first", (operation) => {
+      if (operation !== "status") throw new Error(`Unexpected operation: ${operation}`);
+      reads += 1;
+      return new Promise<JsonValue>((resolve) => { answers.push(resolve); });
+    });
+    const status = (hash: string): JsonValue => ({ isGitRepo: true, hash, branch: "main", files: [], submodules: [] });
+    const settle = async () => { for (let turn = 0; turn < 8; turn += 1) await Promise.resolve(); };
+
+    const first = controller.refresh(current);
+    void controller.invalidate(current);
+    void controller.invalidate(current);
+    const whileOnItsWay = reads;
+    answers[0]?.(status("before"));
+    await first;
+    await settle();
+    const afterFirst = reads;
+    answers[1]?.(status("after"));
+    await settle();
+    void controller.refresh(current);
+    answers[2]?.(status("after"));
+    await settle();
+
+    expect({ whileOnItsWay, afterFirst, total: reads, shown: controller.state(current).status?.hash }).toEqual({ whileOnItsWay: 1, afterFirst: 2, total: 3, shown: "after" });
+  });
+});
