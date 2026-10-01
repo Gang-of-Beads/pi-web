@@ -344,7 +344,7 @@ export function createDevelopmentNativeServicePlan(input: DevelopmentNativeServi
   const environment = copyEnvironment(input.environment);
   const sessiondScripts = ["build:plugins", "start:sessiond"] as const;
   const uiDevScripts = ["dev:web", "dev:client"] as const;
-  const uiDevCommand = 'trap "kill 0" EXIT; npm run dev:web & npm run dev:client & wait';
+  const uiDevCommand = 'trap "kill 0" EXIT; pnpm run dev:web & pnpm run dev:client & wait';
 
   return {
     mode: "development",
@@ -355,7 +355,7 @@ export function createDevelopmentNativeServicePlan(input: DevelopmentNativeServi
         id: "sessiond",
         manager: nativeServiceManagerRefs.sessiond,
         description: "PI WEB session daemon (dev)",
-        shellCommand: "exec npm run start:sessiond",
+        shellCommand: "exec pnpm run start:sessiond",
         strategy: { kind: "development-npm-script", script: "start:sessiond" },
         restart: "never",
         environment,
@@ -364,7 +364,7 @@ export function createDevelopmentNativeServicePlan(input: DevelopmentNativeServi
         wants: [],
         prerequisites: [
           nodeRequirement("sessiond"),
-          commandRequirement("sessiond", "npm"),
+          commandRequirement("sessiond", "pnpm"),
           packageScriptsRequirement("sessiond", input.packageJsonPath, sessiondScripts),
         ],
       },
@@ -381,7 +381,7 @@ export function createDevelopmentNativeServicePlan(input: DevelopmentNativeServi
         wants: ["sessiond"],
         prerequisites: [
           nodeRequirement("uiDev"),
-          commandRequirement("uiDev", "npm"),
+          commandRequirement("uiDev", "pnpm"),
           commandRequirement("uiDev", "bash"),
           packageScriptsRequirement("uiDev", input.packageJsonPath, uiDevScripts),
         ],
@@ -479,7 +479,7 @@ function strategyCommand(shell: NativeServiceShell, strategy: NativeServiceComma
     case "bundled-entrypoint":
       return `${strategy.command} ${shellSingleQuote(shell.name, strategy.entrypointPath)}`;
     case "development-npm-script":
-      return `npm run ${strategy.script}`;
+      return `pnpm run ${strategy.script}`;
     case "development-npm-script-group":
       throw new Error("Development script groups define their complete service shell command");
   }

@@ -268,21 +268,12 @@ interface HeldSteerRecord {
 /**
  * Where the SDK put a handed prompt, as seen at its preflight: in pi's steer lane, or at the
  * start of a run. The SDK chooses after its own input-handler await, so the daemon's request
- * (steer or direct) is not the answer. Older Pi versions report a boolean, so their landing
- * still needs to be inferred from the command and the observed lane growth.
+ * (steer or direct) is not the answer.
  */
 type HandoffLanding = "lane" | "run" | "handled";
 type PromptDisposition = Parameters<NonNullable<PromptOptions["preflightResult"]>>[0];
 
 const PREFLIGHT_LANDING: Record<PromptDisposition, HandoffLanding> = { queued: "lane", started: "run", handled: "handled" };
-
-function landingAtPreflight(session: PiAgentSession, disposition: PromptDisposition | boolean, facts: { isCommand: boolean; steeringGrew: boolean }): HandoffLanding | undefined {
-  if (disposition === false) return undefined;
-  if (disposition !== true) return PREFLIGHT_LANDING[disposition];
-  if (facts.isCommand) return "handled";
-  if (facts.steeringGrew) return "lane";
-  return session.isStreaming ? "handled" : "run";
-}
 
 /**
  * How many of pi's shown lane entries, oldest first, its agent loop has already taken.
@@ -641,7 +632,7 @@ export interface PiAgentSession {
   getAllTools(): readonly { name: string; parameters?: unknown }[];
   getToolDefinition(name: string): { parameters: unknown } | undefined;
   getContextUsage(): ClientSessionStatus["contextUsage"] | undefined;
-  prompt(text: string, options?: { streamingBehavior?: "steer" | "followUp"; images?: ImageContent[]; preflightResult?: (disposition: PromptDisposition | boolean) => void }): Promise<void>;
+  prompt(text: string, options?: { streamingBehavior?: "steer" | "followUp"; images?: ImageContent[]; preflightResult?: (disposition: PromptDisposition) => void }): Promise<void>;
   /** Queue a message in pi's steering lane whatever the run state; input handlers and expansion run first. Refuses an extension command. */
   steer(text: string, images?: ImageContent[]): Promise<unknown>;
   sendCustomMessage(message: { customType: string; content: string; display: boolean; details?: unknown }, options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" }): Promise<void>;
@@ -3475,7 +3466,6 @@ export class PiSessionService implements SessionRouteService {
     if (behavior === "steer") this.publishActivity(session, "steering queued", "active");
     let committed = false;
     let landed: HandoffLanding | undefined;
-    const growthAtCall = this.laneGrowth.get(sessionId) ?? 0;
     let markHanded = (): void => undefined;
     const handed = new Promise<"handed">((resolve) => { markHanded = () => { resolve("handed"); }; });
     const onCommit = (): void => {
@@ -3483,9 +3473,8 @@ export class PiSessionService implements SessionRouteService {
       markHanded();
       this.settleSucceeded(sessionId, entryKey(entry));
     };
-    const preflightResult = (disposition: PromptDisposition | boolean): void => {
-      landed = landingAtPreflight(session, disposition, { isCommand, steeringGrew: (this.laneGrowth.get(sessionId) ?? 0) > growthAtCall });
-      if (landed === undefined) return;
+    const preflightResult = (disposition: PromptDisposition): void => {
+      landed = PREFLIGHT_LANDING[disposition];
       if (landed === "lane" && this.ownsSessionId(session)) this.holdSteer(sessionId, entry, images);
       if (landed === "handled" && clientMessageId !== undefined) this.committedExpectations.withdraw(sessionId, clientMessageId);
       if (landed !== "run") {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+import { npmInvocation } from "./npmCommand";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -19,11 +20,11 @@ describe("production build contents", () => {
     if (!isRecord(metadata) || !isRecord(metadata["scripts"])) throw new Error("package.json scripts are missing");
 
     const scripts = metadata["scripts"];
-    expect(scripts["dev"]).toContain("npm run dev:sessiond");
+    expect(scripts["dev"]).toContain("pnpm run dev:sessiond");
     for (const scriptName of ["dev:sessiond", "start:sessiond"] as const) {
       const command = scripts[scriptName];
       if (typeof command !== "string") throw new Error(`package.json script is missing: ${scriptName}`);
-      expect(command).toMatch(/^npm run build:plugins && /u);
+      expect(command).toMatch(/^pnpm run build:plugins && /u);
       expect(command).toContain("src/server/sessiond.ts");
     }
   });
@@ -122,7 +123,7 @@ describe("production build contents", () => {
     const fixtureRoot = await mkdtemp(join(tmpdir(), "pi-web-clean-plugin-build-"));
     try {
       await createCleanPluginBuildFixture(fixtureRoot);
-      await runNpm(["run", "build:plugins"], fixtureRoot, 60_000);
+      await runPnpm(["run", "build:plugins"], fixtureRoot, 60_000);
 
       const sourcePlugins = await bundledServerPlugins(join(fixtureRoot, "pi-web-plugins"));
       const builtPluginsRoot = join(fixtureRoot, "dist", "pi-web-plugins");
@@ -283,16 +284,17 @@ function isTestSupportPath(path: string): boolean {
 }
 
 function runNpm(args: string[], cwd: string, timeoutMs = 30_000): Promise<string> {
-  const npmExecPath = process.env["npm_execpath"];
-  if (npmExecPath === undefined || npmExecPath.length === 0) {
-    throw new Error("npm_execpath is required to verify npm package contents");
-  }
-  return execUtf8(process.execPath, [npmExecPath, ...args], cwd, timeoutMs);
+  const { command, shell } = npmInvocation();
+  return execUtf8(command, args, cwd, timeoutMs, shell);
 }
 
-function execUtf8(file: string, args: string[], cwd: string, timeoutMs: number): Promise<string> {
+function runPnpm(args: string[], cwd: string, timeoutMs = 30_000): Promise<string> {
+  return execUtf8(process.platform === "win32" ? "pnpm.cmd" : "pnpm", args, cwd, timeoutMs, process.platform === "win32");
+}
+
+function execUtf8(file: string, args: string[], cwd: string, timeoutMs: number, shell: boolean): Promise<string> {
   return new Promise((resolvePromise, reject) => {
-    execFile(file, args, { cwd, encoding: "utf8", maxBuffer: 10 * 1024 * 1024, timeout: timeoutMs }, (error, stdout) => {
+    execFile(file, args, { cwd, shell, encoding: "utf8", maxBuffer: 10 * 1024 * 1024, timeout: timeoutMs }, (error, stdout) => {
       if (error !== null) {
         reject(error instanceof Error ? error : new Error("Command failed"));
         return;

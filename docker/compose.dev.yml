@@ -72,7 +72,7 @@ services:
   sessiond:
     build: *pi-web-dev-build
     image: ${PI_WEB_DEV_IMAGE:-pi-web:dev}
-    command: ["npm", "run", "start:sessiond"]
+    command: ["pnpm", "run", "start:sessiond"]
     working_dir: /workspace
     depends_on:
       data-init:
@@ -95,7 +95,7 @@ services:
   web:
     build: *pi-web-dev-build
     image: ${PI_WEB_DEV_IMAGE:-pi-web:dev}
-    command: ["bash", "-lc", "trap 'kill 0' EXIT; npm run dev:web & npm run dev:client & wait"]
+    command: ["bash", "-lc", "trap 'kill 0' EXIT; pnpm run dev:web & pnpm run dev:client & wait"]
     working_dir: /workspace
     depends_on:
       sessiond:

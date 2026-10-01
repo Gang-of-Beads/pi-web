@@ -170,11 +170,11 @@ Read more: [Configuration reference](https://github.com/Gang-of-Beads/pi-web/blo
 
 ## Development
 
-Clone the repository and run:
+Clone the repository with pnpm 12.8.1 installed and run:
 
 ```bash
-npm install
-npm run dev
+pnpm install --frozen-lockfile
+pnpm run dev
 ```
 
 Open the Vite URL, usually:
@@ -186,15 +186,15 @@ http://localhost:8505
 For the split development setup:
 
 ```bash
-npm run dev:sessiond
-npm run dev:web
-npm run dev:client
+pnpm run dev:sessiond
+pnpm run dev:web
+pnpm run dev:client
 ```
 
 Validate changes with:
 
 ```bash
-npm run verify
+pnpm run verify
 ```
 
 ## Security model

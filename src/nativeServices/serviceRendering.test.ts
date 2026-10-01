@@ -67,7 +67,7 @@ describe("native service rendering", () => {
 
     expect(plist).toContain("<string>com.pi-web.sessiond</string>");
     expect(plist).toContain("<string>/bin/zsh</string>");
-    expect(plist).toContain("<string>exec npm run start:sessiond</string>");
+    expect(plist).toContain("<string>exec pnpm run start:sessiond</string>");
     expect(plist).toContain("<key>WorkingDirectory</key>\n  <string>/checkout with space</string>");
     expect(plist).toContain("<key>PI_WEB_CONFIG</key>\n    <string>/home/user/config with &quot;quote&quot;.json</string>");
     expect(plist.match(/<string>\/logs\/sessiond\.log<\/string>/gu)).toHaveLength(2);

@@ -16,11 +16,6 @@ if (process.platform === "win32") {
   throw new Error("The installed-package PTY smoke test requires a POSIX shell");
 }
 
-const npmExecPath = process.env["npm_execpath"];
-if (npmExecPath === undefined || npmExecPath === "") {
-  throw new Error("npm_execpath is required; run this check through `npm run smoke:package-install`");
-}
-
 const root = await mkdtemp(join(tmpdir(), "pi-web-package-install-"));
 try {
   const packDir = join(root, "pack");
@@ -33,10 +28,10 @@ try {
   ]);
   await writeFile(join(npmToolDir, "package.json"), '{"private":true}\n');
 
-  const packOutput = await runNpm(npmExecPath, ["pack", "--ignore-scripts", "--json", "--pack-destination", packDir], repoRoot);
+  const packOutput = await runNpm("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", packDir], repoRoot);
   const tarballPath = join(packDir, packageTarballFilename(packOutput));
 
-  await runNpm(npmExecPath, [
+  await runNpm("npm", [
     "install",
     "--ignore-scripts",
     "--no-audit",
@@ -67,7 +62,9 @@ try {
 }
 
 async function runNpm(npmCliPath, args, cwd) {
-  const result = await execFileAsync(process.execPath, [npmCliPath, ...args], {
+  const command = npmCliPath === "npm" ? "npm" : process.execPath;
+  const invocation = npmCliPath === "npm" ? args : [npmCliPath, ...args];
+  const result = await execFileAsync(command, invocation, {
     cwd,
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,

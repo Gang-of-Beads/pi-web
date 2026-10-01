@@ -21,7 +21,7 @@ marker_file=$target_dir/.pi-web-dev-dependency-generation
 
 # A direct Compose invocation may skip the image rebuild. Fail closed rather
 # than copying dependencies for different checkout manifests.
-for manifest in package.json package-lock.json; do
+for manifest in package.json pnpm-lock.yaml pnpm-workspace.yaml; do
   source_manifest=$workspace_dir/$manifest
   image_manifest=$seed_dir/$manifest
   [ -f "$source_manifest" ] || die "checkout is missing $source_manifest"

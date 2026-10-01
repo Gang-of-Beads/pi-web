@@ -33,19 +33,19 @@ RUN chmod 0755 /usr/local/sbin/install-pi-web-opensuse-base \
 
 WORKDIR /workspace
 
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY scripts/install-git-hooks.mjs scripts/install-git-hooks.mjs
 # Keep an immutable dependency seed outside /workspace, which is hidden by the
 # checkout bind mount at runtime. A cached generation is added after custom
 # image hooks so it identifies the final dependency tree.
-RUN npm ci \
+RUN corepack enable \
+  && pnpm install --frozen-lockfile \
   && install -d -m 0755 /opt/pi-web-dev-dependencies \
-  && cp package.json package-lock.json /opt/pi-web-dev-dependencies/ \
+  && cp package.json pnpm-lock.yaml pnpm-workspace.yaml /opt/pi-web-dev-dependencies/ \
   && chmod -R a+rwX /workspace/node_modules \
   && mv /workspace/node_modules /opt/pi-web-dev-dependencies/node_modules \
   && ln -s /opt/pi-web-dev-dependencies/node_modules /workspace/node_modules \
   && ln -sf /opt/pi-web-dev-dependencies/node_modules/.bin/pi /usr/local/bin/pi \
-  && npm cache clean --force \
   && chmod -R a+rwX /data \
   && chmod 0777 /workspace
 
@@ -80,4 +80,4 @@ RUN node -e 'process.stdout.write(`${require("node:crypto").randomUUID()}\n`)' >
 EXPOSE 8504 8505
 
 ENTRYPOINT ["tini", "--"]
-CMD ["npm", "run", "dev"]
+CMD ["pnpm", "run", "dev"]

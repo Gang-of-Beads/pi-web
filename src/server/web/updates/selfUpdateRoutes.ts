@@ -43,7 +43,7 @@ export interface SelfUpdateService {
 function repoCandidate(): string | undefined {
   const fromEnv = process.env[PI_WEB_UPDATE_REPO_ENV];
   if (fromEnv !== undefined && fromEnv !== "") return fromEnv;
-  // A checkout built by `npm run build` carries its own package.json; walking
+  // A checkout built by `pnpm run build` carries its own package.json; walking
   // up from the server bundle finds the repo root in local development.
   const cwd = process.cwd();
   const candidate = join(cwd, "package.json");

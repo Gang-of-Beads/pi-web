@@ -69,7 +69,7 @@ else
 fi
 
 echo "==> Build"
-npm run build
+pnpm run build
 
 echo "==> In-flight runs"
 # Asking the daemon is the only way to know; a restart decided without this is

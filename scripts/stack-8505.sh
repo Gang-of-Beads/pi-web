@@ -244,7 +244,7 @@ wait_until_ready() {
 command_up() {
   if [ "${1:-}" != "--skip-build" ]; then
     echo "building..."
-    (cd "$REPO_ROOT" && npm run build >/dev/null)
+    (cd "$REPO_ROOT" && pnpm run build >/dev/null)
   else
     echo "skipping build"
   fi

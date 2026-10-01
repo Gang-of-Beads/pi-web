@@ -1,25 +1,30 @@
-{ lib, buildNpmPackage, makeWrapper, nodejs, python3, pkg-config, stdenv }:
+{ lib, fetchPnpmDeps, makeWrapper, nodejs, pnpm_11, pnpmConfigHook, python3, pkg-config, stdenv }:
 
 let
   packageJson = builtins.fromJSON (builtins.readFile ../package.json);
 in
-buildNpmPackage rec {
+stdenv.mkDerivation (finalAttrs: {
   pname = "pi-web";
   version = packageJson.version;
   src = lib.cleanSource ../.;
 
-  npmDepsFetcherVersion = 2;
-  # Includes package-lock's root package version as well as dependency entries.
-  # Update with `nix build .#pi-web --no-link` whenever package-lock.json moves,
-  # and take the value CI reports when it disagrees - the runners verify against
-  # their own fetch. A bare `nix run nixpkgs#prefetch-npm-deps` resolves a
-  # different nixpkgs than this flake pins and produced a hash CI rejected.
-  # Keep the word nix prints before a computed hash out of this comment: the
-  # machine updater scrapes build output for it and adopted this line instead.
-  npmDepsHash = "sha256-IDoaE6Kr2bA8jzm5/WPrvMKL3whmf3hJ/g4mLoWOEPQ=";
+  pnpmDeps = fetchPnpmDeps {
+    inherit (finalAttrs) pname version src;
+    pnpm = pnpm_11;
+    fetcherVersion = 4;
+    hash = "sha256-7faUo69YEb1r1SPMzK4I07Ukus7b9jZ663iOu31SsRw=";
+  };
 
-  nativeBuildInputs = [ makeWrapper python3 pkg-config ]
+  nativeBuildInputs = [ nodejs pnpm_11 pnpmConfigHook makeWrapper python3 pkg-config ]
     ++ lib.optionals stdenv.isLinux [ stdenv.cc ];
+
+  buildPhase = ''
+    runHook preBuild
+    pnpm run build
+    runHook postBuild
+  '';
+
+  dontFixup = true;
 
   installPhase = ''
     runHook preInstall
@@ -48,4 +53,4 @@ buildNpmPackage rec {
     platforms = lib.platforms.unix;
     mainProgram = "pi-web";
   };
-}
+})

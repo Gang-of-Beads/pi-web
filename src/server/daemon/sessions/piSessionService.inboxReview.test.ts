@@ -11,7 +11,7 @@ import { CapturingSessionEventHub, fakeRuntime, fakeSessionManager, handedAs, ru
  * "Phase 1 review triage"). The fake runtime here keeps a real steering lane, removes a steer
  * from it when the agent reads it, and calls preflight the way the SDK does.
  */
-interface PromptOptions { streamingBehavior?: "steer" | "followUp"; preflightResult?: (disposition: "queued" | "started" | "handled" | boolean) => void }
+interface PromptOptions { streamingBehavior?: "steer" | "followUp"; preflightResult?: (disposition: "queued" | "started" | "handled") => void }
 
 /**
  * `isCompacting` parks messages in the inbox while the agent runs: a running agent alone takes each
@@ -772,7 +772,7 @@ describe("second gate-lane findings", () => {
       fake.calls.prompt.push({ text, options });
       if (text.startsWith("/")) lane.push("injected by the command");
       else lane.push(text);
-      options?.preflightResult?.(true);
+      options?.preflightResult?.(text.startsWith("/") ? "handled" : "queued");
       return Promise.resolve();
     };
     await service.prompt(ref, "/kickoff now", undefined, undefined, { clientMessageId: "g1-cmd-001" });

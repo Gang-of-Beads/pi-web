@@ -294,8 +294,8 @@ On native Linux, `hostexec` starts a temporary privileged helper container throu
 
 Use this mode when developing PI WEB from this checkout. It bind-mounts the source tree, keeps dependencies in a Docker volume, stores PI WEB/Pi data in the same host data directory as runtime mode by default, and preserves the split runtime model:
 
-- `sessiond` runs `npm run start:sessiond` as the long-lived owner of Pi agent runtimes;
-- `web` runs `npm run dev:web` and `npm run dev:client` so API, plugin, and Vite changes can autoreload without restarting `sessiond`.
+- `sessiond` runs `pnpm run start:sessiond` as the long-lived owner of Pi agent runtimes;
+- `web` runs `pnpm run dev:web` and `pnpm run dev:client` so API, plugin, and Vite changes can autoreload without restarting `sessiond`.
 
 From the repository root, use the canonical Docker command so the same fail-closed host profile detection is applied as runtime mode:
 
@@ -390,7 +390,7 @@ Use this shared directory to switch between runtime and dev mode, not to run bot
 
 For sessions to appear under the same workspace in both modes, use the same project path in PI WEB. On Linux, prefer host-mounted paths such as `/home/core/<repo>`, `/srv/<project>`, or `/opt/<project>`. On Mac, prefer paths under `/Users/<you>/...`. The dev container also exposes this checkout as `/workspace` so the PI WEB dev server can run from it, but sessions started against `/workspace` are organized under that different working-directory path and will not line up with runtime sessions for the host-mounted path.
 
-Development startup keeps the persistent `node_modules` volume synchronized with the dependency tree built into the dev image. When `package.json`, `package-lock.json`, the Node image, or another dependency-build input changes, `start` or `update` rebuilds the image and `data-init` refreshes the volume before `sessiond` starts. Manual volume removal is not required.
+Development startup keeps the persistent `node_modules` volume synchronized with the dependency tree built into the dev image. When `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, the Node image, or another dependency-build input changes, `start` or `update` rebuilds the image and `data-init` refreshes the volume before `sessiond` starts. Manual volume removal is not required.
 
 If Compose is invoked directly without rebuilding after a manifest change, `data-init` stops with a mismatch message instead of starting against stale dependencies. Run `./docker/pi-web-docker --dev start` or `./docker/pi-web-docker --dev update` to rebuild and synchronize it.
 

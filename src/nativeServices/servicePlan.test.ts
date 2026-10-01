@@ -318,20 +318,20 @@ describe("development native service planning", () => {
       services: [
         {
           id: "sessiond",
-          shellCommand: "exec npm run start:sessiond",
+          shellCommand: "exec pnpm run start:sessiond",
           strategy: { kind: "development-npm-script", script: "start:sessiond" },
           restart: "never",
           environment: { PI_WEB_CONFIG: "/tmp/config.json" },
           workingDirectory: "/checkout with space",
           prerequisites: [
             { id: "sessiond.node", kind: "node-version", minimumVersion: "22.19.0" },
-            { id: "sessiond.command.npm", kind: "command-available", command: "npm" },
+            { id: "sessiond.command.pnpm", kind: "command-available", command: "pnpm" },
             { id: "sessiond.package-scripts", kind: "package-scripts", scripts: ["build:plugins", "start:sessiond"] },
           ],
         },
         {
           id: "uiDev",
-          shellCommand: "exec /usr/bin/env bash -c 'trap \"kill 0\" EXIT; npm run dev:web & npm run dev:client & wait'",
+          shellCommand: "exec /usr/bin/env bash -c 'trap \"kill 0\" EXIT; pnpm run dev:web & pnpm run dev:client & wait'",
           strategy: { kind: "development-npm-script-group", scripts: ["dev:web", "dev:client"], interpreter: "bash" },
           restart: "never",
           workingDirectory: "/checkout with space",
@@ -339,7 +339,7 @@ describe("development native service planning", () => {
           wants: ["sessiond"],
           prerequisites: [
             { id: "uiDev.node", kind: "node-version", minimumVersion: "22.19.0" },
-            { id: "uiDev.command.npm", kind: "command-available", command: "npm" },
+            { id: "uiDev.command.pnpm", kind: "command-available", command: "pnpm" },
             { id: "uiDev.command.bash", kind: "command-available", command: "bash" },
             { id: "uiDev.package-scripts", kind: "package-scripts", scripts: ["dev:web", "dev:client"] },
           ],
@@ -350,7 +350,7 @@ describe("development native service planning", () => {
     const serviceCommandRequirements = plan.services.flatMap((service) => service.prerequisites)
       .filter((prerequisite) => prerequisite.kind === "command-available")
       .map((prerequisite) => prerequisite.command);
-    expect(serviceCommandRequirements).toEqual(["npm", "npm", "bash"]);
+    expect(serviceCommandRequirements).toEqual(["pnpm", "pnpm", "bash"]);
     expect(serviceCommandRequirements).not.toContain("pi-web-server");
     expect(serviceCommandRequirements).not.toContain("pi-web-sessiond");
 
@@ -360,10 +360,10 @@ describe("development native service planning", () => {
         workingDirectory: "/checkout with space",
         prerequisites: [
           { id: "sessiond.node" },
-          { id: "sessiond.command.npm" },
+          { id: "sessiond.command.pnpm" },
           { id: "sessiond.package-scripts" },
           { id: "uiDev.node" },
-          { id: "uiDev.command.npm" },
+          { id: "uiDev.command.pnpm" },
           { id: "uiDev.command.bash" },
           { id: "uiDev.package-scripts" },
         ],
