@@ -190,8 +190,9 @@ export class SessionSocket {
 export class RealtimeSocket {
   private socket: WebSocket | undefined;
   private onEvent: ((event: BrowserRealtimeEvent) => void) | undefined;
-  private readonly seqMonitor = new ScopeSeqMonitor("global");
+  private readonly seqMonitor = new ScopeSeqMonitor("global", () => { this.onMissed?.(); });
   private onOpen: (() => void) | undefined;
+  private onMissed: (() => void) | undefined;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private reconnectDelay = 500;
   private shouldReconnect = false;
@@ -240,11 +241,17 @@ export class RealtimeSocket {
     return this.seqMonitor.gapCount;
   }
 
-  connect(onEvent: (event: BrowserRealtimeEvent) => void, onOpen?: () => void, machineId = "local"): void {
+  /**
+   * `onMissed`: the machine announced something this socket never delivered - a frame whose `seq`
+   * skips, or a heartbeat whose head is ahead of the last frame (state-diagram D5, "A lost
+   * announcement is noticed"). Whatever the socket keeps live is to be read again.
+   */
+  connect(onEvent: (event: BrowserRealtimeEvent) => void, onOpen?: () => void, machineId = "local", onMissed?: () => void): void {
     this.close();
     this.machineId = machineId;
     this.onEvent = onEvent;
     this.onOpen = onOpen;
+    this.onMissed = onMissed;
     this.shouldReconnect = true;
     this.waitingSince = Date.now();
     this.open();
@@ -257,6 +264,7 @@ export class RealtimeSocket {
     this.socket = undefined;
     this.onEvent = undefined;
     this.onOpen = undefined;
+    this.onMissed = undefined;
     this.machineId = "local";
   }
 
@@ -308,9 +316,12 @@ export class RealtimeSocket {
     // Observed on the raw frame, before validation: a notifications.summary is
     // dropped from the typed event stream, but its stamp still costs a number
     // in the global sequence and must advance the client's last-seen with it.
+    if (this.socket !== socket) return;
     this.seqMonitor.observe(raw);
+    const head = heartbeatHeadSeq(raw);
+    if (head !== undefined) this.seqMonitor.observeHead(head);
     const event = parseRealtimeSocketEvent(raw);
-    if (this.socket === socket && event !== undefined) this.onEvent?.(event);
+    if (event !== undefined) this.onEvent?.(event);
   }
 }
 
@@ -400,6 +411,20 @@ export class ScopeSeqMonitor {
     this.lastSeen = undefined;
   }
 
+  /**
+   * A heartbeat's head: the last `seq` the scope stamped. A head ahead of the last frame seen means
+   * the frames after it were lost with nothing after them to show it. The head becomes the last seen,
+   * so one loss is reported once. Before any frame, the head is the baseline.
+   */
+  observeHead(seq: number): void {
+    const last = this.lastSeen;
+    if (last !== undefined && seq <= last) return;
+    this.lastSeen = seq;
+    if (last === undefined) return;
+    this.gapEvents += 1;
+    this.onGap?.(last);
+  }
+
   observe(raw: unknown): void {
     if (typeof raw !== "object" || raw === null || !("seq" in raw)) return;
     const seq = raw.seq;
@@ -417,6 +442,14 @@ export class ScopeSeqMonitor {
     this.onGap?.(last);
     console.warn(`[pi-web] ${this.scope} scope lost frames: expected ${String(last + 1)}, got ${String(seq)} (${String(seq - last - 1)} missing)`);
   }
+}
+
+/** The `seq` a heartbeat carries under `head`, or undefined for any other frame and an older daemon's bare heartbeat. */
+function heartbeatHeadSeq(raw: unknown): number | undefined {
+  if (eventType(raw) !== "keepalive" || typeof raw !== "object" || raw === null) return undefined;
+  const head: unknown = Reflect.get(raw, "head");
+  const seq: unknown = typeof head === "object" && head !== null ? Reflect.get(head, "seq") : undefined;
+  return typeof seq === "number" && Number.isFinite(seq) ? seq : undefined;
 }
 
 function safelyParseValidatedEvent<T>(parse: () => T): T | undefined {

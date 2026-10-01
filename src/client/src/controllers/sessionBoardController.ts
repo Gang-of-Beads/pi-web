@@ -106,6 +106,16 @@ export class SessionBoardController {
     return this.boards.subscribe(listener);
   }
 
+  /**
+   * The machine announced something this page did not hear (state-diagram D5, "A lost announcement
+   * is noticed"): its board is no longer known fresh. The browsed one is read whole now; any other
+   * is read whole the next time it is shown.
+   */
+  missedAnnouncements(machineId: string): void {
+    this.fetchedAt.delete(machineId);
+    if (this.browsed?.machineId === machineId) void this.browse(machineId, { force: true });
+  }
+
   /** A sign of life: read a board that is still waiting on a source now. */
   wake(): void {
     this.boards.wake();

@@ -2188,7 +2188,30 @@ export class PiWebApp extends LitElement {
         if (workspace !== undefined) void this.refreshActiveTerminals(workspace);
       },
       machineId,
+      () => { this.rereadAnnounced(machineId); },
     );
+  }
+
+  /**
+   * A machine's global socket lost an announcement (state-diagram D5, "A lost announcement is
+   * noticed"): read again everything its frames keep live, once. Each frame kind and what heals it:
+   * `sessions.unread` the unread set; `pins.changed` the pins; `machine.status` (projects and
+   * workspaces ride it) a fresh snapshot; `session.name` and `session.created` the board and, on
+   * the machine in use, its workspace's sessions; `status.update` and `activity.update` its
+   * statuses; terminal frames its terminals; `workspace.changed` its open workspace panels.
+   * `notifications.summary` and `session.startup` keep nothing a read could restore.
+   */
+  private rereadAnnounced(machineId: string): void {
+    void this.sessionUnread.refresh(machineId);
+    this.refreshMachinePins(machineId);
+    void this.machineStatus.refresh(machineId).catch(() => undefined);
+    this.sessionBoards.missedAnnouncements(machineId);
+    if (machineId !== selectedMachineId(this.state)) return;
+    void this.sessions.hydrateSessionStatuses(machineId, { replaceKnown: true });
+    void this.sessions.refreshCurrentWorkspaceSessions(machineId);
+    const workspace = this.state.selectedWorkspace;
+    if (workspace !== undefined) void this.refreshActiveTerminals(workspace);
+    void this.invalidateWorkspacePanels();
   }
 
   private syncMachineActivitySubscriptions(): void {
@@ -2208,6 +2231,7 @@ export class PiWebApp extends LitElement {
           this.refreshMachinePins(machineId);
         },
         machineId,
+        () => { this.rereadAnnounced(machineId); },
       );
       this.machineRealtimeSockets.set(machineId, socket);
     }

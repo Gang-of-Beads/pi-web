@@ -141,6 +141,69 @@ describe("connection liveness", () => {
   });
 });
 
+describe("a lost global announcement (state-diagram D5, B28 slice H1)", () => {
+  beforeEach(() => {
+    FakeWebSocket.instances.length = 0;
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
+    vi.stubGlobal("clearTimeout", vi.fn());
+    vi.stubGlobal("setTimeout", vi.fn(() => 1));
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function opened(): { deliver: (frame: unknown) => Promise<void>; missed: () => number; events: unknown[] } {
+    const realtime = new RealtimeSocket();
+    let missed = 0;
+    const events: unknown[] = [];
+    realtime.connect((event) => { events.push(event); }, undefined, "local", () => { missed += 1; });
+    const socket = FakeWebSocket.instances[0];
+    if (socket === undefined) throw new Error("expected a realtime socket");
+    socket.onopen?.();
+    const deliver = async (frame: unknown): Promise<void> => {
+      socket.onmessage?.({ data: JSON.stringify(frame) });
+      await new Promise((resolve) => { nativeSetTimeout(resolve, 0); });
+    };
+    return { deliver, missed: () => missed, events };
+  }
+
+  it("notices a frame lost last through the heartbeat's head, once, from the join frame's baseline", async () => {
+    const socket = opened();
+    await socket.deliver({ type: "pins.changed", seq: 5 });
+    await socket.deliver({ type: "keepalive", head: { seq: 5 } });
+    const caughtUp = socket.missed();
+    await socket.deliver({ type: "keepalive", head: { seq: 6 } });
+    await socket.deliver({ type: "keepalive", head: { seq: 6 } });
+    const afterHead = socket.missed();
+    await socket.deliver({ type: "pins.changed", seq: 7 });
+
+    expect({ caughtUp, afterHead, after: socket.missed(), delivered: socket.events.length }).toEqual({ caughtUp: 0, afterHead: 1, after: 1, delivered: 2 });
+  });
+
+  it("notices a frame that skips, and says nothing for an older daemon's bare heartbeat", async () => {
+    const socket = opened();
+    await socket.deliver({ type: "pins.changed", seq: 1 });
+    await socket.deliver({ type: "keepalive" });
+    const bare = socket.missed();
+    await socket.deliver({ type: "pins.changed", seq: 3 });
+
+    expect({ bare, skipped: socket.missed() }).toEqual({ bare: 0, skipped: 1 });
+  });
+
+  it("takes a heartbeat before any frame as the baseline, so a later heartbeat ahead of it is a miss", async () => {
+    const socket = opened();
+    await socket.deliver({ type: "keepalive", head: { seq: 9 } });
+    const atBaseline = socket.missed();
+    await socket.deliver({ type: "keepalive", head: { seq: 10 } });
+
+    expect({ atBaseline, ahead: socket.missed() }).toEqual({ atBaseline: 0, ahead: 1 });
+  });
+});
+
 describe("notification socket guards", () => {
   it("accepts validated selected-session events and drops global notification summaries", () => {
     expect(parseSessionSocketEvent(inboxEvent())).toMatchObject({ type: "notifications.inbox", delta: { kind: "added" } });

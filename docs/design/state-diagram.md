@@ -464,6 +464,30 @@ Plugins read through the host, so the rule reaches them as one host facility: a 
 - There is no Try now; the page retries by itself. Known data stays live and usable. Other actions fire now and show as pending, and are never replayed.
 - A tapped session opens unless it was deleted (the reason, and a way back) or archived (read-only, with Restore).
 
+### A lost announcement is noticed (B28 slice H1)
+
+Every surface stays live from the machine's announcements on its global socket: unread, pins, statuses, a session's name, a new session. The socket can stay open and still lose one: a proxy drops a frame, a send fails on a full buffer, a debug drop. Before this, nothing noticed it.
+- Global frames already carry one increasing `seq` per daemon, and the page counted the gaps but did nothing with them.
+- A frame lost last, before a quiet stretch, was not even counted: no later frame revealed it.
+- So a pin, a rename or an unread mark stayed wrong until the socket reopened or the page was reloaded.
+
+```mermaid
+stateDiagram-v2
+  [*] --> baseline: socket opens (the join frame carries the current seq)
+  baseline --> current: a frame with seq n+1, or a keepalive whose head is n
+  current --> current: the next frame in order; a keepalive whose head equals the last seq
+  current --> missed: a frame whose seq skips, or a keepalive whose head is ahead
+  missed --> current: the page reads again what the socket keeps live
+  current --> [*]: socket closes (the next open is a new baseline)
+```
+
+- **The baseline is the join frame's `seq`.** Without it the first frame after an open set the baseline, so losing that frame went unseen.
+- **The keepalive carries the global head.** A global socket's keepalive is sent after 20 s with nothing else on it. It now says `{ type: "keepalive", head: { seq } }`, the last `seq` the daemon stamped, so a frame lost last is noticed within one keepalive. It costs a few bytes, and no request.
+- **Missed means read again.** The page then re-reads, for that machine, what its open re-reads: unread, pins, the selected machine's statuses and its workspace's sessions. The board is also read again whole, if shown; otherwise its next showing reads it whole. One lost frame costs these reads once, and lost frames are rare. Per-surface heads are not kept, until a measurement says these reads cost too much.
+- **An older daemon** sends neither the join `seq` nor the head. The page then falls back to what it did before: gaps between frames are noticed, and a lost last frame is not.
+- **A session's own frames** already have this: a ring of frames and a gap repair that replays them (D5, "Stream").
+- **Fault injection:** `probe-missed-announcement.mjs` drops one global frame between the daemon and the page (Playwright's `routeWebSocket`), on any build.
+
 ## D6. A plugin
 
 ```mermaid

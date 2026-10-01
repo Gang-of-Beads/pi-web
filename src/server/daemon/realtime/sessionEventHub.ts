@@ -118,7 +118,7 @@ export class SessionEventHub {
       if (quiet.length > 0) this.sendToEach(sockets, quiet, this.keepalivePayload(sessionId));
     }
     const quietGlobal = [...this.globalSockets].filter(due);
-    if (quietGlobal.length > 0) this.sendToEach(this.globalSockets, quietGlobal, JSON.stringify({ type: "keepalive" }));
+    if (quietGlobal.length > 0) this.sendToEach(this.globalSockets, quietGlobal, this.globalKeepalivePayload());
   }
 
   stopKeepalive(): void {
@@ -130,7 +130,17 @@ export class SessionEventHub {
   /** A keepalive to every subscriber at once, session-scoped and global. */
   sendKeepalive(): void {
     for (const [sessionId, sockets] of this.socketsBySession) this.sendToSockets(sockets, this.keepalivePayload(sessionId));
-    this.sendToSockets(this.globalSockets, JSON.stringify({ type: "keepalive" }));
+    this.sendToSockets(this.globalSockets, this.globalKeepalivePayload());
+  }
+
+  /**
+   * The global scope's heartbeat carries its head: the last `seq` stamped on a global frame, so a
+   * page that lost the last frame before a quiet stretch notices within one heartbeat (state-diagram
+   * D5, "A lost announcement is noticed"). Nested under `head`, never a top-level `seq`, for the
+   * reason the session heartbeat gives.
+   */
+  private globalKeepalivePayload(): string {
+    return JSON.stringify({ type: "keepalive", head: { seq: this.globalSeq } });
   }
 
   /**
@@ -180,7 +190,7 @@ export class SessionEventHub {
     this.cadence.set(socket, { intervalMs: heartbeatIntervalMs(), lastSentAt: this.now() });
     socket.on("close", () => this.globalSockets.delete(socket));
     const joinFrame = this.globalJoinFrame?.();
-    if (joinFrame !== undefined) this.sendToSocket(this.globalSockets, socket, JSON.stringify(joinFrame));
+    if (joinFrame !== undefined) this.sendToSocket(this.globalSockets, socket, JSON.stringify({ ...joinFrame, seq: this.globalSeq }));
   }
 
   publish(sessionId: string, event: SessionUiEvent): void {

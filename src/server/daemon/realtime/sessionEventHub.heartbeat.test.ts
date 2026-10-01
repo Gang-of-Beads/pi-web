@@ -96,11 +96,40 @@ describe("SessionEventHub heartbeat", () => {
     expect(keepalives(socket)).toHaveLength(4);
   });
 
-  it("gives machine-wide subscribers the plain keepalive on the default interval", () => {
+  it("gives machine-wide subscribers the keepalive with the global head on the default interval", () => {
     const { hub, at } = clockedHub();
     const socket = new FakeSocket();
     hub.addGlobal(socket);
     at(20_000);
-    expect(keepalives(socket)).toEqual([{ type: "keepalive" }]);
+    expect(keepalives(socket)).toEqual([{ type: "keepalive", head: { seq: 0 } }]);
+  });
+});
+
+function sentFrames(socket: FakeSocket): unknown[] {
+  return socket.send.mock.calls.map(([payload]): unknown => JSON.parse(String(payload)));
+}
+
+describe("a lost global announcement is noticeable (state-diagram D5, B28 slice H1)", () => {
+  it("stamps the join frame with the current global seq, so the first frame after it has a baseline", () => {
+    const { hub } = clockedHub();
+    hub.setGlobalJoinFrame(() => ({ type: "pins.changed" }));
+    hub.publishRealtime({ type: "pins.changed" });
+    hub.publishRealtime({ type: "pins.changed" });
+    const socket = new FakeSocket();
+    hub.addGlobal(socket);
+    hub.publishRealtime({ type: "pins.changed" });
+
+    expect(sentFrames(socket).map((frame): unknown => Reflect.get(Object(frame), "seq"))).toEqual([2, 3]);
+  });
+
+  it("carries the last seq stamped on any global frame, a notification summary included, on the keepalive", () => {
+    const { hub, at } = clockedHub();
+    const socket = new FakeSocket();
+    hub.addGlobal(socket);
+    hub.publishRealtime({ type: "pins.changed" });
+    hub.publishNotificationSummary({ type: "notifications.summary", daemonInstanceId: "d1", catalogRevision: 1, summary: { sessionId: "s1", cwd: "/repo", inboxRevision: 1, retainedCount: 1, discardedCount: 0 } });
+    at(25_000);
+
+    expect(sentFrames(socket).at(-1)).toEqual({ type: "keepalive", head: { seq: 2 } });
   });
 });

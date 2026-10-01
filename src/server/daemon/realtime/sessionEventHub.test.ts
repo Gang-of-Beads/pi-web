@@ -32,7 +32,7 @@ describe("SessionEventHub keepalive", () => {
     hub.sendKeepalive();
 
     expect(sessionSocket.send).toHaveBeenCalledWith(JSON.stringify({ type: "keepalive" }));
-    expect(globalSocket.send).toHaveBeenCalledWith(JSON.stringify({ type: "keepalive" }));
+    expect(globalSocket.send).toHaveBeenCalledWith(JSON.stringify({ type: "keepalive", head: { seq: 0 } }));
   });
 
   it("does not consume sequence numbers", () => {
@@ -432,7 +432,7 @@ describe("SessionEventHub", () => {
     hub.addGlobal(late);
     hub.add("s1", sessionSocket);
 
-    expect(late.send).toHaveBeenCalledWith(JSON.stringify(frame));
+    expect(late.send).toHaveBeenCalledWith(JSON.stringify({ ...frame, seq: 0 }));
     // The frame belongs to the joining socket only: an already-connected
     // subscriber has the state and a per-session socket never carries it.
     expect(early.send).not.toHaveBeenCalled();

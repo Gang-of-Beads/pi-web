@@ -33,6 +33,34 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
  * answer left "No sessions yet." on a machine that has sessions. The board is
  * read again by itself until every source answered.
  */
+describe("a machine whose announcements were not all heard (state-diagram D5, B28 slice H1)", () => {
+  it("reads the browsed board whole at once, and another machine's whole the next time it is shown though it was fresh", async () => {
+    const reads: string[] = [];
+    const time = fakeClock();
+    const controller = new SessionBoardController({
+      sources: (machineId) => ({
+        projects: () => { reads.push(machineId); return Promise.resolve([alpha]); },
+        workspaces: () => Promise.resolve([alphaMain]),
+        sessions: () => Promise.resolve([a1]),
+      }),
+      clock: time.clock,
+      now: time.now,
+    });
+    await controller.browse("remote-1");
+    await controller.browse("local");
+    reads.length = 0;
+
+    controller.missedAnnouncements("local");
+    await flush();
+    const browsedRead = [...reads];
+    controller.missedAnnouncements("remote-1");
+    await controller.browse("remote-1");
+
+    expect({ browsedRead, reads }).toEqual({ browsedRead: ["local"], reads: ["local", "remote-1"] });
+    controller.dispose();
+  });
+});
+
 describe("SessionBoardController", () => {
   it("reads a board the projects did not answer for again by itself, and lists it when they do", async () => {
     const time = fakeClock();
