@@ -37,6 +37,34 @@ describe("PiWebApp message status row", () => {
   });
 });
 
+describe("a message status claim when the reader leaves its session", () => {
+  it("ends with the episode, so coming back shows nothing counted from before", () => {
+    const app = stubbedApp();
+    const since = Date.now() - 60_000;
+    setAppState(app, { ...initialAppState(), selectedSession: session("on-screen"), messageStatusUnanswered: { machineId: "local", sessionId: "on-screen", since, miss: { kind: "link-down" } } });
+    const stays = callSetState(app, { selectedSession: session("on-screen"), sessions: [] });
+    const leaves = callSetState(app, { selectedSession: session("elsewhere") });
+    callSetState(app, { selectedSession: session("on-screen") });
+    renderRow(app);
+
+    expect({ stays: stays?.miss.kind, leaves, back: shownMiss(app) }).toEqual({ stays: "link-down", leaves: undefined, back: undefined });
+  });
+});
+
+function callSetState(app: PiWebApp, patch: Partial<AppState>): AppState["messageStatusUnanswered"] {
+  const method: unknown = Reflect.get(app, "setState");
+  if (typeof method !== "function") throw new Error("PiWebApp.setState is not callable");
+  method.call(app, patch);
+  const state: unknown = Reflect.get(app, "state");
+  if (typeof state !== "object" || state === null) throw new Error("PiWebApp has no state");
+  const claim: unknown = Reflect.get(state, "messageStatusUnanswered");
+  return isClaim(claim) ? claim : undefined;
+}
+
+function isClaim(value: unknown): value is NonNullable<AppState["messageStatusUnanswered"]> {
+  return typeof value === "object" && value !== null && "sessionId" in value && "miss" in value;
+}
+
 function session(id: string): SessionInfo {
   return { id, cwd: "/repo", path: `/repo/${id}.jsonl`, created: "2026-10-01", modified: "2026-10-01", messageCount: 1, firstMessage: "hello" };
 }

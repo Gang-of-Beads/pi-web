@@ -36,6 +36,20 @@ export interface MessageStatusUnanswered {
   readonly miss: ReadMiss;
 }
 
+/** Whether the claim is the one of this machine and session. */
+export function isClaimOf(claim: MessageStatusUnanswered | undefined, scope: { readonly machineId: string; readonly sessionId: string }): claim is MessageStatusUnanswered {
+  return claim?.machineId === scope.machineId && claim.sessionId === scope.sessionId;
+}
+
+/**
+ * The claim after another unanswered moment of a session. The same session's claim keeps
+ * counting from its first moment, so a retry does not restart the row's grace; any other claim is
+ * replaced, and a new episode starts its own.
+ */
+export function claimAfterMiss(claim: MessageStatusUnanswered | undefined, scope: { readonly machineId: string; readonly sessionId: string }, miss: ReadMiss, now: number): MessageStatusUnanswered {
+  return { machineId: scope.machineId, sessionId: scope.sessionId, since: isClaimOf(claim, scope) ? claim.since : now, miss };
+}
+
 /** The claim for the row, only while its machine and session are the ones on screen. */
 export function messageStatusUnanswered(claim: MessageStatusUnanswered | undefined, onScreen: { machineId: string; sessionId: string | undefined }): Unanswered | undefined {
   if (claim?.machineId !== onScreen.machineId || claim.sessionId !== onScreen.sessionId) return undefined;

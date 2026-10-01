@@ -88,6 +88,16 @@ describe("an unanswered send whose ledger cannot be reached", () => {
 });
 
 describe("the message status claim (P1 slice 6)", () => {
+  it("is withdrawn when a later send to the same session is answered: the link to its machine is up", async () => {
+    let fail = true;
+    const send = await unansweredSend(() => undefined, { prompt: () => (fail ? Promise.reject(new TypeError("Failed to fetch")) : Promise.resolve({ accepted: true as const })) });
+    const before = send.claim()?.miss.kind;
+    fail = false;
+    await send.controller.send("this one is answered");
+
+    expect({ before, after: send.claim() }).toEqual({ before: "link-down", after: undefined });
+  });
+
   it("counts from the first unanswered moment across every retry, so the row's grace is not restarted", async () => {
     let clock = 1_000_000;
     vi.spyOn(Date, "now").mockImplementation(() => { clock += 1_000; return clock; });

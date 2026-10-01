@@ -109,7 +109,9 @@ describe("SessionController send failure", () => {
     const command = controllerWith({ ...defaultApi, runCommand: gone });
     await command.controller.send("/compact");
 
-    expect({ shell: shell.read().error, command: command.read().error }).toEqual({ shell: SEND_TO_MISSING_SESSION, command: SEND_TO_MISSING_SESSION });
+    const systemLines = (read: () => AppState): unknown[] => read().messages.filter((line) => line.role === "system").map((line): unknown => line.parts.map((part) => (part.type === "text" ? part.text : "")).join(""));
+    expect({ shell: shell.read().error, command: command.read().error, shellLines: systemLines(shell.read), commandLines: systemLines(command.read), commandRow: command.read().commandLedger.map((entry) => [entry.state, entry.resultText]) })
+      .toEqual({ shell: SEND_TO_MISSING_SESSION, command: SEND_TO_MISSING_SESSION, shellLines: [SEND_TO_MISSING_SESSION], commandLines: [SEND_TO_MISSING_SESSION], commandRow: [["failed", SEND_TO_MISSING_SESSION]] });
   });
 
   it("calls a send the browser says never left Not sent, and a gateway's answer while offline still unverifiable", async () => {

@@ -32,6 +32,8 @@ try {
 
   // Read the surface the reader sees: the daemon's own status omits empty arrays,
   // so an open dialog and a closed one look the same through it.
+  const selected = await fetch(`${BASE}/api/sessions/${sessionId}/model`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cwd: CWD, provider: "pi-web-probe", modelId: "flaky" }) }).then((r) => r.json());
+  if (selected?.model?.provider !== "pi-web-probe") throw new Error("the zero-cost fixture model is not selectable; this probe never prompts the machine's default model");
   // A prompt first: a session with no message yet is not in the app's lists, so a
   // URL naming it would leave the page on whatever was selected before.
   await fetch(`${BASE}/api/sessions/${sessionId}/prompt`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cwd: CWD, text: "say ok" }) });

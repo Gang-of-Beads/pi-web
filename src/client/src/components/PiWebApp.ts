@@ -1289,6 +1289,7 @@ export class PiWebApp extends LitElement {
     if (selectedChatIdentity(previous) !== selectedChatIdentity(this.state)) {
       this.committedChatIdentity = undefined;
       this.readyChatIdentity = undefined;
+      this.endMessageStatusClaimOffScreen();
     }
     this.syncUnreadSessionIds();
     this.handleActivityTransition(previous, this.state);
@@ -1306,6 +1307,18 @@ export class PiWebApp extends LitElement {
     // read already ask for one, and the poll picks up every other path within
     // its interval.
     if (previous.selectedSession?.id !== this.state.selectedSession?.id) this.updateSubagentPolling();
+  }
+
+  /**
+   * A message-status claim belongs to the session it was about. When the reader leaves that
+   * session the episode ends, so coming back never shows a claim counted from before: it would skip
+   * the row's grace on a link that may well have recovered meanwhile (review of b469d48b).
+   */
+  private endMessageStatusClaimOffScreen(): void {
+    const claim = this.state.messageStatusUnanswered;
+    if (claim === undefined) return;
+    if (messageStatusUnanswered(claim, { machineId: selectedMachineId(this.state), sessionId: this.state.selectedSession?.id }) !== undefined) return;
+    this.setState({ messageStatusUnanswered: undefined });
   }
 
   /**

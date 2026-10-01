@@ -13,7 +13,8 @@ import { chromium } from "@playwright/test";
  * - no notice with Retry is raised, and nothing says "Reconnecting to update message status";
  * - after the grace the app's row says "Reconnecting…" in its own (status) style;
  * - once the routes answer again the ledger is asked, the row is withdrawn, and the message settles.
- * It touches only the session it starts, and archives it at the end.
+ * It touches only the session it starts, which runs on the zero-cost fixture model, and archives it
+ * at the end.
  */
 const BASE = process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
 const CWD = process.env.PROBE_CWD ?? "/Users/hanxiao.du/.pi-web-8505/pi-web-8505-seed-workspace";
@@ -28,6 +29,11 @@ const api = (path, body) => fetch(`${BASE}/api/machines/local${path}`, { method:
 
 const created = await api("/sessions", { cwd: CWD });
 const sessionId = created.status === 200 ? (await created.json()).id : undefined;
+if (typeof sessionId === "string") {
+  const selected = await api(`/sessions/${sessionId}/model`, { cwd: CWD, provider: "pi-web-probe", modelId: "flaky" });
+  const model = selected.status === 200 ? (await selected.json()).model : undefined;
+  if (model?.provider !== "pi-web-probe") throw new Error("the fixture model is not selectable; the probe never prompts the machine's default model");
+}
 const browser = await chromium.launch();
 try {
   check("precondition: the machine started a session", typeof sessionId === "string", String(created.status));

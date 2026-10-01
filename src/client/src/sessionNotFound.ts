@@ -1,6 +1,6 @@
 import { HttpError } from "./api/http";
 import { SESSION_NOT_FOUND_CODE } from "../../shared/apiTypes";
-import { noticeForReader, noticeFromError, type Notice } from "./notice";
+import { describeError, noticeForReader, noticeFromError, type Notice } from "./notice";
 
 /** What a send the machine answered with the code tells the reader; the words match the session's own page. */
 export const SEND_TO_MISSING_SESSION = "This session no longer exists, so your message was not sent.";
@@ -10,11 +10,20 @@ export const SEND_TO_MISSING_SESSION = "This session no longer exists, so your m
  *
  * The code says the machine holds no such session: it was deleted on another device, by the pi
  * CLI, or by hand on the disk, while this page still showed it. The daemon's own words, "Session
- * not found", read as a fault of the page. The typed words go back to the composer either way;
- * any other refusal keeps the words it was answered with.
+ * not found", read as a fault of the page. A message's words go back to the composer; any other
+ * refusal keeps the words it was answered with.
+ *
+ * The code comes from the session's own store, read through its own cwd, so it is an answer about
+ * that session. A session moved to another store by a changed `sessionDir` would read as gone
+ * here; the open says so too, through the machine-wide locate, when the reader opens it again.
  */
 export function sendRefusalNotice(error: unknown, machineId: string): Notice {
   return isSessionNotFoundError(error) ? noticeForReader(SEND_TO_MISSING_SESSION, machineId) : noticeFromError(error);
+}
+
+/** The same words for the transcript line and the command row a refused shell line or command leaves. */
+export function sendRefusalWords(error: unknown): string {
+  return isSessionNotFoundError(error) ? SEND_TO_MISSING_SESSION : describeError(error);
 }
 
 /** The words an older daemon answered a missing session with, before it sent a code. */

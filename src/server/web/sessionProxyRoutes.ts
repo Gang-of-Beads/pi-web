@@ -18,7 +18,18 @@ export interface SessionProxyDaemon {
   connectWebSocket(path: string): WebSocket;
 }
 
-export function registerSessionProxyRoutes(app: FastifyInstance, daemon: SessionProxyDaemon = new SessionDaemonClient(), prefix = "/api"): void {
+/**
+ * What the web process does when its daemon says sessions were deleted. The pins live here, so a
+ * deleted session's pin goes with it (owner, 2026-10-01: "删掉了自动就没有了").
+ */
+export interface SessionProxyHooks {
+  sessionsDeleted?: (sessionIds: readonly string[]) => Promise<void>;
+}
+
+/** The routes whose answer names the sessions the daemon deleted: the only proof of a deletion this process sees. */
+const DELETING_ROUTES = ["/sessions/bulk/delete-archived", "/sessions/cleanup"] as const;
+
+export function registerSessionProxyRoutes(app: FastifyInstance, daemon: SessionProxyDaemon = new SessionDaemonClient(), prefix = "/api", hooks: SessionProxyHooks = {}): void {
   const forward = async (reply: FastifyReply, method: string, url: string, body?: unknown): Promise<DaemonAnswer | undefined> => {
     const outcome = await boundDaemonRequest(reply.raw, (signal) => daemon.request(method, stripPrefix(url, prefix), body, { signal }));
     if (outcome.kind === "answered") return outcome.value;
@@ -39,6 +50,18 @@ export function registerSessionProxyRoutes(app: FastifyInstance, daemon: Session
       return undefined;
     }
   };
+
+  const sessionsDeleted = hooks.sessionsDeleted;
+  if (sessionsDeleted !== undefined) {
+    for (const path of DELETING_ROUTES) {
+      app.post(`${prefix}${path}`, async (request, reply) => {
+        const answer = await proxy(request, reply);
+        const deleted = reply.statusCode >= 200 && reply.statusCode < 300 ? deletedSessionIds(answer) : [];
+        if (deleted.length > 0) await sessionsDeleted(deleted).catch((error: unknown) => { console.warn(`[pins] could not unpin deleted sessions: ${error instanceof Error ? error.message : String(error)}`); });
+        return answer;
+      });
+    }
+  }
 
   app.get(`${prefix}/sessiond/health`, (_request, reply) => proxy({ method: "GET", url: `${prefix}/health` }, reply));
   app.get(`${prefix}/sessiond/runtime`, (_request, reply) => proxy({ method: "GET", url: `${prefix}/runtime` }, reply));
@@ -79,6 +102,11 @@ export function registerSessionProxyRoutes(app: FastifyInstance, daemon: Session
     }
   });
   app.all(`${prefix}/sessions/*`, (request, reply) => proxy(request, reply));
+}
+
+function deletedSessionIds(answer: unknown): string[] {
+  const ids: unknown = typeof answer === "object" && answer !== null ? Reflect.get(answer, "deletedSessionIds") : undefined;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string" && id !== "") : [];
 }
 
 function stripPrefix(url: string, prefix: string): string {

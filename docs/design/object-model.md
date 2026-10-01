@@ -584,6 +584,17 @@ The built-in browser plugins shipped as about 70 module files. Eight entries imp
 
 The request count matters less than this: 24 `/api` reads cost about one round trip each on six connections, while the plugin waterfall costs ten in a row.
 
+**Correction (2026-10-01): production speaks HTTP/2.** 8504 is published through `tailscale serve https:8504`, and the phone negotiates HTTP/2 (`curl` reports `2 200`; forcing `--http1.1` gives 1.1). The table above and the P7 slice a numbers were measured over plain HTTP to `127.0.0.1`, where Chrome is held to six HTTP/1.1 connections, so every boot request queued in waves. HTTP/2 multiplexes them on one connection, so production never had that queue. Measured again through a local HTTP/2 TLS front for 8505 (`/tmp/h2-proxy.mjs`), same deep link, after P7 slice a:
+
+| Added latency | First row (HTTP/2) | First row (HTTP/1.1, same build) | Projects read sent | Workspaces read sent | Sessions read sent |
+|---|---|---|---|---|---|
+| 0 ms | 335 ms | 232 ms (before P7a) | 95 ms | 229 ms | 300 ms |
+| 50 ms | 950 ms | 1,638 ms (before P7a) | 478 ms | 775 ms | 864 ms |
+| 100 ms | 1,071–1,326 ms | 2.0–2.1 s | 488–631 ms | 706–913 ms | 830–1,090 ms |
+| 150 ms | 1,651 ms | | 849 ms | 1,129 ms | 1,352 ms |
+
+What a reader on the tailnet waits for is serial depth, not request count: the document, the app bundle, the boot reads with the plugin manifest (about 400–500 ms at 100 ms), the plugin modules and the projects read (one round trip), then the workspaces read and the sessions read, two round trips that only confirm the place before the session is selected. A warm reload draws its first row from the cached transcript the moment the session is selected, so those last two round trips are the largest piece left. The boot probes measure through an HTTP/2 front from now on; an HTTP/1.1 number is not a production number.
+
 **The slices, ordered by what a reader on a slow link feels:**
 
 1. **One file per plugin** (P7 slice a, build). **Shipped.**
@@ -593,15 +604,12 @@ The request count matters less than this: 24 `/api` reads cost about one round t
      - An earlier 1.17 s was measured while three plugins were withheld as stale (`dist` had been rebuilt under the running stack), so it is not counted.
    - **What is left:** the 15 entries and about 13 `/api` reads, all issued around 300–400 ms, queue on HTTP/1.1's six connections to one host. The plugins finish around 930 ms (the updates plugin's activation read). The workspaces → sessions → row chain then costs about three more round trips. Slices 2 and 3 address both.
    - Guard: `browserEntryResolvable.test.ts` fails when a shipped entry statically imports anything.
-2. **The place before the plugins** (P6 slice b, browser only). **Waits on the owner** (`/tmp/owner-questions-next.md`: text first, or everything at once).
-   - The route restore would select the machine, project, workspace and session without waiting for the plugins.
-   - Only a route's `tool` and plugin `view` would wait for them, and they apply when the plugins register, if the reader has not moved since (D8).
-   - Rows a plugin draws (diagrams, event cards) would show their plain form first and redraw once.
-   - Expected: about four round trips plus the app bundle (roughly 0.9 s at 100 ms).
+2. **The place before the plugins** (P6 slice b). **Dropped** (owner, 2026-10-01: everything at once). A session's text does not show before the plugins that draw parts of it, so the route restore keeps waiting for them. Under HTTP/2 the plugins cost about one round trip after the manifest, which the projects read shares.
 3. **A remembered folder seeds the open** (P6 slice c, browser only; replaces "`cwd` in links").
    - The page remembers each session's folder, keyed by machine and session.
    - A deep link or reload asks for the transcript tail at once, in parallel with the route chain.
    - The chain's typed place (`found | outside | unknown`) wins over the seed when they disagree. An early read for a session that turns out gone shows nothing until the chain says gone.
+   - With everything at once, the seed does not show the session before the plugins. It lets the session be selected as soon as the plugins and the projects read are in, instead of two round trips later (about 250 ms at 100 ms, measured under HTTP/2).
 4. **Fewer `/api` reads at boot** (P7 slices b–d). These are measured again after 1–3, since each is worth one round trip or less once the waterfall and the chain are gone:
    - one shell-facts answer (config, version, self-update status, roster), with a fallback for an older web process;
    - `pi-web/status` given to plugins as a host fact instead of read again by the updates plugin;

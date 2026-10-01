@@ -278,13 +278,14 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     projects: () => projects.list(),
     workspaces: (project) => resolveWorkspacesWithEffectiveConfig(project, workspaces, configService),
     sessions: daemonSessionListing(sessionDaemon),
-    pinned: { ids: () => sessionPins.list(), locate: daemonSessionLocate(sessionDaemon, homedir()), forget: async (sessionId) => { await sessionPins.unpin(sessionId); } },
+    pinned: { ids: () => sessionPins.list(), locate: daemonSessionLocate(sessionDaemon, homedir()) },
   };
   registerSessionBoardRoutes(app, sessionBoardSources);
   registerSessionBoardRoutes(app, sessionBoardSources, "/api/machines/local");
 
-  registerSessionProxyRoutes(app, sessionDaemon);
-  registerSessionProxyRoutes(app, sessionDaemon, "/api/machines/local");
+  const unpinDeleted = { sessionsDeleted: async (sessionIds: readonly string[]) => { for (const sessionId of sessionIds) await sessionPins.unpin(sessionId); } };
+  registerSessionProxyRoutes(app, sessionDaemon, "/api", unpinDeleted);
+  registerSessionProxyRoutes(app, sessionDaemon, "/api/machines/local", unpinDeleted);
   registerPluginBackendProxyRoutes(app, sessionDaemon);
   registerPluginOperationProxyRoutes(app, sessionDaemon);
   const projectTrustDeps = {
