@@ -4521,10 +4521,17 @@ export class PiSessionService implements SessionRouteService {
    * pressing stop silently deleted work the user had already typed and could
    * not get back. The texts are returned instead, and the caller puts them in
    * the composer: same transition as a recall, different trigger.
+   *
+   * A session with no runtime has nothing to stop, which is an answer only when the session
+   * exists: one no store holds answers `session-not-found`, so a Stop on a session deleted
+   * elsewhere is not a quiet success (P2 slice b part 2, G5).
    */
   async abort(ref: PiSessionRef): Promise<{ discarded: QueuedSessionMessage[] }> {
     const active = this.activeForRef(ref);
-    if (active === undefined) return { discarded: [] };
+    if (active === undefined) {
+      await this.locate(ref);
+      return { discarded: [] };
+    }
     const sessionId = active.runtime.session.sessionId;
     const discarded = await this.emptyQueues(active.runtime.session);
     // Settle run-scoped dialogs now, at abort-request time: pi's agent loop
@@ -4563,6 +4570,7 @@ export class PiSessionService implements SessionRouteService {
       await this.closeActive(startup.sessionId);
       return;
     }
+    await this.locate(ref);
     this.publishNotificationMutations(this.notificationStore.clearSessionIdentity(ref.id, canonicalizeStoredCwd(ref.cwd), "runtime-close"));
   }
 

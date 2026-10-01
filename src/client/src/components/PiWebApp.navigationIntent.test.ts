@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PiWebApp } from "./PiWebApp";
 import type { Machine, SessionInfo } from "../api";
+import { HttpError } from "../api/http";
 
 /**
  * D8 in docs/design/state-diagram.md, B29. Owner, 2026-09-30: "I tapped a page, but it hadn't
@@ -147,6 +148,19 @@ describe("opening a session the reader tapped", () => {
 
     expect({ selected, session: state(app).selectedSessionId, view: state(app).mainView }).toEqual({ selected: [], session: previous.id, view: "navigation" });
     expect(call(member(app, "navigation"), "view")).toEqual({ key: "local:target", label: "target", phase: "failed" });
+  });
+
+  /** P2 slice b part 2 (G3): the session layer turns the code into the gone words; the tap does not fail. */
+  it("goes on to the session, which says it is gone, when the read answers that the session no longer exists", async () => {
+    const read = deferred();
+    const { app, selected } = readerOnTheSessionsPage({ cached: false, read: read.promise });
+
+    void call(app, "openSessionFromQuickSwitcher", sessionNamed("target"));
+    await flush();
+    read.reject(new HttpError("Session not found", 404, "local", undefined, "session-not-found"));
+    await flush();
+
+    expect({ selected, view: state(app).mainView, pending: call(member(app, "navigation"), "view") }).toEqual({ selected: ["target"], view: "chat", pending: undefined });
   });
 });
 

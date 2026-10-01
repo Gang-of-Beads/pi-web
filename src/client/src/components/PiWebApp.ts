@@ -21,6 +21,8 @@ import type { BackgroundTasksRead, PiWebFleetReport, PiWebFleetRunResponse } fro
 import type { AppAction } from "../actions";
 import { composerCwd, initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
+import { isSessionNotFoundError } from "../sessionNotFound";
+import { renderArchivedStrip } from "./archivedStrip";
 import { sessionWorkSettled } from "../sessionWorkSettled";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
@@ -208,7 +210,9 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   prompt-editor { flex: 0 0 auto; }
   button { font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   .empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: var(--pi-space-5); text-align: center; color: var(--pi-muted); }
-  .empty button { box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-4) var(--pi-space-6); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-accent); font: var(--pi-text-sm) var(--pi-font-ui); line-height: inherit; cursor: pointer; }
+  .archived-strip { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-5); padding: var(--pi-space-5) var(--pi-space-7); border-top: 1px solid var(--pi-border); color: var(--pi-muted); }
+  .archived-strip p { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .empty button, .archived-strip button { box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-4) var(--pi-space-6); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-accent); font: var(--pi-text-sm) var(--pi-font-ui); line-height: inherit; cursor: pointer; }
   .error { display: flex; gap: var(--pi-space-4); align-items: flex-start; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
@@ -419,6 +423,7 @@ export class PiWebApp extends LitElement {
   private piWebStatusDeferredTimer: number | undefined;
   private workspaceDeletionPollTimer: number | undefined;
   private subagentRefreshArmedFor: string | undefined;
+  private restoringSessionId: string | undefined;
   private livenessTimer: number | undefined;
   private unansweredShown: ShownUnanswered | undefined;
   private workspaceChangedWhileHidden: WorkspaceScope | undefined;
@@ -2979,9 +2984,11 @@ export class PiWebApp extends LitElement {
     if (!this.sessions.canOpenAtOnce(session, machineId)) {
       try {
         await this.sessions.readFirstPage(session, machineId);
-      } catch {
-        this.navigation.fail(seq);
-        return;
+      } catch (error) {
+        if (!isSessionNotFoundError(error)) {
+          this.navigation.fail(seq);
+          return;
+        }
       }
       if (!this.navigation.isCurrent(seq)) return;
     }
@@ -4333,6 +4340,22 @@ export class PiWebApp extends LitElement {
     `;
   }
 
+  private renderArchivedComposerSlot(session: SessionInfo): TemplateResult {
+    return renderArchivedStrip(() => { void this.restoreFromComposerSlot(session); }, this.restoringSessionId === session.id);
+  }
+
+  private async restoreFromComposerSlot(session: SessionInfo): Promise<void> {
+    if (this.restoringSessionId === session.id) return;
+    this.restoringSessionId = session.id;
+    this.requestUpdate();
+    try {
+      await this.changeArchiveState("restore", session);
+    } finally {
+      this.restoringSessionId = undefined;
+      this.requestUpdate();
+    }
+  }
+
   private sessionTargetNames(named: ScopedSessionTarget): SessionTargetNames {
     const machine = this.state.machines.find((candidate) => candidate.id === named.machineId)?.name ?? named.machineId;
     return { machine, workspace: this.state.selectedWorkspace?.label ?? named.cwd };
@@ -4423,7 +4446,7 @@ export class PiWebApp extends LitElement {
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigatePage(false) : null}</div>
           ${state.selectedSession ? html`
             ${this.renderChatView(state, state.selectedSession)}
-            <prompt-editor .rowedMessageIds=${rowedClientMessageIds(state.messages, [...(state.status?.queuedMessages ?? []), ...(state.clientQueuedSessionMessages[state.selectedSession.id] ?? [])])} .sessionId=${state.selectedSession.id} .cwd=${composerCwd(state)} .sessionPrompts=${this.sessionPromptsFor(state)} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .disabled=${state.selectedSession.archived === true} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true}  .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .composerContributions=${this.plugins.getComposerContributions(selectedMachineId(state))} .onPluginNotice=${(message: string) => { this.setState(noticePatch(noticeForReader(message))); }}></prompt-editor>
+            ${state.selectedSession.archived === true ? this.renderArchivedComposerSlot(state.selectedSession) : html`<prompt-editor .rowedMessageIds=${rowedClientMessageIds(state.messages, [...(state.status?.queuedMessages ?? []), ...(state.clientQueuedSessionMessages[state.selectedSession.id] ?? [])])} .sessionId=${state.selectedSession.id} .cwd=${composerCwd(state)} .sessionPrompts=${this.sessionPromptsFor(state)} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true}  .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .composerContributions=${this.plugins.getComposerContributions(selectedMachineId(state))} .onPluginNotice=${(message: string) => { this.setState(noticePatch(noticeForReader(message))); }}></prompt-editor>`}
             ${this.renderStatusBar(state)}
             ${state.commandDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} .title=${state.commandDialog.title} .options=${state.commandDialog.options} .onPick=${(value: string) => this.sessions.respondToCommand(state.commandDialog?.requestId ?? "", value)} .onCancel=${() => { this.sessions.cancelCommand(); }}></command-picker>` : null}
             ${state.modelDialog !== undefined ? html`<model-picker ?abovedialog=${this.settingsOpen} title=${state.modelDialog.title} .options=${state.modelDialog.options} .catalog=${state.modelDialog.catalog} .selectedValue=${state.modelDialog.selectedValue} .onPick=${(value: string) => { void this.pickModel(value); }} .onToggleEnabled=${this.handleToggleModelEnabled} .onCancel=${() => { this.setState({ modelDialog: undefined }); }}></model-picker>` : null}

@@ -7,10 +7,10 @@ import { SessionGapRepair, type StreamFrontier } from "../sessionGapRepair";
 import { describeError, noticeForReader, RetiredBy } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
-import { targetInListing } from "../sessionTarget";
+import { targetInListing, type SessionTarget } from "../sessionTarget";
 import { SessionTargetResolver, type SessionTargetOpenOptions } from "./sessionTargetResolver";
 import type { SessionTranscriptTail } from "../../../shared/apiTypes";
-import { isSessionNotFoundError } from "../sessionNotFound";
+import { isSessionNotFoundError, sessionFailureRoute } from "../sessionNotFound";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { resetWorkspaceScopedState, type AppState, type ClosedExtensionDialog } from "../appState";
@@ -224,6 +224,10 @@ export class SessionController {
   private readonly socket: SessionEventSocket;
   private readonly api: typeof defaultApi;
   private readonly targets: SessionTargetResolver;
+  /** The session the open-session seam asked the machine about, until the resolver opens what it found. */
+  private seamLocating: string | undefined;
+  /** A session the resolver opened after that locate, until its open answers with anything but the code. */
+  private locatedAfterGone: string | undefined;
   private readonly transcripts: ChatTranscriptStore;
   private readonly replacePromptEditorText: SessionControllerDependencies["replacePromptEditorText"];
   private readonly onSelectedSessionReady: SessionControllerDependencies["onSelectedSessionReady"];
@@ -299,7 +303,11 @@ export class SessionController {
     this.targets = new SessionTargetResolver({
       locate: (ref, machineId) => this.api.locateSession(ref, machineId),
       publish: (sessionTarget) => { this.setState({ sessionTarget }); },
-      open: (session, openOptions) => this.selectSession(session, openOptions),
+      open: (session, openOptions) => {
+        this.locatedAfterGone = this.seamLocating === session.id ? session.id : undefined;
+        this.seamLocating = undefined;
+        return this.selectSession(session, openOptions);
+      },
       reportError: (error) => { this.setState(errorNoticePatch(error)); },
     });
   }
@@ -479,7 +487,9 @@ export class SessionController {
       void this.api.status(session, machineId)
         .then((status) => { if (this.isCurrentSessionSelection(session.id, machineId, seq) && !this.statusReadIsStale(status, framesAtRequest)) this.applyStatusRead(status); })
         .catch((error: unknown) => {
-          if (this.isCurrentSessionSelection(session.id, machineId, seq)) this.setState({ statusReadFailed: describeError(error) });
+          if (!this.isCurrentSessionSelection(session.id, machineId, seq)) return;
+          if (isSessionNotFoundError(error)) this.failedFor(session, error);
+          else this.setState({ statusReadFailed: describeError(error) });
         });
     }
     let buffered: SessionUiEvent[] | undefined;
@@ -489,6 +499,7 @@ export class SessionController {
         if (seq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) return;
         const history = this.transcripts.mergeHistory(transcriptKey, page);
         this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [] });
+        this.locatedAfterGone = undefined;
         this.onSelectedSessionReady?.({ machineId, session });
         if (options?.updateUrl !== false) this.updateUrl();
         return;
@@ -534,6 +545,7 @@ export class SessionController {
       });
       await this.requestSelectedSessionRefresh({ session, machineId, selectionSeq: seq });
       if (!this.isCurrentRefreshTarget({ session, machineId, selectionSeq: seq })) return;
+      this.locatedAfterGone = undefined;
       void this.refreshAvailableThinkingLevels();
       for (const event of socketBuffer) this.routeLiveEvent(event);
       this.socket.setHandler((event) => { this.routeLiveEvent(event); });
@@ -558,7 +570,11 @@ export class SessionController {
         for (const event of buffered) this.routeLiveEvent(event);
         this.socket.setHandler((event) => { this.routeLiveEvent(event); });
       }
-      this.setState({ ...errorNoticePatch(error), transcriptFailed: describeError(error) });
+      if (isSessionNotFoundError(error) && this.getState().selectedWorkspace !== undefined) this.failedFor(session, error);
+      else {
+        this.locatedAfterGone = undefined;
+        this.setState({ ...errorNoticePatch(error), transcriptFailed: describeError(error) });
+      }
       if (options?.propagateRefreshError === true) throw error;
     } finally {
       // Only the selection that set the flag may clear it: a superseded
@@ -584,7 +600,7 @@ export class SessionController {
       const history = this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page);
       this.setState(history);
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
     } finally {
       if (this.getState().selectedSession?.id === session.id) this.setState({ isLoadingEarlierMessages: false });
     }
@@ -605,7 +621,7 @@ export class SessionController {
       if (this.getState().selectedSession?.id !== session.id) return;
       this.setState({ ...this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page), newerPendingCount: 0 });
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
     } finally {
       if (this.getState().selectedSession?.id === session.id) this.setState({ isLoadingEarlierMessages: false });
     }
@@ -862,7 +878,7 @@ export class SessionController {
       else if (ledgerId !== undefined && result.type === "select") this.commandDialogRows.set(result.requestId, ledgerId);
     } catch (error) {
       if (ledgerId !== undefined) this.settleLedgerRow(ledgerId, { state: "failed", resultText: describeError(error) });
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
     }
   }
 
@@ -891,7 +907,7 @@ export class SessionController {
     try {
       result = await this.api.navigateTree(session, { targetId, expectedLeafId: tree.activeLeafId, summary }, machineId);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
       throw error;
     }
 
@@ -943,7 +959,7 @@ export class SessionController {
     try {
       result = await this.api.forkTree(session, { entryId, expectedLeafId: tree.activeLeafId }, machineId);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
       throw error;
     }
 
@@ -976,7 +992,7 @@ export class SessionController {
     try {
       await this.api.abort(session, machineId);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
       throw error;
     }
   }
@@ -1009,7 +1025,7 @@ export class SessionController {
     } catch (error) {
       // A late failure paints its complaint only where the archived session
       // is still on screen.
-      if (this.getState().selectedSession?.id === session.id) this.setState(errorNoticePatch(error));
+      if (this.getState().selectedSession?.id === session.id) this.failedFor(session, error);
     }
   }
 
@@ -1026,7 +1042,7 @@ export class SessionController {
       if (selectionChange.type === "select") await this.selectSession(selectionChange.session);
       else if (selectionChange.type === "clear") this.deselectSession({ forgetRememberedSelection: true });
     } catch (error) {
-      if (this.getState().selectedSession?.id === session.id) this.setState(errorNoticePatch(error));
+      if (this.getState().selectedSession?.id === session.id) this.failedFor(session, error);
     }
   }
 
@@ -1336,7 +1352,7 @@ export class SessionController {
       this.replaceSession(restored);
       if (this.getState().selectedSession?.id === restored.id) await this.selectSession(restored);
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
     }
   }
 
@@ -1350,7 +1366,7 @@ export class SessionController {
         await this.selectSession(session, { updateUrl: false });
       }
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
     }
   }
 
@@ -1362,7 +1378,7 @@ export class SessionController {
       delete detached.parentSessionPath;
       this.replaceSession(detached);
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
     }
   }
 
@@ -1372,7 +1388,7 @@ export class SessionController {
     try {
       return (await this.api.models(session, selectedMachineId(this.getState()))).models;
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
       return [];
     }
   }
@@ -1383,7 +1399,7 @@ export class SessionController {
     try {
       return (await this.api.modelCatalog(session, selectedMachineId(this.getState()))).models;
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
       return [];
     }
   }
@@ -1399,7 +1415,7 @@ export class SessionController {
     try {
       return (await this.api.setModelEnabled(session, provider, modelId, enabled, selectedMachineId(this.getState()))).models;
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
       return undefined;
     }
   }
@@ -1411,7 +1427,7 @@ export class SessionController {
       this.applyStatus(await this.api.setModel(session, provider, modelId, selectedMachineId(this.getState())));
       await this.refreshAvailableThinkingLevels();
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
     }
   }
 
@@ -1422,7 +1438,7 @@ export class SessionController {
       this.applyStatus(await this.api.cycleModel(session, direction, selectedMachineId(this.getState())));
       await this.refreshAvailableThinkingLevels();
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
     }
   }
 
@@ -1432,7 +1448,7 @@ export class SessionController {
     try {
       return (await this.api.thinkingLevels(session, selectedMachineId(this.getState()))).levels;
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
       return [];
     }
   }
@@ -1455,7 +1471,7 @@ export class SessionController {
     try {
       this.applyStatus(await this.api.setThinkingLevel(session, level, selectedMachineId(this.getState())));
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
     }
   }
 
@@ -1465,7 +1481,7 @@ export class SessionController {
     try {
       this.applyStatus(await this.api.cycleThinkingLevel(session, selectedMachineId(this.getState())));
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
     }
   }
 
@@ -1489,7 +1505,7 @@ export class SessionController {
       const status = await this.api.clearQueue(session, machineId);
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(status);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
     }
   }
 
@@ -1519,7 +1535,7 @@ export class SessionController {
       this.applyStatus(status);
       return recalled;
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
       return false;
     }
   }
@@ -1550,7 +1566,7 @@ export class SessionController {
       const status = await this.api.dismissWarning(session, dismissId, machineId);
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(status);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
     }
   }
 
@@ -1620,7 +1636,7 @@ export class SessionController {
       // request is needed to learn what the session's open dialogs are now.
       this.applyStatus(response.sessionStatus);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
     }
   }
 
@@ -1674,7 +1690,7 @@ export class SessionController {
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(response.sessionStatus);
       else this.applyStatusToMap(response.sessionStatus);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
     }
   }
 
@@ -1714,7 +1730,7 @@ export class SessionController {
       }
       return result.discarded;
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
       return [];
     }
   }
@@ -1728,8 +1744,45 @@ export class SessionController {
       selectionSeq: this.selectionSeq,
     };
     return this.requestSelectedSessionRefresh(target).catch((error: unknown) => {
-      if (this.isCurrentRefreshTarget(target)) this.setState(errorNoticePatch(error));
+      if (this.isCurrentRefreshTarget(target)) this.failedFor(target.session, error);
     });
+  }
+
+  /**
+   * Say what went wrong with a read or change of `session`. The daemon's session-not-found code
+   * about the session the reader has open is not a notice: the session becomes a named target
+   * and the machine-wide locate decides what the reader sees (`sessionFailureRoute`). Session
+   * ids are UUIDv7, so the id alone names the session across machines.
+   */
+  private failedFor(session: { readonly id: string }, error: unknown): void {
+    const state = this.getState();
+    const route = sessionFailureRoute(error, session.id, state.selectedSession?.id, state.sessionTarget?.sessionId);
+    if (route === "notice") this.setState(errorNoticePatch(error));
+    if (route === "locate") void this.locateAnsweredGone(session.id, error);
+  }
+
+  /**
+   * The open session answered the code. Its own directory no longer holds it, which does not
+   * prove it is gone from the machine, so the machine-wide locate decides (state-diagram D8), and
+   * the URL keeps naming it so a reload shows the same answer. A session the resolver opened
+   * after that locate and that answers the code as it opens is gone: asking again would only
+   * loop. A locate that got no answer, or an open that failed for another reason, arms nothing.
+   */
+  private async locateAnsweredGone(sessionId: string, error: unknown): Promise<void> {
+    const state = this.getState();
+    const workspace = state.selectedWorkspace;
+    if (workspace === undefined) {
+      this.setState(errorNoticePatch(error));
+      return;
+    }
+    const scope = { machineId: selectedMachineId(state), workspaceId: workspace.id, cwd: workspace.path, sessionId };
+    const target: SessionTarget = this.locatedAfterGone === sessionId ? { kind: "gone", sessionId } : { kind: "asking", sessionId };
+    this.locatedAfterGone = undefined;
+    this.seamLocating = target.kind === "asking" ? sessionId : undefined;
+    this.clearActiveSession();
+    const following = this.targets.follow(scope, target);
+    this.updateUrl();
+    await following;
   }
 
   /**
@@ -1828,7 +1881,8 @@ export class SessionController {
       const status = await statusRead;
       if (!this.isCurrentRefreshTarget(target)) return;
       if (status.kind === "failed") {
-        this.setState({ statusReadFailed: describeError(status.error), ...errorNoticePatch(status.error) });
+        if (isSessionNotFoundError(status.error)) this.failedFor(target.session, status.error);
+        else this.setState({ statusReadFailed: describeError(status.error), ...errorNoticePatch(status.error) });
         return;
       }
       if (this.statusReadIsStale(status.value, framesAtRequest)) return;
@@ -2616,7 +2670,7 @@ export class SessionController {
       await this.api.runCommand({ id: session.id, cwd: session.cwd }, `/name ${trimmed}`, machineId);
     } catch (error) {
       this.applySessionName(session.id, previous);
-      this.setState(errorNoticePatch(error));
+      this.failedFor(session, error);
     }
   }
 

@@ -489,7 +489,7 @@ stateDiagram-v2
     asking --> gone: 404 with code session-not-found
     asking --> unknown: no answer (ReadMiss)
     unknown --> asking: the retry ladder or a wake
-    open --> gone: a read or Stop answers the code
+    open --> asking: a read, Stop or a change of the open session answers the code
     archived --> open: Restore succeeds
 ```
 
@@ -510,6 +510,16 @@ The way back forgets the target: the URL stops naming it, and the phone shows th
 - **An older daemon without the locate route** answers the route-not-found envelope. For one release, the answered listing is then the evidence, and the words say only what it proves: "This session isn't in *workspace* on *machine*."
 - **Nothing else is selected** while the target is `asking`, `unknown` or `gone`. On the phone, the chat view stays on screen for the target instead of falling back to the Sessions page, so the answer is visible.
 - **`gone` is final for that id** until the reader navigates. It is not retried, and it never becomes another session.
+- **The open session answered the code** (P2 slice b part 2; owner, 2026-10-01: "那就报错啊，说被删了", report it as an error that says it was deleted).
+  - The code came from a read by that session's own directory. It proves only that the session is not there, not that it is gone from the machine: it may have been archived on another device.
+  - So the open session becomes a named target, `asking`, and the same machine-wide locate decides it: `gone` shows the gone words and the way back; `archived` opens it read-only with Restore; found elsewhere opens it there.
+  - Every read and change of the selected session reports its failure through one seam, which does this only when the failure is the code and the call concerned the selected session. A rename or archive of another row that answers the code stays a notice about that row. A client pending row (a temporary id the machine cannot locate) and sends are outside the seam.
+  - The URL names the id once the target is published, so a reload shows the same answer, including after a pick that had already written the previous session's route.
+  - A session the resolver opened after that locate and that answers the code as it opens is `gone` at once: asking again would only loop. A locate that got no answer, or an open that failed for another reason, arms nothing.
+  - With no selected workspace to send the reader back to, the old words stand ("Couldn't load this session." with the daemon's reason).
+  - The page learns of a deletion only at its next read of the session (a socket reconnect, a resync, a tab resume, Stop or another change). The daemon pushes no deletion; that is the heads work (B28).
+- **A message sent to a session deleted meanwhile** is an open owner question: where its text goes once the composer gives way to the gone words. Until it is answered, a send keeps its failed row, and the next read of the session routes the page to `gone`.
+- **Restore is in the composer slot** (owner, 2026-10-01): an archived session shows "This session is archived." and Restore where the composer would be.
 - **Producers before the fix:** `selectPreferredSession` fell through to the latest session (seen on 8505: a link to a deleted id opened "probe warm reply" while the URL kept the deleted id); a refresh of the open session that answered the code read "Couldn't load this session."; a pick of a row deleted since the board was read read "Couldn't open"; an archived session opened with a disabled composer and no reason; Stop on a missing session answered "stopped".
 
 ## D7. A goal (our own goal plugin, replacing pi-goal's flow)

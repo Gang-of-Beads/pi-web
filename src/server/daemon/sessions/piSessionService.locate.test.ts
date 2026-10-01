@@ -35,6 +35,21 @@ function serviceFor(records: ReturnType<typeof sessionRecord>[], archived: Archi
   return service;
 }
 
+describe("stopping a session with no runtime (P2 slice b part 2, G5)", () => {
+  it("answers Stop and Abort on a session no store holds with the typed error, and quietly for one that exists", async () => {
+    const service = serviceFor([sessionRecord("closed")]);
+
+    const outcomes = await Promise.all([
+      service.abort({ id: "deleted", cwd: "/workspace" }).then(() => "answered", (error: unknown) => (error instanceof SessionNotFoundError ? "session-not-found" : "other failure")),
+      service.stop({ id: "deleted", cwd: "/workspace" }).then(() => "answered", (error: unknown) => (error instanceof SessionNotFoundError ? "session-not-found" : "other failure")),
+      service.abort({ id: "closed", cwd: "/workspace" }).then((answer) => JSON.stringify(answer), () => "failed"),
+      service.stop({ id: "closed", cwd: "/workspace" }).then(() => "answered", () => "failed"),
+    ]);
+
+    expect(outcomes).toEqual(["session-not-found", "session-not-found", JSON.stringify({ discarded: [] }), "answered"]);
+  });
+});
+
 describe("locating a session by id (P2 slice b)", () => {
   it("finds a session recorded under another directory than the one asked about", async () => {
     const service = serviceFor([sessionRecord("in-sub", "/workspace/packages/app")]);
