@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { piWebOfferFacts, piWebUpdateOffer, withAnsweredVersion } from "./piWebUpdateOffer";
+import type { PiWebComponentStatus, PiWebReleaseStatus, PiWebStatusResponse } from "@gang-of-beads/pi-web/plugin-api";
+import { answeredVersionsFrom, piWebOfferFacts, piWebUpdateOffer, withAnsweredVersion } from "./piWebUpdateOffer";
 
-/**
- * Owner's ruling: one popup per version per machine, closing it answers it,
- * and the offer is about PI WEB - which is what carries the pi the sessions
- * actually run.
- */
+/** The answer shape is the plugin API's own type, so a change to it on the server breaks this file's typecheck. */
 describe("the offer's facts, read from a machine's pi-web/status answer", () => {
-  const status = (web: Record<string, unknown>, release: Record<string, unknown>) => ({
+  const status = (web: Partial<PiWebComponentStatus>, release: Partial<PiWebReleaseStatus>) => ({
     packageName: "@gang-of-beads/pi-web",
     generatedAt: "2026-10-01T14:09:11.652Z",
-    components: { web: { component: "web", label: "Web/UI", piVersion: "0.99.2", stale: false, available: true, ...web }, sessiond: { component: "sessiond", runtimeVersion: "2.202609.1" } },
-    release: { packageName: "@gang-of-beads/pi-web", checkedAt: "2026-10-01T13:41:34.536Z", ...release },
+    components: {
+      web: { component: "web", label: "Web/UI", stale: false, available: true, ...web },
+      sessiond: { component: "sessiond", label: "Session daemon", runtimeVersion: "2.202609.1", stale: false, available: true },
+    },
+    release: { packageName: "@gang-of-beads/pi-web", updateAvailable: false, checkedAt: "2026-10-01T13:41:34.536Z", ...release },
     commands: { update: "pi-web update" },
     messages: [],
-  });
+  }) satisfies PiWebStatusResponse;
 
   it("reads the version the server compared the release against, so an available update is offered", () => {
     const facts = piWebOfferFacts(status({ runtimeVersion: "2.202609.28", installedVersion: "2.202609.28" }, { latestVersion: "2.202610.1", updateAvailable: true }));
@@ -32,6 +32,11 @@ describe("the offer's facts, read from a machine's pi-web/status answer", () => 
     ]).toEqual(["2.202609.28", "2.202609.27"]);
   });
 
+  it("reads the answered versions, and none from an answer of another shape", () => {
+    expect([answeredVersionsFrom({ answeredVersions: ["2.202609.9", 3, "2.202610.1"] }), answeredVersionsFrom({ answeredVersions: "x" }), answeredVersionsFrom(undefined)])
+      .toEqual([["2.202609.9", "2.202610.1"], [], []]);
+  });
+
   it("knows nothing from an answer of another shape", () => {
     expect([piWebOfferFacts(undefined), piWebOfferFacts({ version: "1.0.0", release: "x", components: [] })]).toEqual([
       { running: undefined, release: {}, command: undefined },
@@ -40,6 +45,11 @@ describe("the offer's facts, read from a machine's pi-web/status answer", () => 
   });
 });
 
+/**
+ * Owner's ruling: one popup per version per machine, closing it answers it,
+ * and the offer is about PI WEB - which is what carries the pi the sessions
+ * actually run.
+ */
 describe("the PI WEB update offer", () => {
   it("offers an available version nobody has answered", () => {
     expect(piWebUpdateOffer({

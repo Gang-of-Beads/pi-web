@@ -1,5 +1,5 @@
 import type { TemplateResult } from "lit";
-import { piWebOfferFacts, piWebUpdateOffer } from "./piWebUpdateOffer.js";
+import { answeredVersionsFrom, piWebOfferFacts, piWebUpdateOffer } from "./piWebUpdateOffer.js";
 import { showPiWebUpdateNotice, showPiWebUpdateOffer } from "./updateOfferDialog.js";
 import type { HtmlTemplateTag, PiWebComponentStatus, PiWebPlugin, PluginActivationContext, PiWebStatusResponse, PluginRuntimeState, WorkspacePanelTerminal } from "@gang-of-beads/pi-web/plugin-api";
 import { additionalCommands, fallbackDockerStatus, formatVersion, installationLabel, messageCount, recommendedCommand, shouldShowUpdatesPanel, statusFor, type UpdatesRuntimeHint } from "./updatesLogic.js";
@@ -154,9 +154,6 @@ function renderUpdatesPanel(html: HtmlTemplateTag, terminal: WorkspacePanelTermi
   `;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /**
  * The machine's PI WEB update offer, once.
@@ -177,10 +174,7 @@ function offerPiWebUpdate(context: PluginActivationContext): void {
   void Promise.all([status, callOperation("offer.answered")])
     .then(([status, answered]) => {
       const facts = piWebOfferFacts(status);
-      const answeredVersions = isRecord(answered) && Array.isArray(answered["answeredVersions"])
-        ? answered["answeredVersions"].filter((entry): entry is string => typeof entry === "string")
-        : [];
-      const verdict = piWebUpdateOffer({ running: facts.running, release: facts.release, answeredVersions });
+      const verdict = piWebUpdateOffer({ running: facts.running, release: facts.release, answeredVersions: answeredVersionsFrom(answered) });
       if (verdict.kind !== "offer") return;
       showPiWebUpdateOffer({ running: verdict.running, latest: verdict.latest, command: facts.command }, {
         ui,

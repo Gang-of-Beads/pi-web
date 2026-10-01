@@ -39,8 +39,8 @@ export interface PluginActivationContext {
      */
     readonly callOperation?: (operation: string, input?: unknown) => Promise<unknown>;
     /**
-     * The PI WEB status (version, release, update commands) of the machine this registration belongs
-     * to, read once for the page and every plugin. Absent on hosts older than this contract; read
+     * The PI WEB status of the machine this registration belongs to (its components and their
+     * versions, the release check, the update commands), read once for the page and every plugin. Absent on hosts older than this contract; read
      * `api/pi-web/status` through `fetchJson` there, which answers for the machine serving the page.
      */
     readonly readPiWebStatus?: () => Promise<unknown>;

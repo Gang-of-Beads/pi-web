@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { html, render, svg } from "lit";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginDialog } from "@gang-of-beads/pi-web/plugin-api";
 import { createPluginHostUi } from "../../src/client/src/plugins/pluginHostUi.js";
 import plugin from "./pi-web-plugin.js";
@@ -13,7 +13,7 @@ import plugin from "./pi-web-plugin.js";
 describe("the updates plugin offers a newer PI WEB", () => {
   afterEach(() => { document.body.replaceChildren(); });
 
-  it("opens the offer for a newer release and copies the machine's update command", async () => {
+  it("opens the offer for a newer release, copies the machine's update command, and records the answer", async () => {
     const dialogs: PluginDialog[] = [];
     const copied: string[] = [];
     const ui = {
@@ -27,11 +27,15 @@ describe("the updates plugin offers a newer PI WEB", () => {
       release: { latestVersion: "2.202610.1", updateAvailable: true },
       commands: { update: "pi-web update" },
     });
-    const callOperation = () => Promise.resolve({ answeredVersions: [] });
+    const operations: unknown[] = [];
+    const callOperation = (operation: string, input?: unknown) => {
+      operations.push(input === undefined ? operation : [operation, input]);
+      return Promise.resolve({ answeredVersions: [] });
+    };
     const fetchJson = () => Promise.reject(new Error("the host fact answers"));
 
     plugin.activate({ apiVersion: 2, pluginId: "updates", runtimePluginId: "updates", html, svg, fetchJson, callOperation, ui, readPiWebStatus });
-    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    await vi.waitFor(() => { expect(dialogs).toHaveLength(1); });
     const dialog = dialogs[0];
     if (dialog === undefined) throw new Error(`expected the offer, got ${String(dialogs.length)} dialogs`);
     const host = document.createElement("div");
@@ -39,8 +43,12 @@ describe("the updates plugin offers a newer PI WEB", () => {
     render(dialog.content, host);
     const copy = [...host.querySelectorAll("button")].find((button) => button.textContent.trim() === "Copy update command");
     copy?.click();
-    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    await vi.waitFor(() => { expect(copied).toHaveLength(1); });
 
-    expect({ label: dialog.label, copied }).toEqual({ label: "Update PI WEB 2.202609.28 to 2.202610.1", copied: ["pi-web update"] });
+    expect({ label: dialog.label, copied, operations }).toEqual({
+      label: "Update PI WEB 2.202609.28 to 2.202610.1",
+      copied: ["pi-web update"],
+      operations: ["offer.answered", ["offer.answer", { version: "2.202610.1" }]],
+    });
   });
 });

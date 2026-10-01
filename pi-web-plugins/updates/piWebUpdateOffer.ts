@@ -34,20 +34,21 @@ export function piWebUpdateOffer(input: {
 }
 
 /** What the offer reads from a machine's `pi-web/status` answer. */
-export interface PiWebOfferFacts {
+export interface PiWebStatusOfferFacts {
   running: string | undefined;
   release: PiWebRelease;
   command: string | undefined;
 }
 
 /**
- * The offer's facts from a `pi-web/status` answer. The version the machine runs is the web
- * component's installed version, else its runtime version: the same version the server compares
- * the latest release against when it says `updateAvailable` (`src/server/shared/piWebStatus.ts`).
+ * The offer's facts from a `pi-web/status` answer. `running` is the web component's installed
+ * version, else its runtime version: the version the server compares the latest release against
+ * when it says `updateAvailable` (`src/server/shared/piWebStatus.ts`), and the one an update
+ * moves from. While a restart is pending it is newer than the process that answers.
  * The status has no top-level `version`; reading one left `running` unknown on every machine, so
  * the offer stayed silent from the day it shipped (fd56eb53) until this fix.
  */
-export function piWebOfferFacts(status: unknown): PiWebOfferFacts {
+export function piWebOfferFacts(status: unknown): PiWebStatusOfferFacts {
   const record = recordAt(status);
   const release = recordAt(record["release"]);
   const web = recordAt(recordAt(record["components"])["web"]);
@@ -61,6 +62,12 @@ export function piWebOfferFacts(status: unknown): PiWebOfferFacts {
     },
     command: nonEmptyString(recordAt(record["commands"])["update"]),
   };
+}
+
+/** The versions this machine has already answered, from its `offer.answered` operation. */
+export function answeredVersionsFrom(answer: unknown): string[] {
+  const versions = recordAt(answer)["answeredVersions"];
+  return Array.isArray(versions) ? versions.filter((entry): entry is string => typeof entry === "string") : [];
 }
 
 function recordAt(value: unknown): Record<string, unknown> {
