@@ -11,7 +11,7 @@ import { CapturingSessionEventHub, fakeRuntime, fakeSessionManager, handedAs, ru
  * "Phase 1 review triage"). The fake runtime here keeps a real steering lane, removes a steer
  * from it when the agent reads it, and calls preflight the way the SDK does.
  */
-interface PromptOptions { streamingBehavior?: "steer" | "followUp"; preflightResult?: (success: boolean) => void }
+interface PromptOptions { streamingBehavior?: "steer" | "followUp"; preflightResult?: (disposition: "queued" | "started" | "handled" | boolean) => void }
 
 /**
  * `isCompacting` parks messages in the inbox while the agent runs: a running agent alone takes each
@@ -51,7 +51,9 @@ async function inboxService(sessionId: string, options: { dataDir?: string; dir?
   fake.session.prompt = (text: string, promptOptions?: PromptOptions) => {
     fake.calls.prompt.push({ text, options: promptOptions });
     if (promptOptions?.streamingBehavior === "steer" && fake.session.isStreaming) lane.push(text);
-    promptOptions?.preflightResult?.(true);
+    const commandName = text.startsWith("/") ? text.slice(1).split(" ", 1)[0] : undefined;
+    const handled = commandName !== undefined && fake.session.extensionRunner.getRegisteredCommands().some((command) => command.invocationName === commandName);
+    promptOptions?.preflightResult?.(handled ? "handled" : promptOptions.streamingBehavior === "steer" && fake.session.isStreaming ? "queued" : "started");
     return Promise.resolve();
   };
   const service = new PiSessionService(hub, {
@@ -109,7 +111,7 @@ describe("the inbox settles each message from what the agent did (O1)", () => {
     const { fake, service, ref } = await inboxService("o1-direct", { isStreaming: false });
     fake.session.prompt = (text: string, options?: PromptOptions) => {
       fake.calls.prompt.push({ text, options });
-      options?.preflightResult?.(true);
+      options?.preflightResult?.("started");
       fake.session.isStreaming = true;
       fake.emit({ type: "agent_start" });
       fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "text", text: `${text}\n\n[hint]` }] } });
@@ -390,7 +392,7 @@ describe("a direct prompt refused after preflight keeps its place (O3)", () => {
     let refuse = true;
     fake.session.prompt = (text: string, options?: PromptOptions) => {
       fake.calls.prompt.push({ text, options });
-      options?.preflightResult?.(true);
+      options?.preflightResult?.("started");
       if (refuse) {
         refuse = false;
         return Promise.reject(new Error("Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion."));
@@ -414,7 +416,7 @@ describe("Stop waits for a steer batch in flight (O4)", () => {
       fake.calls.prompt.push({ text, options });
       await new Promise((resolve) => setTimeout(resolve, 20));
       if (options?.streamingBehavior === "steer" && fake.session.isStreaming) lane.push(text);
-      options?.preflightResult?.(true);
+      options?.preflightResult?.(options.streamingBehavior === "steer" && fake.session.isStreaming ? "queued" : "started");
     };
     await service.prompt(ref, "X", undefined, undefined, { clientMessageId: "o4-x-0001" });
     await service.prompt(ref, "Y", undefined, undefined, { clientMessageId: "o4-y-0001" });
@@ -477,7 +479,7 @@ describe("a slash command's run does not hold later messages until it ends (L3)"
       fake.calls.prompt.push({ text, options });
       if (options?.streamingBehavior === "steer" && fake.session.isStreaming) {
         lane.push(text);
-        options.preflightResult?.(true);
+        options.preflightResult?.("queued");
         return Promise.resolve();
       }
       fake.session.isStreaming = true;
@@ -502,7 +504,7 @@ describe("fresh-lane findings over the fixes", () => {
       fake.calls.prompt.push({ text, options });
       if (text === "S2") await secondGate;
       lane.push(text);
-      options?.preflightResult?.(true);
+      options?.preflightResult?.("queued");
     };
     await service.prompt(ref, "S1", undefined, undefined, { clientMessageId: "f1-s1-0001" });
     fake.emit({ type: "tool_execution_end" });
@@ -528,7 +530,7 @@ describe("fresh-lane findings over the fixes", () => {
         lane.push(text);
         fake.session.isStreaming = false;
       }
-      options?.preflightResult?.(true);
+      options?.preflightResult?.(options.streamingBehavior === "steer" ? "queued" : "started");
       if (options?.streamingBehavior === undefined) fake.session.isStreaming = true;
     };
     await service.prompt(ref, "A", undefined, undefined, { clientMessageId: "f2-a-0001" });
@@ -548,7 +550,7 @@ describe("fresh-lane findings over the fixes", () => {
     const { fake, service, ref } = await inboxService("f2-committed", { isStreaming: false });
     fake.session.prompt = (text: string, options?: PromptOptions) => {
       fake.calls.prompt.push({ text, options });
-      options?.preflightResult?.(true);
+      options?.preflightResult?.("started");
       fake.emit({ type: "agent_start" });
       fake.emit({ type: "message_start", message: { role: "user", content: text } });
       return Promise.reject(new Error("Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion."));
@@ -588,12 +590,12 @@ describe("fresh-lane findings over the fixes", () => {
     fake.session.prompt = (text: string, options?: PromptOptions) => {
       fake.calls.prompt.push({ text, options });
       if (!refuse) {
-        options?.preflightResult?.(true);
+        options?.preflightResult?.("started");
         return Promise.resolve();
       }
       refuse = false;
       agentState.isStreaming = true;
-      options?.preflightResult?.(true);
+      options?.preflightResult?.("started");
       fake.emit({ type: "message_start", message: { role: "user", content: "another run's message" } });
       agentState.isStreaming = false;
       return Promise.reject(new Error("Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion."));
@@ -614,7 +616,7 @@ describe("second fresh-lane findings", () => {
       fake.calls.prompt.push({ text, options });
       await new Promise((resolve) => setTimeout(resolve, 20));
       if (options?.streamingBehavior === "steer") lane.push(text);
-      options?.preflightResult?.(true);
+      options?.preflightResult?.(options.streamingBehavior === "steer" ? "queued" : "started");
       fake.session.isStreaming = false;
     };
     await service.prompt(ref, "X", undefined, undefined, { clientMessageId: "a-x-00001" });
@@ -639,7 +641,7 @@ describe("second fresh-lane findings", () => {
         fake.session.isStreaming = true;
         lane.push(text);
       }
-      options?.preflightResult?.(true);
+      options?.preflightResult?.(fake.session.isStreaming ? "queued" : "started");
       return Promise.resolve();
     };
     await service.prompt(ref, "Q", undefined, undefined, { clientMessageId: "b-q-00001" });
@@ -658,7 +660,7 @@ describe("second fresh-lane findings", () => {
     fake.session.prompt = (text: string, options?: PromptOptions) => {
       fake.calls.prompt.push({ text, options });
       fake.session.isStreaming = false;
-      options?.preflightResult?.(true);
+      options?.preflightResult?.("started");
       fake.emit({ type: "agent_start" });
       fake.emit({ type: "message_start", message: { role: "user", content: text } });
       return Promise.reject(new Error("Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion."));
@@ -706,7 +708,7 @@ describe("gate-lane findings", () => {
     fake.session.prompt = (text: string, options?: PromptOptions) => {
       fake.calls.prompt.push({ text, options });
       if (!text.startsWith("/")) lane.push(text);
-      options?.preflightResult?.(true);
+      options?.preflightResult?.(text.startsWith("/") ? "handled" : "queued");
       return Promise.resolve();
     };
     await service.prompt(ref, "S1", undefined, undefined, { clientMessageId: "p11-s1-001" });
@@ -747,7 +749,7 @@ describe("gate-lane findings", () => {
     fake.session.isStreaming = false;
     fake.session.prompt = (text: string, options?: PromptOptions) => {
       fake.calls.prompt.push({ text, options });
-      options?.preflightResult?.(true);
+      options?.preflightResult?.("started");
       fake.emit({ type: "agent_start" });
       fake.emit({ type: "message_start", message: { role: "user", content: text } });
       return new Promise<void>(() => undefined);
@@ -787,7 +789,7 @@ describe("second gate-lane findings", () => {
       fake.calls.prompt.push({ text, options });
       if (text.startsWith("/")) await new Promise<void>(() => undefined);
       lane.push(text);
-      options?.preflightResult?.(true);
+      options?.preflightResult?.("queued");
     };
     await service.prompt(ref, "/ask-me", undefined, undefined, { clientMessageId: "g2-cmd-001" });
     await service.prompt(ref, "after the command", undefined, undefined, { clientMessageId: "g2-s2-0001" });
@@ -1018,10 +1020,10 @@ describe("fifth gate-lane findings", () => {
       fake.calls.prompt.push({ text, options });
       if (options?.streamingBehavior === "steer" && fake.session.isStreaming) {
         lane.push(text);
-        options.preflightResult?.(true);
+        options.preflightResult?.("queued");
         return Promise.resolve();
       }
-      options?.preflightResult?.(true);
+      options?.preflightResult?.("started");
       fake.session.isStreaming = true;
       fake.emit({ type: "agent_start" });
       fake.emit({ type: "message_start", message: { role: "user", content: text } });
@@ -1125,7 +1127,7 @@ describe("seventh gate-lane findings", () => {
       fresh.calls.prompt.push({ text, options });
       lane.push(text);
       fresh.emit({ type: "queue_update", steering: [...lane], followUp: [] });
-      options?.preflightResult?.(true);
+      options?.preflightResult?.("queued");
       return Promise.resolve();
     };
     await service.prompt(ref, "steer for the new runtime", undefined, undefined, { clientMessageId: "g7p2a-s-001" });
@@ -1262,7 +1264,7 @@ describe("ninth gate-lane findings", () => {
     fake.session.prompt = async (text: string, options?: PromptOptions) => {
       fake.calls.prompt.push({ text, options });
       await beforeRun;
-      options?.preflightResult?.(true);
+      options?.preflightResult?.("started");
       fake.session.isStreaming = true;
       runStarted = true;
       fake.emit({ type: "agent_start" });
@@ -1385,7 +1387,7 @@ describe("a message the runtime refuses after the inbox accepted it (phase 2)", 
   it("does not call a message refused once the agent read it, when its run fails afterwards", async () => {
     const { fake, service, ref, hub } = await inboxService("p2-read-then-failed", { isStreaming: false });
     fake.session.prompt = async (text: string, options?: PromptOptions) => {
-      options?.preflightResult?.(true);
+      options?.preflightResult?.("started");
       fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "text", text }] } });
       await Promise.resolve();
       throw new Error("provider went away mid-run");

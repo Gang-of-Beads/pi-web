@@ -263,11 +263,11 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     const hub = new CapturingSessionEventHub();
     const fake = fakeRuntime("compacting-session", { isCompacting: true });
     let resolveFirstPrompt: (() => void) | undefined;
-    fake.session.prompt = (text: string, options?: { streamingBehavior?: "steer" | "followUp"; preflightResult?: (success: boolean) => void }) => {
+    fake.session.prompt = (text: string, options?: { streamingBehavior?: "steer" | "followUp"; preflightResult?: (disposition: "queued" | "started" | "handled") => void }) => {
       fake.calls.prompt.push({ text, options });
       if (options?.streamingBehavior === undefined) {
         fake.session.isStreaming = true;
-        options?.preflightResult?.(true);
+        options?.preflightResult?.("started");
         fake.emit({ type: "agent_start" });
         fake.emit({ type: "message_start", message: { role: "user", content: text } });
         return new Promise<void>((resolve) => { resolveFirstPrompt = resolve; });

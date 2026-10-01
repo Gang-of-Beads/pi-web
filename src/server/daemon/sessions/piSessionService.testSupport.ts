@@ -214,7 +214,10 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
         for (const listener of [...listeners]) listener({ type: "queue_update", steering: [...reportedQueue], followUp: [] });
       }
       const preflightResult: unknown = Reflect.get(Object(options), "preflightResult");
-      if (typeof preflightResult === "function") Reflect.apply(preflightResult, undefined, [true]);
+      const commandName = text.startsWith("/") ? text.slice(1).split(" ", 1)[0] : undefined;
+      const disposition = commandName !== undefined && session.extensionRunner.getRegisteredCommands().some((command) => command.invocationName === commandName)
+        ? "handled" : session.isStreaming && streamingBehavior !== undefined ? "queued" : "started";
+      if (typeof preflightResult === "function") Reflect.apply(preflightResult, undefined, [disposition]);
       return Promise.resolve();
     },
     steer: (text: string) => {

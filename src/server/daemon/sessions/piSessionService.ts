@@ -25,6 +25,7 @@ import {
   type ExtensionUIDialogOptions,
   type ExtensionUIContext,
   type ModelRuntime,
+  type PromptOptions,
   type ProjectTrustContext,
   type ProjectTrustEvent,
   type ProjectTrustEventResult,
@@ -267,22 +268,17 @@ interface HeldSteerRecord {
 /**
  * Where the SDK put a handed prompt, as seen at its preflight: in pi's steer lane, or at the
  * start of a run. The SDK chooses after its own input-handler await, so the daemon's request
- * (steer or direct) is not the answer.
+ * (steer or direct) is not the answer. Older Pi versions report a boolean, so their landing
+ * still needs to be inferred from the command and the observed lane growth.
  */
 type HandoffLanding = "lane" | "run" | "handled";
+type PromptDisposition = Parameters<NonNullable<PromptOptions["preflightResult"]>>[0];
 
-/**
- * The SDK calls preflight right after `_queueSteer` pushed the message (having emitted
- * `queue_update` synchronously), right before `_runAgentPrompt` on the run path, and without
- * queueing anything when an extension command or an input handler took the message.
- *
- * A registered extension command is always handled: the SDK runs commands before it considers
- * queueing, and a command's handler may itself push messages, so lane growth says nothing about
- * the command. Otherwise the steering lane growing during the handoff means it is queued (pi-web
- * only ever hands into that lane), and the run flag, not yet set on the run path, tells a new
- * run from a handled message.
- */
-function landingAtPreflight(session: PiAgentSession, facts: { isCommand: boolean; steeringGrew: boolean }): HandoffLanding {
+const PREFLIGHT_LANDING: Record<PromptDisposition, HandoffLanding> = { queued: "lane", started: "run", handled: "handled" };
+
+function landingAtPreflight(session: PiAgentSession, disposition: PromptDisposition | boolean, facts: { isCommand: boolean; steeringGrew: boolean }): HandoffLanding | undefined {
+  if (disposition === false) return undefined;
+  if (disposition !== true) return PREFLIGHT_LANDING[disposition];
   if (facts.isCommand) return "handled";
   if (facts.steeringGrew) return "lane";
   return session.isStreaming ? "handled" : "run";
@@ -645,9 +641,9 @@ export interface PiAgentSession {
   getAllTools(): readonly { name: string; parameters?: unknown }[];
   getToolDefinition(name: string): { parameters: unknown } | undefined;
   getContextUsage(): ClientSessionStatus["contextUsage"] | undefined;
-  prompt(text: string, options?: { streamingBehavior?: "steer" | "followUp"; images?: ImageContent[]; preflightResult?: (success: boolean) => void }): Promise<void>;
+  prompt(text: string, options?: { streamingBehavior?: "steer" | "followUp"; images?: ImageContent[]; preflightResult?: (disposition: PromptDisposition | boolean) => void }): Promise<void>;
   /** Queue a message in pi's steering lane whatever the run state; input handlers and expansion run first. Refuses an extension command. */
-  steer(text: string, images?: ImageContent[]): Promise<void>;
+  steer(text: string, images?: ImageContent[]): Promise<unknown>;
   sendCustomMessage(message: { customType: string; content: string; display: boolean; details?: unknown }, options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" }): Promise<void>;
   executeBash(command: string, onChunk?: (chunk: string) => void, options?: { excludeFromContext?: boolean }): Promise<{ output: string; exitCode: number | undefined; cancelled: boolean; truncated: boolean; fullOutputPath?: string }>;
   navigateTree?(targetId: string, options?: { summarize?: boolean; customInstructions?: string }): Promise<{ editorText?: string; cancelled: boolean; aborted?: boolean; summaryEntry?: unknown }>;
@@ -3487,9 +3483,9 @@ export class PiSessionService implements SessionRouteService {
       markHanded();
       this.settleSucceeded(sessionId, entryKey(entry));
     };
-    const preflightResult = (success: boolean): void => {
-      if (!success) return;
-      landed = landingAtPreflight(session, { isCommand, steeringGrew: (this.laneGrowth.get(sessionId) ?? 0) > growthAtCall });
+    const preflightResult = (disposition: PromptDisposition | boolean): void => {
+      landed = landingAtPreflight(session, disposition, { isCommand, steeringGrew: (this.laneGrowth.get(sessionId) ?? 0) > growthAtCall });
+      if (landed === undefined) return;
       if (landed === "lane" && this.ownsSessionId(session)) this.holdSteer(sessionId, entry, images);
       if (landed === "handled" && clientMessageId !== undefined) this.committedExpectations.withdraw(sessionId, clientMessageId);
       if (landed !== "run") {
