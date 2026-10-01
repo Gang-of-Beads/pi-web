@@ -278,6 +278,34 @@ describe("SessionBoardController", () => {
   });
 });
 
+describe("SessionBoardController taking a machine's announcements", () => {
+  it("keeps a rename announced while a read was on its way, over that read's older answer (I13)", async () => {
+    const time = fakeClock();
+    let answer: (sessions: SessionInfo[]) => void = () => undefined;
+    let reads = 0;
+    const boards = new SessionBoardController({
+      sources: () => ({
+        projects: () => Promise.resolve([alpha]),
+        workspaces: () => Promise.resolve([alphaMain]),
+        sessions: () => { reads += 1; return reads === 1 ? Promise.resolve([a1]) : new Promise<SessionInfo[]>((resolve) => { answer = resolve; }); },
+      }),
+      clock: time.clock,
+      now: time.now,
+    });
+    await boards.browse("local");
+    const reading = boards.browse("local", { force: true });
+    await flush();
+    boards.applyEvent("local", { type: "session.name", sessionId: "a1", name: "Renamed elsewhere" });
+    const meanwhile = boards.board("local")?.sessions[0]?.name;
+    answer([a1]);
+    await reading;
+    await flush();
+
+    expect({ meanwhile, after: boards.board("local")?.sessions[0]?.name }).toEqual({ meanwhile: "Renamed elsewhere", after: "Renamed elsewhere" });
+    boards.dispose();
+  });
+});
+
 /**
  * P4 slice a: the board is one read of the machine's web process. A machine that predates the
  * route is read source by source, and is not asked for the board again on the same page.

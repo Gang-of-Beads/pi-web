@@ -177,6 +177,63 @@ describe("ScopedResource", () => {
   });
 });
 
+/**
+ * Object model I13: an event or a write is never erased by an older read. A change made while a
+ * read is on its way is applied to the known value at once, and again over that read's answer,
+ * which may predate it.
+ */
+describe("ScopedResource and a change made while a read is on its way", () => {
+  const withB = (list: string[]) => (list.includes("b") ? list : [...list, "b"]);
+
+  it("keeps a change made during a read over that read's older answer", async () => {
+    const { reads, resource } = projects();
+    resource.watch("local");
+    void resource.refresh("local");
+    reads.calls[0]?.resolve(["a"]);
+    await flush();
+    void resource.refresh("local");
+    resource.update("local", withB);
+    const meanwhile = resource.entry("local").data;
+    reads.calls[1]?.resolve(["a"]);
+    await flush();
+
+    expect({ meanwhile, after: resource.entry("local").data }).toEqual({ meanwhile: ["a", "b"], after: ["a", "b"] });
+  });
+
+  it("does not replay a change over a later read when the read it was made during got no answer", async () => {
+    const { time, reads, resource } = projects();
+    resource.watch("local");
+    void resource.refresh("local");
+    reads.calls[0]?.resolve(["a"]);
+    await flush();
+    void resource.refresh("local");
+    resource.update("local", withB);
+    reads.calls[1]?.reject(lost());
+    await flush();
+    time.advance(1000);
+    reads.calls[2]?.resolve(["c"]);
+    await flush();
+
+    expect(resource.entry("local").data).toEqual(["c"]);
+  });
+
+  it("applies a change to the first answer when it came before any value, and not to the read after", async () => {
+    const { reads, resource } = projects();
+    resource.watch("local");
+    void resource.refresh("local");
+    resource.update("local", withB);
+    const before = resource.entry("local").known;
+    reads.calls[0]?.resolve(["a"]);
+    await flush();
+    const first = resource.entry("local").data;
+    void resource.refresh("local");
+    reads.calls[1]?.resolve(["c"]);
+    await flush();
+
+    expect({ before, first, second: resource.entry("local").data }).toEqual({ before: false, first: ["a", "b"], second: ["c"] });
+  });
+});
+
 describe("ScopedResource after a refusal or a dispose", () => {
   it("treats a lost read after a refusal as no answer, not as the old refusal", async () => {
     const { reads, resource } = projects();

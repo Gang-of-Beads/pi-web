@@ -3,7 +3,7 @@ import { isSessionNotFoundError } from "../sessionNotFound";
 import { MACHINE_WIDE_LOCATE_START } from "../sessionTarget";
 import { QUIET_WINDOW_MS } from "../sync/readPhase";
 import { ScopedResource, type ResourceClock } from "../sync/scopedResource";
-import { boardAnswer, completeSessionBoard, oneReadBoard, readSessionBoard, type BoardAnswer, type SessionBoard, type SessionBoardSources } from "../sync/sessionBoard";
+import { boardAnswer, boardWithEvent, completeSessionBoard, oneReadBoard, readSessionBoard, type BoardAnswer, type SessionBoard, type SessionBoardEvent, type SessionBoardSources } from "../sync/sessionBoard";
 
 /** How long a board read whole stays fresh: browsing it again reads no more than its gaps. */
 const BOARD_FRESH_MS = 30_000;
@@ -95,6 +95,11 @@ export class SessionBoardController {
   /** Apply a change this client made to a known board, such as a rename. */
   update(machineId: string, change: (board: SessionBoard) => SessionBoard): void {
     this.boards.update(machineId, change);
+  }
+
+  /** Take what a machine announced about its sessions, so the board stays live between reads (D5). */
+  applyEvent(machineId: string, event: SessionBoardEvent): void {
+    this.boards.update(machineId, (board) => boardWithEvent(board, event));
   }
 
   subscribe(listener: () => void): () => void {

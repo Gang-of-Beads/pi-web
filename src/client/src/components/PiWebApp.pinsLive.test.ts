@@ -214,4 +214,22 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
       elsewhere: names(typeof updated === "object" && updated !== null ? Reflect.get(updated, "pinnedElsewhere") : undefined),
     }).toEqual({ renamedOn: ["remote-1"], updatedOn: ["remote-1"], listed: [undefined], elsewhere: ["Kept far"] });
   });
+
+  it("passes a machine's session announcements to that machine's board, from the main and the activity sockets (O-P9)", () => {
+    const app = createApp();
+    const boards: unknown = Reflect.get(app, "sessionBoards");
+    if (typeof boards !== "object" || boards === null) throw new Error("no session boards");
+    const applied: unknown[] = [];
+    Reflect.set(boards, "applyEvent", (machineId: string, event: { type: string }) => { applied.push([machineId, event.type]); });
+    const sessions: unknown = Reflect.get(app, "sessions");
+    if (typeof sessions !== "object" || sessions === null) throw new Error("no session controller");
+    Reflect.set(sessions, "applyGlobalEvent", () => undefined);
+    const created = { type: "session.created", session: { id: "n1", cwd: "/alpha", path: "/alpha/n1.jsonl", created: "2026-09-01", modified: "2026-09-01", messageCount: 0, firstMessage: "" } };
+
+    call(app, "handleRealtimeEvent", "local", { type: "session.name", sessionId: "a1", name: "Kept" });
+    call(app, "handleRealtimeEvent", "local", created);
+    call(app, "handleMachineActivityEvent", "remote-1", { type: "session.name", sessionId: "r1", name: "Far" });
+
+    expect(applied).toEqual([["local", "session.name"], ["local", "session.created"], ["remote-1", "session.name"]]);
+  });
 });

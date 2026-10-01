@@ -1,6 +1,7 @@
 import type { Project, SessionInfo, Workspace } from "../api";
 import { HttpError } from "../api/http";
 import { UnexpectedBoardAnswer, type SessionBoardAnswer } from "../api/parsers";
+import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { mapWithLanes } from "./lanes";
 import { classifyReadError } from "./readPhase";
 
@@ -157,6 +158,38 @@ export function oneReadBoard(read: () => Promise<SessionBoardAnswer>): () => Pro
       return "unsupported";
     }
   };
+}
+
+/** What a machine announces about its sessions that the board can take without a read (state-diagram D5). */
+export type SessionBoardEvent =
+  | { readonly type: "session.name"; readonly sessionId: string; readonly name?: string | undefined }
+  | { readonly type: "session.created"; readonly session: SessionInfo };
+
+/**
+ * The board with an announced change applied. A rename renames the session
+ * wherever the board lists it; a new session joins the board when one of its
+ * listed workspaces holds its folder, and replaces a row with its id. Each is
+ * a set, so applying it again over a read that already has it changes
+ * nothing. A session in no listed workspace is not this board's to add.
+ */
+export function boardWithEvent(board: SessionBoard, event: SessionBoardEvent): SessionBoard {
+  if (event.type === "session.name") {
+    const rename = (sessions: readonly SessionInfo[]) => sessions.map((session) => (session.id === event.sessionId ? withName(session, event.name) : session));
+    return { ...board, sessions: rename(board.sessions), ...(board.pinnedElsewhere === undefined ? {} : { pinnedElsewhere: rename(board.pinnedElsewhere) }) };
+  }
+  const listed = board.sessions.some((session) => session.id === event.session.id);
+  const held = board.workspaces.some((workspace) => sessionLocationVerdict(event.session.cwd, workspace.path) === "described");
+  if (!listed && !held) return board;
+  const sessions = [event.session, ...board.sessions.filter((session) => session.id !== event.session.id)]
+    .sort((left, right) => Date.parse(right.modified) - Date.parse(left.modified));
+  return { ...board, sessions };
+}
+
+function withName(session: SessionInfo, name: string | undefined): SessionInfo {
+  if (name !== undefined && name !== "") return { ...session, name };
+  const unnamed = { ...session };
+  delete unnamed.name;
+  return unnamed;
 }
 
 export function boardAnswer(board: SessionBoard | undefined): BoardAnswer {

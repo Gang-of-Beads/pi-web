@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Project, SessionInfo, Workspace } from "../api";
 import { HttpError } from "../api/http";
 import { UnexpectedBoardAnswer, type SessionBoardAnswer } from "../api/parsers";
-import { boardAnswer, boardRouteVerdict, completeSessionBoard, oneReadBoard, readSessionBoard, type SessionBoard } from "./sessionBoard";
+import { boardAnswer, boardRouteVerdict, boardWithEvent, completeSessionBoard, oneReadBoard, readSessionBoard, type SessionBoard } from "./sessionBoard";
 
 const project = (id: string): Project => ({ id, name: id, path: `/${id}`, createdAt: "now" });
 const workspace = (projectId: string, path: string): Workspace => ({ id: path, projectId, path, label: path, isMain: true, effectiveConfig: {} });
@@ -231,6 +231,35 @@ describe("the board in one read", () => {
     await expect(readFailing()).rejects.toThrow("Bad gateway");
 
     expect({ first, second, missingAsked: missing.mock.calls.length, failingAsked: failing.mock.calls.length }).toEqual({ first: "unsupported", second: "unsupported", missingAsked: 1, failingAsked: 2 });
+  });
+});
+
+/**
+ * D5, O-P9: the board took no events, so a session renamed or started on another device stayed
+ * stale on the board and in the quick switcher until the next whole read.
+ */
+describe("boardWithEvent", () => {
+  const board: SessionBoard = {
+    sessions: [session("a1", "/alpha", "2026-09-01")],
+    workspaces: [alphaMain],
+    unknownSources: [],
+    pinnedElsewhere: [session("far", "/closed", "2026-08-01")],
+  };
+
+  it("renames a session wherever the board lists it, and removes a cleared name", () => {
+    const renamed = boardWithEvent(boardWithEvent(board, { type: "session.name", sessionId: "a1", name: "Kept" }), { type: "session.name", sessionId: "far", name: "Far kept" });
+    const cleared = boardWithEvent(renamed, { type: "session.name", sessionId: "a1" });
+
+    expect({ renamed: [renamed.sessions[0]?.name, renamed.pinnedElsewhere?.[0]?.name], cleared: "name" in (cleared.sessions[0] ?? {}) }).toEqual({ renamed: ["Kept", "Far kept"], cleared: false });
+  });
+
+  it("adds a session started in a listed workspace or under it, newest first, once, and not one from elsewhere", () => {
+    const started = session("a2", "/alpha/packages/app", "2026-09-03");
+    const once = boardWithEvent(board, { type: "session.created", session: started });
+    const twice = boardWithEvent(once, { type: "session.created", session: started });
+    const elsewhere = boardWithEvent(board, { type: "session.created", session: session("b9", "/beta", "2026-09-04") });
+
+    expect({ once: once.sessions.map((entry) => entry.id), twice: twice.sessions.map((entry) => entry.id), elsewhere: elsewhere === board }).toEqual({ once: ["a2", "a1"], twice: ["a2", "a1"], elsewhere: true });
   });
 });
 

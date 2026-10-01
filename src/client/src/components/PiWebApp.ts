@@ -2192,7 +2192,8 @@ export class PiWebApp extends LitElement {
   }
 
   private handleMachineActivityEvent(machineId: string, event: BrowserRealtimeEvent): void {
-    if (event.type === "pins.changed") this.refreshMachinePins(machineId);
+    if (event.type === "session.name" || event.type === "session.created") this.sessionBoards.applyEvent(machineId, event);
+    else if (event.type === "pins.changed") this.refreshMachinePins(machineId);
     else if (event.type === "sessions.unread") this.sessionUnread.applyEvent(machineId, event);
     else if (event.type === "machine.status") this.machineStatus.apply(machineId, event.status);
   }
@@ -2205,7 +2206,10 @@ export class PiWebApp extends LitElement {
     else if (isTerminalEvent(event)) {
       this.applyTerminalEvent(event);
       if (event.type === "terminal.exited") void this.refreshWorkspaceDeletionRuns();
-    } else this.sessions.applyGlobalEvent(event);
+    } else {
+      if (event.type === "session.name" || event.type === "session.created") this.sessionBoards.applyEvent(machineId, event);
+      this.sessions.applyGlobalEvent(event);
+    }
   }
 
   private applyTerminalEvent(event: TerminalUiEvent): void {

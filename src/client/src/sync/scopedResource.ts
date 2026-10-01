@@ -78,6 +78,8 @@ interface Entry<K, V> {
   miss: ReadMiss | undefined;
   consumers: number;
   timer: (() => void) | undefined;
+  /** Changes made while the read in flight was on its way, which its answer may predate (I13). */
+  sinceRead: ((value: V) => V)[];
   settled: (() => void)[];
   /** Resolved when the attempt in flight settles. */
   current: (() => void)[];
@@ -183,10 +185,19 @@ export class ScopedResource<K, V> {
     }
   }
 
-  /** Change a known value in place, for writes this client made itself. Unknown keys stay unknown. */
+  /**
+   * Change a value in place, for a write this client made or an event the
+   * machine sent. The change must be a set - applying it twice is applying it
+   * once - because a read on its way may or may not include it: the change is
+   * kept and applied again over that read's answer, so an older read never
+   * erases it (object model I13, `readVerdict` merge). A key with no value
+   * stays unknown, unless a read is on its way, which takes the change.
+   */
   update(key: K, change: (value: V) => V): void {
     const entry = this.entries.get(this.spec.keyId(key));
-    if (entry === undefined || !entry.known || entry.data === undefined) return;
+    if (entry === undefined) return;
+    if (entry.inFlight) entry.sinceRead.push(change);
+    if (!entry.known || entry.data === undefined) return;
     entry.data = change(entry.data);
     this.notify();
   }
@@ -235,7 +246,7 @@ export class ScopedResource<K, V> {
     const id = this.spec.keyId(key);
     const existing = this.entries.get(id);
     if (existing !== undefined) return existing;
-    const entry: Entry<K, V> = { key, phase: "syncing", fact: NO_FACT, known: false, data: undefined, inFlight: false, dirty: false, attempt: 0, firstMissAt: undefined, miss: undefined, consumers: 0, timer: undefined, settled: [], current: [] };
+    const entry: Entry<K, V> = { key, phase: "syncing", fact: NO_FACT, known: false, data: undefined, inFlight: false, dirty: false, attempt: 0, firstMissAt: undefined, miss: undefined, consumers: 0, timer: undefined, sinceRead: [], settled: [], current: [] };
     this.entries.set(id, entry);
     return entry;
   }
@@ -244,6 +255,7 @@ export class ScopedResource<K, V> {
     if (this.disposed) return;
     entry.inFlight = true;
     entry.dirty = false;
+    entry.sinceRead = [];
     if (entry.firstMissAt === undefined && entry.phase !== "live") entry.phase = "syncing";
     const settled = entry.settled.splice(0);
     entry.current = settled;
@@ -256,7 +268,8 @@ export class ScopedResource<K, V> {
   private answered(entry: Entry<K, V>, data: V, settled: readonly (() => void)[]): void {
     entry.inFlight = false;
     entry.known = true;
-    entry.data = data;
+    entry.data = entry.sinceRead.reduce((value, change) => change(value), data);
+    entry.sinceRead = [];
     entry.fact = NO_FACT;
     entry.firstMissAt = undefined;
     entry.miss = undefined;
