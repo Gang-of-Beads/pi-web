@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 /**
- * A page loads every plugin module once more for each remote machine on its roster, under the
- * remote's own URL, and hides the duplicate only after the import (B51). A module that defines a
- * custom element without checking whether the name is taken throws on that second import, so a
- * remote machine had no Goals page, terminal or workspaces plugin beside the gateway's copy. This
- * imports each bundled plugin's browser module twice, the way a second machine does, and each file
+ * A selected remote machine's own copy of a machine-specific plugin, or of one the gateway lacks, is
+ * imported into the same page as the gateway's copy (B51). A module that defined a custom element
+ * without checking whether the name was taken threw on that second import, so a remote machine had
+ * no Goals page, terminal or workspaces plugin. Which plugins a remote re-imports depends on its
+ * gateway, so this imports every bundled plugin's browser module twice, and each file
  * that defines an element on its own: a test transform drops an import used only as a type, which
  * the bundle keeps (the workspaces entry reaches `WorkspaceList` that way).
  */
@@ -34,7 +34,19 @@ function elementModules(): string[] {
   return readdirSync(pluginsRoot, { recursive: true, encoding: "utf8" })
     .filter((relative) => relative.endsWith(".ts") && !relative.endsWith(".test.ts") && !relative.includes("node_modules"))
     .map((relative) => join(pluginsRoot, relative))
-    .filter((file) => readFileSync(file, "utf8").includes("customElements.define("));
+    .filter((file) => /customElements\.define\(|@customElement\(/u.test(readFileSync(file, "utf8")));
+}
+
+/**
+ * Some elements are defined when the plugin activates, through an exported `define…` function,
+ * not when the module is imported. Each copy calls its own, so the test does too.
+ */
+function runDefines(module: unknown): void {
+  if (typeof module !== "object" || module === null) return;
+  for (const name of Object.keys(module)) {
+    const value: unknown = Reflect.get(module, name);
+    if (/^define\w+$/u.test(name) && typeof value === "function") Reflect.apply(value, undefined, []);
+  }
 }
 
 describe("a second machine's copy of a plugin loads beside the first (B51)", () => {
@@ -46,8 +58,9 @@ describe("a second machine's copy of a plugin loads beside the first (B51)", () 
 
   it.each(modules.map((module) => [module.slice(pluginsRoot.length + 1)]))("imports %s twice", async (relative) => {
     const module = join(pluginsRoot, relative);
-    await import(module);
+    runDefines(await import(module));
     vi.resetModules();
-    await expect(import(`${module}?second-machine`)).resolves.toBeDefined();
+    const second: unknown = await import(`${module}?second-machine`);
+    expect(() => { runDefines(second); }).not.toThrow();
   });
 });

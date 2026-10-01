@@ -3,10 +3,13 @@ import { chromium } from "@playwright/test";
 /**
  * A remote machine's plugins load beside the gateway's (B51), 8505, phone 393x850.
  *
- * The page imports every plugin module once more for each remote machine on its roster. A module
- * that defined a custom element without checking whether the name was taken threw on that second
- * import, so a remote machine had no Goals page, terminal, subagents card or workspaces plugin.
- * The probe adds 8505 to its own roster as a remote machine (removed at the end) and opens it.
+ * A selected remote machine's own copy of a machine-specific plugin is imported into the same page
+ * as the gateway's copy. A module that defined a custom element without checking whether the name
+ * was taken threw on that second import, so a remote machine had no Goals page, terminal,
+ * subagents card or workspaces plugin. The probe adds 8505 to its own roster as a remote machine
+ * (removed at the end) and opens it. Like every 8505 probe, it uses the stack's seed project,
+ * workspace and session, and blocks `prod-8504-waveb`, the production machine on 8505's roster, so
+ * no probe traffic reaches production.
  * Legs:
  * - no plugin module of the remote machine fails to load;
  * - the remote machine's Go to sheet lists Goals (goals is machine-specific, so only the remote's
