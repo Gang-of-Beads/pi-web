@@ -497,8 +497,8 @@ export async function updateCommandFor(installation: PiWebInstallationInfo | und
     return `${PI_CODING_AGENT_DIR_ENV}=${shellQuote(profile.dir)} pi update ${shellQuote(installation.source ?? PI_WEB_NPM_SOURCE)} && ${restartCommand}`;
   }
   if (installation?.kind === "local" && installation.path !== undefined) {
-    if (!(await hasCommand("npm")) || !(await isGitCheckoutWithUpstream(installation.path))) return undefined;
-    return `cd ${shellQuote(installation.path)} && git pull --ff-only && npm install && npm run build && ${restartCommand}`;
+    if (!(await hasCommand("pnpm")) || !(await isGitCheckoutWithUpstream(installation.path))) return undefined;
+    return `cd ${shellQuote(installation.path)} && git pull --ff-only && pnpm install --frozen-lockfile && pnpm run build && ${restartCommand}`;
   }
   if (installation?.kind !== "npm-global" || !(await options.hasCommand("npm"))) return undefined;
   return `npm install -g ${PI_WEB_PACKAGE_NAME} --allow-scripts=node-pty && ${restartCommand}`;

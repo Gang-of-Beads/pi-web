@@ -144,16 +144,16 @@ function requireServiceBackend(command: string): ServiceBackend {
 function manualRunAdvice(): string {
   return [
     "Run PI WEB manually from a checkout:",
-    "  npm run start:sessiond",
-    "  PI_WEB_PORT=8504 npm start",
+    "  pnpm run start:sessiond",
+    "  PI_WEB_PORT=8504 pnpm start",
     "",
     "For development in one terminal:",
-    "  npm run dev",
+    "  pnpm run dev",
     "",
     "For split development, keep sessiond separate and run web/API plus Vite UI separately:",
-    "  npm run dev:sessiond",
-    "  npm run dev:web",
-    "  npm run dev:client",
+    "  pnpm run dev:sessiond",
+    "  pnpm run dev:web",
+    "  pnpm run dev:client",
   ].join("\n");
 }
 
@@ -852,7 +852,7 @@ export function sessionDaemonRestartPlan(options: SessionDaemonRestartPlanOption
   }
   return {
     kind: "manual",
-    guidance: "Stop and rerun the process that owns sessiond (from a checkout: `npm run start:sessiond`).",
+    guidance: "Stop and rerun the process that owns sessiond (from a checkout: `pnpm run start:sessiond`).",
   };
 }
 

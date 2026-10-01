@@ -22,19 +22,19 @@ Avoid these commands unless the user explicitly overrides this skill for an unus
 
 It is OK to run local safety checks and release-prep commands that do not publish, such as:
 
-- `npm run verify`
-- `npm run build`
-- `npm run pack:dry`
-- `npm run changelog:status`
-- `npm run release:version`
-- `npm version <version> --no-git-tag-version` when an exact custom version needs to be enforced
+- `pnpm run verify`
+- `pnpm run build`
+- `pnpm run pack:dry`
+- `pnpm run changelog:status`
+- `pnpm run release:version`
+- `pnpm pkg set version=<version>` when an exact custom version needs to be enforced
 
 ## First inspect the repository release setup
 
 Before acting, read:
 
 1. `package.json` for package name, current version, scripts, and package manager.
-2. `package-lock.json`, `pnpm-lock.yaml`, or `yarn.lock` if present, so version bumps keep lockfiles consistent.
+2. `pnpm-lock.yaml`, so version bumps keep the lockfile consistent.
 3. `.changeset/config.json` and pending `.changeset/*.md` files, if present.
 4. `.github/workflows/publish.yml` or similarly named release workflow.
 
@@ -47,9 +47,9 @@ on:
   workflow_dispatch:
 ```
 
-For the `pi-web` repository, the expected workflow is `.github/workflows/publish.yml`; it publishes with `npm publish --access public --provenance` from GitHub Actions. Use the GitHub Release path by default.
+For the `pi-web` repository, the expected workflow is `.github/workflows/publish.yml`; it packs with pnpm and publishes the attached tarball using `pnpm publish --access public --provenance` from GitHub Actions. Use the GitHub Release path by default.
 
-If there is no GitHub Actions publish workflow, stop and explain that one must be added or fixed. Do not fall back to local `npm publish`.
+If there is no GitHub Actions publish workflow, stop and explain that one must be added or fixed. Do not fall back to local publishing.
 
 ## Standard release workflow
 
@@ -62,7 +62,7 @@ If there is no GitHub Actions publish workflow, stop and explain that one must b
 2. **Review and normalize pending changesets**
    - Run:
      ```bash
-     npm run changelog:status
+     pnpm run changelog:status
      ```
    - Inspect `.changeset/*.md` files.
    - If there are no changesets but there are user-visible changes to release, pause and ask whether to add a changeset. Do not create a low-quality release note just to proceed.
@@ -87,45 +87,45 @@ If there is no GitHub Actions publish workflow, stop and explain that one must b
 4. **Generate changelog and version files**
    - Run the Changesets version step after normalizing non-breaking changesets to `patch`:
      ```bash
-     npm run release:version
+     pnpm run release:version
      ```
-   - This consumes pending `.changeset/*.md` fragments, updates `CHANGELOG.md`, updates `package.json`, and updates the npm lockfile when applicable.
+   - This consumes pending `.changeset/*.md` fragments, updates `CHANGELOG.md` and `package.json`; resync the pnpm lockfile in the next step.
    - Changesets may produce a semver bump that does not match the computed CalVer target, especially on the first release of a new month. That is expected; enforce the computed target with:
      ```bash
-     npm version <computed-calver-version> --no-git-tag-version
+     pnpm pkg set version=<computed-calver-version>
      ```
    - Update the newly generated `CHANGELOG.md` heading to match the computed CalVer version if Changesets used a different heading. This manual changelog heading edit is acceptable during release prep; normal development should still use changeset fragments instead.
    - Review the generated `CHANGELOG.md` section. It should be suitable for GitHub Release notes.
-   - Do not use plain `npm version <new-version>` because it creates a local git tag as a side effect; releases should be controlled via GitHub.
-   - **Sync the lockfile to the final version.** `npm run release:version` (Changesets) updates `package.json` but does not reliably rewrite `package-lock.json`, and the CalVer-enforcing `npm version --no-git-tag-version` only touches the lock when it actually runs. Either path can leave the committed `package-lock.json` behind at the previous version, which then resurfaces as an unexpected diff after the next `npm install`. After the version is finalized, always resync the lockfile without touching `node_modules`:
+   - Do not use a version command that creates a local git tag as a side effect; releases should be controlled via GitHub.
+   - **Sync the lockfile to the final version.** `pnpm run release:version` (Changesets) updates `package.json` but may leave `pnpm-lock.yaml` behind. After the version is finalized, always resync the lockfile:
      ```bash
-     npm install --package-lock-only
+     pnpm install --lockfile-only
      ```
    - Confirm the lockfile now matches `package.json` before continuing:
      ```bash
-     node -e "const v=require('./package.json').version, l=require('./package-lock.json'); if (l.version!==v || l.packages[''].version!==v) { console.error('lockfile version mismatch:', l.version, l.packages[''].version, 'expected', v); process.exit(1); } console.log('lockfile in sync at', v);"
+     pnpm install --frozen-lockfile
      ```
-   - If the lockfile mismatch persists, stop and resolve it before committing; do not ship a release whose `package-lock.json` version disagrees with `package.json`.
+   - If the frozen install fails, stop and resolve it before committing; do not ship a release whose lockfile disagrees with `package.json`.
 
 5. **Run checks before creating the release**
    - Run the repository's normal verification commands, for example:
      ```bash
-     npm run verify
-     npm run build
-     npm run pack:dry
+     pnpm run verify
+     pnpm run build
+     pnpm run pack:dry
      ```
    - If checks fail, fix the issue or report it. Do not create the GitHub Release until the release commit is sound.
 
 6. **Commit and push the release prep**
    - Commit only intended release changes. Typical files include:
      - `package.json`
-     - `package-lock.json`
+     - `pnpm-lock.yaml`
      - `CHANGELOG.md`
      - consumed/deleted `.changeset/*.md` fragments
-   - Before staging, confirm `package-lock.json` is actually in the diff and carries the new version. If `git status --short` does not show `package-lock.json` as modified while `package.json` changed version, the lockfile sync in step 4 was missed — go back and run `npm install --package-lock-only`. Never commit a release where `package.json` advanced but `package-lock.json` did not.
+   - Before staging, confirm `pnpm-lock.yaml` is actually in the diff when `package.json` changed version. If not, go back and run `pnpm install --lockfile-only`; confirm with `pnpm install --frozen-lockfile`.
    - Use:
      ```bash
-     git add package.json package-lock.json CHANGELOG.md .changeset
+     git add package.json pnpm-lock.yaml CHANGELOG.md .changeset
      git commit -m "chore(release): v<new-version>"
      git push origin main
      ```
@@ -161,18 +161,18 @@ If there is no GitHub Actions publish workflow, stop and explain that one must b
 9. **Verify npm registry publication**
    - After the workflow succeeds, verify:
      ```bash
-     npm view <package-name> version
-     npm view <package-name>@<new-version> dist.tarball
+     pnpm view <package-name> version
+     pnpm view <package-name>@<new-version> dist.tarball
      ```
    - If npm has not updated yet, wait briefly and check again.
 
 ## Reruns and special cases
 
 - If a GitHub Actions publish run failed due to a transient infrastructure issue, prefer `gh run rerun <run-id> --failed` or rerun the workflow in GitHub.
-- If using `workflow_dispatch`, pass the intended tag explicitly: `gh workflow run publish.yml --ref v<version>`. Dispatch reruns are idempotent: the npm publish step skips versions already on npm, and the release step updates the existing release. This is the recovery path for a tag that released partially (GitHub Release created but npm publish failed, or the reverse). For normal releases, prefer pushing the tag.
+- If using `workflow_dispatch`, pass the intended tag explicitly: `gh workflow run publish.yml --ref v<version>`. Dispatch reruns are idempotent: the pnpm publish step skips versions already on npm, and the release step updates the existing release. This is the recovery path for a tag that released partially (GitHub Release created but npm publish failed, or the reverse). For normal releases, prefer pushing the tag.
 - If the npm version already exists, npm will reject publishing. Bump to a new version and create a new release; do not try to overwrite an existing npm version.
 - If a GitHub Release/tag was created incorrectly, fix it on GitHub with care and tell the user exactly what changed.
-- Never use local `npm publish` as a workaround for a GitHub Actions or npm provenance issue.
+- Never publish locally as a workaround for a GitHub Actions or npm provenance issue.
 
 ## Final response format
 

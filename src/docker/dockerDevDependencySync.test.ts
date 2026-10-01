@@ -48,7 +48,7 @@ describe("Docker development dependency synchronization", () => {
 
   dockerSyncIt("fails without changing the volume when the image manifests are stale", async () => {
     const fixture = await createSyncFixture();
-    await writeFile(join(fixture.workspaceDir, "package-lock.json"), '{"lockfileVersion":3,"changed":true}\n', "utf8");
+    await writeFile(join(fixture.workspaceDir, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\nchanged: true\n", "utf8");
 
     const result = await runSync(fixture);
 
@@ -63,7 +63,8 @@ async function createSyncFixture(): Promise<SyncFixture> {
   const seedDir = join(tempDir, "seed");
   const targetDir = join(workspaceDir, "node_modules");
   const packageJson = '{"name":"dependency-sync-fixture","private":true}\n';
-  const packageLock = '{"name":"dependency-sync-fixture","lockfileVersion":3}\n';
+  const packageLock = "lockfileVersion: '9.0'\n";
+  const workspaceConfig = "nodeLinker: hoisted\n";
 
   await Promise.all([
     mkdir(join(seedDir, "node_modules", "fresh"), { recursive: true }),
@@ -72,9 +73,11 @@ async function createSyncFixture(): Promise<SyncFixture> {
   ]);
   await Promise.all([
     writeFile(join(workspaceDir, "package.json"), packageJson, "utf8"),
-    writeFile(join(workspaceDir, "package-lock.json"), packageLock, "utf8"),
+    writeFile(join(workspaceDir, "pnpm-lock.yaml"), packageLock, "utf8"),
+    writeFile(join(workspaceDir, "pnpm-workspace.yaml"), workspaceConfig, "utf8"),
     writeFile(join(seedDir, "package.json"), packageJson, "utf8"),
-    writeFile(join(seedDir, "package-lock.json"), packageLock, "utf8"),
+    writeFile(join(seedDir, "pnpm-lock.yaml"), packageLock, "utf8"),
+    writeFile(join(seedDir, "pnpm-workspace.yaml"), workspaceConfig, "utf8"),
     writeFile(join(seedDir, "generation"), "image-generation-2\n", "utf8"),
     writeFile(join(seedDir, "node_modules", "fresh", "version.txt"), "0.80.6\n", "utf8"),
     writeFile(join(targetDir, "stale.txt"), "stale\n", "utf8"),

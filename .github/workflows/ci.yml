@@ -24,25 +24,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Verify
-        run: npm run verify
+        run: pnpm run verify
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
       - name: Smoke test npm 12 global package install
-        run: npm run smoke:package-install
+        run: pnpm run smoke:package-install
 
-      # Build already ran above; suppress prepack so this only inspects the
-      # package contents instead of rebuilding the project a second time.
       - name: Check npm package contents
-        run: npm pack --dry-run --ignore-scripts
+        run: pnpm run pack:dry

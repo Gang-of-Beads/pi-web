@@ -802,7 +802,7 @@ describe("installed native-service mode and definition inspection", () => {
     if (firstDefinition === undefined) throw new Error("Expected a rendered service definition");
     definitions[0] = {
       ...firstDefinition,
-      contents: firstDefinition.contents.replace("exec npm run start:sessiond", "exec npm run something-else"),
+      contents: firstDefinition.contents.replace("exec pnpm run start:sessiond", "exec pnpm run something-else"),
     };
 
     const inspection = inspectInstalledDevelopmentServiceInput(plan.backend, definitions);

@@ -90,8 +90,8 @@ async function main() {
 
   const tsxBin = join(REPO_ROOT, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
   const viteBin = join(REPO_ROOT, "node_modules", ".bin", process.platform === "win32" ? "vite.cmd" : "vite");
-  assertExecutable(tsxBin, "Run npm install before capturing screenshots.");
-  assertExecutable(viteBin, "Run npm install before capturing screenshots.");
+  assertExecutable(tsxBin, "Run pnpm install before capturing screenshots.");
+  assertExecutable(viteBin, "Run pnpm install before capturing screenshots.");
 
   console.log("Starting isolated PI WEB session daemon, API server, and Vite client…");
   startChild("sessiond", tsxBin, ["src/server/sessiond.ts"], { env, cwd: REPO_ROOT, logsDir });

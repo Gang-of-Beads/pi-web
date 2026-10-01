@@ -111,7 +111,7 @@ After editing, check the manifest endpoint and browser-console failure cases.
 
 PI WEB ships a real bundled `info` plugin. Use it as the reference example because it is intentionally small while still exercising all core contribution types: an action, a workspace label, and a workspace panel.
 
-Bundled PI WEB plugins are developed as TypeScript in the repository, but their `package.json` metadata still points at built JavaScript because plugins are loaded by the browser as JS ES modules. `npm run dev:web` watches and rebuilds bundled plugin TS into `dist/pi-web-plugins/` during development, and `npm run build` emits the JS before packaging a release.
+Bundled PI WEB plugins are developed as TypeScript in the repository, but their `package.json` metadata still points at built JavaScript because plugins are loaded by the browser as JS ES modules. `pnpm run dev:web` watches and rebuilds bundled plugin TS into `dist/pi-web-plugins/` during development, and `pnpm run build` emits the JS before packaging a release.
 
 Source files:
 

@@ -87,7 +87,7 @@ case "$mode" in
     # report able to tell "already taken" from "never looked at".
     git cherry-pick -x "${picks[@]}"
     echo "picked: ${picks[*]}"
-    echo "run: npm run verify"
+    echo "run: pnpm run verify"
     ;;
   decline)
     [ "${#picks[@]}" -eq 1 ] || { echo "--decline takes one sha" >&2; exit 2; }

@@ -538,7 +538,7 @@ describe("server plugin recovery restart planning", () => {
     });
 
     expect(plan.kind).toBe("manual");
-    expect(plan.guidance).toContain("npm run start:sessiond");
+    expect(plan.guidance).toContain("pnpm run start:sessiond");
   });
 });
 

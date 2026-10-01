@@ -51,7 +51,7 @@ if [ -z "$remote_sha" ] || [ "$remote_sha" = "$(git rev-parse HEAD)" ]; then
       log "working tree is dirty; refusing to build over uncommitted changes (exit 3)"
       exit 3
     fi
-    npm run build
+    pnpm run build
     git rev-parse HEAD > dist/HEAD.sha
     log "build succeeded (stale-dist rebuild)"
     start=$(date +%s)
@@ -87,7 +87,7 @@ log "pulling $branch -> $(git rev-parse --short "$remote_sha")"
 git merge --ff-only "fork/$branch"
 
 log "building"
-npm run build
+pnpm run build
 git rev-parse HEAD > dist/HEAD.sha
 log "build succeeded"
 

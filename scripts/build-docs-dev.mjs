@@ -14,7 +14,7 @@
 // - 404.html is placed at the staging root (Workers "404-page" handling requires it
 //   there). It keeps its absolute URLs, so its styles and links come from stable.
 //
-// The script is dependency-free so it can run in CI without npm ci.
+// The script is dependency-free so it can run in CI without installing dependencies.
 
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";

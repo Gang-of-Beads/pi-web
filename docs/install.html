@@ -177,7 +177,7 @@ programs.pi-web = {
 };</code></pre>
         <p>State defaults to <code>~/.pi-web</code>; configuration defaults to <code>~/.config/pi-web/config.json</code>. Set <code>dataDir</code>, <code>configPath</code>, or <code>environment</code> in <code>programs.pi-web</code> to override them. If <code>settings</code> is set, Home Manager owns the JSON file and Settings UI/API edits are replaced on activation; leave it unset for a writable user-managed configuration file.</p>
         <p>On NixOS, operate the user units with <code>systemctl --user restart pi-web</code> or <code>systemctl --user restart pi-web-sessiond</code>. On nix-darwin, Home Manager creates the corresponding <code>com.pi-web.web</code> and <code>com.pi-web.sessiond</code> launch agents. Restart the daemon after daemon-only upgrades; a web-only restart deliberately leaves it running.</p>
-        <p>For a reproducible contributor toolchain, run <code>nix develop</code>, then use the usual <code>npm run verify</code> and <code>npm run build</code> commands.</p>
+        <p>For development from a checkout, use pnpm 12.8.1 (the version pinned in <code>package.json</code>). After <code>nix develop</code>, run <code>pnpm install --frozen-lockfile</code>, <code>pnpm run verify</code>, and <code>pnpm run build</code>.</p>
       </section>
 
       <section id="pi-package">

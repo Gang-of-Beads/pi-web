@@ -93,7 +93,7 @@ describe("staged validation planning", () => {
   it("always includes cached typechecking and Knip before scoped checks", () => {
     const plan = createValidationPlan(["./src/path with spaces/example.ts"], { pathExists: () => true });
 
-    expect(createValidationSteps(plan).map((step) => step.npmArgs)).toEqual([
+    expect(createValidationSteps(plan).map((step) => step.args)).toEqual([
       ["run", "typecheck:cached"],
       ["run", "knip"],
       ["exec", "--", "eslint", "--", "src/path with spaces/example.ts"],
