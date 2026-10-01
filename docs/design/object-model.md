@@ -523,18 +523,18 @@ Dependency direction: component → controller → `sync/*` → `api/http.ts`. P
 | Budget | Today | Target | Phase |
 |---|---|---|---|
 | requests at boot | 96–97 | ≤25 | P7 (bundling) |
-| `/api` at boot, background included | ~40 | ≤8 | P4 |
+| `/api` at boot, background included | ~40; **24** on 2026-10-01 (`probe-budgets.mjs` guards it as a ceiling): 6 shell facts (`pi-web/status` twice: core and the updates plugin), 8 machine facts, 1 plugin, 5 workspace, 4 session open | ≤8, through composite reads (P7 slices b-d); under HTTP/2 each saves at most one round trip, so they wait behind work the reader feels | P4, P7 |
 | max `/api` concurrency | 13–15 | measure after P4 | 2.7 |
 | idle bytes/min, panels closed | ~0.4 KB | ≤1 KB | — |
 | idle, git/files panel open | ≤245 req/min; 40–47/min after the watcher fix (the subagents run list every 3 s, and the pins re-read on each render it caused); **files 0/min, git 14–16/min, subagents 1/min** after P3b (git status 7, pins 7–8) | ≤8/min, plus head checks at 4/min | P3, P5 |
 | pins reads/min | 30; 7 with the git panel open after P3b (re-read on each render older than 2 s) | ≤1 | P5 |
-| first transcript row, warm | 0.84 s; **0.33–0.38 s** after P2c + P3a | ≤400 ms | P6 |
+| first transcript row, warm | 0.84 s; **0.33–0.38 s** after P2c + P3a; **225 ms** on 2026-10-01 (`probe-budgets.mjs`) | ≤400 ms | P6 |
 | first transcript row, cold 17.8 MB | 3.5–6.0 s; **1.11–1.34 s** after P2c + P3a (phone, daemon-cold, `probe-open-latency.mjs`) | ≤1.5 s | P2, P3 |
 | session read's wait on lists | 0.55–1.5 s | 0 (with `cwd`) | P2 |
 | board read p99 | 23 s (list) | ≤1 s | P3, P4 |
 | time to the reconnecting row | 10.5–29 s | deadline + grace (7 s small / 12 s large) | P1, P3 |
 | daemon listen after plugin activation | 31.4 s | measured, then the slowest phase fixed | P3 |
-| first row on a deep link at a 100 ms round trip (`probe-boot-latency.mjs`) | 2.29–2.41 s; **1.36–1.49 s** after P7a (all 15 plugins) | ≤1.0 s (place before plugins), ≤0.6 s (remembered folder) | P6, P7 |
+| first row on a deep link at a 100 ms round trip (`probe-boot-latency.mjs`) | 2.29–2.41 s; **1.36–1.49 s** after P7a (all 15 plugins), both over HTTP/1.1; **1.07–1.33 s over HTTP/2**, which production speaks (§4.7) | ≤0.8 s with a remembered place (waits on the owner); place-before-plugins dropped (owner: everything at once) | P6, P7 |
 | browser plugin modules at boot (`probe-boot-latency.mjs`) | 55–70 files, imported up to ten levels deep (1.34 s of round trips at 100 ms); **one file per plugin** after P7a, asked for within 1 ms | one level | P7 |
 
 ### 4.4 B28 board read and heads
