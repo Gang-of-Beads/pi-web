@@ -154,7 +154,9 @@ try {
     return true;
   }, b.id);
   check("precondition G3: the deleted row was picked", picked, "");
-  const g3 = await until((state) => state.panel !== undefined || state.pending === "failed", 20_000);
+  const pickedAt = Date.now();
+  const g3 = await until((state) => state.panel?.role === "alert" || state.pending === "failed", 45_000);
+  console.log(`observation: the pick was answered after ${String(Date.now() - pickedAt)} ms (a cold daemon scans the whole store to locate a missing id)`);
   check("G3: a picked row deleted since the board was read lands on the gone words, not a failed tap", g3.panel?.text === GONE_WORDS && g3.pending !== "failed", JSON.stringify({ panel: g3.panel, pending: g3.pending, failedLoad: g3.failedLoad }));
   check("G3: the URL names the picked row, so a reload shows the same answer", g3.url === b.id, `session=${String(g3.url)}`);
 
