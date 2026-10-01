@@ -14,6 +14,35 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("a machine's socket that reopened (B28 slice H2)", () => {
+  it("marks the board stale and refreshes the open panels on a reopen, not on the first open", async () => {
+    vi.spyOn(sessionPinsApi, "pins").mockResolvedValue([]);
+    const opens = new Map<string, (reopened: boolean) => void>();
+    vi.spyOn(RealtimeSocket.prototype, "connect").mockImplementation((_onEvent, onOpen, machineId = "local") => { if (onOpen !== undefined) opens.set(machineId, onOpen); });
+    const app = createApp();
+    const calls: string[] = [];
+    spyOn(app, "sessionUnread", ["refresh"], calls);
+    spyOn(app, "sessionBoards", ["missedAnnouncements"], calls);
+    spyOn(app, "sessions", ["hydrateSessionStatuses", "refreshCurrentWorkspaceSessions"], calls);
+    spyOn(app, "", ["invalidateWorkspacePanels", "refreshInterruptedRuns"], calls);
+    const local = { id: "local", name: "Local", kind: "local" };
+    call(app, "setState", { machines: [local, { id: "remote-1", name: "Remote", kind: "remote", status: "online" }], selectedMachine: local });
+    call(app, "connectRealtime");
+    call(app, "syncMachineActivitySubscriptions");
+    const marks = (): string[] => calls.filter((entry) => entry.startsWith("sessionBoards.") || entry.startsWith("invalidateWorkspacePanels"));
+
+    opens.get("local")?.(false);
+    opens.get("remote-1")?.(false);
+    await flush();
+    const firstOpens = marks();
+    opens.get("local")?.(true);
+    opens.get("remote-1")?.(true);
+    await flush();
+
+    expect({ firstOpens, reopens: marks() }).toEqual({ firstOpens: [], reopens: ["sessionBoards.missedAnnouncements(local)", "invalidateWorkspacePanels()", "sessionBoards.missedAnnouncements(remote-1)"] });
+  });
+});
+
 describe("a burst of lost announcements", () => {
   it("shares one pass of reads, and asks for at most one more after it", async () => {
     vi.spyOn(sessionPinsApi, "pins").mockResolvedValue([]);

@@ -2157,7 +2157,7 @@ export class PiWebApp extends LitElement {
     this.refreshInterruptedRuns(machineId);
     this.realtime.connect(
       (event) => { this.handleRealtimeEvent(machineId, event); },
-      () => {
+      (reopened) => {
         // The proxies accept the upgrade first and bridge upstream second, so
         // onopen proves the web process is alive - not that this machine's
         // daemon answered anything. Retiring the claim here retracted a
@@ -2186,6 +2186,9 @@ export class PiWebApp extends LitElement {
         this.refreshInterruptedRuns(machineId, { adoptEmpty: false });
         const workspace = this.state.selectedWorkspace;
         if (workspace !== undefined) void this.refreshActiveTerminals(workspace);
+        if (!reopened) return;
+        this.sessionBoards.missedAnnouncements(machineId);
+        void this.invalidateWorkspacePanels();
       },
       machineId,
       () => { this.rereadAnnounced(machineId); },
@@ -2232,9 +2235,10 @@ export class PiWebApp extends LitElement {
       const socket = new RealtimeSocket();
       socket.connect(
         (event) => { this.handleMachineActivityEvent(machineId, event); },
-        () => {
+        (reopened) => {
           void this.sessionUnread.refresh(machineId);
           this.refreshMachinePins(machineId);
+          if (reopened) this.sessionBoards.missedAnnouncements(machineId);
         },
         machineId,
         () => { this.rereadAnnounced(machineId); },

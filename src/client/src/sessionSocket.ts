@@ -191,8 +191,9 @@ export class RealtimeSocket {
   private socket: WebSocket | undefined;
   private onEvent: ((event: BrowserRealtimeEvent) => void) | undefined;
   private readonly seqMonitor = new ScopeSeqMonitor("global", () => { this.onMissed?.(); });
-  private onOpen: (() => void) | undefined;
+  private onOpen: ((reopened: boolean) => void) | undefined;
   private onMissed: (() => void) | undefined;
+  private opened = false;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private reconnectDelay = 500;
   private shouldReconnect = false;
@@ -246,12 +247,13 @@ export class RealtimeSocket {
    * skips, or a heartbeat whose head is ahead of the last frame (state-diagram D5, "A lost
    * announcement is noticed"). Whatever the socket keeps live is to be read again.
    */
-  connect(onEvent: (event: BrowserRealtimeEvent) => void, onOpen?: () => void, machineId = "local", onMissed?: () => void): void {
+  connect(onEvent: (event: BrowserRealtimeEvent) => void, onOpen?: (reopened: boolean) => void, machineId = "local", onMissed?: () => void): void {
     this.close();
     this.machineId = machineId;
     this.onEvent = onEvent;
     this.onOpen = onOpen;
     this.onMissed = onMissed;
+    this.opened = false;
     this.shouldReconnect = true;
     this.waitingSince = Date.now();
     this.open();
@@ -279,7 +281,9 @@ export class RealtimeSocket {
       this.reconnectDelay = 500;
       this.lastFrameAt = Date.now();
       this.seqMonitor.reset();
-      this.onOpen?.();
+      const reopened = this.opened;
+      this.opened = true;
+      this.onOpen?.(reopened);
     };
     socket.onmessage = (message) => void this.handleMessage(message.data, socket);
     socket.onerror = () => { socket.close(); };
