@@ -1,13 +1,31 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export interface OwnedQueueEntry {
   clientMessageId?: string;
+  /** The daemon's own key for a message sent without a client id, minted when it is accepted. */
+  inboxId?: string;
   lane: "steer" | "followUp";
   text: string;
   images: { type: "image"; data: string; mimeType: string }[];
   acceptedAt: string;
   echoUserMessage: boolean;
+}
+
+/**
+ * How a message is known to the inbox and to the held-steer records while pi holds it: its sender's
+ * id, or a local id built from the daemon's own key. A local id starts with a space, which no
+ * accepted client id can (`parseClientMessageId` trims), so it never leaves the daemon.
+ */
+export const LOCAL_HOLD_ID_PREFIX = " local-hold:";
+
+export function entryKey(entry: OwnedQueueEntry): string {
+  return entry.clientMessageId ?? `${LOCAL_HOLD_ID_PREFIX}${entry.inboxId ?? ""}`;
+}
+
+function keyed(entry: OwnedQueueEntry): OwnedQueueEntry {
+  return entry.clientMessageId !== undefined || entry.inboxId !== undefined ? entry : { ...entry, inboxId: randomUUID() };
 }
 
 /** Where daemons before the inbox kept a session's parked prompts: inside the workspace. */
@@ -49,33 +67,43 @@ export async function listWaitingInboxes(dataDir: string): Promise<WaitingInbox[
   for (const name of names) {
     if (!name.endsWith(".json")) continue;
     const stored = await readInboxFile(join(directory, name)).catch(() => undefined);
-    if (stored?.cwd !== undefined && stored.entries.length > 0) waiting.push({ sessionId: name.slice(0, -".json".length), cwd: stored.cwd });
+    if (stored?.cwd !== undefined && stored.entries.length + stored.handed.length > 0) waiting.push({ sessionId: name.slice(0, -".json".length), cwd: stored.cwd });
   }
   return waiting;
 }
 
-async function readInboxFile(path: string): Promise<{ cwd?: string; entries: OwnedQueueEntry[] } | undefined> {
+interface InboxFile { cwd?: string; entries: OwnedQueueEntry[]; handed: OwnedQueueEntry[] }
+
+async function readInboxFile(path: string): Promise<InboxFile | undefined> {
   let raw: string;
   try { raw = await readFile(path, "utf8"); } catch { return undefined; }
   const parsed: unknown = JSON.parse(raw);
-  if (Array.isArray(parsed)) return { entries: parseEntries(parsed) };
-  if (typeof parsed !== "object" || parsed === null) return { entries: [] };
+  if (Array.isArray(parsed)) return { entries: parseEntries(parsed), handed: [] };
+  if (typeof parsed !== "object" || parsed === null) return { entries: [], handed: [] };
   const cwd = field(parsed, "cwd");
-  return { ...(typeof cwd === "string" ? { cwd } : {}), entries: parseEntries(field(parsed, "entries")) };
+  return { ...(typeof cwd === "string" ? { cwd } : {}), entries: parseEntries(field(parsed, "entries")), handed: parseEntries(field(parsed, "handed")) };
 }
 
 let stagedCounter = 0;
 
 /**
- * The daemon's own durable parking lot for prompts accepted while the runtime
- * is busy. Every mutating operation is serialized per session on a promise
- * chain: the reviewers demonstrated that an open() racing a push() could
- * persist before reading and destroy the previously parked entries on disk,
- * and that two concurrent persists sharing one staged filename could commit
- * torn bytes. One writer at a time makes both impossible by construction.
+ * The daemon's own durable inbox: every prompt it accepted and pi has not read yet.
+ *
+ * Two lists, one record per message (state-diagram D1). `waiting` is what pi has not been given;
+ * every existing reader (take, recall, clear, the handoff count, hasWaiting, resume) means that.
+ * `handed` is what was given to pi and is not yet known read, refused or withdrawn: a message in
+ * pi's steering lane waits there for the whole reply that pi will next poll at (B33), and a crash
+ * meanwhile used to lose it. Only settle, take-back and restart touch `handed`.
+ *
+ * Every mutating operation is serialized per session on a promise chain: the reviewers
+ * demonstrated that an open() racing a push() could persist before reading and destroy the
+ * previously parked entries on disk, and that two concurrent persists sharing one staged filename
+ * could commit torn bytes. One writer at a time makes both impossible by construction.
  */
 export class OwnedPromptQueue {
   private readonly perSession = new Map<string, OwnedQueueEntry[]>();
+  private readonly handedPerSession = new Map<string, OwnedQueueEntry[]>();
+  private readonly handedFromDisk = new Set<string>();
   private readonly filePaths = new Map<string, string>();
   private readonly cwds = new Map<string, string>();
   private readonly chains = new Map<string, Promise<unknown>>();
@@ -95,17 +123,63 @@ export class OwnedPromptQueue {
       this.cwds.set(sessionId, cwd);
       if (path !== undefined) this.filePaths.set(sessionId, path);
       const legacyPath = queueFilePath(cwd, sessionId);
-      const loaded = path === undefined ? [] : await loadQuarantiningCorruption(path, sessionId);
-      const migrated = path === undefined || path === legacyPath ? [] : await loadQuarantiningCorruption(legacyPath, sessionId);
+      const loaded = path === undefined ? { entries: [], handed: [] } : await loadQuarantiningCorruption(path, sessionId);
+      const migrated = path === undefined || path === legacyPath ? [] : (await loadQuarantiningCorruption(legacyPath, sessionId)).entries;
       const remembered = this.perSession.get(sessionId);
-      const current = remembered ?? loaded;
+      const current = remembered ?? loaded.entries;
+      const keptHanded = this.handedPerSession.get(sessionId);
+      const handed = keptHanded ?? loaded.handed;
+      if (keptHanded === undefined && handed.length > 0) this.handedFromDisk.add(sessionId);
       const knownIds = new Set(current.map((entry) => entry.clientMessageId).filter((id) => id !== undefined));
       const moved = migrated.filter((entry) => entry.clientMessageId === undefined || !knownIds.has(entry.clientMessageId));
       const merged = [...moved, ...current];
-      if (moved.length > 0 || (remembered !== undefined && remembered.length !== loaded.length)) await this.persist(sessionId, merged);
+      if (moved.length > 0 || (remembered !== undefined && remembered.length !== loaded.entries.length)) await this.persist(sessionId, merged, handed);
       if (migrated.length > 0) await unlink(legacyPath).catch(() => undefined);
       this.perSession.set(sessionId, merged);
+      this.handedPerSession.set(sessionId, handed);
       return [...merged];
+    });
+  }
+
+  /**
+   * After a restart, once the session's runtime is bound: a handed message pi committed is done,
+   * and every other one goes back to the head of `waiting`, in the order it was handed. They were
+   * accepted before anything still waiting. `committed` says which pi wrote; only a message with
+   * its sender's id can be recognised on the transcript, so one without returns.
+   *
+   * Only a handed list read from the file at `open` is reconciled. One this process kept itself
+   * belongs to a runtime whose settle paths are live, and handing it back on a rebind would run a
+   * message that runtime is still reading - found over the real SDK, where a reopen of the live
+   * session returned the message being answered and pi read it twice.
+   */
+  async returnHanded(sessionId: string, committed: (entry: OwnedQueueEntry) => boolean): Promise<{ committed: OwnedQueueEntry[]; returned: OwnedQueueEntry[] }> {
+    return this.serialize(sessionId, async () => {
+      if (!this.handedFromDisk.delete(sessionId)) return { committed: [], returned: [] };
+      const handed = this.handedPerSession.get(sessionId) ?? [];
+      if (handed.length === 0) return { committed: [], returned: [] };
+      const done = handed.filter((entry) => committed(entry));
+      const returned = handed.filter((entry) => !committed(entry));
+      const waitingKeys = new Set((this.perSession.get(sessionId) ?? []).map(entryKey));
+      const next = [...returned.filter((entry) => !waitingKeys.has(entryKey(entry))), ...(this.perSession.get(sessionId) ?? [])];
+      await this.persist(sessionId, next, []);
+      this.perSession.set(sessionId, next);
+      this.handedPerSession.set(sessionId, []);
+      return { committed: done, returned };
+    });
+  }
+
+  handed(sessionId: string): OwnedQueueEntry[] {
+    return [...(this.handedPerSession.get(sessionId) ?? [])];
+  }
+
+  /** A handed message pi read, refused or gave back to its sender: it is no longer the inbox's. */
+  async settleHanded(sessionId: string, key: string): Promise<void> {
+    return this.serialize(sessionId, async () => {
+      const handed = this.handedPerSession.get(sessionId) ?? [];
+      const next = handed.filter((entry) => entryKey(entry) !== key);
+      if (next.length === handed.length) return;
+      await this.persist(sessionId, this.perSession.get(sessionId) ?? [], next);
+      this.handedPerSession.set(sessionId, next);
     });
   }
 
@@ -117,10 +191,10 @@ export class OwnedPromptQueue {
   async hasWaiting(sessionId: string, cwd: string): Promise<boolean> {
     return this.serialize(sessionId, async () => {
       const remembered = this.perSession.get(sessionId);
-      if (remembered !== undefined) return remembered.length > 0;
+      if (remembered !== undefined) return remembered.length + (this.handedPerSession.get(sessionId)?.length ?? 0) > 0;
       for (const path of new Set([this.location(sessionId, cwd), queueFilePath(cwd, sessionId)])) {
         if (path === undefined) continue;
-        const waiting = await readInboxFile(path).then((file) => (file?.entries.length ?? 0) > 0, () => true);
+        const waiting = await readInboxFile(path).then((file) => (file?.entries.length ?? 0) + (file?.handed.length ?? 0) > 0, () => true);
         if (waiting) return true;
       }
       return false;
@@ -138,21 +212,23 @@ export class OwnedPromptQueue {
       if (path !== undefined) this.filePaths.set(sessionId, path);
       const list = this.perSession.get(sessionId) ?? [];
       if (entry.clientMessageId !== undefined && list.some((queued) => queued.clientMessageId === entry.clientMessageId)) return;
-      const next = [...list, entry];
-      await this.persist(sessionId, next);
+      const next = [...list, keyed(entry)];
+      await this.persist(sessionId, next, this.handedPerSession.get(sessionId) ?? []);
       this.perSession.set(sessionId, next);
     });
   }
 
-  /** Take the oldest `count` entries, in acceptance order. */
+  /** Take the oldest `count` entries, in acceptance order, into `handed`: the caller gives them to pi. */
   async take(sessionId: string, count: number): Promise<OwnedQueueEntry[]> {
     return this.serialize(sessionId, async () => {
       const list = this.perSession.get(sessionId) ?? [];
       const taken = list.slice(0, count);
       if (taken.length === 0) return [];
       const next = list.slice(taken.length);
-      await this.persist(sessionId, next);
+      const handed = [...(this.handedPerSession.get(sessionId) ?? []), ...taken];
+      await this.persist(sessionId, next, handed);
       this.perSession.set(sessionId, next);
+      this.handedPerSession.set(sessionId, handed);
       return taken;
     });
   }
@@ -160,15 +236,19 @@ export class OwnedPromptQueue {
   /**
    * Put entries back ahead of everything waiting: the runtime was momentarily busy, or they
    * were taken back out of the runtime's own queue. They were accepted before anything still
-   * here, so the head is where acceptance order puts them.
+   * here, so the head is where acceptance order puts them. They leave `handed`.
    */
   async restoreFront(sessionId: string, entries: readonly OwnedQueueEntry[]): Promise<void> {
     if (entries.length === 0) return;
     return this.serialize(sessionId, async () => {
-      const list = this.perSession.get(sessionId) ?? [];
-      const next = [...entries, ...list];
-      await this.persist(sessionId, next);
+      const restored = entries.map(keyed);
+      const keys = new Set(restored.map(entryKey));
+      const list = (this.perSession.get(sessionId) ?? []).filter((entry) => !keys.has(entryKey(entry)));
+      const handed = (this.handedPerSession.get(sessionId) ?? []).filter((entry) => !keys.has(entryKey(entry)));
+      const next = [...restored, ...list];
+      await this.persist(sessionId, next, handed);
       this.perSession.set(sessionId, next);
+      this.handedPerSession.set(sessionId, handed);
     });
   }
 
@@ -182,7 +262,7 @@ export class OwnedPromptQueue {
       if (at === -1) return undefined;
       const taken = list[at];
       const next = [...list.slice(0, at), ...list.slice(at + 1)];
-      await this.persist(sessionId, next);
+      await this.persist(sessionId, next, this.handedPerSession.get(sessionId) ?? []);
       this.perSession.set(sessionId, next);
       return taken;
     });
@@ -191,17 +271,17 @@ export class OwnedPromptQueue {
   async clear(sessionId: string): Promise<OwnedQueueEntry[]> {
     return this.serialize(sessionId, async () => {
       const list = this.perSession.get(sessionId) ?? [];
-      if (list.length > 0) await this.persist(sessionId, []);
+      if (list.length > 0) await this.persist(sessionId, [], this.handedPerSession.get(sessionId) ?? []);
       this.perSession.set(sessionId, []);
       return list;
     });
   }
 
 
-  private async persist(sessionId: string, entries: readonly OwnedQueueEntry[]): Promise<void> {
+  private async persist(sessionId: string, entries: readonly OwnedQueueEntry[], handed: readonly OwnedQueueEntry[]): Promise<void> {
     const path = this.filePaths.get(sessionId);
     if (path === undefined) return;
-    if (entries.length === 0) {
+    if (entries.length === 0 && handed.length === 0) {
       try {
         await unlink(path);
       } catch (error: unknown) {
@@ -213,7 +293,7 @@ export class OwnedPromptQueue {
     stagedCounter += 1;
     const staged = `${path}.${String(process.pid)}.${String(stagedCounter)}.tmp`;
     try {
-      await writeFile(staged, JSON.stringify({ cwd: this.cwds.get(sessionId), entries }));
+      await writeFile(staged, JSON.stringify({ cwd: this.cwds.get(sessionId), entries, ...(handed.length === 0 ? {} : { handed }) }));
       await rename(staged, path);
     } catch (error) {
       await unlink(staged).catch(() => undefined);
@@ -230,13 +310,14 @@ function isMissingFileError(error: unknown): boolean {
  * A file that exists but cannot be parsed is evidence of parked prompts, not an empty queue;
  * absence is not negation. Keep the bytes for the operator and say so in the log.
  */
-async function loadQuarantiningCorruption(path: string, sessionId: string): Promise<OwnedQueueEntry[]> {
+async function loadQuarantiningCorruption(path: string, sessionId: string): Promise<{ entries: OwnedQueueEntry[]; handed: OwnedQueueEntry[] }> {
   try {
-    return (await readInboxFile(path))?.entries ?? [];
+    const file = await readInboxFile(path);
+    return { entries: file?.entries ?? [], handed: file?.handed ?? [] };
   } catch {
     await rename(path, `${path}.corrupt`).catch(() => undefined);
     console.warn(`[ownedPromptQueue] corrupt queue file quarantined: ${path}.corrupt (session ${sessionId})`);
-    return [];
+    return { entries: [], handed: [] };
   }
 }
 
@@ -255,6 +336,8 @@ function parseEntries(value: unknown): OwnedQueueEntry[] {
     if ((lane !== "steer" && lane !== "followUp") || typeof text !== "string") continue;
     const rawId = field(raw, "clientMessageId");
     const clientMessageId = typeof rawId === "string" ? rawId : undefined;
+    const rawInboxId = field(raw, "inboxId");
+    const inboxId = typeof rawInboxId === "string" ? rawInboxId : clientMessageId === undefined ? randomUUID() : undefined;
     const rawAccepted = field(raw, "acceptedAt");
     const acceptedAt = typeof rawAccepted === "string" ? rawAccepted : "";
     const rawImages = field(raw, "images");
@@ -269,7 +352,7 @@ function parseEntries(value: unknown): OwnedQueueEntry[] {
       }
     }
     const echoUserMessage = field(raw, "echoUserMessage") !== false;
-    entries.push({ ...(clientMessageId === undefined ? {} : { clientMessageId }), lane, text, images, acceptedAt, echoUserMessage });
+    entries.push({ ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(inboxId === undefined ? {} : { inboxId }), lane, text, images, acceptedAt, echoUserMessage });
   }
   return entries;
 }

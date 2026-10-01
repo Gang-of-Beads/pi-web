@@ -13,6 +13,9 @@ const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
  * a withdrawal frame its row waits at "Queued" forever, and a retry would
  * re-send what the reader explicitly took back. The frame carries the id and
  * rides the ring like every other session frame.
+ *
+ * The daemon hands every message accepted while the agent runs to pi's steering lane at once (B33),
+ * so the lanes below hold what was sent.
  */
 function busyService(sessionId: string, queue: { steering: string[]; followUp: string[] }) {
   const hub = new CapturingSessionEventHub();
@@ -70,7 +73,7 @@ describe("a recall tells every device the message was taken back", () => {
   });
 
   it("withdraws the discarded identities when the turn is stopped", async () => {
-    const queue = { steering: [], followUp: ["waiting for a turn"] };
+    const queue = { steering: ["waiting for a turn"], followUp: [] };
     const { hub, fake, service } = busyService("withdraw-abort", queue);
     await service.prompt(sessionRef("withdraw-abort"), "waiting for a turn", "followUp", undefined, { clientMessageId: "c-stop" });
 
@@ -97,7 +100,7 @@ describe("a recall tells every device the message was taken back", () => {
   });
 
   it("withdraws every known identity when the whole queue is cleared", async () => {
-    const queue = { steering: ["first"], followUp: ["second"] };
+    const queue = { steering: ["first", "second"], followUp: [] };
     const { hub, service } = busyService("withdraw-clear", queue);
     await service.prompt(sessionRef("withdraw-clear"), "first", "steer", undefined, { clientMessageId: "c-1" });
     await service.prompt(sessionRef("withdraw-clear"), "second", "followUp", undefined, { clientMessageId: "c-2" });

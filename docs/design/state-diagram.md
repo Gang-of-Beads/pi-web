@@ -52,7 +52,7 @@ stateDiagram-v2
     handed --> queued: pi returned it unread (prompt.returned; same seq, same acceptedAt)
     handed --> committed: pi wrote its user entry (prompt.committed, carries entryId)
     handed --> consumed: pi took it with no user entry, e.g. a handled command (prompt.consumed)
-    handed --> queued: daemon restarted before pi wrote its entry (the handed list kept it; B33 commit 2, until then unverifiable)
+    handed --> queued: daemon restarted before pi wrote its entry (the inbox file's handed list kept it; B33)
     queued --> withdrawn: reader recalled it or cleared the queue
     queued --> refused: terminal refusal after acceptance
     handed --> refused: terminal refusal after handoff
@@ -81,7 +81,7 @@ stateDiagram-v2
     3. then it starts the run with the oldest;
     4. pi's first poll takes them all, in order, into one request.
 
-    If the oldest is refused, the steers already queued behind it are taken back first, so the batch returns to the inbox in its own order. A known limit: an extension that starts a run of its own between the steers and the oldest's prompt makes the later messages overtake the oldest. The inbox cannot see that window. Until the durable `handed` list (commit 2), the batch's later messages live only in pi's lane while the oldest is in preflight: a recall of one waits for the oldest's handoff, and a Stop or Clear waits for the steers without a bound. A close that cannot wait for the handoff takes them back into the inbox file at once (review b1e7ed02). Measured before the fix (product audit 5d672be6): three queued messages became three requests 16-20 ms apart.
+    If the oldest is refused, the steers already queued behind it are taken back first, so the batch returns to the inbox in its own order. A known limit: an extension that starts a run of its own between the steers and the oldest's prompt makes the later messages overtake the oldest. The inbox cannot see that window. While the oldest is in preflight, a recall of one of the later messages waits for the oldest's handoff, and a Stop or Clear waits for the steers without a bound. A close that cannot wait for the handoff takes them back into the inbox file at once (review b1e7ed02). Measured before the fix (product audit 5d672be6): three queued messages became three requests 16-20 ms apart.
   - **Why holding until a gap cannot batch while the agent runs (B33, measured).** The daemon hears of a gap only after pi polled at it. On a turn with no tool calls, the gap is `turn_end`, and pi's next checks (the loop's steering poll, then `_runAgentPrompt`'s `hasQueuedMessages`) run immediately. The held batch is handed one entry at a time, each awaiting pi's input preflight, so it straddles the final check. A real-SDK test sent B, C and D during a long reply and got three requests: A; then B and C; then D alone, taken back when the run settled.
   - **The mechanism (B33 with B6), after design review 1358db22.** pi's own steering queue is the injection point; pi drains all of it at its next poll. So:
     1. **While the agent runs, one hand per acceptance.** A message is handed to pi's lane when it is accepted. The same holds during an auto-compaction inside a run, because pi re-polls after it. It then waits there, recallable, and pi takes everything waiting at its next poll.
@@ -94,9 +94,16 @@ stateDiagram-v2
     What the reader sees does not change: queued messages stay listed, numbered, recallable and durable. What changes is that everything waiting reaches the model in one request at the next injection point, which is the owner's rule. A message accepted within the few milliseconds of pi's poll may still land one poll later; that is the only remaining split.
   - **Order of work.** Two commits:
     1. the idle batch. It is a strict improvement on its own, with its own test;
-    2. hand at acceptance with the durable `handed` list (the real-SDK test above).
+    2. hand at acceptance with the durable `handed` list. **Shipped.** A real-SDK test sends B, C and D during A's reply. Before: A; then B and C; then D alone. Now: A; then B, C and D in one request.
 
-    Rule changes the second flips: `ownedQueue.test` "hands everything waiting at a gap, in order, as steers" and the `promptHandoff.test` table rows for `running` with `nudge` and `gap`.
+    **What the second changed:**
+    - `promptHandoff`: `running` answers `steer` for every trigger.
+    - The inbox file keeps `{ entries, handed }`. `take` moves a message to `handed` in the same write. `settleHanded` is called from `settleSucceeded`, `refuse` and `withdraw`, the three ways a handed message ends. `restoreFront` moves a message back.
+    - A message sent without an id gets a daemon `inboxId`, so its local hold id (`entryKey`) survives the file.
+    - The restart rule (`returnHanded`) applies only to a handed list read from the file. A list this process kept itself belongs to a runtime whose settle paths are live. A real-SDK run caught the failure: a reopen of the live session returned the message being answered, and pi read it twice.
+    - The status list still composes the inbox and pi's lane. B6 makes the inbox its only source.
+
+    **What the tests learned:** many tests parked messages in the inbox by faking a running agent. A running agent now takes each message at once, so tests of what waits in the inbox park through a compaction instead: a running agent that is compacting, the state in which the inbox waits.
 - **Restart.** A `queued` message survives a daemon restart and stays visible as queued, with its original time. It is handed at the next injection point, so it never "reappears": it never left.
 - **Automatic resend.** The outbox resends on reconnect only a `notSent` record made on this device within the last 10 minutes. Anything older stays `notSent` with Retry. An `unverifiable` record is re-asked of the ledger, never blindly resent.
 - **Row placement is a function of state**, with exactly one row per id. The transcript tail, from the top:

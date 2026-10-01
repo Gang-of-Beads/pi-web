@@ -91,4 +91,25 @@ describe("messages that waited for a run", () => {
     expect((await svc.status(sessionRef(session.sessionId, cwd))).queuedMessages).toEqual([]);
     await svc.dispose();
   }, 20_000);
+
+  /**
+   * While the agent runs (B33, second commit): every message accepted during a reply is in pi's
+   * lane before pi next polls it, so they reach the next request together. Before, they were held
+   * until a gap and handed one at a time, each awaiting pi's input preflight, and straddled pi's
+   * final check: A; then B and C; then D alone.
+   */
+  it("sent while a reply streams, reach the next request together, in the order they were sent", async () => {
+    const { svc, session, requests, ref } = await daemonOverRealSdk();
+    await svc.prompt(ref, "A first", undefined, undefined, { clientMessageId: "run-0001" });
+    for (let tries = 0; tries < 100 && !session.isStreaming; tries += 1) await sleep(10);
+    await svc.prompt(ref, "B second", undefined, undefined, { clientMessageId: "run-0002" });
+    await svc.prompt(ref, "C third", undefined, undefined, { clientMessageId: "run-0003" });
+    await svc.prompt(ref, "D fourth", undefined, undefined, { clientMessageId: "run-0004" });
+    for (let tries = 0; tries < 600 && (session.isStreaming || requests.flat().length < 4); tries += 1) await sleep(25);
+    await sleep(200);
+
+    expect(requests).toEqual([["A first"], ["B second", "C third", "D fourth"]]);
+    expect(svc.operationOutcomes(session.sessionId, ["run-0002", "run-0003", "run-0004"])).toEqual({ "run-0002": "succeeded", "run-0003": "succeeded", "run-0004": "succeeded" });
+    await svc.dispose();
+  }, 30_000);
 });

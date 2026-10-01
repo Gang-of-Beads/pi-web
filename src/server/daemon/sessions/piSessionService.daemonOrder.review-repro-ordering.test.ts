@@ -16,10 +16,14 @@ const refs = new Map<string, string>();
 const ref = (id: string) => sessionRef(id, refs.get(id));
 const settle = (ms = 250) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function service(sessionId: string, options: { isStreaming?: boolean; dir?: string; ledgerDir?: string } = {}) {
+/**
+ * `isCompacting` parks messages in the inbox while the agent runs: a running agent alone takes each
+ * one into pi's lane at once (B33), so tests about the inbox's own order park through a compaction.
+ */
+async function service(sessionId: string, options: { isStreaming?: boolean; isCompacting?: boolean; dir?: string; ledgerDir?: string } = {}) {
   const dir = options.dir ?? await mkdtemp(join(tmpdir(), "order-"));
   const hub = new CapturingSessionEventHub();
-  const fake = fakeRuntime(sessionId, { isStreaming: options.isStreaming ?? true });
+  const fake = fakeRuntime(sessionId, { isStreaming: options.isStreaming ?? true, isCompacting: options.isCompacting ?? false });
   Reflect.set(fake.runtime, "cwd", dir);
   fake.session.sessionManager.getCwd = () => dir;
   const svc = new PiSessionService(hub, {
@@ -119,12 +123,13 @@ describe("ordering lane repros", () => {
   });
 
   it("I3: a message withdrawn by recall is not resurrected by an outbox retry of its id", async () => {
-    const { fake, svc } = await service("recall-retry");
+    const { fake, svc } = await service("recall-retry", { isCompacting: true });
     await svc.prompt(ref("recall-retry"), "withdraw me", undefined, undefined, { clientMessageId: "w1" });
     const recalled = await svc.recallQueuedMessage(ref("recall-retry"), { text: "withdraw me", clientMessageId: "w1" });
     expect(recalled.recalled).toBe(true);
     await svc.prompt(ref("recall-retry"), "withdraw me", undefined, undefined, { clientMessageId: "w1" });
     fake.session.isStreaming = false;
+    fake.session.isCompacting = false;
     fake.emit({ type: "agent_settled" });
     await settle();
     const queued = (await svc.status(ref("recall-retry"))).queuedMessages.map((entry) => entry.clientMessageId);
@@ -143,7 +148,7 @@ describe("ordering lane repros", () => {
     await svc.dispose();
   });
   it("I2: two requests that reach the daemon in order are accepted in that order", async () => {
-    const { svc, hub } = await service("arrival-order");
+    const { svc, hub } = await service("arrival-order", { isCompacting: true });
     const png = (await readFile("docs/assets/pi-web-banner.png")).toString("base64");
     const first = svc.prompt(ref("arrival-order"), "A arrives first, with a photo", undefined, [{ kind: "image", mimeType: "image/png", data: png }], { clientMessageId: "arrive-0001" });
     const second = svc.prompt(ref("arrival-order"), "B arrives second", undefined, undefined, { clientMessageId: "arrive-0002" });

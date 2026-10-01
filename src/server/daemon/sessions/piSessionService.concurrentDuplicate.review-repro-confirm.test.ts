@@ -13,11 +13,14 @@ import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, 
  * the direct send is still in flight. The daemon, not the client, is what makes
  * that safe - `has()`/`record()` straddle `await parkPrompt` here, so the
  * ledger is the only thing standing between a slow first POST and a second copy.
+ *
+ * The session compacts mid-run, so the inbox keeps the message where the status lists it; a running
+ * agent alone would take it into pi's lane at once (B33).
  */
 describe("two concurrent requests under one identity", () => {
   it("parks the message once", async () => {
     const dir = await mkdtemp(join(tmpdir(), "dup-"));
-    const fake = fakeRuntime("dup", { isStreaming: true });
+    const fake = fakeRuntime("dup", { isStreaming: true, isCompacting: true });
     Reflect.set(fake.runtime, "cwd", dir);
     fake.session.sessionManager.getCwd = () => dir;
     const service = new PiSessionService(new CapturingSessionEventHub(), {

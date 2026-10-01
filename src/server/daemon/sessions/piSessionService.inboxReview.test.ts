@@ -13,11 +13,15 @@ import { CapturingSessionEventHub, fakeRuntime, fakeSessionManager, handedAs, ru
  */
 interface PromptOptions { streamingBehavior?: "steer" | "followUp"; preflightResult?: (success: boolean) => void }
 
-async function inboxService(sessionId: string, options: { dataDir?: string; dir?: string; isStreaming?: boolean } = {}) {
+/**
+ * `isCompacting` parks messages in the inbox while the agent runs: a running agent alone takes each
+ * one into pi's lane at once (B33), so tests of what waits in the inbox park through a compaction.
+ */
+async function inboxService(sessionId: string, options: { dataDir?: string; dir?: string; isStreaming?: boolean; isCompacting?: boolean } = {}) {
   const dir = options.dir ?? await mkdtemp(join(tmpdir(), "inbox-review-"));
   const dataDir = options.dataDir ?? await mkdtemp(join(tmpdir(), "inbox-review-data-"));
   const hub = new CapturingSessionEventHub();
-  const fake = fakeRuntime(sessionId, { isStreaming: options.isStreaming ?? true });
+  const fake = fakeRuntime(sessionId, { isStreaming: options.isStreaming ?? true, isCompacting: options.isCompacting ?? false });
   Reflect.set(fake.runtime, "cwd", dir);
   fake.session.sessionManager.getCwd = () => dir;
   const lane: string[] = [];
@@ -160,7 +164,7 @@ describe("nothing is handed while a run is settling (O2)", () => {
  */
 describe("the idle batch (B33)", () => {
   async function waitedThroughARun(sessionId: string, messages: readonly string[]) {
-    const setup = await inboxService(sessionId);
+    const setup = await inboxService(sessionId, { isCompacting: true });
     const { fake, service, ref } = setup;
     const handToIdle = fake.session.prompt.bind(fake.session);
     fake.session.prompt = async (text: string, options?: PromptOptions) => {
@@ -172,6 +176,7 @@ describe("the idle batch (B33)", () => {
   }
   const endRun = (fake: ReturnType<typeof fakeRuntime>) => {
     fake.session.isStreaming = false;
+    fake.session.isCompacting = false;
     fake.emit({ type: "agent_settled" });
   };
   const queuedTexts = async (service: PiSessionService, ref: ReturnType<typeof sessionRef>) => (await service.status(ref)).queuedMessages.map((entry) => entry.text);
@@ -208,12 +213,15 @@ describe("the idle batch (B33)", () => {
   });
 
   it("ends the batch at the first extension command, which waits its own turn", async () => {
-    const { fake, service, ref } = await waitedThroughARun("idle-command", ["A", "B", "/kickoff", "C"]);
+    const { fake, service } = await waitedThroughARun("idle-command", ["A", "B", "/kickoff", "C"]);
     fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "kickoff" }];
     endRun(fake);
-    await vi.waitFor(() => { expect(texts(fake.calls.steer)).toEqual(["B"]); });
-    expect(texts(fake.calls.prompt)).toEqual(["A"]);
-    expect(await queuedTexts(service, ref)).toEqual(["B", "/kickoff", "C"]);
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A", "/kickoff", "C"]); });
+
+    expect({ batch: { started: fake.calls.prompt[0]?.text, queuedBehind: texts(fake.calls.steer) }, afterTheRunStarted: fake.calls.prompt.slice(1).map((call) => [call.text, handedAs(call)]) }).toEqual({
+      batch: { started: "A", queuedBehind: ["B"] },
+      afterTheRunStarted: [["/kickoff", "steer"], ["C", "steer"]],
+    });
     await service.dispose();
   });
 
@@ -264,19 +272,114 @@ describe("the idle batch (B33)", () => {
     await service.dispose();
   });
 
-  it("puts a message pi refuses to queue back, with everything after it, and still starts the run", async () => {
+  it("puts a message pi refuses to queue back, with everything after it, and still starts the run; the running agent then takes them in order", async () => {
     const { fake, service, ref, lane, dir, dataDir } = await waitedThroughARun("idle-steer-refused", ["A", "B", "C"]);
     fake.session.steer = (text: string) => {
       fake.calls.steer.push({ text });
       return Promise.reject(new Error("Extension commands cannot be queued"));
     };
     endRun(fake);
-    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A"]); });
-    expect(texts(fake.calls.steer)).toEqual(["B"]);
+    await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["A", "B", "C"]); });
+    expect({ refusedAhead: texts(fake.calls.steer), afterTheRunStarted: fake.calls.prompt.slice(1).map((call) => [call.text, handedAs(call)]) }).toEqual({
+      refusedAhead: ["B"],
+      afterTheRunStarted: [["B", "steer"], ["C", "steer"]],
+    });
     expect(await queuedTexts(service, ref)).toEqual(["B", "C"]);
-    expect(lane).toEqual([]);
-    await vi.waitFor(async () => { expect((await new OwnedPromptQueue(dataDirInboxLocation(dataDir)).open("idle-steer-refused", dir)).map((entry) => entry.text)).toEqual(["B", "C"]); });
+    expect(lane).toEqual(["B", "C"]);
+    const reopened = new OwnedPromptQueue(dataDirInboxLocation(dataDir));
+    await vi.waitFor(async () => {
+      const waiting = (await reopened.open("idle-steer-refused", dir)).map((entry) => entry.text);
+      expect({ waiting, handed: reopened.handed("idle-steer-refused").map((entry) => entry.text) }).toEqual({ waiting: [], handed: ["B", "C"] });
+    });
     expect(service.operationOutcomes("idle-steer-refused", ["idle-steer-refused-1", "idle-steer-refused-2"])).toEqual({ "idle-steer-refused-1": "pending", "idle-steer-refused-2": "pending" });
+    await service.dispose();
+  });
+});
+
+describe("the handed list follows every way a message leaves pi (B33)", () => {
+  const handedTexts = (service: PiSessionService, sessionId: string): unknown[] => {
+    const queue: unknown = Reflect.get(service, "ownedQueue");
+    if (!(queue instanceof OwnedPromptQueue)) throw new Error("ownedQueue unavailable");
+    return queue.handed(sessionId).map((entry) => entry.text);
+  };
+  const handedIds = (service: PiSessionService, sessionId: string): unknown[] => {
+    const queue: unknown = Reflect.get(service, "ownedQueue");
+    if (!(queue instanceof OwnedPromptQueue)) throw new Error("ownedQueue unavailable");
+    return queue.handed(sessionId).map((entry) => entry.clientMessageId);
+  };
+
+  it("keeps a message accepted while the agent runs in the handed list until pi reads it", async () => {
+    const { service, ref, lane, readSteer } = await inboxService("handed-read");
+    await service.prompt(ref, "read me", undefined, undefined, { clientMessageId: "handed-read-01" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["read me"]); });
+    const whileInLane = handedIds(service, "handed-read");
+
+    readSteer("read me");
+    await vi.waitFor(() => { expect(handedIds(service, "handed-read")).toEqual([]); });
+    expect({ whileInLane, outcome: service.operationOutcomes("handed-read", ["handed-read-01"]) }).toEqual({ whileInLane: ["handed-read-01"], outcome: { "handed-read-01": "succeeded" } });
+    await service.dispose();
+  });
+
+  it("forgets a message recalled out of pi's lane", async () => {
+    const { service, ref, lane } = await inboxService("handed-recall");
+    await service.prompt(ref, "take me back", undefined, undefined, { clientMessageId: "handed-recall-01" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["take me back"]); });
+
+    const recalled = await service.recallQueuedMessage(ref, { kind: "steer", text: "take me back", clientMessageId: "handed-recall-01" });
+
+    await vi.waitFor(() => { expect(handedIds(service, "handed-recall")).toEqual([]); });
+    expect({ recalled: recalled.recalled, lane: [...lane] }).toEqual({ recalled: true, lane: [] });
+    await service.dispose();
+  });
+
+  it("forgets the messages Clear withdrew from pi's lane", async () => {
+    const { service, ref, lane } = await inboxService("handed-clear");
+    await service.prompt(ref, "first", undefined, undefined, { clientMessageId: "handed-clear-01" });
+    await service.prompt(ref, "second", undefined, undefined, { clientMessageId: "handed-clear-02" });
+    await vi.waitFor(() => { expect([...lane]).toEqual(["first", "second"]); });
+
+    await service.clearQueue(ref);
+
+    await vi.waitFor(() => { expect(handedIds(service, "handed-clear")).toEqual([]); });
+    expect(service.operationOutcomes("handed-clear", ["handed-clear-01", "handed-clear-02"])).toEqual({ "handed-clear-01": "withdrawn", "handed-clear-02": "withdrawn" });
+    await service.dispose();
+  });
+
+  it("forgets a message sent without an id when Clear withdraws it from pi's lane", async () => {
+    const { service, ref, lane } = await inboxService("handed-clear-anon");
+    await service.prompt(ref, "no id here");
+    await vi.waitFor(() => { expect([...lane]).toEqual(["no id here"]); });
+    const whileInLane = handedTexts(service, "handed-clear-anon");
+
+    await service.clearQueue(ref);
+
+    await vi.waitFor(() => { expect(handedTexts(service, "handed-clear-anon")).toEqual([]); });
+    expect(whileInLane).toEqual(["no id here"]);
+    await service.dispose();
+  });
+
+  it("forgets a message sent without an id when it is recalled out of pi's lane", async () => {
+    const { service, ref, lane } = await inboxService("handed-recall-anon");
+    await service.prompt(ref, "no id either");
+    await vi.waitFor(() => { expect([...lane]).toEqual(["no id either"]); });
+
+    const recalled = await service.recallQueuedMessage(ref, { kind: "steer", text: "no id either" });
+
+    await vi.waitFor(() => { expect(handedTexts(service, "handed-recall-anon")).toEqual([]); });
+    expect(recalled.recalled).toBe(true);
+    await service.dispose();
+  });
+
+  it("forgets a message pi refused for good", async () => {
+    const { fake, service, ref } = await inboxService("handed-refused", { isStreaming: false });
+    fake.session.prompt = (text: string, options?: PromptOptions) => {
+      fake.calls.prompt.push({ text, options });
+      return Promise.reject(new Error("No model selected"));
+    };
+    await service.prompt(ref, "cannot run", undefined, undefined, { clientMessageId: "handed-refused-01" });
+
+    await vi.waitFor(() => { expect(service.operationOutcomes("handed-refused", ["handed-refused-01"])).toEqual({ "handed-refused-01": "failed" }); });
+    await vi.waitFor(() => { expect(handedIds(service, "handed-refused")).toEqual([]); });
     await service.dispose();
   });
 });
@@ -935,7 +1038,7 @@ describe("fifth gate-lane findings", () => {
 
 describe("sixth gate-lane findings", () => {
   it("P2-1 / gate 7 P1-B: a restore landing after the session's close is written to its file without erasing what else waits", async () => {
-    const { service, ref, dir, dataDir } = await inboxService("p21-late");
+    const { service, ref, dir, dataDir } = await inboxService("p21-late", { isCompacting: true });
     await service.prompt(ref, "A taken by a batch", undefined, undefined, { clientMessageId: "g6p21-a-001" });
     await service.prompt(ref, "B accepted meanwhile", undefined, undefined, { clientMessageId: "g6p21-b-001" });
     const queue: unknown = Reflect.get(service, "ownedQueue");

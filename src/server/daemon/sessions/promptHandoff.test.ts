@@ -16,14 +16,18 @@ describe("nextHandoff", () => {
     expect(table).toEqual({
       compacting: { gap: "wait", settled: "wait", nudge: "wait" },
       handing: { gap: "wait", settled: "wait", nudge: "wait" },
-      running: { gap: "steer", settled: "wait", nudge: "wait" },
+      running: { gap: "steer", settled: "steer", nudge: "steer" },
       settling: { gap: "wait", settled: "wait", nudge: "wait" },
       idle: { gap: "direct", settled: "direct", nudge: "direct" },
     });
   });
 
-  it("hands everything waiting at a gap, not only the head", () => {
-    expect(nextHandoff({ waiting: 3, run: "running", trigger: "gap" })).toEqual({ kind: "steer", count: 3 });
+  it("hands everything waiting to a running agent at once, not only the head and not only at a gap (B33)", () => {
+    expect(TRIGGERS.map((trigger) => nextHandoff({ waiting: 3, run: "running", trigger }))).toEqual([
+      { kind: "steer", count: 3 },
+      { kind: "steer", count: 3 },
+      { kind: "steer", count: 3 },
+    ]);
   });
 });
 

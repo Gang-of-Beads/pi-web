@@ -103,7 +103,7 @@ import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
 import { HANDOFF_RUN_STATE, HANDOFF_TRIGGER_BY_EVENT, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffTrigger, type HandoffVerdict, type RunState } from "./promptHandoff.js";
 import { createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
-import { OwnedPromptQueue, dataDirInboxLocation, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry } from "./ownedPromptQueue.js";
+import { LOCAL_HOLD_ID_PREFIX, OwnedPromptQueue, dataDirInboxLocation, entryKey, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry } from "./ownedPromptQueue.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { branchFromFileEntries, isCurrentVersionFile } from "./fileBranch.js";
 import { applyProviderSafeToolSchemas } from "./providerSafeToolSchema.js";
@@ -235,16 +235,26 @@ function refMatchesStartupSession(ref: PiSessionRef, session: PiAgentSession): b
 
 
 
-/** A steer handed to pi and not yet read: its sender's id, and the inbox entry it came from. */
 /**
  * Every steer pi holds has a held-steer record, so lane positions correlate one to one; a steer
- * sent without an id gets a local one. It starts with a space, which no accepted client id can
- * (`parseClientMessageId` trims), and it never leaves the daemon: `publishedId` drops it.
+ * sent without an id gets a local one (`entryKey`). It never leaves the daemon: `publishedId`
+ * drops it.
  */
-const LOCAL_HOLD_ID_PREFIX = " local-hold:";
 
 const WAITING_MESSAGES_BLOCK_ARCHIVE = "Messages are waiting for this session. Open it to deliver them before archiving";
 const WAITING_MESSAGES_BLOCK_DELETE = "Messages are waiting for this session. Restore and open it to deliver them before deleting";
+
+/** The sender ids pi wrote on user entries of a transcript branch (stamped at `message_start`). */
+function committedClientMessageIds(branch: readonly unknown[]): Set<string> {
+  const ids = new Set<string>();
+  for (const entry of branch) {
+    const message = getProperty(entry, "message");
+    if (getProperty(message, "role") !== "user") continue;
+    const id = getProperty(message, "clientMessageId");
+    if (typeof id === "string") ids.add(id);
+  }
+  return ids;
+}
 
 function publishedId(id: string | undefined): string | undefined {
   return id === undefined || id.startsWith(LOCAL_HOLD_ID_PREFIX) ? undefined : id;
@@ -1394,7 +1404,6 @@ export class PiSessionService implements SessionRouteService {
    * wait for an archived session keep waiting until it is restored and opened for work.
    */
   private readonly archivedRuntimes = new WeakSet<PiAgentSession>();
-  private localHoldIds = 0;
   private readonly laneSizes = new Map<string, number>();
   private readonly laneGrowth = new Map<string, number>();
   /**
@@ -3367,7 +3376,7 @@ export class PiSessionService implements SessionRouteService {
       return true;
     }
     if (clientMessageId !== undefined) this.committedExpectations.withdraw(sessionId, clientMessageId);
-    this.settleSucceeded(sessionId, clientMessageId);
+    this.settleSucceeded(sessionId, entryKey(entry));
     return true;
   }
 
@@ -3472,7 +3481,7 @@ export class PiSessionService implements SessionRouteService {
     const onCommit = (): void => {
       committed = true;
       markHanded();
-      this.settleSucceeded(sessionId, clientMessageId);
+      this.settleSucceeded(sessionId, entryKey(entry));
     };
     const isCommand = this.isExtensionCommand(session, text);
     const preflightResult = (success: boolean): void => {
@@ -3504,7 +3513,7 @@ export class PiSessionService implements SessionRouteService {
     const { message } = await settled;
     this.releaseHandoff(sessionId, entry, landed);
     if (verdict === "transient") return "transient";
-    this.refuse(session, clientMessageId, message);
+    this.refuse(session, entryKey(entry), message);
     return "terminal";
   }
 
@@ -3514,8 +3523,10 @@ export class PiSessionService implements SessionRouteService {
    * row reading "Queued" for good. A message the agent already read keeps its outcome: a run
    * failing after the read is the run's error, not the message's refusal.
    */
-  private refuse(session: PiAgentSession, clientMessageId: string | undefined, message: string): void {
+  private refuse(session: PiAgentSession, key: string, message: string): void {
     const sessionId = session.sessionId;
+    this.settleHanded(sessionId, key);
+    const clientMessageId = publishedId(key);
     if (clientMessageId !== undefined) {
       this.acceptanceLedger.settle(sessionId, clientMessageId, "failed");
       if (this.acceptanceLedger.outcomesFor(sessionId, [clientMessageId])[clientMessageId] === "failed") {
@@ -3559,7 +3570,7 @@ export class PiSessionService implements SessionRouteService {
     const sessionId = session.sessionId;
     this.forgetHandoffWatchers(sessionId, watchers);
     if (result.verdict === "handed") {
-      if (result.landed !== undefined && READ_WHEN_RESOLVED[result.landed]) this.settleSucceeded(sessionId, entry.clientMessageId);
+      if (result.landed !== undefined && READ_WHEN_RESOLVED[result.landed]) this.settleSucceeded(sessionId, entryKey(entry));
       return;
     }
     if (result.verdict === "transient" && !result.committed) {
@@ -3567,7 +3578,7 @@ export class PiSessionService implements SessionRouteService {
       void this.ownedQueue.restoreFront(sessionId, [entry]).then(() => { this.publishStatus(session); });
       return;
     }
-    this.refuse(session, entry.clientMessageId, result.message);
+    this.refuse(session, entryKey(entry), result.message);
   }
 
   private forgetHandoffWatchers(sessionId: string, watchers: HandoffWatchers): void {
@@ -3597,14 +3608,28 @@ export class PiSessionService implements SessionRouteService {
 
   /** A steer is pi's once `_queueSteer` has pushed it, which is when the SDK calls its preflight. */
   private holdSteer(sessionId: string, entry: OwnedQueueEntry, images: ImageContent[]): void {
-    this.localHoldIds += 1;
-    this.recordQueuedPromptClientId(sessionId, entry.clientMessageId ?? `${LOCAL_HOLD_ID_PREFIX}${String(this.localHoldIds)}`, entry.text, "steer", entry);
+    this.recordQueuedPromptClientId(sessionId, entryKey(entry), entry.text, "steer", entry);
     if (images.length > 0) this.recordQueuedPromptImages(sessionId, entry.text, images);
   }
 
-  private settleSucceeded(sessionId: string, clientMessageId: string | undefined): void {
-    const id = publishedId(clientMessageId);
+  /** `key` is the message's sender id, or its local hold id (`entryKey`) when it was sent without one. */
+  private settleSucceeded(sessionId: string, key: string | undefined): void {
+    this.settleHanded(sessionId, key);
+    const id = publishedId(key);
     if (id !== undefined) this.acceptanceLedger.settle(sessionId, id, "succeeded");
+  }
+
+  /**
+   * The message is no longer in pi's hands as an unread message - read, refused or withdrawn - so
+   * the inbox file stops keeping it for a restart (D1, B33). Every path that ends a handed message
+   * comes through here: `settleSucceeded`, `refuse` and `withdraw`; a take-back moves it with
+   * `restoreFront` instead.
+   */
+  private settleHanded(sessionId: string, key: string | undefined): void {
+    if (key === undefined) return;
+    void this.ownedQueue.settleHanded(sessionId, key).catch((error: unknown) => {
+      console.warn(`[inbox] could not settle a handed message for ${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
+    });
   }
 
   /** Undo the bookkeeping of a handoff the runtime did not take. */
@@ -3698,14 +3723,27 @@ export class PiSessionService implements SessionRouteService {
     await this.ownedQueue.restoreFront(sessionId, entries);
   }
 
+  /**
+   * The inbox as this runtime finds it. A message handed to pi before a restart, and not on the
+   * transcript as a user entry with its id, was never read: it waits again, first. One that is was
+   * read and is settled (D1, B33). The id is on the stored entry because the daemon stamps it at
+   * `message_start`, before pi appends the entry.
+   */
   private async restoreOwnedQueue(session: PiAgentSession, cwd: string): Promise<OwnedQueueEntry[]> {
-    const entries = await this.ownedQueue.open(session.sessionId, cwd);
+    const sessionId = session.sessionId;
+    await this.ownedQueue.open(sessionId, cwd);
+    const onTranscript = committedClientMessageIds(session.sessionManager.getBranch());
+    const { committed } = await this.ownedQueue.returnHanded(sessionId, (entry) => entry.clientMessageId !== undefined && onTranscript.has(entry.clientMessageId));
+    const entries = this.ownedQueue.entries(sessionId);
     this.publishStatus(session);
     // The queue survived the restart; its acceptances must too, or the
     // sender's outbox retry of a parked id is accepted a second time and the
     // prompt runs twice.
-    for (const entry of entries) {
-      if (entry.clientMessageId !== undefined) this.acceptanceLedger.record(session.sessionId, entry.clientMessageId);
+    for (const entry of [...entries, ...committed]) {
+      if (entry.clientMessageId !== undefined) this.acceptanceLedger.record(sessionId, entry.clientMessageId);
+    }
+    for (const entry of committed) {
+      if (entry.clientMessageId !== undefined) this.acceptanceLedger.settle(sessionId, entry.clientMessageId, "succeeded");
     }
     return entries;
   }
@@ -4453,7 +4491,7 @@ export class PiSessionService implements SessionRouteService {
     const [forgotten] = records.splice(index, 1);
     if (records.length === 0) this.queuedPromptClientIds.delete(sessionId);
     else this.queuedPromptClientIds.set(sessionId, records);
-    return publishedId(forgotten?.clientMessageId);
+    return forgotten?.clientMessageId;
   }
 
   /**
@@ -4503,6 +4541,7 @@ export class PiSessionService implements SessionRouteService {
     const records = this.queuedPromptClientIds.get(sessionId) ?? [];
     const { loopHeld, waiting } = partitionLanes(session, records);
     this.settleLoopHeld(sessionId, loopHeld);
+    for (const entry of waiting) this.settleHanded(sessionId, entry.clientMessageId);
     clearSessionQueue(session);
     this.queuedPromptClientIds.delete(sessionId);
     this.queuedPromptImages.delete(sessionId);
@@ -4524,6 +4563,7 @@ export class PiSessionService implements SessionRouteService {
 
   private withdraw(sessionId: string, candidate: string | undefined): void {
     const clientMessageId = publishedId(candidate);
+    this.settleHanded(sessionId, candidate);
     if (clientMessageId === undefined) return;
     this.acceptanceLedger.settle(sessionId, clientMessageId, "withdrawn");
     this.committedExpectations.withdraw(sessionId, clientMessageId);
