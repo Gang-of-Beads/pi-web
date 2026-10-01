@@ -43,6 +43,7 @@ try {
   let opens = 0;
   let dropsArmed = 0;
   let dropped = 0;
+  const forwarded = [];
   await page.routeWebSocket("**/api/machines/local/events", (socket) => {
     opens += 1;
     const server = socket.connectToServer();
@@ -53,6 +54,7 @@ try {
         dropped += 1;
         return;
       }
+      forwarded.push({ at: Date.now(), type: /"type":"([^"]+)"/u.exec(text)?.[1] ?? "?" });
       socket.send(message);
     });
     socket.onMessage((message) => { server.send(message); });
@@ -77,7 +79,8 @@ try {
     if (now?.includes(FIRST)) { lostLast = Date.now() - lostLastStart; break; }
     await page.waitForTimeout(500);
   }
-  check("lost last: the page holds the new pin within one heartbeat and a read, without a reconnect", dropped === 1 && lostLast !== undefined && lostLast <= 25_000 && opens === 1, JSON.stringify({ dropped, healedAfterMs: lostLast ?? "never (35 s)", opens }));
+  const framesBeforeHeal = forwarded.filter((frame) => frame.at >= lostLastStart && frame.at <= lostLastStart + (lostLast ?? 35_000)).map((frame) => frame.type);
+  check("lost last: only a heartbeat followed the lost frame, and the page holds the new pin within one heartbeat and a read, without a reconnect", dropped === 1 && framesBeforeHeal.every((type) => type === "keepalive") && lostLast !== undefined && lostLast <= 25_000 && opens === 1, JSON.stringify({ dropped, framesBeforeHeal, healedAfterMs: lostLast ?? "never (35 s)", opens }));
 
   dropsArmed = 1;
   await setPinned(SECOND, true);

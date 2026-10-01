@@ -27,6 +27,7 @@ import { failPendingPrompt, forgetPendingPrompt, forgetReservedPrompt, isNetwork
 import { claimAfterMiss, isClaimOf, provenRowStep, VERIFY_AFTER_MS, VERIFY_RETRY_MS, verificationStep } from "../sendVerification";
 import { classifyReadError, type ReadMiss } from "../sync/readPhase";
 import { statusReadVerdict, type StatusPosition } from "../statusOrder";
+import { activitiesAfterStatuses } from "../activityAfterStatus";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
@@ -282,6 +283,9 @@ export class SessionController {
   /** The stream position of the last status applied for the selected session, frame or read. */
   private statusPosition: (StatusPosition & { sessionId: string }) | undefined;
   private statusFramesApplied = 0;
+  /** When each session's last status frame was applied, on `statusFrameClock`: a catalog read answered after it keeps the frame. */
+  private readonly statusFrameMarks = new Map<string, number>();
+  private statusFrameClock = 0;
   private pendingActivityBySession = new Map<string, SessionActivity>();
   private pendingFrame: number | undefined;
   private pendingFlushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1286,6 +1290,7 @@ export class SessionController {
    * session ids say nothing about the current one.
    */
   async hydrateSessionStatuses(machineId = selectedMachineId(this.getState()), options?: { replaceKnown?: boolean }): Promise<void> {
+    const framesAtRequest = this.statusFrameClock;
     let snapshot;
     try {
       snapshot = await this.api.statusCatalog(machineId);
@@ -1315,6 +1320,9 @@ export class SessionController {
       if (selectedId !== undefined && next[selectedId] === undefined && previous[selectedId] !== undefined) {
         next[selectedId] = previous[selectedId];
       }
+      for (const [sessionId, mark] of this.statusFrameMarks) {
+        if (mark > framesAtRequest && previous[sessionId] !== undefined) next[sessionId] = previous[sessionId];
+      }
     } else {
       for (const status of snapshot.statuses) {
         if (previous[status.sessionId] !== undefined) continue;
@@ -1331,6 +1339,7 @@ export class SessionController {
     const selectedDialogs = selectedId === undefined ? [] : next[selectedId]?.pendingDialogs ?? [];
     this.setState({
       sessionStatuses: next,
+      sessionActivities: activitiesAfterStatuses(this.getState().sessionActivities, next, { retractsMissing: replaceKnown || daemonReplaced }),
       ...(selectedId === undefined || selectedDialogs.length === 0 ? {} : { pendingDialogs: openDialogsAfterDismissals(selectedDialogs, this.getState().dismissedDialogIds) }),
     });
   }
@@ -2381,7 +2390,8 @@ export class SessionController {
     const runtimeIdle = !status.isStreaming && !status.isCompacting && status.pendingMessageCount === 0;
     const messages = isSelected ? applyQueueToDelivery(state.messages, status.queuedMessages, runtimeIdle) : state.messages;
     const commandLedger = runtimeIdle ? settleAcceptedCommands(state.commandLedger, machineSessionKey(selectedMachineId(state), status.sessionId), Date.now()) : state.commandLedger;
-    const clearsStaleActivity = state.sessionActivities[status.sessionId]?.phase === "active" && !isSessionActive(status);
+    const activities = activitiesAfterStatuses(state.sessionActivities, { [status.sessionId]: status }, { retractsMissing: false });
+    const clearsStaleActivity = Object.keys(activities).length !== Object.keys(state.sessionActivities).length;
     // Falling edge only: a turn that just ended is the one moment worth
     // re-reading the goal directory for, and every other status update would
     // make it a poll.
@@ -2400,7 +2410,7 @@ export class SessionController {
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
       ...sessionMessageCountPatch(state, status.sessionId, status.messageCount),
-      ...(clearsStaleActivity ? { sessionActivities: omitSessionActivity(state.sessionActivities, status.sessionId) } : {}),
+      ...(clearsStaleActivity ? { sessionActivities: activities } : {}),
       status: isSelected ? status : state.status,
       ...(isSelected ? { statusReadFailed: undefined } : {}),
       activity: isSelected && clearsStaleActivity ? undefined : state.activity,
@@ -2956,6 +2966,8 @@ export class SessionController {
     const known = this.statusPosition?.sessionId === status.sessionId ? this.statusPosition : undefined;
     if (selected && position !== undefined && known !== undefined && known.epoch === position.epoch && position.seq <= known.seq) return;
     this.applyStatus(status);
+    this.statusFrameClock += 1;
+    this.statusFrameMarks.set(status.sessionId, this.statusFrameClock);
     if (!selected) return;
     this.statusFramesApplied += 1;
     if (position !== undefined) this.statusPosition = { sessionId: status.sessionId, ...position };

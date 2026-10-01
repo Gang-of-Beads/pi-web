@@ -51,6 +51,28 @@ describe("SessionController.hydrateSessionStatuses", () => {
     expect(state().sessionStatuses[oldSession.id]).toMatchObject({ isStreaming: false, messageCount: 12 });
   });
 
+  it("keeps a status frame applied while a replacing read was on its way: the frame is the later fact", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { controller, state } = harness({ statuses: [{ ...status("other-session"), isStreaming: true }], gate });
+    const read = controller.hydrateSessionStatuses("local", { replaceKnown: true });
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status("other-session"), isStreaming: false, messageCount: 7 } });
+    runPendingAnimationFrames();
+    release();
+    await read;
+
+    expect(state().sessionStatuses["other-session"]).toMatchObject({ isStreaming: false, messageCount: 7 });
+  });
+
+  it("drops an activity a replacing read shows is over, so a lost activity frame cannot leave a session working", async () => {
+    const { controller, state, setStateRaw } = harness({ statuses: [{ ...status("other-session"), isStreaming: false }] });
+    setStateRaw({ sessionActivities: { "other-session": { sessionId: "other-session", phase: "active", label: "working", at: "2026-10-01T00:00:00.000Z" } } });
+
+    await controller.hydrateSessionStatuses("local", { replaceKnown: true });
+
+    expect(state().sessionActivities).toEqual({});
+  });
+
   it("does not write state when the snapshot adds nothing", async () => {
     const { controller, setState } = harness({ statuses: [] });
 

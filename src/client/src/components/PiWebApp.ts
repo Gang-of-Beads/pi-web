@@ -2202,17 +2202,23 @@ export class PiWebApp extends LitElement {
    * `notifications.summary` and `session.startup` keep nothing a read could restore.
    */
   private rereadAnnounced(machineId: string): void {
-    void this.sessionUnread.refresh(machineId);
-    this.refreshMachinePins(machineId);
-    void this.machineStatus.refresh(machineId).catch(() => undefined);
-    this.sessionBoards.missedAnnouncements(machineId);
-    if (machineId !== selectedMachineId(this.state)) return;
-    void this.sessions.hydrateSessionStatuses(machineId, { replaceKnown: true });
-    void this.sessions.refreshCurrentWorkspaceSessions(machineId);
-    const workspace = this.state.selectedWorkspace;
-    if (workspace !== undefined) void this.refreshActiveTerminals(workspace);
-    void this.invalidateWorkspacePanels();
+    void this.announcedRereads.request(machineId, () => this.readAnnounced(machineId)).catch(() => undefined);
   }
+
+  /** One pass of `rereadAnnounced`: a burst of losses on a lossy link shares it, and asks for at most one more after it (review of 2dcf8caa). */
+  private async readAnnounced(machineId: string): Promise<void> {
+    this.refreshMachinePins(machineId);
+    this.sessionBoards.missedAnnouncements(machineId);
+    const reads: Promise<unknown>[] = [this.sessionUnread.refresh(machineId), this.machineStatus.refresh(machineId)];
+    if (machineId === selectedMachineId(this.state)) {
+      const workspace = this.state.selectedWorkspace;
+      reads.push(this.sessions.hydrateSessionStatuses(machineId, { replaceKnown: true }), this.sessions.refreshCurrentWorkspaceSessions(machineId), this.invalidateWorkspacePanels());
+      if (workspace !== undefined) reads.push(this.refreshActiveTerminals(workspace));
+    }
+    await Promise.allSettled(reads);
+  }
+
+  private readonly announcedRereads = new TrailingRefreshCoordinator<string>();
 
   private syncMachineActivitySubscriptions(): void {
     const desiredMachineIds = this.machineActivitySubscriptionIds();

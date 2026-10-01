@@ -14,10 +14,43 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("a burst of lost announcements", () => {
+  it("shares one pass of reads, and asks for at most one more after it", async () => {
+    vi.spyOn(sessionPinsApi, "pins").mockResolvedValue([]);
+    const missed = new Map<string, () => void>();
+    vi.spyOn(RealtimeSocket.prototype, "connect").mockImplementation((_onEvent, _onOpen, machineId = "local", onMissed) => { if (onMissed !== undefined) missed.set(machineId, onMissed); });
+    const app = createApp();
+    const calls: string[] = [];
+    let release: () => void = () => undefined;
+    const unread: unknown = Reflect.get(app, "sessionUnread");
+    if (typeof unread !== "object" || unread === null) throw new Error("no sessionUnread");
+    Reflect.set(unread, "refresh", (machineId: string) => {
+      calls.push(`sessionUnread.refresh(${machineId})`);
+      return calls.length === 1 ? new Promise<void>((resolve) => { release = resolve; }) : Promise.resolve();
+    });
+    spyOn(app, "machineStatus", ["refresh"], calls);
+    spyOn(app, "sessionBoards", ["missedAnnouncements"], calls);
+    spyOn(app, "sessions", ["hydrateSessionStatuses", "refreshCurrentWorkspaceSessions"], calls);
+    spyOn(app, "", ["invalidateWorkspacePanels", "refreshInterruptedRuns"], calls);
+    call(app, "connectRealtime");
+
+    for (let loss = 0; loss < 5; loss += 1) missed.get("local")?.();
+    await flush();
+    const unreadReads = (): number => calls.filter((entry) => entry === "sessionUnread.refresh(local)").length;
+    const burst = unreadReads();
+    for (let loss = 0; loss < 5; loss += 1) missed.get("local")?.();
+    release();
+    for (let turn = 0; turn < 6; turn += 1) await flush();
+
+    expect({ burst, afterMoreLosses: unreadReads() }).toEqual({ burst: 1, afterMoreLosses: 2 });
+  });
+});
+
 function createApp(): PiWebApp {
   const storage = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
   vi.stubGlobal("window", {
-    location: { search: "" },
+    location: { search: "", href: "https://pi.example.test/" },
+    history: { state: null, replaceState: () => undefined, pushState: () => undefined },
     localStorage: storage,
     matchMedia: (query: string) => ({ matches: false, media: query, addEventListener: () => undefined, removeEventListener: () => undefined }),
     addEventListener: () => undefined,
@@ -59,9 +92,10 @@ describe("a machine's socket that lost an announcement", () => {
     spyOn(app, "machineStatus", ["refresh"], calls);
     spyOn(app, "sessionBoards", ["missedAnnouncements"], calls);
     spyOn(app, "sessions", ["hydrateSessionStatuses", "refreshCurrentWorkspaceSessions"], calls);
-    spyOn(app, "", ["invalidateWorkspacePanels", "refreshInterruptedRuns"], calls);
+    spyOn(app, "", ["invalidateWorkspacePanels", "refreshInterruptedRuns", "refreshActiveTerminals"], calls);
     const local = { id: "local", name: "Local", kind: "local" };
-    call(app, "setState", { machines: [local, { id: "remote-1", name: "Remote", kind: "remote", status: "online" }], selectedMachine: local });
+    const workspace = { id: "w1", projectId: "p1", path: "/repo", label: "repo", isMain: true, effectiveConfig: {} };
+    call(app, "setState", { machines: [local, { id: "remote-1", name: "Remote", kind: "remote", status: "online" }], selectedMachine: local, selectedWorkspace: workspace });
     call(app, "connectRealtime");
     call(app, "syncMachineActivitySubscriptions");
     calls.length = 0;
@@ -77,7 +111,7 @@ describe("a machine's socket that lost an announcement", () => {
     await flush();
 
     expect({ inUse, inUsePins, followed: [...calls].sort(), followedPins: pins.mock.calls.map((args) => args[0]) }).toEqual({
-      inUse: ["invalidateWorkspacePanels()", "machineStatus.refresh(local)", "sessionBoards.missedAnnouncements(local)", "sessionUnread.refresh(local)", "sessions.hydrateSessionStatuses(local)", "sessions.refreshCurrentWorkspaceSessions(local)"],
+      inUse: ["invalidateWorkspacePanels()", "machineStatus.refresh(local)", "refreshActiveTerminals()", "sessionBoards.missedAnnouncements(local)", "sessionUnread.refresh(local)", "sessions.hydrateSessionStatuses(local)", "sessions.refreshCurrentWorkspaceSessions(local)"],
       inUsePins: ["local"],
       followed: ["machineStatus.refresh(remote-1)", "sessionBoards.missedAnnouncements(remote-1)", "sessionUnread.refresh(remote-1)"],
       followedPins: ["remote-1"],
