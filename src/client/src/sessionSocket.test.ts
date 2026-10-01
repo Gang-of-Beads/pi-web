@@ -609,6 +609,60 @@ describe("dark-launch seq gap counting", () => {
   });
 });
 
+describe("RealtimeSocket phase (P6 slice a)", () => {
+  beforeEach(() => {
+    FakeWebSocket.instances.length = 0;
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
+    vi.stubGlobal("clearTimeout", vi.fn());
+    vi.stubGlobal("setTimeout", vi.fn(() => 1));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("is absent until asked and for other machines, connecting until its connection opens, open after, and connecting again from the moment an open connection goes", () => {
+    let now = 1_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const realtime = new RealtimeSocket();
+    const phases: unknown[] = [realtime.phaseFor("m1")];
+
+    realtime.connect(() => undefined, undefined, "m1");
+    const first = FakeWebSocket.instances[0];
+    if (first === undefined) throw new Error("expected a realtime socket");
+    first.readyState = 0;
+    now = 1_200;
+    phases.push(realtime.phaseFor("m1"), realtime.phaseFor("m2"));
+    first.onerror?.();
+    first.onclose?.();
+    now = 1_300;
+    phases.push(realtime.phaseFor("m1"));
+
+    realtime.reconnectNow();
+    const reopened = FakeWebSocket.instances[1];
+    if (reopened === undefined) throw new Error("expected a reconnect");
+    reopened.onopen?.();
+    phases.push(realtime.phaseFor("m1"));
+    now = 2_000;
+    reopened.onclose?.();
+    phases.push(realtime.phaseFor("m1"));
+    realtime.close();
+    phases.push(realtime.phaseFor("m1"));
+
+    expect(phases).toEqual([
+      { kind: "absent" },
+      { kind: "connecting", since: 1_000 },
+      { kind: "absent" },
+      { kind: "connecting", since: 1_000 },
+      { kind: "open" },
+      { kind: "connecting", since: 2_000 },
+      { kind: "absent" },
+    ]);
+  });
+});
+
 class FakeWebSocket {
   static readonly CONNECTING = 0;
   // The real constructor carries these, and liveness checks read WebSocket.OPEN

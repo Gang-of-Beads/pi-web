@@ -2,6 +2,7 @@ import { realtimeEvents, sessionEvents } from "./api";
 import { parseRealtimeStreamEvent, parseSessionAskClosedEvent, parseSessionAskOpenedEvent, parseSessionDialogClosedEvent, parseSessionDialogOpenedEvent, parseSessionNotificationInboxEvent, parseSessionStartupProgressEvent, parseSessionStreamEvent, parseSessionUnreadEvent } from "./api/parsers";
 import type { RealtimeEvent, SessionRef, SessionUiEvent } from "../../shared/apiTypes";
 import { socketLivenessVerdict, type SocketReadyState } from "./socketLiveness";
+import type { SocketPhase } from "./socketAnchoredRead";
 import type { SessionSocketHandlers } from "./controllers/sessionController";
 
 export type { GlobalSessionEvent, RealtimeEvent, SessionUiEvent } from "../../shared/apiTypes";
@@ -197,6 +198,20 @@ export class RealtimeSocket {
   private machineId = "local";
   private lastFrameAt = 0;
   private connectStartedAt = 0;
+  private openedSocket: WebSocket | undefined;
+  private waitingSince = 0;
+
+  /**
+   * Where this socket stands for `machineId` (state-diagram D5, P6 slice a): absent when it is not
+   * wanted or serves another machine, open once its current connection opened, and otherwise
+   * connecting since it was asked to connect or its last open connection went away. A fact this
+   * socket keeps live is read at the open, so a need that arises while it connects can wait.
+   */
+  phaseFor(machineId: string): SocketPhase {
+    if (!this.shouldReconnect || this.machineId !== machineId) return { kind: "absent" };
+    if (this.socket !== undefined && this.openedSocket === this.socket) return { kind: "open" };
+    return { kind: "connecting", since: this.waitingSince };
+  }
 
   /** Same liveness contract as SessionSocket; see checkLiveness there. */
   checkLiveness(now = Date.now()): void {
@@ -215,6 +230,7 @@ export class RealtimeSocket {
     // Same as SessionSocket: the quiet close detaches onclose, so this must
     // schedule the reconnect itself or the drop is permanent.
     this.socket = undefined;
+    this.waitingSince = now;
     closeSocketQuietly(socket);
     this.scheduleReconnect();
   }
@@ -230,6 +246,7 @@ export class RealtimeSocket {
     this.onEvent = onEvent;
     this.onOpen = onOpen;
     this.shouldReconnect = true;
+    this.waitingSince = Date.now();
     this.open();
   }
 
@@ -250,6 +267,7 @@ export class RealtimeSocket {
     this.connectStartedAt = Date.now();
     socket.onopen = () => {
       if (this.socket !== socket) return;
+      this.openedSocket = socket;
       this.reconnectDelay = 500;
       this.lastFrameAt = Date.now();
       this.seqMonitor.reset();
@@ -260,6 +278,7 @@ export class RealtimeSocket {
     socket.onclose = () => {
       if (this.socket !== socket) return;
       this.socket = undefined;
+      if (this.openedSocket === socket) this.waitingSince = Date.now();
       this.scheduleReconnect();
     };
   }

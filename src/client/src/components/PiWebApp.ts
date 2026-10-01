@@ -35,6 +35,8 @@ import { MachineStatusController } from "../controllers/machineStatusController"
 import { ProjectController } from "../controllers/projectController";
 import { PiWebStatusController } from "../controllers/piWebStatusController";
 import { SessionController } from "../controllers/sessionController";
+import { TrailingRefreshCoordinator } from "../controllers/trailingRefreshCoordinator";
+import { anchoredRead, graceRemaining, type AnchoredRead } from "../socketAnchoredRead";
 import { WorkspaceController } from "../controllers/workspaceController";
 import { emptyMachineNavigationSnapshot, machineNavigationSnapshotFromState, routeFromMachineNavigationSnapshot, SessionStorageMachineNavigationMemory, type MachineNavigationSnapshot, type WorkspaceRouteSurface } from "../controllers/machineNavigationMemory";
 import { SessionStorageSessionSelectionMemory } from "../controllers/sessionSelection";
@@ -426,7 +428,8 @@ export class PiWebApp extends LitElement {
   private workspaceChangedWhileHidden: WorkspaceScope | undefined;
   private reconnectingRecheck: number | undefined;
   private lastInteractionLivenessAt = 0;
-  private refreshingWorkspaceDeletionRuns = false;
+  private readonly workspaceDeletionRunReads = new TrailingRefreshCoordinator<string>();
+  private readonly firstOpenFallbacks = new Map<string, number>();
   private readonly handledWorkspaceDeletionRunIds = new Set<string>();
   private readonly terminalCommandRunRuntimes = new Map<string, TerminalCommandRunsInternalRuntime>();
   private machineNavigationRestoreSeq = 0;
@@ -526,6 +529,7 @@ export class PiWebApp extends LitElement {
   private async ensureMachinePins(machineId: string): Promise<void> {
     if (this.pinReadsInFlight.has(machineId)) return;
     if (this.pinsAdopted.has(machineId) && !this.pinsStale.has(machineId)) return;
+    if (this.socketKeptRead(machineId) === "await-open") return;
     this.pinReadsInFlight.add(machineId);
     this.pinsStale.delete(machineId);
     try {
@@ -674,8 +678,8 @@ export class PiWebApp extends LitElement {
     // already answered the gesture, so back leaves the page it was opened on.
     if (this.navigateOpen) this.closeNavigate();
   }
-  private readonly onPageShow = () => {
-    void this.sessionUnread.refreshAll();
+  private readonly onPageShow = (event: PageTransitionEvent) => {
+    if (event.persisted) void this.sessionUnread.refreshAll();
     this.appShell.repairViewportPosition();
     this.retryPendingRemoteRouteRestoreSoon();
   };
@@ -1241,6 +1245,8 @@ export class PiWebApp extends LitElement {
     this.committedChatIdentity = undefined;
     this.readyChatIdentity = undefined;
     this.sessionUnread.retainMachines(new Set<string>());
+    for (const timer of this.firstOpenFallbacks.values()) window.clearTimeout(timer);
+    this.firstOpenFallbacks.clear();
     window.removeEventListener("popstate", this.onPopState);
     window.removeEventListener("pageshow", this.onPageShow);
     this.browserResume.disconnect();
@@ -1286,6 +1292,10 @@ export class PiWebApp extends LitElement {
     this.handleActivityTransition(previous, this.state);
     if (listingSelectionChanged(previous, this.state)) this.workspaces.selectionChanged();
     this.handleWorkspaceChange(previous, this.state);
+    if (workspaceDeletionRunsKey(previous) !== workspaceDeletionRunsKey(this.state)) {
+      if (Object.keys(this.state.workspaceDeletionRuns).length > 0) this.setState({ workspaceDeletionRuns: {} });
+      void this.refreshWorkspaceDeletionRuns();
+    }
     this.handleMachineChange(previous, this.state);
     if (machineActivitySubscriptionInputsChanged(previous, this.state)) this.syncMachineActivitySubscriptions();
     // Only the timer here: `setState` must stay free of network side effects,
@@ -1329,7 +1339,6 @@ export class PiWebApp extends LitElement {
     // recovers.
     if (effectiveRoute.projectId !== undefined && this.state.projectsLoad !== "loaded") {
       this.deferRemoteRouteRestore(effectiveRoute, intent);
-      await this.refreshWorkspaceDeletionRuns();
       return;
     }
     await this.withChatScrollTransition(() => this.restoreRouteFor(effectiveRoute, false, undefined, undefined, intent));
@@ -1338,7 +1347,6 @@ export class PiWebApp extends LitElement {
       this.clearPendingRemoteRouteRestore();
       this.rememberCurrentMachineNavigation();
     }
-    await this.refreshWorkspaceDeletionRuns();
   }
 
   /**
@@ -1668,7 +1676,6 @@ export class PiWebApp extends LitElement {
       if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
       this.clearPendingRemoteRouteRestore();
       this.rememberCurrentMachineNavigation();
-      await this.refreshWorkspaceDeletionRuns();
     } finally {
       this.remoteRouteRestoreInProgress = false;
     }
@@ -2079,7 +2086,6 @@ export class PiWebApp extends LitElement {
     }
     if (next.selectedWorkspace === undefined) return;
     void this.refreshActiveTerminals(next.selectedWorkspace);
-    void this.refreshWorkspaceDeletionRuns();
     this.refreshSelectedWorkspaceTool(next.workspaceTool);
   }
 
@@ -2094,8 +2100,29 @@ export class PiWebApp extends LitElement {
     for (const machineId of machineIds) {
       // Socket events keep a loaded projection current; only the initial join
       // (or a machine whose snapshot never landed) needs an HTTP snapshot.
-      if (this.sessionUnread.projection(machineId) === undefined) void this.sessionUnread.refresh(machineId);
+      if (this.sessionUnread.projection(machineId) !== undefined) continue;
+      if (this.socketKeptRead(machineId) === "read") void this.sessionUnread.ensureLoaded(machineId);
     }
+  }
+
+  /**
+   * Whether a fact the machine's socket keeps live (its unread set, its pins) may be read now,
+   * or is left to the socket's open, which reads both (state-diagram D5, P6 slice a). A need left
+   * to a connecting socket arms one fallback for the machine, which asks again once the grace is
+   * over, so a socket that never opens does not leave the facts unread.
+   */
+  private socketKeptRead(machineId: string): AnchoredRead {
+    const phase = machineId === selectedMachineId(this.state) ? this.realtime.phaseFor(machineId) : this.machineRealtimeSockets.get(machineId)?.phaseFor(machineId) ?? { kind: "absent" as const };
+    const now = Date.now();
+    const verdict = anchoredRead(phase, now);
+    if (verdict === "await-open" && !this.firstOpenFallbacks.has(machineId)) {
+      this.firstOpenFallbacks.set(machineId, window.setTimeout(() => {
+        this.firstOpenFallbacks.delete(machineId);
+        this.syncSessionUnreadMachines();
+        void this.ensureMachinePins(machineId);
+      }, graceRemaining(phase, now)));
+    }
+    return verdict;
   }
 
   private connectRealtime(): void {
@@ -3751,20 +3778,27 @@ export class PiWebApp extends LitElement {
     this.updateWorkspaceDeletionPolling();
   }
 
+  /**
+   * Read the selected project's workspace deletion runs, on its machine (state-diagram D5, P6
+   * slice a). Reads share one flight per machine and project, and a request made while one is on
+   * its way is read once more after it; an answer applies only while its machine and project are
+   * still the selected ones, so a slow read for one project never lands on another.
+   */
   private async refreshWorkspaceDeletionRuns(): Promise<void> {
-    if (this.refreshingWorkspaceDeletionRuns) return;
-    const machineId = selectedMachineId(this.state);
+    const key = workspaceDeletionRunsKey(this.state);
     const project = this.state.selectedProject;
-    if (project === undefined) {
+    if (key === undefined || project === undefined) {
       this.setState({ workspaceDeletionRuns: {} });
       this.updateWorkspaceDeletionPolling();
       return;
     }
+    await this.workspaceDeletionRunReads.request(key, () => this.readWorkspaceDeletionRuns(selectedMachineId(this.state), project.id, key));
+  }
 
-    this.refreshingWorkspaceDeletionRuns = true;
+  private async readWorkspaceDeletionRuns(machineId: string, projectId: string, key: string): Promise<void> {
     try {
-      const runs = await this.terminalCommandRunsForOrigin("core", machineId).listCommandRuns(workspaceDeletionRunFilter(project.id));
-      if (selectedMachineId(this.state) !== machineId) return;
+      const runs = await this.terminalCommandRunsForOrigin("core", machineId).listCommandRuns(workspaceDeletionRunFilter(projectId));
+      if (workspaceDeletionRunsKey(this.state) !== key) return;
       const latestRuns = latestWorkspaceDeletionRuns(runs);
       this.setState({ workspaceDeletionRuns: latestRuns });
       for (const run of Object.values(latestRuns)) {
@@ -3773,7 +3807,6 @@ export class PiWebApp extends LitElement {
     } catch (error) {
       console.warn("Failed to refresh workspace deletion runs", error);
     } finally {
-      this.refreshingWorkspaceDeletionRuns = false;
       this.updateWorkspaceDeletionPolling();
     }
   }
@@ -4663,6 +4696,11 @@ function isTerminalEvent(event: BrowserRealtimeEvent): event is TerminalUiEvent 
 
 function emptyWorkspaceRouteSurface(): WorkspaceRouteSurface {
   return {};
+}
+
+/** The machine and project a workspace deletion runs answer belongs to; undefined with no project selected. */
+function workspaceDeletionRunsKey(state: AppState): string | undefined {
+  return state.selectedProject === undefined ? undefined : machineScopedKey(selectedMachineId(state), state.selectedProject.id);
 }
 
 function machineScopedKey(machineId: string, value: string): string {

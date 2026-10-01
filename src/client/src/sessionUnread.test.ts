@@ -76,6 +76,23 @@ describe("SessionUnreadController", () => {
     });
   });
 
+  it("ensures a set is loaded without a second read while one is on its way, and without a read once it is known (P6 slice a)", async () => {
+    const firstResponse = deferred<SessionUnreadCatalogSnapshot>();
+    const unreadCatalog = vi.fn()
+      .mockImplementationOnce(() => firstResponse.promise)
+      .mockResolvedValue(snapshot("catalog-a", 2, []));
+    const controller = new SessionUnreadController({ api: fakeApi({ unreadCatalog }) });
+
+    const opened = controller.refresh("local");
+    const ensured = controller.ensureLoaded("local");
+    firstResponse.resolve(snapshot("catalog-a", 1, [summary("session-1", 1)]));
+    await Promise.all([opened, ensured]);
+    const whileReading = unreadCatalog.mock.calls.length;
+    await controller.ensureLoaded("local");
+
+    expect({ whileReading, afterKnown: unreadCatalog.mock.calls.length }).toEqual({ whileReading: 1, afterKnown: 1 });
+  });
+
   it("retries a queued gap refresh after the active snapshot request fails", async () => {
     const firstResponse = deferred<SessionUnreadCatalogSnapshot>();
     const unreadCatalog = vi.fn()

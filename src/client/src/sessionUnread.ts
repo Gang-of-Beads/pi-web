@@ -146,6 +146,18 @@ export class SessionUnreadController {
     }
   }
 
+  /**
+   * Read the machine's unread set when nothing is known of it yet and no read is on its way
+   * (state-diagram D5, P6 slice a). A need that only wants the set present - the roster, the
+   * first render - is satisfied by any read in flight; `refresh` is for a moment whose earlier
+   * reads cannot be trusted, such as the socket opening, and reads once more after one in flight.
+   */
+  ensureLoaded(machineId: string): Promise<void> {
+    const state = this.machine(machineId);
+    if (state.projection !== undefined) return Promise.resolve();
+    return state.refreshPromise ?? this.refresh(machineId);
+  }
+
   refresh(machineId: string): Promise<void> {
     const state = this.machine(machineId);
     if (state.refreshPromise !== undefined) {
