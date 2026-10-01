@@ -18,6 +18,22 @@ function createContext(statePatch: Partial<AppState> = {}) {
 }
 
 
+describe("PluginRegistry plugin operations (B50)", () => {
+  it("sends a gateway registration's operations to this host, and a machine-scoped one's to its own machine under the plugin's source id", async () => {
+    const paths: string[] = [];
+    const fetchJson = vi.fn((path: string) => { paths.push(path); return Promise.resolve({ ok: true }); });
+    const calls: ((operation: string) => Promise<unknown>)[] = [];
+    const plugin: PiWebPlugin = { apiVersion: 2, name: "Updates", activate: (context) => { if (context.callOperation !== undefined) calls.push(context.callOperation); return { contributions: {} }; } };
+
+    const registry = new PluginRegistry({ fetchJson });
+    registry.register({ id: "updates", plugin, machineSpecific: true });
+    registry.register({ id: machineScopedPluginId("remote 1", "updates"), sourcePluginId: "updates", machineId: "remote 1", plugin, machineSpecific: true });
+    for (const call of calls) await call("offer.answered");
+
+    expect(paths).toEqual(["api/plugins/updates/offer.answered", "api/machines/remote%201/plugins/updates/offer.answered"]);
+  });
+});
+
 describe("PluginRegistry host facts", () => {
   it("hands each registration the status read of its own machine, and leaves it absent when the host has none", async () => {
     const readPiWebStatus = vi.fn((machineId: string) => Promise.resolve({ machineId }));

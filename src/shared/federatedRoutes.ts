@@ -38,6 +38,7 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "GET", path: "/config" },
   { method: "PUT", path: "/config" },
   { method: "GET", path: "/plugins" },
+  { method: "POST", path: "/plugins/:pluginId/:operation" },
   { method: "GET", path: "/session-pins" },
   { method: "GET", path: "/session-board" },
   { method: "POST", path: "/session-pins" },

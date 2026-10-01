@@ -82,7 +82,7 @@ export class PluginRegistry {
         svg,
         ...(this.fetchJson === undefined ? {} : { fetchJson: this.fetchJson }),
         ...(this.fetchJson === undefined ? {} : {
-          callOperation: (operation: string, input?: unknown) => this.callPluginOperation(runtimePluginId, operation, input),
+          callOperation: (operation: string, input?: unknown) => this.callPluginOperation(pluginOperationPath(runtimePluginId, registration.machineId, sourcePluginId, operation), input),
         }),
         ...(this.ui === undefined ? {} : { ui: this.ui }),
         ...(readPiWebStatus === undefined ? {} : { readPiWebStatus: () => readPiWebStatus(statusMachineId) }),
@@ -331,9 +331,9 @@ export class PluginRegistry {
     this.settingsByPlugin.delete(runtimePluginId);
   }
 
-  private async callPluginOperation(runtimePluginId: string, operation: string, input: unknown): Promise<unknown> {
+  private async callPluginOperation(path: string, input: unknown): Promise<unknown> {
     if (this.fetchJson === undefined) throw new Error("This host does not offer plugin requests.");
-    return await this.fetchJson(`api/plugins/${encodeURIComponent(runtimePluginId)}/${encodeURIComponent(operation)}`, { method: "POST", body: input ?? {} });
+    return await this.fetchJson(path, { method: "POST", body: input ?? {} });
   }
 
   private subscribe<K extends PluginLifecycleEventKind>(runtimePluginId: string, kind: K, listener: PluginLifecycleListener<K>): () => void {
@@ -679,6 +679,20 @@ function workspaceLabelContextFor(context: WorkspaceLabelContext, binding: Works
 export function installPluginRuntimeScope(context: PluginRuntimeContext, scope: (pluginId: string) => PluginRuntimeContext): PluginRuntimeContext {
   pluginRuntimeScopes.set(context, scope);
   return context;
+}
+
+/**
+ * Where a registration's declared operations are answered (B50). A gateway registration's go to
+ * this host's daemon under its runtime id. A machine-scoped registration's go to its own machine,
+ * under the plugin's source id: that machine's daemon runs the plugin and keeps its storage. They
+ * used to post `api/plugins/machine.<hex>.<id>` to the gateway's daemon, which only knows its own
+ * catalog's ids and answered 404, so a remote machine's goals, voice token and update offer failed.
+ */
+function pluginOperationPath(runtimePluginId: string, machineId: string | undefined, sourcePluginId: string, operation: string): string {
+  const owner = machineId === undefined
+    ? `api/plugins/${encodeURIComponent(runtimePluginId)}`
+    : `api/machines/${encodeURIComponent(machineId)}/plugins/${encodeURIComponent(sourcePluginId)}`;
+  return `${owner}/${encodeURIComponent(operation)}`;
 }
 
 export function installWorkspacePanelScope(

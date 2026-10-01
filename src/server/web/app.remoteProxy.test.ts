@@ -153,6 +153,24 @@ describe("buildApp remote machine proxy routes", () => {
     );
   });
 
+  it("answers a remote plugin's operations on the remote machine's own plugin route (B50)", async () => {
+    const addResponse = await appTestContext.app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
+    const remote = addResponse.json<{ id: string }>();
+    const request = vi.fn<MachineClient["request"]>((method, path, body) => Promise.resolve({
+      statusCode: 200,
+      headers: { "content-type": "application/json" },
+      body: Readable.from([JSON.stringify({ method, path, body })]),
+    }));
+    appTestContext.remoteClient = fakeRemoteClient({ request });
+
+    const response = await appTestContext.app.inject({ method: "POST", url: `/api/machines/${remote.id}/plugins/goals/goals.list`, payload: { cwd: "/work" } });
+
+    expect({ status: response.statusCode, body: response.json<unknown>() }).toEqual({
+      status: 200,
+      body: { method: "POST", path: "/api/plugins/goals/goals.list", body: { cwd: "/work" } },
+    });
+  });
+
   it("maps an old remote provider-backend route to an explicit lifecycle compatibility error", async () => {
     const addResponse = await appTestContext.app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
     const remote = addResponse.json<{ id: string }>();
