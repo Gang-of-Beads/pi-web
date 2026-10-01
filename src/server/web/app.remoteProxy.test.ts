@@ -481,6 +481,32 @@ describe("buildApp remote machine proxy routes", () => {
     expect(response.rawPayload.byteLength).toBe(Buffer.byteLength(body));
   });
 
+  it("reads and writes a remote machine's own pins, not the gateway's", async () => {
+    const addResponse = await appTestContext.app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
+    const remote = addResponse.json<{ id: string }>();
+    const request = vi.fn<MachineClient["request"]>((method, path, body) => Promise.resolve({
+      statusCode: 200,
+      headers: { "content-type": "application/json" },
+      body: Readable.from([JSON.stringify({ method, path, body })]),
+    }));
+    appTestContext.remoteClient = fakeRemoteClient({ request });
+
+    const read = await appTestContext.app.inject({ method: "GET", url: `/api/machines/${remote.id}/session-pins` });
+    const pinBody = { sessionId: "s1", pinned: true };
+    const write = await appTestContext.app.inject({ method: "POST", url: `/api/machines/${remote.id}/session-pins`, payload: pinBody });
+    const adoptBody = { adopt: ["s1", "s2"] };
+    const adopt = await appTestContext.app.inject({ method: "POST", url: `/api/machines/${remote.id}/session-pins`, payload: adoptBody });
+    const ownRead = await appTestContext.app.inject({ method: "GET", url: "/api/machines/local/session-pins" });
+
+    expect({ read: [read.statusCode, read.json()], write: [write.statusCode, write.json()], adopt: [adopt.statusCode, adopt.json()], ownRead: ownRead.statusCode, forwarded: request.mock.calls.length }).toEqual({
+      read: [200, { method: "GET", path: "/api/session-pins" }],
+      write: [200, { method: "POST", path: "/api/session-pins", body: pinBody }],
+      adopt: [200, { method: "POST", path: "/api/session-pins", body: adoptBody }],
+      ownRead: 200,
+      forwarded: 3,
+    });
+  });
+
   it("proxies remote workspace file writes as raw request bodies", async () => {
     const addResponse = await appTestContext.app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
     const remote = addResponse.json<{ id: string }>();
