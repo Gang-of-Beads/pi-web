@@ -32,7 +32,7 @@ function controllerWith(api: typeof defaultApi): { controller: SessionController
 }
 
 describe("SessionController send failure", () => {
-  it("keeps the bubble marked not sent on a dropped connection, and says which id the outbox owns", async () => {
+  it("keeps the bubble marked not sent on a dropped connection, says which id the outbox owns, and leaves the banner to the row's claim (P1 slice 6)", async () => {
     const api: typeof defaultApi = { ...defaultApi, prompt: () => Promise.reject(new TypeError("Failed to fetch")) };
     const { controller, read } = controllerWith(api);
 
@@ -53,7 +53,7 @@ describe("SessionController send failure", () => {
     // The outbox owns the same identity, so a retry cannot make a second copy.
     const [bubble] = read().messages.filter((line) => line.role === "user");
     expect(bubble?.meta?.delivery?.state).toBe("unverifiable");
-    expect(read().error).toMatch(/Failed to fetch/u);
+    expect({ notice: read().error, claim: read().messageStatusUnanswered?.miss }).toEqual({ notice: "", claim: { kind: "link-down" } });
   });
 
   it("revives the same bubble on an outbox retry and advances it once the server takes the message", async () => {

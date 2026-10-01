@@ -5,7 +5,7 @@ import { SessionController } from "./sessionController";
 import { defaultApi, FakeSocket, oldSession, status, workspace, type AppState } from "./sessionController.testSupport";
 import { loadPendingPrompts, savePendingPrompt } from "../pendingOutbox";
 import type { ChatLine } from "../components/shared";
-import { VERIFY_AFTER_MS, VERIFY_RECONNECTING, VERIFY_RETRY_MS } from "../sendVerification";
+import { VERIFY_AFTER_MS, VERIFY_RETRY_MS, messageStatusUnanswered } from "../sendVerification";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -57,6 +57,8 @@ async function unansweredSend(answer: LedgerAnswers, overrides: Partial<typeof d
     outbox: () => loadPendingPrompts(outboxKey).map((prompt) => prompt.clientMessageId),
     records: () => loadPendingPrompts(outboxKey).map((prompt) => [prompt.state, prompt.failure, prompt.refused === true]),
     notice: () => state.error,
+    row: () => messageStatusUnanswered(state.messageStatusUnanswered, { machineId: "local", sessionId: state.selectedSession?.id })?.miss.kind,
+    claim: () => state.messageStatusUnanswered,
     showSession: (session: typeof oldSession) => { state = { ...state, selectedSession: session }; },
     messages: () => state.messages,
     normalizeNextWrite: (next: (line: ChatLine) => ChatLine) => { normalize = next; },
@@ -66,36 +68,49 @@ async function unansweredSend(answer: LedgerAnswers, overrides: Partial<typeof d
 const each = (outcome: string): LedgerAnswers => (ids) => Object.fromEntries(ids.map((id) => [id, outcome]));
 
 describe("an unanswered send whose ledger cannot be reached", () => {
-  it("keeps asking past the last scheduled ask, says it is reconnecting, and settles once an ask gets through", async () => {
+  it("keeps asking past the last scheduled ask, tells the row it is reconnecting, and settles once an ask gets through (P1 slice 6)", async () => {
     const send = await unansweredSend((ids, ask) => (ask <= 5 ? undefined : {}));
     await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
-    const afterFirst = { asked: send.asked.length, notice: send.notice(), rows: send.rows() };
+    const afterFirst = { asked: send.asked.length, row: send.row(), notice: send.notice(), rows: send.rows() };
     await vi.advanceTimersByTimeAsync((VERIFY_AFTER_MS[2] ?? 0) - (VERIFY_AFTER_MS[0] ?? 0));
     const atTheLast = { asked: send.asked.length, rows: send.rows() };
     await vi.advanceTimersByTimeAsync(VERIFY_RETRY_MS);
-    const through = { asked: send.asked.length, rows: send.rows(), notice: send.notice() };
+    const through = { asked: send.asked.length, rows: send.rows(), row: send.row(), notice: send.notice() };
     await vi.advanceTimersByTimeAsync(VERIFY_RETRY_MS * 4);
 
     expect({ afterFirst, atTheLast, through, afterSettling: send.asked.length }).toEqual({
-      afterFirst: { asked: 1, notice: VERIFY_RECONNECTING, rows: ["unverifiable"] },
+      afterFirst: { asked: 1, row: "link-down", notice: "", rows: ["unverifiable"] },
       atTheLast: { asked: 5, rows: ["unverifiable"] },
-      through: { asked: 6, rows: ["failed"], notice: "" },
+      through: { asked: 6, rows: ["failed"], row: undefined, notice: "" },
       afterSettling: 6,
     });
+  });
+});
+
+describe("the message status claim (P1 slice 6)", () => {
+  it("counts from the first unanswered moment across every retry, so the row's grace is not restarted", async () => {
+    let clock = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => { clock += 1_000; return clock; });
+    const send = await unansweredSend(() => undefined);
+    const fromTheSend = send.claim()?.since;
+    await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
+    await vi.advanceTimersByTimeAsync(VERIFY_RETRY_MS * 2);
+
+    expect({ asked: send.asked.length > 1, since: send.claim()?.since, fromTheSend: typeof fromTheSend }).toEqual({ asked: true, since: fromTheSend, fromTheSend: "number" });
   });
 });
 
 describe("phase 5 gate 1: asks that outlive the screen they started on", () => {
   const elsewhere = { ...oldSession, id: "another-session", path: "/tmp/another-session.jsonl" };
 
-  it("withdraws the reconnecting words once the reader has left the session they were about", async () => {
+  it("withdraws the row's claim once the reader has left the session it was about", async () => {
     const send = await unansweredSend(() => undefined);
     await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
-    const raised = send.notice();
+    const raised = send.row();
     send.showSession(elsewhere);
     await vi.advanceTimersByTimeAsync(VERIFY_RETRY_MS);
 
-    expect({ raised, afterLeaving: send.notice() }).toEqual({ raised: VERIFY_RECONNECTING, afterLeaving: "" });
+    expect({ raised, afterLeaving: send.claim(), notice: send.notice() }).toEqual({ raised: "link-down", afterLeaving: undefined, notice: "" });
   });
 
   it("settles a row left behind once the reader returns after its last ask", async () => {
@@ -114,7 +129,7 @@ describe("phase 5 gate 1: asks that outlive the screen they started on", () => {
     await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[2] ?? 0);
     await vi.advanceTimersByTimeAsync(VERIFY_RETRY_MS * 3);
 
-    expect({ reconnecting: send.notice() === VERIFY_RECONNECTING, asks }).toEqual({ reconnecting: false, asks: VERIFY_AFTER_MS.length });
+    expect({ reconnecting: send.claim() !== undefined, asks }).toEqual({ reconnecting: false, asks: VERIFY_AFTER_MS.length });
   });
 
   it("asks nothing more once the controller is disposed", async () => {
@@ -149,14 +164,14 @@ describe("phase 5 gate 2: verdicts on a message the daemon had taken", () => {
       .toEqual({ reserved: { rows: ["received"], outbox: [] }, rows: ["failed"], records: [["failed", "not-received", false]] });
   });
 
-  it("keeps the reconnecting words of the session on screen when another session's ask runs", async () => {
+  it("keeps the row's claim for the session on screen when another session's ask runs", async () => {
     const send = await unansweredSend(() => undefined);
     await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
     const ask: unknown = Reflect.get(send.controller, "askLedgerAbout");
     if (typeof ask !== "function") throw new Error("askLedgerAbout is not reachable");
     await Reflect.apply(ask, send.controller, [{ ...oldSession, id: "another-session" }, "local"]);
 
-    expect(send.notice()).toBe(VERIFY_RECONNECTING);
+    expect({ row: send.row(), notice: send.notice() }).toEqual({ row: "link-down", notice: "" });
   });
 
   it("retires a reserved message once the transcript as stored shows it taken, whatever the patch carried", async () => {
@@ -174,7 +189,7 @@ describe("phase 5 gate 2: verdicts on a message the daemon had taken", () => {
 });
 
 describe("phase 5 gate 5: an ask that answers after the reader moved on", () => {
-  it("does not raise the reconnecting words over the session the reader switched to", async () => {
+  it("does not raise the row's claim for the session the reader switched to", async () => {
     let fail: (error: unknown) => void = () => undefined;
     const send = await unansweredSend(() => ({}), { operationOutcomes: () => new Promise((_resolve, reject) => { fail = reject; }) });
     await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
@@ -182,7 +197,7 @@ describe("phase 5 gate 5: an ask that answers after the reader moved on", () => 
     fail(new TypeError("Failed to fetch"));
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(send.notice() === VERIFY_RECONNECTING).toBe(false);
+    expect({ claim: send.claim(), notice: send.notice() }).toEqual({ claim: undefined, notice: "" });
   });
 });
 

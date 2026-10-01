@@ -1,4 +1,6 @@
 import type { DeliveryFailureCause } from "./deliveryWords";
+import type { ReadMiss } from "./sync/readPhase";
+import type { Unanswered } from "./sync/scopedResource";
 
 /**
  * What a send nobody answered for becomes when the daemon's ledger is asked about it.
@@ -22,8 +24,23 @@ export const VERIFY_AFTER_MS: readonly number[] = [5_000, 15_000, 45_000];
  */
 export const VERIFY_RETRY_MS = 15_000;
 
-/** The words at the top while the ledger cannot be reached; a reply from that machine withdraws them. */
-export const VERIFY_RECONNECTING = "Reconnecting to update message status…";
+/**
+ * The ledger of one session went unanswered: since the first ask that got none, and why the latest
+ * did (state-diagram D5, "The status of a sent message speaks through the row", P1 slice 6). It
+ * belongs to its machine and session, and is a claim of the app's one row, never `state.error`.
+ */
+export interface MessageStatusUnanswered {
+  readonly machineId: string;
+  readonly sessionId: string;
+  readonly since: number;
+  readonly miss: ReadMiss;
+}
+
+/** The claim for the row, only while its machine and session are the ones on screen. */
+export function messageStatusUnanswered(claim: MessageStatusUnanswered | undefined, onScreen: { machineId: string; sessionId: string | undefined }): Unanswered | undefined {
+  if (claim?.machineId !== onScreen.machineId || claim.sessionId !== onScreen.sessionId) return undefined;
+  return { since: claim.since, miss: claim.miss };
+}
 
 export type VerificationStep =
   | { kind: "mark"; state: "received"; retireOutbox: boolean }

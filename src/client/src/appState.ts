@@ -5,6 +5,7 @@ import { RetiredBy } from "./notice";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { QualifiedContributionId } from "./plugins/ids";
 import type { ScopedSessionTarget } from "./sessionTarget";
+import type { MessageStatusUnanswered } from "./sendVerification";
 
 export interface AppState {
   machines: Machine[];
@@ -68,6 +69,8 @@ export interface AppState {
    * and workspace are the selection.
    */
   sessionTarget: ScopedSessionTarget | undefined;
+  /** The daemon's ledger went unanswered for the session on screen; the row says so after the grace. */
+  messageStatusUnanswered: MessageStatusUnanswered | undefined;
   backgroundTasks: readonly SessionBackgroundTaskInfo[];
   backgroundTasksRead: BackgroundTasksRead;
   /**
@@ -269,6 +272,7 @@ export function initialAppState(): AppState {
     selectedWorkspace: undefined,
     selectedSession: undefined,
     sessionTarget: undefined,
+    messageStatusUnanswered: undefined,
     backgroundTasks: [],
     backgroundTasksRead: "unread",
     transcriptFailed: undefined,

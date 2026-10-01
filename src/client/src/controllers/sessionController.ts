@@ -4,7 +4,7 @@ import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair, type StreamFrontier } from "../sessionGapRepair";
-import { describeError, noticeForReader, RetiredBy } from "../notice";
+import { describeError, noticeForReader } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
 import { MACHINE_WIDE_LOCATE_START, targetInListing, type SessionTarget } from "../sessionTarget";
@@ -24,7 +24,8 @@ import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import { failPendingPrompt, forgetPendingPrompt, forgetReservedPrompt, isNetworkFailure, linkReportedOffline, moveOutbox, NetworkSendError, reserveAcceptedPrompt, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
-import { provenRowStep, VERIFY_AFTER_MS, VERIFY_RECONNECTING, VERIFY_RETRY_MS, verificationStep } from "../sendVerification";
+import { provenRowStep, VERIFY_AFTER_MS, VERIFY_RETRY_MS, verificationStep } from "../sendVerification";
+import { classifyReadError, type ReadMiss } from "../sync/readPhase";
 import { statusReadVerdict, type StatusPosition } from "../statusOrder";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
@@ -218,6 +219,18 @@ function isTransientRefreshError(error: unknown): boolean {
 function ledgerUnreachable(error: unknown): boolean {
   if (error instanceof HttpError) return error.status === 0 || error.status >= 500;
   return isNetworkFailure(error) || isRequestTimeout(error);
+}
+
+/** What an ask of the daemon's ledger came back with: nothing to ask about, an answer, or no answer and why. */
+type LedgerAsk = { readonly kind: "nothing-open" } | { readonly kind: "answered" } | { readonly kind: "unreachable"; readonly miss: ReadMiss };
+
+const LEDGER_NOTHING_OPEN: LedgerAsk = { kind: "nothing-open" };
+const LEDGER_ANSWERED: LedgerAsk = { kind: "answered" };
+
+/** Why an unreachable ask got no answer, in the row's terms; a stated refusal is not one of them. */
+function ledgerMiss(error: unknown): ReadMiss {
+  const outcome = classifyReadError(error);
+  return outcome.kind === "miss" ? outcome.miss : { kind: "link-down" };
 }
 
 export class SessionController {
@@ -764,7 +777,6 @@ export class SessionController {
       this.markCachedNewSessionPersisted(session);
       return true;
     } catch (error) {
-      this.setState(errorNoticePatch(error));
       // Three outcomes, not two. A dropped connection and an unanswered request
       // are the same thing to the sender: nobody said what happened, so the
       // message may well exist on the daemon. Both keep the bubble, keep the
@@ -788,16 +800,31 @@ export class SessionController {
           this.markDeliveryFailed(session.id, clientMessageId, row.cause);
         } else if (clientMessageId !== undefined) {
           this.markDelivery(session.id, clientMessageId, "unverifiable");
+          this.claimUnansweredMessageStatus(session, machineId, error);
           this.scheduleSendVerification(session, machineId);
         }
         throw new NetworkSendError(String(error), clientMessageId, { cause: error });
       }
+      this.setState(errorNoticePatch(error));
       if (clientMessageId !== undefined && deliveryProvenByServer(this.getState().messages, clientMessageId)) return true;
       if (!handling.keepRow && clientMessageId !== undefined) this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
       return false;
     } finally {
       if (options.markSending) this.markSendingPrompt(session.id, false);
     }
+  }
+
+  /**
+   * A send nobody answered is the first unanswered moment of its session's message status (P1
+   * slice 6): the row says "Receiving…" and the app's one row says reconnecting after the grace,
+   * until a ledger ask gets through. It used to raise the transport error as a notice of its own,
+   * which read as a second, red "reconnecting" (owner screenshot, 2026-10-01). A send the bytes
+   * never left marks its row not sent instead, and claims nothing: nothing will ask about it.
+   */
+  private claimUnansweredMessageStatus(session: SessionRef, machineId: string, error: unknown): void {
+    const claim = this.getState().messageStatusUnanswered;
+    const same = claim?.machineId === machineId && claim.sessionId === session.id;
+    this.setState({ messageStatusUnanswered: { machineId, sessionId: session.id, since: same ? claim.since : Date.now(), miss: ledgerMiss(error) } });
   }
 
   /**
@@ -2459,21 +2486,19 @@ export class SessionController {
 
   /**
    * One ask of the ledger for the rows on screen. An ask the link could not carry is not an
-   * answer: the top of the page says the status is being updated, and one retry chain per session
-   * asks again every `VERIFY_RETRY_MS` until an ask gets through, the rows settle, or the reader
-   * leaves. Only an ask that got through withdraws the words: any reply at all retires a transport
-   * notice, and the web answers 503 while the daemon is down, which withdrew them seconds after
-   * they rose.
+   * answer: it is an unanswered read of that session (state-diagram D5, P1 slice 6), recorded with
+   * its machine and session and counted from the first ask that got none, which the app's one row
+   * reports after the grace like any other. One retry chain per session asks again every
+   * `VERIFY_RETRY_MS` until an ask gets through, the rows settle, or the reader leaves. Only an ask
+   * that got through, or the reader leaving, ends the claim. It used to be a red notice in
+   * `state.error`, with Retry, retired by comparing its words.
    */
   private async askLedgerAbout(session: SessionRef, machineId: string): Promise<void> {
     const key = machineSessionKey(machineId, session.id);
     const onScreen = (): boolean => !this.disposed && this.getState().selectedSession?.id === session.id && selectedMachineId(this.getState()) === machineId;
+    const ours = (claim: AppState["messageStatusUnanswered"]): boolean => claim?.machineId === machineId && claim.sessionId === session.id;
     const leave = (): void => {
-      const state = this.getState();
-      if (state.error !== VERIFY_RECONNECTING) return;
-      const selected = state.selectedSession;
-      if (selected !== undefined && this.verificationRetries.has(machineSessionKey(selectedMachineId(state), selected.id))) return;
-      this.setState(clearErrorPatch());
+      if (ours(this.getState().messageStatusUnanswered)) this.setState({ messageStatusUnanswered: undefined });
     };
     if (!onScreen()) {
       leave();
@@ -2492,13 +2517,13 @@ export class SessionController {
       leave();
       return;
     }
-    const state = this.getState();
-    if (asked !== "unreachable") {
-      if (state.error === VERIFY_RECONNECTING) this.setState(clearErrorPatch());
+    const claim = this.getState().messageStatusUnanswered;
+    if (asked.kind !== "unreachable") {
+      if (ours(claim)) this.setState({ messageStatusUnanswered: undefined });
       return;
     }
+    this.setState({ messageStatusUnanswered: { machineId, sessionId: session.id, since: ours(claim) && claim !== undefined ? claim.since : Date.now(), miss: asked.miss } });
     if (this.verificationRetries.has(key)) return;
-    if (state.error === "" || state.errorRetiredBy === RetiredBy.reply) this.setState(noticePatch(noticeForReader(VERIFY_RECONNECTING)));
     this.verificationRetries.set(key, setTimeout(() => {
       this.verificationRetries.delete(key);
       void this.askLedgerAbout(session, machineId);
@@ -2523,22 +2548,22 @@ export class SessionController {
    * learns what became of it, and one a server fact already proved learns of a terminal fact
    * whose frame went to a socket the reader had left - a refusal, a loss, a withdrawal.
    */
-  private async closeUnverifiedOperations(session: SessionRef, lastAsk = false): Promise<"nothing-open" | "unreachable" | "answered"> {
+  private async closeUnverifiedOperations(session: SessionRef, lastAsk = false): Promise<LedgerAsk> {
     const askedAbout = new Map<string, MessageDeliveryState>();
     for (const line of this.getState().messages) {
       const delivery = line.meta?.delivery;
       if (delivery !== undefined && ASKED_ABOUT[delivery.state]) askedAbout.set(delivery.clientMessageId, delivery.state);
     }
     const open = [...askedAbout.keys()];
-    if (open.length === 0) return "nothing-open";
+    if (open.length === 0) return LEDGER_NOTHING_OPEN;
     const machineId = selectedMachineId(this.getState());
     let outcomes: Record<string, string>;
     try {
       outcomes = await this.api.operationOutcomes(session, open, machineId);
     } catch (error) {
-      return ledgerUnreachable(error) ? "unreachable" : "answered";
+      return ledgerUnreachable(error) ? { kind: "unreachable", miss: ledgerMiss(error) } : LEDGER_ANSWERED;
     }
-    if (this.getState().selectedSession?.id !== session.id || selectedMachineId(this.getState()) !== machineId) return "answered";
+    if (this.getState().selectedSession?.id !== session.id || selectedMachineId(this.getState()) !== machineId) return LEDGER_ANSWERED;
     const outboxKey = machineSessionKey(machineId, session.id);
     for (const [clientMessageId, askedState] of askedAbout) {
       if (rowState(this.getState().messages, clientMessageId) !== askedState) continue;
@@ -2563,7 +2588,7 @@ export class SessionController {
         reserveAcceptedPrompt(outboxKey, clientMessageId);
       }
     }
-    return "answered";
+    return LEDGER_ANSWERED;
   }
 
   private markDelivery(sessionId: string, clientMessageId: string, state: MessageDeliveryState): void {

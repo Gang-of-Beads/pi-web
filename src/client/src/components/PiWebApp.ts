@@ -112,6 +112,7 @@ import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
 import { errorBanner, normalizeTransientError, unansweredRow, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { rowDecision, type ShownUnanswered } from "../sync/connectionSummary";
+import { messageStatusUnanswered } from "../sendVerification";
 import { earliestUnanswered } from "../sync/scopedResource";
 import { QUIET_WINDOW_MS, retryDelayMs } from "../sync/readPhase";
 import { interruptedRunsReadPlan } from "../interruptedRunsRead";
@@ -4292,7 +4293,8 @@ export class PiWebApp extends LitElement {
   }
 
   private renderUnansweredRow(noticeShown: boolean) {
-    const unanswered = earliestUnanswered(earliestUnanswered(this.projects.unanswered(), this.machines.unanswered()), targetUnanswered(this.namedTargetInScope()));
+    const messageStatus = messageStatusUnanswered(this.state.messageStatusUnanswered, { machineId: selectedMachineId(this.state), sessionId: this.state.selectedSession?.id });
+    const unanswered = [this.machines.unanswered(), targetUnanswered(this.namedTargetInScope()), messageStatus].reduce(earliestUnanswered, this.projects.unanswered());
     const decision = rowDecision({ notice: noticeShown, unanswered, shown: this.unansweredShown, now: Date.now() });
     if (this.reconnectingRecheck !== undefined) window.clearTimeout(this.reconnectingRecheck);
     this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : window.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
