@@ -50,7 +50,7 @@ async function promptAccepted(): Promise<void> {
 }
 
 function eventPublisher() {
-  return { publish: vi.fn<(sessionId: string, event: SessionUiEvent) => void>() };
+  return { publish: vi.fn<(sessionId: string, event: SessionUiEvent) => void>(), publishGlobal: vi.fn<(event: SessionUiEvent) => void>() };
 }
 
 describe("SessionCommandService", () => {
@@ -325,6 +325,7 @@ describe("SessionCommandService", () => {
     });
     expect(forked.setSessionName).toHaveBeenCalledWith("Build auth — Fork 2");
     expect(events.publish).toHaveBeenCalledWith("forked", { type: "session.name", sessionId: "forked", name: "Build auth — Fork 2" });
+    expect(events.publishGlobal.mock.calls.map(([event]) => (event.type === "session.created" ? event.session.id : event.type))).toEqual(["session.name", "forked"]);
   });
 
   it("names cloned sessions as copies of the source title", async () => {
@@ -334,7 +335,8 @@ describe("SessionCommandService", () => {
       active.runtime.session = cloned;
       return Promise.resolve({ cancelled: false });
     });
-    const service = new SessionCommandService(() => getActive(active), vi.fn(), eventPublisher(), {}, {
+    const events = eventPublisher();
+    const service = new SessionCommandService(() => getActive(active), vi.fn(), events, {}, {
       listSessionNames: () => Promise.resolve(["Build auth", "Build auth — Copy 1"]),
     });
 
@@ -345,6 +347,7 @@ describe("SessionCommandService", () => {
     });
     expect(active.runtime.fork).toHaveBeenCalledWith("leaf-1", { position: "at" });
     expect(cloned.setSessionName).toHaveBeenCalledWith("Build auth — Copy 2");
+    expect(events.publishGlobal.mock.calls.map(([event]) => (event.type === "session.created" ? event.session.id : event.type))).toEqual(["session.name", "copy"]);
   });
 
   it("does not start a clone if tree navigation takes the gate during async name lookup", async () => {

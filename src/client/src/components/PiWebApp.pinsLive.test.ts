@@ -190,29 +190,27 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
     expect(ids).toEqual(["far"]);
   });
 
-  it("renames a listed row on the machine it lives on, in the board's listed and pinned rows alike (B49)", async () => {
-    const app = createApp();
-    const renamedOn: unknown[] = [];
-    const sessions: unknown = Reflect.get(app, "sessions");
-    if (typeof sessions !== "object" || sessions === null) throw new Error("no session controller");
-    Reflect.set(sessions, "renameSession", (_session: unknown, _name: string, machineId: string) => { renamedOn.push(machineId); return Promise.resolve(); });
-    const boards: unknown = Reflect.get(app, "sessionBoards");
-    if (typeof boards !== "object" || boards === null) throw new Error("no session boards");
-    const far = { id: "far", cwd: "/closed", path: "/closed/far.jsonl", created: "2026-09-01", modified: "2026-09-01", messageCount: 1, firstMessage: "far" };
-    const board = { sessions: [{ ...far, id: "near", cwd: "/alpha" }], workspaces: [], unknownSources: [], pinnedElsewhere: [far] };
-    const updatedOn: unknown[] = [];
-    let updated: unknown;
-    Reflect.set(boards, "update", (machineId: string, change: (value: typeof board) => unknown) => { updatedOn.push(machineId); updated = change(board); });
+  it("renames a listed row on its own machine through the board's announcement change, and takes a refused name back (B49, review ece619f0)", async () => {
+    const run = async (accepted: boolean) => {
+      const app = createApp();
+      const renamedOn: unknown[] = [];
+      const sessions: unknown = Reflect.get(app, "sessions");
+      if (typeof sessions !== "object" || sessions === null) throw new Error("no session controller");
+      Reflect.set(sessions, "renameSession", (_session: unknown, _name: string, machineId: string) => { renamedOn.push(machineId); return Promise.resolve(accepted); });
+      const boards: unknown = Reflect.get(app, "sessionBoards");
+      if (typeof boards !== "object" || boards === null) throw new Error("no session boards");
+      const announced: unknown[] = [];
+      Reflect.set(boards, "applyEvent", (machineId: string, event: { sessionId: string; name?: string }) => { announced.push([machineId, event.sessionId, event.name]); });
+      const far = { id: "far", cwd: "/closed", path: "/closed/far.jsonl", created: "2026-09-01", modified: "2026-09-01", messageCount: 1, firstMessage: "far", name: "Old far" };
 
-    await call(app, "renameListedSession", far, "remote-1", "Kept far");
-    const names = (list: unknown): unknown => (Array.isArray(list) ? list.map((row: unknown): unknown => (typeof row === "object" && row !== null ? Reflect.get(row, "name") : row)) : list);
+      await call(app, "renameListedSession", far, "remote-1", " Kept far ");
+      return { renamedOn, announced };
+    };
 
-    expect({
-      renamedOn,
-      updatedOn,
-      listed: names(typeof updated === "object" && updated !== null ? Reflect.get(updated, "sessions") : undefined),
-      elsewhere: names(typeof updated === "object" && updated !== null ? Reflect.get(updated, "pinnedElsewhere") : undefined),
-    }).toEqual({ renamedOn: ["remote-1"], updatedOn: ["remote-1"], listed: [undefined], elsewhere: ["Kept far"] });
+    expect({ accepted: await run(true), refused: await run(false) }).toEqual({
+      accepted: { renamedOn: ["remote-1"], announced: [["remote-1", "far", "Kept far"]] },
+      refused: { renamedOn: ["remote-1"], announced: [["remote-1", "far", "Kept far"], ["remote-1", "far", "Old far"]] },
+    });
   });
 
   it("passes a machine's session announcements to that machine's board, from the main and the activity sockets (O-P9)", () => {

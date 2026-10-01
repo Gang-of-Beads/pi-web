@@ -2744,16 +2744,19 @@ export class SessionController {
    * immediately; the broadcast that follows is identical, and a failure rolls
    * back to the previous name rather than leaving a lie on screen.
    */
-  async renameSession(session: SessionInfo, name: string, machineId = selectedMachineId(this.getState())): Promise<void> {
+  /** Rename a session, showing the name at once and taking it back when the machine refuses; whether the machine took it. */
+  async renameSession(session: SessionInfo, name: string, machineId = selectedMachineId(this.getState())): Promise<boolean> {
     const trimmed = name.trim();
-    if (trimmed === "") return;
+    if (trimmed === "") return false;
     const previous = session.name;
     this.applySessionName(session.id, trimmed);
     try {
       await this.api.runCommand({ id: session.id, cwd: session.cwd }, `/name ${trimmed}`, machineId);
+      return true;
     } catch (error) {
       this.applySessionName(session.id, previous);
       this.failedFor(session, error);
+      return false;
     }
   }
 

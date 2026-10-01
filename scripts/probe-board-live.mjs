@@ -1,4 +1,7 @@
 import { chromium } from "@playwright/test";
+import { randomBytes } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 
 /**
  * The board takes its machine's announcements (state-diagram D5; O-P9), 8505, phone 393x850.
@@ -7,12 +10,16 @@ import { chromium } from "@playwright/test";
  * switcher, until the next whole board read. The probe does both through the machine's API, as
  * another device would, while the page shows the board:
  * - a session started in a listed workspace joins the board within 2 s, with no board read;
- * - renaming that session shows on its row within 2 s, with no board read.
- * Control: the board was read once at boot and every source answered. It touches only the session
- * it starts, and archives it at the end.
+ * - renaming that session shows on its row within 2 s, with no board read;
+ * - a copy made elsewhere (/clone of a copied small seed, since a clone needs a saved session) joins
+ *   the board within 2 s, under its name, with no board read.
+ * Control: the board was read once at boot and every source answered. It touches only the sessions
+ * it starts, copies or clones; it archives them and removes the copied seed file at the end.
  */
 const BASE = "http://127.0.0.1:8505";
 const WORKSPACE_PATH = `${process.env.HOME ?? ""}/.pi-web-8505/pi-web-8505-seed-workspace`;
+const SESSION_DIR = `${process.env.HOME ?? ""}/.pi/agent/sessions/--Users-hanxiao.du-.pi-web-8505-pi-web-8505-seed-workspace--`;
+const COPY_SOURCE = "01a05000-5eed-7c00-8000-0000000000e1";
 const results = [];
 const check = (name, pass, detail) => {
   results.push({ name, pass });
@@ -22,6 +29,20 @@ const api = (path, body) => fetch(`${BASE}/api/machines/local${path}`, body === 
 
 const browser = await chromium.launch();
 let started;
+let copied;
+let seedCopy;
+function copySeed() {
+  const source = fs.readdirSync(SESSION_DIR).find((name) => name.endsWith(`_${COPY_SOURCE}.jsonl`));
+  if (source === undefined) return undefined;
+  const id = `0c0c0c0c-0000-7000-8000-${randomBytes(6).toString("hex")}`;
+  const lines = fs.readFileSync(path.join(SESSION_DIR, source), "utf8").trim().split("\n");
+  const header = JSON.parse(lines[0]);
+  header.id = id;
+  lines[0] = JSON.stringify(header);
+  const file = path.join(SESSION_DIR, `2026-08-01T00-00-00-000Z_${id}.jsonl`);
+  fs.writeFileSync(file, `${lines.join("\n")}\n`);
+  return { id, file };
+}
 try {
 
   const context = await browser.newContext({ viewport: { width: 393, height: 850 }, hasTouch: true, isMobile: true });
@@ -60,8 +81,28 @@ try {
   }
   check("precondition: the machine took the rename", renamed?.status === 200, String(renamed?.status));
   check("a rename made elsewhere shows on the board within 2 s, with no board read", renameShownAfter !== undefined && boardReads.filter((at) => at >= renamedAt).length === 0, `after ${String(renameShownAfter)} ms, ${String(boardReads.filter((at) => at >= renamedAt).length)} board reads`);
+  seedCopy = copySeed();
+  const clonedAt = Date.now();
+  const cloned = seedCopy === undefined ? undefined : await api(`/sessions/${seedCopy.id}/commands/run`, { cwd: WORKSPACE_PATH, text: "/clone" });
+  const cloneAnswer = cloned?.status === 200 ? await cloned.json() : undefined;
+  const cloneAnsweredAt = Date.now();
+  copied = cloneAnswer?.session;
+  let copyShownAfter;
+  let copyRow;
+  for (let waited = 0; waited <= 2_000 && copied !== undefined; waited += 100) {
+    copyRow = (await boardRow(copied.id)).row;
+    if (copyRow !== undefined) { copyShownAfter = Date.now() - cloneAnsweredAt; break; }
+    await page.waitForTimeout(100);
+  }
+  check("precondition: the machine made a copy under a new id", copied !== undefined && copied.id !== seedCopy?.id, `${String(cloned?.status)} ${String(cloneAnswer?.message)}`);
+  check("a copy made elsewhere joins the board within 2 s of the machine's answer, under its name, with no board read", copyShownAfter !== undefined && typeof copyRow?.name === "string" && copyRow.name !== "" && boardReads.filter((at) => at >= clonedAt).length === 0, `after ${String(copyShownAfter)} ms (the copy took ${String(cloneAnsweredAt - clonedAt)} ms), name ${JSON.stringify(copyRow?.name)}, ${String(boardReads.filter((at) => at >= clonedAt).length)} board reads`);
   await page.screenshot({ path: "/var/folders/2x/hqbz74zs7fvdxf_53693r26h0000gp/T/.playwright-mcp/op9-board-live-phone.png" });
 } finally {
+  if (copied !== undefined) await api(`/sessions/${copied.id}/archive`, { cwd: WORKSPACE_PATH }).catch(() => undefined);
+  if (seedCopy !== undefined) {
+    await api(`/sessions/${seedCopy.id}/archive`, { cwd: WORKSPACE_PATH }).catch(() => undefined);
+    fs.rmSync(seedCopy.file, { force: true });
+  }
   if (started !== undefined) await api(`/sessions/${started.id}/archive`, { cwd: WORKSPACE_PATH }).catch(() => undefined);
   await browser.close();
 }

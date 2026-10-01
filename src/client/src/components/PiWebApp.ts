@@ -101,7 +101,7 @@ import type { NavigateInput, NavigateLevel } from "../navigateModel";
 import type { ShellToolTab } from "../appShell/shellToolTabs";
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
-import { quickSwitcherSessionStates, renameSessionInList } from "../quickSwitcher";
+import { quickSwitcherSessionStates } from "../quickSwitcher";
 import { reloadOffer } from "../versionSkew";
 import { oneRowPerIdentity } from "../transcriptInvariant";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
@@ -2861,25 +2861,21 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * Keep the board's copy of a session in step with a rename: its listed rows,
-   * and the pinned rows no open project lists (B49).
+   * Rename a listed session on the machine it lives on, and keep that
+   * machine's board in step at once - its listed rows and the pinned rows no
+   * open project lists (B49) - through the same change the machine's own
+   * announcement makes. When the machine refuses, the board takes the old name
+   * back, as the selection does: a read on its way would otherwise keep the
+   * refused name over its answer.
    *
    * The board is a separate list from the navigation panel's, so without this
    * the switcher and Pinned go on offering the name the user just renamed away
    * from.
    */
-  private applyRenameToQuickSwitcher(sessionId: string, name: string, machineId = this.browsedMachineId()): void {
-    this.sessionBoards.update(machineId, (board) => ({
-      ...board,
-      sessions: renameSessionInList(board.sessions, sessionId, name),
-      ...(board.pinnedElsewhere === undefined ? {} : { pinnedElsewhere: renameSessionInList(board.pinnedElsewhere, sessionId, name) }),
-    }));
-  }
-
-  /** Rename a listed session on the machine it lives on, and keep that machine's board in step. */
   private async renameListedSession(session: SessionInfo, machineId: string, name: string): Promise<void> {
-    this.applyRenameToQuickSwitcher(session.id, name, machineId);
-    await this.sessions.renameSession(session, name, machineId);
+    this.sessionBoards.applyEvent(machineId, { type: "session.name", sessionId: session.id, name: name.trim() });
+    if (await this.sessions.renameSession(session, name, machineId)) return;
+    this.sessionBoards.applyEvent(machineId, { type: "session.name", sessionId: session.id, name: session.name });
   }
 
   /**
@@ -4542,8 +4538,7 @@ export class PiWebApp extends LitElement {
           .onTogglePin=${(session: SessionInfo) => { void this.moveToBrowsedMachine().then((moved) => { if (moved) this.togglePinnedSession(session); }); }}
           .onRenameSession=${async (session: SessionInfo, name: string) => {
             if (!await this.moveToBrowsedMachine()) return;
-            this.applyRenameToQuickSwitcher(session.id, name);
-            return this.sessions.renameSession(session, name);
+            await this.renameListedSession(session, this.browsedMachineId(), name);
           }}
           .onClose=${() => { this.navigation.cancel(); this.quickSwitcherOpen = false; }}
         ></quick-switcher>` : null}

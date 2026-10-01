@@ -253,6 +253,14 @@ describe("boardWithEvent", () => {
     expect({ renamed: [renamed.sessions[0]?.name, renamed.pinnedElsewhere?.[0]?.name], cleared: "name" in (cleared.sessions[0] ?? {}) }).toEqual({ renamed: ["Kept", "Far kept"], cleared: false });
   });
 
+  it("keeps the row a read holds when the creation of that session is announced again (review ece619f0)", () => {
+    const written = { ...session("a2", "/alpha", "2026-09-05"), firstMessage: "What the session is about", messageCount: 4 };
+    const created = { ...session("a2", "/alpha", "2026-09-03"), firstMessage: "", messageCount: 0 };
+    const replayed = boardWithEvent({ ...board, sessions: [written, ...board.sessions] }, { type: "session.created", session: created });
+
+    expect(replayed.sessions[0]).toEqual(written);
+  });
+
   it("adds a session started in a listed workspace or under it, newest first, once, and not one from elsewhere", () => {
     const started = session("a2", "/alpha/packages/app", "2026-09-03");
     const once = boardWithEvent(board, { type: "session.created", session: started });

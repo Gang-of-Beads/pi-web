@@ -168,9 +168,11 @@ export type SessionBoardEvent =
 /**
  * The board with an announced change applied. A rename renames the session
  * wherever the board lists it; a new session joins the board when one of its
- * listed workspaces holds its folder, and replaces a row with its id. Each is
- * a set, so applying it again over a read that already has it changes
- * nothing. A session in no listed workspace is not this board's to add.
+ * listed workspaces holds its folder. Each is a set, so applying it again over
+ * a read that already has it changes nothing. A session the board already
+ * lists keeps its row: the announcement is the session as it was created, and
+ * a read that lists it holds it as it is now (written, titled, counted). A
+ * session in no listed workspace is not this board's to add.
  */
 export function boardWithEvent(board: SessionBoard, event: SessionBoardEvent): SessionBoard {
   if (event.type === "session.name") {
@@ -179,9 +181,8 @@ export function boardWithEvent(board: SessionBoard, event: SessionBoardEvent): S
   }
   const listed = board.sessions.some((session) => session.id === event.session.id);
   const held = board.workspaces.some((workspace) => sessionLocationVerdict(event.session.cwd, workspace.path) === "described");
-  if (!listed && !held) return board;
-  const sessions = [event.session, ...board.sessions.filter((session) => session.id !== event.session.id)]
-    .sort((left, right) => Date.parse(right.modified) - Date.parse(left.modified));
+  if (listed || !held) return board;
+  const sessions = [event.session, ...board.sessions].sort((left, right) => Date.parse(right.modified) - Date.parse(left.modified));
   return { ...board, sessions };
 }
 

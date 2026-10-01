@@ -44,7 +44,7 @@ export type GetCommandActiveSession<TSession extends CommandSession = CommandSes
 
 export interface CommandEventPublisher {
   publish(sessionId: string, event: SessionUiEvent): void;
-  publishGlobal?(event: Extract<SessionUiEvent, { type: "session.name" }>): void;
+  publishGlobal?(event: Extract<SessionUiEvent, { type: "session.name" | "session.created" }>): void;
 }
 
 /** Reported both by an immediate /reload and by one that ran off the queue. */
@@ -169,6 +169,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
       return forkResult;
     });
     if (result.cancelled) return { type: "done", message: "Fork cancelled" };
+    this.announceCreated(active.runtime);
     return { type: "done", message: "Session forked", session: clientSessionFromRuntime(active.runtime), ...promptDraft(result.selectedText) };
   }
 
@@ -272,6 +273,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
       return cloneResult;
     });
     if (result.cancelled) return { type: "done", message: "Clone cancelled" };
+    this.announceCreated(active.runtime);
     return { type: "done", message: "Session cloned", session: clientSessionFromRuntime(active.runtime) };
   }
 
@@ -341,6 +343,16 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
       const message = error instanceof Error ? error.message : String(error);
       this.events.publish(session.sessionId, { type: "command.output", level: "error", message: `Session created, but naming failed: ${message}` });
     }
+  }
+
+  /**
+   * A fork or a clone is a new session under a new id, made without the start
+   * path that announces one. Every browser's board learns of it here, as it
+   * learns of a started session (O-P9); before, another device's board missed
+   * it until its next whole read.
+   */
+  private announceCreated(runtime: CommandRuntime<TSession>): void {
+    this.events.publishGlobal?.({ type: "session.created", session: clientSessionFromRuntime(runtime) });
   }
 
   private publishSessionName(session: TSession): void {
