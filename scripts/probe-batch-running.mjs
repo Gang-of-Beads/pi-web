@@ -14,6 +14,8 @@ import { createServer } from "node:http";
  * 18-25 s before each request, so the run is given 150 s to settle.
  * Legs:
  * - precondition: the long reply streams while the three are sent, and all three are listed;
+ * - a repeat of an earlier message ("warm up" again) is listed while it waits, with its id: a status
+ *   that decided by text hid it for the rest of the run (review of 8550ee13);
  * - the three reach the model in one request, in the order sent;
  * - the reply to them is one answer, and nothing is left queued.
  */
@@ -93,10 +95,14 @@ try {
     await api(`sessions/${sessionId}/prompt`, { method: "POST", body: JSON.stringify({ cwd: CWD, text, clientMessageId: `${MARK}-${String(index)}` }) });
     await sleep(300);
   }
+  await api(`sessions/${sessionId}/prompt`, { method: "POST", body: JSON.stringify({ cwd: CWD, text: "warm up", clientMessageId: `${MARK}-again` }) });
+  await sleep(300);
   const during = await status();
   const queued = (during?.queuedMessages ?? []).map((entry) => entry.text);
   leg("precondition: the long reply streams while the three are sent, and all three are listed", during?.isStreaming === true && SENT.every((text) => queued.includes(text)) && markedPerRequest.length === 0, `streaming ${String(during?.isStreaming)}, queued ${JSON.stringify(queued.map((text) => text.slice(-1)))}`);
 
+  const repeat = (during?.queuedMessages ?? []).find((entry) => entry.text === "warm up");
+  leg("a repeat of an earlier message is listed while it waits, with its id", repeat?.clientMessageId === `${MARK}-again`, JSON.stringify((during?.queuedMessages ?? []).map((entry) => [entry.text.slice(-7), entry.clientMessageId ?? null])));
   const settled = await waitFor((snapshot) => snapshot.isStreaming !== true && (snapshot.queuedMessages ?? []).length === 0 && markedPerRequest.flat().length >= SENT.length, 150_000);
   await sleep(2000);
   leg("the three reach the model in one request, in the order sent", JSON.stringify(markedPerRequest) === JSON.stringify([SENT]), JSON.stringify(markedPerRequest.map((request) => request.map((text) => text.slice(-1)))));

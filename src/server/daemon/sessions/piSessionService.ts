@@ -100,8 +100,8 @@ import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
-import { HANDOFF_RUN_STATE, HANDOFF_TRIGGER_BY_EVENT, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffTrigger, type HandoffVerdict, type RunState } from "./promptHandoff.js";
-import { createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
+import { HANDOFF_RUN_STATE, HANDOFF_WAKE_EVENTS, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffVerdict, type RunState } from "./promptHandoff.js";
+import { SETTLEABLE, createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { LOCAL_HOLD_ID_PREFIX, OwnedPromptQueue, dataDirInboxLocation, entryKey, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry } from "./ownedPromptQueue.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
@@ -234,13 +234,6 @@ function refMatchesStartupSession(ref: PiSessionRef, session: PiAgentSession): b
 }
 
 
-
-/**
- * Every steer pi holds has a held-steer record, so lane positions correlate one to one; a steer
- * sent without an id gets a local one (`entryKey`). It never leaves the daemon: `publishedId`
- * drops it.
- */
-
 const WAITING_MESSAGES_BLOCK_ARCHIVE = "Messages are waiting for this session. Open it to deliver them before archiving";
 const WAITING_MESSAGES_BLOCK_DELETE = "Messages are waiting for this session. Restore and open it to deliver them before deleting";
 
@@ -256,6 +249,10 @@ function committedClientMessageIds(branch: readonly unknown[]): Set<string> {
   return ids;
 }
 
+/**
+ * Every steer pi holds has a held-steer record, so lane positions correlate one to one; a steer
+ * sent without an id gets a local one (`entryKey`). It never leaves the daemon: this drops it.
+ */
 function publishedId(id: string | undefined): string | undefined {
   return id === undefined || id.startsWith(LOCAL_HOLD_ID_PREFIX) ? undefined : id;
 }
@@ -3269,7 +3266,7 @@ export class PiSessionService implements SessionRouteService {
     if (echoUserMessage) this.events.publish(sessionId, { type: "message.append", message: userMessage(promptText, images), echo: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
     this.publishActivity(session, busy ? "message queued" : "prompt accepted", "active");
     this.publishStatus(session);
-    this.pumpInbox(session, "nudge");
+    this.pumpInbox(session);
   }
 
   /**
@@ -3278,22 +3275,22 @@ export class PiSessionService implements SessionRouteService {
    * queue lock too: a recall empties the runtime's queue and replays the survivors, and a
    * handoff landing in the middle of that would put a newer message ahead of older ones.
    */
-  private pumpInbox(session: PiAgentSession, trigger: HandoffTrigger): void {
+  private pumpInbox(session: PiAgentSession): void {
     const sessionId = session.sessionId;
     const previous = this.handoffChains.get(sessionId) ?? Promise.resolve();
-    const next = previous.then(() => this.withQueueLock(session, () => this.handOff(session, trigger))).catch((error: unknown) => {
+    const next = previous.then(() => this.withQueueLock(session, () => this.handOff(session))).catch((error: unknown) => {
       console.warn(`[inbox] handoff for ${sessionId} failed: ${error instanceof Error ? error.message : String(error)}`);
     });
     this.handoffChains.set(sessionId, next);
   }
 
-  private async handOff(session: PiAgentSession, trigger: HandoffTrigger): Promise<void> {
+  private async handOff(session: PiAgentSession): Promise<void> {
     const sessionId = session.sessionId;
     if (this.active.get(sessionId)?.runtime.session !== session) return;
     if (this.emptying.has(sessionId) || this.archivedRuntimes.has(session)) return;
     const run = this.runStateFor(session);
     if (run === "idle") await this.takeBackHeldMessages(session);
-    const decision = nextHandoff({ waiting: this.ownedQueue.entries(sessionId).length, run, trigger });
+    const decision = nextHandoff({ waiting: this.ownedQueue.entries(sessionId).length, run });
     if (decision.kind === "wait") return;
     if (decision.kind === "steer") {
       await this.handSteerBatch(session, decision.count);
@@ -3334,7 +3331,7 @@ export class PiSessionService implements SessionRouteService {
     if (verdict !== "handed") await this.takeBackHeldMessages(session);
     if (verdict === "transient") await this.ownedQueue.restoreFront(sessionId, [head]);
     this.publishStatus(session);
-    if (verdict !== "transient") this.pumpInbox(session, "nudge");
+    if (verdict !== "transient") this.pumpInbox(session);
   }
 
   /**
@@ -3453,7 +3450,7 @@ export class PiSessionService implements SessionRouteService {
       return;
     }
     this.publishStatus(session);
-    this.pumpInbox(session, "nudge");
+    this.pumpInbox(session);
   }
 
   /**
@@ -3465,12 +3462,19 @@ export class PiSessionService implements SessionRouteService {
    * the command's own run starts before its preflight. A steer is the runtime's when pi has
    * queued it. Anything that never reaches those points is the runtime's when the prompt
    * settles.
+   *
+   * An extension command leaves the inbox file's handed list before it runs. It writes no user
+   * entry, so a restart could not tell a command that ran from one that did not, and returning it
+   * would run its handler a second time (review of 8550ee13). A daemon that dies while the handler
+   * runs loses the command instead: at most once, as before the handed list existed.
    */
   private async handToRuntime(session: PiAgentSession, entry: OwnedQueueEntry, behavior: "steer" | undefined): Promise<HandoffVerdict> {
     const sessionId = session.sessionId;
     const { clientMessageId, text } = entry;
     const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
     if (!this.servesSessionId(session) || this.liveRunState(session) !== HANDOFF_RUN_STATE[behavior ?? "direct"]) return "transient";
+    const isCommand = this.isExtensionCommand(session, text);
+    if (isCommand) this.settleHanded(sessionId, entryKey(entry));
     if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text, imageCount: images.length });
     if (behavior === "steer") this.publishActivity(session, "steering queued", "active");
     let committed = false;
@@ -3483,7 +3487,6 @@ export class PiSessionService implements SessionRouteService {
       markHanded();
       this.settleSucceeded(sessionId, entryKey(entry));
     };
-    const isCommand = this.isExtensionCommand(session, text);
     const preflightResult = (success: boolean): void => {
       if (!success) return;
       landed = landingAtPreflight(session, { isCommand, steeringGrew: (this.laneGrowth.get(sessionId) ?? 0) > growthAtCall });
@@ -3728,12 +3731,25 @@ export class PiSessionService implements SessionRouteService {
    * transcript as a user entry with its id, was never read: it waits again, first. One that is was
    * read and is settled (D1, B33). The id is on the stored entry because the daemon stamps it at
    * `message_start`, before pi appends the entry.
+   *
+   * One whose ledger row had already settled - withdrawn, refused, or read - ended before the
+   * restart too. The ledger is written synchronously and the inbox file after it, so a daemon that
+   * died between the two left a recalled message in the handed list; returning it ran a message its
+   * sender had taken back (review of 8550ee13). It is dropped, and its row keeps its outcome.
    */
   private async restoreOwnedQueue(session: PiAgentSession, cwd: string): Promise<OwnedQueueEntry[]> {
     const sessionId = session.sessionId;
     await this.ownedQueue.open(sessionId, cwd);
     const onTranscript = committedClientMessageIds(session.sessionManager.getBranch());
-    const { committed } = await this.ownedQueue.returnHanded(sessionId, (entry) => entry.clientMessageId !== undefined && onTranscript.has(entry.clientMessageId));
+    const read = (entry: OwnedQueueEntry): boolean => entry.clientMessageId !== undefined && onTranscript.has(entry.clientMessageId);
+    const settledBefore = (entry: OwnedQueueEntry): boolean => {
+      const id = entry.clientMessageId;
+      if (id === undefined) return false;
+      const outcome = this.acceptanceLedger.outcomesFor(sessionId, [id])[id];
+      return outcome !== undefined && !SETTLEABLE[outcome];
+    };
+    const { ended } = await this.ownedQueue.returnHanded(sessionId, (entry) => read(entry) || settledBefore(entry));
+    const committed = ended.filter(read);
     const entries = this.ownedQueue.entries(sessionId);
     this.publishStatus(session);
     // The queue survived the restart; its acceptances must too, or the
@@ -3749,11 +3765,12 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * Stamp each still-queued entry with the id its sender minted, matching by
-   * text in submission order so two identical queued texts keep their original
-   * order. Records whose text is no longer queued are dropped here: this is the
-   * signal the sender uses to move that message from "queued" to "delivered".
+   * What waits for the agent, as the status lists it (see `queuedMessagesFromSession`).
    */
+  private queuedMessages(session: PiAgentSession): QueuedSessionMessage[] {
+    return queuedMessagesFromSession(session, this.ownedQueue.entries(session.sessionId), this.queuedPromptClientIds.get(session.sessionId) ?? []);
+  }
+
   /**
    * Give each queued prompt back the id its sender minted.
    *
@@ -3764,17 +3781,6 @@ export class PiSessionService implements SessionRouteService {
    * row appeared for a message already on screen - reported five times.
    * Submission order is the correlation the queue does preserve.
    */
-  private attachQueuedPromptClientIds(sessionId: string, queued: QueuedSessionMessage[]): void {
-    const records = this.queuedPromptClientIds.get(sessionId);
-    if (records === undefined || records.length === 0) return;
-    const correlated = correlateQueuedPromptIds(queued, records);
-    for (const [index, entry] of correlated.entries()) {
-      const target = queued[index];
-      const id = publishedId(entry.clientMessageId);
-      if (target !== undefined && id !== undefined) target.clientMessageId = id;
-    }
-  }
-
   private recordQueuedPromptImages(sessionId: string, text: string, images: ImageContent[]): void {
     const records = this.queuedPromptImages.get(sessionId) ?? [];
     records.push({ text, images });
@@ -4403,7 +4409,7 @@ export class PiSessionService implements SessionRouteService {
     this.settleConsumedSteers(session);
     this.publishActivity(session, removed ? "queued message recalled" : "queued message already gone", "active");
     this.publishStatus(session);
-    this.pumpInbox(session, "nudge");
+    this.pumpInbox(session);
     // Whether anything was actually taken back is the caller's business: the
     // agent can read a message between the click and this request, and a client
     // that assumes success would delete a bubble the conversation already
@@ -5509,7 +5515,7 @@ export class PiSessionService implements SessionRouteService {
     session.agent.steeringMode = "all";
     active.unsubscribe = session.subscribe((event) => { this.observeRuntimeEvent(session, event); });
     this.active.set(session.sessionId, active);
-    if (restoredQueue.length > 0) this.pumpInbox(session, "nudge");
+    if (restoredQueue.length > 0) this.pumpInbox(session);
   }
 
   /**
@@ -5539,8 +5545,7 @@ export class PiSessionService implements SessionRouteService {
     const eventType = getString(event, "type");
     if (eventType === "agent_end") this.abortRunScopedExtensionDialogs(session.sessionId);
     if (isDeliveredUserMessageEvent(event)) this.voidOpenAskForDeliveredMessage(session, event);
-    const handoffTrigger = eventType === undefined ? undefined : HANDOFF_TRIGGER_BY_EVENT[eventType];
-    if (handoffTrigger !== undefined) this.pumpInbox(session, handoffTrigger);
+    if (eventType !== undefined && HANDOFF_WAKE_EVENTS.has(eventType)) this.pumpInbox(session);
     // A /reload issued mid-turn waits here. agent_end can fire while the turn
     // is still winding down, so runQueuedReload re-checks for active work and
     // simply returns if it is early; the heartbeat below is what makes sure a
@@ -5663,7 +5668,7 @@ export class PiSessionService implements SessionRouteService {
       // the session still reports active work transiently, so the event-driven
       // latch may not fire. The heartbeat re-checks once the session settles.
       this.updateSubsessionTracking(session);
-      this.pumpInbox(session, "nudge");
+      this.pumpInbox(session);
       const activity = this.activities.get(session.sessionId);
       if (!this.hasActiveWork(session)) {
         if (activity?.phase === "active") this.publishStatus(session);
@@ -5963,11 +5968,7 @@ export class PiSessionService implements SessionRouteService {
     const pendingAsks = this.pendingAskStore.pendingAsks(session.sessionId);
     const pendingAsk = pendingAsks[0];
     const pendingDialogs = this.pendingExtensionDialogStore.pendingDialogs(session.sessionId);
-    // One transcript pass feeds both the count and the visible queue list:
-    // consumed-message reconciliation walks session.messages, and running it
-    // once per status keeps the per-event cost O(history) instead of 3x.
-    const visibleQueued = queuedMessagesFromSession(session, this.ownedQueue.entries(session.sessionId));
-    this.attachQueuedPromptClientIds(session.sessionId, visibleQueued);
+    const visibleQueued = this.queuedMessages(session);
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
     const working = session.isStreaming || session.isCompacting || session.isBashRunning;
     const turnStartedAt = working ? turnStartedAtFromBranch(session.sessionManager.getBranch()) : undefined;
@@ -6149,11 +6150,11 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private pendingMessageCount(session: PiAgentSession): number {
-    return queuedMessagesFromSession(session, this.ownedQueue.entries(session.sessionId)).length;
+    return this.queuedMessages(session).length;
   }
 
   private hasQueuedMessageText(session: PiAgentSession, text: string): boolean {
-    return queuedMessagesFromSession(session, this.ownedQueue.entries(session.sessionId)).some((message) => message.text === text);
+    return this.queuedMessages(session).some((message) => message.text === text);
   }
 }
 
@@ -6665,21 +6666,31 @@ function runtimeLanes(session: PiAgentSession): { kind: QueuedPromptKind; text: 
   ];
 }
 
-function queuedMessagesFromSession(session: PiAgentSession, inbox: readonly OwnedQueueEntry[] = []): QueuedSessionMessage[] {
-  const consumed = consumedUserMessageTexts(session);
+/**
+ * What waits for the agent: pi's lanes, then the inbox, each message once.
+ *
+ * A lane entry the daemon handed is matched to its held-steer record by position, as everywhere
+ * else the lanes are read (`partitionLanes`, `settleConsumedSteers`), and is listed while its
+ * record is held. Only an entry no record accounts for - one an extension pushed - is checked
+ * against the transcript's text, the old guard against an entry pi never removed. Deciding a
+ * handed entry by text hid every repeat of an earlier message ("continue", "yes") for as long as
+ * it waited in the lane, which since B33 is the rest of the run: no row, no position, no recall
+ * (review of 8550ee13). Ids leave as their senders know them; a local hold id stays here.
+ */
+function queuedMessagesFromSession(session: PiAgentSession, inbox: readonly OwnedQueueEntry[], records: readonly HeldSteerRecord[]): QueuedSessionMessage[] {
+  const lanes = correlateQueuedPromptIds(runtimeLanes(session), records);
+  const consumed = lanes.some((entry) => entry.clientMessageId === undefined) ? consumedUserMessageTexts(session) : new Set<string>();
   const joined = [
-    ...session.getSteeringMessages().filter((text) => !consumed.has(text)).map((text) => ({ kind: "steer" as const, text })),
-    ...session.getFollowUpMessages().filter((text) => !consumed.has(text)).map((text) => ({ kind: "followUp" as const, text })),
-    ...inbox
-      .map((entry) => ({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }) })),
+    ...lanes.filter((entry) => entry.clientMessageId !== undefined || !consumed.has(entry.text)),
+    ...inbox.map((entry) => ({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }) })),
   ];
   const seen = new Set<string>();
-  return joined.filter((message) => {
-    const id = "clientMessageId" in message ? message.clientMessageId : undefined;
-    if (id === undefined) return true;
-    if (seen.has(id)) return false;
-    seen.add(id);
-    return true;
+  return joined.flatMap((message): QueuedSessionMessage[] => {
+    const key = message.clientMessageId;
+    if (key !== undefined && seen.has(key)) return [];
+    if (key !== undefined) seen.add(key);
+    const id = publishedId(key);
+    return [{ kind: message.kind, text: message.text, ...(id === undefined ? {} : { clientMessageId: id }) }];
   });
 }
 

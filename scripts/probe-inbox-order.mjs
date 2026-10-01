@@ -13,6 +13,10 @@
  * afterwards.
  * Leg 4: a message waiting when the daemon dies is handed after restart by the daemon itself -
  * the inbox file empties and the daemon logs the resume before this probe touches the session.
+ *
+ * Each busy run starts from an idle session. A session still answering something (a probe run just
+ * before, on the same seed session) would take the busy prompt as a queued steer, and every leg
+ * would then measure a different arrangement than it states.
  */
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -97,6 +101,8 @@ function occurrences(haystack, needle) {
 }
 
 async function startBusyRun(label) {
+  const idle = await until(`${label}: precondition: the session is idle with nothing queued, so the busy prompt starts its own run`, async () => { const snapshot = await status(); return snapshot.isStreaming !== true && (snapshot.queuedMessages ?? []).length === 0; }, 120_000);
+  if (idle === undefined) finish();
   const busy = await prompt("Run the bash tool with exactly: sleep 20. Then reply done.", `${MARK}-${label}`);
   record(`${label}: busy prompt accepted`, busy === 200, `status=${String(busy)}`);
   const running = await until(`${label}: agent is running a tool`, async () => (await status()).isStreaming === true, 30_000);

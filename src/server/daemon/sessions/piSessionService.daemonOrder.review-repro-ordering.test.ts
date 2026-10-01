@@ -2,7 +2,7 @@
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
 import { OwnedPromptQueue } from "./ownedPromptQueue.js";
 import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
@@ -36,6 +36,23 @@ async function service(sessionId: string, options: { isStreaming?: boolean; isCo
   });
   refs.set(sessionId, dir);
   return { hub, fake, svc, dir };
+}
+
+/** pi's steering lane, as the SDK keeps it: a steer is pushed, reported, and then preflighted. */
+function laneOf(fake: ReturnType<typeof fakeRuntime>): string[] {
+  const steering: string[] = [];
+  fake.session.getSteeringMessages = () => [...steering];
+  fake.session.prompt = (text: string, options: unknown) => {
+    fake.calls.prompt.push({ text, options });
+    if (Reflect.get(Object(options), "streamingBehavior") === "steer") {
+      steering.push(text);
+      fake.emit({ type: "queue_update", steering: [...steering], followUp: [] });
+    }
+    const preflightResult: unknown = Reflect.get(Object(options), "preflightResult");
+    if (typeof preflightResult === "function") Reflect.apply(preflightResult, undefined, [true]);
+    return Promise.resolve();
+  };
+  return steering;
 }
 
 describe("ordering lane repros", () => {
@@ -183,12 +200,26 @@ describe("ordering lane repros", () => {
     expect(steering).toEqual(["S2 older", "S3 old", "S4 newest"]);
     await svc.dispose();
   });
-  it("I6: a parked message whose text was sent once before is still reported as queued", async () => {
+  it("I6: a message whose text was sent once before is still reported as queued while it waits in pi's lane (B33)", async () => {
     const { fake, svc } = await service("repeat-text");
+    const steering = laneOf(fake);
     Reflect.set(fake.session, "messages", [...fake.session.messages, { role: "user", content: [{ type: "text", text: "continue" }] }]);
     await svc.prompt(ref("repeat-text"), "continue", undefined, undefined, { clientMessageId: "again-0002" });
+    await vi.waitFor(() => { expect(steering).toEqual(["continue"]); });
     const status = await svc.status(ref("repeat-text"));
     expect({ queued: status.queuedMessages.map((entry) => entry.clientMessageId), pending: status.pendingMessageCount }).toEqual({ queued: ["again-0002"], pending: 1 });
+    await svc.dispose();
+  });
+  it("I6: a sender without ids that repeats an earlier message while the first copy waits in pi's lane is still answered as a duplicate", async () => {
+    const { fake, svc } = await service("repeat-idless");
+    const steering = laneOf(fake);
+    Reflect.set(fake.session, "messages", [...fake.session.messages, { role: "user", content: [{ type: "text", text: "continue" }] }]);
+    await svc.prompt(ref("repeat-idless"), "continue", undefined, undefined, {});
+    await vi.waitFor(() => { expect(steering).toEqual(["continue"]); });
+    await svc.prompt(ref("repeat-idless"), "continue", undefined, undefined, {});
+    await settle(50);
+    const queued = (await svc.status(ref("repeat-idless"))).queuedMessages;
+    expect({ lane: steering, queued: queued.map((entry) => entry.text), ids: queued.map((entry) => entry.clientMessageId) }).toEqual({ lane: ["continue"], queued: ["continue"], ids: [undefined] });
     await svc.dispose();
   });
   it("I3: a parked prompt whose drain was refused and restored is not run a second time by an outbox retry of its id", async () => {

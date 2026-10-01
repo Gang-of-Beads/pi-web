@@ -1,33 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { SETTLE_GRACE_MS, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffTrigger, type RunState } from "./promptHandoff.js";
+import { SETTLE_GRACE_MS, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type RunState } from "./promptHandoff.js";
 
 const RUN_STATES: RunState[] = ["compacting", "handing", "running", "settling", "idle"];
-const TRIGGERS: HandoffTrigger[] = ["gap", "settled", "nudge"];
 
 describe("nextHandoff", () => {
   it("waits on an empty inbox in every state", () => {
-    for (const run of RUN_STATES) for (const trigger of TRIGGERS) {
-      expect(nextHandoff({ waiting: 0, run, trigger })).toEqual({ kind: "wait" });
-    }
+    expect(RUN_STATES.map((run) => nextHandoff({ waiting: 0, run }).kind)).toEqual(["wait", "wait", "wait", "wait", "wait"]);
   });
 
-  it("answers every run state and trigger with a waiting inbox", () => {
-    const table = Object.fromEntries(RUN_STATES.map((run) => [run, Object.fromEntries(TRIGGERS.map((trigger) => [trigger, nextHandoff({ waiting: 3, run, trigger }).kind]))]));
-    expect(table).toEqual({
-      compacting: { gap: "wait", settled: "wait", nudge: "wait" },
-      handing: { gap: "wait", settled: "wait", nudge: "wait" },
-      running: { gap: "steer", settled: "steer", nudge: "steer" },
-      settling: { gap: "wait", settled: "wait", nudge: "wait" },
-      idle: { gap: "direct", settled: "direct", nudge: "direct" },
+  it("answers every run state with a waiting inbox, and hands a running agent everything at once (B33)", () => {
+    expect(Object.fromEntries(RUN_STATES.map((run) => [run, nextHandoff({ waiting: 3, run })]))).toEqual({
+      compacting: { kind: "wait" },
+      handing: { kind: "wait" },
+      running: { kind: "steer", count: 3 },
+      settling: { kind: "wait" },
+      idle: { kind: "direct" },
     });
-  });
-
-  it("hands everything waiting to a running agent at once, not only the head and not only at a gap (B33)", () => {
-    expect(TRIGGERS.map((trigger) => nextHandoff({ waiting: 3, run: "running", trigger }))).toEqual([
-      { kind: "steer", count: 3 },
-      { kind: "steer", count: 3 },
-      { kind: "steer", count: 3 },
-    ]);
   });
 });
 

@@ -97,11 +97,14 @@ stateDiagram-v2
     2. hand at acceptance with the durable `handed` list. **Shipped.** A real-SDK test sends B, C and D during A's reply. Before: A; then B and C; then D alone. Now: A; then B, C and D in one request.
 
     **What the second changed:**
-    - `promptHandoff`: `running` answers `steer` for every trigger.
+    - `promptHandoff`: `running` answers `steer`. What woke the inbox no longer enters the decision; `HANDOFF_WAKE_EVENTS` only says when to decide again.
     - The inbox file keeps `{ entries, handed }`. `take` moves a message to `handed` in the same write. `settleHanded` is called from `settleSucceeded`, `refuse` and `withdraw`, the three ways a handed message ends. `restoreFront` moves a message back.
     - A message sent without an id gets a daemon `inboxId`, so its local hold id (`entryKey`) survives the file.
     - The restart rule (`returnHanded`) applies only to a handed list read from the file. A list this process kept itself belongs to a runtime whose settle paths are live. A real-SDK run caught the failure: a reopen of the live session returned the message being answered, and pi read it twice.
-    - The status list still composes the inbox and pi's lane. B6 makes the inbox its only source.
+    - The status list still composes the inbox and pi's lane. B6 makes the inbox its only source. Until then, a lane entry is matched to its held-steer record by position, as every other reader of the lanes does, and is listed while its record is held. Only an entry no record accounts for (one an extension pushed) is checked against the transcript's text. Deciding by text had hidden every repeat of an earlier message ("continue") for the rest of the run.
+    - **At most once for a command.** An extension command writes no user entry, so a restart could not tell whether it ran. It leaves the handed list before it is handed: a daemon that dies while its handler runs loses it rather than running it twice.
+    - **Ended before the restart.** The ledger is written synchronously and the inbox file after it. A handed message whose ledger row had already settled (withdrawn, refused or read) is dropped at the restart and keeps its outcome. Only one found on the transcript is settled read.
+    - Accepted: a message sent without an id that pi read in the moment before a crash runs again (before B33 it was lost), and so does one an input handler consumed.
 
     **What the tests learned:** many tests parked messages in the inbox by faking a running agent. A running agent now takes each message at once, so tests of what waits in the inbox park through a compaction instead: a running agent that is compacting, the state in which the inbox waits.
 - **Restart.** A `queued` message survives a daemon restart and stays visible as queued, with its original time. It is handed at the next injection point, so it never "reappears": it never left.

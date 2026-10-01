@@ -142,29 +142,30 @@ export class OwnedPromptQueue {
   }
 
   /**
-   * After a restart, once the session's runtime is bound: a handed message pi committed is done,
-   * and every other one goes back to the head of `waiting`, in the order it was handed. They were
-   * accepted before anything still waiting. `committed` says which pi wrote; only a message with
-   * its sender's id can be recognised on the transcript, so one without returns.
+   * After a restart, once the session's runtime is bound: a handed message that ended before it -
+   * pi wrote it, or it was withdrawn or refused - is done, and every other one goes back to the
+   * head of `waiting`, in the order it was handed. They were accepted before anything still
+   * waiting. `ended` says which; only a message with its sender's id can be recognised, so one
+   * without returns.
    *
    * Only a handed list read from the file at `open` is reconciled. One this process kept itself
    * belongs to a runtime whose settle paths are live, and handing it back on a rebind would run a
    * message that runtime is still reading - found over the real SDK, where a reopen of the live
    * session returned the message being answered and pi read it twice.
    */
-  async returnHanded(sessionId: string, committed: (entry: OwnedQueueEntry) => boolean): Promise<{ committed: OwnedQueueEntry[]; returned: OwnedQueueEntry[] }> {
+  async returnHanded(sessionId: string, ended: (entry: OwnedQueueEntry) => boolean): Promise<{ ended: OwnedQueueEntry[]; returned: OwnedQueueEntry[] }> {
     return this.serialize(sessionId, async () => {
-      if (!this.handedFromDisk.delete(sessionId)) return { committed: [], returned: [] };
+      if (!this.handedFromDisk.delete(sessionId)) return { ended: [], returned: [] };
       const handed = this.handedPerSession.get(sessionId) ?? [];
-      if (handed.length === 0) return { committed: [], returned: [] };
-      const done = handed.filter((entry) => committed(entry));
-      const returned = handed.filter((entry) => !committed(entry));
+      if (handed.length === 0) return { ended: [], returned: [] };
+      const done = handed.filter((entry) => ended(entry));
+      const returned = handed.filter((entry) => !ended(entry));
       const waitingKeys = new Set((this.perSession.get(sessionId) ?? []).map(entryKey));
       const next = [...returned.filter((entry) => !waitingKeys.has(entryKey(entry))), ...(this.perSession.get(sessionId) ?? [])];
       await this.persist(sessionId, next, []);
       this.perSession.set(sessionId, next);
       this.handedPerSession.set(sessionId, []);
-      return { committed: done, returned };
+      return { ended: done, returned };
     });
   }
 

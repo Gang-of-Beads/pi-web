@@ -27,13 +27,6 @@
  */
 export type RunState = "compacting" | "handing" | "running" | "settling" | "idle";
 
-/**
- * `gap`: a point where pi polls its steering queue (a tool finished, a turn ended, compaction
- * ended). `settled`: the run is over. `nudge`: anything else worth re-deciding on - an
- * acceptance, a handoff, a heartbeat, a restored queue.
- */
-export type HandoffTrigger = "gap" | "settled" | "nudge";
-
 export type Handoff =
   | { kind: "wait" }
   | { kind: "direct" }
@@ -42,7 +35,6 @@ export type Handoff =
 export interface HandoffFacts {
   waiting: number;
   run: RunState;
-  trigger: HandoffTrigger;
 }
 
 export function runStateOf(facts: { isCompacting: boolean; isStreaming: boolean; handing: boolean; settling: boolean }): RunState {
@@ -93,13 +85,12 @@ export function nextHandoff(facts: HandoffFacts): Handoff {
   return BY_RUN_STATE[facts.run](facts);
 }
 
-export const HANDOFF_TRIGGER_BY_EVENT: Readonly<Record<string, HandoffTrigger>> = {
-  tool_execution_end: "gap",
-  turn_end: "gap",
-  agent_end: "gap",
-  compaction_end: "gap",
-  agent_settled: "settled",
-};
+/**
+ * The runtime events after which the decision may have changed: the run state moved (a compaction
+ * ended, the run settled) or pi reached a point where it reads its lane. The decision itself reads
+ * only the run state; why the inbox was woken does not enter it (B33).
+ */
+export const HANDOFF_WAKE_EVENTS: ReadonlySet<string> = new Set(["tool_execution_end", "turn_end", "agent_end", "compaction_end", "agent_settled"]);
 
 /**
  * `transient`: the runtime is momentarily busy - the entry keeps its place at the head and is

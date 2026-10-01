@@ -80,11 +80,11 @@ describe("OwnedPromptQueue handed list", () => {
     const outcome = await restarted.returnHanded("s1", (entry) => entry.clientMessageId === "msg-0002");
 
     expect({
-      committed: outcome.committed.map((entry) => entry.text),
+      ended: outcome.ended.map((entry) => entry.text),
       returned: outcome.returned.map((entry) => entry.text),
       waiting: restarted.entries("s1").map((entry) => entry.text),
       file: await fileLists(dataDir),
-    }).toEqual({ committed: ["B"], returned: ["A", "C"], waiting: ["A", "C", "D"], file: { waiting: ["A", "C", "D"], handed: [] } });
+    }).toEqual({ ended: ["B"], returned: ["A", "C"], waiting: ["A", "C", "D"], file: { waiting: ["A", "C", "D"], handed: [] } });
   });
 
   it("leaves a handed list this process kept alone: its runtime is still reading it", async () => {

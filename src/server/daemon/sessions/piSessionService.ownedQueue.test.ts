@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
+import { createDurableAcceptanceLedger } from "./operationLedger.js";
 import { OwnedPromptQueue, dataDirInboxLocation, inboxDirectory } from "./ownedPromptQueue.js";
 import { CapturingSessionEventHub, fakeRuntime, handedAs, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
 
@@ -210,8 +211,8 @@ describe("the daemon owns the queue", () => {
 
   it("hands a message pi held when the daemon died once more, and once (B33)", async () => {
     const first = await busyService("own-crash-held", { isCompacting: false });
-    await first.service.prompt(sessionRef("own-crash-held"), "in pi's lane", "followUp", undefined, { clientMessageId: "c-held" });
-    await vi.waitFor(async () => { expect(await inboxLists(first.dataDir, "own-crash-held")).toEqual({ waiting: [], handed: ["c-held"] }); });
+    await first.service.prompt(sessionRef("own-crash-held"), "in pi's lane", "followUp", undefined, { clientMessageId: "crash-held-0001" });
+    await vi.waitFor(async () => { expect(await inboxLists(first.dataDir, "own-crash-held")).toEqual({ waiting: [], handed: ["crash-held-0001"] }); });
 
     const { fake, service } = await busyService("own-crash-held", { dataDir: first.dataDir, isStreaming: false });
     await service.status(sessionRef("own-crash-held"));
@@ -233,6 +234,44 @@ describe("the daemon owns the queue", () => {
 
     expect({ prompted: fake.calls.prompt.map((call) => call.text), lists: await inboxLists(first.dataDir, "own-crash-read"), outcome: service.operationOutcomes("own-crash-read", ["crash-read-0001"]) })
       .toEqual({ prompted: [], lists: { waiting: [], handed: [] }, outcome: { "crash-read-0001": "succeeded" } });
+    await service.dispose();
+  });
+
+  it("drops a message withdrawn or refused just before the daemon died, though the inbox write never landed, and keeps its outcome (B33)", async () => {
+    const first = await busyService("own-crash-recalled", { isCompacting: false });
+    await first.service.prompt(sessionRef("own-crash-recalled"), "taken back", "followUp", undefined, { clientMessageId: "crash-back-0001" });
+    await first.service.prompt(sessionRef("own-crash-recalled"), "refused", "followUp", undefined, { clientMessageId: "crash-back-0002" });
+    await vi.waitFor(async () => { expect(await inboxLists(first.dataDir, "own-crash-recalled")).toEqual({ waiting: [], handed: ["crash-back-0001", "crash-back-0002"] }); });
+    const ledger = createDurableAcceptanceLedger(first.dataDir);
+    ledger.settle("own-crash-recalled", "crash-back-0001", "withdrawn");
+    ledger.settle("own-crash-recalled", "crash-back-0002", "failed");
+
+    const { fake, service } = await busyService("own-crash-recalled", { dataDir: first.dataDir, isStreaming: false });
+    await service.status(sessionRef("own-crash-recalled"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect({ prompted: fake.calls.prompt.map((call) => call.text), lists: await inboxLists(first.dataDir, "own-crash-recalled"), outcome: service.operationOutcomes("own-crash-recalled", ["crash-back-0001", "crash-back-0002"]) })
+      .toEqual({ prompted: [], lists: { waiting: [], handed: [] }, outcome: { "crash-back-0001": "withdrawn", "crash-back-0002": "failed" } });
+    await service.dispose();
+  });
+
+  it("runs an extension command at most once: one handed while its handler ran is not run again after a crash", async () => {
+    const first = await busyService("own-crash-command", { isCompacting: false });
+    first.fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "kickoff" }];
+    first.fake.session.prompt = (text: string, options: unknown) => {
+      first.fake.calls.prompt.push({ text, options });
+      return new Promise<void>(() => undefined);
+    };
+    await first.service.prompt(sessionRef("own-crash-command"), "/kickoff a long job", undefined, undefined, { clientMessageId: "crash-cmd-0001" });
+    await vi.waitFor(() => { expect(first.fake.calls.prompt.map((call) => call.text)).toEqual(["/kickoff a long job"]); });
+    await vi.waitFor(async () => { expect(await inboxLists(first.dataDir, "own-crash-command")).toEqual({ waiting: [], handed: [] }); });
+
+    const { fake, service } = await busyService("own-crash-command", { dataDir: first.dataDir, isStreaming: false });
+    fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "kickoff" }];
+    await service.status(sessionRef("own-crash-command"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(fake.calls.prompt.map((call) => call.text)).toEqual([]);
     await service.dispose();
   });
 
