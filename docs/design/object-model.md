@@ -614,7 +614,7 @@ What a reader on the tailnet waits for is serial depth, not request count: the d
    - **What is left:** the 15 entries and about 13 `/api` reads, all issued around 300–400 ms, queue on HTTP/1.1's six connections to one host. The plugins finish around 930 ms (the updates plugin's activation read). The workspaces → sessions → row chain then costs about three more round trips. Slices 2 and 3 address both.
    - Guard: `browserEntryResolvable.test.ts` fails when a shipped entry statically imports anything.
 2. **The place before the plugins** (P6 slice b). **Dropped** (owner, 2026-10-01: everything at once). A session's text does not show before the plugins that draw parts of it, so the route restore keeps waiting for them. Under HTTP/2 the plugins cost about one round trip after the manifest, which the projects read shares.
-3. **A remembered folder seeds the open** (P6 slice c, browser only; replaces "`cwd` in links").
+3. **A remembered folder seeds the open** (P6 slice c, browser only; replaces "`cwd` in links"). **Dropped** (owner, 2026-10-01, ask `a4535a88`: wait). A reload selects nothing until the machine has confirmed the workspace and the session, as today; the about 0.4 s at a 100 ms round trip is the accepted price.
    - The page remembers each session's folder, keyed by machine and session.
    - A deep link or reload asks for the transcript tail at once, in parallel with the route chain.
    - The chain's typed place (`found | outside | unknown`) wins over the seed when they disagree. An early read for a session that turns out gone shows nothing until the chain says gone.
