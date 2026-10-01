@@ -38,6 +38,12 @@ export interface GapRepairOptions {
   request: (sinceSeq: number, epoch: string | undefined) => Promise<GapReplayResult>;
   /** Give up on replay and rebuild from the authoritative read, once. */
   resync: () => void;
+  /**
+   * Whether the transcript snapshot reflects this frame. Only transcript frames are: a dialog,
+   * ask or inbox frame at or below the snapshot's seq still applies (its own revision scope drops
+   * an old one), and its seq orders it and moves the frontier. Absent, every frame is.
+   */
+  reflectedBySnapshot?: (event: SessionUiEvent) => boolean;
 }
 
 /** Where the stream stands: the last seq applied or reflected, and the epoch it belongs to. */
@@ -56,6 +62,8 @@ export class SessionGapRepair {
   private reflectedThrough: number | undefined;
   /** The highest seq reflected or applied in the current space. */
   private frontier: number | undefined;
+  /** The highest seq applied here in the current space; a revisioned frame below the snapshot can be applied without moving the frontier. */
+  private highestApplied: number | undefined;
   private epoch: string | undefined;
   /** A seed during a repair moved the start back: the repair in flight asked from too late. */
   private repairAgainSince: number | undefined;
@@ -80,6 +88,7 @@ export class SessionGapRepair {
   seed(watermark: StreamFrontier): void {
     const replacedBeyond = this.epoch === watermark.epoch && this.frontier !== undefined && this.frontier > watermark.seq;
     this.appliedSeqs.clear();
+    this.highestApplied = undefined;
     this.reflectedThrough = watermark.seq;
     this.frontier = watermark.seq;
     this.epoch = watermark.epoch;
@@ -107,7 +116,7 @@ export class SessionGapRepair {
       this.options.resync();
       return;
     }
-    if (this.alreadyApplied(seq)) return;
+    if (this.alreadyApplied(event, seq)) return;
     const frontier = this.frontier;
     if (frontier !== undefined && seq > frontier + 1) {
       this.buffer.push(event);
@@ -173,7 +182,7 @@ export class SessionGapRepair {
     }
     for (const seq of [...bySeq.keys()].sort((left, right) => left - right)) {
       const frame = bySeq.get(seq);
-      if (frame !== undefined && !this.alreadyApplied(seq)) this.applyFrame(frame, seq);
+      if (frame !== undefined && !this.alreadyApplied(frame, seq)) this.applyFrame(frame, seq);
     }
     for (const frame of unsequenced) this.options.apply(frame);
   }
@@ -186,23 +195,27 @@ export class SessionGapRepair {
   private startsNewSpace(event: SessionUiEvent, seq: number): boolean {
     const epoch = frameEpoch(event);
     if (epoch !== undefined) return this.epoch !== undefined && epoch !== this.epoch;
-    return this.appliedSeqs.size > 0 && this.frontier !== undefined && seq < this.frontier;
+    return this.highestApplied !== undefined && seq < this.highestApplied;
   }
 
   private enterSpace(epoch: string | undefined): void {
     this.appliedSeqs.clear();
+    this.highestApplied = undefined;
     this.reflectedThrough = undefined;
     this.frontier = undefined;
     this.epoch = epoch;
   }
 
-  /** Reflected by the snapshot, or applied since. */
-  private alreadyApplied(seq: number): boolean {
-    return this.appliedSeqs.has(seq) || (this.reflectedThrough !== undefined && seq <= this.reflectedThrough);
+  /** Applied since the seed, or a frame the snapshot reflects at or below its seq. */
+  private alreadyApplied(event: SessionUiEvent, seq: number): boolean {
+    if (this.appliedSeqs.has(seq)) return true;
+    const reflected = this.options.reflectedBySnapshot?.(event) ?? true;
+    return reflected && this.reflectedThrough !== undefined && seq <= this.reflectedThrough;
   }
 
   private applyFrame(event: SessionUiEvent, seq: number): void {
     this.appliedSeqs.add(seq);
+    this.highestApplied = this.highestApplied === undefined ? seq : Math.max(this.highestApplied, seq);
     this.frontier = this.frontier === undefined ? seq : Math.max(this.frontier, seq);
     this.epoch ??= frameEpoch(event);
     this.options.apply(event);

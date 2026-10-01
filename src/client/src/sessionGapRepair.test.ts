@@ -152,6 +152,44 @@ describe("SessionGapRepair seeded from a snapshot", () => {
     expect({ applied, requests }).toEqual({ applied: ["next@6"], requests: [] });
   });
 
+  it("applies a dialog frame the transcript snapshot does not reflect, and counts its seq so the next frame is no gap (P3 slice c)", async () => {
+    const applied: string[] = [];
+    const requests: number[] = [];
+    const repair = new SessionGapRepair({
+      apply: (event) => { applied.push(("text" in event ? event.text : event.type) + seqSuffix(event)); },
+      request: (sinceSeq) => { requests.push(sinceSeq); return Promise.resolve({ ok: true, frames: [] }); },
+      resync: vi.fn(),
+      reflectedBySnapshot: (event) => event.type !== "dialog.opened",
+    });
+    repair.seed({ seq: 5, epoch: "daemon-a.1" });
+    const dialogAt = (seq: number): SessionUiEvent => ({ type: "dialog.opened", dialog: { dialogId: "d", kind: "confirm", title: "t", askedAt: "now", runScoped: false }, revision: 1, seq, epoch: "daemon-a.1" });
+
+    repair.onLiveFrame(dialogAt(5), 5);
+    repair.onLiveFrame(dialogAt(6), 6);
+    repair.onLiveFrame(inEpoch("after", 7, "daemon-a.1"), 7);
+    await settle();
+
+    expect({ applied, requests }).toEqual({ applied: ["dialog.opened@5", "dialog.opened@6", "after@7"], requests: [] });
+  });
+
+  it("does not take a transcript frame the snapshot reflects for a new space after a revisioned frame below the snapshot applied, on a daemon without epochs", async () => {
+    const applied: string[] = [];
+    const resync = vi.fn();
+    const repair = new SessionGapRepair({
+      apply: (event) => { applied.push(("text" in event ? event.text : event.type) + seqSuffix(event)); },
+      request: () => Promise.resolve({ ok: true, frames: [] }),
+      resync,
+      reflectedBySnapshot: (event) => event.type !== "dialog.opened",
+    });
+    repair.seed({ seq: 60 });
+    repair.onLiveFrame({ type: "dialog.opened", dialog: { dialogId: "d", kind: "confirm", title: "t", askedAt: "now", runScoped: false }, revision: 1, seq: 57 }, 57);
+    repair.onLiveFrame(frame("reflected", 59), 59);
+    repair.onLiveFrame(frame("next", 61), 61);
+    await settle();
+
+    expect({ applied, resyncs: resync.mock.calls.length }).toEqual({ applied: ["dialog.opened@57", "next@61"], resyncs: 0 });
+  });
+
   it("sees a jump past the snapshot itself and fetches the missed range in the snapshot's epoch", async () => {
     const { repair, applied, requests } = seeded([inEpoch("missed", 6, "daemon-a.1")]);
     repair.onLiveFrame(inEpoch("revealing", 7, "daemon-a.1"), 7);

@@ -278,6 +278,36 @@ stateDiagram-v2
   - **Efficiency:** heartbeats and head reads carry heads only, tens of bytes. Status frames carry what changed, not the whole status. Nothing polls on a timer while events are flowing.
 - **An aggregate list** (All projects) keeps one state per source. A source that has not answered shows as reconnecting; it never disappears into an empty list.
 
+### An open reads the session once (P3 slice c)
+
+Measured on 8505, a cold open of a session whose extension raises a startup dialog: 5 status reads, 5 stream syncs, 1 tail and 4 refreshes of the open session. A warm open (runtime already up) made 1 status and 1 tail. Two producers did it:
+
+- **The dialog surface resynced while its first full read was on its way.**
+  - The selection's status read opens the runtime, and that takes seconds.
+  - The startup dialog the runtime raises reaches the socket before the read answers.
+  - The surface was not fresh yet, so it asked for a full read, and the refresh's trailing request doubled it.
+- **Dialog, ask and inbox frames lost their seq in validation.**
+  - Their dedicated validators rebuild the event, so the gap repair never saw their seq.
+  - The next status frame then looked like a gap, and the repair fetched the range again.
+
+The rules now:
+
+```mermaid
+stateDiagram-v2
+    [*] --> awaiting: selected (its full read is on its way)
+    awaiting --> awaiting: a revisioned frame (remember its revision; apply nothing)
+    awaiting --> fresh: the full read answers at or past every remembered revision
+    awaiting --> resyncing: the full read answers below a remembered revision, or fails with one remembered
+    fresh --> fresh: frame at revision + 1 (apply), or at or below it (ignore)
+    fresh --> resyncing: a skipped revision, a resync flag, another daemon
+    resyncing --> fresh: the repair read answers
+```
+
+- **A surface that is not fresh waits for the read on its way.** Its status read reflects every revision up to the one it reports. Only a frame past that revision proves the read stale. A failed read with a frame remembered resyncs, and a frame after a failed read resyncs at once, since no read is on its way. Any read that answers below a frame that waited for it, the repair read included, asks once more, so a lost frame is never dropped for good. A failed or stale status read, or one whose transcript read beside it failed, still settles the surface: it applies when it answered fresh, and otherwise leaves no read on its way.
+- **Every frame of the session's seq space keeps its seq**, the revisioned ones included, so the gap repair sees every frame the socket delivered. A gap is a seq the socket never delivered, nothing else.
+- **Only transcript frames are reflected by the transcript snapshot.** A dialog, ask or inbox frame at or below the snapshot's seq still applies, and its own revision scope drops it when it is old. The gap repair uses its seq for order and for the frontier, never to skip it.
+- **The budget** (probe `probe-open-reads.mjs`): a cold open with a startup dialog makes 1 tail, 1 status and no stream sync when the stream has no real gap. A warm open does the same.
+
 ### The subagents run list: read while watched, poll only while the session works (P3 slice b)
 
 Measured on 8505 before: 40-47 requests a minute with the git or files panel open on an idle session. The run list was read every 3 s for as long as the tab's badge followed a session, and each answer re-rendered the app, which re-read the pins. Until the run list has a head of its own (P4), it keeps a poll, but only while it can change and only while someone looks.

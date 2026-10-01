@@ -16,13 +16,15 @@
  * actionable.
  */
 
-export type RevisionVerdict = "apply" | "ignore" | "resync";
+export type RevisionVerdict = "apply" | "ignore" | "resync" | "await";
 
 export interface RevisionScopeSnapshot {
   /** Last revision applied to the surface, or 0 before any. */
   readonly revision: number;
   /** Whether a full read has populated the surface for the current selection. */
   readonly fresh: boolean;
+  /** Whether a full read is on its way; absent means it is. */
+  readonly reading?: boolean;
 }
 
 export function revisionVerdict(
@@ -31,7 +33,7 @@ export function revisionVerdict(
 ): RevisionVerdict {
   if (incoming.revision === undefined) return "apply";
   if (incoming.revision <= current.revision) return "ignore";
-  if (!current.fresh) return "resync";
+  if (!current.fresh) return current.reading === false ? "resync" : "await";
   if (incoming.resync === true) return "resync";
   if (incoming.revision !== current.revision + 1) return "resync";
   return "apply";
@@ -53,6 +55,14 @@ export class RevisionScope {
   private daemonId: string | undefined;
   private resyncScheduled = false;
   private resyncRunning = false;
+  /**
+   * The highest revision a frame carried while the surface was not fresh. Its full read is on
+   * its way and answers for every revision up to the one it reports (state-diagram D5, "An open
+   * reads the session once"); only a frame past that proves the read stale.
+   */
+  private awaitedRevision: number | undefined;
+  /** A scope starts with its selection's full read on its way; a failed read leaves none until a resync starts one. */
+  private reading = true;
 
   constructor(private readonly options: RevisionScopeOptions) {}
 
@@ -74,20 +84,27 @@ export class RevisionScope {
       this.daemonId = daemonInstanceId;
       this.appliedRevision = revision;
       this.fresh = true;
+      this.awaitedRevision = undefined;
       return;
     }
     if (daemonInstanceId !== undefined) this.daemonId = daemonInstanceId;
     this.appliedRevision = Math.max(this.appliedRevision, revision);
     this.fresh = true;
+    this.settleAwaited();
   }
 
-  /**
-   * The surface must not apply frames blind: a read failed, or the selection
-   * moved and the retained state belongs to another key. Frames now resync
-   * instead of applying, until the next full read.
-   */
-  markUnfresh(): void {
-    this.fresh = false;
+  /** The full read failed. A frame that waited for it is now a gap, and a frame that comes later has no read to wait for: both repair from another read. */
+  readFailed(): void {
+    this.reading = false;
+    if (this.awaitedRevision === undefined) return;
+    this.awaitedRevision = undefined;
+    this.scheduleResync();
+  }
+
+  private settleAwaited(): void {
+    const awaited = this.awaitedRevision;
+    this.awaitedRevision = undefined;
+    if (awaited !== undefined && awaited > this.appliedRevision) this.scheduleResync();
   }
 
   /**
@@ -106,12 +123,13 @@ export class RevisionScope {
         return undefined;
       }
     }
-    const verdict = revisionVerdict({ revision: this.appliedRevision, fresh: this.fresh }, incoming);
+    const verdict = revisionVerdict({ revision: this.appliedRevision, fresh: this.fresh, reading: this.reading }, incoming);
     if (verdict === "apply") {
       if (incoming.revision !== undefined) this.appliedRevision = Math.max(this.appliedRevision, incoming.revision);
       return applyFrame();
     }
     if (verdict === "resync") this.scheduleResync();
+    if (verdict === "await") this.awaitedRevision = Math.max(this.awaitedRevision ?? 0, incoming.revision ?? 0);
     return undefined;
   }
 
@@ -123,6 +141,7 @@ export class RevisionScope {
   private scheduleResync(): void {
     if (this.resyncScheduled || this.resyncRunning) return;
     this.resyncScheduled = true;
+    this.reading = true;
     void Promise.resolve().then(() => {
       this.resyncScheduled = false;
       // In flight means until the repair settles: a gap observed while the

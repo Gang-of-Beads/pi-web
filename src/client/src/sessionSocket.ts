@@ -171,9 +171,6 @@ export class SessionSocket {
     // nothing and is dropped below.
     if (this.socket === socket) this.lastFrameAt = Date.now();
     const raw = await parseSocketEvent(data);
-    // Gap accounting reads the wire stamp, not the parsed event: the dedicated
-    // validators (inbox, ask, dialog) rebuild the event and drop the seq, but a
-    // frame lost there is lost all the same.
     this.seqMonitor.observe(raw);
     const event = parseSessionSocketEvent(raw);
     if (this.socket !== socket) return;
@@ -315,16 +312,8 @@ export function revisionedFrameType(event: unknown): string | undefined {
 
 export function parseSessionSocketEvent(event: unknown): SessionUiEvent | undefined {
   const type = eventType(event);
-  // Inbox, ask, and dialog frames have dedicated validators (they drive the
-  // notification inbox and the interactive cards answered on the model's or an
-  // extension's behalf). Every other accepted frame is session stream
-  // vocabulary, validated field by field.
-  if (type === "notifications.inbox") return safelyParseValidatedEvent(() => parseSessionNotificationInboxEvent(event));
-  if (type === "ask.opened") return safelyParseValidatedEvent(() => parseSessionAskOpenedEvent(event));
-  if (type === "ask.closed") return safelyParseValidatedEvent(() => parseSessionAskClosedEvent(event));
-  if (type === "dialog.opened") return safelyParseValidatedEvent(() => parseSessionDialogOpenedEvent(event));
-  if (type === "dialog.closed") return safelyParseValidatedEvent(() => parseSessionDialogClosedEvent(event));
-  const parsed = safelyParseValidatedEvent(() => parseSessionStreamEvent(event));
+  const validate = DEDICATED_VALIDATORS.get(type) ?? parseSessionStreamEvent;
+  const parsed = safelyParseValidatedEvent(() => validate(event));
   return parsed === undefined ? undefined : withTransportSeq(parsed, event);
 }
 
@@ -334,6 +323,21 @@ export function parseRealtimeSocketEvent(event: unknown): BrowserRealtimeEvent |
   if (type === "session.startup") return safelyParseValidatedEvent(() => parseSessionStartupProgressEvent(event));
   return safelyParseValidatedEvent(() => parseRealtimeStreamEvent(event));
 }
+
+/**
+ * Inbox, ask and dialog frames have dedicated validators: they drive the notification inbox and
+ * the interactive cards answered on the model's or an extension's behalf. Every other accepted
+ * frame is session stream vocabulary, validated field by field. Every one of them keeps its
+ * transport seq: the gap repair counts the frames the socket delivered, and a dialog frame whose
+ * seq was dropped in validation made the next frame look like a gap (P3 slice c).
+ */
+const DEDICATED_VALIDATORS = new Map<string, (event: unknown) => SessionUiEvent>([
+  ["notifications.inbox", parseSessionNotificationInboxEvent],
+  ["ask.opened", parseSessionAskOpenedEvent],
+  ["ask.closed", parseSessionAskClosedEvent],
+  ["dialog.opened", parseSessionDialogOpenedEvent],
+  ["dialog.closed", parseSessionDialogClosedEvent],
+]);
 
 // The hub stamps every per-session frame with a monotonic seq that the
 // join-time exactly-once filter compares against the stream snapshot watermark.

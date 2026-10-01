@@ -144,6 +144,19 @@ describe("connection liveness", () => {
 describe("notification socket guards", () => {
   it("accepts validated selected-session events and drops global notification summaries", () => {
     expect(parseSessionSocketEvent(inboxEvent())).toMatchObject({ type: "notifications.inbox", delta: { kind: "added" } });
+  });
+
+  it("keeps the transport seq and epoch on inbox, ask and dialog frames, so the gap repair counts every frame delivered (P3 slice c)", () => {
+    const stamped = { seq: 49, epoch: "daemon-a.1" };
+    const frames = [
+      { ...inboxEvent(), ...stamped },
+      { type: "dialog.opened", dialog: { dialogId: "d1", kind: "confirm", title: "Sure?", message: "Sure?", askedAt: "2026-10-01T00:00:00.000Z", runScoped: false }, revision: 13, ...stamped },
+      { type: "dialog.closed", dialogId: "d1", reason: "cancelled", revision: 14, ...stamped },
+    ];
+    expect(frames.map((frame) => {
+      const event = parseSessionSocketEvent(frame);
+      return event === undefined ? "unparsed" : `${event.type}@${String(Reflect.get(event, "seq"))}/${String(Reflect.get(event, "epoch"))}`;
+    })).toEqual(["notifications.inbox@49/daemon-a.1", "dialog.opened@49/daemon-a.1", "dialog.closed@49/daemon-a.1"]);
 
     expect(parseRealtimeSocketEvent({
       type: "notifications.summary",

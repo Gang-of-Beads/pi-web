@@ -29,7 +29,7 @@ import { statusReadVerdict, type StatusPosition } from "../statusOrder";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
-import { SessionSocket, parseSessionSocketEvent, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
+import { SessionSocket, parseSessionSocketEvent, revisionedFrameType, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { transcriptLoadingAfter } from "../transcriptLoadingOwnership";
 import { classifySubmission, deliveryAfterUnanswered, handleOutcome, transportFactsFor } from "../messageLifecycle";
@@ -477,21 +477,6 @@ export class SessionController {
     // The seeded list is the cache's best guess; the workspace's own listing
     // replaces it. Race-guarded inside against a newer selection.
     if (workspaceMoved) void this.refreshCurrentWorkspaceSessions(machineId);
-    // Read this session's status once. The connection-wide catalog is fetched at
-    // boot and never again, so a session created after that has no entry - and an
-    // extension dialog opened before this browser connected lives only in the
-    // status. Selecting such a session showed no dialog at all while the daemon
-    // held one open.
-    if (this.getState().sessionStatuses[session.id] === undefined && !isClientPendingStartSessionInfo(session)) {
-      const framesAtRequest = this.statusFramesApplied;
-      void this.api.status(session, machineId)
-        .then((status) => { if (this.isCurrentSessionSelection(session.id, machineId, seq) && !this.statusReadIsStale(status, framesAtRequest)) this.applyStatusRead(status); })
-        .catch((error: unknown) => {
-          if (!this.isCurrentSessionSelection(session.id, machineId, seq)) return;
-          if (isSessionNotFoundError(error)) this.failedFor(session, error);
-          else this.setState({ statusReadFailed: describeError(error) });
-        });
-    }
     let buffered: SessionUiEvent[] | undefined;
     try {
       if (session.archived === true) {
@@ -513,6 +498,7 @@ export class SessionController {
       // only: applied, it put session A's frames into session B's view.
       const repair: SessionGapRepair = new SessionGapRepair({
         apply: (event) => { if (this.gapRepair === repair) this.applyEvent(event); },
+        reflectedBySnapshot: (event) => revisionedFrameType(event) === undefined,
         request: async (sinceSeq, epoch) => {
           const sync = await this.api.streamSync(session, sinceSeq, machineId, epoch ?? this.streamWatermark?.epoch);
           if (sync.kind !== "replay") return { ok: false };
@@ -1838,6 +1824,7 @@ export class SessionController {
         newerPendingCount: 0,
       });
       if (statusIsFresh) this.applyStatusRead(status);
+      else this.dialogScope.readFailed();
       return true;
     } catch {
       return false;
@@ -1853,7 +1840,14 @@ export class SessionController {
       const framesAtRequest = this.statusFramesApplied;
       const tailRead = this.readTranscriptTail(target);
       const statusRead = settled(this.api.status(target.session, target.machineId));
-      const { page, stream: streamSnapshot } = await tailRead;
+      let tail: SessionTranscriptTail;
+      try {
+        tail = await tailRead;
+      } catch (error) {
+        void statusRead.then((status) => { this.settleDialogSurface(target, status, framesAtRequest); });
+        throw error;
+      }
+      const { page, stream: streamSnapshot } = tail;
       if (!this.isCurrentRefreshTarget(target)) return;
       // Seed the in-flight partial assistant message on top of committed history
       // and record the snapshot's sequence as the watermark. Buffered/live events
@@ -1878,17 +1872,40 @@ export class SessionController {
         activity: this.getState().sessionActivities[target.session.id],
         isLoadingTranscript: transcriptLoadingAfter({ event: "readSettled", readSeq: target.selectionSeq, currentSeq: this.selectionSeq }),
       });
-      const status = await statusRead;
-      if (!this.isCurrentRefreshTarget(target)) return;
-      if (status.kind === "failed") {
-        if (isSessionNotFoundError(status.error)) this.failedFor(target.session, status.error);
-        else this.setState({ statusReadFailed: describeError(status.error), ...errorNoticePatch(status.error) });
-        return;
-      }
-      if (this.statusReadIsStale(status.value, framesAtRequest)) return;
+      this.settleStatusRead(target, await statusRead, framesAtRequest);
+    });
+  }
+
+  /**
+   * Settle the selected session's status read and report its failure (state-diagram D5, "An open
+   * reads the session once").
+   */
+  private settleStatusRead(target: SelectedSessionRefreshTarget, status: Settled<SessionStatus>, framesAtRequest: number): void {
+    if (!this.isCurrentRefreshTarget(target)) return;
+    if (status.kind === "failed" && isSessionNotFoundError(status.error)) {
+      this.failedFor(target.session, status.error);
+      return;
+    }
+    if (status.kind === "failed") this.setState({ statusReadFailed: describeError(status.error), ...errorNoticePatch(status.error) });
+    this.settleDialogSurface(target, status, framesAtRequest);
+  }
+
+  /**
+   * Settle the dialog surface's full read with a status read, without reporting anything. Every
+   * outcome settles it: a fresh read marks it fresh; a failed or stale read leaves it no read on
+   * its way, so a frame that waited for it, or comes after it, asks for another. When the
+   * transcript read beside it failed, that failure is the one report: the status read still
+   * shows its dialogs, and never runs the open-session seam inside the refresh, where a
+   * relocated selection of the same session would join the failing refresh.
+   */
+  private settleDialogSurface(target: SelectedSessionRefreshTarget, status: Settled<SessionStatus>, framesAtRequest: number): void {
+    if (!this.isCurrentRefreshTarget(target)) return;
+    if (status.kind === "answered" && !this.statusReadIsStale(status.value, framesAtRequest)) {
       this.setState({ status: status.value, statusReadFailed: undefined });
       this.applyStatusRead(status.value);
-    });
+      return;
+    }
+    this.dialogScope.readFailed();
   }
 
   /**
@@ -3055,14 +3072,17 @@ export class SessionController {
     this.cancelScheduledFlush();
   }
 
-  // Watermark filter for join-time exactly-once application. An event is below
-  // the watermark when it belongs to the selected session's seeded snapshot
-  // (`seq <= watermark.seq`); such events are already reflected in the committed
-  // history + seeded partial and must be dropped. Events with no `seq` (which
-  // should not occur on the per-session socket) are never dropped. A seq only
-  // compares within its epoch: after a daemon restart the new numbering starts
-  // at 1, and comparing it with the old snapshot's seq dropped live frames.
+  /**
+   * Watermark filter for join-time exactly-once application. An event is below the watermark
+   * when it belongs to the selected session's seeded snapshot (`seq <= watermark.seq`); such
+   * events are already reflected in the committed history and seeded partial and must be
+   * dropped. Events with no `seq` are never dropped. A seq only compares within its epoch:
+   * after a daemon restart the new numbering starts at 1, and comparing it with the old
+   * snapshot's seq dropped live frames. Revisioned frames (dialog, ask, inbox) are not in the
+   * transcript snapshot: the status read reflects them, and their revision scope drops old ones.
+   */
   private isStreamEventBelowWatermark(event: SessionUiEvent): boolean {
+    if (revisionedFrameType(event) !== undefined) return false;
     const watermark = this.streamWatermark;
     if (watermark === undefined || watermark.sessionId !== this.getState().selectedSession?.id) return false;
     if (event.epoch !== undefined && watermark.epoch !== undefined && event.epoch !== watermark.epoch) return false;

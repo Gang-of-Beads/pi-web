@@ -97,9 +97,9 @@ describe("SessionController session tree navigation", () => {
       },
       status: () => {
         statusCalls += 1;
-        // 2 is the selection's own read (it now reads the status once when the
-        // catalog has no entry); the controlled one is the refresh's.
-        if (statusCalls === 3) return staleStatus.promise;
+        // The controlled read is the refresh's; the selection reads the status
+        // only through its refresh (P3 slice c).
+        if (statusCalls === 2) return staleStatus.promise;
         return Promise.resolve({ ...status(oldSession.id), messageCount: statusCalls === 1 ? 1 : 2 });
       },
       streamSnapshot: () => Promise.resolve({ seq: 0, partial: null }),
@@ -142,7 +142,7 @@ describe("SessionController session tree navigation", () => {
       machineId: "local",
     }]);
     expect(messageCalls).toBe(3);
-    expect(statusCalls).toBe(4);
+    expect(statusCalls).toBe(3);
     expect(removedKeys).toEqual([cacheKey]);
     expect(cachedPages.get(cacheKey)).toEqual(freshPage);
     expect(state.messages).toEqual([{ role: "assistant", parts: [{ type: "text", text: "fresh branch" }] }]);

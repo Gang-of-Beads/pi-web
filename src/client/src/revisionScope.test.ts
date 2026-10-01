@@ -18,8 +18,12 @@ describe("revisionVerdict", () => {
     expect(revisionVerdict({ revision: 5, fresh: true }, { revision: 7 })).toBe("resync");
   });
 
-  it("resyncs when the surface has not been read yet", () => {
-    expect(revisionVerdict({ revision: 0, fresh: false }, { revision: 1 })).toBe("resync");
+  it("waits for the full read on its way when the surface has not been read yet, and resyncs when none is", () => {
+    expect([
+      revisionVerdict({ revision: 0, fresh: false }, { revision: 1 }),
+      revisionVerdict({ revision: 0, fresh: false, reading: true }, { revision: 1 }),
+      revisionVerdict({ revision: 0, fresh: false, reading: false }, { revision: 1 }),
+    ]).toEqual(["await", "await", "resync"]);
   });
 
   it("resyncs when the server declares the delta unappliable", () => {
@@ -129,10 +133,34 @@ describe("RevisionScope", () => {
     expect(resync).toHaveBeenCalledTimes(2);
   });
 
-  it("stops applying after a failed read until the surface is fresh again", () => {
-    const scope = new RevisionScope({ resync: () => undefined });
-    scope.markFresh(5);
-    scope.markUnfresh();
-    expect(scope.observe({ revision: 6 }, () => "applied")).toBeUndefined();
+  it("lets the full read on its way answer for a frame that came before it, and resyncs only when the read is older than the frame", async () => {
+    const resyncs: string[] = [];
+    const covered = new RevisionScope({ resync: () => { resyncs.push("covered"); } });
+    expect(covered.observe({ revision: 13 }, () => "applied")).toBeUndefined();
+    covered.markFresh(13);
+    const older = new RevisionScope({ resync: () => { resyncs.push("older"); } });
+    older.observe({ revision: 13 }, () => "applied");
+    older.markFresh(12);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect({ resyncs, coveredNext: covered.observe({ revision: 14 }, () => "applied") }).toEqual({ resyncs: ["older"], coveredNext: "applied" });
   });
+
+  it("repairs from another read when the read on its way fails, whether the frame came before the failure or after it", async () => {
+    const resyncs: string[] = [];
+    const before = new RevisionScope({ resync: () => { resyncs.push("before"); } });
+    before.observe({ revision: 13 }, () => "applied");
+    before.readFailed();
+    const after = new RevisionScope({ resync: () => { resyncs.push("after"); } });
+    after.readFailed();
+    after.observe({ revision: 13 }, () => "applied");
+    const quiet = new RevisionScope({ resync: () => { resyncs.push("quiet"); } });
+    quiet.readFailed();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(resyncs).toEqual(["before", "after"]);
+  });
+
 });

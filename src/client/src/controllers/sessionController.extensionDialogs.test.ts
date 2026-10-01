@@ -306,16 +306,16 @@ describe("SessionController extension dialog state", () => {
     // beside B until an unrelated refetch - the owner's stuck-card report. The
     // revision gate must detect the skipped 2 and resync once.
     const repaired = { ...status(oldSession.id), pendingDialogs: [dialog("dialog-b")], pendingDialogsRevision: 3 };
+    const joined = { ...status(oldSession.id), pendingDialogsRevision: 0 };
     const statusReads = deferred<SessionStatus>();
     let statusCalls = 0;
     const api: typeof defaultApi = {
       ...selectableApi(status(oldSession.id)),
       status: () => {
         statusCalls += 1;
-        // The first two reads are joins and must settle (the selection reads the
-        // status for itself when the connection catalog has no entry); the repair
-        // read this test gates is the third.
-        if (statusCalls <= 2) return Promise.resolve(status(oldSession.id));
+        // The first read is the join and must settle, as fresh at revision 0; the
+        // repair read this test gates is the second.
+        if (statusCalls === 1) return Promise.resolve(joined);
         return statusReads.promise;
       },
     };
@@ -339,11 +339,9 @@ describe("SessionController extension dialog state", () => {
     // starts - before counting.
     await new Promise((resolve) => { setTimeout(resolve, 0); });
 
-    // Call 1 was the selection's own join; exactly one repair read covers both
-    // the skipped revision and any further gap while it runs.
-    // One selection read, one repair read, and now one more: the selection reads the
-    // status for itself when the connection catalog has no entry for the session.
-    expect(statusCalls).toBe(3);
+    // Call 1 was the selection's join; exactly one repair read covers both the
+    // skipped revision and any further gap while it runs.
+    expect(statusCalls).toBe(2);
     statusReads.resolve(repaired);
     await statusReads.promise;
     // The repair reads messages, status and the stream snapshot together; the
