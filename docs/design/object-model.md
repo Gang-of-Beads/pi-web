@@ -529,7 +529,7 @@ Dependency direction: component → controller → `sync/*` → `api/http.ts`. P
 | idle, git/files panel open | ≤245 req/min; 40–47/min after the watcher fix (the subagents run list every 3 s, and the pins re-read on each render it caused); **files 0/min, git 14–16/min, subagents 1/min** after P3b (git status 7, pins 7–8) | ≤8/min, plus head checks at 4/min | P3, P5 |
 | pins reads/min | 30; 7 with the git panel open after P3b (re-read on each render older than 2 s) | ≤1 | P5 |
 | first transcript row, warm | 0.84 s; **0.33–0.38 s** after P2c + P3a; **225 ms** on 2026-10-01 (`probe-budgets.mjs`) | ≤400 ms | P6 |
-| first transcript row, cold 17.8 MB | 3.5–6.0 s; **1.11–1.34 s** after P2c + P3a (phone, daemon-cold, `probe-open-latency.mjs`) | ≤1.5 s | P2, P3 |
+| first transcript row, cold 17.8 MB | 3.5–6.0 s; **1.11–1.34 s** after P2c + P3a (phone, daemon-cold, `probe-open-latency.mjs`); **1.27–1.74 s** on 2026-10-01, three restarts in a row: only the first, right after a rebuild with the OS file cache cold, misses | ≤1.5 s | P2, P3 |
 | session read's wait on lists | 0.55–1.5 s | 0 (with `cwd`) | P2 |
 | board read p99 | 23 s (list) | ≤1 s | P3, P4 |
 | time to the reconnecting row | 10.5–29 s | deadline + grace (7 s small / 12 s large) | P1, P3 |
@@ -561,6 +561,15 @@ Fix, in phase order (P3 unless noted):
 5. Only then, deadlines on every forward (a reader leaves; the work continues).
 6. Board read replaces per-workspace lists (P4).
 7. Cold open beyond the tail page depends on the SDK `SessionManager.open` cost; measure it before designing.
+
+**Daemon startup outliers (measured 2026-10-01).**
+- **Numbers.** 112 starts of 8504, from the daemon's first log line to listening: p50 1.7 s, p90 6.9 s, worst 42.6 s; 13 starts took over 5 s. The process start adds about 1 s before the first log line. 8505 starts in 1.1 s at p50.
+- **Where the time goes.** In a 38.8 s start, 38.7 s is one call: `bootstrapAndFreezeGlobalExtensionProviders` loading the global pi extensions before the daemon listens.
+- **A cold transpile cache explains 5 s, not 40 s.** Measured with `/tmp/bootstrap-timing.mts`: 1.3 s warm, 6.6 s with the jiti cache moved aside.
+- **The likely cause of the 30–40 s starts is the account-store lock.** The pi-multi-account extension reads the account store while it loads. Until today each read took pi-accounts' exclusive cross-process lock, with about 40 s of retries, and every pi process on the machine (the other daemon, the TUI, background agents) reads it on every turn. The worst starts sit at that budget.
+  - The extension's lock-free reads (`ddba988`, `f9c4821`) remove the wait once a daemon loads them.
+  - Not reproduced: holding the lock would fail the 8504 daemon's live requests, because that daemon still runs the old extension. Confirm with the next starts after 8504 restarts.
+- **What remains:** an npm install of a package in `settings.json` that is missing, or whose installed version no longer matches its range, still runs before listening. Making the daemon listen before its extension bootstrap is a separate design (sessions must not load before the provider baseline is frozen).
 
 ---
 
