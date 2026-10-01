@@ -5,13 +5,7 @@ import { sessionLabel } from "../../sessionLabels";
 import { renderGridIcon } from "../uiIcons";
 import { LongPressTracker } from "../../longPress";
 
-/**
- * The single resident row of the shell: the menu key and the session name.
- * Session state is the activity dock's job and the status footer's; saying it
- * a third time here was noise the owner asked to drop. Everything else lives in the collapsible panel
- * (see `appSurface.ts`), so this row never scrolls, never truncates into
- * unreadability, and never stacks a second bar.
- */
+/** The resident row opens navigation and names the session; state belongs in the dock and footer. */
 @customElement("app-context-bar")
 export class AppContextBar extends LitElement {
   @property({ attribute: false }) session?: SessionInfo;
