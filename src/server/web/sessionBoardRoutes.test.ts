@@ -117,6 +117,7 @@ describe("the session board route", () => {
 
   it("locates each pinned session no listing holds, and says which are gone or unanswered (B49)", async () => {
     const located: string[] = [];
+    const forgotten: string[] = [];
     const never = () => new Promise<never>(() => undefined);
     const app = boardApp({
       projects: () => Promise.resolve([project("alpha")]),
@@ -130,6 +131,10 @@ describe("the session board route", () => {
           if (sessionId === "deleted") return Promise.resolve({ gone: true });
           return never();
         },
+        forget: (sessionId) => {
+          forgotten.push(sessionId);
+          return Promise.resolve();
+        },
       },
     }, 40);
 
@@ -137,8 +142,9 @@ describe("the session board route", () => {
     const body: unknown = answer.json();
 
     const pinned: unknown = typeof body === "object" && body !== null ? Reflect.get(body, "pinned") : undefined;
-    expect({ located, pinned }).toEqual({
+    expect({ located, forgotten, pinned }).toEqual({
       located: ["closed-project", "deleted", "slow"],
+      forgotten: ["deleted"],
       pinned: [
         { sessionId: "closed-project", session: { id: "closed-project", cwd: "/closed" } },
         { sessionId: "deleted", gone: true },
@@ -152,7 +158,7 @@ describe("the session board route", () => {
       projects: () => Promise.resolve([]),
       workspaces: () => Promise.reject(new Error("not asked")),
       sessions: () => Promise.reject(new Error("not asked")),
-      pinned: { ids: () => Promise.reject(new Error("pin store unreadable")), locate: () => Promise.reject(new Error("not asked")) },
+      pinned: { ids: () => Promise.reject(new Error("pin store unreadable")), locate: () => Promise.reject(new Error("not asked")), forget: () => Promise.reject(new Error("not asked")) },
     });
 
     const answer = await app.inject({ method: "GET", url: "/api/session-board" });
@@ -177,6 +183,34 @@ describe("the session board route", () => {
     expect({ asked, results: results.map((result) => (result.status === "fulfilled" ? result.value : "unknown")) }).toEqual({
       asked: ["GET /sessions/found/locate?cwd=%2Fhome%2Freader", "GET /sessions/deleted/locate?cwd=%2Fhome%2Freader", "GET /sessions/old-daemon/locate?cwd=%2Fhome%2Freader"],
       results: [{ session: { id: "found" } }, { gone: true }, "unknown"],
+    });
+  });
+
+  it("still answers a deleted pin as gone when unpinning it fails, and asks again at the next board", async () => {
+    const forgetting: string[] = [];
+    const app = boardApp({
+      projects: () => Promise.resolve([]),
+      workspaces: () => Promise.reject(new Error("not asked")),
+      sessions: () => Promise.reject(new Error("not asked")),
+      pinned: {
+        ids: () => Promise.resolve(["deleted"]),
+        locate: () => Promise.resolve({ gone: true }),
+        forget: (sessionId) => {
+          forgetting.push(sessionId);
+          return Promise.reject(new Error("pin store not writable"));
+        },
+      },
+    });
+
+    const first = await app.inject({ method: "GET", url: "/api/session-board" });
+    const second = await app.inject({ method: "GET", url: "/api/session-board" });
+
+    const firstBody: unknown = first.json();
+    const secondBody: unknown = second.json();
+    expect({ first: firstBody, second: secondBody, forgetting }).toEqual({
+      first: { projects: [], listings: [], pinned: [{ sessionId: "deleted", gone: true }] },
+      second: { projects: [], listings: [], pinned: [{ sessionId: "deleted", gone: true }] },
+      forgetting: ["deleted", "deleted"],
     });
   });
 

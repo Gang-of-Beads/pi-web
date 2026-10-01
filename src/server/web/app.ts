@@ -278,7 +278,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     projects: () => projects.list(),
     workspaces: (project) => resolveWorkspacesWithEffectiveConfig(project, workspaces, configService),
     sessions: daemonSessionListing(sessionDaemon),
-    pinned: { ids: () => sessionPins.list(), locate: daemonSessionLocate(sessionDaemon, homedir()) },
+    pinned: { ids: () => sessionPins.list(), locate: daemonSessionLocate(sessionDaemon, homedir()), forget: async (sessionId) => { await sessionPins.unpin(sessionId); } },
   };
   registerSessionBoardRoutes(app, sessionBoardSources);
   registerSessionBoardRoutes(app, sessionBoardSources, "/api/machines/local");

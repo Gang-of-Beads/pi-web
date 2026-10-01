@@ -17,6 +17,8 @@ export interface PinnedSessionSource {
   ids(): Promise<readonly string[]>;
   /** The session as the daemon answered it, or gone when the daemon says no store holds it. */
   locate(sessionId: string): Promise<LocatedSession>;
+  /** Unpin a session the daemon answered gone. */
+  forget(sessionId: string): Promise<void>;
 }
 
 export type LocatedSession = { readonly session: unknown } | { readonly gone: true };
@@ -53,6 +55,12 @@ type PinnedAnswer = { readonly sessionId: string } & (LocatedSession | { readonl
  * board, as the session, gone, or unknown when it did not answer in time. When
  * the pins cannot be read the answer carries no pinned entries at all, which
  * says nothing about pins rather than that there are none.
+ *
+ * A deleted session is no longer pinned (owner, 2026-10-01: "删掉了自动就没有了").
+ * A pin the daemon answers gone is unpinned here, whoever deleted it: PI WEB, the
+ * pi CLI, or a hand on the disk. Its locate searches every store, archived ones
+ * included, so gone is an answer and not an absence. A pin that did not answer
+ * is kept and asked again at the next board.
  */
 export function registerSessionBoardRoutes(app: FastifyInstance, sources: SessionBoardSources, prefix = "/api", budgetMs = SESSION_BOARD_BUDGET_MS): void {
   app.get(`${prefix}/session-board`, async (_request, reply) => {
@@ -109,11 +117,14 @@ async function pinnedAnswers(pinned: PinnedSessionSource, listed: ReadonlySet<st
     return undefined;
   }
   return Promise.all(ids.filter((sessionId) => !listed.has(sessionId)).map(async (sessionId): Promise<PinnedAnswer> => {
+    let located: LocatedSession;
     try {
-      return { sessionId, ...(await beforeDeadline(pinned.locate(sessionId), deadlineAt)) };
+      located = await beforeDeadline(pinned.locate(sessionId), deadlineAt);
     } catch {
       return { sessionId, unknown: true };
     }
+    if ("gone" in located) await pinned.forget(sessionId).catch((error: unknown) => { console.warn(`[pins] could not unpin deleted session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`); });
+    return { sessionId, ...located };
   }));
 }
 
