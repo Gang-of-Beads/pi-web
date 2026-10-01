@@ -45,7 +45,5 @@ jobs:
       - name: Smoke test npm 12 global package install
         run: pnpm run smoke:package-install
 
-      # Build already ran above; suppress prepack so this only inspects the
-      # package contents instead of rebuilding the project a second time.
       - name: Check npm package contents
-        run: npm pack --dry-run --ignore-scripts
+        run: pnpm run pack:dry

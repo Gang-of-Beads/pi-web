@@ -1,4 +1,3 @@
-nodeLinker: hoisted
 minimumReleaseAgeExclude:
   - '@earendil-works/*'
 allowBuilds:

@@ -55,7 +55,7 @@ jobs:
         working-directory: packages/pi-web-plugin-api
         run: |
           rm -rf pack-out && mkdir pack-out
-          npm pack --silent --pack-destination pack-out >/dev/null
+          pnpm pack --silent --pack-destination pack-out >/dev/null
 
       # The first release of a package cannot use trusted publishing; with
       # NPM_TOKEN present this bootstraps with the token, and once the trusted
@@ -73,9 +73,9 @@ jobs:
             echo "$pkg@$ver is already on npm; skipping publish (rerun of a released tag)"
           elif [ -n "$NPM_TOKEN" ]; then
             echo "publishing $pkg@$ver with the bootstrap token (no provenance)"
-            npm publish "./pack-out/"*.tgz --access public --tag alpha
+            pnpm publish "./pack-out/"*.tgz --access public --tag alpha --no-git-checks
           else
-            npm publish "./pack-out/"*.tgz --access public --provenance --tag alpha
+            pnpm publish "./pack-out/"*.tgz --access public --provenance --tag alpha --no-git-checks
           fi
 
       # The release is created only after publish succeeded, so a release page

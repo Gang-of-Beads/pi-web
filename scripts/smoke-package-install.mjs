@@ -28,8 +28,13 @@ try {
   ]);
   await writeFile(join(npmToolDir, "package.json"), '{"private":true}\n');
 
-  const packOutput = await runNpm("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", packDir], repoRoot);
-  const tarballPath = join(packDir, packageTarballFilename(packOutput));
+  const { stdout: packOutput } = await execFileAsync("pnpm", ["pack", "--json", "--config.ignore-scripts=true", "--pack-destination", packDir], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: 180_000,
+  });
+  const tarballPath = resolve(packDir, packageTarballFilename(packOutput));
 
   await runNpm("npm", [
     "install",
@@ -74,17 +79,9 @@ async function runNpm(npmCliPath, args, cwd) {
 }
 
 function packageTarballFilename(output) {
-  for (let jsonStart = output.indexOf("["); jsonStart >= 0; jsonStart = output.indexOf("[", jsonStart + 1)) {
-    try {
-      const parsed = JSON.parse(output.slice(jsonStart));
-      if (Array.isArray(parsed) && parsed.length === 1 && typeof parsed[0]?.filename === "string") {
-        return parsed[0].filename;
-      }
-    } catch {
-      // Lifecycle output can precede npm's JSON payload; keep looking for the payload.
-    }
-  }
-  throw new Error("npm pack returned an unexpected result");
+  const parsed = JSON.parse(output);
+  if (typeof parsed?.filename !== "string") throw new Error("pnpm pack returned an unexpected result");
+  return parsed.filename;
 }
 
 async function smokeInstalledTerminalService(packageRoot) {

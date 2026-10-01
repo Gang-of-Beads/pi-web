@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
-import { npmInvocation } from "./npmCommand";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,9 +46,6 @@ describe("production build contents", () => {
       const fixtureDist = join(fixtureRoot, "dist", "server");
       await mkdir(fixtureDist, { recursive: true });
       await Promise.all([
-        // Lifecycle hooks do not affect which files are packed, and npm 10 runs
-        // `prepare` during `npm pack` even with `--ignore-scripts`, so strip
-        // them: the fixture has no scripts/ tree for a hook to resolve.
         writeFixtureManifest(fixtureRoot),
         copyFile(join(repoRoot, "plugin-api.d.ts"), join(fixtureRoot, "plugin-api.d.ts")),
         copyFile(join(repoRoot, "server-plugin-api.d.ts"), join(fixtureRoot, "server-plugin-api.d.ts")),
@@ -60,7 +56,7 @@ describe("production build contents", () => {
         writeFile(join(fixtureDist, "app.testSupport.js.map"), "{}\n", "utf8"),
       ]);
 
-      const stdout = await runNpm(["pack", "--dry-run", "--json", "--ignore-scripts"], fixtureRoot);
+      const stdout = await runPnpm(["pack", "--dry-run", "--json", "--config.ignore-scripts=true"], fixtureRoot);
       const packagedFiles = packageFilePaths(stdout);
 
       expect(packagedFiles).toEqual(expect.arrayContaining([
@@ -143,7 +139,7 @@ describe("production build contents", () => {
         expect(typeof pluginExport["activate"]).toBe("function");
       }
 
-      const stdout = await runNpm(["pack", "--dry-run", "--json", "--ignore-scripts"], fixtureRoot);
+      const stdout = await runPnpm(["pack", "--dry-run", "--json", "--config.ignore-scripts=true"], fixtureRoot);
       const packagedFiles = packageFilePaths(stdout);
       const builtPluginFiles = (await recursiveFiles(builtPluginsRoot))
         .map((path) => normalizePath(relative(fixtureRoot, path)))
@@ -174,8 +170,6 @@ async function createCleanPluginBuildFixture(fixtureRoot: string): Promise<void>
     copyFile(join(repoRoot, "tsconfig.plugin-api.json"), join(fixtureRoot, "tsconfig.plugin-api.json")),
     copyFile(join(repoRoot, "scripts", "build-plugins.mjs"), join(fixtureRoot, "scripts", "build-plugins.mjs")),
     copyFile(join(repoRoot, "scripts", "pluginModuleSpecifiers.mjs"), join(fixtureRoot, "scripts", "pluginModuleSpecifiers.mjs")),
-    // npm 10 runs `prepare` even under `pack --ignore-scripts`; the hook installer exits 0 without a .git directory.
-    copyFile(join(repoRoot, "scripts", "install-git-hooks.mjs"), join(fixtureRoot, "scripts", "install-git-hooks.mjs")),
     symlink(
       join(repoRoot, "node_modules"),
       join(fixtureRoot, "node_modules"),
@@ -283,11 +277,6 @@ function isTestSupportPath(path: string): boolean {
   return path.includes(".testSupport.");
 }
 
-function runNpm(args: string[], cwd: string, timeoutMs = 30_000): Promise<string> {
-  const { command, shell } = npmInvocation();
-  return execUtf8(command, args, cwd, timeoutMs, shell);
-}
-
 function runPnpm(args: string[], cwd: string, timeoutMs = 30_000): Promise<string> {
   return execUtf8(process.platform === "win32" ? "pnpm.cmd" : "pnpm", args, cwd, timeoutMs, process.platform === "win32");
 }
@@ -305,18 +294,15 @@ function execUtf8(file: string, args: string[], cwd: string, timeoutMs: number, 
 }
 
 function packageFilePaths(output: string): string[] {
-  const parsed: unknown = JSON.parse(output);
-  if (!Array.isArray(parsed) || parsed.length !== 1) throw new Error("npm pack returned an unexpected result");
-
-  const packResult: unknown = parsed[0];
-  if (!isRecord(packResult)) throw new Error("npm pack result was not an object");
+  const packResult: unknown = JSON.parse(output);
+  if (!isRecord(packResult)) throw new Error("pnpm pack result was not an object");
   const filesValue = packResult["files"];
-  if (!Array.isArray(filesValue)) throw new Error("npm pack result did not include files");
+  if (!Array.isArray(filesValue)) throw new Error("pnpm pack result did not include files");
   const files: unknown[] = filesValue;
 
   return files.map((file) => {
     if (!isRecord(file) || typeof file["path"] !== "string") {
-      throw new Error("npm pack returned an invalid file entry");
+      throw new Error("pnpm pack returned an invalid file entry");
     }
     return file["path"];
   });

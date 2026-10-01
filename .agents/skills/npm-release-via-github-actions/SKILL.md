@@ -47,9 +47,9 @@ on:
   workflow_dispatch:
 ```
 
-For the `pi-web` repository, the expected workflow is `.github/workflows/publish.yml`; it publishes with `npm publish --access public --provenance` from GitHub Actions. Use the GitHub Release path by default.
+For the `pi-web` repository, the expected workflow is `.github/workflows/publish.yml`; it packs with pnpm and publishes the attached tarball using `pnpm publish --access public --provenance` from GitHub Actions. Use the GitHub Release path by default.
 
-If there is no GitHub Actions publish workflow, stop and explain that one must be added or fixed. Do not fall back to local `npm publish`.
+If there is no GitHub Actions publish workflow, stop and explain that one must be added or fixed. Do not fall back to local publishing.
 
 ## Standard release workflow
 
@@ -161,18 +161,18 @@ If there is no GitHub Actions publish workflow, stop and explain that one must b
 9. **Verify npm registry publication**
    - After the workflow succeeds, verify:
      ```bash
-     npm view <package-name> version
-     npm view <package-name>@<new-version> dist.tarball
+     pnpm view <package-name> version
+     pnpm view <package-name>@<new-version> dist.tarball
      ```
    - If npm has not updated yet, wait briefly and check again.
 
 ## Reruns and special cases
 
 - If a GitHub Actions publish run failed due to a transient infrastructure issue, prefer `gh run rerun <run-id> --failed` or rerun the workflow in GitHub.
-- If using `workflow_dispatch`, pass the intended tag explicitly: `gh workflow run publish.yml --ref v<version>`. Dispatch reruns are idempotent: the npm publish step skips versions already on npm, and the release step updates the existing release. This is the recovery path for a tag that released partially (GitHub Release created but npm publish failed, or the reverse). For normal releases, prefer pushing the tag.
+- If using `workflow_dispatch`, pass the intended tag explicitly: `gh workflow run publish.yml --ref v<version>`. Dispatch reruns are idempotent: the pnpm publish step skips versions already on npm, and the release step updates the existing release. This is the recovery path for a tag that released partially (GitHub Release created but npm publish failed, or the reverse). For normal releases, prefer pushing the tag.
 - If the npm version already exists, npm will reject publishing. Bump to a new version and create a new release; do not try to overwrite an existing npm version.
 - If a GitHub Release/tag was created incorrectly, fix it on GitHub with care and tell the user exactly what changed.
-- Never use local `npm publish` as a workaround for a GitHub Actions or npm provenance issue.
+- Never publish locally as a workaround for a GitHub Actions or npm provenance issue.
 
 ## Final response format
 
