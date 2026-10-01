@@ -28,6 +28,10 @@ afterEach(() => {
 });
 
 describe("federated route contract", () => {
+  it("allowlists plugin operations with the client's cancellation carried to the remote (B50)", () => {
+    expect(FEDERATED_HTTP_ROUTES.find((route) => route.path === "/plugins/:pluginId/:operation")).toEqual({ method: "POST", path: "/plugins/:pluginId/:operation", propagateCancellation: true });
+  });
+
   it("allowlists notification HTTP routes without adding a notification WebSocket", () => {
     expect(FEDERATED_HTTP_ROUTES.filter((route) => route.path.includes("notifications"))).toEqual([
       { method: "GET", path: "/sessions/notifications" },

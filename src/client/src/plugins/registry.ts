@@ -1,5 +1,6 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
+import { pluginsPath } from "../api/clients";
 import type { ActivityNoteContribution, QualifiedActivityNoteContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, MachineSectionContribution, QualifiedMachineSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
@@ -82,7 +83,7 @@ export class PluginRegistry {
         svg,
         ...(this.fetchJson === undefined ? {} : { fetchJson: this.fetchJson }),
         ...(this.fetchJson === undefined ? {} : {
-          callOperation: (operation: string, input?: unknown) => this.callPluginOperation(pluginOperationPath(runtimePluginId, registration.machineId, sourcePluginId, operation), input),
+          callOperation: (operation: string, input?: unknown) => this.callPluginOperation(pluginOperationPath(registration.machineId, sourcePluginId, operation), input),
         }),
         ...(this.ui === undefined ? {} : { ui: this.ui }),
         ...(readPiWebStatus === undefined ? {} : { readPiWebStatus: () => readPiWebStatus(statusMachineId) }),
@@ -682,17 +683,14 @@ export function installPluginRuntimeScope(context: PluginRuntimeContext, scope: 
 }
 
 /**
- * Where a registration's declared operations are answered (B50). A gateway registration's go to
- * this host's daemon under its runtime id. A machine-scoped registration's go to its own machine,
- * under the plugin's source id: that machine's daemon runs the plugin and keeps its storage. They
- * used to post `api/plugins/machine.<hex>.<id>` to the gateway's daemon, which only knows its own
- * catalog's ids and answered 404, so a remote machine's goals, voice token and update offer failed.
+ * Where a registration's declared operations are answered (B50): on the machine the registration
+ * belongs to, under the plugin's source id, which is the id that machine's catalog knows (a gateway
+ * registration's source id is its runtime id). A machine-scoped registration used to post
+ * `api/plugins/machine.<hex>.<id>` to the gateway's daemon, which only knows its own catalog's ids
+ * and answered 404, so a remote machine's goals, voice token and update offer failed.
  */
-function pluginOperationPath(runtimePluginId: string, machineId: string | undefined, sourcePluginId: string, operation: string): string {
-  const owner = machineId === undefined
-    ? `api/plugins/${encodeURIComponent(runtimePluginId)}`
-    : `api/machines/${encodeURIComponent(machineId)}/plugins/${encodeURIComponent(sourcePluginId)}`;
-  return `${owner}/${encodeURIComponent(operation)}`;
+function pluginOperationPath(machineId: string | undefined, sourcePluginId: string, operation: string): string {
+  return `${pluginsPath(machineId)}/${encodeURIComponent(sourcePluginId)}/${encodeURIComponent(operation)}`;
 }
 
 export function installWorkspacePanelScope(

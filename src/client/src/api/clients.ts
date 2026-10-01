@@ -134,7 +134,7 @@ function configPath(machineId?: string): string {
   return machineId === undefined ? "api/config" : `${machinePrefix(machineId)}/config`;
 }
 
-function pluginsPath(machineId?: string): string {
+export function pluginsPath(machineId?: string): string {
   return machineId === undefined ? "api/plugins" : `${machinePrefix(machineId)}/plugins`;
 }
 

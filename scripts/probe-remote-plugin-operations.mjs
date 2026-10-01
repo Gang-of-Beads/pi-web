@@ -11,7 +11,8 @@ import { chromium } from "@playwright/test";
  * - every plugin operation sent by the remote machine's registrations is answered with 2xx;
  * - they travel the machine's own path, `api/machines/<id>/plugins/<source id>/<op>`.
  * Controls: the remote machine is selected, its updates plugin is registered, and at least one
- * operation was sent for it (the updates plugin asks `offer.answered` when it activates).
+ * operation was sent for it (the updates plugin asks `offer.answered` when it activates). An answer
+ * counts only as JSON: an unrouted path answers 200 with the page's HTML.
  * Nothing is answered or recorded: the probe never closes an offer.
  */
 const BASE = "http://127.0.0.1:8505";
@@ -25,8 +26,9 @@ const added = await fetch(`${BASE}/api/machines`, { method: "POST", headers: { "
 const addedBody = added.ok ? await added.json() : undefined;
 const remoteId = addedBody?.machine?.id ?? addedBody?.id;
 check("precondition: 8505 is on its own roster as a remote machine", typeof remoteId === "string", `${String(added.status)} ${String(remoteId)}`);
-const browser = await chromium.launch();
+let browser;
 try {
+  browser = await chromium.launch();
   if (typeof remoteId === "string") {
     const hex = Buffer.from(remoteId).toString("hex");
     const context = await browser.newContext({ viewport: { width: 393, height: 850 }, hasTouch: true, isMobile: true });
@@ -39,7 +41,7 @@ try {
       const path = new URL(response.url()).pathname;
       const legacy = path.startsWith(`/api/plugins/machine.${hex}.`);
       const own = path.startsWith(`/api/machines/${encodeURIComponent(remoteId)}/plugins/`);
-      if (legacy || own) operations.push({ path, status: response.status(), own });
+      if (legacy || own) operations.push({ path, status: response.status(), json: (response.headers()["content-type"] ?? "").startsWith("application/json"), own });
     });
     await page.goto(`${BASE}/?machine=${encodeURIComponent(remoteId)}`);
     await page.waitForTimeout(9_000);
@@ -53,12 +55,15 @@ try {
     }, remoteId);
     await context.close();
     check("control: the remote machine is selected, its updates plugin is registered, and it sent an operation", held.selected === remoteId && held.remoteUpdates && operations.length > 0, JSON.stringify({ selected: held.selected, remoteUpdates: held.remoteUpdates, operations: operations.length }));
-    check("every operation the remote machine's plugins sent was answered", operations.length > 0 && operations.every((operation) => operation.status >= 200 && operation.status < 300), JSON.stringify(operations.map((operation) => `${operation.path.split("/").slice(-2).join("/")} ${String(operation.status)}`)));
+    check("every operation the remote machine's plugins sent was answered", operations.length > 0 && operations.every((operation) => operation.status >= 200 && operation.status < 300 && operation.json), JSON.stringify(operations.map((operation) => `${operation.path.split("/").slice(-2).join("/")} ${String(operation.status)}${operation.json ? "" : " not JSON"}`)));
     check("they travelled the machine's own path", operations.length > 0 && operations.every((operation) => operation.own), JSON.stringify(operations.map((operation) => operation.path)));
   }
 } finally {
-  await browser.close();
-  if (typeof remoteId === "string") await fetch(`${BASE}/api/machines/${encodeURIComponent(remoteId)}`, { method: "DELETE" });
+  try {
+    await browser?.close();
+  } finally {
+    if (typeof remoteId === "string") await fetch(`${BASE}/api/machines/${encodeURIComponent(remoteId)}`, { method: "DELETE" });
+  }
 }
 const failed = results.filter((result) => !result.pass).length;
 console.log(`${String(results.length - failed)}/${String(results.length)} passed`);
