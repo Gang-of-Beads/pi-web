@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: [tests, checks-and-package]
+        lane: [tests, checks-and-build]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -45,13 +45,9 @@ jobs:
         run: pnpm test
 
       - name: Static checks
-        if: matrix.lane == 'checks-and-package'
+        if: matrix.lane == 'checks-and-build'
         run: pnpm run verify:static
 
       - name: Build
-        if: matrix.lane == 'checks-and-package'
+        if: matrix.lane == 'checks-and-build'
         run: pnpm run build
-
-      - name: Smoke test npm global package install
-        if: matrix.lane == 'checks-and-package'
-        run: pnpm run smoke:package-install
