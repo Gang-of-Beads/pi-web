@@ -1,4 +1,4 @@
-{ lib, fetchPnpmDeps, makeWrapper, nodejs, pnpm_11, pnpmConfigHook, python3, pkg-config, stdenv }:
+{ lib, fetchPnpmDeps, makeWrapper, nodejs, pnpm_12, pnpmConfigHook, python3, pkg-config, stdenv }:
 
 let
   packageJson = builtins.fromJSON (builtins.readFile ../package.json);
@@ -10,12 +10,12 @@ stdenv.mkDerivation (finalAttrs: {
 
   pnpmDeps = fetchPnpmDeps {
     inherit (finalAttrs) pname version src;
-    pnpm = pnpm_11;
+    pnpm = pnpm_12;
     fetcherVersion = 4;
     hash = "sha256-7faUo69YEb1r1SPMzK4I07Ukus7b9jZ663iOu31SsRw=";
   };
 
-  nativeBuildInputs = [ nodejs pnpm_11 pnpmConfigHook makeWrapper python3 pkg-config ]
+  nativeBuildInputs = [ nodejs pnpm_12 pnpmConfigHook makeWrapper python3 pkg-config ]
     ++ lib.optionals stdenv.isLinux [ stdenv.cc ];
 
   buildPhase = ''
