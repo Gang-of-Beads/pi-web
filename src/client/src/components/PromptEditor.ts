@@ -65,15 +65,12 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
     :host, :host * { -webkit-user-select: none; user-select: none; }
     :host textarea, :host input, :host [contenteditable], :host .attachment-error { -webkit-user-select: text; user-select: text; }
   footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-4); padding: var(--pi-space-6) var(--pi-chat-gutter); border-top: 1px solid var(--pi-border); max-width: var(--pi-chat-measure, 100%); margin-inline: auto; }
-  /* Collapsed: one line that gives the screen back to whatever input is being
-     used, and says what is still in the draft so it does not look lost. */
   /* Same column as the expanded composer and the transcript: the private
      10px inset made the box edge jump 6px one way on desktop and the other
      way on the phone when the composer collapsed. */
   .expand-composer { box-sizing: border-box; display: flex; align-items: center; gap: var(--pi-space-4); width: 100%; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  .expand-composer:focus-visible { border-color: var(--pi-accent); color: var(--pi-text-bright); }
+  .expand-composer:focus-visible { border-color: var(--pi-accent); color: var(--pi-text-bright); outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
   @media (hover: hover) { .expand-composer:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
-  .expand-composer:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
   .expand-composer-label { flex: 0 0 auto; }
   .expand-composer-hint { display: inline-flex; flex: 0 0 auto; margin-inline-start: auto; color: var(--pi-muted); }
   .expand-composer-hint .ui-icon { width: var(--pi-dot-md); height: var(--pi-dot-md); }
