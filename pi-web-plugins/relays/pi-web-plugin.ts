@@ -1,12 +1,13 @@
 import type { PiWebPlugin } from "@gang-of-beads/pi-web/plugin-api";
 import { RELAYS_ROOT } from "./relayDiscovery.js";
-import { defineRelaysPanelElement, refreshRelaysPanel, relaysSummary } from "./relaysPanelElement.js";
+import { defineRelaysPanelElement, RelaysPanelLink } from "./relaysPanelElement.js";
 
 const plugin: PiWebPlugin = {
   apiVersion: 2,
   name: "Relays",
   activate: ({ runtimePluginId, html, svg }) => {
     defineRelaysPanelElement();
+    const link = new RelaysPanelLink();
 
     return {
       contributions: {
@@ -35,9 +36,9 @@ const plugin: PiWebPlugin = {
               </svg>
             `,
             order: 50,
-            summary: () => relaysSummary(),
-            toolbar: () => html`<button type="button" @click=${() => { refreshRelaysPanel(); }}>Refresh</button>`,
-            render: (context) => html`<pi-web-relays-panel .context=${context}></pi-web-relays-panel>`,
+            summary: () => link.summary(),
+            toolbar: () => html`<button type="button" @click=${() => { link.refresh(); }}>Refresh</button>`,
+            render: (context) => html`<pi-web-relays-panel .link=${link} .context=${context}></pi-web-relays-panel>`,
           },
         ],
       },

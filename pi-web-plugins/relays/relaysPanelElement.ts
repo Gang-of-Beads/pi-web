@@ -47,18 +47,37 @@ interface RelaySelection {
  * active marker in place and re-renders the viewer — so the strip's
  * horizontal scroll position and keyboard focus survive document switches.
  */
-/** The fold's Refresh control; a no-op when no panel is mounted. */
-export function refreshRelaysPanel(): void {
-  PiWebRelaysPanel.active?.refresh();
-}
+/**
+ * One activation's line to the relays panel its own registration rendered (B53). The host's controls
+ * for this panel belong to a registration; they reach the panel through this link, which the
+ * activation owns and hands to the panel as a property. Module or static state would not do: a
+ * second copy of the plugin on the page (another machine's) renders through the element class the
+ * first copy defined, so its own module never sees the panel.
+ */
+export class RelaysPanelLink {
+  private panel: PiWebRelaysPanel | undefined;
 
-/** The host header's summary: which relay is on show. */
-export function relaysSummary(): string | undefined {
-  return PiWebRelaysPanel.active?.summaryText();
+  attach(panel: PiWebRelaysPanel): void {
+    this.panel = panel;
+  }
+
+  detach(panel: PiWebRelaysPanel): void {
+    if (this.panel === panel) this.panel = undefined;
+  }
+
+  /** The fold's Refresh control; a no-op when no panel is mounted. */
+  refresh(): void {
+    this.panel?.refresh();
+  }
+
+  /** The host header's summary: which relay is on show. */
+  summary(): string | undefined {
+    return this.panel?.summaryText();
+  }
 }
 
 class PiWebRelaysPanel extends HTMLElement {
-  static active: PiWebRelaysPanel | undefined;
+  link: RelaysPanelLink | undefined;
   private contextValue: WorkspacePanelContext | undefined;
   private listing: RelaysListing | undefined;
   private selectedRelayPath: string | undefined;
@@ -110,15 +129,18 @@ class PiWebRelaysPanel extends HTMLElement {
     });
   }
 
+  connectedCallback(): void {
+    this.link?.attach(this);
+  }
+
   disconnectedCallback(): void {
-    if (PiWebRelaysPanel.active === this) PiWebRelaysPanel.active = undefined;
+    this.link?.detach(this);
   }
 
   set context(value: WorkspacePanelContext | undefined) {
     const previousKey = this.contextValue === undefined ? undefined : contextKey(this.contextValue);
     const nextKey = value === undefined ? undefined : contextKey(value);
     this.contextValue = value;
-    PiWebRelaysPanel.active = value === undefined ? undefined : this;
     // Parent app updates should not rescan or re-render this panel for the
     // same workspace (mirrors the workspace-tasks panel).
     if (previousKey === nextKey) return;

@@ -1,12 +1,13 @@
 import type { PiWebPlugin } from "@gang-of-beads/pi-web/plugin-api";
 import { TASKS_CONFIG_PATH } from "./config.js";
-import { defineTasksPanelElement, openTasksTerminal, requestTasksRefresh, tasksPanelBadge } from "./tasksPanelElement.js";
+import { defineTasksPanelElement, TasksPanelLink } from "./tasksPanelElement.js";
 
 const plugin: PiWebPlugin = {
   apiVersion: 2,
   name: "Tasks",
   activate: ({ runtimePluginId, html, svg }) => {
     defineTasksPanelElement();
+    const link = new TasksPanelLink();
 
     return {
       contributions: {
@@ -38,12 +39,12 @@ const plugin: PiWebPlugin = {
               </svg>
             `,
             order: 40,
-            badge: (context) => tasksPanelBadge(context),
+            badge: (context) => link.badge(context),
             toolbar: () => html`
-              <button type="button" @click=${() => { requestTasksRefresh(); }}>Refresh</button>
-              <button type="button" @click=${() => { openTasksTerminal(); }}>Open Terminal</button>
+              <button type="button" @click=${() => { link.refresh(); }}>Refresh</button>
+              <button type="button" @click=${() => { link.openTerminal(); }}>Open Terminal</button>
             `,
-            render: (context) => html`<pi-web-workspace-tasks-panel .context=${context}></pi-web-workspace-tasks-panel>`,
+            render: (context) => html`<pi-web-workspace-tasks-panel .link=${link} .context=${context}></pi-web-workspace-tasks-panel>`,
           },
         ],
       },

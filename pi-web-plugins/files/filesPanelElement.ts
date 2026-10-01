@@ -19,36 +19,54 @@ interface WorkspaceUploadBatchErrorShape {
   readonly responses: readonly { path: string }[];
 }
 
-/** Mark the live panel's tree stale after a session turn settled. */
-let filesPanelStale = false;
+/**
+ * One activation's line to the files panel its own registration rendered (B53). The host's controls
+ * for this panel belong to a registration; they reach the panel through this link, which the
+ * activation owns and hands to the panel as a property. Module or static state would not do: a
+ * second copy of the plugin on the page (another machine's) renders through the element class the
+ * first copy defined, so its own module never sees the panel.
+ */
+export class FilesPanelLink {
+  private panel: PiFilesPanel | undefined;
+  private stale = false;
 
-/** Whether the shown tree has aged past a settled session activity; the host
- *  header reads this for its summary. */
-export function filesPanelShowsStale(): boolean {
-  return filesPanelStale;
-}
+  attach(panel: PiFilesPanel): void {
+    this.panel = panel;
+  }
 
-export function markFilesPanelStale(): void {
-  filesPanelStale = true;
-  PiFilesPanel.active?.markStale();
-}
+  detach(panel: PiFilesPanel): void {
+    if (this.panel === panel) this.panel = undefined;
+  }
 
-/** The fold's Upload control; a no-op when no panel is mounted. */
-export function requestFilesUpload(): void {
-  PiFilesPanel.active?.openFilePicker();
-}
+  /** Whether the shown tree has aged past a settled session activity; the host header reads this for its summary. */
+  showsStale(): boolean {
+    return this.stale;
+  }
 
-/** Ask the live panel to refetch; the host calls this on panel invalidation. */
-export function invalidateFilesPanel(): void {
-  filesPanelStale = false;
-  const panel = PiFilesPanel.active;
-  if (panel !== undefined) panel.refresh();
+  markStale(): void {
+    this.stale = true;
+    this.panel?.markStale();
+  }
+
+  clearStale(): void {
+    this.stale = false;
+  }
+
+  /** The fold's Upload control; a no-op when no panel is mounted. */
+  requestUpload(): void {
+    this.panel?.openFilePicker();
+  }
+
+  /** Ask the panel to refetch; the host calls this on panel invalidation. */
+  invalidate(): void {
+    this.stale = false;
+    this.panel?.refresh();
+  }
 }
 
 export class PiFilesPanel extends LitElement {
-  /** The one panel instance rendering right now; the host talks to it through the module functions. */
-  static active: PiFilesPanel | undefined;
   @property({ attribute: false }) context: WorkspacePanelContext | undefined;
+  @property({ attribute: false }) link: FilesPanelLink | undefined;
   @query("#workspace-upload-input") private uploadInput?: HTMLInputElement;
   @query(".dialog-backdrop") private uploadDialogBackdrop?: HTMLElement | null;
   @query(".upload-dialog") private uploadDialog?: HTMLElement | null;
@@ -80,11 +98,11 @@ export class PiFilesPanel extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    PiFilesPanel.active = this;
+    this.link?.attach(this);
   }
 
   override disconnectedCallback(): void {
-    if (PiFilesPanel.active === this) PiFilesPanel.active = undefined;
+    this.link?.detach(this);
     this.releaseUploadModal();
     super.disconnectedCallback();
   }
@@ -105,7 +123,7 @@ export class PiFilesPanel extends LitElement {
     void this.explorer?.refresh().then(() => {
       // The stale mark is only honest while the tree is still the aged one:
       // a refetch that landed clears it, wherever the request came from.
-      filesPanelStale = false;
+      this.link?.clearStale();
       this.context?.host.requestRender();
     });
   }
@@ -479,7 +497,7 @@ export class PiFilesPanel extends LitElement {
   }
 
   private resetForContext(context: WorkspacePanelContext): void {
-    filesPanelStale = false;
+    this.link?.clearStale();
     const query = filesQuery();
     const explorer = new FilesExplorer({
       listFiles: (path) => context.files.listFiles(path),

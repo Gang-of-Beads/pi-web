@@ -17,29 +17,50 @@ interface TaskStatus {
   detail?: string;
 }
 
-const configCache = new Map<string, ConfigState>();
+type ConfigCache = Map<string, ConfigState>;
 
 export function defineTasksPanelElement(): void {
   if (!customElements.get(tasksPanelTagName)) customElements.define(tasksPanelTagName, PiWebTasksPanel);
 }
 
-export function tasksPanelBadge(context: WorkspacePanelContext): string | undefined {
-  const state = getCachedWorkspaceConfig(context);
-  return state?.kind === "unavailable" ? "!" : undefined;
-}
+/**
+ * One activation's line to the tasks panel its own registration rendered (B53). The host's controls
+ * for this panel belong to a registration; they reach the panel through this link, which the
+ * activation owns and hands to the panel as a property. Module or static state would not do: a
+ * second copy of the plugin on the page (another machine's) renders through the element class the
+ * first copy defined, so its own module never sees the panel.
+ */
+export class TasksPanelLink {
+  /** The loaded configurations, per machine, project and workspace; the panel writes, the badge reads. */
+  readonly configs: ConfigCache = new Map();
+  private panel: PiWebTasksPanel | undefined;
 
-/** The fold's controls; no-ops when no panel is mounted. */
-export function requestTasksRefresh(): void {
-  const context = PiWebTasksPanel.active?.contextValue;
-  if (context !== undefined) void PiWebTasksPanel.active?.refreshConfig(context);
-}
+  attach(panel: PiWebTasksPanel): void {
+    this.panel = panel;
+  }
 
-export function openTasksTerminal(): void {
-  PiWebTasksPanel.active?.openWorkspaceTerminal();
+  detach(panel: PiWebTasksPanel): void {
+    if (this.panel === panel) this.panel = undefined;
+  }
+
+  badge(context: WorkspacePanelContext): string | undefined {
+    return this.configs.get(cacheKeyForContext(context))?.kind === "unavailable" ? "!" : undefined;
+  }
+
+  /** The fold's controls; no-ops when no panel is mounted. */
+  refresh(): void {
+    const context = this.panel?.contextValue;
+    if (context !== undefined) void this.panel?.refreshConfig(context);
+  }
+
+  openTerminal(): void {
+    this.panel?.openWorkspaceTerminal();
+  }
 }
 
 class PiWebTasksPanel extends HTMLElement {
-  static active: PiWebTasksPanel | undefined;
+  link: TasksPanelLink | undefined;
+  private readonly ownConfigs: ConfigCache = new Map();
   contextValue: WorkspacePanelContext | undefined;
   private runningTaskId: string | undefined;
   private status: TaskStatus | undefined;
@@ -65,14 +86,18 @@ class PiWebTasksPanel extends HTMLElement {
     this.render();
   }
 
+  private get configs(): ConfigCache {
+    return this.link?.configs ?? this.ownConfigs;
+  }
+
   connectedCallback(): void {
-    PiWebTasksPanel.active = this;
+    this.link?.attach(this);
     window.addEventListener(configChangedEvent, this.onConfigChanged);
     this.render();
   }
 
   disconnectedCallback(): void {
-    PiWebTasksPanel.active = undefined;
+    this.link?.detach(this);
     window.removeEventListener(configChangedEvent, this.onConfigChanged);
   }
 
@@ -83,7 +108,7 @@ class PiWebTasksPanel extends HTMLElement {
       return;
     }
 
-    const state = getOrLoadWorkspaceConfig(context);
+    const state = getOrLoadWorkspaceConfig(this.configs, context);
     this.root.innerHTML = `
       ${taskStyles()}
       ${this.renderStatus()}
@@ -109,7 +134,7 @@ class PiWebTasksPanel extends HTMLElement {
 
   private dispatchTaskById(context: WorkspacePanelContext, taskId: string | null): Promise<void> {
     if (!this.isCurrentContext(context)) return Promise.resolve();
-    const task = taskFromConfigState(getCachedWorkspaceConfig(context), taskId);
+    const task = taskFromConfigState(this.configs.get(cacheKeyForContext(context)), taskId);
     if (task === undefined) {
       this.status = { kind: "error", message: "That task is no longer available. Click Refresh, then try again." };
       this.render();
@@ -142,10 +167,10 @@ class PiWebTasksPanel extends HTMLElement {
 
   async refreshConfig(context: WorkspacePanelContext): Promise<void> {
     this.status = { kind: "info", message: `Refreshing ${TASKS_CONFIG_PATH}…` };
-    configCache.set(cacheKeyForContext(context), { kind: "loading" });
+    this.configs.set(cacheKeyForContext(context), { kind: "loading" });
     this.render();
 
-    const state = await refreshWorkspaceConfig(context);
+    const state = await refreshWorkspaceConfig(this.configs, context);
     if (!this.isCurrentContext(context)) return;
     this.status = state.kind === "loaded"
       ? { kind: "success", message: `Loaded ${String(state.config.tasks.length)} task${state.config.tasks.length === 1 ? "" : "s"}.` }
@@ -199,21 +224,17 @@ class PiWebTasksPanel extends HTMLElement {
   }
 }
 
-function getCachedWorkspaceConfig(context: WorkspacePanelContext): ConfigState | undefined {
-  return configCache.get(cacheKeyForContext(context));
-}
-
-function getOrLoadWorkspaceConfig(context: WorkspacePanelContext): ConfigState {
-  const cached = getCachedWorkspaceConfig(context);
+function getOrLoadWorkspaceConfig(configs: ConfigCache, context: WorkspacePanelContext): ConfigState {
+  const cached = configs.get(cacheKeyForContext(context));
   if (cached !== undefined) return cached;
 
   const loading: ConfigState = { kind: "loading" };
-  configCache.set(cacheKeyForContext(context), loading);
-  void refreshWorkspaceConfig(context);
+  configs.set(cacheKeyForContext(context), loading);
+  void refreshWorkspaceConfig(configs, context);
   return loading;
 }
 
-async function refreshWorkspaceConfig(context: WorkspacePanelContext): Promise<ConfigState> {
+async function refreshWorkspaceConfig(configs: ConfigCache, context: WorkspacePanelContext): Promise<ConfigState> {
   const key = cacheKeyForContext(context);
   const state = await loadWorkspaceTasksConfig(context.files).catch((error: unknown): ConfigState => ({
     kind: "unavailable",
@@ -221,7 +242,7 @@ async function refreshWorkspaceConfig(context: WorkspacePanelContext): Promise<C
     hint: tasksConfigRefreshHint,
     detail: error instanceof Error ? error.message : String(error),
   }));
-  configCache.set(key, state);
+  configs.set(key, state);
   context.host.requestRender();
   window.dispatchEvent(new Event(configChangedEvent));
   return state;
