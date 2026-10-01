@@ -13,11 +13,15 @@ import { chromium } from "@playwright/test";
  * - A: the projects read answers 500 for 6 s from boot. Expect no "No sessions
  *   yet.", "Loading sessions…" or "Failed to load sessions" while it is
  *   unanswered, and the board's rows to appear by themselves.
- * - B: one workspace's sessions read is lost for 6 s. The other rows show at
+ * - B: one workspace's sessions do not answer for 6 s. The other rows show at
  *   once, "No sessions yet." never shows, and the lost workspace's session
  *   appears by itself once it answers. Once the other rows show, the retries
  *   ask only the lost workspace: on 8504 each sessions listing is a
- *   whole-store scan on the daemon.
+ *   whole-store scan on the daemon. Since P4 slice a the board is one read
+ *   composed by the web process, so the loss is the board answering that
+ *   workspace as unknown (the real answer, with its listing marked unknown)
+ *   and the page's own read of the gap being lost; on an older build the page
+ *   read every listing itself and only that read is lost.
  */
 const BASE = process.env.PI_WEB_PROBE_BASE ?? process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
 const PROJECTS_READ = /\/api\/machines\/local\/projects$/u;
@@ -107,13 +111,23 @@ try {
     }
     return route.continue();
   });
+  let boardMarked = 0;
+  await b.route((url) => url.pathname.endsWith("/api/machines/local/session-board"), async (route) => {
+    bUntil ??= Date.now() + LOSS_MS;
+    if (Date.now() >= bUntil) return route.continue();
+    const answer = await route.fetch();
+    const body = await answer.json();
+    body.listings = body.listings.map((listing) => (listing.cwd === lostCwd ? { cwd: lostCwd, unknown: true } : listing));
+    boardMarked += 1;
+    return route.fulfill({ response: answer, json: body });
+  });
   await b.goto(`${BASE}/?view=sessions`, { waitUntil: "domcontentloaded" });
   const early = await watchBoard(b, (seen) => seen.rowCount > 0, 5000);
   rowsShownAt = Date.now();
   const earlySeen = await boardSeen(b);
   const bSeen = await watchBoard(b, (seen) => seen.rowCwds.includes(lostCwd));
   await b.close();
-  leg("precondition B: one workspace's sessions read was lost", bFailed >= 1, `failed ${String(bFailed)} for ${String(lostCwd)}`);
+  leg("precondition B: one workspace's sessions read was lost", bFailed >= 1, `failed ${String(bFailed)}, board answered it unknown ${String(boardMarked)} times, for ${String(lostCwd)}`);
   leg("B: the other workspaces' sessions show at once", early.healedAt !== undefined && earlySeen.rowCwds.some((cwd) => cwd !== lostCwd), `${String(earlySeen.rowCount)} rows early`);
   leg("B: the lost workspace's sessions appear by themselves once it answers", bSeen.healedAt !== undefined, `healed at ${String(bSeen.healedAt)} ms`);
   leg("B: after the rows show, the retries ask only the lost workspace", otherSessionReads.length === 0, `${String(otherSessionReads.length)} other sessions reads`);

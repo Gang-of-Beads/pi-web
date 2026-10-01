@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Project, SessionInfo, Workspace } from "../api";
 import { HttpError } from "../api/http";
-import { boardAnswer, completeSessionBoard, readSessionBoard, type SessionBoard } from "./sessionBoard";
+import { UnexpectedBoardAnswer, type SessionBoardAnswer } from "../api/parsers";
+import { boardAnswer, boardRouteVerdict, completeSessionBoard, oneReadBoard, readSessionBoard, type SessionBoard } from "./sessionBoard";
 
 const project = (id: string): Project => ({ id, name: id, path: `/${id}`, createdAt: "now" });
 const workspace = (projectId: string, path: string): Workspace => ({ id: path, projectId, path, label: path, isMain: true, effectiveConfig: {} });
@@ -116,6 +117,74 @@ describe("completeSessionBoard", () => {
       sessions: (path) => path === "/gamma" ? lost() : Promise.resolve([]),
     });
     expect(board.unknownSources).toEqual([{ kind: "workspace", path: "/gamma" }]);
+  });
+});
+
+/**
+ * P4 slice a: the board is one read. A machine's web process answers every project's workspaces
+ * and every workspace's sessions at once; a machine whose web process predates the route is read
+ * source by source, as before.
+ */
+describe("the board in one read", () => {
+  const unasked = () => Promise.reject(new Error("a source was asked although the board answered"));
+
+  it("builds the board from the one answer, newest first, keeping its unknown sources, and asks no source", async () => {
+    const answer: SessionBoardAnswer = {
+      projects: [{ projectId: "alpha", workspaces: [alphaMain] }, { projectId: "beta", unknown: true }],
+      listings: [{ cwd: "/alpha", sessions: [session("a1", "/alpha", "2026-09-01"), session("a2", "/alpha", "2026-09-03")] }, { cwd: "/alpha-wt", unknown: true }],
+    };
+    const board = await readSessionBoard({ board: () => Promise.resolve(answer), projects: unasked, workspaces: unasked, sessions: unasked });
+
+    expect({ ids: board.sessions.map((entry) => entry.id), workspaces: board.workspaces.map((entry) => entry.path), unknown: board.unknownSources, answer: boardAnswer(board) }).toEqual({
+      ids: ["a2", "a1"],
+      workspaces: ["/alpha"],
+      unknown: [{ kind: "project", projectId: "beta" }, { kind: "workspace", path: "/alpha-wt" }],
+      answer: "partial",
+    });
+  });
+
+  it("reads source by source when the machine cannot answer the board", async () => {
+    const board = await readSessionBoard({
+      board: () => Promise.resolve("unsupported"),
+      projects: () => Promise.resolve([alpha]),
+      workspaces: () => Promise.resolve([alphaMain]),
+      sessions: () => Promise.resolve([session("a1", "/alpha", "2026-09-01")]),
+    });
+
+    expect({ ids: board.sessions.map((entry) => entry.id), answer: boardAnswer(board) }).toEqual({ ids: ["a1"], answer: "complete" });
+  });
+
+  it("is a miss, not a fallback, when the board read gets no answer", async () => {
+    const reading = readSessionBoard({ board: lost, projects: unasked, workspaces: unasked, sessions: unasked });
+
+    await expect(reading).rejects.toThrow("Failed to fetch");
+  });
+
+  it("tells a machine without the route from a read that failed", () => {
+    const verdicts = [
+      new HttpError("Route GET:/api/session-board not found", 404, "remote-a"),
+      new SyntaxError("Unexpected token '<'"),
+      new UnexpectedBoardAnswer(),
+      new HttpError("Bad gateway", 502, "remote-a", "gateway"),
+      new HttpError("Forbidden", 403, "local"),
+      new HttpError("Internal error", 500, "local"),
+      new TypeError("Failed to fetch"),
+    ].map(boardRouteVerdict);
+
+    expect(verdicts).toEqual(["unsupported", "unsupported", "unsupported", "error", "error", "error", "error"]);
+  });
+
+  it("stops asking a machine for the board once it showed it has no such route, and keeps asking after a failed read", async () => {
+    const missing = vi.fn(() => Promise.reject(new HttpError("Route GET:/api/session-board not found", 404, "remote-a")));
+    const readMissing = oneReadBoard(missing);
+    const first = await readMissing();
+    const second = await readMissing();
+    const failing = vi.fn(() => Promise.reject(new HttpError("Bad gateway", 502, "remote-a", "gateway")));
+    const readFailing = oneReadBoard(failing);
+    await expect(readFailing()).rejects.toThrow("Bad gateway");
+    await expect(readFailing()).rejects.toThrow("Bad gateway");
+
+    expect({ first, second, missingAsked: missing.mock.calls.length, failingAsked: failing.mock.calls.length }).toEqual({ first: "unsupported", second: "unsupported", missingAsked: 1, failingAsked: 2 });
   });
 });
 

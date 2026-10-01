@@ -273,6 +273,7 @@ stateDiagram-v2
   - Each surface subscribes to the events that change it and applies them as they arrive.
   - The same quiet window *T* applies: nothing received for *T* makes the surface compare its head and pull only what changed.
   - A session list is ordered by latest activity, a daemon fact carried on the list head. It re-sorts when an activity event arrives, never only when the list is refetched (B28).
+  - **The board is one read** (P4 slice a). A machine's session board (every project's workspaces and every workspace's sessions) is one request, composed by that machine's web process from its own projects, its workspaces and its daemon's listings. Before, the page made 1 + P + W requests through two lanes of its six connections (14 for 6 projects on 8505, 27 or more for 13 on 8504). The answer keeps each source that did not answer as unknown, so a partial board is still a partial board (B48). A machine whose web process predates the route answers 404 or the app shell; the page then composes the board itself, as before, and remembers that for the page's life.
   - **Pins** (P5 slice a). Each machine's pins are read once, then again only when:
     - its realtime socket delivers `pins.changed`, which the web process that wrote a pin nudges its daemon to publish;
     - that socket reopens;

@@ -158,6 +158,7 @@ describe("federated route contract", () => {
       ignoreParseFailure(requestPluginBackend({ pluginId: "board-tools", backendRevision: "server-r1", machineId, projectId: "p 1", workspaceId: "w 1" }, "cards.summary", { includeClosed: false })),
       ignoreParseFailure(filesApi.files("README", { kind: "tracked", mode: "file", projectId: "p 1", workspaceId: "w 1", machineId })),
       ignoreParseFailure(sessionPinsApi.pins(machineId)),
+      ignoreParseFailure(sessionsApi.sessionBoard(machineId)),
       ignoreParseFailure(sessionPinsApi.setPinned("s 1", true, machineId)),
       ignoreParseFailure(sessionPinsApi.adopt(["s 1"], machineId)),
       ignoreParseFailure(sessionsApi.sessions("/repo", machineId)),

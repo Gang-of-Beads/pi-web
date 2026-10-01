@@ -30,6 +30,7 @@ import { mountServerPluginRoutes } from "./plugins/serverPluginRouteMount.js";
 import { createActiveProfilePiPackageService, type PiPackageService } from "./piPackageService.js";
 import { registerPiPackageRoutes } from "./piPackageRoutes.js";
 import { registerSessionPinRoutes } from "./sessionPinRoutes.js";
+import { daemonSessionListing, registerSessionBoardRoutes, type SessionBoardSources } from "./sessionBoardRoutes.js";
 import { nudgeChange } from "../shared/sessiondClient/changeNudge.js";
 import { SessionPinStore, sessionPinStorePath } from "../shared/storage/sessionPinStore.js";
 import { createPiWebStatusCache, type PiWebStatusCache } from "./piWebStatusCache.js";
@@ -272,6 +273,13 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   registerLocalMachineConfigRoutes(app, invalidatingConfigService);
   registerLocalProjectRoutes(app, projects, workspaces, "/api", { config: configService });
   registerLocalProjectRoutes(app, projects, workspaces, "/api/machines/local", { config: configService });
+  const sessionBoardSources: SessionBoardSources = {
+    projects: () => projects.list(),
+    workspaces: (project) => resolveWorkspacesWithEffectiveConfig(project, workspaces, configService),
+    sessions: daemonSessionListing(sessionDaemon),
+  };
+  registerSessionBoardRoutes(app, sessionBoardSources);
+  registerSessionBoardRoutes(app, sessionBoardSources, "/api/machines/local");
 
   registerSessionProxyRoutes(app, sessionDaemon);
   registerSessionProxyRoutes(app, sessionDaemon, "/api/machines/local");

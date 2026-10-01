@@ -68,6 +68,7 @@ import {
   parsePiWebFleetRunResponse,
   parsePiWebSelfUpdateStatus,
   parseWorkspaceProviderResolution,
+  parseSessionBoardAnswer,
   parseWorkspaceTrustResponse,
   parseWebServerVersion,
   requireMachineStatusSnapshot,
@@ -285,6 +286,8 @@ export const workspacesApi = {
 
 export const sessionsApi = {
   sessions: (cwd: string, machineId = "local") => request(`${machinePrefix(machineId)}/sessions?cwd=${encodeURIComponent(cwd)}`, arrayOf(parseSessionInfo)),
+  /** Every project's workspaces and every workspace's sessions in one read (P4 slice a). */
+  sessionBoard: (machineId = "local") => request(`${machinePrefix(machineId)}/session-board`, parseSessionBoardAnswer),
   sessionsIfChanged: async (cwd: string, revision: string, machineId = "local"): Promise<SessionsRevisionResponse> =>
     request(
       `${machinePrefix(machineId)}/sessions?cwd=${encodeURIComponent(cwd)}&revision=${encodeURIComponent(revision)}`,

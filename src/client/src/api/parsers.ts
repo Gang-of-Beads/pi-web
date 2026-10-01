@@ -258,6 +258,56 @@ function requireWorkspaceEffectiveConfig(value: unknown): WorkspaceEffectiveConf
   });
 }
 
+/** A machine's board, one entry per source (P4 slice a); a source that did not answer is unknown. */
+export interface SessionBoardAnswer {
+  readonly projects: readonly ({ readonly projectId: string; readonly workspaces: readonly Workspace[] } | { readonly projectId: string; readonly unknown: true })[];
+  readonly listings: readonly ({ readonly cwd: string; readonly sessions: readonly SessionInfo[] } | { readonly cwd: string; readonly unknown: true })[];
+}
+
+/** The answer is not a board: the machine's web process does not know the route (P4 slice a). */
+export class UnexpectedBoardAnswer extends Error {
+  constructor() {
+    super("The machine did not answer with a session board");
+    this.name = "UnexpectedBoardAnswer";
+  }
+}
+
+/**
+ * Parse the board answer with the parsers the per-source reads use. An entry
+ * that does not parse, or names another project, is a source that did not
+ * answer - never an empty one. An answer of the wrong shape is refused.
+ */
+export function parseSessionBoardAnswer(value: unknown): SessionBoardAnswer {
+  if (!isRecord(value) || !Array.isArray(value["projects"]) || !Array.isArray(value["listings"])) throw new UnexpectedBoardAnswer();
+  return {
+    projects: value["projects"].map(parseBoardProject),
+    listings: value["listings"].map(parseBoardListing),
+  };
+}
+
+function parseBoardProject(value: unknown): SessionBoardAnswer["projects"][number] {
+  const projectId = isRecord(value) ? value["projectId"] : undefined;
+  if (!isRecord(value) || typeof projectId !== "string") throw new UnexpectedBoardAnswer();
+  if (value["unknown"] === true) return { projectId, unknown: true };
+  try {
+    const resolution = parseWorkspaceProviderResolution(value["resolution"]);
+    return resolution.projectId === projectId ? { projectId, workspaces: resolution.workspaces } : { projectId, unknown: true };
+  } catch {
+    return { projectId, unknown: true };
+  }
+}
+
+function parseBoardListing(value: unknown): SessionBoardAnswer["listings"][number] {
+  const cwd = isRecord(value) ? value["cwd"] : undefined;
+  if (!isRecord(value) || typeof cwd !== "string") throw new UnexpectedBoardAnswer();
+  if (value["unknown"] === true) return { cwd, unknown: true };
+  try {
+    return { cwd, sessions: arrayOf(parseSessionInfo)(value["sessions"]) };
+  } catch {
+    return { cwd, unknown: true };
+  }
+}
+
 export function parseSessionsRevisionResponse(value: unknown): SessionsRevisionResponse {
   const record = requireRecord(value);
   const revision = requireString(record, "revision");

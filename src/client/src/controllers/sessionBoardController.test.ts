@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { HttpError, type Project, type SessionInfo, type Workspace } from "../api";
 import { SessionBoardController } from "./sessionBoardController";
 
@@ -274,6 +274,76 @@ describe("SessionBoardController", () => {
     await flush();
 
     expect(remoteReads).toBe(1);
+    boards.dispose();
+  });
+});
+
+/**
+ * P4 slice a: the board is one read of the machine's web process. A machine that predates the
+ * route is read source by source, and is not asked for the board again on the same page.
+ */
+describe("SessionBoardController reading a machine's own API", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function machineApi(boardAnswer: () => Response) {
+    const asked: string[] = [];
+    vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      const path = url.pathname.replace(/^\/api\/machines\/[^/]+/u, "");
+      asked.push(path);
+      const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
+      if (path === "/session-board") return Promise.resolve(boardAnswer());
+      if (path === "/projects") return Promise.resolve(json([alpha]));
+      if (path === "/projects/alpha/workspaces") return Promise.resolve(json({ status: "provider", projectId: "alpha", ownerPluginId: "git", workspaces: [alphaMain], diagnostics: [] }));
+      if (path === "/sessions") return Promise.resolve(json([a1]));
+      return Promise.resolve(new Response("{}", { status: 500 }));
+    }));
+    return asked;
+  }
+
+  it("reads the board with one request when the machine answers it", async () => {
+    const asked = machineApi(() => new Response(JSON.stringify({
+      projects: [{ projectId: "alpha", resolution: { status: "provider", projectId: "alpha", ownerPluginId: "git", workspaces: [alphaMain], diagnostics: [] } }],
+      listings: [{ cwd: "/alpha", sessions: [a1] }],
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const boards = new SessionBoardController({ now: () => 0 });
+
+    await boards.browse("local");
+
+    expect({ asked, ids: boards.board("local")?.sessions.map((entry) => entry.id), answer: boards.answer("local") }).toEqual({ asked: ["/session-board"], ids: ["a1"], answer: "complete" });
+    boards.dispose();
+  });
+
+  it("reads a machine whose older web process answers the board's path with the app shell source by source", async () => {
+    const asked = machineApi(() => new Response("<!doctype html><html><body></body></html>", { status: 200, headers: { "content-type": "text/html" } }));
+    const boards = new SessionBoardController({ now: () => 0 });
+
+    await boards.browse("remote-a");
+
+    expect({ asked, ids: boards.board("remote-a")?.sessions.map((entry) => entry.id), answer: boards.answer("remote-a") }).toEqual({
+      asked: ["/session-board", "/projects", "/projects/alpha/workspaces", "/sessions"],
+      ids: ["a1"],
+      answer: "complete",
+    });
+    boards.dispose();
+  });
+
+  it("reads a machine without the route source by source, and does not ask it for the board again", async () => {
+    const asked = machineApi(() => new Response(JSON.stringify({ error: "Route GET:/api/session-board not found" }), { status: 404, headers: { "content-type": "application/json" } }));
+    let now = 0;
+    const boards = new SessionBoardController({ now: () => now });
+
+    await boards.browse("remote-a");
+    now = 60_000;
+    await boards.browse("remote-a", { force: true });
+
+    expect({ asked, ids: boards.board("remote-a")?.sessions.map((entry) => entry.id) }).toEqual({
+      asked: ["/session-board", "/projects", "/projects/alpha/workspaces", "/sessions", "/projects", "/projects/alpha/workspaces", "/sessions"],
+      ids: ["a1"],
+    });
     boards.dispose();
   });
 });

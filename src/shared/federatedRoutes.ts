@@ -39,6 +39,7 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "PUT", path: "/config" },
   { method: "GET", path: "/plugins" },
   { method: "GET", path: "/session-pins" },
+  { method: "GET", path: "/session-board" },
   { method: "POST", path: "/session-pins" },
   { method: "GET", path: "/pi-packages" },
   { method: "POST", path: "/pi-packages/install", timeoutMs: PI_PACKAGE_MUTATION_PROXY_TIMEOUT_MS },

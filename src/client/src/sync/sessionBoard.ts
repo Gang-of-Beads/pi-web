@@ -1,4 +1,6 @@
 import type { Project, SessionInfo, Workspace } from "../api";
+import { HttpError } from "../api/http";
+import { UnexpectedBoardAnswer, type SessionBoardAnswer } from "../api/parsers";
 import { mapWithLanes } from "./lanes";
 import { classifyReadError } from "./readPhase";
 
@@ -29,6 +31,8 @@ export type UnknownSource = { readonly kind: "project"; readonly projectId: stri
 export type BoardAnswer = "none" | "partial" | "complete";
 
 export interface SessionBoardSources {
+  /** The whole board in one read, or "unsupported" when the machine predates it (P4 slice a). */
+  board?(): Promise<SessionBoardAnswer | "unsupported">;
   projects(): Promise<readonly Project[]>;
   workspaces(projectId: string): Promise<readonly Workspace[]>;
   sessions(workspacePath: string): Promise<readonly SessionInfo[]>;
@@ -43,6 +47,8 @@ type Listed<T> = { readonly listed: readonly T[] } | { readonly unknown: Unknown
  * unknown.
  */
 export async function readSessionBoard(sources: SessionBoardSources): Promise<SessionBoard> {
+  const answer = sources.board === undefined ? undefined : await sources.board();
+  if (answer !== undefined && answer !== "unsupported") return boardFromAnswer(answer);
   const projects = await sources.projects();
   return readSources(sources, projects.map((project) => project.id), [], { sessions: [], workspaces: [], unknownSources: [] });
 }
@@ -63,10 +69,56 @@ async function readSources(sources: SessionBoardSources, projectIds: readonly st
   const listedWorkspaces = workspaceLists.flatMap((entry) => ("listed" in entry ? entry.listed : []));
   const paths = [...new Set([...listedWorkspaces.map((workspace) => workspace.path), ...workspacePaths])];
   const sessionLists = await mapWithLanes(paths, BOARD_LANES, (path) => listed(sources.sessions(path), { kind: "workspace", path }));
+  return assembleBoard(known, workspaceLists, sessionLists);
+}
+
+function boardFromAnswer(answer: SessionBoardAnswer): SessionBoard {
+  const workspaceLists = answer.projects.map((entry): Listed<Workspace> => ("workspaces" in entry ? { listed: entry.workspaces } : { unknown: { kind: "project", projectId: entry.projectId } }));
+  const sessionLists = answer.listings.map((entry): Listed<SessionInfo> => ("sessions" in entry ? { listed: entry.sessions } : { unknown: { kind: "workspace", path: entry.cwd } }));
+  return assembleBoard({ sessions: [], workspaces: [], unknownSources: [] }, workspaceLists, sessionLists);
+}
+
+function assembleBoard(known: SessionBoard, workspaceLists: readonly Listed<Workspace>[], sessionLists: readonly Listed<SessionInfo>[]): SessionBoard {
+  const listedWorkspaces = workspaceLists.flatMap((entry) => ("listed" in entry ? entry.listed : []));
   const sessions = dedupeById([...known.sessions, ...sessionLists.flatMap((entry) => ("listed" in entry ? entry.listed : []))])
     .sort((left, right) => Date.parse(right.modified) - Date.parse(left.modified));
   const unknownSources = [...known.unknownSources, ...[...workspaceLists, ...sessionLists].flatMap((entry) => ("unknown" in entry ? [entry.unknown] : []))];
   return { sessions, workspaces: dedupeById([...known.workspaces, ...listedWorkspaces]), unknownSources };
+}
+
+/** Whether a failed board read means the machine has no such route, or is a read that failed. */
+export type BoardRouteVerdict = "unsupported" | "error";
+
+/**
+ * A machine whose web process predates the board answers its path with 404,
+ * or with the app shell, which is not JSON; the route itself never answers
+ * 404. Anything else is a read that failed, retried as any read is. A
+ * gateway's 404 for a machine it does not know yet, and a sign-in page from a
+ * proxy in front of the machine, read the same way: the board is then read
+ * source by source until the page reloads, which costs requests, never rows.
+ */
+export function boardRouteVerdict(error: unknown): BoardRouteVerdict {
+  if (error instanceof HttpError) return error.status === 404 ? "unsupported" : "error";
+  return error instanceof SyntaxError || error instanceof UnexpectedBoardAnswer ? "unsupported" : "error";
+}
+
+/**
+ * Ask a machine for its board in one read until it shows it has no such
+ * route, then stop asking for the life of the page: the board is then read
+ * source by source. A remote machine that upgrades is asked again on reload.
+ */
+export function oneReadBoard(read: () => Promise<SessionBoardAnswer>): () => Promise<SessionBoardAnswer | "unsupported"> {
+  let missing = false;
+  return async () => {
+    if (missing) return "unsupported";
+    try {
+      return await read();
+    } catch (error) {
+      if (boardRouteVerdict(error) === "error") throw error;
+      missing = true;
+      return "unsupported";
+    }
+  };
 }
 
 export function boardAnswer(board: SessionBoard | undefined): BoardAnswer {

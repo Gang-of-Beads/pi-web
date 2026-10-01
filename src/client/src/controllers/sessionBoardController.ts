@@ -1,7 +1,7 @@
 import { projectsApi, sessionsApi, workspacesApi, type Project } from "../api";
 import { QUIET_WINDOW_MS } from "../sync/readPhase";
 import { ScopedResource, type ResourceClock } from "../sync/scopedResource";
-import { boardAnswer, completeSessionBoard, readSessionBoard, type BoardAnswer, type SessionBoard, type SessionBoardSources } from "../sync/sessionBoard";
+import { boardAnswer, completeSessionBoard, oneReadBoard, readSessionBoard, type BoardAnswer, type SessionBoard, type SessionBoardSources } from "../sync/sessionBoard";
 
 /** How long a board read whole stays fresh: browsing it again reads no more than its gaps. */
 const BOARD_FRESH_MS = 30_000;
@@ -122,7 +122,16 @@ export class SessionBoardController {
 }
 
 function defaultSources(knownProjects: SessionBoardControllerDependencies["knownProjects"]): (machineId: string) => SessionBoardSources {
+  const boardReads = new Map<string, () => ReturnType<NonNullable<SessionBoardSources["board"]>>>();
+  const boardRead = (machineId: string) => {
+    const known = boardReads.get(machineId);
+    if (known !== undefined) return known;
+    const read = oneReadBoard(() => sessionsApi.sessionBoard(machineId));
+    boardReads.set(machineId, read);
+    return read;
+  };
   return (machineId) => ({
+    board: () => boardRead(machineId)(),
     projects: () => {
       const known = knownProjects?.(machineId);
       return known === undefined ? projectsApi.projects(machineId) : Promise.resolve(known);
