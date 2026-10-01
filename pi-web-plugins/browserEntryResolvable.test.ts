@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { isRelativeSpecifier, moduleSpecifiers } from "../scripts/pluginModuleSpecifiers.mjs";
+import { isRelativeSpecifier, moduleSpecifiers, staticModuleSpecifiers } from "../scripts/pluginModuleSpecifiers.mjs";
 
 const npm = npmInvocation();
 
@@ -80,5 +80,18 @@ describe("shipped browser plugin entries", () => {
     }
 
     expect(unresolvable).toEqual([]);
+  });
+
+  it("are each one module: nothing loads before an entry runs (P7 slice a)", { timeout: 120_000 }, async () => {
+    execFileSync(npm.command, ["run", "build:plugins"], { stdio: "ignore", shell: npm.shell });
+
+    const entries = await browserEntries();
+    const importing: string[] = [];
+    for (const entry of entries) {
+      const imports = staticModuleSpecifiers(await readFile(entry, "utf8"));
+      if (imports.length > 0) importing.push(`${entry.slice(distRoot.length + 1)}: ${imports.join(", ")}`);
+    }
+
+    expect({ entries: entries.length > 0, importing }).toEqual({ entries: true, importing: [] });
   });
 });

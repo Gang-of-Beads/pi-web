@@ -15,6 +15,11 @@ export function moduleSpecifiers(source) {
   return [...source.matchAll(STATIC), ...source.matchAll(DYNAMIC)].map((match) => match[1] ?? "").filter((specifier) => specifier !== "");
 }
 
+/** The specifiers a file loads before it runs: its static and side-effect imports, not its lazy `import()`s. */
+export function staticModuleSpecifiers(source) {
+  return [...source.matchAll(STATIC)].map((match) => match[1] ?? "").filter((specifier) => specifier !== "");
+}
+
 export function isRelativeSpecifier(specifier) {
   return specifier.startsWith("./") || specifier.startsWith("../");
 }

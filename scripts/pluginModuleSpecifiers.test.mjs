@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isRelativeSpecifier, moduleSpecifiers } from "./pluginModuleSpecifiers.mjs";
+import { isRelativeSpecifier, moduleSpecifiers, staticModuleSpecifiers } from "./pluginModuleSpecifiers.mjs";
+
+describe("staticModuleSpecifiers", () => {
+  it("names what a file loads before it runs, not its lazy imports", () => {
+    expect(staticModuleSpecifiers('import { a } from "./a.js";\nimport "./element.js";\nvoid import("./lazy.js");\nexport { b } from "./b.js";')).toEqual(["./a.js", "./element.js", "./b.js"]);
+  });
+});
 
 describe("moduleSpecifiers", () => {
   it("finds named, side-effect and re-export imports", () => {

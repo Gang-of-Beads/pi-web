@@ -4,7 +4,6 @@ import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promi
 import { dirname, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import * as esbuild from "esbuild";
-import { isRelativeSpecifier, moduleSpecifiers } from "./pluginModuleSpecifiers.mjs";
 
 const rootDir = resolve("pi-web-plugins");
 const outDir = resolve("dist/pi-web-plugins");
@@ -29,18 +28,22 @@ async function buildAll() {
 }
 
 /**
- * Browser plugin modules are served raw and loaded by the page, so a bare
- * specifier like "lit" has nothing to resolve against - there is no import map
- * and no bundler between the file and the browser. An entry whose graph
- * reaches a package is therefore bundled in place; entries that only import
- * package-local files are left as the readable per-file output they already
- * were.
+ * Every browser plugin entry is bundled in place into one module.
+ *
+ * The page loads plugin modules raw, so a bare specifier like "lit" has
+ * nothing to resolve against - there is no import map and no bundler between
+ * the file and the browser - and an entry whose graph reaches a package had to
+ * be bundled anyway. Entries that imported only their own files used to ship
+ * as readable per-file output, and that cost the page a waterfall: about 70
+ * module files imported up to ten levels deep, one round trip per level, all
+ * before the route restore could select the session (P7 slice a). At a 100 ms
+ * round trip that was about 1.5 s of the 2.3 s to the first row. Lazy
+ * `import()`s of a computed URL (a vendored engine) stay lazy.
  */
 async function bundleBrowserEntries() {
   const manifests = await browserEntryManifests();
   let bundled = 0;
   for (const entry of manifests) {
-    if (!await needsBundling(entry)) continue;
     await esbuild.build({
       entryPoints: [entry],
       outfile: entry,
@@ -112,36 +115,6 @@ async function browserEntryManifests() {
     }
   }
   return entries;
-}
-
-/**
- * Whether anything the entry reaches needs a bundler.
- *
- * This used to read the entry file alone, so a plugin whose entry imported
- * only its own modules shipped unbundled even when one of those modules
- * imported "lit" - the browser then refused the whole plugin with "Failed to
- * resolve module specifier". The question is about the graph, so the graph is
- * what gets walked.
- */
-async function needsBundling(entryPath) {
-  const seen = new Set();
-  const queue = [entryPath];
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (current === undefined || seen.has(current)) continue;
-    seen.add(current);
-    let source;
-    try {
-      source = await readFile(current, "utf8");
-    } catch {
-      continue;
-    }
-    for (const specifier of moduleSpecifiers(source)) {
-      if (!isRelativeSpecifier(specifier)) return true;
-      queue.push(resolve(dirname(current), specifier));
-    }
-  }
-  return false;
 }
 
 async function buildDirectory(sourceDir, targetDir) {

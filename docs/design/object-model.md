@@ -534,6 +534,8 @@ Dependency direction: component → controller → `sync/*` → `api/http.ts`. P
 | board read p99 | 23 s (list) | ≤1 s | P3, P4 |
 | time to the reconnecting row | 10.5–29 s | deadline + grace (7 s small / 12 s large) | P1, P3 |
 | daemon listen after plugin activation | 31.4 s | measured, then the slowest phase fixed | P3 |
+| first row on a deep link at a 100 ms round trip (`probe-boot-latency.mjs`) | 2.29–2.41 s; **1.17 s** after P7a | ≤1.0 s (place before plugins), ≤0.6 s (remembered folder) | P6, P7 |
+| browser plugin modules at boot (`probe-boot-latency.mjs`) | 55–70 files, imported up to ten levels deep (1.34 s of round trips at 100 ms); **one file per plugin** after P7a, asked for within 1 ms | one level | P7 |
 
 ### 4.4 B28 board read and heads
 
@@ -561,6 +563,48 @@ Fix, in phase order (P3 unless noted):
 7. Cold open beyond the tail page depends on the SDK `SessionManager.open` cost; measure it before designing.
 
 ---
+
+### 4.7 The boot on a slow link (P6 slice b onward, P7)
+
+**Measured** on 8505, phone 393x850. A warm reload of a deep link to the small seed session, with Chrome emulating the round-trip latency and the bandwidth unthrottled (`/tmp/boot-chain-latency.mjs`, then `probe-boot-latency.mjs`):
+
+| Added latency | First row | Projects read sent | Workspaces read sent | Sessions read sent |
+|---|---|---|---|---|
+| 0 ms (8505 local) | 232 ms | 52 ms | 166 ms | 214 ms |
+| 50 ms | 1,638 ms | 366 ms | 1,502 ms | 1,571 ms |
+| 100 ms (a tailnet; the Mac reading 8504) | 2,290 ms | 570 ms | 2,016 ms | 2,138 ms |
+
+The gap between the projects read and the workspaces read is not a read. `restoreRouteFor` awaits `loadPluginsForSelectedMachine()` before it selects anything, so that the route's `tool` and `view` can be resolved against plugin-registered panels.
+
+The built-in browser plugins shipped as about 70 module files. Eight entries imported only their own files, so the build left them unbundled, and their imports went up to ten levels deep. At 100 ms each level is one round trip, on the same six HTTP/1.1 connections as the app's own reads. The timeline:
+
+- the plugin entries at 368 ms;
+- their imports at 601, 762, 898, 1,074, 1,217, 1,388, 1,526, 1,658 and 1,817 ms (`relays/vendor/marked.esm.js`);
+- the route restore at 1,956 ms.
+
+The request count matters less than this: 24 `/api` reads cost about one round trip each on six connections, while the plugin waterfall costs ten in a row.
+
+**The slices, ordered by what a reader on a slow link feels:**
+
+1. **One file per plugin** (P7 slice a, build). **Shipped.**
+   - Every built-in browser plugin entry is bundled in place into one module. A lazy `import()` of a computed URL (mermaid's vendored engine) stays lazy, and `import.meta.url` still names the entry.
+   - The boot asks for the 12 plugin modules within 1 ms of each other.
+   - At 100 ms the first row moved from 2.29–2.41 s to 1.17 s.
+   - Guard: `browserEntryResolvable.test.ts` fails when a shipped entry statically imports anything.
+2. **The place before the plugins** (P6 slice b, browser only). **Waits on the owner** (`/tmp/owner-questions-next.md`: text first, or everything at once).
+   - The route restore would select the machine, project, workspace and session without waiting for the plugins.
+   - Only a route's `tool` and plugin `view` would wait for them, and they apply when the plugins register, if the reader has not moved since (D8).
+   - Rows a plugin draws (diagrams, event cards) would show their plain form first and redraw once.
+   - Expected: about four round trips plus the app bundle (roughly 0.9 s at 100 ms).
+3. **A remembered folder seeds the open** (P6 slice c, browser only; replaces "`cwd` in links").
+   - The page remembers each session's folder, keyed by machine and session.
+   - A deep link or reload asks for the transcript tail at once, in parallel with the route chain.
+   - The chain's typed place (`found | outside | unknown`) wins over the seed when they disagree. An early read for a session that turns out gone shows nothing until the chain says gone.
+4. **Fewer `/api` reads at boot** (P7 slices b–d). These are measured again after 1–3, since each is worth one round trip or less once the waterfall and the chain are gone:
+   - one shell-facts answer (config, version, self-update status, roster), with a fallback for an older web process;
+   - `pi-web/status` given to plugins as a host fact instead of read again by the updates plugin;
+   - the opened session's status, thinking levels and background tasks in one read;
+   - the socket's open delivering its snapshot (unread, statuses, interrupted) as its first frame.
 
 ## 5. Consistency invariants
 
