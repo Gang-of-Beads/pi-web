@@ -44,12 +44,13 @@ function laneOf(fake: ReturnType<typeof fakeRuntime>): string[] {
   fake.session.getSteeringMessages = () => [...steering];
   fake.session.prompt = (text: string, options: unknown) => {
     fake.calls.prompt.push({ text, options });
-    if (Reflect.get(Object(options), "streamingBehavior") === "steer") {
+    const queued = Reflect.get(Object(options), "streamingBehavior") === "steer" && fake.session.isStreaming;
+    if (queued) {
       steering.push(text);
       fake.emit({ type: "queue_update", steering: [...steering], followUp: [] });
     }
     const preflightResult: unknown = Reflect.get(Object(options), "preflightResult");
-    if (typeof preflightResult === "function") Reflect.apply(preflightResult, undefined, [true]);
+    if (typeof preflightResult === "function") Reflect.apply(preflightResult, undefined, [queued ? "queued" : "started"]);
     return Promise.resolve();
   };
   return steering;
