@@ -18,8 +18,12 @@ concurrency:
 
 jobs:
   verify:
-    name: Verify and package (Linux)
+    name: ${{ matrix.lane }} (Linux)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [tests, checks-and-build]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -36,14 +40,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify
-        run: pnpm run verify
+      - name: Test
+        if: matrix.lane == 'tests'
+        run: pnpm test
+
+      - name: Static checks
+        if: matrix.lane == 'checks-and-build'
+        run: pnpm run verify:static
 
       - name: Build
+        if: matrix.lane == 'checks-and-build'
         run: pnpm run build
-
-      - name: Smoke test npm 12 global package install
-        run: pnpm run smoke:package-install
-
-      - name: Check npm package contents
-        run: pnpm run pack:dry

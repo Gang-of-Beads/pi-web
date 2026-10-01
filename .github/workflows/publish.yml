@@ -82,7 +82,7 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      - name: Smoke test npm 12 global package install
+      - name: Smoke test npm global package install
         run: pnpm run smoke:package-install
 
       - name: Install Nix

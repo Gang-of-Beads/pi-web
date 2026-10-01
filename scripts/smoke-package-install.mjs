@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { smokeInstalledPluginApi } from "./plugin-api-package-smoke.mjs";
 
+/** Pin the npm client that exercises scoped install-script approval for global node-pty installs. */
 const NPM_VERSION = "12.0.1";
 const MARKER = "pi-web-package-pty-ok";
 const execFileAsync = promisify(execFile);
