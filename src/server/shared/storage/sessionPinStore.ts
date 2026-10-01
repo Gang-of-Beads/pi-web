@@ -11,7 +11,10 @@ import { piWebDataDir } from "../../../config.js";
  * machine holds the set and every device that browses it sees the same pins.
  *
  * Writes are serialised through one tail so two devices pinning at the same
- * moment cannot lose one another's pin to a read-modify-write race.
+ * moment cannot lose one another's pin to a read-modify-write race. Whether a
+ * write changed the set is decided inside that tail too, and only a change
+ * calls `onChange`: every page load adopts, and a repeated pin is common, so
+ * announcing those would make every browser read the pins for nothing.
  */
 
 export function sessionPinStorePath(env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): string {
@@ -31,8 +34,16 @@ function parsePinFile(value: unknown): string[] {
   return pinned.filter((id): id is string => typeof id === "string" && id !== "");
 }
 
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  const known = new Set(left);
+  return left.length === right.length && right.every((id) => known.has(id));
+}
+
 export class SessionPinStore {
-  constructor(private readonly filePath = sessionPinStorePath()) {}
+  constructor(
+    private readonly filePath = sessionPinStorePath(),
+    private readonly onChange: () => void = () => undefined,
+  ) {}
 
   private tail: Promise<unknown> = Promise.resolve();
 
@@ -60,8 +71,10 @@ export class SessionPinStore {
 
   private async change(apply: (pinned: string[]) => string[]): Promise<string[]> {
     const run = this.tail.then(async () => {
-      const next = apply(await this.list());
+      const before = await this.list();
+      const next = apply(before);
       await this.write(next);
+      if (!sameIds(before, next)) this.onChange();
       return next;
     });
     this.tail = run.catch(() => undefined);

@@ -6,7 +6,9 @@ class SessionPinRequestError extends Error {}
 /**
  * The machine's pin set, readable and writable by every device that browses
  * it. Mounted under both the plain and the machine-scoped prefix so the fleet
- * proxy reaches a remote machine's own pins rather than the gateway's.
+ * proxy can reach a remote machine's own pins rather than the gateway's (not
+ * federated yet: `/session-pins` is not in `FEDERATED_HTTP_ROUTES`). The store
+ * announces a change (P5 slice a); this route only reads and writes.
  */
 export function registerSessionPinRoutes(app: FastifyInstance, store: SessionPinStore, prefix = "/api"): void {
   const base = prefix.replace(/\/+$/u, "") === "" ? "/api" : prefix.replace(/\/+$/u, "");

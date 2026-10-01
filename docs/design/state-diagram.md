@@ -273,6 +273,12 @@ stateDiagram-v2
   - Each surface subscribes to the events that change it and applies them as they arrive.
   - The same quiet window *T* applies: nothing received for *T* makes the surface compare its head and pull only what changed.
   - A session list is ordered by latest activity, a daemon fact carried on the list head. It re-sorts when an activity event arrives, never only when the list is refetched (B28).
+  - **Pins** (P5 slice a). Each machine's pins are read once, then again only when:
+    - its realtime socket delivers `pins.changed`, which the web process that wrote a pin nudges its daemon to publish;
+    - that socket reopens;
+    - the tab resumes.
+
+    A render never reads them. Before, every render more than 2 s after the last read re-read them, which was 7–8 reads a minute with the git panel open and nothing happening. A change that arrives while a read is on its way is read once more after it, and a write that changed nothing announces nothing. A remote machine's pins are not federated through the gateway yet (a separate slice), so this holds for the machine that serves the page.
 - **Efficiency and latency** (owner, 2026-09-30: "guarantee maximal message efficiency and low latency"). The budgets are measured by the phase probes, and a regression fails them:
   - **Latency:** a frame reaches the screen within one animation frame of its arrival. A catch-up after *T* costs one head read plus the missing entries, never a page reload.
   - **Efficiency:** heartbeats and head reads carry heads only, tens of bytes. Status frames carry what changed, not the whole status. Nothing polls on a timer while events are flowing.

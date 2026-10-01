@@ -1587,7 +1587,16 @@ export interface WorkspaceChangedUiEvent {
   readonly cwd: string;
 }
 
-export type RealtimeEvent = GlobalSessionEvent | TerminalUiEvent | MachineStatusUiEvent | WorkspaceChangedUiEvent;
+/**
+ * The machine's pins changed: a device pinned or unpinned a session, or handed over its old
+ * local pins. The web process that wrote them nudges its daemon, which announces it here; a
+ * browser reads that machine's pins once more (state-diagram D5, "Every surface is live").
+ */
+export interface PinsChangedUiEvent {
+  readonly type: "pins.changed";
+}
+
+export type RealtimeEvent = GlobalSessionEvent | TerminalUiEvent | MachineStatusUiEvent | WorkspaceChangedUiEvent | PinsChangedUiEvent;
 
 /** A run a restart cut off, as reported once by the daemon and then cleared. */
 export interface InterruptedRunInfo {

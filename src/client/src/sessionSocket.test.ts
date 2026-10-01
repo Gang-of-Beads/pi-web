@@ -184,6 +184,7 @@ describe("notification socket guards", () => {
       completionOrder: 1,
       completedAt: "2026-07-20T00:00:01.000Z",
     };
+    expect(parseRealtimeSocketEvent({ type: "pins.changed" })).toEqual({ type: "pins.changed" });
     expect(parseRealtimeSocketEvent({
       type: "sessions.unread",
       catalogId: "catalog-a",

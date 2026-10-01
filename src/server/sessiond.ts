@@ -17,6 +17,7 @@ import { ModelCatalogRefresher } from "./daemon/sessions/modelCatalogRefresher.j
 import { PiSessionService } from "./daemon/sessions/piSessionService.js";
 import { createPiSessionManagerGateway } from "./daemon/sessions/piSessionManagerGateway.js";
 import { registerSessionRoutes } from "./daemon/sessions/sessionRoutes.js";
+import { registerChangeNudgeRoutes } from "./daemon/realtime/changeNudgeRoutes.js";
 import { SessionNotificationStore } from "./daemon/sessions/sessionNotificationStore.js";
 import { SessionArchiveStore, defaultSessionArchiveFilePath } from "./daemon/sessions/sessionArchiveStore.js";
 import { FileSessionUnreadPersistence, SessionUnreadStore, defaultSessionUnreadFilePath } from "./daemon/sessions/sessionUnreadStore.js";
@@ -422,6 +423,7 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
     });
   }
   registerTerminalRoutes(app, terminals);
+  registerChangeNudgeRoutes(app, eventHub);
   registerWorkspaceCatalogRoutes(app, {
     projects,
     workspaces: workspaceProviders,

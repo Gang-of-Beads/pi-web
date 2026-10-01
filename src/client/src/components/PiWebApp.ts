@@ -292,9 +292,6 @@ interface SessionCleanupDialogState {
   error?: string | undefined;
 }
 
-/** How long a machine's pin answer stands before it is worth re-reading. */
-const PIN_REFRESH_MS = 2_000;
-
 @customElement("pi-web-app")
 export class PiWebApp extends LitElement {
   @state() private state: AppState = initialAppState();
@@ -516,32 +513,45 @@ export class PiWebApp extends LitElement {
    * app re-rendering just as often. It is why the interface felt busy and why
    * the transcript kept moving under the reader.
    *
-   * A machine already answered is re-read only once the answer is stale, which
-   * keeps a pin made on another device appearing, and a machine that never
-   * answered is retried on the next render.
+   * A machine already answered is read again only when it says its pins
+   * changed (`pins.changed`), its socket reopens, or the tab resumes
+   * (`refreshMachinePins`); it used to be re-read on any render once 2 s
+   * old, 7-8 reads a minute with the git panel open and nothing happening
+   * (P5 slice a). A machine whose last read failed is retried on the next render.
    */
-  private readonly pinsReadAt = new Map<string, number>();
+  private readonly pinsStale = new Set<string>();
 
   private async ensureMachinePins(machineId: string): Promise<void> {
     if (this.pinReadsInFlight.has(machineId)) return;
-    const readAt = this.pinsReadAt.get(machineId);
-    if (this.pinsAdopted.has(machineId) && readAt !== undefined && Date.now() - readAt < PIN_REFRESH_MS) return;
+    if (this.pinsAdopted.has(machineId) && !this.pinsStale.has(machineId)) return;
     this.pinReadsInFlight.add(machineId);
+    this.pinsStale.delete(machineId);
     try {
       const local = readPinnedSessionIds(machineId);
       const answered = this.pinsAdopted.has(machineId) || local.size === 0
         ? await sessionPinsApi.pins(machineId)
         : await sessionPinsApi.adopt([...local], machineId);
       this.pinsAdopted.add(machineId);
-      this.pinsReadAt.set(machineId, Date.now());
       this.applyMachinePins(machineId, answered);
     } catch {
       // The machine could not answer: the local set keeps standing in, and the
       // next read tries again. A pin is never invented or silently dropped.
       this.pinReadsInFlight.delete(machineId);
+      this.pinsStale.add(machineId);
       return;
     }
     this.pinReadsInFlight.delete(machineId);
+    if (this.pinsStale.has(machineId)) void this.ensureMachinePins(machineId);
+  }
+
+  /**
+   * The machine said its pins changed, or what it said while the page was away is unknown: read
+   * them once more. A read already on its way may have been answered before the change, so the
+   * mark stays and one more read follows it; a burst of changes during a read costs one.
+   */
+  private refreshMachinePins(machineId: string): void {
+    this.pinsStale.add(machineId);
+    void this.ensureMachinePins(machineId);
   }
 
   private applyMachinePins(machineId: string, ids: readonly string[]): void {
@@ -1355,6 +1365,7 @@ export class PiWebApp extends LitElement {
 
   private async refreshAfterBrowserResume(): Promise<void> {
     await this.sessionUnread.refreshAll();
+    for (const machineId of this.pinsAdopted) this.refreshMachinePins(machineId);
     await Promise.all([
       this.sessions.refreshSelectedSession(),
       this.sessions.verifyUnansweredSends(),
@@ -2097,6 +2108,7 @@ export class PiWebApp extends LitElement {
         // as the outage lasted; the reads below fire the reports that are
         // allowed to retire claims.
         void this.sessionUnread.refresh(machineId);
+        this.refreshMachinePins(machineId);
         // A self-update restart is the one "reconnecting…" that ends with the
         // socket coming back to the same page: the applying strip's exit is
         // the reconnect itself, and the restart is exactly when the running
@@ -2134,7 +2146,10 @@ export class PiWebApp extends LitElement {
       const socket = new RealtimeSocket();
       socket.connect(
         (event) => { this.handleMachineActivityEvent(machineId, event); },
-        () => { void this.sessionUnread.refresh(machineId); },
+        () => {
+          void this.sessionUnread.refresh(machineId);
+          this.refreshMachinePins(machineId);
+        },
         machineId,
       );
       this.machineRealtimeSockets.set(machineId, socket);
@@ -2173,12 +2188,14 @@ export class PiWebApp extends LitElement {
   }
 
   private handleMachineActivityEvent(machineId: string, event: BrowserRealtimeEvent): void {
-    if (event.type === "sessions.unread") this.sessionUnread.applyEvent(machineId, event);
+    if (event.type === "pins.changed") this.refreshMachinePins(machineId);
+    else if (event.type === "sessions.unread") this.sessionUnread.applyEvent(machineId, event);
     else if (event.type === "machine.status") this.machineStatus.apply(machineId, event.status);
   }
 
   private handleRealtimeEvent(machineId: string, event: BrowserRealtimeEvent): void {
-    if (event.type === "sessions.unread") this.sessionUnread.applyEvent(machineId, event);
+    if (event.type === "pins.changed") this.refreshMachinePins(machineId);
+    else if (event.type === "sessions.unread") this.sessionUnread.applyEvent(machineId, event);
     else if (event.type === "machine.status") this.machineStatus.apply(machineId, event.status);
     else if (event.type === "workspace.changed") this.applyWorkspaceChanged(machineId, event.cwd);
     else if (isTerminalEvent(event)) {

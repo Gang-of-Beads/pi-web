@@ -30,7 +30,8 @@ import { mountServerPluginRoutes } from "./plugins/serverPluginRouteMount.js";
 import { createActiveProfilePiPackageService, type PiPackageService } from "./piPackageService.js";
 import { registerPiPackageRoutes } from "./piPackageRoutes.js";
 import { registerSessionPinRoutes } from "./sessionPinRoutes.js";
-import { SessionPinStore } from "../shared/storage/sessionPinStore.js";
+import { nudgeChange } from "../shared/sessiondClient/changeNudge.js";
+import { SessionPinStore, sessionPinStorePath } from "../shared/storage/sessionPinStore.js";
 import { createPiWebStatusCache, type PiWebStatusCache } from "./piWebStatusCache.js";
 import { getPiWebRuntime, getPiWebStatus, getPiWebVersionStatus } from "../shared/piWebStatus.js";
 import {
@@ -260,7 +261,10 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   app.get("/api/machines/local/plugins", async (_request, reply) => withProfileDependency(reply, () => piWebPlugins.plugins()));
   registerPiPackageRoutes(app, piPackages);
   registerPiPackageRoutes(app, piPackages, "/api/machines/local");
-  const sessionPins = deps.sessionPins ?? new SessionPinStore();
+  const pinsChanged = (): void => {
+    nudgeChange(sessionDaemon, "pins").catch((error: unknown) => { app.log.warn({ err: error }, "Could not announce a pin change to the session daemon"); });
+  };
+  const sessionPins = deps.sessionPins ?? new SessionPinStore(sessionPinStorePath(), pinsChanged);
   registerSessionPinRoutes(app, sessionPins);
   registerSessionPinRoutes(app, sessionPins, "/api/machines/local");
   const invalidatingConfigService = invalidatePiWebStatusOnWrite(configService, piWebStatusCache);
