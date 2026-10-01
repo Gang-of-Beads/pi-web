@@ -17,8 +17,6 @@ const browser = await chromium.launch();
 
 async function openTranscript(page) {
   await openProbedSession(page, BASE);
-  // openProbedSession already lands in the transcript, so the tile/session
-  // clicks the board would have needed are gone.
   // The corner is client-side geometry. The transcript used to be injected as a
   // fixture, but the app re-renders rows from its own store and overwrote it,
   // leaving one card measured at 5,694px tall 90,000px above the viewport. The
@@ -39,14 +37,6 @@ async function openTranscript(page) {
   await page.waitForTimeout(800);
 }
 
-/**
- * Whether a card's scroll container is the one on screen.
- *
- * The phone layout keeps a second, off-screen copy of the transcript inside the
- * collapsed desktop panel; its cards live ~90,000px away and clipping them gave
- * a one-pixel image. Passed into the page as source, since an evaluate closure
- * does not travel.
- */
 /**
  * Whether a card belongs to the transcript the reader is looking at.
  *

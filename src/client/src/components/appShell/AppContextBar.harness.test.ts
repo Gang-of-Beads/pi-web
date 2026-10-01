@@ -70,6 +70,40 @@ describe("the resident row hands off to the panel and the quick switcher", () =>
     expect(required(bar.renderRoot, ".session-title").textContent).toBe("Git");
   });
 
+  it("shows session words instead of an identifier", async () => {
+    const bar = await mount({ session: session() });
+    const title = required(bar.renderRoot, ".session-title");
+
+    expect(title.textContent).toBe("New session");
+    bar.session = session({ firstMessage: "Fix the failing test" });
+    await bar.updateComplete;
+    expect(title.textContent).toBe("Fix the failing test");
+  });
+
+  it("names navigation and menu controls for the surfaces they open", async () => {
+    const bar = await mount({ onOpenGoTo: () => undefined, toggleTarget: "menu", navigationTarget: "page" });
+    const navigation = required(bar.renderRoot, ".panel-toggle.go-to");
+    const menu = required(bar.renderRoot, ".panel-toggle:not(.go-to)");
+
+    expect(navigation.getAttribute("aria-label")).toBe("Open navigation");
+    expect(menu.getAttribute("aria-label")).toBe("Go to a view");
+    bar.panelOpen = true;
+    await bar.updateComplete;
+    expect(navigation.getAttribute("aria-label")).toBe("Open navigation");
+    expect(menu.getAttribute("aria-label")).toBe("Go to a view");
+
+    bar.navigationTarget = "panel";
+    bar.toggleTarget = "panel";
+    await bar.updateComplete;
+    expect(navigation.getAttribute("aria-label")).toBe("Close navigation panel");
+    expect(menu.getAttribute("aria-label")).toBe("Close panel");
+
+    bar.panelOpen = false;
+    await bar.updateComplete;
+    expect(navigation.getAttribute("aria-label")).toBe("Open navigation panel");
+    expect(menu.getAttribute("aria-label")).toBe("Open panel");
+  });
+
   it("leaves session state to the activity dock and the status footer", async () => {
     const bar = await mount({ session: session({ name: "Ship the release" }) });
     expect(bar.renderRoot.querySelector(".working")).toBeNull();
