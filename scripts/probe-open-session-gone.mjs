@@ -16,7 +16,8 @@ import path from "node:path";
  *   comes back, and the page reads it again (the daemon pushes no deletion; heads are B28). It must say the session no longer exists, select nothing, and keep
  *   the id in the URL.
  * - G3: a row the board still lists is deleted, then picked. It must land on the same words, not
- *   fail the tap.
+ *   fail the tap. The copy is dated in the past so it is never the workspace's latest session,
+ *   which a link without a session opens (B31) and would leave running on the daemon.
  * - G4: an archived session opened by link shows "This session is archived." with Restore in the
  *   composer slot; Restore brings the composer back.
  * - G5: Stop and Abort on a session no store holds answer 404 with session-not-found.
@@ -42,11 +43,10 @@ const source = fs.readdirSync(SESSION_DIR).find((name) => name.endsWith(`_${COPY
 if (source === undefined) throw new Error("the small seed session to copy is missing");
 const created = [];
 
-function copySession(label) {
+function copySession(label, now = new Date()) {
   const id = `0f0f0f0f-0000-7000-8000-${randomBytes(6).toString("hex")}`;
   const lines = fs.readFileSync(path.join(SESSION_DIR, source), "utf8").trim().split("\n");
   const header = JSON.parse(lines[0]);
-  const now = new Date();
   header.id = id;
   header.timestamp = now.toISOString();
   lines[0] = JSON.stringify(header);
@@ -108,7 +108,7 @@ try {
   };
 
   const a = copySession("A");
-  const b = copySession("B");
+  const b = copySession("B", new Date("2026-08-01T00:00:00.000Z"));
   const c = copySession("C");
   await page.waitForTimeout(1500);
   const locates = await Promise.all([a, b, c].map((copy) => located(copy.id)));
@@ -142,7 +142,10 @@ try {
   await page.goto(link());
   const board = await until((state) => state.sessions.includes(b.id));
   check("precondition G3: the board lists the copy", board.sessions.includes(b.id), `${String(board.sessions.length)} rows`);
+  const bStopped = await post(`/api/sessions/${encodeURIComponent(b.id)}/stop`, { cwd: CWD });
   fs.rmSync(b.file);
+  const bStatus = (await fetch(`${BASE}/api/machines/local/sessions/${encodeURIComponent(b.id)}/status?cwd=${encodeURIComponent(CWD)}`)).status;
+  check("precondition G3: the deleted row is open nowhere on the daemon (no runtime, no file)", bStopped.status === 200 && bStatus === 404, `stop ${String(bStopped.status)}, status ${String(bStatus)}`);
   const picked = await page.evaluate((id) => {
     const app = document.querySelector("pi-web-app");
     const session = app?.state?.sessions?.find((candidate) => candidate.id === id);
