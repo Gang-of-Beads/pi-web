@@ -509,7 +509,7 @@ Prefer module-relative asset URLs so they also work for remote machine plugins a
 const iconUrl = new URL("./assets/icon.svg", import.meta.url);
 ```
 
-The final installed plugin package must contain `assets/icon.svg` at that path relative to the final built module and inside `browserRoot`. PI WEB serves files that already exist in the package; it does not copy a source `public/` directory or apply Vite-style public-directory semantics. Configure the plugin build and package contents to emit or copy the asset into its final module-relative location.
+The final installed plugin package must contain `assets/icon.svg` at that path relative to the final built module and inside `browserRoot`. A bundled plugin's modules are one file, its entry, so `import.meta.url` is the entry's URL in every module of it: place assets relative to the entry. PI WEB bundles its own built-in plugins this way. PI WEB serves files that already exist in the package; it does not copy a source `public/` directory or apply Vite-style public-directory semantics. Configure the plugin build and package contents to emit or copy the asset into its final module-relative location.
 
 PI WEB returns executable JavaScript MIME types for both `.js` and `.mjs`. JSON, CSS, HTML, and SVG receive their corresponding content types; unknown file types are served as octet-stream.
 

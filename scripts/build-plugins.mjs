@@ -108,10 +108,9 @@ async function browserEntryManifests() {
     const declared = metadata?.piWeb?.plugins;
     if (!Array.isArray(declared)) continue;
     for (const declaration of declared) {
-      const browserRoot = typeof declaration?.browserRoot === "string" ? declaration.browserRoot : ".";
       const modulePath = declaration?.module;
       if (typeof modulePath !== "string") continue;
-      entries.push(resolve(dir, browserRoot === "." ? modulePath : modulePath));
+      entries.push(resolve(dir, modulePath));
     }
   }
   return entries;

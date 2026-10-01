@@ -534,7 +534,7 @@ Dependency direction: component → controller → `sync/*` → `api/http.ts`. P
 | board read p99 | 23 s (list) | ≤1 s | P3, P4 |
 | time to the reconnecting row | 10.5–29 s | deadline + grace (7 s small / 12 s large) | P1, P3 |
 | daemon listen after plugin activation | 31.4 s | measured, then the slowest phase fixed | P3 |
-| first row on a deep link at a 100 ms round trip (`probe-boot-latency.mjs`) | 2.29–2.41 s; **1.17 s** after P7a | ≤1.0 s (place before plugins), ≤0.6 s (remembered folder) | P6, P7 |
+| first row on a deep link at a 100 ms round trip (`probe-boot-latency.mjs`) | 2.29–2.41 s; **1.36–1.49 s** after P7a (all 15 plugins) | ≤1.0 s (place before plugins), ≤0.6 s (remembered folder) | P6, P7 |
 | browser plugin modules at boot (`probe-boot-latency.mjs`) | 55–70 files, imported up to ten levels deep (1.34 s of round trips at 100 ms); **one file per plugin** after P7a, asked for within 1 ms | one level | P7 |
 
 ### 4.4 B28 board read and heads
@@ -588,8 +588,10 @@ The request count matters less than this: 24 `/api` reads cost about one round t
 
 1. **One file per plugin** (P7 slice a, build). **Shipped.**
    - Every built-in browser plugin entry is bundled in place into one module. A lazy `import()` of a computed URL (mermaid's vendored engine) stays lazy, and `import.meta.url` still names the entry.
-   - The boot asks for the 12 plugin modules within 1 ms of each other.
-   - At 100 ms the first row moved from 2.29–2.41 s to 1.17 s.
+   - The boot asks for the 15 plugin modules within 1 ms of each other.
+   - At 100 ms the first row moved from 2.29–2.41 s to 1.36–1.49 s.
+     - An earlier 1.17 s was measured while three plugins were withheld as stale (`dist` had been rebuilt under the running stack), so it is not counted.
+   - **What is left:** the 15 entries and about 13 `/api` reads, all issued around 300–400 ms, queue on HTTP/1.1's six connections to one host. The plugins finish around 930 ms (the updates plugin's activation read). The workspaces → sessions → row chain then costs about three more round trips. Slices 2 and 3 address both.
    - Guard: `browserEntryResolvable.test.ts` fails when a shipped entry statically imports anything.
 2. **The place before the plugins** (P6 slice b, browser only). **Waits on the owner** (`/tmp/owner-questions-next.md`: text first, or everything at once).
    - The route restore would select the machine, project, workspace and session without waiting for the plugins.

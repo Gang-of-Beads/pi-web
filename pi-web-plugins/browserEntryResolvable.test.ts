@@ -2,7 +2,7 @@ import { npmInvocation } from "../src/npmCommand";
 import { execFileSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { isRelativeSpecifier, moduleSpecifiers, staticModuleSpecifiers } from "../scripts/pluginModuleSpecifiers.mjs";
 
 const npm = npmInvocation();
@@ -12,7 +12,7 @@ const npm = npmInvocation();
  * import map and no bundler in between, so a bare specifier that survives the
  * build is a module the browser cannot resolve: the plugin simply never
  * activates, and the surface it contributed is missing with nothing to say
- * why. The build bundles any entry whose graph reaches a package; this pins
+ * why. The build bundles every entry (P7 slice a); this pins
  * that the shipped entries carry nothing unresolvable - walking the whole
  * graph, because an extensionless relative import resolves for a bundler and
  * 404s for a browser, which is how the voice plugin shipped unloadable. Side-effect
@@ -22,20 +22,21 @@ const npm = npmInvocation();
 
 const distRoot = resolve("dist", "pi-web-plugins");
 
-async function browserEntries(): Promise<string[]> {
+/** Every declared browser entry under the built plugins, at any depth, as the build finds them. */
+async function browserEntries(directory = distRoot): Promise<string[]> {
   const entries: string[] = [];
-  for (const directory of await readdir(distRoot, { withFileTypes: true })) {
-    if (!directory.isDirectory()) continue;
-    let metadata: unknown;
-    try {
-      metadata = JSON.parse(await readFile(join(distRoot, directory.name, "package.json"), "utf8"));
-    } catch {
-      continue;
-    }
-    for (const declaration of declaredPlugins(metadata)) {
-      const modulePath = declaration["module"];
-      if (typeof modulePath === "string") entries.push(join(distRoot, directory.name, modulePath));
-    }
+  let metadata: unknown;
+  try {
+    metadata = JSON.parse(await readFile(join(directory, "package.json"), "utf8"));
+  } catch {
+    metadata = undefined;
+  }
+  for (const declaration of declaredPlugins(metadata)) {
+    const modulePath = declaration["module"];
+    if (typeof modulePath === "string") entries.push(join(directory, modulePath));
+  }
+  for (const child of await readdir(directory, { withFileTypes: true })) {
+    if (child.isDirectory() && child.name !== "node_modules") entries.push(...await browserEntries(join(directory, child.name)));
   }
   return entries;
 }
@@ -50,9 +51,11 @@ function declaredPlugins(metadata: unknown): Record<string, unknown>[] {
 }
 
 describe("shipped browser plugin entries", () => {
-  it("carry no specifier a browser could not resolve", { timeout: 120_000 }, async () => {
+  beforeAll(() => {
     execFileSync(npm.command, ["run", "build:plugins"], { stdio: "ignore", shell: npm.shell });
+  }, 120_000);
 
+  it("carry no specifier a browser could not resolve", async () => {
     const entries = await browserEntries();
     expect(entries.length).toBeGreaterThan(0);
 
@@ -82,9 +85,7 @@ describe("shipped browser plugin entries", () => {
     expect(unresolvable).toEqual([]);
   });
 
-  it("are each one module: nothing loads before an entry runs (P7 slice a)", { timeout: 120_000 }, async () => {
-    execFileSync(npm.command, ["run", "build:plugins"], { stdio: "ignore", shell: npm.shell });
-
+  it("are each one module: nothing loads before an entry runs (P7 slice a)", async () => {
     const entries = await browserEntries();
     const importing: string[] = [];
     for (const entry of entries) {
