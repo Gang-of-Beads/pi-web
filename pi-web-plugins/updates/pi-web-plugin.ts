@@ -173,7 +173,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function offerPiWebUpdate(context: PluginActivationContext): void {
   const { callOperation, fetchJson, ui } = context;
   if (callOperation === undefined || fetchJson === undefined || ui === undefined) return;
-  const status = context.piWebStatus?.() ?? fetchJson("api/pi-web/status");
+  const status = context.readPiWebStatus?.() ?? fetchJson("api/pi-web/status");
   void Promise.all([status, callOperation("offer.answered")])
     .then(([status, answered]) => {
       const release = isRecord(status) && isRecord(status["release"]) ? status["release"] : undefined;

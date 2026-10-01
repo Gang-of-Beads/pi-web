@@ -446,7 +446,7 @@ export class PiWebApp extends LitElement {
   /** The notice the deep-link ladder last raised: raised again only when its words change, so a dismissed one stays dismissed. */
   private remoteRouteRestoreNotice: string | undefined;
   private remoteRouteRestoreInProgress = false;
-  private readonly plugins = createPluginRegistry({ showDialog: (dialog) => this.openPluginDialog(dialog) }, () => this.piWebStatusController.read("local"));
+  private readonly plugins = createPluginRegistry({ showDialog: (dialog) => this.openPluginDialog(dialog) }, (machineId) => this.piWebStatusController.read(machineId));
   private readonly loadedMachinePluginIds = new Set<string>();
   private readonly machinePluginLoadPromises = new Map<string, Promise<void>>();
   private gatewayPluginLoadPromise: Promise<void> | undefined;
@@ -4710,10 +4710,10 @@ export class PiWebApp extends LitElement {
   static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, appStyles];
 }
 
-function createPluginRegistry(dialogHost: PluginDialogHost, piWebStatus: () => Promise<unknown>): PluginRegistry {
+function createPluginRegistry(dialogHost: PluginDialogHost, readPiWebStatus: (machineId: string) => Promise<unknown>): PluginRegistry {
   const registry = new PluginRegistry({
     ui: createPluginHostUi(dialogHost),
-    piWebStatus,
+    readPiWebStatus,
     fetchJson: (path, init) => request<unknown>(path, (value) => value, {
       ...(init?.method === undefined ? {} : { method: init.method }),
       ...(init?.body === undefined ? {} : { body: JSON.stringify(init.body) }),

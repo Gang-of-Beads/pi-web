@@ -19,15 +19,17 @@ function createContext(statePatch: Partial<AppState> = {}) {
 
 
 describe("PluginRegistry host facts", () => {
-  it("hands every plugin the host's one PI WEB status read, and leaves it absent when the host has none", async () => {
-    const piWebStatus = vi.fn(() => Promise.resolve({ version: "1.0.0" }));
+  it("hands each registration the status read of its own machine, and leaves it absent when the host has none", async () => {
+    const readPiWebStatus = vi.fn((machineId: string) => Promise.resolve({ machineId }));
     const seen: unknown[] = [];
-    const plugin: PiWebPlugin = { apiVersion: 2, name: "Updates", activate: (context) => { seen.push(context.piWebStatus === undefined ? "absent" : context.piWebStatus()); return { contributions: {} }; } };
+    const plugin: PiWebPlugin = { apiVersion: 2, name: "Updates", activate: (context) => { seen.push(context.readPiWebStatus === undefined ? "absent" : context.readPiWebStatus()); return { contributions: {} }; } };
 
-    new PluginRegistry({ piWebStatus }).register({ id: "updates", plugin });
+    const registry = new PluginRegistry({ readPiWebStatus });
+    registry.register({ id: "updates", plugin, machineSpecific: true });
+    registry.register({ id: machineScopedPluginId("remote-1", "updates"), sourcePluginId: "updates", machineId: "remote-1", plugin, machineSpecific: true });
     new PluginRegistry().register({ id: "updates", plugin });
 
-    expect([await seen[0], seen[1], piWebStatus.mock.calls.length]).toEqual([{ version: "1.0.0" }, "absent", 1]);
+    expect([await seen[0], await seen[1], seen[2]]).toEqual([{ machineId: "local" }, { machineId: "remote-1" }, "absent"]);
   });
 });
 

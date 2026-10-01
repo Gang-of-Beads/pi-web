@@ -80,11 +80,11 @@ export interface PluginActivationContext {
    */
   readonly callOperation?: (operation: string, input?: unknown) => Promise<unknown>;
   /**
-   * This host's PI WEB status (version, release, update commands), read once for the page and every
-   * plugin. Absent on hosts older than this contract; read `api/pi-web/status` through `fetchJson`
-   * there.
+   * The PI WEB status (version, release, update commands) of the machine this registration belongs
+   * to, read once for the page and every plugin. Absent on hosts older than this contract; read
+   * `api/pi-web/status` through `fetchJson` there, which answers for the machine serving the page.
    */
-  readonly piWebStatus?: () => Promise<unknown>;
+  readonly readPiWebStatus?: () => Promise<unknown>;
   /**
    * Host utilities a plugin surface needs but must not reimplement: the same
    * clipboard fallback chain, the same words for a failure, the same

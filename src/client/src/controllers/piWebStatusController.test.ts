@@ -39,6 +39,21 @@ describe("PiWebStatusController.read: one read of a machine's status for every r
     expect(harness.piWebStatus.mock.calls.map((call) => call[0])).toEqual(["local", "local", "remote-a"]);
   });
 
+  it("keeps a forced check's answer when a read that left before it lands after it", async () => {
+    const harness = createHarness();
+    const older = createDeferred<PiWebStatusResponse>();
+    harness.piWebStatus.mockReturnValueOnce(older.promise);
+    harness.checkForUpdates.mockResolvedValue(status("forced"));
+
+    const onItsWay = harness.controller.read("local");
+    await harness.controller.checkForUpdates();
+    older.resolve(status("older"));
+    await onItsWay;
+    const next = await harness.controller.read("local");
+
+    expect({ next: next.generatedAt, reads: harness.piWebStatus.mock.calls.length }).toEqual({ next: "forced", reads: 1 });
+  });
+
   it("serves a forced check's answer to the next reader instead of asking again", async () => {
     const harness = createHarness();
     harness.checkForUpdates.mockResolvedValue(status("forced"));

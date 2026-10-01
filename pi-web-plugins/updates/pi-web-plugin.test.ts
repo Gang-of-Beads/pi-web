@@ -11,7 +11,7 @@ describe("Updates plugin offer", () => {
     const fetchJson = (path: string) => { fetched.push(path); return Promise.resolve({ version: "1.0.0", release: { updateAvailable: false } }); };
     const callOperation = () => Promise.resolve({ answeredVersions: [] });
     const ui = createPluginHostUi();
-    plugin.activate({ apiVersion: 2, pluginId: "updates", runtimePluginId: "updates", html, svg, fetchJson, callOperation, ui, piWebStatus: shared });
+    plugin.activate({ apiVersion: 2, pluginId: "updates", runtimePluginId: "updates", html, svg, fetchJson, callOperation, ui, readPiWebStatus: shared });
     await Promise.resolve();
     const withHostFact = { shared: shared.mock.calls.length, fetched: [...fetched] };
     plugin.activate({ apiVersion: 2, pluginId: "updates", runtimePluginId: "updates", html, svg, fetchJson, callOperation, ui });
