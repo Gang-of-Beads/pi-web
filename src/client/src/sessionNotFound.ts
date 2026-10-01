@@ -1,5 +1,21 @@
 import { HttpError } from "./api/http";
 import { SESSION_NOT_FOUND_CODE } from "../../shared/apiTypes";
+import { noticeForReader, noticeFromError, type Notice } from "./notice";
+
+/** What a send the machine answered with the code tells the reader; the words match the session's own page. */
+export const SEND_TO_MISSING_SESSION = "This session no longer exists, so your message was not sent.";
+
+/**
+ * The notice of a refused send (owner, 2026-10-01: "如果是就直接报错啊在上面").
+ *
+ * The code says the machine holds no such session: it was deleted on another device, by the pi
+ * CLI, or by hand on the disk, while this page still showed it. The daemon's own words, "Session
+ * not found", read as a fault of the page. The typed words go back to the composer either way;
+ * any other refusal keeps the words it was answered with.
+ */
+export function sendRefusalNotice(error: unknown, machineId: string): Notice {
+  return isSessionNotFoundError(error) ? noticeForReader(SEND_TO_MISSING_SESSION, machineId) : noticeFromError(error);
+}
 
 /** The words an older daemon answered a missing session with, before it sent a code. */
 const LEGACY_SESSION_NOT_FOUND = /^(archived )?session not found$/iu;

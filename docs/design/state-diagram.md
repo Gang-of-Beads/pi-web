@@ -108,6 +108,7 @@ stateDiagram-v2
 
     **What the tests learned:** many tests parked messages in the inbox by faking a running agent. A running agent now takes each message at once, so tests of what waits in the inbox park through a compaction instead: a running agent that is compacting, the state in which the inbox waits.
 - **Restart.** A `queued` message survives a daemon restart and stays visible as queued, with its original time. It is handed at the next injection point, so it never "reappears": it never left.
+- **A send to a session that no longer exists** (owner, 2026-10-01: "如果是就直接报错啊在上面"). The session was deleted on another device, by the pi CLI, or by hand on the disk while this page still showed it, so the machine answers the send with the not-found code. It is a definite refusal: no row stays, the words go back to the composer, and the notice at the top says "This session no longer exists, so your message was not sent.", in the words of the session's own page (D8). The code decides it, never the daemon's text ("Session not found"). A shell line and a command say the same.
 - **Automatic resend.** The outbox resends on reconnect only a `notSent` record made on this device within the last 10 minutes. Anything older stays `notSent` with Retry. An `unverifiable` record is re-asked of the ledger, never blindly resent.
 - **Row placement is a function of state**, with exactly one row per id. The transcript tail, from the top:
   1. `committed` rows, at their entries' indices;

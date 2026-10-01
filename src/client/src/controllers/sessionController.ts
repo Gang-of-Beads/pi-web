@@ -10,7 +10,7 @@ import { locateSessionWorkspace } from "../sessionAncestorLookup";
 import { MACHINE_WIDE_LOCATE_START, targetInListing, type SessionTarget } from "../sessionTarget";
 import { SessionTargetResolver, type SessionTargetOpenOptions } from "./sessionTargetResolver";
 import type { SessionTranscriptTail } from "../../../shared/apiTypes";
-import { isSessionNotFoundError, sessionFailureRoute } from "../sessionNotFound";
+import { isSessionNotFoundError, sendRefusalNotice, sessionFailureRoute } from "../sessionNotFound";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { resetWorkspaceScopedState, type AppState, type ClosedExtensionDialog } from "../appState";
@@ -805,7 +805,7 @@ export class SessionController {
         }
         throw new NetworkSendError(String(error), clientMessageId, { cause: error });
       }
-      this.setState(errorNoticePatch(error));
+      this.setState(noticePatch(sendRefusalNotice(error, machineId)));
       if (clientMessageId !== undefined && deliveryProvenByServer(this.getState().messages, clientMessageId)) return true;
       if (!handling.keepRow && clientMessageId !== undefined) this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
       return false;
@@ -850,7 +850,7 @@ export class SessionController {
       this.markCachedNewSessionPersisted(session);
       return true;
     } catch (error) {
-      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", describeError(error))], ...errorNoticePatch(error) });
+      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", describeError(error))], ...noticePatch(sendRefusalNotice(error, machineId)) });
       return false;
     }
   }
@@ -876,7 +876,7 @@ export class SessionController {
       }
       return true;
     } catch (error) {
-      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", describeError(error))], ...errorNoticePatch(error) });
+      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", describeError(error))], ...noticePatch(sendRefusalNotice(error, machineId)) });
       if (options.ledgerId !== undefined) this.settleLedgerRow(options.ledgerId, { state: "failed", resultText: describeError(error) });
       return false;
     } finally {

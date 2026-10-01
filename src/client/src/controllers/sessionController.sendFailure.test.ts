@@ -4,6 +4,7 @@ import { SessionController } from "./sessionController";
 import { defaultApi, FakeSocket, oldSession, status, workspace, type AppState } from "./sessionController.testSupport";
 import { NetworkSendError, SendScopeChangedError } from "../pendingOutbox";
 import { HttpError } from "../api/http";
+import { SEND_TO_MISSING_SESSION } from "../sessionNotFound";
 
 /**
  * A send that fails leaves the message in exactly one place the user can act
@@ -90,6 +91,25 @@ describe("SessionController send failure", () => {
     // The composer restores this one, so the transcript must not also hold it.
     expect(read().messages.filter((line) => line.role === "user")).toHaveLength(0);
     expect(read().error).toMatch(/400 Bad Request/u);
+  });
+
+  it("says the session no longer exists when the machine answers a send with the code, and leaves the words to the composer (owner, 2026-10-01)", async () => {
+    const api: typeof defaultApi = { ...defaultApi, prompt: () => Promise.reject(new HttpError("Session not found", 404, "local", undefined, "session-not-found")) };
+    const { controller, read } = controllerWith(api);
+
+    const accepted = await controller.send("typed after another device deleted it");
+
+    expect({ accepted, notice: read().error, rows: read().messages.filter((line) => line.role === "user").length }).toEqual({ accepted: false, notice: SEND_TO_MISSING_SESSION, rows: 0 });
+  });
+
+  it("says the session no longer exists for a shell line or a command the machine answers with the code", async () => {
+    const gone = (): Promise<never> => Promise.reject(new HttpError("Session not found", 404, "local", undefined, "session-not-found"));
+    const shell = controllerWith({ ...defaultApi, shell: gone });
+    await shell.controller.send("!ls");
+    const command = controllerWith({ ...defaultApi, runCommand: gone });
+    await command.controller.send("/compact");
+
+    expect({ shell: shell.read().error, command: command.read().error }).toEqual({ shell: SEND_TO_MISSING_SESSION, command: SEND_TO_MISSING_SESSION });
   });
 
   it("calls a send the browser says never left Not sent, and a gateway's answer while offline still unverifiable", async () => {
