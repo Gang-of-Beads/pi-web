@@ -9,6 +9,8 @@ import { chromium } from "@playwright/test";
  * Legs:
  * - a deep link to a session boots with one read each of the local unread set, the local pins
  *   and the deletion runs;
+ * - the same boot reads PI WEB's status once: the page and the updates plugin each read it, about
+ *   a second apart, until the plugin was given the page's read as a host fact (P7 slice c);
  * - with the realtime socket held shut (its URL rewritten to a closed port, so it never opens; a
  *   routeWebSocket mock would open it), the unread set and the pins are still read, about 1.5 s
  *   after boot, and only once;
@@ -17,7 +19,8 @@ import { chromium } from "@playwright/test";
  *   read it before its activity socket existed, and the socket's open read it again (review
  *   44fc106b).
  * Controls: the socket opened in the first leg, the unread set and the pins answered (the page
- * holds an unread projection and adopted pins), and the deletion runs answered 200.
+ * holds an unread projection and adopted pins), the deletion runs answered 200, the page holds a
+ * PI WEB status, and the updates plugin activated.
  */
 const BASE = "http://127.0.0.1:8505";
 const DEEP_LINK = `${BASE}/?project=991606fd-e498-4b93-a1ce-2af09efdb0e7&workspace=ef2cdf93e1ac&session=01a05000-5eed-7c00-8000-0000000000e1`;
@@ -45,11 +48,13 @@ async function boot(browser, { holdSocketShut, remoteId }) {
   const reads = [];
   const remoteReads = [];
   const answers = [];
+  const statusReads = [];
   let socketOpenedAt;
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
     if (path.endsWith("/machines/local/sessions/unread") || path.endsWith("/machines/local/session-pins") || path.endsWith("/machines/local/terminal-command-runs")) reads.push({ path, at: Date.now() - started });
     if (remoteId !== undefined && path.endsWith(`/machines/${encodeURIComponent(remoteId)}/sessions/unread`)) remoteReads.push(Date.now() - started);
+    if (path === "/api/pi-web/status") statusReads.push(Date.now() - started);
   });
   page.on("response", (response) => {
     const path = new URL(response.url()).pathname;
@@ -63,12 +68,18 @@ async function boot(browser, { holdSocketShut, remoteId }) {
   await page.waitForTimeout(8_000);
   const held = await page.evaluate(() => {
     const app = document.querySelector("pi-web-app");
-    return { unreadKnown: app?.sessionUnread?.projection("local") !== undefined, pinsAdopted: app?.pinsAdopted?.has("local") === true, socketPhase: app?.realtime?.phaseFor?.("local")?.kind ?? "unknown" };
+    return {
+      unreadKnown: app?.sessionUnread?.projection("local") !== undefined,
+      pinsAdopted: app?.pinsAdopted?.has("local") === true,
+      socketPhase: app?.realtime?.phaseFor?.("local")?.kind ?? "unknown",
+      statusShown: typeof app?.state?.piWebStatus?.generatedAt === "string",
+      updatesActive: [...(app?.plugins?.pluginIds ?? [])].some((id) => String(id) === "updates" || String(id).endsWith(":updates")),
+    };
   });
   await context.close();
   const count = (suffix) => reads.filter((read) => read.path.endsWith(suffix)).length;
   const firstAt = (suffix) => reads.find((read) => read.path.endsWith(suffix))?.at;
-  return { unread: count("/sessions/unread"), pins: count("/session-pins"), runs: count("/terminal-command-runs"), unreadAt: firstAt("/sessions/unread"), pinsAt: firstAt("/session-pins"), answers, socketOpenedAt, held, remoteReads };
+  return { unread: count("/sessions/unread"), pins: count("/session-pins"), runs: count("/terminal-command-runs"), unreadAt: firstAt("/sessions/unread"), pinsAt: firstAt("/session-pins"), answers, socketOpenedAt, held, remoteReads, statusReads };
 }
 
 const browser = await chromium.launch();
@@ -80,6 +91,8 @@ try {
   check("a boot reads the unread set once", open.unread === 1, `${String(open.unread)} reads`);
   check("a boot reads the pins once", open.pins === 1, `${String(open.pins)} reads`);
   check("a boot reads the deletion runs once", open.runs === 1, `${String(open.runs)} reads`);
+  check("control: the page holds PI WEB's status and the updates plugin activated", open.held.statusShown && open.held.updatesActive, JSON.stringify({ statusShown: open.held.statusShown, updatesActive: open.held.updatesActive }));
+  check("a boot reads PI WEB's status once, for the page and the updates plugin", open.statusReads.length === 1, `${String(open.statusReads.length)} reads at ${open.statusReads.join(", ")} ms`);
 
   const shut = await boot(browser, { holdSocketShut: true });
   check("control: the realtime socket stayed shut", shut.socketOpenedAt === undefined && shut.held.socketPhase !== "open", `first frame ${String(shut.socketOpenedAt)}, phase ${shut.held.socketPhase}`);

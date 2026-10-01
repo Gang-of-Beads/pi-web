@@ -1,9 +1,54 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Machine, PiWebReleaseStatus, PiWebStatusResponse } from "../api";
 import { initialAppState, type AppState } from "../appState";
-import { PiWebStatusController, type PiWebStatusControllerDependencies } from "./piWebStatusController";
+import { PI_WEB_STATUS_FRESH_MS, PiWebStatusController, type PiWebStatusControllerDependencies } from "./piWebStatusController";
 
 type StatusApi = NonNullable<PiWebStatusControllerDependencies["api"]>;
+
+describe("PiWebStatusController.read: one read of a machine's status for every reader (P7 slice c)", () => {
+  it("joins a read on its way, reuses a fresh answer for the page's refresh, and asks again once it is stale", async () => {
+    let now = 1_000;
+    const harness = createHarness("local", () => now);
+    const answer = createDeferred<PiWebStatusResponse>();
+    harness.piWebStatus.mockReturnValueOnce(answer.promise).mockResolvedValue(status("later"));
+
+    const plugin = harness.controller.read("local");
+    const page = harness.controller.refresh();
+    answer.resolve(status("first"));
+    const pluginAnswer = await plugin;
+    await page;
+    const whileOnItsWay = harness.piWebStatus.mock.calls.length;
+    now += PI_WEB_STATUS_FRESH_MS - 1;
+    await harness.controller.refresh();
+    const whileFresh = harness.piWebStatus.mock.calls.length;
+    now += 2;
+    await harness.controller.refresh();
+
+    expect({ pluginAnswer: pluginAnswer.generatedAt, whileOnItsWay, whileFresh, afterStale: harness.piWebStatus.mock.calls.length, shown: harness.state().piWebStatus?.generatedAt })
+      .toEqual({ pluginAnswer: "first", whileOnItsWay: 1, whileFresh: 1, afterStale: 2, shown: "later" });
+  });
+
+  it("asks again after a failed read, and keeps machines apart", async () => {
+    const harness = createHarness();
+    harness.piWebStatus.mockRejectedValueOnce(new Error("offline")).mockResolvedValue(status("ok"));
+
+    await expect(harness.controller.read("local")).rejects.toThrow("offline");
+    await harness.controller.read("local");
+    await harness.controller.read("remote-a");
+
+    expect(harness.piWebStatus.mock.calls.map((call) => call[0])).toEqual(["local", "local", "remote-a"]);
+  });
+
+  it("serves a forced check's answer to the next reader instead of asking again", async () => {
+    const harness = createHarness();
+    harness.checkForUpdates.mockResolvedValue(status("forced"));
+
+    await harness.controller.checkForUpdates();
+    const read = await harness.controller.read("local");
+
+    expect({ read: read.generatedAt, reads: harness.piWebStatus.mock.calls.length }).toEqual({ read: "forced", reads: 0 });
+  });
+});
 
 describe("PiWebStatusController", () => {
   it("targets the selected machine and applies refreshed status", async () => {
@@ -88,7 +133,7 @@ describe("PiWebStatusController", () => {
   });
 });
 
-function createHarness(machineId = "local") {
+function createHarness(machineId = "local", now?: () => number) {
   let state: AppState = { ...initialAppState(), selectedMachine: machine(machineId) };
   const piWebStatus = vi.fn<StatusApi["piWebStatus"]>();
   const checkForUpdates = vi.fn<StatusApi["checkForUpdates"]>();
@@ -96,7 +141,7 @@ function createHarness(machineId = "local") {
   const controller = new PiWebStatusController(
     () => state,
     (patch) => { state = { ...state, ...patch }; },
-    { api: { piWebStatus, checkForUpdates }, onRefreshError },
+    { api: { piWebStatus, checkForUpdates }, onRefreshError, ...(now === undefined ? {} : { now }) },
   );
   return {
     controller,

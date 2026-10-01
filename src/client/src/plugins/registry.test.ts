@@ -18,6 +18,19 @@ function createContext(statePatch: Partial<AppState> = {}) {
 }
 
 
+describe("PluginRegistry host facts", () => {
+  it("hands every plugin the host's one PI WEB status read, and leaves it absent when the host has none", async () => {
+    const piWebStatus = vi.fn(() => Promise.resolve({ version: "1.0.0" }));
+    const seen: unknown[] = [];
+    const plugin: PiWebPlugin = { apiVersion: 2, name: "Updates", activate: (context) => { seen.push(context.piWebStatus === undefined ? "absent" : context.piWebStatus()); return { contributions: {} }; } };
+
+    new PluginRegistry({ piWebStatus }).register({ id: "updates", plugin });
+    new PluginRegistry().register({ id: "updates", plugin });
+
+    expect([await seen[0], seen[1], piWebStatus.mock.calls.length]).toEqual([{ version: "1.0.0" }, "absent", 1]);
+  });
+});
+
 describe("PluginRegistry", () => {
   it("namespaces contribution ids with the owning plugin id", () => {
     const registry = new PluginRegistry();

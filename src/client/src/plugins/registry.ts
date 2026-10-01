@@ -37,11 +37,13 @@ export class PluginRegistry {
   private machineSections: QualifiedMachineSectionContribution[] = [];
   private readonly settingsByPlugin = new Map<string, PluginSettings>();
   private readonly fetchJson: ((path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>) | undefined;
+  private readonly piWebStatus: (() => Promise<unknown>) | undefined;
 
   private readonly ui: PluginHostUi | undefined;
 
-  constructor(hostServices?: { fetchJson?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>; ui?: PluginHostUi }) {
+  constructor(hostServices?: { fetchJson?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>; piWebStatus?: () => Promise<unknown>; ui?: PluginHostUi }) {
     this.fetchJson = hostServices?.fetchJson;
+    this.piWebStatus = hostServices?.piWebStatus;
     this.ui = hostServices?.ui;
   }
   private readonly listeners = new Map<PluginLifecycleEventKind, { pluginId: string; listener: (event: PluginLifecycleEvent) => void }[]>();
@@ -81,6 +83,7 @@ export class PluginRegistry {
           callOperation: (operation: string, input?: unknown) => this.callPluginOperation(runtimePluginId, operation, input),
         }),
         ...(this.ui === undefined ? {} : { ui: this.ui }),
+        ...(this.piWebStatus === undefined ? {} : { piWebStatus: this.piWebStatus }),
         on: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => this.subscribe(runtimePluginId, kind, listener),
       }));
       const contributions = activation.contributions;
