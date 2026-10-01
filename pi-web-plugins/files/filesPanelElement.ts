@@ -1,5 +1,5 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from "lit";
-import { customElement, property, query, state } from "lit/decorators.js";
+import { property, query, state } from "lit/decorators.js";
 import type { FileTreeEntry, WorkspacePanelContext, WorkspaceUploadBatchProgress } from "@gang-of-beads/pi-web/plugin-api";
 import { renderHostCloseIcon, renderHostDisclosureIcon, adoptFilesHostStyles, describeFilesError, filesQuery, filesRegisterModal } from "./hostUi";
 import { createStore } from "./viewMode";
@@ -45,7 +45,6 @@ export function invalidateFilesPanel(): void {
   if (panel !== undefined) panel.refresh();
 }
 
-@customElement("pi-files-panel")
 export class PiFilesPanel extends LitElement {
   /** The one panel instance rendering right now; the host talks to it through the module functions. */
   static active: PiFilesPanel | undefined;
@@ -652,3 +651,5 @@ function uploadFileDetail(file: WorkspaceUploadFileState): string {
 function formatPercent(value: number): string {
   return `${String(Math.round(Math.max(0, Math.min(1, value)) * 100))}%`;
 }
+
+if (customElements.get("pi-files-panel") === undefined) customElements.define("pi-files-panel", PiFilesPanel);

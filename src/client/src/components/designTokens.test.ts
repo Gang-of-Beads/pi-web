@@ -112,7 +112,7 @@ describe("accessibility floors", () => {
     expect(rendered.size).toBeGreaterThan(0);
 
     for (const tag of rendered) {
-      const defining = files.find((file) => readFileSync(file, "utf8").includes(`customElement("${tag}")`));
+      const defining = files.find((file) => { const text = readFileSync(file, "utf8"); return text.includes(`customElement("${tag}")`) || text.includes(`customElements.define("${tag}"`); });
       expect(defining, `no component defines <${tag}>`).toBeDefined();
       const source = readFileSync(defining ?? "", "utf8");
       const sourceDir = dirname(defining ?? "");

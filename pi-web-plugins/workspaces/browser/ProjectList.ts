@@ -1,6 +1,6 @@
 import { RowMenuGestures } from "./rowMenuGestures";
 import { LitElement, css, html, type PropertyValues, nothing} from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import type { NavProjectSnapshot, NavStatusSnapshot } from "@gang-of-beads/pi-web/plugin-api";
 import { filterProjects, shouldShowProjectSearch } from "./projectSearch";
 import { actionMenuPanelStyle } from "./actionMenu";
@@ -9,7 +9,6 @@ import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
 import { renderHostCloseIcon, renderHostDisclosureIcon, adoptWorkspacesHostStyles } from "./hostUi";
 
-@customElement("project-list")
 export class ProjectList extends LitElement implements KeyboardNavigableSection {
   protected override createRenderRoot(): HTMLElement | DocumentFragment {
     const root = super.createRenderRoot();
@@ -262,3 +261,5 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     .filter-count { padding: var(--pi-space-3) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); }
   `];
 }
+
+if (customElements.get("project-list") === undefined) customElements.define("project-list", ProjectList);

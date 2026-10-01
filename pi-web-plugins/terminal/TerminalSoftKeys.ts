@@ -1,5 +1,5 @@
 import { css, html, LitElement } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { property } from "lit/decorators.js";
 import { TERMINAL_SOFT_KEYS, terminalSoftKeySequence, type TerminalModesSnapshot, type TerminalSoftKeyDefinition } from "./terminalKeys.js";
 import { adoptTerminalHostStyles } from "./hostUi.js";
 
@@ -10,7 +10,6 @@ export interface TerminalSoftKeyInputOptions {
   refocus: boolean;
 }
 
-@customElement("terminal-soft-keys")
 export class TerminalSoftKeys extends LitElement {
   @property({ attribute: false }) modes: TerminalModesSnapshot | undefined;
   @property({ type: Boolean }) refocusOnClick = true;
@@ -106,3 +105,5 @@ interface SoftKeyPointerStart {
 function pointerMovedBeyondTap(start: SoftKeyPointerStart, event: PointerEvent): boolean {
   return Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) > SOFT_KEY_TAP_MOVE_THRESHOLD_PX;
 }
+
+if (customElements.get("terminal-soft-keys") === undefined) customElements.define("terminal-soft-keys", TerminalSoftKeys);

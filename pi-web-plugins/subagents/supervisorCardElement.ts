@@ -1,5 +1,5 @@
 import { LitElement, css, html } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import { offersReply, replyMessage, supervisorTitle, type SupervisorRequest } from "./supervisorRequest.js";
 
 /**
@@ -7,7 +7,6 @@ import { offersReply, replyMessage, supervisorTitle, type SupervisorRequest } fr
  * draft; the host owns sending, because a browser's only channel into a
  * running agent is this session's own prompt.
  */
-@customElement("pi-subagent-supervisor-card")
 export class SubagentSupervisorCard extends LitElement {
   @property({ attribute: false }) request?: SupervisorRequest;
   @property({ attribute: false }) onSend?: (text: string) => void | Promise<void>;
@@ -84,3 +83,5 @@ declare global {
     "pi-subagent-supervisor-card": SubagentSupervisorCard;
   }
 }
+
+if (customElements.get("pi-subagent-supervisor-card") === undefined) customElements.define("pi-subagent-supervisor-card", SubagentSupervisorCard);

@@ -1252,6 +1252,8 @@ PI WEB does not provide a plugin cache/invalidation framework. Keep host callbac
 - custom elements in `type: "render"` label items or panels are a good place to own async loading;
 - dedupe async reads/commands and avoid unbounded polling;
 - clean up intervals/event listeners in custom elements' `disconnectedCallback()`.
+- define each custom element only if its name is free (`if (!customElements.get(tag)) customElements.define(tag, Element)`), not with Lit's `@customElement` decorator: a page loads your module once more for every remote machine on its roster, and a second unguarded define throws and stops that machine's copy from loading;
+- because a remote machine's copy then reuses the element class defined first, pass everything that belongs to a machine (data, callbacks, `callOperation`) to the element through properties from your own `render`, never through module-level state.
 
 ## Agent implementation checklist
 

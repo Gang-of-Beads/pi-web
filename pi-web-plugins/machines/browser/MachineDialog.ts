@@ -1,5 +1,5 @@
 import { LitElement, css, html } from "lit";
-import { customElement, property, query, state } from "lit/decorators.js";
+import { property, query, state } from "lit/decorators.js";
 import type { MachineCreateInput } from "@gang-of-beads/pi-web/plugin-api";
 import { renderHostCloseIcon, adoptMachinesHostStyles } from "./hostUi";
 import { keyBelongsToInputMethod } from "./inputMethodKey";
@@ -9,7 +9,6 @@ import { keyBelongsToInputMethod } from "./inputMethodKey";
  * resolves to the reason it did not go through, or undefined when it did; the
  * opener owns closing the dialog, the way the add-project dialog does.
  */
-@customElement("machine-dialog")
 export class MachineDialog extends LitElement {
   protected override createRenderRoot(): HTMLElement | DocumentFragment {
     const root = super.createRenderRoot();
@@ -197,3 +196,5 @@ function fallbackSuggestedName(value: string): string {
   if (host.startsWith("[") && host.includes("]")) return host.slice(1, host.indexOf("]"));
   return host.replace(/:\d+$/u, "");
 }
+
+if (customElements.get("machine-dialog") === undefined) customElements.define("machine-dialog", MachineDialog);

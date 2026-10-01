@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import { adoptGoalsHostStyles } from "./hostUi.js";
 import type { GoalRecordSummary } from "./goalRecords.js";
 
@@ -49,7 +49,6 @@ export function badgeFor(state: GoalsSectionState | undefined): string | number 
   return remaining;
 }
 
-@customElement("pi-web-goals-section")
 export class PiWebGoalsSection extends LitElement {
   static override styles = [css`${unsafeCSS(goalsSectionStyles)}`];
   override createRenderRoot(): HTMLElement | DocumentFragment {
@@ -111,3 +110,5 @@ declare global {
     "pi-web-goals-section": PiWebGoalsSection;
   }
 }
+
+if (customElements.get("pi-web-goals-section") === undefined) customElements.define("pi-web-goals-section", PiWebGoalsSection);

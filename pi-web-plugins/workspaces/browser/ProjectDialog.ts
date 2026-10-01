@@ -1,5 +1,5 @@
 import { LitElement, html } from "lit";
-import { customElement, property, query, state } from "lit/decorators.js";
+import { property, query, state } from "lit/decorators.js";
 import type { FileSuggestion } from "@gang-of-beads/pi-web/plugin-api";
 import { css } from "lit";
 import { describeError } from "./errors";
@@ -23,7 +23,6 @@ interface ProjectTrustState {
   error?: string;
 }
 
-@customElement("project-dialog")
 export class ProjectDialog extends LitElement {
   protected override createRenderRoot(): HTMLElement | DocumentFragment {
     const root = super.createRenderRoot();
@@ -384,3 +383,5 @@ export class ProjectDialog extends LitElement {
     button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
   `];
 }
+
+if (customElements.get("project-dialog") === undefined) customElements.define("project-dialog", ProjectDialog);

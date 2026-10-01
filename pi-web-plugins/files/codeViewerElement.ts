@@ -12,8 +12,7 @@ import { rust } from "@codemirror/lang-rust";
 import { go } from "@codemirror/lang-go";
 import { diff } from "@codemirror/legacy-modes/mode/diff";
 import { LitElement, css, html } from "lit";
-import { customElement, property, query } from "lit/decorators.js";
-@customElement("pi-code-viewer")
+import { property, query } from "lit/decorators.js";
 export class CodeViewer extends LitElement {
   @property() content = "";
   @property() language: string | undefined;
@@ -138,3 +137,5 @@ function languageExtensions(language: string | undefined): Extension[] {
     default: return [];
   }
 }
+
+if (customElements.get("pi-code-viewer") === undefined) customElements.define("pi-code-viewer", CodeViewer);

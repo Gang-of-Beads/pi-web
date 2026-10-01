@@ -1,6 +1,6 @@
 import { css, html, LitElement, type PropertyValues } from "lit";
 import { renderHostCloseIcon } from "./hostUi";
-import { customElement, property, query, state } from "lit/decorators.js";
+import { property, query, state } from "lit/decorators.js";
 import { styleMap, type StyleInfo } from "lit/directives/style-map.js";
 import { Terminal, type ITerminalOptions, type ITheme } from "@xterm/xterm";
 import { FitAddon, type ITerminalDimensions } from "@xterm/addon-fit";
@@ -29,7 +29,6 @@ const COMMAND_RUN_POLL_INTERVAL_MS = 1000;
 // revisioned, but the panel predates that and still refreshes on this timer
 // while a command run is active.
 
-@customElement("terminal-panel")
 export class TerminalPanel extends LitElement {
   @property({ attribute: false }) workspace: Workspace | undefined;
   @property() machineId = "local";
@@ -946,3 +945,5 @@ function isValidTerminalSize(cols: number, rows: number): boolean {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
+
+if (customElements.get("terminal-panel") === undefined) customElements.define("terminal-panel", TerminalPanel);

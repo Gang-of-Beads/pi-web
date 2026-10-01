@@ -1,6 +1,6 @@
 import { RowMenuGestures } from "./rowMenuGestures";
 import { filterWorkspaces, shouldShowContextSearch } from "./contextSearch";
-import { LitElement, css, html, type PropertyValues, type TemplateResult, nothing} from "lit";import { customElement, property, state } from "lit/decorators.js";
+import { LitElement, css, html, type PropertyValues, type TemplateResult, nothing} from "lit";import { property, state } from "lit/decorators.js";
 import type { Workspace, WorkspaceLabelItem, NavStatusSnapshot } from "@gang-of-beads/pi-web/plugin-api";
 import { writeClipboardText } from "./clipboard";
 import { actionMenuPanelStyle } from "./actionMenu";
@@ -29,7 +29,6 @@ function canDeleteWorkspace(workspace: Workspace): boolean {
   return workspace.removal !== undefined && !workspace.isMain;
 }
 
-@customElement("workspace-list")
 export class WorkspaceList extends LitElement implements KeyboardNavigableSection {
   protected override createRenderRoot(): HTMLElement | DocumentFragment {
     const root = super.createRenderRoot();
@@ -434,3 +433,5 @@ function workspacePrimaryLabel(workspace: Workspace): string {
 function workspaceMenuId(workspaceId: string): string {
   return `workspace-menu-${workspaceId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
+
+if (customElements.get("workspace-list") === undefined) customElements.define("workspace-list", WorkspaceList);

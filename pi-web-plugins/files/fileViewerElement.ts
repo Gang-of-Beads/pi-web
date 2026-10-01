@@ -1,5 +1,5 @@
 import { css, html, LitElement, type TemplateResult } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { property } from "lit/decorators.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import type { FileContentResponse } from "@gang-of-beads/pi-web/plugin-api";
@@ -21,7 +21,6 @@ export interface WorkspaceFileViewerIdentity {
 
 export type FilesPreviewUrlBuilder = (path: string, options?: { modifiedAt?: string; download?: boolean }) => string;
 
-@customElement("pi-files-viewer")
 export class WorkspaceFileViewer extends LitElement {
   @property() machineId = "";
   @property() projectId = "";
@@ -490,3 +489,5 @@ function metadataForFile(file: FileContentResponse, kind: WorkspaceFilePreviewKi
 function loadCodeViewer(): void {
   void import("./codeViewerElement");
 }
+
+if (customElements.get("pi-files-viewer") === undefined) customElements.define("pi-files-viewer", WorkspaceFileViewer);

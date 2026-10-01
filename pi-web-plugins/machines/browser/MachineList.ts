@@ -1,7 +1,7 @@
 import { RowMenuGestures } from "./rowMenuGestures";
 import { filterMachines, shouldShowContextSearch } from "./contextSearch";
 import { LitElement, css, html, type PropertyValues, nothing } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import type { NavMachineSnapshot } from "@gang-of-beads/pi-web/plugin-api";
 import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
@@ -15,7 +15,6 @@ import { renderHostCloseIcon, renderHostDisclosureIcon, adoptMachinesHostStyles 
  * WEB API and never spells a URL; the row menu offers exactly the actions the
  * section context says the host provides.
  */
-@customElement("machine-list")
 export class MachineList extends LitElement implements KeyboardNavigableSection {
   @property({ attribute: false }) machines: NavMachineSnapshot[] = [];
   /** What the reader has typed to narrow a long fleet. */
@@ -303,3 +302,5 @@ export function machineStatusLabel(status: NavMachineSnapshot["status"]): string
 function machineMenuId(machineId: string): string {
   return `machine-menu-${machineId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
+
+if (customElements.get("machine-list") === undefined) customElements.define("machine-list", MachineList);

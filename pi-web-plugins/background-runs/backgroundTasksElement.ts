@@ -1,5 +1,5 @@
 import { LitElement, css, html } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { property } from "lit/decorators.js";
 import { backgroundTaskList, listNote, type TaskInput, type TaskRow, type TasksRead } from "./backgroundTaskRows.js";
 
 /**
@@ -8,7 +8,6 @@ import { backgroundTaskList, listNote, type TaskInput, type TaskRow, type TasksR
  * The core only hosts the panel; the rows, their words and their look belong here, so the
  * shell learns nothing about background work beyond "a panel with something to show".
  */
-@customElement("pi-web-background-tasks")
 export class BackgroundTasksList extends LitElement {
   @property({ attribute: false }) tasks: readonly TaskInput[] = [];
   @property({ attribute: false }) read: TasksRead = "unread";
@@ -62,3 +61,5 @@ export class BackgroundTasksList extends LitElement {
     `;
   }
 }
+
+if (customElements.get("pi-web-background-tasks") === undefined) customElements.define("pi-web-background-tasks", BackgroundTasksList);
