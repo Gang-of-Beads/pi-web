@@ -2731,8 +2731,28 @@ export class PiSessionService implements SessionRouteService {
   }
 
   async messages(ref: PiSessionRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage> {
+    const open = this.activeForRef(ref)?.runtime.session;
+    if (open !== undefined) return transcriptPage(open.sessionManager.getBranch(), page);
+    const closed = await this.closedSessionFile(ref);
+    const branch = closed === undefined ? undefined : await closedBranch(closed.path);
+    if (branch !== undefined) return transcriptPage(branch, page);
     const session = await this.getOrOpen(ref);
     return transcriptPage(session.sessionManager.getBranch(), page);
+  }
+
+  /**
+   * The file a closed session is read from (state-diagram D5, "Reading a closed session never
+   * opens it"): its archive file when it is archived in this directory, else its session file
+   * there, in the order `getActive` would open them. Undefined: neither holds it. A runtime still
+   * closing can write its last entries (steers it took back, the aborted reply) after it has left
+   * the active map, so the read waits for that close to finish first.
+   */
+  private async closedSessionFile(ref: PiSessionRef): Promise<{ readonly id: string; readonly path: string } | undefined> {
+    await this.closingSessions.get(ref.id)?.catch(() => undefined);
+    const archived = await this.getArchived(ref);
+    if (archived?.archivePath !== undefined) return { id: archived.sessionId, path: archived.archivePath };
+    const file = await this.sessionManager.resolveSessionFile(ref.cwd, ref.id);
+    return file === undefined ? undefined : { id: file.id, path: file.path };
   }
 
   /**
@@ -2821,11 +2841,11 @@ export class PiSessionService implements SessionRouteService {
   async transcriptTail(ref: PiSessionRef, page?: { limit?: number }): Promise<SessionTranscriptTail> {
     const open = this.activeForRef(ref)?.runtime.session;
     if (open !== undefined) return { page: transcriptPage(open.sessionManager.getBranch(), page), stream: this.streamSnapshotOf(open) };
-    const file = await this.sessionManager.resolveSessionFile(ref.cwd, ref.id);
+    const file = await this.closedSessionFile(ref);
     const stream = file === undefined ? undefined : { ...this.streamPosition(file.id), partial: null };
-    const entries = file === undefined ? undefined : await readSessionFileEntries(file.path);
-    if (stream === undefined || entries === undefined || !isCurrentVersionFile(entries, CURRENT_SESSION_VERSION)) return { page: await this.messages(ref, page), stream: await this.streamSnapshot(ref) };
-    return { page: transcriptPage(branchFromFileEntries(entries), page), stream };
+    const branch = file === undefined ? undefined : await closedBranch(file.path);
+    if (stream === undefined || branch === undefined) return { page: await this.messages(ref, page), stream: await this.streamSnapshot(ref) };
+    return { page: transcriptPage(branch, page), stream };
   }
 
   /** The bytes behind a deferred tool-result image, read from the session file on demand. */
@@ -3116,10 +3136,14 @@ export class PiSessionService implements SessionRouteService {
    * answer per session rather than per server.
    */
   async backgroundTasks(ref: PiSessionRef): Promise<SessionBackgroundTaskInfo[]> {
-    const session = await this.getOrOpen(ref);
-    const sessionFile = session.sessionManager.getSessionFile();
-    if (sessionFile === undefined) return [];
-    return listBackgroundTasks(ref.cwd, sessionFile);
+    const open = this.activeForRef(ref)?.runtime.session;
+    if (open !== undefined) {
+      const sessionFile = open.sessionManager.getSessionFile();
+      return sessionFile === undefined ? [] : listBackgroundTasks(ref.cwd, sessionFile);
+    }
+    const closed = await this.closedSessionFile(ref);
+    if (closed === undefined) throw new SessionNotFoundError();
+    return listBackgroundTasks(ref.cwd, closed.path);
   }
 
   async backgroundTaskOutput(ref: PiSessionRef, taskId: string): Promise<string | undefined> {
@@ -6951,4 +6975,14 @@ function stringifyPrimitive(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
   return "";
+}
+
+/**
+ * A closed session's branch read from its file the way the SDK reads it, or undefined when the
+ * file is unreadable or not a current-version file: an older one takes the runtime path, which
+ * migrates it on disk (P2 slice c).
+ */
+async function closedBranch(path: string): Promise<ReturnType<typeof branchFromFileEntries> | undefined> {
+  const entries = await readSessionFileEntries(path);
+  return entries !== undefined && isCurrentVersionFile(entries, CURRENT_SESSION_VERSION) ? branchFromFileEntries(entries) : undefined;
 }

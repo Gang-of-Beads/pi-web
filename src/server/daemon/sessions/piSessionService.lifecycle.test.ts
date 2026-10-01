@@ -248,17 +248,14 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     const sessionId = "abc123";
     const sessionDir = await mkdtemp(join(tmpdir(), "pi-web-exact-id-"));
     const workspace = await mkdtemp(join(tmpdir(), "pi-web-exact-id-workspace-"));
-    const header = (id: string) =>
-      `${JSON.stringify({ type: "session", version: 3, id, timestamp: "2026-01-01T00:00:00.000Z", cwd: workspace })}\n`;
+    const header = (id: string, text: string) =>
+      `${JSON.stringify({ type: "session", version: 3, id, timestamp: "2026-01-01T00:00:00.000Z", cwd: workspace })}\n${JSON.stringify({ type: "message", id: "m1", parentId: null, timestamp: "2026-01-01T00:00:01.000Z", message: { role: "user", content: text } })}\n`;
     const exactPath = join(sessionDir, `2026-01-01T00-00-00-000Z_${sessionId}.jsonl`);
-    await writeFile(exactPath, header(sessionId), "utf8");
-    await writeFile(join(sessionDir, `2026-01-02T00-00-00-000Z_${sessionId}-extended.jsonl`), header(`${sessionId}-extended`), "utf8");
+    await writeFile(exactPath, header(sessionId, "exact session"), "utf8");
+    await writeFile(join(sessionDir, `2026-01-02T00-00-00-000Z_${sessionId}-extended.jsonl`), header(`${sessionId}-extended`, "extended session"), "utf8");
 
     const fake = fakeRuntime(sessionId, {
-      sessionManager: fakeSessionManager(workspace, {
-        getSessionId: () => sessionId,
-        getBranch: () => [{ type: "message", message: { role: "user", content: "exact session" } }],
-      }),
+      sessionManager: fakeSessionManager(workspace, { getSessionId: () => sessionId }),
     });
     const realGateway = createPiSessionManagerGateway({
       agentDir: TEST_AGENT_DIR,
@@ -285,8 +282,9 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     });
 
     const page = await service.messages(sessionRef(sessionId, workspace));
+    await service.status(sessionRef(sessionId, workspace));
 
-    expect(page.messages).toEqual([{ role: "user", content: "exact session" }]);
+    expect(page.messages).toEqual([{ role: "user", content: "exact session", entryId: "m1" }]);
     expect(open).toHaveBeenCalledWith(exactPath);
     await service.dispose();
     await rm(sessionDir, { recursive: true, force: true });

@@ -20,11 +20,13 @@ afterEach(async () => {
 });
 
 describe("PiSessionService listing of replaced session files", () => {
-  it("lists and opens the session that replaced a listed path instead of serving the stale one", async () => {
-    // The summary scanner memoizes listings per path but notices identity
-    // replacements. If a warm listing kept serving the old entry for a
-    // replaced path, the replacement would appear in the listing but stay
-    // permanently unopenable ("Session not found").
+  /**
+   * The summary scanner memoizes listings per path but notices identity replacements. If a warm
+   * listing kept serving the old entry for a replaced path, the replacement would appear in the
+   * listing but stay permanently unopenable ("Session not found"). Its page is read from the file
+   * the listing found (P3 slice d), and its status opens the runtime on that same file.
+   */
+  it("lists, reads and opens the session that replaced a listed path instead of serving the stale one", async () => {
     const sessionDir = join(tempDir, "replace-sessions");
     await mkdir(sessionDir, { recursive: true });
     const message = (id: string, role: string, text: string) =>
@@ -39,11 +41,9 @@ describe("PiSessionService listing of replaced session files", () => {
       env: { PI_CODING_AGENT_SESSION_DIR: sessionDir },
     });
     const replacementRuntime = fakeRuntime("replacement-id", {
-      sessionManager: fakeSessionManager(LISTING_CWD, {
-        getSessionId: () => "replacement-id",
-        getBranch: () => [{ type: "message", id: "r1", parentId: null, timestamp: "2026-01-02T00:00:00.000Z", message: { role: "user", content: "replacement transcript" } }],
-      }),
+      sessionManager: fakeSessionManager(LISTING_CWD, { getSessionId: () => "replacement-id" }),
     });
+    const opened: string[] = [];
     const service = new PiSessionService(new CapturingSessionEventHub(), {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
@@ -58,7 +58,10 @@ describe("PiSessionService listing of replaced session files", () => {
         invalidateSessionFile: (sessionFile: string) => {
           realGateway.invalidateSessionFile(sessionFile);
         },
-        open: () => fakeSessionManager(LISTING_CWD, { getSessionId: () => "replacement-id" }),
+        open: (path: string) => {
+          opened.push(path);
+          return fakeSessionManager(LISTING_CWD, { getSessionId: () => "replacement-id" });
+        },
       },
       heartbeatIntervalMs: 60_000,
     });
@@ -74,10 +77,10 @@ describe("PiSessionService listing of replaced session files", () => {
     const warm = await service.list(LISTING_CWD);
     expect(warm.map((session) => session.id)).toEqual(["replacement-id"]);
 
-    // The open path must agree with the listing...
     const page = await service.messages(sessionRef("replacement-id", LISTING_CWD));
-    expect(page.messages).toEqual([{ role: "user", content: "replacement transcript", entryId: "r1" }]);
-    // ...and the replaced session is really gone.
+    await service.status(sessionRef("replacement-id", LISTING_CWD));
+    expect(page.messages).toEqual([{ role: "user", content: [{ type: "text", text: "replacement transcript" }], entryId: "r1" }]);
+    expect(opened).toEqual([originalPath]);
     await expect(service.messages(sessionRef("original-id", LISTING_CWD))).rejects.toThrow("Session not found");
     await service.dispose();
   });
