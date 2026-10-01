@@ -64,7 +64,7 @@ try {
     const composer = document.querySelector("prompt-editor");
     const root = composer.shadowRoot;
     const expand = root.querySelector(".expand-composer");
-    if (expand === null) return { skip: "no .expand-composer in the composer" };
+    if (expand === null) throw new Error("precondition: no .expand-composer in the composer");
     const tag = expand.tagName.toLowerCase();
     const style = getComputedStyle(expand);
     const mark = root.querySelector(".expand-composer-hint .ui-icon");
@@ -73,15 +73,6 @@ try {
       hasMark: mark !== null, markWidth: mark === null ? 0 : mark.getBoundingClientRect().width,
     };
   });
-  if (state.skip !== undefined) {
-    // PromptEditor no longer declares a `collapsed` property - the harness sets
-    // one nothing reads - and the affordance's CSS survived the composer rework
-    // with no template using it. Reported with the reason rather than failed.
-    console.log(`SKIP ${state.skip}: nothing renders it and PromptEditor has no collapsed property`);
-    await browser.close();
-    process.exit(0);
-  }
-
   const expanded = await page.evaluate(() => {
     const composer = document.querySelector("prompt-editor");
     composer.shadowRoot.querySelector(".expand-composer").click();
