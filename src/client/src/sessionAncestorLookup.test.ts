@@ -60,6 +60,16 @@ describe("locating the workspace that owns a session", () => {
     expect(workspaces).toHaveBeenCalledTimes(2);
   });
 
+  it("is unknown, not a containing owner, while a project that may hold a deeper workspace has not answered", async () => {
+    const root = { id: "w-root", path: "/p", projectId: "proj-root" };
+    const found = await locateSessionWorkspace("/p/other/src", {
+      projects: () => Promise.resolve([{ id: "proj-root" }, { id: "silent" }]),
+      workspaces: (projectId: string) => (projectId === "silent" ? Promise.resolve(undefined) : Promise.resolve([root])),
+    });
+
+    expect(found).toEqual({ kind: "unknown" });
+  });
+
   it("is unknown, not outside, while a project has not answered", async () => {
     const found = await locateSessionWorkspace("/p/nowhere", {
       projects: () => Promise.resolve([{ id: "a" }, { id: "b" }]),

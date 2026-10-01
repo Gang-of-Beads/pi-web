@@ -338,7 +338,7 @@ export class PiWebApp extends LitElement {
   private readonly sessions: SessionController = new SessionController(
     () => this.state,
     (patch) => { this.setState(patch); },
-    () => { this.updateUrl(); },
+    (options) => { this.updateUrl(options); },
     new SessionStorageSessionSelectionMemory(),
     {
       onBackgroundRunCountChanged: (sessionId: string) => {
@@ -373,7 +373,7 @@ export class PiWebApp extends LitElement {
   private readonly workspaces: WorkspaceController = new WorkspaceController(
     () => this.state,
     (patch) => { this.setState(patch); },
-    () => { this.updateUrl(); },
+    (options) => { this.updateUrl(options); },
     this.sessions,
     new SessionStorageWorkspaceSelectionMemory(),
   );
@@ -386,7 +386,7 @@ export class PiWebApp extends LitElement {
   private readonly machines = new MachineController(
     () => this.state,
     (patch) => { this.setState(patch); },
-    () => { this.updateUrl(); },
+    (options) => { this.updateUrl(options); },
     this.projects,
   );
   /** The machine-wide session board the navigation page and the quick switcher list (B48, P1 slice 5). */
@@ -465,7 +465,6 @@ export class PiWebApp extends LitElement {
   @state() private navigateOpen = false;
   @state() private contextSheetOpen = false;
   @state() private goToSheetOpen = false;
-  /** The session whose name the bar title hold asked to change. */
   /** The session the rename dialog names, with the machine it lives on: a row of a browsed machine is renamed there. */
   @state() private renameFromBar: { session: SessionInfo; machineId: string } | undefined;
   /** How much of the browsed machine's board has answered; the lists claim emptiness only for a complete one. */
@@ -1478,6 +1477,7 @@ export class PiWebApp extends LitElement {
     const machineBeforeRestore = selectedMachineId(this.state);
     const routeSurface = parsedRoute.projectId === undefined || parsedRoute.projectId === "" ? emptyWorkspaceRouteSurface() : surface;
     const restoreSeq = ++this.routeRestoreSeq;
+    this.sessions.yieldPlacement();
     this.routeRestoreDepth += 1;
     this.restoringRouteTerminalId = routeSurface.selectedTerminalId;
     try {
@@ -1493,7 +1493,10 @@ export class PiWebApp extends LitElement {
         selectedTerminalId: routeSurface.selectedTerminalId,
       });
       if (route.projectId === undefined || route.projectId === "") {
-        if (route.sessionId !== undefined && route.sessionId !== "" && placeSessionId(this.state) !== route.sessionId) await this.sessions.openSessionAlone(route.sessionId, { updateUrl: false });
+        if (route.sessionId !== undefined && route.sessionId !== "" && placeSessionId(this.state) !== route.sessionId) {
+          this.workspaces.clearSelection({ updateUrl: false });
+          await this.sessions.openSessionAlone(route.sessionId, { updateUrl: false });
+        }
         if (updateUrl) this.updateUrl();
         return;
       }

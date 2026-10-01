@@ -232,4 +232,18 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
 
     expect(applied).toEqual([["local", "session.name"], ["local", "session.created"], ["remote-1", "session.name"]]);
   });
+
+  it("passes a controller's request to replace the URL through, instead of pushing a new entry (review 39f920d2)", () => {
+    const app = createApp();
+    const written: unknown[] = [];
+    Reflect.set(app, "updateUrl", (options?: { replace?: boolean }) => { written.push(options?.replace === true); });
+    for (const name of ["sessions", "workspaces", "machines"]) {
+      const controller: unknown = Reflect.get(app, name);
+      const write: unknown = typeof controller === "object" && controller !== null ? Reflect.get(controller, "updateUrl") : undefined;
+      if (typeof write !== "function") throw new Error(`${name} has no URL writer`);
+      Reflect.apply(write, controller, [{ replace: true }]);
+    }
+
+    expect(written).toEqual([true, true, true]);
+  });
 });

@@ -254,4 +254,75 @@ describe("placing a session through the catalogue (B48)", () => {
       unknown: { session: "closed-project-session", project: "project-1", workspace: "workspace-1" },
     });
   });
+
+  /**
+   * Review 39f920d2: the place a placement lands never reached the URL, so the address and the
+   * history named the project the reader had left. The selection's own write comes at the end of
+   * its first read; a placement before it leaves the write to it, one after it replaces that entry.
+   */
+  it("writes the placed project into the URL once: by the selection's write, or by replacing it afterwards", async () => {
+    const run = async (placementFirst: boolean) => {
+      let answerProjects: () => void = () => undefined;
+      let answerMessages: () => void = () => undefined;
+      const writes: { replace: boolean; project: string | undefined }[] = [];
+      let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedProject: here, workspaces: [workspace], projects: [here], sessions: [oldSession], sessionsLoad: "loaded" };
+      const catalogue = {
+        projects: (_machineId: string, wanted: () => boolean) => new Promise<readonly Project[] | undefined>((resolve) => { answerProjects = () => { resolve(wanted() ? [here, there] : undefined); }; }),
+        workspaces: (_machineId: string, projectId: string, wanted: () => boolean) => Promise.resolve(wanted() ? (projectId === there.id ? [elsewhere] : [workspace]) : undefined),
+      };
+      const controller = new SessionController(
+        () => state,
+        (next) => { state = { ...state, ...next }; },
+        (options) => { writes.push({ replace: options?.replace === true, project: state.selectedProject?.id }); },
+        undefined,
+        { api: { ...api(), messages: () => new Promise((resolve) => { answerMessages = () => { resolve(emptyPage); }; }) }, socket: new EmitSocket(), catalogue },
+      );
+      const selecting = controller.selectSession(sessionOverThere);
+      const settle = async () => { for (let turn = 0; turn < 12; turn += 1) await Promise.resolve(); };
+      await settle();
+      if (placementFirst) { answerProjects(); await settle(); answerMessages(); } else { answerMessages(); await settle(); answerProjects(); }
+      await selecting;
+      await settle();
+      return writes;
+    };
+
+    expect({ placedFirst: await run(true), placedAfter: await run(false) }).toEqual({
+      placedFirst: [{ replace: false, project: "project-2" }],
+      placedAfter: [{ replace: false, project: "project-1" }, { replace: true, project: "project-2" }],
+    });
+  });
+
+  it("stops a placement still on its way when the reader asks for another place (review 39f920d2)", async () => {
+    let answerProjects: () => void = () => undefined;
+    const writes: boolean[] = [];
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedProject: here, workspaces: [workspace], projects: [here], sessions: [oldSession], sessionsLoad: "loaded" };
+    const catalogue = {
+      projects: (_machineId: string, wanted: () => boolean) => new Promise<readonly Project[] | undefined>((resolve) => { answerProjects = () => { resolve(wanted() ? [here, there] : undefined); }; }),
+      workspaces: (_machineId: string, projectId: string, wanted: () => boolean) => Promise.resolve(wanted() ? (projectId === there.id ? [elsewhere] : [workspace]) : undefined),
+    };
+    const controller = new SessionController(() => state, (next) => { state = { ...state, ...next }; }, (options) => { writes.push(options?.replace === true); }, undefined, { api: api(), socket: new EmitSocket(), catalogue });
+
+    await controller.selectSession(sessionOverThere);
+    controller.yieldPlacement();
+    answerProjects();
+    for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+
+    expect({ project: state.selectedProject?.id, writes }).toEqual({ project: "project-1", writes: [false] });
+  });
+
+  it("does not mark a list loaded for a workspace the reader has left when its unchanged answer lands late", async () => {
+    let answer: (value: { revision: string; unchanged: true }) => void = () => undefined;
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedProject: here, workspaces: [workspace], projects: [here], sessions: [], sessionsLoad: "loading" };
+    const controller = new SessionController(() => state, (next) => { state = { ...state, ...next }; }, () => undefined, undefined, {
+      api: { ...api(), sessionsIfChanged: () => new Promise((resolve) => { answer = resolve; }) },
+      socket: new EmitSocket(),
+    });
+
+    const refreshing = controller.refreshCurrentWorkspaceSessions("local");
+    state = { ...state, selectedWorkspace: undefined, selectedProject: undefined, sessionsLoad: "unloaded" };
+    answer({ revision: "r1", unchanged: true });
+    await refreshing;
+
+    expect(state.sessionsLoad).toBe("unloaded");
+  });
 });

@@ -74,9 +74,12 @@ function owner<W extends { path: string }, P extends { id: string }>(
         .finally(() => {
           unsettled -= 1;
           if (unsettled > 0) return;
+          if (unanswered) {
+            resolve(UNKNOWN);
+            return;
+          }
           const deepest = containing.sort((left, right) => right.workspace.path.length - left.workspace.path.length)[0];
-          if (deepest !== undefined) resolve({ kind: "found", ...deepest });
-          else resolve(unanswered ? UNKNOWN : OUTSIDE);
+          resolve(deepest === undefined ? OUTSIDE : { kind: "found", ...deepest });
         });
     }
   });

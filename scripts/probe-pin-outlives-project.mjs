@@ -16,7 +16,9 @@ import { chromium } from "@playwright/test";
  *   kept the project the reader was in, or nothing a reload could open);
  * - a reload of that URL opens the session again;
  * - desktop 1440x900, standing in another project: opening it from the quick switcher leaves that
- *   project, so nothing goes on answering for it under the session.
+ *   project, so nothing goes on answering for it under the session, and the URL says so;
+ * - desktop, standing in that project's session: going Back to a URL naming only a deleted session
+ *   says it is gone, instead of keeping the previous session on screen under that URL.
  * Preconditions: the session exists, and it lives in that project's folder, so closing the project
  * really takes it off every open project's list. At the end it unpins the session and opens the
  * project again.
@@ -27,6 +29,7 @@ const PROJECT_NAME = "pi-web-reads-lane-probe";
 const SEED_PROJECT = "991606fd-e498-4b93-a1ce-2af09efdb0e7";
 const SEED_WORKSPACE = "ef2cdf93e1ac";
 const SEED_SESSION = "01a05000-5eed-7c00-8000-0000000000e1";
+const DELETED_SESSION = "deadbeef-0000-7000-8000-000000000000";
 const SESSION = "01a0e979-281f-7247-8dbe-8e114fcc4366";
 const SESSION_NAME = "Three Word Greeting";
 const results = [];
@@ -126,6 +129,23 @@ try {
     await wide.waitForTimeout(200);
   }
   check("on desktop, opening it from the quick switcher leaves the project the reader stood in", left?.project === undefined && left?.urlProject === null && left?.session === SESSION, inSwitcher ? JSON.stringify(left) : "no row in the switcher");
+
+  const deletedLocate = await api(`/sessions/${DELETED_SESSION}/locate?cwd=${encodeURIComponent("/")}`);
+  check("precondition: the deleted-session fixture is gone on the machine", deletedLocate.status === 404, String(deletedLocate.status));
+  await wide.goto(`${BASE}/?project=${SEED_PROJECT}&workspace=${SEED_WORKSPACE}&session=${SEED_SESSION}`);
+  await wide.waitForTimeout(6_000);
+  await wide.evaluate((id) => { window.history.pushState({}, "", `?session=${id}`); window.dispatchEvent(new PopStateEvent("popstate")); }, DELETED_SESSION);
+  let said;
+  for (let waited = 0; waited < 8_000; waited += 200) {
+    said = await wide.evaluate(() => {
+      const app = document.querySelector("pi-web-app");
+      const notice = app?.shadowRoot?.querySelector(".session-target")?.textContent?.trim();
+      return { selected: app?.state?.selectedSession?.id ?? null, project: app?.state?.selectedProject?.id ?? null, notice: notice ?? null };
+    });
+    if (said.notice?.includes("no longer exists") === true) break;
+    await wide.waitForTimeout(200);
+  }
+  check("going to a URL naming only a deleted session says it is gone, and shows no other session", said?.notice?.includes("no longer exists") === true && said.selected === null && said.project === null, JSON.stringify(said));
   await desktop.close();
   await page.screenshot({ path: "/var/folders/2x/hqbz74zs7fvdxf_53693r26h0000gp/T/.playwright-mcp/b49a-pinned-closed-project-phone.png" });
 } finally {

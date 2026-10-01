@@ -235,6 +235,13 @@ export class SessionController {
   private readonly onBackgroundRunCountChanged: SessionControllerDependencies["onBackgroundRunCountChanged"];
   private readonly catalogue: SessionCatalogue;
   private selectionSeq = 0;
+  /**
+   * Who writes the URL for the current selection's place. The selection's own
+   * write comes at the end of its first read; a placement that lands before it
+   * leaves the write to it, and one that lands after replaces that same entry,
+   * so the address and the history always name the place the page shows.
+   */
+  private selectionUrl: { seq: number; settled: boolean; placed: boolean } | undefined;
   private disposed = false;
   private refreshRetryCount = 0;
   private refreshRetryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -431,6 +438,7 @@ export class SessionController {
     }
     this.sessionSelection.rememberSession({ ...session, cwd: this.workspaceSelectionKey(session.cwd) });
     const seq = ++this.selectionSeq;
+    this.selectionUrl = { seq, settled: false, placed: false };
     this.socket.close();
     this.streamWatermark = undefined;
     // A new selection is a new dialog surface with its own revision space; the
@@ -478,13 +486,6 @@ export class SessionController {
       availableThinkingLevels: [],
       newerPendingCount: 0,
     });
-    // A session whose workspace is not in the loaded catalogue belongs to a
-    // project that was never fetched, or to none that is open (B49). Leaving
-    // the previous selection in place kept every workspace-scoped panel
-    // answering for the project being left, so its place is asked for, once
-    // the selection names it: the placement only acts while this session is
-    // the one selected, and asked earlier it found no session selected and
-    // gave up at once.
     if (ancestors === undefined && sessionLocationVerdict(session.cwd, state.selectedWorkspace?.path) === "unknown" && session.cwd !== "") {
       void this.locateAndApplySessionWorkspace(session, machineId, seq);
     }
@@ -500,7 +501,7 @@ export class SessionController {
         this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [] });
         this.locatedAfterGone = undefined;
         this.onSelectedSessionReady?.({ machineId, session });
-        if (options?.updateUrl !== false) this.updateUrl();
+        this.settleSelectionUrl(seq, options?.updateUrl !== false);
         return;
       }
       const socketBuffer: SessionUiEvent[] = [];
@@ -551,7 +552,7 @@ export class SessionController {
       this.socket.setHandler((event) => { this.routeLiveEvent(event); });
       void this.askLedgerAbout(session, machineId);
       this.onSelectedSessionReady?.({ machineId, session });
-      if (options?.updateUrl !== false) this.updateUrl();
+      this.settleSelectionUrl(seq, options?.updateUrl !== false);
     } catch (error) {
       if (seq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) {
         // Tree navigation still needs to know when a same-session reselection's
@@ -1144,7 +1145,7 @@ export class SessionController {
         // The raw listing behind the stored revision is byte-identical: the
         // rows already on screen (with their client-side merges and stamps)
         // remain the truth. Only a dropped load state comes back.
-        if (this.getState().sessionsLoad !== "loaded") this.setState({ sessionsLoad: "loaded" });
+        if (this.getState().selectedWorkspace?.id === workspace.id && this.getState().sessionsLoad !== "loaded") this.setState({ sessionsLoad: "loaded" });
         return;
       }
       this.refreshRetryCount = 0;
@@ -2168,13 +2169,19 @@ export class SessionController {
    * for, the project the reader was in. While a project has not answered,
    * nothing moves.
    *
+   * It is asked for once the selection names the session: the catalogue
+   * answers only while this session is the one selected, so asked earlier it
+   * found none selected and gave up without a read - which is how placement
+   * never ran before B49. The place it lands reaches the URL through
+   * `placedSelectionUrl`.
+   *
    * Guarded on the selection counter and on the session still being selected:
    * a lookup that lands after the user has moved on must not drag the view back.
    */
   private async locateAndApplySessionWorkspace(session: SessionInfo, machineId: string, seq: number): Promise<void> {
     const cwd = session.cwd;
     if (cwd === "") return;
-    const stillSelected = () => seq === this.selectionSeq && this.getState().selectedSession?.id === session.id;
+    const stillSelected = () => seq === this.selectionSeq && this.selectionUrl?.seq === seq && this.getState().selectedSession?.id === session.id;
     let placed = false;
     const wanted = () => !placed && stillSelected();
     const found = await locateSessionWorkspace(cwd, {
@@ -2184,7 +2191,7 @@ export class SessionController {
     placed = true;
     if (!stillSelected()) return;
     if (found.kind === "outside") {
-      this.leaveOpenProjects();
+      if (this.leaveOpenProjects()) this.placedSelectionUrl(seq);
       return;
     }
     if (found.kind !== "found") return;
@@ -2205,14 +2212,43 @@ export class SessionController {
         ? { sessions: [...(cachedSessionsFor(machineId, found.workspace.path) ?? [])], sessionsLoad: "loading" as const }
         : {}),
     });
-    if (workspaceMoved) void this.refreshCurrentWorkspaceSessions(machineId);
+    if (workspaceMoved) {
+      void this.refreshCurrentWorkspaceSessions(machineId);
+      this.placedSelectionUrl(seq);
+    }
   }
 
-  private leaveOpenProjects(): void {
+  /** Empty the project and workspace selection; whether there was one to leave. */
+  private leaveOpenProjects(): boolean {
     const state = this.getState();
-    if (state.selectedProject === undefined && state.selectedWorkspace === undefined) return;
+    if (state.selectedProject === undefined && state.selectedWorkspace === undefined) return false;
     this.setState({ ...resetWorkspaceScopedState(), selectedProject: undefined, selectedWorkspace: undefined, workspaces: [], isLoadingWorkspaces: false });
-    this.updateUrl({ replace: true });
+    return true;
+  }
+
+  /**
+   * The reader asked for another place (back, forward, a restore): a placement
+   * still on its way for the current selection stops, so it never moves the page
+   * or rewrites the URL the reader went to (D8).
+   */
+  yieldPlacement(): void {
+    this.selectionUrl = undefined;
+  }
+
+  /** The selection's first read settled: write its place, or replace it when a placement moved it and the caller writes no URL. */
+  private settleSelectionUrl(seq: number, write: boolean): void {
+    const url = this.selectionUrl?.seq === seq ? this.selectionUrl : undefined;
+    if (url !== undefined) url.settled = true;
+    if (write) this.updateUrl();
+    else if (url?.placed === true) this.updateUrl({ replace: true });
+  }
+
+  /** A placement moved the selection's place: replace the URL the selection wrote, or leave the write to it if it has not written yet. */
+  private placedSelectionUrl(seq: number): void {
+    const url = this.selectionUrl;
+    if (url?.seq !== seq) return;
+    if (url.settled) this.updateUrl({ replace: true });
+    else url.placed = true;
   }
 
   private applyReleasedCreatedSessions(sessions: readonly SessionInfo[], machineId: string): void {
