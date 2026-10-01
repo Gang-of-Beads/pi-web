@@ -31,5 +31,18 @@ Each finding was settled by reading the source. Each fixed finding with a behavi
 
 ## Follow-up commit
 - **Tests:** four new or changed tests fail on `95b8e67e`.
-- **Mutants and probes:** see the commit gate.
+- **Mutants:** all nine killed.
+  - KA, KB: the heard set never or always says heard.
+  - KC, KD: the main or followed socket ignores a miss.
+  - KE: panels not deferred.
+  - KF: activity frames unmarked.
+  - KG: `keeps` ignored.
+  - KH: pending starts not kept. Killed by "keeps the activity of a session this page is still starting…", added after it survived.
+  - KI: the selected read's staleness blind to frames. Killed by `sessionController.review-repro-realtime.test.ts`, outside the gate's first list.
+- **Probes on 8505:**
+  - reopen-heals 3/3, with exactly one board read;
+  - missed-announcement 4/4;
+  - boot-reads 11/11;
+  - board-live 7/7;
+  - pins-live 5/5.
 - **Restart:** browser only; reload the page.
