@@ -17,7 +17,9 @@ export type WorkspacePanelEmptyState = { kind: "unknown" } | { kind: "message"; 
  * already names the page ("Files · session"), and a title row under it was a
  * second bar the owner had removed (2026-10-01). A tool's own buttons
  * (Files: Upload, Refresh) show at the top of its page as they did inside the
- * old fold; a tool without buttons starts with its content.
+ * old fold; a tool without buttons starts with its content. The content is a
+ * region named for the tool: the row that carried its heading is gone, and
+ * on the whole canvas the app bar that names it is hidden too.
  */
 @customElement("workspace-panel")
 export class WorkspacePanel extends LitElement {
@@ -48,7 +50,7 @@ export class WorkspacePanel extends LitElement {
         body: "No tools are available for this workspace.",
       }) : html`
         ${this.renderToolbar(context, selectedPanel)}
-        <div class="panel-content">
+        <div class="panel-content" role="region" aria-label=${selectedPanel.title}>
           ${selectedPanel.render(context)}
         </div>
       `}

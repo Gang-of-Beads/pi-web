@@ -65,14 +65,9 @@ export class RelaysPanelLink {
     if (this.panel === panel) this.panel = undefined;
   }
 
-  /** The fold's Refresh control; a no-op when no panel is mounted. */
+  /** The toolbar's Refresh control; a no-op when no panel is mounted. */
   refresh(): void {
     this.panel?.refresh();
-  }
-
-  /** The host header's summary: which relay is on show. */
-  summary(): string | undefined {
-    return this.panel?.summaryText();
   }
 }
 
@@ -291,14 +286,6 @@ class PiWebRelaysPanel extends HTMLElement {
     if (!this.isCurrentScan(context, token)) return;
     this.documentContent = content;
     this.renderViewer();
-  }
-
-  /** The host header's summary: which relay is on show. */
-  summaryText(): string | undefined {
-    const listing = this.listing;
-    if (listing?.kind !== "loaded") return undefined;
-    const relay = listing.relays.find((candidate) => candidate.path === this.selectedRelayPath);
-    return relay === undefined ? undefined : relay.name;
   }
 
   refresh(): void {

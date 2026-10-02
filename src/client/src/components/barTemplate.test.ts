@@ -49,6 +49,14 @@ const producers: { name: string; file: string; selector: string; height: "height
  */
 const statusFooterHeight = "calc(var(--pi-panel-header-height) * 4 / 9)";
 
+describe("the shared panel header", () => {
+  it("rides the bar height and the bar inset on every surface that still draws it", () => {
+    const css = read("./appShell/panelHeaderStyles.ts");
+    expect(css).toContain("min-height: var(--pi-panel-header-height);");
+    expect(css).toContain("padding-inline: var(--pi-bar-inset);");
+  });
+});
+
 describe("the status footer", () => {
   it("is two thirds of the bar height and keeps the bar inset", () => {
     const css = read("./StatusBar.ts");
@@ -65,8 +73,7 @@ describe("every bar producer", () => {
       const css = read(producer.file);
       const found = rule(css, producer.selector);
       const heightRule = producer.height === "height" ? /(?<![-\w])height: var\(--pi-panel-header-height\)/u : /min-height: var\(--pi-panel-header-height\)/u;
-      if (producer.selector === "header.panel-header {") expect(read("./appShell/panelHeaderStyles.ts")).toContain("min-height: var(--pi-panel-header-height)");
-      else expect(found).toMatch(heightRule);
+      expect(found).toMatch(heightRule);
       expect(found).toMatch(/padding: (?:0|var\(--pi-space-\d\)) var\(--pi-bar-inset\)/u);
     });
   }

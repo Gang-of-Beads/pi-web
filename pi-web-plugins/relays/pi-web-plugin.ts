@@ -36,7 +36,6 @@ const plugin: PiWebPlugin = {
               </svg>
             `,
             order: 50,
-            summary: () => link.summary(),
             toolbar: () => html`<button type="button" @click=${() => { link.refresh(); }}>Refresh</button>`,
             render: (context) => html`<pi-web-relays-panel .link=${link} .context=${context}></pi-web-relays-panel>`,
           },

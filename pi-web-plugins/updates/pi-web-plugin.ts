@@ -227,11 +227,6 @@ const plugin: PiWebPlugin = {
             const count = messageCount(context.state);
             return count > 0 ? count : undefined;
           },
-          summary: (context) => {
-            const count = messageCount(context.state);
-            if (count === 0) return undefined;
-            return count === 1 ? "1 message" : `${String(count)} messages`;
-          },
           render: (context) => renderUpdatesPanel(html, context.terminal, context.state),
         },
       ],

@@ -632,7 +632,7 @@ describe("collapsed-ancestor highlight", () => {
 });
 
 describe("refresh and context changes", () => {
-  it("keeps no titled bar of its own: the fold owns Refresh, the row holds the picker", async () => {
+  it("keeps no titled bar of its own: the host toolbar holds Refresh, the row holds the picker", async () => {
     const fake = workspaceFilesFake();
     fake.addDirectory(RELAYS_ROOT, []);
 

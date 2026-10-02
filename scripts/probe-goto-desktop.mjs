@@ -43,8 +43,8 @@ async function leg(browser, tool, collapsed) {
     const panel = app?.shadowRoot?.querySelector("#workspace-panel");
     const box = panel?.getBoundingClientRect();
     const onScreen = box !== undefined && box.width > 40 && box.height > 40 && box.right <= window.innerWidth + 1 && getComputedStyle(panel).visibility !== "hidden";
-    const text = panel?.shadowRoot?.textContent ?? "";
-    return { tool: app?.state?.workspaceTool ?? null, view: app?.state?.mainView ?? null, onScreen, width: Math.round(box?.width ?? 0), mentionsTitle: text.includes(title) };
+    const barText = app?.shadowRoot?.querySelector("app-context-bar")?.shadowRoot?.textContent ?? "";
+    return { tool: app?.state?.workspaceTool ?? null, view: app?.state?.mainView ?? null, onScreen, width: Math.round(box?.width ?? 0), mentionsTitle: barText.includes(title) };
   }, tool);
   await page.screenshot({ path: `/tmp/goto-desktop-${tool.toLowerCase()}-${collapsed ? "collapsed" : "open"}.png` });
   await context.close();

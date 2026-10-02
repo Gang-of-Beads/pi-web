@@ -47,7 +47,7 @@ export class TasksPanelLink {
     return this.configs.get(cacheKeyForContext(context))?.kind === "unavailable" ? "!" : undefined;
   }
 
-  /** The fold's controls; no-ops when no panel is mounted. */
+  /** The toolbar's controls; no-ops when no panel is mounted. */
   refresh(): void {
     const context = this.panel?.contextValue;
     if (context !== undefined) void this.panel?.refreshConfig(context);

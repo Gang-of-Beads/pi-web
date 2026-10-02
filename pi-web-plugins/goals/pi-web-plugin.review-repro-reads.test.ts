@@ -84,7 +84,6 @@ describe("the goals section read", () => {
 
     expect(callOperation).toHaveBeenCalledTimes(1);
     expect(section.badge?.(harness.context)).toBe(2);
-    expect(section.summary?.(harness.context)).toBe("0/2 tasks");
     expect(callOperation).toHaveBeenCalledTimes(1);
   });
 

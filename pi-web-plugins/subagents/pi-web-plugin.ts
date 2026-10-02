@@ -171,11 +171,6 @@ const plugin: PiWebPlugin = {
               const state = shownFor(panel);
               return state?.kind === "rows" && state.running > 0 ? state.running : undefined;
             },
-            summary: (panel) => {
-              const state = shownFor(panel);
-              if (state?.kind !== "rows") return undefined;
-              return state.running > 0 ? `${String(state.running)} working` : `${String(state.rows.length)} finished`;
-            },
             render: (panel) => html`<pi-subagents-on-screen .onChange=${onScreen}></pi-subagents-on-screen>${renderRuns(html, ensure(panel))}`,
           },
         ],

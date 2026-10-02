@@ -52,7 +52,7 @@ export class FilesPanelLink {
     this.stale = false;
   }
 
-  /** The fold's Upload control; a no-op when no panel is mounted. */
+  /** The toolbar's Upload control; a no-op when no panel is mounted. */
   requestUpload(): void {
     this.panel?.openFilePicker();
   }

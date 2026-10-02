@@ -36,12 +36,6 @@ const plugin: PiWebPlugin = {
             const running = runningCount(context);
             return running === 0 ? undefined : running;
           },
-          summary: (context) => {
-            const running = runningCount(context);
-            if (running > 0) return `${String(running)} running`;
-            const total = tasksOf(context).length;
-            return total > 0 ? `${String(total)} finished` : undefined;
-          },
           render: (context) => html`<pi-web-background-tasks .tasks=${tasksOf(context)} .read=${readOf(context)}></pi-web-background-tasks>`,
         },
       ],

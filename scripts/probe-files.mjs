@@ -95,12 +95,9 @@ try {
   const panelState = await deepQuery(page, "pi-files-panel", `(panel) => {
     if (panel === null) return null;
     const root = panel.shadowRoot;
-    const toolbar = root?.querySelector(".toolbar strong");
     const rows = root?.querySelectorAll(".tree button.row");
-    return { present: true, toolbarText: toolbar?.textContent ?? "", rowCount: rows === undefined ? 0 : rows.length };
+    return { present: true, rowCount: rows === undefined ? 0 : rows.length };
   }`);
-  // The panel's own titled toolbar moved under the host header's fold, so the
-  // title is no longer inside the panel; its rows are what proves it opened.
   check("the legacy route value opens the plugin files panel", panelState !== null && panelState.rowCount > 0, JSON.stringify(panelState));
   check("the seeded workspace's tree rendered", panelState !== null && panelState.rowCount > 0, `rows ${String(panelState?.rowCount ?? 0)}`);
 
@@ -117,44 +114,12 @@ try {
   })()`);
   check("the probe seeded a file through the write endpoint", seeded !== null, JSON.stringify(seeded));
   const refreshed = await page.evaluate(() => {
-    const find = (root) => {
-      for (const node of root.querySelectorAll("*")) {
-        if (node.localName === "app-refresh-control") return node;
-        if (node.shadowRoot !== null) {
-          const hit = find(node.shadowRoot);
-          if (hit !== undefined) return hit;
-        }
-      }
-      return undefined;
-    };
-    const panel = (() => {
-      const walk = (root) => {
-        for (const node of root.querySelectorAll("*")) {
-          if (node.localName === "pi-files-panel") return node;
-          if (node.shadowRoot !== null) {
-            const hit = walk(node.shadowRoot);
-            if (hit !== undefined) return hit;
-          }
-        }
-        return undefined;
-      };
-      return walk(document);
-    })();
-    const toolbar = panel?.shadowRoot?.querySelector(".toolbar button") ?? undefined;
-    const hostControl = find(document);
-    if (toolbar !== undefined) { toolbar.click(); return true; }
-    if (hostControl !== undefined) { hostControl.shadowRoot?.querySelector("button")?.click(); return true; }
-    return false;
+    const toolbar = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("#workspace-panel")?.shadowRoot?.querySelector(".workspace-tool-toolbar");
+    const refresh = [...(toolbar?.querySelectorAll("button") ?? [])].find((button) => button.textContent.trim() === "Refresh");
+    refresh?.click();
+    return refresh !== undefined;
   });
-  // renderAppRefresh() exists but nothing calls it, so the host has no refresh
-  // control on this surface and the panel's own toolbar folded away. Reported as
-  // a skip with the reason rather than a failure of a control nobody renders.
-  if (refreshed) check("the refresh button was clickable", true);
-  else console.log("SKIP the refresh button was clickable — no refresh control is rendered (renderAppRefresh has no caller)");
-
-  // The refresh control is wired now, and clicking it *reloads the page*: the next
-  // evaluate lands after the context was replaced, so wait for the load.
-  if (refreshed) await page.waitForLoadState("domcontentloaded").catch(() => undefined);
+  check("the Files toolbar's Refresh was clickable", refreshed);
   await page.waitForTimeout(1_200);
 
   const clicked = await deepQuery(page, "pi-files-panel", `(panel) => {
