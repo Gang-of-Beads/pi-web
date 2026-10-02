@@ -1,5 +1,6 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from "lit";
 import { property, query, state } from "lit/decorators.js";
+import { repeat } from "lit/directives/repeat.js";
 import type { FileTreeEntry, WorkspacePanelContext, WorkspaceUploadBatchProgress } from "@gang-of-beads/pi-web/plugin-api";
 import { renderHostCloseIcon, renderHostDisclosureIcon, adoptFilesHostStyles, describeFilesError, filesQuery, filesRegisterModal } from "./hostUi";
 import { createStore } from "./viewMode";
@@ -30,6 +31,7 @@ interface WorkspaceUploadBatchErrorShape {
 export class FilesPanelLink {
   private panel: PiFilesPanel | undefined;
   private stale = false;
+  private marks = 0;
 
   attach(panel: PiFilesPanel): void {
     this.panel = panel;
@@ -46,11 +48,24 @@ export class FilesPanelLink {
 
   markStale(): void {
     this.stale = true;
+    this.marks += 1;
     this.panel?.markStale();
+  }
+
+  /** How many times a settled turn has aged the tree; a read notes it when it starts. */
+  get markCount(): number {
+    return this.marks;
   }
 
   clearStale(): void {
     this.stale = false;
+  }
+
+  /** Take "out of date" down for a read that began after the latest mark; whether it was up. */
+  clearStaleFor(marksAtRead: number): boolean {
+    if (!this.stale || marksAtRead !== this.marks) return false;
+    this.stale = false;
+    return true;
   }
 
   /** The toolbar's Upload control; a no-op when no panel is mounted. */
@@ -60,7 +75,6 @@ export class FilesPanelLink {
 
   /** Ask the panel to refetch; the host calls this on panel invalidation. */
   invalidate(): void {
-    this.stale = false;
     this.panel?.refresh();
   }
 }
@@ -82,8 +96,7 @@ export class PiFilesPanel extends LitElement {
   private uploadModalRegistration: { readonly isTop: boolean; focus(): boolean; unregister(): void } | undefined;
   private uploadBatchSequence = 0;
   private explorer: FilesExplorer | undefined;
-  private explorerIdentityKey = "";
-  private readonly poll = new ShownPoll(() => { this.pollTree(); });
+  private readonly poll = new ShownPoll(() => { this.readTree(); });
 
   protected override willUpdate(changedProperties: PropertyValues<this>): void {
     if (!changedProperties.has("context")) return;
@@ -112,13 +125,20 @@ export class PiFilesPanel extends LitElement {
   }
 
   /**
-   * The timed read while the page is on screen. It redraws only this panel,
-   * and asks the host to redraw only when the toolbar's "out of date" must go.
+   * Read the tree. It redraws only this panel, and asks the host to redraw
+   * only when the toolbar's "out of date" goes. That happens only for a read
+   * that landed, for the workspace still shown, and that began after the
+   * latest mark: a failed read, one for a workspace the reader left, or one
+   * already on its way when the turn settled says nothing about the tree now
+   * (review of a9968cd2).
    */
-  private pollTree(): void {
-    void this.explorer?.refresh().then(() => {
-      if (this.link?.showsStale() !== true) return;
-      this.link.clearStale();
+  private readTree(): void {
+    const explorer = this.explorer;
+    const link = this.link;
+    if (explorer === undefined) return;
+    const marks = link?.markCount ?? 0;
+    void explorer.refresh().then((outcome) => {
+      if (outcome !== "landed" || explorer !== this.explorer || link?.clearStaleFor(marks) !== true) return;
       this.context?.host.requestRender();
     });
   }
@@ -136,12 +156,7 @@ export class PiFilesPanel extends LitElement {
 
   refresh(): void {
     this.context?.host.requestRender();
-    void this.explorer?.refresh().then(() => {
-      // The stale mark is only honest while the tree is still the aged one:
-      // a refetch that landed clears it, wherever the request came from.
-      this.link?.clearStale();
-      this.context?.host.requestRender();
-    });
+    this.readTree();
   }
 
   override render(): TemplateResult {
@@ -165,7 +180,7 @@ export class PiFilesPanel extends LitElement {
               ? state.treeFailed === undefined
                 ? html`<p class="muted">No files loaded.</p>`
                 : html`<p class="muted tree-failed" role="alert">Couldn't read this workspace's files: ${state.treeFailed}</p>`
-              : state.tree.map((entry) => this.renderTreeEntry(explorer, entry, 0))}
+              : repeat(state.tree, (entry) => entry.path, (entry) => this.renderTreeEntry(explorer, entry, 0))}
           </div>
           <div class="viewer">
             <pi-files-viewer
@@ -202,7 +217,7 @@ export class PiFilesPanel extends LitElement {
         <span>${entry.type === "directory" ? renderHostDisclosureIcon(!hasChildren) : "·"}</span>
         <span>${entry.name}</span>
       </button>
-      ${hasChildren ? children.map((child) => this.renderTreeEntry(explorer, child, depth + 1)) : null}
+      ${hasChildren ? repeat(children, (child) => child.path, (child) => this.renderTreeEntry(explorer, child, depth + 1)) : null}
     `;
   }
 
@@ -524,7 +539,6 @@ export class PiFilesPanel extends LitElement {
       onChange: () => { this.requestUpdate(); },
     });
     this.explorer = explorer;
-    this.explorerIdentityKey = this.contextKey(context);
     this.batches = {};
     this.closeUploadDialog();
     this.dragDepth = 0;

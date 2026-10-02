@@ -35,9 +35,13 @@ export function explorerIdentityKey(identity: FilesExplorerIdentity): string {
   return `${identity.machineId}:${identity.projectId}:${identity.workspaceId}`;
 }
 
+/** How a tree read ended. A read that failed keeps the last tree and says why in `treeFailed`. */
+export type TreeReadOutcome = "landed" | "failed";
+
 export class FilesExplorer {
   private snapshot: FilesExplorerSnapshot = emptySnapshot();
-  private refreshGeneration = 0;
+  private reading: Promise<TreeReadOutcome> | undefined;
+  private readAgain = false;
   private identity: FilesExplorerIdentity = { machineId: "", projectId: "", workspaceId: "" };
   private fileRequestGeneration = 0;
 
@@ -70,27 +74,55 @@ export class FilesExplorer {
   }
 
   /**
-   * Refreshes overlap when change bursts straddle the daemon's coalescing
-   * window; only the newest one may land, or an older listing would settle
-   * over a newer one and read as fresh.
+   * Read the tree and the folders the reader has open, one read at a time: a
+   * refresh asked while a read is on its way waits for it and reads once more,
+   * so the newest state lands and an older listing never settles over a newer
+   * one. Overlapping reads used to start a wave per request and drop all but
+   * the newest; once Files read every few seconds, a machine slower than the
+   * interval never landed any (review of a9968cd2, as Git's `statusReadAgain`).
    */
-  async refresh(): Promise<void> {
-    const generation = ++this.refreshGeneration;
+  refresh(): Promise<TreeReadOutcome> {
+    if (this.reading === undefined) this.reading = this.readUntilCurrent();
+    else this.readAgain = true;
+    return this.reading;
+  }
+
+  private async readUntilCurrent(): Promise<TreeReadOutcome> {
     try {
-      const root = await this.deps.listFiles("");
-      const expanded: Record<string, FileTreeEntry[]> = {};
-      for (const path of Object.keys(this.snapshot.expandedDirs)) {
-        expanded[path] = (await this.deps.listFiles(path)).entries;
-      }
-      if (generation !== this.refreshGeneration) return;
-      this.snapshot = { ...this.snapshot, tree: root.entries, expandedDirs: expanded, stale: false, treeFailed: undefined };
-      const selected = this.snapshot.selectedFilePath;
-      if (selected !== undefined && selectedFileVerdict(this.snapshot) === "changed") void this.loadFile(selected);
-    } catch (error) {
-      if (generation !== this.refreshGeneration) return;
-      this.snapshot = { ...this.snapshot, treeFailed: this.deps.describeError(error) };
+      let outcome = await this.readTree();
+      while (this.takeReadAgain()) outcome = await this.readTree();
+      return outcome;
+    } finally {
+      this.reading = undefined;
     }
+  }
+
+  private takeReadAgain(): boolean {
+    const again = this.readAgain;
+    this.readAgain = false;
+    return again;
+  }
+
+  private async readTree(): Promise<TreeReadOutcome> {
+    let root: FileTreeResponse;
+    try {
+      root = await this.deps.listFiles("");
+    } catch (error) {
+      this.snapshot = { ...this.snapshot, treeFailed: this.deps.describeError(error) };
+      this.deps.onChange();
+      return "failed";
+    }
+    const paths = Object.keys(this.snapshot.expandedDirs);
+    const listings = await Promise.allSettled(paths.map((path) => this.deps.listFiles(path)));
+    const read = new Map(paths.map((path, index) => {
+      const listing = listings[index];
+      return [path, listing?.status === "fulfilled" ? listing.value.entries : "failed" as const];
+    }));
+    const expandedDirs = foldersAfterRead(this.snapshot.expandedDirs, root.entries, read);
+    this.snapshot = { ...this.snapshot, tree: root.entries, expandedDirs, stale: false, treeFailed: undefined };
+    if (selectedFileVerdict(this.snapshot) === "changed") void this.reloadSelectedFile();
     this.deps.onChange();
+    return "landed";
   }
 
   async expandDir(path: string): Promise<void> {
@@ -163,23 +195,68 @@ export type SelectedFileVerdict = "unchanged" | "changed" | "unknown";
  * Whether the open file moved on disk, judged from the listing a read just
  * brought. A read used to refresh the tree and leave the viewer on the
  * content it first loaded, so a file the agent rewrote stayed old on screen
- * while the tree beside it was new. The listing already carries each entry's
- * `modifiedAt`, from the same stat the file read reports, so the content is
- * re-read only when it changed or vanished from a folder the read holds. A
- * folder the read does not hold says nothing, and nothing is re-read.
+ * while the tree beside it was new. A file's listing entry carries the same
+ * `modifiedAt` the file read reports, so the content is re-read only when it
+ * changed or vanished from a folder the read holds. A folder the read does not
+ * hold says nothing, and nothing is re-read.
+ *
+ * Two entries cannot answer and are re-read on every read instead (review of
+ * a9968cd2): a symlink, whose listing reports the link and not the file it
+ * points to; and an open file whose last read failed but which the listing
+ * still shows, so a failure that passed does not leave the error on screen.
  */
 export function selectedFileVerdict(snapshot: FilesExplorerSnapshot): SelectedFileVerdict {
   const path = snapshot.selectedFilePath;
-  const loaded = snapshot.selectedFileContent;
-  if (path === undefined || loaded === undefined) return "unknown";
-  const slash = path.lastIndexOf("/");
-  const parent = slash === -1 ? "" : path.slice(0, slash);
-  const listing = parent === "" ? snapshot.tree : snapshot.expandedDirs[parent];
+  if (path === undefined) return "unknown";
+  const listing = listingOf(snapshot, parentFolder(path));
   if (listing === undefined) return "unknown";
   const entry = listing.find((candidate) => candidate.path === path);
-  if (entry === undefined) return "changed";
+  const loaded = snapshot.selectedFileContent;
+  if (loaded === undefined) return snapshot.selectedFileLoadError !== undefined && entry !== undefined ? "changed" : "unknown";
+  if (entry === undefined || entry.type === "symlink") return "changed";
   if (entry.modifiedAt === undefined) return "unknown";
   return entry.modifiedAt === loaded.modifiedAt ? "unchanged" : "changed";
+}
+
+function parentFolder(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash === -1 ? "" : path.slice(0, slash);
+}
+
+function listingOf(snapshot: FilesExplorerSnapshot, folder: string): FileTreeEntry[] | undefined {
+  return folder === "" ? snapshot.tree : snapshot.expandedDirs[folder];
+}
+
+/**
+ * The open folders once a read has landed. A folder takes what the read
+ * brought. One whose listing failed keeps what it showed, unless the read
+ * shows it gone from its parent: an expanded folder the agent deleted used to
+ * fail every later read, so the whole tree froze (review of a9968cd2).
+ * Folders opened or closed while the read was on its way stay as the reader
+ * left them.
+ */
+export function foldersAfterRead(
+  open: Readonly<Record<string, FileTreeEntry[]>>,
+  root: readonly FileTreeEntry[],
+  read: ReadonlyMap<string, FileTreeEntry[] | "failed">,
+): Record<string, FileTreeEntry[]> {
+  const listed = (folder: string): readonly FileTreeEntry[] | undefined => {
+    if (folder === "") return root;
+    const listing = read.get(folder);
+    return listing === "failed" ? undefined : listing;
+  };
+  const kept: Record<string, FileTreeEntry[]> = {};
+  for (const [path, shown] of Object.entries(open)) {
+    const listing = read.get(path);
+    if (listing !== undefined && listing !== "failed") {
+      kept[path] = listing;
+      continue;
+    }
+    const parent = listed(parentFolder(path));
+    if (listing === "failed" && parent !== undefined && !parent.some((entry) => entry.path === path)) continue;
+    kept[path] = shown;
+  }
+  return kept;
 }
 
 function emptySnapshot(): FilesExplorerSnapshot {

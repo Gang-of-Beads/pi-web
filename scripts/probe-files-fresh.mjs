@@ -10,6 +10,10 @@ import { join } from "node:path";
  * - tree: a top-level `node_modules` folder appears. The workspace watcher drops every change
  *   under `node_modules` as noise, so only the page's own timed read can show it.
  * - open file: a file open in the viewer is rewritten from outside; the viewer shows the new text.
+ * - place kept: a long open file, scrolled down, is rewritten; the reader stays where they were
+ *   (review of a9968cd2: the editor was rebuilt and went back to line 1).
+ * - deleted folder: an expanded folder is deleted from outside; a new file still shows (review of
+ *   a9968cd2: the dead folder failed every later read and the tree froze).
  * - control: Git, which already polled, shows a new file.
  */
 const BASE = "http://127.0.0.1:8505";
@@ -37,6 +41,25 @@ async function open(browser, query) {
   return { context, page };
 }
 
+/** The scrolling box of the file viewer's editor (the composer is a CodeMirror editor too). */
+const viewerScroller = (page, scrollTo) => page.evaluate((top) => {
+  const find = (root) => {
+    const hit = root.querySelector("pi-code-viewer");
+    if (hit !== null) return hit;
+    for (const node of root.querySelectorAll("*")) {
+      if (node.shadowRoot === null) continue;
+      const inner = find(node.shadowRoot);
+      if (inner !== null) return inner;
+    }
+    return null;
+  };
+  const viewer = find(document)?.shadowRoot;
+  const box = [...(viewer?.querySelectorAll(".cm-scroller, .host") ?? [])].find((node) => node.scrollHeight > node.clientHeight + 10);
+  if (box === undefined) return null;
+  if (top !== null) box.scrollTop = top;
+  return box.scrollTop;
+}, scrollTo);
+
 async function waitForText(page, wanted) {
   const started = Date.now();
   while (Date.now() - started < LIMIT_MS) {
@@ -50,6 +73,10 @@ const stamp = String(Date.now());
 const noisy = join(CWD, "node_modules");
 const opened = `probe-files-fresh-${stamp}.md`;
 const gitFile = `probe-git-fresh-${stamp}.md`;
+const longFile = `probe-files-long-${stamp}.md`;
+const doomed = `probe-files-doomed-${stamp}`;
+const afterDoomed = `probe-files-after-${stamp}.md`;
+const numbered = (version) => Array.from({ length: 400 }, (_, index) => `line ${String(index + 1)} ${version}`).join("\n");
 const browser = await chromium.launch();
 try {
   await rm(noisy, { recursive: true, force: true });
@@ -75,6 +102,44 @@ try {
     await context.close();
   }
   {
+    await writeFile(join(CWD, longFile), `${numbered("v1")}\n`);
+    const { context, page } = await open(browser, `tool=files%3Afiles&view=files%3Afiles&core.workspace.files--file=${encodeURIComponent(longFile)}`);
+    await viewerScroller(page, 3000);
+    await page.waitForTimeout(500);
+    const before = await viewerScroller(page, null);
+    check("precondition: the long file opened and scrolled down", typeof before === "number" && before > 2000, String(before));
+    await writeFile(join(CWD, longFile), `${numbered("v2")}\n`);
+    const seen = await waitForText(page, " v2");
+    const after = await viewerScroller(page, null);
+    check("precondition: the rewritten text arrived", seen !== undefined, seen === undefined ? "never" : `${String(seen)} ms`);
+    check("place kept: the reader stays where they were when the open file is rewritten", typeof after === "number" && typeof before === "number" && Math.abs(after - before) < 50, `${String(before)} -> ${String(after)}`);
+    await context.close();
+  }
+  {
+    await mkdir(join(CWD, doomed), { recursive: true });
+    await writeFile(join(CWD, doomed, "inside.txt"), "soon gone\n");
+    const { context, page } = await open(browser, "tool=files%3Afiles&view=files%3Afiles");
+    await page.evaluate((name) => {
+      const find = (root) => {
+        for (const node of root.querySelectorAll("button.row")) if (node.textContent.includes(name)) return node;
+        for (const node of root.querySelectorAll("*")) {
+          if (node.shadowRoot === null) continue;
+          const inner = find(node.shadowRoot);
+          if (inner !== undefined) return inner;
+        }
+        return undefined;
+      };
+      find(document)?.click();
+    }, doomed);
+    const expanded = await waitForText(page, "inside.txt");
+    check("precondition: the folder is expanded and shows its file", expanded !== undefined);
+    await rm(join(CWD, doomed), { recursive: true, force: true });
+    await writeFile(join(CWD, afterDoomed), "after the folder went\n");
+    const seen = await waitForText(page, afterDoomed);
+    check(`deleted folder: a new file still shows within ${String(LIMIT_MS / 1000)} s after an expanded folder was deleted`, seen !== undefined, seen === undefined ? "never" : `${String(seen)} ms`);
+    await context.close();
+  }
+  {
     const { context, page } = await open(browser, "tool=git%3Aworkspace.git&view=git%3Aworkspace.git");
     await writeFile(join(CWD, gitFile), "for git\n");
     const seen = await waitForText(page, gitFile);
@@ -86,6 +151,9 @@ try {
   await rm(noisy, { recursive: true, force: true });
   await rm(join(CWD, opened), { force: true });
   await rm(join(CWD, gitFile), { force: true });
+  await rm(join(CWD, longFile), { force: true });
+  await rm(join(CWD, doomed), { recursive: true, force: true });
+  await rm(join(CWD, afterDoomed), { force: true });
 }
 const failed = results.filter((pass) => !pass).length;
 console.log(`${String(results.length - failed)}/${String(results.length)} passed`);

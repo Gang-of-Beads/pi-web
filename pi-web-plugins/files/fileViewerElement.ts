@@ -202,7 +202,7 @@ export class WorkspaceFileViewer extends LitElement {
     loadCodeViewer();
     return html`
       ${file.truncated ? html`<p class="preview-note" role="status">Raw source is truncated. Use Download for the complete file.</p>` : null}
-      <pi-code-viewer .content=${file.content} .language=${file.language}></pi-code-viewer>
+      <pi-code-viewer .path=${file.path} .content=${file.content} .language=${file.language}></pi-code-viewer>
       ${this.renderMentionChip()}
     `;
   }

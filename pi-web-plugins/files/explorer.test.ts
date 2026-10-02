@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FileContentResponse, FileTreeResponse } from "@gang-of-beads/pi-web/plugin-api";
-import { FilesExplorer, selectedFileVerdict, type FilesExplorerIdentity, type FilesExplorerSnapshot } from "./explorer";
+import { FilesExplorer, foldersAfterRead, selectedFileVerdict, type FilesExplorerIdentity, type FilesExplorerSnapshot } from "./explorer";
 
 const identity: FilesExplorerIdentity = { machineId: "local", projectId: "p1", workspaceId: "w1" };
 
@@ -88,20 +88,59 @@ describe("FilesExplorer", () => {
     expect(h.explorer.state.selectedFileContent?.path).not.toBe("slow.md");
   });
 
-  it("an older refresh answer never settles over a newer one", async () => {
+  it("a refresh asked during a read waits for it and reads once more, so the newest state lands", async () => {
     const h = harness();
     h.explorer.adopt(identity);
     await vi.waitFor(() => { expect(h.explorer.state.tree).toHaveLength(1); });
     let releaseOld: ((value: FileTreeResponse) => void) | undefined;
     h.setListFiles(() => new Promise<FileTreeResponse>((resolve) => { releaseOld = resolve; }));
     const older = h.explorer.refresh();
+    const newer = h.explorer.refresh();
     h.setListFiles(() => Promise.resolve(tree("", ["src", "new.md"])));
-    await h.explorer.refresh();
-    expect(h.explorer.state.tree).toHaveLength(2);
     releaseOld?.(tree("", ["src"]));
+
+    await expect(newer).resolves.toBe("landed");
     await older;
     expect(h.explorer.state.tree).toHaveLength(2);
     expect(h.explorer.state.stale).toBe(false);
+  });
+
+  it("never has two tree reads on their way at once, however often it is asked", async () => {
+    const h = harness();
+    let inFlight = 0;
+    let most = 0;
+    h.setListFiles((path) => {
+      inFlight += 1;
+      most = Math.max(most, inFlight);
+      return new Promise((resolve) => setTimeout(() => { inFlight -= 1; resolve(tree(path)); }, 5));
+    });
+    h.explorer.adopt(identity);
+    await Promise.all([h.explorer.refresh(), h.explorer.refresh(), h.explorer.refresh()]);
+
+    expect(most).toBe(1);
+  });
+
+  it("says a read failed, and keeps the tree it had", async () => {
+    const h = harness();
+    h.explorer.adopt(identity);
+    await vi.waitFor(() => { expect(h.explorer.state.tree).toHaveLength(1); });
+    h.setListFiles(() => Promise.reject(new Error("machine unreachable")));
+
+    await expect(h.explorer.refresh()).resolves.toBe("failed");
+    expect(h.explorer.state.tree).toHaveLength(1);
+  });
+
+  it("drops an expanded folder the agent deleted, and the rest of the tree still lands", async () => {
+    const h = harness();
+    h.setListFiles((path) => Promise.resolve(path === "" ? tree("", ["build", "src"]) : tree(path, ["a.js"])));
+    h.explorer.adopt(identity);
+    await vi.waitFor(() => { expect(h.explorer.state.tree).toHaveLength(2); });
+    await h.explorer.expandDir("build");
+    h.setListFiles((path) => path === "build" ? Promise.reject(new Error("Path does not exist")) : Promise.resolve(tree(path, ["src", "new.md"])));
+
+    await expect(h.explorer.refresh()).resolves.toBe("landed");
+    expect(h.explorer.state.tree.map((entry) => entry.path)).toEqual(["src", "new.md"]);
+    expect(h.explorer.state.expandedDirs).toEqual({});
   });
 
   it("expanding a directory loads its entries and collapsing drops them", async () => {
@@ -169,6 +208,13 @@ describe("the open file follows the tree", () => {
     { name: "an entry without modifiedAt", snapshot: snapshot({ tree: [entry("notes.md")], selectedFilePath: "notes.md", selectedFileContent: at("t1") }), verdict: "unknown" },
   ];
 
+  const symlink = { name: "CLAUDE.md", path: "CLAUDE.md", type: "symlink" as const, modifiedAt: "t1" };
+  cases.push(
+    { name: "a symlink, whose listing reports the link", snapshot: snapshot({ tree: [symlink], selectedFilePath: "CLAUDE.md", selectedFileContent: { ...at("t1"), path: "CLAUDE.md" } }), verdict: "changed" },
+    { name: "a failed read of a file still listed", snapshot: snapshot({ tree: [entry("notes.md", "t1")], selectedFilePath: "notes.md", selectedFileLoadError: "network" }), verdict: "changed" },
+    { name: "a failed read of a file gone from a held folder", snapshot: snapshot({ tree: [entry("other.md", "t1")], selectedFilePath: "notes.md", selectedFileLoadError: "Path does not exist" }), verdict: "unknown" },
+  );
+
   it.each(cases)("$name -> $verdict", ({ snapshot: given, verdict }) => {
     expect(selectedFileVerdict(given)).toBe(verdict);
   });
@@ -197,6 +243,19 @@ describe("the open file follows the tree", () => {
     expect(whileReading).toBe("old");
   });
 
+  it("re-reads an open file whose read failed once the tree still shows it", async () => {
+    const h = harness("notes.md");
+    h.setListFiles((listed) => Promise.resolve({ ...tree(listed), entries: [{ name: "notes.md", path: "notes.md", type: "file", modifiedAt: "2026-09-06T00:00:00.000Z" }] }));
+    h.setReadFile(() => Promise.reject(new Error("network")));
+    h.explorer.adopt(identity);
+    await vi.waitFor(() => { expect(h.explorer.state.selectedFileLoadError).toBe("Error: network"); });
+    h.setReadFile((read) => Promise.resolve(content(read)));
+
+    await h.explorer.refresh();
+
+    await vi.waitFor(() => { expect(h.explorer.state.selectedFileContent?.content).toBe("hi"); });
+  });
+
   it("does not re-read an open file the read found unchanged", async () => {
     const h = harness("notes.md");
     h.setListFiles((listed) => Promise.resolve({ ...tree(listed), entries: [{ name: "notes.md", path: "notes.md", type: "file", modifiedAt: "2026-09-06T00:00:00.000Z" }] }));
@@ -213,3 +272,25 @@ describe("the open file follows the tree", () => {
   });
 });
 
+
+describe("the open folders after a read", () => {
+  const file = (path: string) => ({ name: path.split("/").at(-1) ?? path, path, type: "file" as const });
+  const folder = (path: string) => ({ name: path.split("/").at(-1) ?? path, path, type: "directory" as const });
+
+  it("takes what the read brought", () => {
+    expect(foldersAfterRead({ src: [file("src/a.ts")] }, [folder("src")], new Map([["src", [file("src/b.ts")]]]))).toEqual({ src: [file("src/b.ts")] });
+  });
+
+  it("keeps what a folder showed when its listing failed but its parent still lists it", () => {
+    expect(foldersAfterRead({ src: [file("src/a.ts")] }, [folder("src")], new Map([["src", "failed" as const]]))).toEqual({ src: [file("src/a.ts")] });
+  });
+
+  it("drops a folder whose listing failed because the read shows it gone", () => {
+    expect(foldersAfterRead({ build: [file("build/a.js")] }, [folder("src")], new Map([["build", "failed" as const]]))).toEqual({});
+  });
+
+  it("leaves folders the reader opened or closed during the read as they were left", () => {
+    const opened = foldersAfterRead({ docs: [file("docs/new.md")] }, [folder("src"), folder("docs")], new Map([["src", [file("src/a.ts")]]]));
+    expect(opened).toEqual({ docs: [file("docs/new.md")] });
+  });
+});

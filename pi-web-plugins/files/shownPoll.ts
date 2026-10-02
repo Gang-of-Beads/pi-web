@@ -18,17 +18,18 @@ export class ShownPoll {
   private observer: IntersectionObserver | undefined;
   private shown = true;
 
-  constructor(private readonly read: () => void, private readonly intervalMs = FILES_POLL_INTERVAL_MS) {}
+  constructor(private readonly read: () => void) {}
 
   start(target: Element): void {
     this.stop();
     this.shown = true;
     if (typeof IntersectionObserver !== "undefined") {
-      this.observer = new IntersectionObserver((entries) => {
+      const observer = new IntersectionObserver((entries) => {
         const latest = entries.at(-1);
-        if (latest !== undefined) this.reportShown(latest.isIntersecting);
+        if (this.observer === observer && latest !== undefined) this.reportShown(latest.isIntersecting);
       });
-      this.observer.observe(target);
+      this.observer = observer;
+      observer.observe(target);
     }
     this.startTimer();
   }
@@ -55,7 +56,7 @@ export class ShownPoll {
     this.stopTimer();
     this.timer = setInterval(() => {
       if (document.visibilityState !== "hidden") this.read();
-    }, this.intervalMs);
+    }, FILES_POLL_INTERVAL_MS);
   }
 
   private stopTimer(): void {

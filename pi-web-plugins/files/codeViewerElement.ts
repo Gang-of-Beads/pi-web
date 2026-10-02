@@ -14,6 +14,7 @@ import { diff } from "@codemirror/legacy-modes/mode/diff";
 import { LitElement, css, html } from "lit";
 import { property, query } from "lit/decorators.js";
 export class CodeViewer extends LitElement {
+  @property() path: string | undefined;
   @property() content = "";
   @property() language: string | undefined;
   @query(".host") private editorHost?: HTMLDivElement;
@@ -21,7 +22,8 @@ export class CodeViewer extends LitElement {
   private view: EditorView | undefined;
 
   override updated(changed: Map<string, unknown>): void {
-    if (changed.has("content") || changed.has("language")) this.recreateEditor();
+    if (this.view === undefined || changed.has("path") || changed.has("language")) this.recreateEditor();
+    else if (changed.has("content")) this.replaceContent(this.view);
   }
 
   override disconnectedCallback(): void {
@@ -48,6 +50,27 @@ export class CodeViewer extends LitElement {
     const coords = view.coordsAtPos(range.to);
     if (coords === null) return undefined;
     return { start, end, endCoords: { top: coords.top, left: coords.left } };
+  }
+
+  /**
+   * New bytes of the open file land in the view that shows it, with the
+   * selection kept and the line at the top of the view still at the top.
+   * Rebuilding the view put a reader at line 300 back at line 1 whenever the
+   * agent wrote the file, which Files now notices every few seconds (review of
+   * a9968cd2); and a whole-document replacement alone maps CodeMirror's own
+   * scroll anchor to the start, so the top line is carried by number. Another
+   * file still gets a new view.
+   */
+  private replaceContent(view: EditorView): void {
+    const { anchor, head } = view.state.selection.main;
+    const topLine = view.state.doc.lineAt(view.lineBlockAtHeight(view.scrollDOM.getBoundingClientRect().top - view.documentTop).from).number;
+    const length = this.content.length;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: this.content },
+      selection: { anchor: Math.min(anchor, length), head: Math.min(head, length) },
+    });
+    const line = view.state.doc.line(Math.min(topLine, view.state.doc.lines));
+    view.dispatch({ effects: EditorView.scrollIntoView(line.from, { y: "start" }) });
   }
 
   private recreateEditor(): void {

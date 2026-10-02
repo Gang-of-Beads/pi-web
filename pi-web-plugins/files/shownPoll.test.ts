@@ -62,4 +62,26 @@ describe("ShownPoll", () => {
 
     expect({ observed: observed[0] === page, readsOnReturn: read.mock.calls.length, disconnected: afterStop === undefined }).toEqual({ observed: true, readsOnReturn: 1, disconnected: true });
   });
+
+  it("ignores a visibility report that arrives after it stopped", async () => {
+    vi.useFakeTimers();
+    let report: ((entries: { isIntersecting: boolean }[]) => void) | undefined;
+    class LateObserver {
+      constructor(callback: (entries: { isIntersecting: boolean }[]) => void) { report = callback; }
+      observe(): void { return undefined; }
+      disconnect(): void { return undefined; }
+    }
+    vi.stubGlobal("IntersectionObserver", LateObserver);
+    const read = vi.fn<() => void>();
+    const poll = new ShownPoll(read);
+    poll.start(document.createElement("div"));
+    report?.([{ isIntersecting: false }]);
+    poll.stop();
+
+    report?.([{ isIntersecting: true }]);
+    await vi.advanceTimersByTimeAsync(FILES_POLL_INTERVAL_MS * 3);
+    vi.unstubAllGlobals();
+
+    expect(read).not.toHaveBeenCalled();
+  });
 });
