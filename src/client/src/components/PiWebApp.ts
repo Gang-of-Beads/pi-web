@@ -2395,7 +2395,6 @@ export class PiWebApp extends LitElement {
         .emptyState=${emptyState}
         .tool=${this.state.workspaceTool}
         .panels=${this.visibleWorkspacePanels()}
-        ?hideHeader=${this.appShell.isMobileNavigationLayout}
       ></workspace-panel>
     `;
   }

@@ -169,14 +169,9 @@ export const workspacePanelStyles = css`
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
   :host { display: flex; flex-direction: column; min-height: 0; color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-sm) var(--pi-font-ui); line-height: inherit; container-type: inline-size; }
-  header.panel-header { flex: 0 0 auto; padding: 0 var(--pi-bar-inset); }
-  .workspace-tool-summary { color: var(--pi-muted); font-weight: var(--pi-weight-regular); }
-  .workspace-header-actions { display: flex; align-items: center; gap: var(--pi-space-3); flex: 0 0 auto; }
-  .workspace-tool-fold { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 0; cursor: pointer; }
   .workspace-tool-toolbar { flex: 0 0 auto; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-4); min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border-muted); }
   .workspace-tool-toolbar button { box-sizing: border-box; min-height: var(--pi-panel-header-control-height); }
   .workspace-tool-toolbar button:disabled { opacity: var(--pi-disabled-opacity); cursor: wait; }
-  .workspace-fullscreen-toggle { flex: 0 0 auto; max-width: none; white-space: nowrap; }
   button { box-sizing: border-box; min-height: var(--pi-control-height); font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   .panel-content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
@@ -184,7 +179,6 @@ export const workspacePanelStyles = css`
   .empty-state h2 { margin: 0; color: var(--pi-text); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; line-height: 1.3; }
   .empty-state p { margin: 0; line-height: 1.45; }
   small, .muted { color: var(--pi-muted); font-size: var(--pi-text-2xs); }
-  @media (max-width: 1180px) { .workspace-fullscreen-toggle { display: none; } }
   .workspace-label-item { box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-surface); color: var(--pi-muted); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; }
   .workspace-label-item, .workspace-label-render, .workspace-label-separator { color: var(--pi-muted); }
   .workspace-label-link { color: var(--pi-accent); text-decoration: none; }

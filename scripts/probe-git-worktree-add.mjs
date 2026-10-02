@@ -46,9 +46,6 @@ try {
     open.call(app, "git:workspace.git");
     await new Promise((r) => setTimeout(r, 2500));
     const panel = app.shadowRoot.querySelector("workspace-panel");
-    const fold = panel?.shadowRoot?.querySelector(".workspace-tool-fold");
-    if (!fold) return { error: "the tool header has no fold button" };
-    if (fold.getAttribute("aria-expanded") !== "true") { fold.click(); await new Promise((r) => setTimeout(r, 400)); }
     const roots = [panel?.shadowRoot];
     const seen = new Set();
     let button;
