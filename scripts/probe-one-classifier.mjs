@@ -19,6 +19,10 @@ import { chromium } from "@playwright/test";
  *   shell command fails: a question waiting for the reader outranks the failure before it (D3
  *   precedence, B14 review 6bf7aee1), so both surfaces give it the asking mark. Before, the
  *   classifier put the failure first and the phone's Go to page said "Session hit an error".
+ * - A fourth session's shell command fails before either page loads, and the phone opens it once so
+ *   it is read (the switcher's row ranks unread above error). Both pages, loaded afresh, learn the
+ *   failure from the status catalog they read at boot and mark it "Session hit an error". Before,
+ *   a page loaded after the failure never learned it: the Go to page said "Session is done".
  */
 const BASE = process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
 const CWD = process.env.PROBE_CWD ?? "/Users/hanxiao.du/.pi-web-8505/pi-web-8505-seed-workspace";
@@ -29,6 +33,7 @@ const STAMP = String(Date.now()).slice(-6);
 const ASK_NAME = `classify ask ${STAMP}`;
 const RUN_NAME = `classify run ${STAMP}`;
 const FAIL_NAME = `classify fail ${STAMP}`;
+const ERROR_NAME = `classify error ${STAMP}`;
 const results = [];
 const check = (name, pass, detail = "") => {
   results.push(pass);
@@ -98,9 +103,12 @@ try {
   await waitFor(() => status(failing), (state) => state.isStreaming !== true && state.activity?.phase !== "active", 30_000);
   void api(`sessions/${failing}/commands/run`, { text: "/ui-custom-probe" }).catch(() => undefined);
   const dialogOpen = await waitFor(() => status(failing), (state) => (state.pendingDialogs ?? []).length > 0, 20_000);
+  const erroring = await startSession(ERROR_NAME, "probe-classify-error: say ok");
+  await waitFor(() => status(erroring), (state) => state.isStreaming !== true && state.activity?.phase !== "active", 30_000);
+  await api(`sessions/${erroring}/shell`, { text: "!exit 4" });
   const asking = await startSession(ASK_NAME, "probe-classify-ask: ask me something");
   const running = await startSession(RUN_NAME, "probe-classify-run: run a long command");
-  sessions.push(asking, running);
+  sessions.push(asking, running, erroring);
   console.log("sessions:", asking, running);
   const askReady = await waitFor(() => status(asking), (state) => state.pendingAsk !== undefined, 30_000);
   const runReady = await waitFor(() => status(running), (state) => state.isStreaming === true, 30_000);
@@ -117,6 +125,8 @@ try {
   const phone = await browser.newContext({ viewport: { width: 393, height: 850 }, hasTouch: true, isMobile: true });
   await phone.route(/\/api\/machines\/prod-8504-waveb\//u, (route) => route.abort("blockedbyclient"));
   const phonePage = await phone.newPage();
+  await phonePage.goto(`${BASE}/?project=${PROJECT}&workspace=${WORKSPACE}&session=${erroring}&view=chat`);
+  await phonePage.waitForTimeout(4000);
   await phonePage.goto(`${BASE}/?project=${PROJECT}&workspace=${WORKSPACE}&session=${running}&view=chat`);
   await phonePage.waitForTimeout(6000);
   const dockClass = await phonePage.evaluate(() => {
@@ -134,7 +144,7 @@ try {
   await phonePage.locator("app-context-bar button[aria-label='Open navigation']").tap();
   await phonePage.waitForTimeout(2500);
   console.log("page facts for the failed session:", JSON.stringify(await phonePage.evaluate((id) => { const state = document.querySelector("pi-web-app")?.state; return { activity: state?.sessionActivities?.[id] ?? null, dialogs: (state?.sessionStatuses?.[id]?.pendingDialogs ?? []).length, hasStatus: state?.sessionStatuses?.[id] !== undefined }; }, failing)));
-  const goTo = { ask: await markIn(phonePage, "app-navigate-page", "button.row.session", ASK_NAME), run: await markIn(phonePage, "app-navigate-page", "button.row.session", RUN_NAME), fail: await markIn(phonePage, "app-navigate-page", "button.row.session", FAIL_NAME) };
+  const goTo = { ask: await markIn(phonePage, "app-navigate-page", "button.row.session", ASK_NAME), run: await markIn(phonePage, "app-navigate-page", "button.row.session", RUN_NAME), fail: await markIn(phonePage, "app-navigate-page", "button.row.session", FAIL_NAME), error: await markIn(phonePage, "app-navigate-page", "button.row.session", ERROR_NAME) };
   await phonePage.screenshot({ path: "/tmp/surfaces/one-classifier-goto-phone.png" });
   await phone.close();
 
@@ -145,15 +155,16 @@ try {
   await desktopPage.waitForTimeout(6000);
   await desktopPage.keyboard.press("ControlOrMeta+p");
   await desktopPage.waitForTimeout(2000);
-  const switcher = { ask: await markIn(desktopPage, "quick-switcher", "button.session-row", ASK_NAME), run: await markIn(desktopPage, "quick-switcher", "button.session-row", RUN_NAME), fail: await markIn(desktopPage, "quick-switcher", "button.session-row", FAIL_NAME) };
+  const switcher = { ask: await markIn(desktopPage, "quick-switcher", "button.session-row", ASK_NAME), run: await markIn(desktopPage, "quick-switcher", "button.session-row", RUN_NAME), fail: await markIn(desktopPage, "quick-switcher", "button.session-row", FAIL_NAME), error: await markIn(desktopPage, "quick-switcher", "button.session-row", ERROR_NAME) };
   await desktopPage.screenshot({ path: "/tmp/surfaces/one-classifier-switcher-desktop.png" });
   await desktop.close();
 
   console.log("go to:", JSON.stringify(goTo), "switcher:", JSON.stringify(switcher));
-  check("precondition: both surfaces list all three sessions", ![goTo.ask, goTo.run, goTo.fail, switcher.ask, switcher.run, switcher.fail].includes("no row"));
+  check("precondition: both surfaces list all four sessions", ![goTo.ask, goTo.run, goTo.fail, goTo.error, switcher.ask, switcher.run, switcher.fail, switcher.error].includes("no row"));
   check("the asking session wears the same mark on the Go to page and in the switcher", goTo.ask === switcher.ask && switcher.ask === "Waiting for your answer", `${goTo.ask} / ${switcher.ask}`);
   check("the running session wears the same mark on the Go to page and in the switcher", goTo.run === switcher.run && switcher.run === "Session is working", `${goTo.run} / ${switcher.run}`);
   check("a failed session with a dialog open wears the asking mark on both surfaces", goTo.fail === switcher.fail && switcher.fail === "Waiting for your answer", `${goTo.fail} / ${switcher.fail}`);
+  check("a session that failed before the pages loaded wears the error mark on both surfaces", goTo.error === switcher.error && switcher.error === "Session hit an error", `${goTo.error} / ${switcher.error}`);
 } finally {
   clearInterval(dialogCloser);
   await browser.close();

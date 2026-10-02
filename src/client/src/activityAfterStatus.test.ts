@@ -22,6 +22,23 @@ describe("activitiesAfterStatuses (state-diagram D3)", () => {
     expect(Object.keys(after).sort()).toEqual(["framed", "starting"]);
   });
 
+  it("teaches a session the page knows no activity for the one its status brings, as a live status does (B14)", () => {
+    const failed: SessionActivity = { sessionId: "failed", phase: "error", label: "bash complete", at: "2026-10-01T00:00:00.000Z" };
+    const stale: SessionActivity = { sessionId: "stale", phase: "active", label: "working", at: "2026-10-01T00:00:00.000Z" };
+    const after = activitiesAfterStatuses(
+      { known: idleActivity("known") },
+      {
+        failed: { ...status("failed", false), activity: failed },
+        known: { ...status("known", false), activity: { ...failed, sessionId: "known" } },
+        stale: { ...status("stale", false), activity: stale },
+        selected: { ...status("selected", false), activity: { ...failed, sessionId: "selected" } },
+      },
+      { retractsMissing: false, adopts: (sessionId) => sessionId !== "selected" },
+    );
+
+    expect(after).toEqual({ known: idleActivity("known"), failed });
+  });
+
   it("keeps an active activity with no status unless the caller replaces what it knew", () => {
     const activities = { unlisted: active("unlisted") };
     expect({

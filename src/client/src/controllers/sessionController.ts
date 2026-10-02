@@ -27,7 +27,7 @@ import { failPendingPrompt, forgetPendingPrompt, forgetReservedPrompt, isNetwork
 import { claimAfterMiss, isClaimOf, provenRowStep, VERIFY_AFTER_MS, VERIFY_RETRY_MS, verificationStep } from "../sendVerification";
 import { classifyReadError, type ReadMiss } from "../sync/readPhase";
 import { statusReadVerdict, type StatusPosition } from "../statusOrder";
-import { activitiesAfterStatuses, activityOutlivesStatus } from "../activityAfterStatus";
+import { activitiesAfterStatuses, activityOutlivesStatus, statusActivityToAdopt } from "../activityAfterStatus";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
@@ -1346,6 +1346,7 @@ export class SessionController {
       sessionActivities: activitiesAfterStatuses(this.getState().sessionActivities, next, {
         retractsMissing: replaceKnown || daemonReplaced,
         keeps: (sessionId) => this.pendingSessionStarts.has(sessionId) || (this.activityFrameMarks.get(sessionId) ?? 0) > framesAtRequest,
+        adopts: (sessionId) => sessionId !== selectedId,
       }),
       ...(selectedId === undefined || selectedDialogs.length === 0 ? {} : { pendingDialogs: openDialogsAfterDismissals(selectedDialogs, this.getState().dismissedDialogIds) }),
     });
@@ -3248,16 +3249,6 @@ function openDialogsAfterDismissals(
   if (dismissedDialogIds.length === 0) return [...open];
   const dismissed = new Set(dismissedDialogIds);
   return open.filter((dialog) => !dismissed.has(dialog.dialogId));
-}
-
-/**
- * The activity a status brings, taken only when the page knows none for the
- * session: a page that opens in the middle of a long step learns it here,
- * before the next frame (B25). A live frame already seen is newer and stays.
- */
-function statusActivityToAdopt(known: SessionActivity | undefined, status: SessionStatus): SessionActivity | undefined {
-  if (known !== undefined || status.activity === undefined) return undefined;
-  return activityOutlivesStatus(status.activity, status) ? undefined : status.activity;
 }
 
 /** The page's activities once a status has spoken: the session's own replaced by what the status brought, or dropped. */

@@ -34,6 +34,20 @@ describe("SessionController.hydrateSessionStatuses", () => {
     expect(state().sessionStatuses[oldSession.id]).toMatchObject({ isStreaming: true, messageCount: 9 });
   });
 
+  it("teaches every session but the selected one the activity its catalog status brings, so a failure before the page loaded is known (B14)", async () => {
+    const failed = { phase: "error" as const, label: "bash complete", at: "2026-10-02T10:00:00.000Z" };
+    const { controller, state } = harness({
+      statuses: [
+        { ...status("other-session"), activity: { ...failed, sessionId: "other-session" } },
+        { ...status(oldSession.id), activity: { ...failed, sessionId: oldSession.id } },
+      ],
+    });
+
+    await controller.hydrateSessionStatuses("local");
+
+    expect({ other: state().sessionActivities["other-session"]?.phase, selected: state().sessionActivities[oldSession.id] }).toEqual({ other: "error", selected: undefined });
+  });
+
   it("replaces a known status after a reconnect", async () => {
     // The opposite case, and the one that made the UI look broken: while the
     // socket was down, the status.update saying a session had finished was
