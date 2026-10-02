@@ -1744,10 +1744,12 @@ if (this.heldWaitingClearTimer !== undefined) {
    */
   private narratedStep(activity: SessionActivity): string | undefined {
     const step = activity.step;
-    if (step === undefined || step.kind === "idle" || activity.phase === "error") return undefined;
+    if (step === undefined || step.kind === "idle" || activity.phase === "error" || !this.isSessionLive()) return undefined;
     const since = Date.parse(activity.stepSince ?? "");
     const text = stepStatusText(step, Number.isFinite(since) ? since : undefined, Date.now());
-    const waiting = stepWaitingText(step, { messages: this.status?.queuedMessages.length ?? 0, answers: this.status?.queuedAnswers?.length ?? 0 });
+    const queued = this.status?.queuedMessages ?? [];
+    const followUps = queued.filter((message) => message.kind === "followUp").length;
+    const waiting = stepWaitingText(step, { messages: queued.length - followUps, followUps, answers: this.status?.queuedAnswers?.length ?? 0 });
     return waiting === undefined ? text : `${text} · ${waiting}`;
   }
 

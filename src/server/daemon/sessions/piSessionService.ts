@@ -3942,11 +3942,10 @@ export class PiSessionService implements SessionRouteService {
     if (!command) throw new Error("Usage: !<shell command>");
     if (session.isBashRunning) throw new Error("A bash command is already running");
 
-    this.publishActivity(session, "running bash", "active", command);
+    this.publishActivityForEvent(session, { type: "bash_execution_start", command });
     this.events.publish(session.sessionId, { type: "shell.start", command, excludeFromContext: isExcluded });
     void this.runSessionEntryMutation(session, "run a shell command", () => session.executeBash(command, (chunk) => {
       this.events.publish(session.sessionId, { type: "shell.chunk", chunk });
-      this.publishActivity(session, "running bash", "active", command);
       this.publishStatus(session);
     }, { excludeFromContext: isExcluded })).then((result) => {
       this.events.publish(session.sessionId, {
@@ -3957,12 +3956,14 @@ export class PiSessionService implements SessionRouteService {
         truncated: result.truncated,
         ...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
       });
+      this.publishActivityForEvent(session, { type: "bash_execution_end" });
       this.publishActivity(session, "bash complete", result.exitCode === 0 ? "idle" : "error", command);
       this.publishStatus(session);
     }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       this.events.publish(session.sessionId, { type: "shell.end", output: message, isError: true });
       this.events.publish(session.sessionId, { type: "session.error", message });
+      this.publishActivityForEvent(session, { type: "bash_execution_end" });
       this.publishActivity(session, "bash failed", "error", message);
       this.publishStatus(session);
     });
@@ -5831,7 +5832,7 @@ export class PiSessionService implements SessionRouteService {
     const eventType = getString(event, "type");
     if (eventType === undefined) return;
     const current = this.steps.get(session.sessionId) ?? { step: IDLE_STEP, since: new Date().toISOString() };
-    const step = nextSessionStep(current.step, event, { now: Date.now(), running: session.isStreaming, describeArgs: summarizeToolArgs });
+    const step = nextSessionStep(current.step, event, { running: session.agent.state?.isStreaming === true, describeArgs: summarizeToolArgs });
     if (step !== current.step) {
       this.steps.set(session.sessionId, { step, since: step.kind === current.step.kind ? current.since : new Date().toISOString() });
       const words = stepWords(step);
@@ -5892,12 +5893,12 @@ export class PiSessionService implements SessionRouteService {
 
   private readonly lastActivityKeyBySession = new Map<string, string>();
 
+  /**
+   * Publish an activity with the step the session is in. Deduped on what a
+   * reader sees, so a repeat (the heartbeat's, or a producer re-stating its
+   * words) sends nothing.
+   */
   private publishActivity(session: PiAgentSession, label: string, phase: "active" | "idle" | "error", detail?: string): void {
-    // Every text_delta reached publishActivityForEvent and re-broadcast the
-    // identical "receiving response" activity: 2 more stringifies + sockets
-    // sends per token, on the agent's own event loop. Dedupe so only actual
-    // transitions (or detail changes, e.g. a new tool name) are published;
-    // the heartbeat's repeat of an unchanged activity is deduped too.
     const current = this.steps.get(session.sessionId);
     const key = `${phase}\u0000${label}\u0000${detail ?? ""}\u0000${current === undefined ? "" : `${JSON.stringify(current.step)}@${current.since}`}`;
     if (this.lastActivityKeyBySession.get(session.sessionId) === key) return;
@@ -5948,8 +5949,9 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private clearStaleActiveActivity(session: PiAgentSession): void {
-    const current = this.activities.get(session.sessionId);
-    if (current?.phase !== "active" || this.hasActiveWork(session)) return;
+    const step = this.steps.get(session.sessionId)?.step;
+    const stale = this.activities.get(session.sessionId)?.phase === "active" || (step !== undefined && step.kind !== "idle");
+    if (!stale || this.hasActiveWork(session)) return;
     // Same edge, second path: this runs off the heartbeat, so it also covers a
     // session that fell idle without emitting a terminal event (an aborted run,
     // a bash command that ended between beats).

@@ -327,6 +327,13 @@ describe("the status line narrates the agent's step", () => {
     expect(dock.text).toMatch(/^Running bash: sleep 25 · 1[12] s · 2 messages are read when these tools finish$/u);
   });
 
+  it("does not narrate a step on a session that is not working (review of ad83d24b)", async () => {
+    const leftover: SessionActivity = { ...activity("idle", "stopped"), step: { kind: "waiting" }, stepSince: new Date().toISOString() };
+    const dock = await dockWith(status({}), leftover);
+
+    expect(dock.text).not.toContain("Waiting for the model");
+  });
+
   it("says the activity's own words when no step is published or the session failed", async () => {
     const failed: SessionActivity = { ...activity("error", "extension error"), step: { kind: "thinking" }, stepSince: new Date().toISOString() };
     const old = await dockWith(status({ isStreaming: true }), activity("active", "agent running"));

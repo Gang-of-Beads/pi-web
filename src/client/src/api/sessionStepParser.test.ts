@@ -12,7 +12,7 @@ describe("reading the step an activity frame carries (B25)", () => {
     { kind: "preparing" },
     { kind: "preparing", tool: "edit" },
     { kind: "running", tools: [{ id: "c1", name: "bash", target: "sleep 25" }, { id: "c2", name: "read" }] },
-    { kind: "retrying", attempt: 2, maxAttempts: 3, reason: "overloaded", resumesAt: "2026-10-02T10:00:04.000Z" },
+    { kind: "retrying", attempt: 2, maxAttempts: 3, reason: "overloaded" },
     { kind: "bash", command: "ls" },
   ];
 

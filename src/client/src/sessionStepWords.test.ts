@@ -10,7 +10,7 @@ const steps: { step: SessionStep; text: string }[] = [
   { step: { kind: "preparing" }, text: "Preparing a tool call · 4 s" },
   { step: { kind: "preparing", tool: "edit" }, text: "Preparing edit · 4 s" },
   { step: { kind: "running", tools: [{ id: "b", name: "bash", target: "sleep 25" }, { id: "r", name: "read" }] }, text: "Running bash: sleep 25 · read · 4 s" },
-  { step: { kind: "retrying", attempt: 2, maxAttempts: 3, reason: "overloaded", resumesAt: "t" }, text: "Retrying, attempt 2 of 3: overloaded · 4 s" },
+  { step: { kind: "retrying", attempt: 2, maxAttempts: 3, reason: "overloaded" }, text: "Retrying, attempt 2 of 3: overloaded · 4 s" },
   { step: { kind: "compacting" }, text: "Compacting the history · 4 s" },
   { step: { kind: "bash", command: "ls" }, text: "Running ls · 4 s" },
 ];
@@ -26,15 +26,25 @@ describe("what the status line says for each step (B25)", () => {
 
   it("says when what waits is read, from the step it waits behind", () => {
     expect([
-      stepWaitingText({ kind: "running", tools: [] }, { messages: 2, answers: 0 }),
-      stepWaitingText({ kind: "writing" }, { messages: 0, answers: 1 }),
-      stepWaitingText({ kind: "compacting" }, { messages: 1, answers: 1 }),
-      stepWaitingText({ kind: "thinking" }, { messages: 0, answers: 0 }),
+      stepWaitingText({ kind: "running", tools: [] }, { messages: 2, followUps: 0, answers: 0 }),
+      stepWaitingText({ kind: "writing" }, { messages: 0, followUps: 0, answers: 1 }),
+      stepWaitingText({ kind: "compacting" }, { messages: 1, followUps: 0, answers: 1 }),
+      stepWaitingText({ kind: "thinking" }, { messages: 0, followUps: 0, answers: 0 }),
     ]).toEqual([
       "2 messages are read when these tools finish",
       "your answer is read when this reply ends",
       "your answer and 1 message are read next",
       undefined,
+    ]);
+  });
+
+  it("says a follow-up is read only when the agent is done, whatever the step (review of ad83d24b)", () => {
+    expect([
+      stepWaitingText({ kind: "running", tools: [] }, { messages: 0, followUps: 1, answers: 0 }),
+      stepWaitingText({ kind: "running", tools: [] }, { messages: 1, followUps: 2, answers: 0 }),
+    ]).toEqual([
+      "1 follow-up is read when the agent is done",
+      "1 message is read when these tools finish · 2 follow-ups are read when the agent is done",
     ]);
   });
 });

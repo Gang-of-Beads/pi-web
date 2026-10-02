@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionStep } from "../../../shared/apiTypes.js";
 import { IDLE_STEP, nextSessionStep, stepPhase, stepWords, type StepFacts } from "./sessionStep.js";
 
-const facts = (running = true): StepFacts => ({ now: Date.parse("2026-10-02T10:00:00.000Z"), running, describeArgs: (args) => String(Reflect.get(Object(args), "command") ?? "") });
+const facts = (running = true): StepFacts => ({ running, describeArgs: (args) => String(Reflect.get(Object(args), "command") ?? "") });
 const streamed = (type: string, partial: unknown = { content: [] }, contentIndex = 0) => ({ type: "message_update", assistantMessageEvent: { type, contentIndex, partial } });
 const run = (events: unknown[], from: SessionStep = IDLE_STEP, running = true): SessionStep => events.reduce<SessionStep>((step, event) => nextSessionStep(step, event, facts(running)), from);
 
@@ -48,9 +48,22 @@ describe("the step a session's agent is in (B25, B15)", () => {
     expect(run([{ type: "tool_execution_end", toolCallId: "b" }], both)).toEqual({ kind: "waiting" });
   });
 
-  it("says a retry with its attempt, its reason and when it resumes", () => {
+  it("says a retry with its attempt and its reason", () => {
     expect(run([{ type: "auto_retry_start", attempt: 2, maxAttempts: 3, delayMs: 4000, errorMessage: "overloaded" }], { kind: "waiting" }))
-      .toEqual({ kind: "retrying", attempt: 2, maxAttempts: 3, reason: "overloaded", resumesAt: "2026-10-02T10:00:04.000Z" });
+      .toEqual({ kind: "retrying", attempt: 2, maxAttempts: 3, reason: "overloaded" });
+  });
+
+  it("follows pi's retry order without going idle in between, and a cancelled retry ends idle (review of ad83d24b)", () => {
+    const retried = [
+      { type: "agent_end", willRetry: true },
+      { type: "auto_retry_start", attempt: 1, maxAttempts: 3, errorMessage: "overloaded" },
+      { type: "agent_start" },
+      streamed("text_delta"),
+      { type: "auto_retry_end", success: true },
+    ].reduce<SessionStep[]>((seen, event) => [...seen, nextSessionStep(seen.at(-1) ?? { kind: "writing" }, event, facts())], []);
+    const cancelled = run([{ type: "agent_end", willRetry: true }, { type: "auto_retry_start", attempt: 1, maxAttempts: 3, errorMessage: "overloaded" }, { type: "auto_retry_end", success: false }], { kind: "writing" });
+
+    expect({ retried: retried.map((step) => step.kind), cancelled: cancelled.kind }).toEqual({ retried: ["writing", "retrying", "waiting", "writing", "writing"], cancelled: "idle" });
   });
 
   it("ends compaction and the reader's shell command in waiting during a run and idle outside one", () => {
@@ -71,7 +84,7 @@ describe("the step a session's agent is in (B25, B15)", () => {
     expect([
       stepWords(IDLE_STEP),
       stepWords({ kind: "running", tools: [{ id: "b", name: "bash", target: "sleep 25" }, { id: "r", name: "read" }] }),
-      stepWords({ kind: "retrying", attempt: 2, maxAttempts: 3, reason: "overloaded", resumesAt: "t" }),
+      stepWords({ kind: "retrying", attempt: 2, maxAttempts: 3, reason: "overloaded" }),
       stepWords({ kind: "preparing" }),
     ]).toEqual([
       { label: "idle" },

@@ -275,23 +275,26 @@ stateDiagram-v2
     running --> waiting: the last tool ends
     thinking --> waiting: turn_end
     writing --> waiting: turn_end
-    waiting --> retrying: auto_retry_start (attempt n of m, the reason)
-    retrying --> waiting: auto_retry_end
+    writing --> retrying: agent_end pi will retry, then auto_retry_start (attempt n of m, the reason)
+    retrying --> waiting: agent_start of the retry
+    retrying --> idle: auto_retry_end of a cancelled retry (a Stop)
     waiting --> compacting: compaction_start
-    compacting --> waiting: compaction_end while a run goes
+    idle --> compacting: compaction_start after the run
+    compacting --> waiting: compaction_end while pi's loop runs
     compacting --> idle: compaction_end otherwise
     idle --> bash: the reader's own shell command starts
-    bash --> idle: it ends
+    bash --> idle: it ends outside a run
     waiting --> idle: agent_end
     thinking --> idle: agent_end
     writing --> idle: agent_end
     running --> idle: agent_end
-    retrying --> idle: agent_end
 ```
 
 - **States.** `idle`; `waiting` (a request is on its way to the model and nothing has streamed yet); `thinking`; `writing`; `preparing` (a tool call is streaming, with the tool once named); `running` (the tools executing now, each with its name and target, in parallel); `retrying` (attempt, maximum, reason, and when it resumes); `compacting`; `bash` (the reader's own shell command).
 - **One idle per turn (B15).** Only `agent_end` (and the end of compaction or of the reader's shell command outside a run) reaches `idle`. `message_end`, `turn_end` and a tool's end no longer publish an idle phase mid-run, and a failed tool is part of the run, not an `error` phase: the turn's own failure is.
 - **Other events leave the step alone.** The fallback that re-published "working" for every unrecognised event is gone.
+- **Review of ad83d24b.** pi emits `agent_end` before it schedules a retry, with `willRetry`; that `agent_end` keeps the step, so a retried run never shows idle in between, and `auto_retry_end` ends only a `retrying` step (its success arrives mid-reply and changes nothing). "While a run goes" means pi's agent loop is running: a compaction pi starts after the loop ended ends idle. pi emits nothing for the reader's `!` command, so the daemon feeds the reducer that command's start and end itself. The heartbeat's net resets any non-idle step once nothing runs, whatever word was published last. A step on a session that is not working is never narrated.
+- **What the step is not.** The phase can still read idle mid-run when the reader changes the model or the thinking level: that is the word of that action, and the step beside it is unchanged. "Waiting for you" is the open card's own state; the card says it, and the dock stays out of its way. The step's time is measured against the daemon's clock, as the turn's is.
 - **The dock says the step, its time, and what comes next.** "Thinking · 4 s", "Running bash: sleep 25 · 12 s", "Retrying, attempt 2 of 3: overloaded". When something waits for the agent, the dock says when it is read, from the step: during `thinking`, `writing` and `preparing`, "read when this reply ends"; during `running`, "read when these tools finish"; otherwise "read next". Answers count with messages ("your answer is read when these tools finish"). The words live in one table per step kind.
 
 ## D4. The transcript viewport

@@ -206,6 +206,18 @@ describe("the activity a status brings", () => {
     expect(state().sessionActivities["other-session"]?.step).toEqual({ kind: "thinking" });
   });
 
+  it("replaces an activity the same status shows is over with the one it brings (review of ad83d24b)", () => {
+    const { controller, state } = harness({ statuses: [] });
+    controller.applyGlobalEvent({ type: "activity.update", activity: running });
+    runPendingAnimationFrames();
+    const stopped = { sessionId: "other-session", phase: "idle" as const, label: "stopped", at: "2026-10-02T10:00:09.000Z", step: { kind: "idle" as const }, stepSince: "2026-10-02T10:00:09.000Z" };
+
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status("other-session"), isStreaming: false, activity: stopped } });
+    runPendingAnimationFrames();
+
+    expect(state().sessionActivities["other-session"]?.label).toBe("stopped");
+  });
+
   it("is not taken when the status itself says the work is over", () => {
     const { controller, state } = harness({ statuses: [] });
 

@@ -722,7 +722,7 @@ export type SessionStep =
   | { kind: "writing" }
   | { kind: "preparing"; tool?: string }
   | { kind: "running"; tools: RunningTool[] }
-  | { kind: "retrying"; attempt: number; maxAttempts: number; reason: string; resumesAt: string }
+  | { kind: "retrying"; attempt: number; maxAttempts: number; reason: string }
   | { kind: "compacting" }
   | { kind: "bash"; command: string };
 

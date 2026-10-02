@@ -1339,6 +1339,58 @@ describe("activity labels from raw agent events", () => {
     }
   });
 
+  it("names the reader's own shell command as the step while it runs, and goes idle after it (review of ad83d24b)", async () => {
+    const hub = new CapturingSessionEventHub();
+    let finish: (() => void) | undefined;
+    const fake = fakeRuntime("shell-step-session", {
+      executeBash: () => new Promise((resolve) => { finish = () => { resolve({ output: "", exitCode: 0, cancelled: false, truncated: false }); }; }),
+    });
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("shell-step-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+    try {
+      await service.status(sessionRef("shell-step-session"));
+      hub.globalEvents.length = 0;
+      await service.shell(sessionRef("shell-step-session"), "!sleep 20");
+      await vi.waitFor(() => { expect(finish).toBeDefined(); });
+      const during = (await service.status(sessionRef("shell-step-session"))).activity?.step;
+      finish?.();
+      await vi.waitFor(() => { expect(hub.globalEvents.some((event) => event.type === "activity.update" && event.activity.label === "bash complete")).toBe(true); });
+      const completed = hub.globalEvents.find((event) => event.type === "activity.update" && event.activity.label === "bash complete");
+
+      expect({ during, completed: completed?.type === "activity.update" ? completed.activity.step : undefined }).toEqual({ during: { kind: "bash", command: "sleep 20" }, completed: { kind: "idle" } });
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it("resets a step left behind once nothing runs, even after an idle word was published (review of ad83d24b)", async () => {
+    const hub = new CapturingSessionEventHub();
+    let listener: ((event: unknown) => void) | undefined;
+    const fake = fakeRuntime("left-step-session", { isStreaming: true, getAvailableThinkingLevels: () => ["off"], subscribe: (next) => { listener = next; return () => undefined; } });
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("left-step-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+    try {
+      await service.status(sessionRef("left-step-session"));
+      listener?.({ type: "agent_start" });
+      fake.session.isStreaming = false;
+      await service.setThinkingLevel(sessionRef("left-step-session"), "off");
+
+      expect((await service.status(sessionRef("left-step-session"))).activity?.step).toEqual({ kind: "idle" });
+    } finally {
+      await service.dispose();
+    }
+  });
+
   it("names a turn_start event in user-facing words instead of echoing the event type", async () => {
     const hub = new CapturingSessionEventHub();
     let listener: ((event: unknown) => void) | undefined;

@@ -1,4 +1,5 @@
 import type { RunningTool, SessionStep } from "../../../shared/apiTypes.js";
+import { runningToolLine } from "../../../shared/runningToolLine.js";
 
 /**
  * What a session's agent is doing, from pi's event pairs (B25 and B15,
@@ -9,14 +10,19 @@ import type { RunningTool, SessionStep } from "../../../shared/apiTypes.js";
  * phase at every message and tool end, so the dock flickered between running
  * and idle inside one turn and kept the last word ("message queued") long
  * after its moment. Each state here ends only when its pair closes, and one
- * `agent_end` is the run's only way to idle.
+ * `agent_end` is the run's only way to idle. An `agent_end` pi will retry
+ * (`willRetry`) is not the end: the step waits in `retrying`, and a retry
+ * that is cancelled, by a Stop, ends there (review of ad83d24b).
  */
 export const IDLE_STEP: SessionStep = { kind: "idle" };
 
 /** What the reducer needs beside the event. */
 export interface StepFacts {
-  now: number;
-  /** Whether a run is going, for the end of compaction or of the reader's shell command. */
+  /**
+   * Whether pi's agent loop is running, for the end of compaction or of the
+   * reader's shell command: mid-run the agent goes on, after the run (a
+   * compaction pi starts once the loop ended) nothing does.
+   */
   running: boolean;
   /** One line for what a tool was called with. */
   describeArgs(args: unknown): string;
@@ -42,7 +48,7 @@ const EVENT_STEPS: Readonly<Record<string, StepHandler>> = {
   agent_start: () => WAITING,
   turn_start: () => WAITING,
   turn_end: () => WAITING,
-  agent_end: () => IDLE_STEP,
+  agent_end: (step, event) => (Reflect.get(Object(event), "willRetry") === true ? step : IDLE_STEP),
   message_update: (step, event, facts) => {
     const streamed = stringField(Reflect.get(Object(event), "assistantMessageEvent"), "type");
     const handler = streamed === undefined ? undefined : STREAM_STEPS[streamed];
@@ -50,8 +56,8 @@ const EVENT_STEPS: Readonly<Record<string, StepHandler>> = {
   },
   tool_execution_start: (step, event, facts) => startTool(step, event, facts),
   tool_execution_end: (step, event) => endTool(step, event),
-  auto_retry_start: (_step, event, facts) => retrying(event, facts),
-  auto_retry_end: () => WAITING,
+  auto_retry_start: (_step, event) => retrying(event),
+  auto_retry_end: (step) => (step.kind === "retrying" ? IDLE_STEP : step),
   compaction_start: () => COMPACTING,
   compaction_end: (_step, _event, facts) => (facts.running ? WAITING : IDLE_STEP),
   bash_execution_start: (_step, event) => ({ kind: "bash", command: stringField(event, "command") ?? "" }),
@@ -86,7 +92,7 @@ const STEP_WORDS: Readonly<Record<SessionStep["kind"], (step: SessionStep) => { 
   thinking: () => ({ label: "thinking" }),
   writing: () => ({ label: "writing the reply" }),
   preparing: (step) => withDetail("preparing a tool call", step.kind === "preparing" ? step.tool : undefined),
-  running: (step) => withDetail("running tool", step.kind === "running" ? step.tools.map(toolLine).join(" · ") : undefined),
+  running: (step) => withDetail("running tool", step.kind === "running" ? step.tools.map(runningToolLine).join(" · ") : undefined),
   retrying: (step) => withDetail("retrying", step.kind === "retrying" ? `attempt ${String(step.attempt)} of ${String(step.maxAttempts)}: ${step.reason}` : undefined),
   compacting: () => ({ label: "compacting" }),
   bash: (step) => withDetail("running bash", step.kind === "bash" ? step.command : undefined),
@@ -94,10 +100,6 @@ const STEP_WORDS: Readonly<Record<SessionStep["kind"], (step: SessionStep) => { 
 
 function withDetail(label: string, detail: string | undefined): { label: string; detail?: string } {
   return detail === undefined || detail === "" ? { label } : { label, detail };
-}
-
-function toolLine(tool: RunningTool): string {
-  return tool.target === undefined || tool.target === "" ? tool.name : `${tool.name}: ${tool.target}`;
 }
 
 function preparing(event: unknown): SessionStep {
@@ -124,16 +126,9 @@ function endTool(step: SessionStep, event: unknown): SessionStep {
   return tools.length === 0 ? WAITING : { kind: "running", tools };
 }
 
-function retrying(event: unknown, facts: StepFacts): SessionStep {
+function retrying(event: unknown): SessionStep {
   const attempt = numberField(event, "attempt") ?? 1;
-  const delayMs = numberField(event, "delayMs") ?? 0;
-  return {
-    kind: "retrying",
-    attempt,
-    maxAttempts: numberField(event, "maxAttempts") ?? attempt,
-    reason: stringField(event, "errorMessage") ?? "",
-    resumesAt: new Date(facts.now + delayMs).toISOString(),
-  };
+  return { kind: "retrying", attempt, maxAttempts: numberField(event, "maxAttempts") ?? attempt, reason: stringField(event, "errorMessage") ?? "" };
 }
 
 function sameStep(left: SessionStep, right: SessionStep): boolean {

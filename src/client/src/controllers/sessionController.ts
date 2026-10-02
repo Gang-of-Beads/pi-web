@@ -2400,7 +2400,7 @@ export class SessionController {
     const messages = isSelected ? applyQueueToDelivery(state.messages, status.queuedMessages, runtimeIdle) : state.messages;
     const commandLedger = runtimeIdle ? settleAcceptedCommands(state.commandLedger, machineSessionKey(selectedMachineId(state), status.sessionId), Date.now()) : state.commandLedger;
     const clearsStaleActivity = activityOutlivesStatus(state.sessionActivities[status.sessionId], status);
-    const adoptedActivity = statusActivityToAdopt(state.sessionActivities[status.sessionId], status);
+    const adoptedActivity = statusActivityToAdopt(clearsStaleActivity ? undefined : state.sessionActivities[status.sessionId], status);
     // Falling edge only: a turn that just ended is the one moment worth
     // re-reading the goal directory for, and every other status update would
     // make it a poll.
@@ -2419,11 +2419,10 @@ export class SessionController {
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
       ...sessionMessageCountPatch(state, status.sessionId, status.messageCount),
-      ...(clearsStaleActivity ? { sessionActivities: omitSessionActivity(state.sessionActivities, status.sessionId) } : {}),
-      ...(adoptedActivity === undefined ? {} : { sessionActivities: { ...state.sessionActivities, [status.sessionId]: adoptedActivity } }),
+      ...(clearsStaleActivity || adoptedActivity !== undefined ? { sessionActivities: activitiesAfterAdoption(state.sessionActivities, status.sessionId, adoptedActivity) } : {}),
       status: isSelected ? status : state.status,
       ...(isSelected ? { statusReadFailed: undefined } : {}),
-      activity: isSelected && clearsStaleActivity ? undefined : isSelected && adoptedActivity !== undefined ? adoptedActivity : state.activity,
+      activity: isSelected ? adoptedActivity ?? (clearsStaleActivity ? undefined : state.activity) : state.activity,
       // The daemon owns whether an ask is open, so every status it publishes is
       // authoritative for the selected session's card, including its removal.
       ...(isSelected ? { pendingAsk: status.pendingAsk, pendingAsks: status.pendingAsks ?? (status.pendingAsk === undefined ? [] : [status.pendingAsk]) } : {}),
@@ -3259,6 +3258,11 @@ function openDialogsAfterDismissals(
 function statusActivityToAdopt(known: SessionActivity | undefined, status: SessionStatus): SessionActivity | undefined {
   if (known !== undefined || status.activity === undefined) return undefined;
   return activityOutlivesStatus(status.activity, status) ? undefined : status.activity;
+}
+
+/** The page's activities once a status has spoken: the session's own replaced by what the status brought, or dropped. */
+function activitiesAfterAdoption(activities: Record<string, SessionActivity>, sessionId: string, adopted: SessionActivity | undefined): Record<string, SessionActivity> {
+  return adopted === undefined ? omitSessionActivity(activities, sessionId) : { ...activities, [sessionId]: adopted };
 }
 
 function omitSessionActivity(activities: Record<string, SessionActivity>, sessionId: string): Record<string, SessionActivity> {

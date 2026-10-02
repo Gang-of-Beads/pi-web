@@ -1,4 +1,5 @@
-import type { RunningTool, SessionStep } from "../../shared/apiTypes";
+import type { SessionStep } from "../../shared/apiTypes";
+import { runningToolLine } from "../../shared/runningToolLine";
 
 /**
  * What the status line says for the agent's step (B25, state-diagram D3 "The
@@ -16,7 +17,7 @@ const STEP_TEXT: Readonly<Record<SessionStep["kind"], (step: SessionStep) => str
   thinking: () => "Thinking",
   writing: () => "Writing the reply",
   preparing: (step) => (step.kind === "preparing" && step.tool !== undefined ? `Preparing ${step.tool}` : "Preparing a tool call"),
-  running: (step) => (step.kind === "running" ? `Running ${step.tools.map(toolLine).join(" · ")}` : "Running a tool"),
+  running: (step) => (step.kind === "running" ? `Running ${step.tools.map(runningToolLine).join(" · ")}` : "Running a tool"),
   retrying: (step) => (step.kind === "retrying" ? `Retrying, attempt ${String(step.attempt)} of ${String(step.maxAttempts)}${step.reason === "" ? "" : `: ${step.reason}`}` : "Retrying"),
   compacting: () => "Compacting the history",
   bash: (step) => (step.kind === "bash" ? `Running ${step.command}` : "Running a command"),
@@ -42,19 +43,22 @@ export function stepStatusText(step: SessionStep, sinceMs: number | undefined, n
   return `${text} · ${elapsed(nowMs - sinceMs)}`;
 }
 
-/** What waits for the agent and when it is read: "2 messages are read when these tools finish". */
-export function stepWaitingText(step: SessionStep, waiting: { messages: number; answers: number }): string | undefined {
-  const parts = [
+/**
+ * What waits for the agent and when it is read: "2 messages are read when
+ * these tools finish". Steered messages and answers are read at the step's
+ * injection point; a follow-up (sent through the API or an extension, never
+ * the composer while a reply runs) only once the agent has nothing left to do.
+ */
+export function stepWaitingText(step: SessionStep, waiting: { messages: number; followUps: number; answers: number }): string | undefined {
+  const steered = [
     waiting.answers === 0 ? undefined : waiting.answers === 1 ? "your answer" : `${String(waiting.answers)} answers`,
     waiting.messages === 0 ? undefined : waiting.messages === 1 ? "1 message" : `${String(waiting.messages)} messages`,
   ].filter((part): part is string => part !== undefined);
-  if (parts.length === 0) return undefined;
-  const one = waiting.messages + waiting.answers === 1;
-  return `${parts.join(" and ")} ${one ? "is" : "are"} read ${READ_WHEN[step.kind]}`;
-}
-
-function toolLine(tool: RunningTool): string {
-  return tool.target === undefined || tool.target === "" ? tool.name : `${tool.name}: ${tool.target}`;
+  const clauses = [
+    steered.length === 0 ? undefined : `${steered.join(" and ")} ${waiting.messages + waiting.answers === 1 ? "is" : "are"} read ${READ_WHEN[step.kind]}`,
+    waiting.followUps === 0 ? undefined : `${waiting.followUps === 1 ? "1 follow-up is" : `${String(waiting.followUps)} follow-ups are`} read when the agent is done`,
+  ].filter((clause): clause is string => clause !== undefined);
+  return clauses.length === 0 ? undefined : clauses.join(" · ");
 }
 
 function elapsed(ms: number): string {

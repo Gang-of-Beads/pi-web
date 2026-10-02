@@ -2,8 +2,9 @@ import type { RunningTool, SessionStep } from "../../../shared/apiTypes";
 
 /**
  * Read the step an activity frame carries (B25). A step this browser does not
- * know, from a newer daemon, or a malformed one reads as no step: the frame's
- * label still says what is happening, so the frame is kept rather than refused.
+ * know, from a newer daemon, or one missing a field it needs reads as no step:
+ * the frame's label still says what is happening, so the frame is kept rather
+ * than refused. An optional field of the wrong type is dropped.
  */
 export function parseSessionStep(value: unknown): SessionStep | undefined {
   const kind = field(value, "kind");
@@ -31,9 +32,8 @@ const STEP_PARSERS: Readonly<Record<string, (value: unknown) => SessionStep | un
     const attempt = field(value, "attempt");
     const maxAttempts = field(value, "maxAttempts");
     const reason = field(value, "reason");
-    const resumesAt = field(value, "resumesAt");
-    if (typeof attempt !== "number" || typeof maxAttempts !== "number" || typeof reason !== "string" || typeof resumesAt !== "string") return undefined;
-    return { kind: "retrying", attempt, maxAttempts, reason, resumesAt };
+    if (typeof attempt !== "number" || typeof maxAttempts !== "number" || typeof reason !== "string") return undefined;
+    return { kind: "retrying", attempt, maxAttempts, reason };
   },
   bash: (value) => {
     const command = field(value, "command");

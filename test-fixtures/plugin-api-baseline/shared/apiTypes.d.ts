@@ -593,7 +593,6 @@ export type SessionStep = {
     attempt: number;
     maxAttempts: number;
     reason: string;
-    resumesAt: string;
 } | {
     kind: "compacting";
 } | {
