@@ -3254,8 +3254,6 @@ export class PiSessionService implements SessionRouteService {
     }
     // Echoed at acceptance, whether or not it waits: a waiting message that
     // shows nothing until the agent reads it reads as "message disappeared".
-    // It carries its send time only when the committed copy will carry the
-    // same one, which needs the sender's id; one without keeps pi's time.
     const echoed = clientMessageId === undefined ? userMessage(promptText, images) : { ...userMessage(promptText, images), timestamp: Date.parse(sentAt) };
     if (echoUserMessage) this.events.publish(sessionId, { type: "message.append", message: echoed, echo: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
     this.publishActivity(session, busy ? "message queued" : "prompt accepted", "active");
@@ -3703,12 +3701,14 @@ export class PiSessionService implements SessionRouteService {
       if (original !== undefined) return original;
       const images = this.takeQueuedPromptImages(sessionId, held.text);
       const id = publishedId(held.clientMessageId);
+      const acceptedAt = new Date().toISOString();
       return {
         ...(id === undefined ? {} : { clientMessageId: id }),
         lane: "steer",
         text: held.text,
         images: images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType })),
-        acceptedAt: new Date().toISOString(),
+        acceptedAt,
+        sentAt: acceptedAt,
         echoUserMessage: false,
       };
     });
@@ -3818,7 +3818,9 @@ export class PiSessionService implements SessionRouteService {
    * the same object, so both survive into the stored transcript, and every
    * client - the sender, other devices, a reload - receives a committed copy it
    * can claim by identity and that keeps the time its sender saw (B5). pi's
-   * own stamp is the moment the daemon handed the message over.
+   * own stamp is the moment the daemon handed the message over. The
+   * acceptance echo carries the same time only for a message with a sender
+   * id, the only kind this stamp can claim; one without keeps pi's time.
    */
   private stampCommittedUserMessage(session: PiAgentSession, event: unknown): void {
     // Both boundary events: the void gate listens to message_start too, and an

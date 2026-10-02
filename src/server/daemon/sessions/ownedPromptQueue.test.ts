@@ -129,5 +129,15 @@ describe("the send time survives the inbox file (B5)", () => {
 
     expect({ kept, fromAnOlderFile: older.entries("s2")[0]?.sentAt }).toEqual({ kept: "2026-09-30T23:59:58.000Z", fromAnOlderFile: "2026-10-01T00:00:00.000Z" });
   });
+
+  it("gives an entry whose send time does not parse its acceptance time, so the row never loses its time", async () => {
+    const { dataDir } = await inbox();
+    await mkdir(inboxDirectory(dataDir), { recursive: true });
+    await writeFile(join(inboxDirectory(dataDir), "s3.json"), JSON.stringify({ entries: [{ ...message("msg-0003", "C"), sentAt: "" }, { ...message("msg-0004", "D"), sentAt: "soon" }], handed: [] }));
+    const reopened = new OwnedPromptQueue(dataDirInboxLocation(dataDir));
+    await reopened.open("s3", "/work");
+
+    expect(reopened.entries("s3").map((entry) => entry.sentAt)).toEqual(["2026-10-01T00:00:00.000Z", "2026-10-01T00:00:00.000Z"]);
+  });
 });
 

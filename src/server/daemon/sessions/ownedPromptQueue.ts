@@ -344,7 +344,7 @@ function parseEntries(value: unknown): OwnedQueueEntry[] {
     const rawAccepted = field(raw, "acceptedAt");
     const acceptedAt = typeof rawAccepted === "string" ? rawAccepted : "";
     const rawSentAt = field(raw, "sentAt");
-    const sentAt = typeof rawSentAt === "string" ? rawSentAt : acceptedAt === "" ? undefined : acceptedAt;
+    const sentAt = typeof rawSentAt === "string" && Number.isFinite(Date.parse(rawSentAt)) ? rawSentAt : acceptedAt === "" ? undefined : acceptedAt;
     const rawImages = field(raw, "images");
     const images: OwnedQueueEntry["images"] = [];
     if (Array.isArray(rawImages)) {

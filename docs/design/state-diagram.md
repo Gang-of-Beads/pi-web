@@ -126,6 +126,8 @@ stateDiagram-v2
   - The daemon stamps that time on the acceptance echo and on pi's committed copy, at the throat that already stamps the `clientMessageId`. pi persists that object, so history reads the same time from the session file.
   - Handing the message to pi later (a held batch, compaction, a restart) never rewrites it.
   - Producers found: pi builds the user message, and its timestamp, when the daemon hands it over, and the committed copy replaced the bubble's meta with it (12:23:49, :50 and :51 all became 12:24:04, audit `5d672be6` P2-3); the browser drew its own clock until the committed copy landed, by tens of milliseconds and more on a skewed phone (`probe-message-rows.mjs`), while every other device drew pi's.
+  - The one move left is the sender's own row when its clock runs ahead of the daemon's: the clamp brings it back, once, to the daemon's acceptance time, and every other device shows that time from the start (review `38ec77cc`). A clock behind the daemon's is kept as sent.
+  - An outbox retry, automatic or pressed, keeps the time the message was first sent: the row has shown that time all along.
   - The commit time is not shown. If it is ever needed, it belongs in message info, never in the row.
 - **Words** (owner-approved vocabulary, output only):
 

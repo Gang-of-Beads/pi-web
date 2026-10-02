@@ -147,6 +147,8 @@ try {
 
   const shownAll = samplesA.find((entry) => entry.rows.length === 3);
   check("precondition: page A shows all three while the reply streams", shownAll !== undefined, JSON.stringify(samplesA.slice(0, 4).map((entry) => entry.rows)));
+  const shownAllOnB = samplesB.find((entry) => entry.rows.length === 3);
+  check("precondition: page B shows all three as well", shownAllOnB !== undefined, JSON.stringify(samplesB.slice(0, 4).map((entry) => entry.rows)));
   const wordsOrder = ["one", "two", "three"];
   const inOrder = (entry) => {
     const words = entry.rows.map((row) => row.word);
