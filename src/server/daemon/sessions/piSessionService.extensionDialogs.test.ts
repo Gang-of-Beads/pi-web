@@ -63,6 +63,46 @@ function openDialog(events: CapturingSessionEventHub): PendingExtensionDialog {
   return opened.event.dialog;
 }
 
+/**
+ * A run is going when the reader types `/goal-clear`, whose handler opens what `open` opens and
+ * waits on it, the way an extension's command does; the run's own tool has a dialog open too.
+ * Then the run ends. Returns once the run's dialog has been settled.
+ */
+async function commandOpenedMidRun(open: (ui: ExtensionUIContext) => Promise<unknown>) {
+  const { service, store, fake } = dialogService();
+  const ui = await boundUiContext(service, fake);
+  fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "goal-clear" }];
+  let opened: Promise<unknown> | undefined;
+  fake.session.prompt = (text: string, options: unknown) => {
+    fake.calls.prompt.push({ text, options });
+    const preflightResult: unknown = Reflect.get(Object(options), "preflightResult");
+    if (typeof preflightResult === "function") Reflect.apply(preflightResult, undefined, ["handled"]);
+    opened = open(ui);
+    return opened.then(() => undefined);
+  };
+  fake.session.isStreaming = true;
+  const toolConsent = ui.confirm("Run consent", "Allow this tool call?");
+
+  await service.prompt(sessionRef(ACTIVE_SESSION_ID), "/goal-clear", undefined, undefined, { clientMessageId: "command-0001" });
+  await vi.waitFor(() => { expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toHaveLength(2); });
+  fake.session.isStreaming = false;
+  fake.emit({ type: "agent_end" });
+  await expect(toolConsent).resolves.toBe(false);
+
+  return {
+    service,
+    store,
+    opened: (): Promise<unknown> => {
+      if (opened === undefined) throw new Error("the command never opened its dialog");
+      return opened;
+    },
+  };
+}
+
+async function stillWaiting(promise: Promise<unknown>): Promise<boolean> {
+  return await Promise.race([promise.then(() => false), Promise.resolve(true)]);
+}
+
 describe("PiSessionService extension dialog UI context", () => {
   it("opens a confirm dialog for the extension and parks its answer", async () => {
     const { service, store, events, fake } = dialogService();
@@ -416,6 +456,22 @@ describe("PiSessionService extension dialog run end and teardown", () => {
       { type: "dialog.opened", dialog: { dialogId: "dialog-2" } },
       { type: "dialog.closed", dialogId: "dialog-1", reason: "aborted" },
     ]);
+    await service.dispose();
+  });
+
+  it("leaves a dialog an extension command opened mid-run open when that run ends (B54)", async () => {
+    const { service, store, opened } = await commandOpenedMidRun((ui) => ui.confirm("Clear goal?", "Ship the release"));
+
+    expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toEqual([expect.objectContaining({ kind: "confirm", title: "Clear goal?", runScoped: false })]);
+    await expect(stillWaiting(opened())).resolves.toBe(true);
+    await service.dispose();
+  });
+
+  it("leaves a terminal screen an extension command opened mid-run open when that run ends (B54)", async () => {
+    const { service, store, opened } = await commandOpenedMidRun((ui) => ui.custom<string>(() => ({ render: () => ["ui-custom probe", "▸ first", "  second"], invalidate: () => undefined })));
+
+    expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toEqual([expect.objectContaining({ kind: "custom", runScoped: false })]);
+    await expect(stillWaiting(opened())).resolves.toBe(true);
     await service.dispose();
   });
 

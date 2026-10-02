@@ -103,6 +103,7 @@ import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
 import { HANDOFF_RUN_STATE, HANDOFF_WAKE_EVENTS, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffVerdict, type RunState } from "./promptHandoff.js";
 import { SETTLEABLE, createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
+import { CommandHandlerScope } from "./commandHandlerScope.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { messageSentAt } from "./messageSentAt.js";
 import { LOCAL_HOLD_ID_PREFIX, OwnedPromptQueue, dataDirInboxLocation, entryKey, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry } from "./ownedPromptQueue.js";
@@ -1359,6 +1360,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly handoffChains = new Map<string, Promise<unknown>>();
   private readonly handing = new Set<string>();
   private readonly handingCommands = new Set<string>();
+  private readonly commandHandlers = new CommandHandlerScope();
   /** Accepted prompt identities, so a lost response answers instead of re-running. */
   /**
    * Durable when the daemon has a data directory, in-memory otherwise (tests
@@ -2120,7 +2122,7 @@ export class PiSessionService implements SessionRouteService {
       ...(request.options === undefined ? {} : { options: request.options }),
       ...(request.placeholder === undefined ? {} : { placeholder: request.placeholder }),
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
-      runScoped: session.isStreaming,
+      runScoped: this.dialogRunScoped(session),
     });
     const revision = this.nextDialogRevision(session.sessionId);
     this.events.publish(session.sessionId, { type: "dialog.opened", dialog, revision, daemonInstanceId: this.notificationStore.daemonInstanceId });
@@ -2238,6 +2240,15 @@ export class PiSessionService implements SessionRouteService {
     return value === undefined || value === "done" ? undefined : value;
   }
 
+  /**
+   * Whether a dialog opening now belongs to the run in flight, so the run's end or a Stop
+   * settles it. A dialog an extension command opens is the command's even while a run goes
+   * on beside it (B54, `CommandHandlerScope`).
+   */
+  private dialogRunScoped(session: PiAgentSession): boolean {
+    return session.isStreaming && !this.commandHandlers.inHandler;
+  }
+
   private openCustomDialog(
     session: PiAgentSession,
     lines: string[],
@@ -2253,7 +2264,7 @@ export class PiSessionService implements SessionRouteService {
       message: openedBy === undefined ? CUSTOM_SCREEN_HINT : `${openedBy} · ${CUSTOM_SCREEN_HINT}`,
       lines,
       ...(screen === undefined ? {} : { screen }),
-      runScoped: session.isStreaming,
+      runScoped: this.dialogRunScoped(session),
     });
     const revision = this.nextDialogRevision(session.sessionId);
     this.events.publish(session.sessionId, { type: "dialog.opened", dialog, revision, daemonInstanceId: this.notificationStore.daemonInstanceId });
@@ -2297,8 +2308,8 @@ export class PiSessionService implements SessionRouteService {
    * handler, so `agent_end` would never arrive on its own) and again from
    * the `agent_end` observer as the run-crash backstop — the store makes the
    * second settlement a stale no-op. Idle-opened dialogs (a `session_start`
-   * probe, say) are not run-scoped and survive, because their waiter
-   * outlives the run.
+   * probe, say) and a command's dialogs, even one typed mid-run, are not
+   * run-scoped and survive, because their waiter outlives the run.
    */
   private abortRunScopedExtensionDialogs(sessionId: string): void {
     let closedAny = false;
@@ -3489,7 +3500,8 @@ export class PiSessionService implements SessionRouteService {
       if (session.agent.state?.isStreaming !== true && this.ownsSessionId(session)) this.directCommitWatchers.set(sessionId, onCommit);
     };
     if (behavior === undefined && isCommand) this.runStartWatchers.set(sessionId, markHanded);
-    const settled = this.runSessionEntryMutation(session, "send a prompt", () => session.prompt(text, { ...buildPromptOptions(behavior, images), preflightResult })).then(
+    const send = (): Promise<void> => session.prompt(text, { ...buildPromptOptions(behavior, images), preflightResult });
+    const settled = this.runSessionEntryMutation(session, "send a prompt", isCommand ? () => this.commandHandlers.run(send) : send).then(
       () => ({ verdict: "handed" as const, message: "" }),
       (error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
