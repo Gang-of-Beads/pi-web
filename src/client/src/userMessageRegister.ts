@@ -23,17 +23,13 @@ import type { QueuedSessionMessage } from "./api.js";
  * what every previous fix was eventually defeated by.
  */
 
-/** Where a message currently is, as a property of its row rather than a row. */
-export type UserMessageState = "sending" | "queued" | "settled";
-
 export interface UserMessageRow {
   /** Stable key. Never text. */
   identity: string;
-  state: UserMessageState;
   /** The line to render. The newest contribution wins for the same identity. */
   line: ChatLine;
-  /** Where in the transcript this belongs, for ordering. Absent while pending. */
-  transcriptIndex?: number;
+  /** Where the daemon's queue lists the message; absent when it does not list it. */
+  queuePosition?: number;
 }
 
 interface RegisterInput {
@@ -90,31 +86,27 @@ export function deliveredClientMessageIds(lines: readonly ChatLine[]): Set<strin
  * added to it. The queue is written last because the queue is what decides
  * whether a message is still waiting: a line sitting in the transcript that the
  * daemon still reports as queued has not been delivered, and drawing it as
- * settled is what put one message in two places at once.
+ * settled is what put one message in two places at once. A queued entry keeps
+ * the line already in hand, which carries attachments and the recall affordance
+ * a synthesised stand-in lacks; the queue adds only its position.
  */
 export function registerUserMessages(input: RegisterInput): UserMessageRow[] {
   const rows = new Map<string, UserMessageRow>();
 
   for (const [index, line] of input.transcript.entries()) {
     const identity = identityOf(line, index);
-    rows.set(identity, { identity, state: "settled", line, transcriptIndex: index });
+    rows.set(identity, { identity, line });
   }
 
   for (const [index, line] of input.optimistic.entries()) {
     const identity = identityOf(line, index);
     const existing = rows.get(identity);
-    if (existing === undefined) rows.set(identity, { identity, state: "sending", line });
+    if (existing === undefined) rows.set(identity, { identity, line });
   }
 
   for (const [position, message] of input.queued.entries()) {
     const identity = queuedIdentity(message, position);
-    const existing = rows.get(identity);
-    // The line already in hand is kept: it carries attachments and the recall
-    // affordance that a synthesised stand-in does not have. Only the state
-    // moves, because the queue is the authority on what is still waiting.
-    rows.set(identity, existing === undefined
-      ? { identity, state: "queued", line: input.synthesise(message, position) }
-      : { identity, state: "queued", line: existing.line });
+    rows.set(identity, { identity, line: rows.get(identity)?.line ?? input.synthesise(message, position), queuePosition: position });
   }
 
   return [...rows.values()];
@@ -125,7 +117,7 @@ export function registerUserMessages(input: RegisterInput): UserMessageRow[] {
  * identity a key of its own rather than a guess onto somebody else's row. It is
  * still one row: a key nobody else uses cannot collide.
  */
-export function queuedIdentity(message: QueuedSessionMessage, position: number): string {
+function queuedIdentity(message: QueuedSessionMessage, position: number): string {
   const id = message.clientMessageId;
   return id !== undefined && id !== "" ? id : `queued:${message.kind}:${String(position)}`;
 }

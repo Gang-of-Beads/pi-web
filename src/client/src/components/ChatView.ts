@@ -54,6 +54,12 @@ import { quotedPrompt } from "../selectionComposer";
 import { bottomAnchorAction } from "../bottomAnchor";
 import { streamingBottomHold } from "../streamingBottomHold";
 
+/** A line's time in milliseconds, or undefined when it carries none it can be ordered by. */
+function lineTimestamp(line: ChatLine): number | undefined {
+  const at = Date.parse(line.meta?.timestamp ?? "");
+  return Number.isFinite(at) ? at : undefined;
+}
+
 export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   ${SessionStateBadgeStyles}
   /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
@@ -1246,8 +1252,7 @@ if (this.heldWaitingClearTimer !== undefined) {
           )}
           ${this.renderNewerBoundary()}
           ${this.renderSessionActivity()}
-          ${this.renderCommandRows(commands.tail)}
-          ${this.renderPendingMessages()}
+          ${this.renderPendingMessages(commands.tail)}
           ${this.renderQueuedMessages()}
           ${this.renderClosedDialogs()}
           ${this.renderWaitingForYou()}
@@ -1363,7 +1368,7 @@ if (this.heldWaitingClearTimer !== undefined) {
       queued: this.status?.queuedMessages ?? [],
       synthesise: (message, position) => queuedUserLine(message, position),
     });
-    const { settled, pending } = placeUserRows(rows, this.status?.queuedMessages ?? []);
+    const { settled, pending } = placeUserRows(rows);
     return { settled, pending: withQueuedAnswers(pending, this.status?.queuedAnswers, this.messages) };
   }
 
@@ -1528,11 +1533,16 @@ if (this.heldWaitingClearTimer !== undefined) {
     return chatDeliveryPresentation(delivery, index === -1 ? undefined : index + 1);
   }
 
-  private renderPendingMessages() {
+  /**
+   * The waiting messages, with every command row issued after the last settled group placed among
+   * them by issue time, the rule `placeCommands` already applies to the settled groups. Drawn before
+   * the whole block, a command issued after a waiting message stood above it (B2 review 1b6f1553).
+   */
+  private renderPendingMessages(tailCommands: readonly CommandLedgerEntry[]) {
     const pending = this.transcriptSplit().pending;
-    if (pending.length === 0) return null;
+    const commands = placeCommands(tailCommands, pending.map((line) => lineTimestamp(line)));
     const base = this.messageStart + this.messages.length;
-    return html`${repeat(pending, (line, index) => this.messageAnchorKey(base + index), (line, index) => this.renderMessage(line, base + index))}`;
+    return html`${repeat(pending, (line, index) => this.messageAnchorKey(base + index), (line, index) => html`${this.renderCommandRows(commands.before.get(index) ?? [])}${this.renderMessage(line, base + index)}`)}${this.renderCommandRows(commands.tail)}`;
   }
 
   private renderQueuedMessages() {
@@ -1633,11 +1643,7 @@ if (this.heldWaitingClearTimer !== undefined) {
   /** The moment a group happened, for placing commands around it. */
   private groupTimestamp(group: ChatGroup): number | undefined {
     const lines = group.kind === "group" ? group.messages : [group.message];
-    for (const line of lines) {
-      const at = Date.parse(line.meta?.timestamp ?? "");
-      if (Number.isFinite(at)) return at;
-    }
-    return undefined;
+    return lines.map(lineTimestamp).find((at) => at !== undefined);
   }
 
   private renderCommandRows(rows: readonly CommandLedgerEntry[]) {

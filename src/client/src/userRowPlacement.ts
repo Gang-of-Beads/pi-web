@@ -1,6 +1,5 @@
-import type { QueuedSessionMessage } from "./api";
 import type { ChatLine, MessageDeliveryState } from "./components/shared";
-import { queuedIdentity, type UserMessageRow } from "./userMessageRegister";
+import type { UserMessageRow } from "./userMessageRegister";
 
 /**
  * Where each user row is drawn: placement is a function of the message's
@@ -10,40 +9,40 @@ import { queuedIdentity, type UserMessageRow } from "./userMessageRegister";
  * pending block below every settled row, while a later message whose send
  * could not be verified kept its slot above it, so an earlier message was drawn
  * below a later one. Now every message the agent has not taken is in the
- * pending block: what the daemon lists first, in the daemon's order, then what
- * it accepted but does not list, then what is being sent, could not be verified
- * or was not sent, each by its send time. Only a message the agent took stays
- * where the transcript has it.
+ * pending block: what the daemon lists first, in the daemon's order, then every
+ * other one (accepted but no longer listed, being sent, unverifiable, not sent)
+ * by its send time. Only a message the agent took stays where the transcript
+ * has it.
  */
-export function placeUserRows(rows: readonly UserMessageRow[], queued: readonly QueuedSessionMessage[]): { settled: ChatLine[]; pending: ChatLine[] } {
-  const queuePositions = new Map(queued.map((message, position) => [queuedIdentity(message, position), position]));
+export function placeUserRows(rows: readonly UserMessageRow[]): { settled: ChatLine[]; pending: ChatLine[] } {
   const settled: ChatLine[] = [];
-  const pending: { line: ChatLine; key: readonly number[] }[] = [];
+  const pending: { line: ChatLine; key: OrderKey }[] = [];
   for (const row of rows) {
-    const position = queuePositions.get(row.identity);
-    const rank = position === undefined ? waitingRank(row.line) : WAITING_RANK.queued;
-    if (rank === undefined) {
+    if (row.queuePosition === undefined && !waiting(row.line)) {
       settled.push(row.line);
       continue;
     }
     const sentAt = Date.parse(row.line.meta?.timestamp ?? "");
-    pending.push({ line: row.line, key: [rank, position ?? Infinity, Number.isFinite(sentAt) ? sentAt : Infinity] });
+    pending.push({ line: row.line, key: [row.queuePosition ?? Infinity, Number.isFinite(sentAt) ? sentAt : Infinity] });
   }
   return { settled, pending: pending.sort((left, right) => compareKeys(left.key, right.key)).map(({ line }) => line) };
 }
 
-/** The pending block's order between states: what the daemon holds, then what it accepted, then the rest. */
-const WAITING_RANK: Readonly<Record<Exclude<MessageDeliveryState, "delivered">, number>> = { queued: 0, received: 1, sending: 2, unverifiable: 2, failed: 2 };
+type OrderKey = readonly [queuePosition: number, sentAt: number];
 
-function waitingRank(line: ChatLine): number | undefined {
+/** Whether a message in this state is still waiting for the agent: only a message it took is not. */
+const WAITING: Readonly<Record<MessageDeliveryState, boolean>> = { queued: true, received: true, sending: true, unverifiable: true, failed: true, delivered: false };
+
+function waiting(line: ChatLine): boolean {
   const state = line.meta?.delivery?.state;
-  return state === undefined || state === "delivered" ? undefined : WAITING_RANK[state];
+  return state !== undefined && WAITING[state];
 }
 
-function compareKeys(left: readonly number[], right: readonly number[]): number {
-  for (const [index, value] of left.entries()) {
-    const other = right[index] ?? 0;
-    if (value !== other) return value < other ? -1 : 1;
-  }
-  return 0;
+function compareKeys(left: OrderKey, right: OrderKey): number {
+  return compareNumbers(left[0], right[0]) || compareNumbers(left[1], right[1]);
+}
+
+function compareNumbers(left: number, right: number): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }

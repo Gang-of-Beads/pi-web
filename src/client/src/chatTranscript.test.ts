@@ -3,7 +3,7 @@ import type { SessionUiEvent } from "../../shared/apiTypes";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE, type AskUserOutcome } from "../../shared/apiTypes";
 import { groupChatMessages } from "./chatGroups";
 import { normalizeMessages, textMessage } from "./chatMessages";
-import { applyTranscriptEvent, seedStreamingPartial } from "./chatTranscript";
+import { applyTranscriptEvent, messageText, seedStreamingPartial } from "./chatTranscript";
 import type { ChatLine } from "./components/shared";
 
 const askUserOutcome: AskUserOutcome = {
@@ -62,6 +62,16 @@ describe("applyTranscriptEvent delivery reconciliation", () => {
     const withWork: ChatLine[] = [sent, { role: "assistant", parts: [{ type: "text", text: "on it" }] }];
     const messages = applyTranscriptEvent(withWork, { type: "message.append", message: { role: "user", content: "ship it" } });
     expect(messages).toEqual(withWork);
+  });
+
+  it("lands a retried failure the agent takes where pi wrote it, after the conversation since its first try", () => {
+    const failed: ChatLine = { role: "user", parts: [{ type: "text", text: "retry me" }], meta: { delivery: { clientMessageId: "f1", state: "failed" } } };
+    const later: ChatLine = { role: "user", parts: [{ type: "text", text: "a later message" }], meta: { delivery: { clientMessageId: "l1", state: "delivered" } } };
+    const reply: ChatLine = { role: "assistant", parts: [{ type: "text", text: "a reply" }] };
+
+    const messages = applyTranscriptEvent([failed, later, reply], { type: "message.end", message: { role: "user", content: "retry me", clientMessageId: "f1" } }) ?? [];
+
+    expect(messages.map((line) => [messageText(line), line.meta?.delivery?.state])).toEqual([["a later message", "delivered"], ["a reply", undefined], ["retry me", "delivered"]]);
   });
 
   it("still appends a different user message", () => {

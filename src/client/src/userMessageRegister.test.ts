@@ -76,14 +76,14 @@ describe("one message, one row", () => {
     const rows = register({ transcript: [settled("c1", "hello")], queued: [queuedEntry("hello", "c1")] });
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.state).toBe("queued");
+    expect(rows[0]?.queuePosition).toBe(0);
   });
 
   it("draws one settled row once the queue no longer holds it", () => {
     const rows = register({ transcript: [settled("c1", "hello")] });
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.state).toBe("settled");
+    expect(rows[0]?.queuePosition).toBeUndefined();
   });
 
   /** Two genuinely identical messages are two messages. */
@@ -113,7 +113,7 @@ describe("one message, one row", () => {
     const rows = register({ transcript: [echo], queued: [queuedEntry("还没修复完么", "c9")] });
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.state).toBe("queued");
+    expect(rows[0]?.queuePosition).toBe(0);
   });
 
   it("does not let an idless queue entry take over somebody else's row", () => {
