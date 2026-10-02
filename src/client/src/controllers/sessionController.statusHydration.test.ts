@@ -178,3 +178,40 @@ function harness(options: { statuses?: SessionStatus[]; error?: Error; gate?: Pr
   );
   return { controller, state: () => state, setState, setStateRaw };
 }
+
+/**
+ * Activity reached a page only as live frames, so a page that opened in the middle of a long step
+ * (a 25 s bash) said nothing about it until the next step began (B25, probe-status-narrates).
+ */
+describe("the activity a status brings", () => {
+  const running = { sessionId: "other-session", phase: "active" as const, label: "running tool", detail: "bash: sleep 25", at: "2026-10-02T10:00:00.000Z", step: { kind: "running" as const, tools: [{ id: "c1", name: "bash", target: "sleep 25" }] }, stepSince: "2026-10-02T10:00:00.000Z" };
+
+  it("is taken when the page knows no activity for the session", () => {
+    const { controller, state } = harness({ statuses: [] });
+
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status("other-session"), isStreaming: true, activity: running } });
+    runPendingAnimationFrames();
+
+    expect(state().sessionActivities["other-session"]?.step).toEqual(running.step);
+  });
+
+  it("never replaces an activity the page already has from a live frame", () => {
+    const { controller, state } = harness({ statuses: [] });
+    controller.applyGlobalEvent({ type: "activity.update", activity: { ...running, label: "thinking", step: { kind: "thinking" } } });
+    runPendingAnimationFrames();
+
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status("other-session"), isStreaming: true, activity: running } });
+    runPendingAnimationFrames();
+
+    expect(state().sessionActivities["other-session"]?.step).toEqual({ kind: "thinking" });
+  });
+
+  it("is not taken when the status itself says the work is over", () => {
+    const { controller, state } = harness({ statuses: [] });
+
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status("other-session"), isStreaming: false, activity: running } });
+    runPendingAnimationFrames();
+
+    expect(state().sessionActivities["other-session"]).toBeUndefined();
+  });
+});

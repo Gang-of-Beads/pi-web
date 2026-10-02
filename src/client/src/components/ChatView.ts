@@ -41,6 +41,7 @@ import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, Exte
 import { deliveryTaken, discardAction, retryableDeliveryId } from "../messageDelivery";
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { isQueuedAnswer, withQueuedAnswers } from "../queuedAnswerRows";
+import { stepStatusText, stepWaitingText } from "../sessionStepWords";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./FormattedText";
 import "./ToolExecutionView";
@@ -1728,8 +1729,26 @@ if (this.heldWaitingClearTimer !== undefined) {
   private activityText(state: string): string {
     const activity = this.activity;
     if (activity === undefined) return state;
+    const narrated = this.narratedStep(activity);
+    if (narrated !== undefined) return narrated;
     if (state !== "idle" && activity.phase === "idle") return state;
     return activity.detail !== undefined && activity.detail !== "" ? `${activity.label}: ${activity.detail}` : activity.label;
+  }
+
+  /**
+   * The agent's step, how long it has run, and when what waits for it is read
+   * (B25, `sessionStepWords.ts`). Only a daemon that publishes steps sends
+   * one; an idle step or a failure says the activity's own words instead.
+   * The turn clock's tick redraws it; the time is read at render, so the
+   * first frame of a step is not measured against the previous turn's tick.
+   */
+  private narratedStep(activity: SessionActivity): string | undefined {
+    const step = activity.step;
+    if (step === undefined || step.kind === "idle" || activity.phase === "error") return undefined;
+    const since = Date.parse(activity.stepSince ?? "");
+    const text = stepStatusText(step, Number.isFinite(since) ? since : undefined, Date.now());
+    const waiting = stepWaitingText(step, { messages: this.status?.queuedMessages.length ?? 0, answers: this.status?.queuedAnswers?.length ?? 0 });
+    return waiting === undefined ? text : `${text} · ${waiting}`;
   }
 
   /**

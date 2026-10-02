@@ -56,6 +56,7 @@ import { attachmentsToInlineImages, saveAttachmentsToWorkspace } from "./attachm
 import { parsePromptAttachments } from "../../../shared/promptAttachments.js";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_LIMIT } from "../../../shared/apiTypes.js";
 import { AGENT_NOTICE_DELIVERY, AgentNotices } from "./agentNotices.js";
+import { IDLE_STEP, nextSessionStep, stepPhase, stepWords } from "./sessionStep.js";
 import type {
   AskUserCloseResponse,
   AskUserOutcome,
@@ -72,7 +73,9 @@ import type {
   SessionBulkFailure,
   SessionBulkMutationRef,
   SessionNotificationCatalogSnapshot,
+  SessionActivity,
   SessionNotificationClearReason,
+  SessionStep,
   SessionNotificationDismissAllRequest,
   SessionNotificationDismissRequest,
   SessionNotificationDismissResponse,
@@ -1340,6 +1343,8 @@ export class PiSessionService implements SessionRouteService {
   /** Per-session tail of the queue-rewrite chain; see withQueueLock. */
   private readonly queueLocks = new Map<string, Promise<void>>();
   private readonly activities = new Map<string, { phase: "active" | "idle" | "error"; label: string; detail?: string; at: string }>();
+  /** What each session's agent is doing (B25), and since when; every activity it publishes carries it. */
+  private readonly steps = new Map<string, { step: SessionStep; since: string }>();
   /** Last counted background runs per open session; see refreshBackgroundRunCounts. */
   private readonly backgroundRunCounts = new Map<string, number>();
   private backgroundRunScanInFlight = false;
@@ -1714,6 +1719,7 @@ export class PiSessionService implements SessionRouteService {
     this.pendingSessionOpens.clear();
     this.startupSessions.clear();
     this.activities.clear();
+    this.steps.clear();
     this.authLossWarnings.clear();
     this.subsessionParents.clear();
     this.subsessionChildren.clear();
@@ -3772,6 +3778,14 @@ export class PiSessionService implements SessionRouteService {
     return entries;
   }
 
+  /** The latest activity the session published, with the step it is in now (B25). */
+  private currentActivity(sessionId: string): SessionActivity | undefined {
+    const stored = this.activities.get(sessionId);
+    if (stored === undefined) return undefined;
+    const current = this.steps.get(sessionId);
+    return current === undefined ? { sessionId, ...stored } : { sessionId, ...stored, step: current.step, stepSince: current.since };
+  }
+
   /** The answers records still waiting in pi's queues (B26): what the transcript shows as queued answers. */
   private queuedAnswers(session: PiAgentSession): AskUserOutcome[] {
     return this.notices.queued(session).flatMap((notice) => {
@@ -4089,6 +4103,7 @@ export class PiSessionService implements SessionRouteService {
     }
     this.workspaceActivity?.removeSession(sessionId, session.sessionManager.getCwd());
     this.activities.delete(sessionId);
+    this.steps.delete(sessionId);
   }
 
   private async reloadSessionRuntime(session: PiAgentSession): Promise<void> {
@@ -4882,6 +4897,7 @@ export class PiSessionService implements SessionRouteService {
     this.backgroundWorkWatcher.forget(sessionId);
     this.releaseWorkspaceWatch(active.runtime.session);
     this.activities.delete(sessionId);
+    this.steps.delete(sessionId);
     this.workspaceActivity?.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
     this.clearAuthLossWarningsForSession(sessionId);
     await this.keepWhatThePiHolds(active.runtime.session);
@@ -5280,6 +5296,7 @@ export class PiSessionService implements SessionRouteService {
         if (candidate !== active) continue;
         this.active.delete(sessionId);
         this.activities.delete(sessionId);
+        this.steps.delete(sessionId);
         this.clearAuthLossWarningsForSession(sessionId);
         this.commandService.cancelQueuedReload(sessionId);
         removedActive = true;
@@ -5805,63 +5822,23 @@ export class PiSessionService implements SessionRouteService {
     return (this.sessionEntryMutationCounts.get(session) ?? 0) > 0;
   }
 
+  /**
+   * Move the session's step on pi's event (B25 and B15, `sessionStep.ts`) and publish it when it
+   * changed. The turn boundaries also publish the status, and the run's end does once more a
+   * moment later, after pi has settled.
+   */
   private publishActivityForEvent(session: PiAgentSession, event: unknown): void {
     const eventType = getString(event, "type");
     if (eventType === undefined) return;
-    if (eventType === "agent_start") { this.publishActivity(session, "agent running", "active"); return; }
-    if (eventType === "agent_end") {
-      this.publishActivity(session, "idle", "idle");
-      setTimeout(() => {
-        this.publishActivity(session, "idle", "idle");
-        this.publishStatus(session);
-      }, 250);
-      return;
+    const current = this.steps.get(session.sessionId) ?? { step: IDLE_STEP, since: new Date().toISOString() };
+    const step = nextSessionStep(current.step, event, { now: Date.now(), running: session.isStreaming, describeArgs: summarizeToolArgs });
+    if (step !== current.step) {
+      this.steps.set(session.sessionId, { step, since: step.kind === current.step.kind ? current.since : new Date().toISOString() });
+      const words = stepWords(step);
+      this.publishActivity(session, words.label, stepPhase(step), words.detail);
     }
-    if (eventType === "turn_end") {
-      this.publishActivity(session, "turn complete", "idle");
-      this.publishStatus(session);
-      return;
-    }
-    if (eventType === "turn_start") {
-      this.publishActivity(session, "turn in progress", "active");
-      this.publishStatus(session);
-      return;
-    }
-    if (eventType === "message_start") { this.publishActivity(session, "message started", "active"); return; }
-    if (eventType === "message_end") { this.publishActivity(session, "message complete", "idle"); return; }
-    if (eventType === "message_update") { this.publishActivity(session, "receiving response", "active"); return; }
-    if (eventType === "tool_execution_start") {
-      // Name plus what it was called with, because "running tool: bash" answers
-      // nothing during a long turn - the question a person has while watching a
-      // session work is which command, which file. summarizeToolArgs already
-      // produces exactly that line for the transcript; the dock was simply not
-      // being given it.
-      const toolName = getString(event, "toolName");
-      const summary = summarizeToolArgs(getProperty(event, "args"));
-      const detail = toolName === undefined ? summary : summary === "" ? toolName : `${toolName}: ${summary}`;
-      this.publishActivity(session, "running tool", "active", detail === "" ? undefined : detail);
-      return;
-    }
-    if (eventType === "tool_execution_end") {
-      const isError = getBoolean(event, "isError") === true;
-      this.publishActivity(session, isError ? "tool failed" : "tool complete", isError ? "error" : "idle", getString(event, "toolName"));
-      return;
-    }
-    if (eventType === "bash_execution_start") { this.publishActivity(session, "running bash", "active", getString(event, "command")); return; }
-    if (eventType === "bash_execution_end") { this.publishActivity(session, "bash complete", "idle"); return; }
-    // "working" is the label of last resort and it used to be where every
-    // unrecognised event landed - including the ones that arrive constantly
-    // mid-turn - so the dock would settle on a word that says nothing and stay
-    // there for minutes. Keep a specific label instead of overwriting it with a
-    // vague one: publishActivity dedupes, so re-stating the current label is
-    // free, and only a session with no label at all falls back to "working".
-    if (!this.hasActiveWork(session)) return;
-    const current = this.activities.get(session.sessionId);
-    if (current?.phase === "active" && current.label !== "working") {
-      this.publishActivity(session, current.label, "active", current.detail);
-      return;
-    }
-    this.publishActivity(session, "working", "active");
+    if (eventType === "turn_start" || eventType === "turn_end") this.publishStatus(session);
+    if (eventType === "agent_end") setTimeout(() => { this.publishStatus(session); }, 250);
   }
 
   /**
@@ -5921,13 +5898,15 @@ export class PiSessionService implements SessionRouteService {
     // sends per token, on the agent's own event loop. Dedupe so only actual
     // transitions (or detail changes, e.g. a new tool name) are published;
     // the heartbeat's repeat of an unchanged activity is deduped too.
-    const key = `${phase}\u0000${label}\u0000${detail ?? ""}`;
+    const current = this.steps.get(session.sessionId);
+    const key = `${phase}\u0000${label}\u0000${detail ?? ""}\u0000${current === undefined ? "" : `${JSON.stringify(current.step)}@${current.since}`}`;
     if (this.lastActivityKeyBySession.get(session.sessionId) === key) return;
     this.lastActivityKeyBySession.set(session.sessionId, key);
     const at = new Date().toISOString();
     const stored = detail === undefined ? { phase, label, at } : { phase, label, detail, at };
     this.activities.set(session.sessionId, stored);
-    const activity = detail === undefined ? { sessionId: session.sessionId, phase, label, at } : { sessionId: session.sessionId, phase, label, detail, at };
+    const step = current === undefined ? {} : { step: current.step, stepSince: current.since };
+    const activity = detail === undefined ? { sessionId: session.sessionId, phase, label, at, ...step } : { sessionId: session.sessionId, phase, label, detail, at, ...step };
     this.workspaceActivity?.applySessionActivity(session.sessionManager.getCwd(), activity);
     this.events.publish(session.sessionId, { type: "activity.update", activity });
     this.events.publishGlobal({ type: "activity.update", activity });
@@ -5975,12 +5954,8 @@ export class PiSessionService implements SessionRouteService {
     // session that fell idle without emitting a terminal event (an aborted run,
     // a bash command that ended between beats).
     this.commandService.runQueuedReload(session);
-    const at = new Date().toISOString();
-    const stored = { phase: "idle" as const, label: "idle", at };
-    this.activities.set(session.sessionId, stored);
-    const activity = { sessionId: session.sessionId, ...stored };
-    this.events.publish(session.sessionId, { type: "activity.update", activity });
-    this.events.publishGlobal({ type: "activity.update", activity });
+    this.steps.set(session.sessionId, { step: IDLE_STEP, since: new Date().toISOString() });
+    this.publishActivity(session, "idle", "idle");
   }
 
   private statusFromSession(session: PiAgentSession): ClientSessionStatus {
@@ -5994,6 +5969,7 @@ export class PiSessionService implements SessionRouteService {
     const pendingDialogs = this.pendingExtensionDialogStore.pendingDialogs(session.sessionId);
     const visibleQueued = this.queuedMessages(session);
     const queuedAnswers = this.queuedAnswers(session);
+    const activity = this.currentActivity(session.sessionId);
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
     const working = session.isStreaming || session.isCompacting || session.isBashRunning;
     const turnStartedAt = working ? turnStartedAtFromBranch(session.sessionManager.getBranch()) : undefined;
@@ -6016,6 +5992,7 @@ export class PiSessionService implements SessionRouteService {
       pendingMessageCount: visibleQueued.length,
       queuedMessages: visibleQueued,
       ...(queuedAnswers.length === 0 ? {} : { queuedAnswers }),
+      ...(activity === undefined ? {} : { activity }),
       messageCount: readableMessageCount(session.sessionManager.getBranch()),
       tokens: stats.tokens,
       cost: stats.cost,

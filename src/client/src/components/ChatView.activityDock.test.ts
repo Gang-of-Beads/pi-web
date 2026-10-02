@@ -312,3 +312,27 @@ describe("the dock's row cannot vanish mid-stream", () => {
     expect(sheet).toMatch(/\.activity-text\s*\{[^}]*text-overflow:\s*ellipsis/);
   });
 });
+
+/**
+ * The status line said the daemon's last event word, so "message queued" stood for a whole turn
+ * while the agent worked and two queued messages waited with no reason given (owner, 2026-09-30;
+ * B25, state-diagram D3 "The status line narrates").
+ */
+describe("the status line narrates the agent's step", () => {
+  it("says the step, how long it has run, and when the queued messages are read", async () => {
+    const since = new Date(Date.now() - 12_000).toISOString();
+    const running: SessionActivity = { ...activity("active", "message queued"), step: { kind: "running", tools: [{ id: "c1", name: "bash", target: "sleep 25" }] }, stepSince: since };
+    const dock = await dockWith(status({ isStreaming: true, pendingMessageCount: 2, queuedMessages: [{ kind: "steer", text: "a" }, { kind: "steer", text: "b" }] }), running);
+
+    expect(dock.text).toMatch(/^Running bash: sleep 25 · 1[12] s · 2 messages are read when these tools finish$/u);
+  });
+
+  it("says the activity's own words when no step is published or the session failed", async () => {
+    const failed: SessionActivity = { ...activity("error", "extension error"), step: { kind: "thinking" }, stepSince: new Date().toISOString() };
+    const old = await dockWith(status({ isStreaming: true }), activity("active", "agent running"));
+    document.body.replaceChildren();
+    const error = await dockWith(status({ isStreaming: true }), failed);
+
+    expect({ old: old.text, error: error.text }).toEqual({ old: "agent running", error: "extension error" });
+  });
+});

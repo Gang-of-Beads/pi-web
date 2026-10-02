@@ -257,6 +257,43 @@ The status line answers three questions, every time, from live typed facts:
 
 The step is a state owned by the daemon, derived from pi's event pairs: `message_update` thinking, text and tool-call deltas; `tool_execution_start`/`end`; retry, compaction and card events. A step ends when its pair closes. It is never kept alive by a heartbeat, and an event word is never shown after its step ended.
 
+**Built (B25 and B15, 2026-10-02).** The step is one typed field, `SessionActivity.step`, with `stepSince`, from one pure reducer (`nextSessionStep`, `sessionStep.ts`). The label and detail are derived from it for older readers and are output only.
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> waiting: agent_start
+    waiting --> thinking: thinking delta
+    waiting --> writing: text delta
+    waiting --> preparing: tool-call delta (tool name once streamed)
+    thinking --> writing: text delta
+    writing --> thinking: thinking delta
+    thinking --> preparing: tool-call delta
+    writing --> preparing: tool-call delta
+    preparing --> running: tool_execution_start
+    running --> running: another tool starts or one ends, others still run
+    running --> waiting: the last tool ends
+    thinking --> waiting: turn_end
+    writing --> waiting: turn_end
+    waiting --> retrying: auto_retry_start (attempt n of m, the reason)
+    retrying --> waiting: auto_retry_end
+    waiting --> compacting: compaction_start
+    compacting --> waiting: compaction_end while a run goes
+    compacting --> idle: compaction_end otherwise
+    idle --> bash: the reader's own shell command starts
+    bash --> idle: it ends
+    waiting --> idle: agent_end
+    thinking --> idle: agent_end
+    writing --> idle: agent_end
+    running --> idle: agent_end
+    retrying --> idle: agent_end
+```
+
+- **States.** `idle`; `waiting` (a request is on its way to the model and nothing has streamed yet); `thinking`; `writing`; `preparing` (a tool call is streaming, with the tool once named); `running` (the tools executing now, each with its name and target, in parallel); `retrying` (attempt, maximum, reason, and when it resumes); `compacting`; `bash` (the reader's own shell command).
+- **One idle per turn (B15).** Only `agent_end` (and the end of compaction or of the reader's shell command outside a run) reaches `idle`. `message_end`, `turn_end` and a tool's end no longer publish an idle phase mid-run, and a failed tool is part of the run, not an `error` phase: the turn's own failure is.
+- **Other events leave the step alone.** The fallback that re-published "working" for every unrecognised event is gone.
+- **The dock says the step, its time, and what comes next.** "Thinking · 4 s", "Running bash: sleep 25 · 12 s", "Retrying, attempt 2 of 3: overloaded". When something waits for the agent, the dock says when it is read, from the step: during `thinking`, `writing` and `preparing`, "read when this reply ends"; during `running`, "read when these tools finish"; otherwise "read next". Answers count with messages ("your answer is read when these tools finish"). The words live in one table per step kind.
+
 ## D4. The transcript viewport
 
 ```mermaid

@@ -786,7 +786,7 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     }
   });
 
-  it("publishes idle activity for SDK completion events", async () => {
+  it("publishes idle once, at the run's end, not at a tool's end (B15)", async () => {
     const hub = new CapturingSessionEventHub();
     let listener: ((event: unknown) => void) | undefined;
     const fake = fakeRuntime("completion-session", {
@@ -804,11 +804,16 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     });
 
     await service.status(sessionRef("completion-session"));
+    listener?.({ type: "agent_start" });
+    listener?.({ type: "tool_execution_start", toolCallId: "c1", toolName: "read", args: { path: "a.md" } });
     hub.globalEvents.length = 0;
-    listener?.({ type: "tool_execution_end", toolName: "read", isError: false });
+    listener?.({ type: "tool_execution_end", toolCallId: "c1", toolName: "read", isError: true });
+    listener?.({ type: "turn_end" });
+    listener?.({ type: "agent_end" });
 
-    expect(hub.globalEvents.filter((event) => event.type === "activity.update")).toMatchObject([
-      { activity: { sessionId: "completion-session", phase: "idle", label: "tool complete", detail: "read" } },
+    expect(hub.globalEvents.flatMap((event) => event.type === "activity.update" ? [{ phase: event.activity.phase, step: event.activity.step?.kind }] : [])).toEqual([
+      { phase: "active", step: "waiting" },
+      { phase: "idle", step: "idle" },
     ]);
 
     await service.dispose();
@@ -1297,6 +1302,43 @@ describe("PiSessionService.streamSnapshot", () => {
 });
 
 describe("activity labels from raw agent events", () => {
+  it("keeps a step's start while the step goes on, and restarts it for the next step (B25)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const hub = new CapturingSessionEventHub();
+    let listener: ((event: unknown) => void) | undefined;
+    const fake = fakeRuntime("step-since-session", { isStreaming: true, subscribe: (next) => { listener = next; return () => undefined; } });
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("step-since-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+    try {
+      await service.status(sessionRef("step-since-session"));
+      hub.globalEvents.length = 0;
+      vi.setSystemTime(new Date("2026-10-02T10:00:00.000Z"));
+      listener?.({ type: "tool_execution_start", toolCallId: "a", toolName: "read", args: { path: "a.md" } });
+      vi.setSystemTime(new Date("2026-10-02T10:00:05.000Z"));
+      listener?.({ type: "tool_execution_start", toolCallId: "b", toolName: "bash", args: { command: "ls" } });
+      vi.setSystemTime(new Date("2026-10-02T10:00:09.000Z"));
+      listener?.({ type: "tool_execution_end", toolCallId: "a", toolName: "read" });
+      listener?.({ type: "tool_execution_end", toolCallId: "b", toolName: "bash" });
+
+      const since = hub.globalEvents.flatMap((event) => event.type === "activity.update" ? [[event.activity.step?.kind, event.activity.stepSince]] : []);
+      expect(since).toEqual([
+        ["running", "2026-10-02T10:00:00.000Z"],
+        ["running", "2026-10-02T10:00:00.000Z"],
+        ["running", "2026-10-02T10:00:00.000Z"],
+        ["waiting", "2026-10-02T10:00:09.000Z"],
+      ]);
+      expect((await service.status(sessionRef("step-since-session"))).activity).toMatchObject({ sessionId: "step-since-session", step: { kind: "waiting" }, stepSince: "2026-10-02T10:00:09.000Z" });
+    } finally {
+      vi.useRealTimers();
+      await service.dispose();
+    }
+  });
+
   it("names a turn_start event in user-facing words instead of echoing the event type", async () => {
     const hub = new CapturingSessionEventHub();
     let listener: ((event: unknown) => void) | undefined;
@@ -1321,8 +1363,9 @@ describe("activity labels from raw agent events", () => {
 
       const firstActivity = activityUpdate(hub.globalEvents);
       if (firstActivity === undefined) throw new Error("expected an activity event");
-      expect(firstActivity.activity.label).toBe("turn in progress");
+      expect(firstActivity.activity.label).toBe("waiting for the model");
       expect(firstActivity.activity.phase).toBe("active");
+      expect(firstActivity.activity.step).toEqual({ kind: "waiting" });
 
       // A tool call reports what it is running, not just that it is running:
       // "running tool" alone answers nothing while a turn takes minutes.
@@ -1332,6 +1375,7 @@ describe("activity labels from raw agent events", () => {
       if (toolActivity === undefined) throw new Error("expected an activity event");
       expect(toolActivity.activity.label).toBe("running tool");
       expect(toolActivity.activity.detail).toBe("bash: npm test");
+      expect(toolActivity.activity.step).toEqual({ kind: "running", tools: [{ id: "bash", name: "bash", target: "npm test" }] });
 
       // An unknown event type must not overwrite a specific label with a vague
       // one. Events nobody maps arrive constantly mid-turn, and each used to
@@ -1447,7 +1491,7 @@ describe("subagent runs are found where the tool writes them", () => {
   });
 });
 
-interface ActivityDetail { label: string; phase: string; sessionId: string; detail?: string }
+interface ActivityDetail { label: string; phase: string; sessionId: string; detail?: string; step?: unknown }
 interface ActivityUpdateEvent { type: string; activity?: ActivityDetail }
 function activityUpdate(events: readonly ActivityUpdateEvent[]): { activity: ActivityDetail } | undefined {
   const event = events.find((candidate) => candidate.type === "activity.update");

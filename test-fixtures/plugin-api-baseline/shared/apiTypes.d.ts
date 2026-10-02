@@ -563,12 +563,53 @@ export interface SessionCleanupExecuteResponse extends SessionCleanupPreviewResp
     archivedSessionIds: string[];
     deletedSessionIds: string[];
 }
+/** A tool executing now, with what it was called with. */
+export interface RunningTool {
+    id: string;
+    name: string;
+    target?: string;
+}
+/**
+ * What the session's agent is doing right now (B25, state-diagram D3 "The status
+ * line narrates"), from one reducer over pi's event pairs. A step ends when its
+ * pair closes; nothing keeps one alive.
+ */
+export type SessionStep = {
+    kind: "idle";
+} | {
+    kind: "waiting";
+} | {
+    kind: "thinking";
+} | {
+    kind: "writing";
+} | {
+    kind: "preparing";
+    tool?: string;
+} | {
+    kind: "running";
+    tools: RunningTool[];
+} | {
+    kind: "retrying";
+    attempt: number;
+    maxAttempts: number;
+    reason: string;
+    resumesAt: string;
+} | {
+    kind: "compacting";
+} | {
+    kind: "bash";
+    command: string;
+};
 export interface SessionActivity {
     sessionId: string;
     phase: "active" | "idle" | "error";
     label: string;
     detail?: string;
     at: string;
+    /** The step the agent is in, from a daemon that publishes it; `label` and `detail` are words derived for older readers. */
+    step?: SessionStep;
+    /** When the step began. */
+    stepSince?: string;
     /**
      * Set only on the startup window's own reports. A startup phase is genuinely
      * in progress, so it is published as `active` and rendered like any other
@@ -1094,6 +1135,12 @@ export interface SessionStatus {
      * and from a daemon that predates the field.
      */
     queuedAnswers?: AskUserOutcome[];
+    /**
+     * The session's latest activity with its step (B25), so a page that opens in
+     * the middle of a long step can say it before the next frame. Live activity
+     * frames supersede it. Absent before the session published any.
+     */
+    activity?: SessionActivity;
     messageCount?: number;
     tokens: {
         input: number;

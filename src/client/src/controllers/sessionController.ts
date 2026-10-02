@@ -2400,6 +2400,7 @@ export class SessionController {
     const messages = isSelected ? applyQueueToDelivery(state.messages, status.queuedMessages, runtimeIdle) : state.messages;
     const commandLedger = runtimeIdle ? settleAcceptedCommands(state.commandLedger, machineSessionKey(selectedMachineId(state), status.sessionId), Date.now()) : state.commandLedger;
     const clearsStaleActivity = activityOutlivesStatus(state.sessionActivities[status.sessionId], status);
+    const adoptedActivity = statusActivityToAdopt(state.sessionActivities[status.sessionId], status);
     // Falling edge only: a turn that just ended is the one moment worth
     // re-reading the goal directory for, and every other status update would
     // make it a poll.
@@ -2419,9 +2420,10 @@ export class SessionController {
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
       ...sessionMessageCountPatch(state, status.sessionId, status.messageCount),
       ...(clearsStaleActivity ? { sessionActivities: omitSessionActivity(state.sessionActivities, status.sessionId) } : {}),
+      ...(adoptedActivity === undefined ? {} : { sessionActivities: { ...state.sessionActivities, [status.sessionId]: adoptedActivity } }),
       status: isSelected ? status : state.status,
       ...(isSelected ? { statusReadFailed: undefined } : {}),
-      activity: isSelected && clearsStaleActivity ? undefined : state.activity,
+      activity: isSelected && clearsStaleActivity ? undefined : isSelected && adoptedActivity !== undefined ? adoptedActivity : state.activity,
       // The daemon owns whether an ask is open, so every status it publishes is
       // authoritative for the selected session's card, including its removal.
       ...(isSelected ? { pendingAsk: status.pendingAsk, pendingAsks: status.pendingAsks ?? (status.pendingAsk === undefined ? [] : [status.pendingAsk]) } : {}),
@@ -3247,6 +3249,16 @@ function openDialogsAfterDismissals(
   if (dismissedDialogIds.length === 0) return [...open];
   const dismissed = new Set(dismissedDialogIds);
   return open.filter((dialog) => !dismissed.has(dialog.dialogId));
+}
+
+/**
+ * The activity a status brings, taken only when the page knows none for the
+ * session: a page that opens in the middle of a long step learns it here,
+ * before the next frame (B25). A live frame already seen is newer and stays.
+ */
+function statusActivityToAdopt(known: SessionActivity | undefined, status: SessionStatus): SessionActivity | undefined {
+  if (known !== undefined || status.activity === undefined) return undefined;
+  return activityOutlivesStatus(status.activity, status) ? undefined : status.activity;
 }
 
 function omitSessionActivity(activities: Record<string, SessionActivity>, sessionId: string): Record<string, SessionActivity> {
