@@ -186,7 +186,7 @@ describe("PiSessionService ask status projection", () => {
 });
 
 describe("PiSessionService.submitAsk", () => {
-  it("delivers a custom answer as a follow-up message that wakes the session", async () => {
+  it("delivers a custom answer through the steering queue, read at the next injection point (B26)", async () => {
     const { service, store, events, fake } = askService({ withActiveSession: true });
     await service.openAsk({
       sessionId: ACTIVE_SESSION_ID,
@@ -207,7 +207,7 @@ describe("PiSessionService.submitAsk", () => {
     expect(delivered?.message.content).toContain(`custom: "DuckDB"`);
     expect(delivered?.message.content).toContain("Answered 1 of 1");
     expect(delivered?.message.details).toMatchObject({ askId: "ask-1", reason: "submitted" });
-    expect(delivered?.options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
+    expect(delivered?.options).toEqual({ triggerTurn: true, deliverAs: "steer" });
     expect(askEvents(events).map(({ event }) => event.type)).toEqual(["ask.opened", "ask.closed"]);
     expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeUndefined();
     await service.dispose();
@@ -415,7 +415,7 @@ describe("PiSessionService.cancelAsk", () => {
 
     expect(response).toMatchObject({ result: "closed", outcome: { reason: "cancelled", answeredCount: 0, unansweredIds: ["db"] } });
     expect(fake.calls.sendCustomMessage[0]?.message.content).toContain("closed (cancelled) before it was fully answered");
-    expect(fake.calls.sendCustomMessage[0]?.options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
+    expect(fake.calls.sendCustomMessage[0]?.options).toEqual({ triggerTurn: true, deliverAs: "steer" });
     const lastAsk = askEvents(events).at(-1)?.event;
     expect(lastAsk === undefined ? undefined : withoutStamps(lastAsk)).toEqual({ type: "ask.closed", askId: "ask-1", reason: "cancelled" });
     expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeUndefined();

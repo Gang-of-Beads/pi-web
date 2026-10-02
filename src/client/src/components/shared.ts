@@ -141,6 +141,8 @@ export interface ChatLine {
     model?: { provider?: string; id?: string; responseId?: string };
     /** Thinking level the assistant message was generated with, when known. */
     thinkingLevel?: string;
+    /** An answers record the agent has not read yet, drawn from the status (B26, queuedAnswerRows.ts). */
+    queuedAnswer?: true;
   };
 }
 

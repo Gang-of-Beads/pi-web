@@ -55,6 +55,7 @@ import { computeEditPreview, type EditPreviewResult } from "./editPreview.js";
 import { attachmentsToInlineImages, saveAttachmentsToWorkspace } from "./attachmentService.js";
 import { parsePromptAttachments } from "../../../shared/promptAttachments.js";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_LIMIT } from "../../../shared/apiTypes.js";
+import { AGENT_NOTICE_DELIVERY, clearLanesKeepingNotices, commitQueuedNotices, queuedNotices } from "./agentNotices.js";
 import type {
   AskUserCloseResponse,
   AskUserOutcome,
@@ -1361,6 +1362,8 @@ export class PiSessionService implements SessionRouteService {
   private readonly handing = new Set<string>();
   private readonly handingCommands = new Set<string>();
   private readonly commandHandlers = new CommandHandlerScope();
+  /** The answers records this daemon handed to pi, found again by identity while they wait in its queues. */
+  private readonly sentAnswers = new WeakMap<object, AskUserOutcome>();
   /** Accepted prompt identities, so a lost response answers instead of re-running. */
   /**
    * Durable when the daemon has a data directory, in-memory otherwise (tests
@@ -1986,9 +1989,8 @@ export class PiSessionService implements SessionRouteService {
    * Record the user's answers to the session's open ask and hand them to the
    * model. The answers travel as a system-authored custom message rather than a
    * user message, so they are not attributed to the human in the transcript;
-   * they still wake an idle session (`triggerTurn`) and queue behind in-flight
-   * work (`deliverAs: "followUp"`), which is how the run that `ask_user`
-   * terminated continues.
+   * they wake an idle session and reach a running one at its next injection
+   * point (`AGENT_NOTICE_DELIVERY`, B26).
    */
   async submitAsk(ref: PiSessionRef, askId: string, submission: AskUserSubmission): Promise<AskUserCloseResponse> {
     await this.assertWritable(ref);
@@ -2021,9 +2023,10 @@ export class PiSessionService implements SessionRouteService {
     if (result.status === "stale") return { result: "stale", sessionStatus: this.statusFromSession(session) };
     const { outcome } = result;
     this.publishAskClosed(session.sessionId, outcome);
+    this.sentAnswers.set(outcome, outcome);
     await this.runSessionEntryMutation(session, "deliver answers to your questions", () => session.sendCustomMessage(
       { customType: ASK_USER_ANSWERS_CUSTOM_TYPE, content: renderAskUserAnswersText(outcome), display: true, details: outcome },
-      { triggerTurn: true, deliverAs: "followUp" },
+      AGENT_NOTICE_DELIVERY,
     ));
     this.publishStatus(session);
     return { result: "closed", outcome, sessionStatus: this.statusFromSession(session) };
@@ -2701,9 +2704,8 @@ export class PiSessionService implements SessionRouteService {
   /**
    * Deliver a subsession-completion notice to the parent as a system-authored
    * custom message rather than a user message, so it is not attributed to the
-   * human in the transcript. It still wakes an idle parent (`triggerTurn`) and
-   * queues behind in-flight work (`deliverAs: "followUp"`), preserving the
-   * established "queue if busy, send and act if idle" behavior.
+   * human in the transcript. It wakes an idle parent and reaches a running one
+   * at its next injection point (`AGENT_NOTICE_DELIVERY`, B26).
    */
   private async notifyParentOfSubsession(parentId: string, childId: string, text: string): Promise<void> {
     try {
@@ -2723,7 +2725,7 @@ export class PiSessionService implements SessionRouteService {
   private async deliverSubsessionNotification(session: PiAgentSession, notification: DeferredSubsessionNotification): Promise<void> {
     await this.runSessionEntryMutation(session, "deliver a subsession notification", () => session.sendCustomMessage(
       { customType: SUBSESSION_NOTIFICATION_CUSTOM_TYPE, content: notification.text, display: true, details: { sessionId: notification.childId } },
-      { triggerTurn: true, deliverAs: "followUp" },
+      AGENT_NOTICE_DELIVERY,
     ));
     this.publishStatus(session);
   }
@@ -3707,7 +3709,7 @@ export class PiSessionService implements SessionRouteService {
     const { loopHeld, waiting } = partitionLanes(session, records);
     this.settleLoopHeld(sessionId, loopHeld);
     if (waiting.length === 0) return;
-    session.clearQueue();
+    clearLanesKeepingNotices(session);
     const entries = waiting.map((held): OwnedQueueEntry => {
       const original = records.find((record) => record.clientMessageId === held.clientMessageId)?.entry;
       if (original !== undefined) return original;
@@ -3766,6 +3768,15 @@ export class PiSessionService implements SessionRouteService {
       if (entry.clientMessageId !== undefined) this.acceptanceLedger.settle(sessionId, entry.clientMessageId, "succeeded");
     }
     return entries;
+  }
+
+  /** The answers records still waiting in pi's queues (B26): what the transcript shows as queued answers. */
+  private queuedAnswers(session: PiAgentSession): AskUserOutcome[] {
+    return queuedNotices(session).flatMap((notice) => {
+      if (notice.customType !== ASK_USER_ANSWERS_CUSTOM_TYPE || typeof notice.details !== "object" || notice.details === null) return [];
+      const outcome = this.sentAnswers.get(notice.details);
+      return outcome === undefined ? [] : [outcome];
+    });
   }
 
   /**
@@ -4459,7 +4470,7 @@ export class PiSessionService implements SessionRouteService {
    * settling then would mark messages still waiting as read.
    */
   private async replayLanesWithout(session: PiAgentSession, target: { kind?: QueuedPromptKind; text: string }): Promise<boolean> {
-    const { steering, followUp } = session.clearQueue();
+    const { steering, followUp } = clearLanesKeepingNotices(session);
     const lanes: { kind: QueuedPromptKind; texts: string[] }[] = [
       { kind: "steer", texts: [...steering] },
       { kind: "followUp", texts: [...followUp] },
@@ -4624,6 +4635,7 @@ export class PiSessionService implements SessionRouteService {
     try {
       await this.abortSessionOperations(active.runtime.session);
       await this.stopHandoffInFlight(active.runtime.session);
+      await commitQueuedNotices(active.runtime.session);
       this.publishActivity(active.runtime.session, "stopped", "idle");
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -4885,6 +4897,7 @@ export class PiSessionService implements SessionRouteService {
     try {
       this.events.publish(sessionId, { type: "session.stopped", cause: "closed" });
       await this.abortStampingCommits(active.runtime.session);
+      await commitQueuedNotices(active.runtime.session);
     } finally {
       await active.runtime.dispose();
     }
@@ -5978,6 +5991,7 @@ export class PiSessionService implements SessionRouteService {
     const pendingAsk = pendingAsks[0];
     const pendingDialogs = this.pendingExtensionDialogStore.pendingDialogs(session.sessionId);
     const visibleQueued = this.queuedMessages(session);
+    const queuedAnswers = this.queuedAnswers(session);
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
     const working = session.isStreaming || session.isCompacting || session.isBashRunning;
     const turnStartedAt = working ? turnStartedAtFromBranch(session.sessionManager.getBranch()) : undefined;
@@ -5999,6 +6013,7 @@ export class PiSessionService implements SessionRouteService {
       ...(turnStartedAt === undefined ? {} : { turnStartedAt }),
       pendingMessageCount: visibleQueued.length,
       queuedMessages: visibleQueued,
+      ...(queuedAnswers.length === 0 ? {} : { queuedAnswers }),
       messageCount: readableMessageCount(session.sessionManager.getBranch()),
       tokens: stats.tokens,
       cost: stats.cost,
@@ -6584,7 +6599,7 @@ function clearParentSessionHeader(sessionManager: PiSessionManager): void {
 }
 
 function clearSessionQueue(session: PiAgentSession): void {
-  session.clearQueue();
+  clearLanesKeepingNotices(session);
 }
 
 /**

@@ -40,6 +40,7 @@ import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback } from "./ExtensionDialogCard";
 import { deliveryTaken, discardAction, retryableDeliveryId } from "../messageDelivery";
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
+import { isQueuedAnswer, withQueuedAnswers } from "../queuedAnswerRows";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./FormattedText";
 import "./ToolExecutionView";
@@ -249,6 +250,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg.tool { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
   .msg.tool-execution-shell, .msg.ask-user-record-shell { padding: 0; border: 0; background: transparent; color: var(--pi-text); }
   .msg.ask-user-record-shell ask-user-card { margin: 0 auto; }
+  .msg.ask-user-record-shell > .delivery-mark { margin-inline-end: 0; }
   /* A system line reports whatever the runtime has to say - a background task
      that finished with exit 0 as often as a failure - so it is not coloured as
      a fault. A genuine error arrives as an error line and keeps the red. */
@@ -1365,7 +1367,7 @@ if (this.heldWaitingClearTimer !== undefined) {
       else if (row.transcriptIndex !== undefined) byPosition.set(row.transcriptIndex, row.line);
     }
     const settled = [...byPosition.entries()].sort((a, b) => a[0] - b[0]).map(([, line]) => line);
-    return { settled, pending };
+    return { settled, pending: withQueuedAnswers(pending, this.status?.queuedAnswers, this.messages) };
   }
 
   /**
@@ -1516,6 +1518,7 @@ if (this.heldWaitingClearTimer !== undefined) {
    * looks the same, so a bubble does not change appearance across a reload.
    */
   private renderDeliveryMark(message: ChatLine) {
+    if (isQueuedAnswer(message)) return this.renderQueuedAnswerMark();
     const delivery = message.meta?.delivery;
     if (!chatDeliveryMarkerVisible(delivery) || delivery === undefined) return null;
     const queued = this.status?.queuedMessages ?? [];
@@ -1525,6 +1528,17 @@ if (this.heldWaitingClearTimer !== undefined) {
       <div class=${`delivery-mark ${presentation.tone}`} role="status" aria-label=${presentation.label}>
         <span class="delivery-glyph" aria-hidden="true">${renderDeliveryGlyph(presentation.glyph)}</span>
         <span class="delivery-text">${presentation.text}</span>
+      </div>
+    `;
+  }
+
+  /** The mark a queued message wears, on an answer the agent has not read yet (B26). */
+  private renderQueuedAnswerMark() {
+    const words = deliveryWords("queued");
+    return html`
+      <div class=${`delivery-mark ${words.tone}`} role="status" aria-label=${words.label}>
+        <span class="delivery-glyph" aria-hidden="true">${renderDeliveryGlyph(words.glyph)}</span>
+        <span class="delivery-text">${words.text}</span>
       </div>
     `;
   }

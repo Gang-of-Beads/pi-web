@@ -1088,6 +1088,12 @@ export interface SessionStatus {
     isBashRunning: boolean;
     pendingMessageCount: number;
     queuedMessages: QueuedSessionMessage[];
+    /**
+     * Answers to question cards that the agent has not read yet, oldest first
+     * (B26). Read off pi's queues on every status. Absent when there are none,
+     * and from a daemon that predates the field.
+     */
+    queuedAnswers?: AskUserOutcome[];
     messageCount?: number;
     tokens: {
         input: number;

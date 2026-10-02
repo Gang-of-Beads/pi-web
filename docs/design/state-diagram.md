@@ -177,6 +177,12 @@ stateDiagram-v2
   - it is handed at the next injection point with everything else waiting.
 
   It never goes into pi's follow-up lane, which waits until the agent has no work left. The same holds for PI WEB's own notices meant for the agent (subsession completion). Measured 2026-09-30: four answers waited 9.5, 10, 26.7 and 14.5 minutes, invisibly (`piSessionService.ts:1997`, `:2688`).
+
+  **Built (B26, 2026-10-02).**
+  - *Lane.* An answer, and a subsession notice, is delivered with `deliverAs: "steer"` (`AGENT_NOTICE_DELIVERY`). While a run goes it waits in pi's steering queue and is read at the next injection point, after the tool batch in flight, together with the reader's own messages, which reach the same queue in the order they were sent. On an idle session it starts a run at once, as before. An answer can never be read before the tool batch it was asked beside ends (`ask_user` called with `bash sleep 25`): that wait is the injection point, and it is now visible.
+  - *Queued until read.* The status lists `queuedAnswers`: the answers records still in pi's queues, read off those queues on every status, so nothing kept beside them can disagree. The transcript shows each as its answers record marked Queued, among the reader's pending messages by the time it was given. When pi reads it, its committed record replaces the queued one in place.
+  - *Take-back keeps it.* Recall, the idle take-back, Stop and Clear empty pi's lanes to take back the reader's messages. A notice is not the reader's message, so it is put back in pi's steering queue. After a Stop it stays queued and is read with the next turn: a Stop never starts a run and never loses an answer.
+  - *Known limit.* Closing the session's runtime, or a daemon restart, while an answer is still queued loses it, as before, because pi's queues live in the runtime. Its queued record then leaves the transcript tail with the status.
 - **A refusal is a state the reader sees.** A refused open files a session notification. It is owned by the notification inbox, scoped to the session, and dismissible. It is never only an error inside the extension.
 - **A closed card is inert.** A card kept on screen while a gesture settles has no live handlers. A tap on a card answered elsewhere shows "Answered elsewhere".
 

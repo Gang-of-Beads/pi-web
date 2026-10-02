@@ -953,7 +953,7 @@ describe("PiSessionService", () => {
       expect(parent.calls.sendCustomMessage[0]?.message.content).toContain("Subsession child-1 stopped working");
       expect(parent.calls.sendCustomMessage[0]?.message.content).toContain("--- SUBSESSION OUTPUT: child-1 ---\nall done");
       expect(parent.calls.sendCustomMessage[0]?.message.customType).toBe("subsession.completion");
-      expect(parent.calls.sendCustomMessage[0]?.options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
+      expect(parent.calls.sendCustomMessage[0]?.options).toEqual({ triggerTurn: true, deliverAs: "steer" });
       expect(parent.calls.prompt).toHaveLength(0); // not a user-authored message
       await service.dispose();
     });

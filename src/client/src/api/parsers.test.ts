@@ -617,6 +617,34 @@ describe("API parsers", () => {
     ]);
   });
 
+  it("parses the answers the agent has not read yet, and keeps them absent when none wait (B26)", () => {
+    const base = {
+      sessionId: "s1",
+      isStreaming: true,
+      isCompacting: false,
+      isBashRunning: false,
+      pendingMessageCount: 0,
+      queuedMessages: [],
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: 0,
+    };
+    const outcome = {
+      askId: "ask-1",
+      reason: "submitted",
+      askedAt: "2026-10-02T10:00:00.000Z",
+      closedAt: "2026-10-02T10:00:05.000Z",
+      questions: [{ question: { id: "db", question: "Which database?", options: [{ value: "pg", label: "Postgres" }] }, answered: true, values: ["pg"] }],
+      answeredCount: 1,
+      unansweredIds: [],
+      summary: "Answered 1 of 1",
+    };
+
+    expect({
+      queued: parseSessionStatus({ ...base, queuedAnswers: [outcome] }).queuedAnswers?.map((answer) => answer.askId),
+      none: "queuedAnswers" in parseSessionStatus(base),
+    }).toEqual({ queued: ["ask-1"], none: false });
+  });
+
   it("omits warnings entirely when the field is absent", () => {
     const parsed = parseSessionStatus({
       sessionId: "s1",

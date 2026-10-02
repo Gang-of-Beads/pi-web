@@ -426,6 +426,12 @@ function parsePendingAskUser(value: unknown): PendingAskUser {
   };
 }
 
+function optionalQueuedAnswers(value: unknown): Pick<SessionStatus, "queuedAnswers"> | object {
+  if (!Array.isArray(value)) return {};
+  const answers = value.map(parseAskUserOutcome);
+  return answers.length === 0 ? {} : { queuedAnswers: answers };
+}
+
 function optionalPendingAsks(value: unknown): Pick<SessionStatus, "pendingAsks"> | object {
   if (!Array.isArray(value)) return {};
   const asks = value.map(parsePendingAskUser);
@@ -727,6 +733,7 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     // conversation says "idle . 3 background runs".
     ...optionalField("backgroundRunCount", optionalNumber(record, "backgroundRunCount")),
     queuedMessages: record["queuedMessages"] === undefined ? [] : arrayOf(parseQueuedSessionMessage)(record["queuedMessages"]),
+    ...optionalQueuedAnswers(record["queuedAnswers"]),
     ...optionalField("messageCount", optionalNumber(record, "messageCount")),
     tokens: parseTokens(record["tokens"]),
     cost: requireNumber(record, "cost"),
