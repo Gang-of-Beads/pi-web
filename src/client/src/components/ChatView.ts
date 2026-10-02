@@ -41,6 +41,7 @@ import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, Exte
 import { deliveryTaken, discardAction, retryableDeliveryId } from "../messageDelivery";
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { isQueuedAnswer, withQueuedAnswers } from "../queuedAnswerRows";
+import { placeUserRows } from "../userRowPlacement";
 import { stepStatusText, stepWaitingText } from "../sessionStepWords";
 import { activityDockWords } from "../activityDockWords";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
@@ -1362,13 +1363,7 @@ if (this.heldWaitingClearTimer !== undefined) {
       queued: this.status?.queuedMessages ?? [],
       synthesise: (message, position) => queuedUserLine(message, position),
     });
-    const byPosition = new Map<number, ChatLine>();
-    const pending: ChatLine[] = [];
-    for (const row of rows) {
-      if (row.state !== "settled") pending.push(row.line);
-      else if (row.transcriptIndex !== undefined) byPosition.set(row.transcriptIndex, row.line);
-    }
-    const settled = [...byPosition.entries()].sort((a, b) => a[0] - b[0]).map(([, line]) => line);
+    const { settled, pending } = placeUserRows(rows, this.status?.queuedMessages ?? []);
     return { settled, pending: withQueuedAnswers(pending, this.status?.queuedAnswers, this.messages) };
   }
 

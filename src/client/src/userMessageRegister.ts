@@ -107,11 +107,7 @@ export function registerUserMessages(input: RegisterInput): UserMessageRow[] {
   }
 
   for (const [position, message] of input.queued.entries()) {
-    const id = message.clientMessageId;
-    // An entry with no identity cannot be matched to a line, so it gets a key
-    // of its own rather than being guessed onto somebody else's row. It is
-    // still one row: a key nobody else uses cannot collide.
-    const identity = id !== undefined && id !== "" ? id : `queued:${message.kind}:${String(position)}`;
+    const identity = queuedIdentity(message, position);
     const existing = rows.get(identity);
     // The line already in hand is kept: it carries attachments and the recall
     // affordance that a synthesised stand-in does not have. Only the state
@@ -122,6 +118,16 @@ export function registerUserMessages(input: RegisterInput): UserMessageRow[] {
   }
 
   return [...rows.values()];
+}
+
+/**
+ * The row identity of a queued entry: its minted id, or for an entry with no
+ * identity a key of its own rather than a guess onto somebody else's row. It is
+ * still one row: a key nobody else uses cannot collide.
+ */
+export function queuedIdentity(message: QueuedSessionMessage, position: number): string {
+  const id = message.clientMessageId;
+  return id !== undefined && id !== "" ? id : `queued:${message.kind}:${String(position)}`;
 }
 
 /**

@@ -117,6 +117,8 @@ stateDiagram-v2
   4. open cards (D2), FIFO.
 
   `consumed`, `withdrawn` and `discarded` leave no row; a settled notice appears only where the owner already chose one.
+
+  **Built (B2, 2026-10-02).** One producer reproduced the "earlier message drawn below a later one" deterministically: a message the daemon still listed as queued left its transcript slot for the pending block below every settled row, while a later message still being sent, or one whose send could not be verified, kept its slot above it. `placeUserRows` (`userRowPlacement.ts`) now places every row by state: a message the agent took at its transcript index; every other one in the pending block, queued first in the daemon's order, then accepted but not yet listed, then being sent, unverifiable or not sent, each by send time. Measured on 8505 (`probe-row-order.mjs`, phone): before, a message whose send could not be verified was drawn above the queued message sent before it. The audit's suspected producer, a rebuild while an extension dialog held a message's handoff, cannot reorder messages: the inbox hands nothing else while a handoff waits, and a rebuild's carried rows are placed by state like any other.
 - **Status queue list.**
   - It is ordered by `seq`: the daemon emits it that way, and the lane-by-lane composition (`piSessionService.ts:6409-6420`) goes.
   - It only orders and counts records; it never changes a record's state.
