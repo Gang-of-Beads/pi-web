@@ -40,6 +40,23 @@ describe("reading a screen's shape", () => {
     expect(shape.body).toEqual(["[ ] one", "[ ] two"]);
   });
 
+  it("reads a heading drawn flush above the options as the heading, not as one more option", () => {
+    const shape = classifyScreen(["ui-custom probe · tap a line or press a key", "▸ first      ", "  second     ", "  third      ", "enter to select · esc to close"]);
+    expect(shape.kind).toBe("menu");
+    if (shape.kind !== "menu") return;
+    expect({ title: shape.title, options: shape.options.map((option) => option.label) }).toEqual({ title: "ui-custom probe · tap a line or press a key", options: ["first", "second", "third"] });
+  });
+
+  it("keeps siblings drawn one column left of a cursor that sits a space deeper", () => {
+    const shape = classifyScreen(["Pick", " ▸ one", "  two", "  three"]);
+    expect(shape.kind === "menu" ? shape.options.map((option) => option.label) : []).toEqual(["one", "two", "three"]);
+  });
+
+  it("keeps siblings that carry their own marker", () => {
+    const shape = classifyScreen(["Pick", "▸ one", "○ two", "○ three"]);
+    expect(shape.kind === "menu" ? shape.options.map((option) => option.label) : []).toEqual(["one", "○ two", "○ three"]);
+  });
+
   it("stays text when nothing looks like a menu", () => {
     const shape = classifyScreen(["│ a plain progress screen", "│ 42% done"]);
     expect(shape.kind).toBe("text");

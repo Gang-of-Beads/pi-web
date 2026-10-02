@@ -8,9 +8,13 @@ import { chromium } from "@playwright/test";
  * host resolved the promise without running the factory, so the pi updater's
  * version prompt evaporated every session and the reader saw a notice saying a
  * screen could not be shown. The extension in ~/.pi/agent/extensions/
- * ui-custom-probe.ts draws one on session_start, so this probe can tell the
- * shapes apart: a dialog with the component's own lines, keys that redraw it, and
- * a result the extension receives.
+ * ui-custom-probe.ts draws one when this probe sends `/ui-custom-probe`, so it can
+ * tell the shapes apart: a dialog with the component's own lines, keys that redraw
+ * it, and a result the extension receives.
+ *
+ * Its screen reads as a menu, so it wears the select card (state-diagram D2, slice
+ * a): the component's first line as the heading, the options as option buttons, no
+ * key row, and a tap that walks the cursor and selects.
  */
 const BASE = process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
 const CWD = process.env.PROBE_CWD ?? "/Users/hanxiao.du/.pi-web-8505/pi-web-8505-seed-workspace";
@@ -38,6 +42,14 @@ try {
   // URL naming it would leave the page on whatever was selected before.
   await fetch(`${BASE}/api/sessions/${sessionId}/prompt`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cwd: CWD, text: "say ok" }) });
   await new Promise((resolve) => setTimeout(resolve, 6000));
+  // The warm-up run retries against a fixture model nobody serves; a screen opened while it
+  // still runs is settled with that run, so the command waits for the session to be idle.
+  for (let waited = 0; waited < 120_000; waited += 1000) {
+    const status = await fetch(`${BASE}/api/sessions/${sessionId}/status?cwd=${encodeURIComponent(CWD)}`).then((response) => response.json()).catch(() => ({}));
+    if (status.isStreaming === false && status.activity?.status !== "active") break;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  await fetch(`${BASE}/api/sessions/${sessionId}/prompt`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cwd: CWD, text: "/ui-custom-probe" }) });
   const page = await browser.newPage({ viewport: { width: 393, height: 850 } });
   await page.goto(`${BASE}/?project=991606fd-e498-4b93-a1ce-2af09efdb0e7&workspace=ef2cdf93e1ac&session=${sessionId}&view=chat`, { waitUntil: "domcontentloaded" });
   const screen = async () => page.evaluate(() => {
@@ -47,10 +59,10 @@ try {
       .map((candidate) => candidate.dialog ?? candidate)
       .find((candidate) => candidate.kind === "custom");
     const card = (() => { const walk = (root) => { for (const node of root.querySelectorAll("*")) { if (node.localName === "extension-dialog-card") return node; if (node.shadowRoot !== null) { const hit = walk(node.shadowRoot); if (hit !== undefined) return hit; } } return undefined; }; return walk(document); })();
-    const rendered =
-    card?.shadowRoot?.querySelector(".dialog-screen-menu")?.textContent ??
-    card?.shadowRoot?.querySelector(".dialog-screen")?.textContent ??
-    undefined;
+    const options = card?.shadowRoot?.querySelector(".dialog-options");
+    const rendered = options === null || options === undefined
+      ? card?.shadowRoot?.querySelector(".dialog-screen")?.textContent ?? undefined
+      : `${card?.shadowRoot?.querySelector("h2")?.textContent ?? ""} | ${options.textContent ?? ""}`;
     return dialog === undefined ? undefined : { dialogId: dialog.dialogId, lines: dialog.lines ?? [], rendered };
   });
 
@@ -91,32 +103,29 @@ try {
     // Touch path, in the order a phone would use it: the key row first (a screen
     // whose choice is not a cursor needs it), then a tap on a line, which must
     // walk the component's cursor there and select it.
-    const keyRow = await page.evaluate(() => {
+    const card = await page.evaluate(() => {
       const find = (root) => { for (const n of root.querySelectorAll("*")) { if (n.localName === "extension-dialog-card") return n; if (n.shadowRoot !== null) { const hit = find(n.shadowRoot); if (hit !== undefined) return hit; } } return undefined; };
-      const card = find(document);
-      return [...(card?.shadowRoot?.querySelectorAll(".screen-key") ?? [])].map((node) => node.getAttribute("aria-label"));
+      const root = find(document)?.shadowRoot;
+      return {
+        heading: root?.querySelector("h2")?.textContent?.trim() ?? null,
+        options: [...(root?.querySelectorAll(".dialog-options .option-button") ?? [])].map((node) => node.textContent.trim()),
+        current: root?.querySelector(".option-button.current")?.textContent?.trim() ?? null,
+        keyRow: root?.querySelectorAll(".dialog-screen-keys").length ?? -1,
+        footer: [...(root?.querySelectorAll(".dialog-footer button") ?? [])].map((node) => node.textContent.trim()),
+      };
     });
-    console.log("key row:", JSON.stringify(keyRow));
-    if (!["Up", "Down", "Enter", "Escape"].every((label) => keyRow.includes(label))) fail(`the key row is incomplete: ${JSON.stringify(keyRow)}`);
-
-    const readCursor = async () => (await screen())?.lines?.find((line) => line.includes("\u25b8")) ?? "";
-    if (keyRow.includes("Down")) {
-      const cursorBefore = await readCursor();
-      await page.evaluate(() => {
-        const find = (root) => { for (const n of root.querySelectorAll("*")) { if (n.localName === "extension-dialog-card") return n; if (n.shadowRoot !== null) { const hit = find(n.shadowRoot); if (hit !== undefined) return hit; } } return undefined; };
-        [...(find(document)?.shadowRoot?.querySelectorAll(".screen-key") ?? [])].find((node) => node.getAttribute("aria-label") === "Down")?.click();
-      });
-      await new Promise((resolve) => setTimeout(resolve, 900));
-      const moved = await readCursor();
-      console.log("after the Down button:", JSON.stringify(moved));
-      if (moved === cursorBefore || moved === "") fail(`the key row's Down button did not move the component's cursor (${JSON.stringify(cursorBefore)} -> ${JSON.stringify(moved)})`);
-    }
+    console.log("card:", JSON.stringify(card));
+    if (card.heading === null || !card.heading.includes("ui-custom probe")) fail(`the card is not headed by the screen's own first line: ${JSON.stringify(card.heading)}`);
+    if (JSON.stringify(card.options) !== JSON.stringify(["first", "second", "third"])) fail(`the menu is not the select card's option buttons: ${JSON.stringify(card.options)}`);
+    if (card.current !== "second") fail(`the component's cursor is not marked on its option: ${JSON.stringify(card.current)}`);
+    if (card.keyRow !== 0) fail("a screen that reads as a menu still draws the key row");
+    if (JSON.stringify(card.footer) !== JSON.stringify(["Cancel"])) fail(`the card's close control is not Cancel: ${JSON.stringify(card.footer)}`);
 
     const readLog = () => { try { return readFileSync(logPath, "utf8"); } catch { return ""; } };
     const tapped = await page.evaluate(() => {
       const find = (root) => { for (const n of root.querySelectorAll("*")) { if (n.localName === "extension-dialog-card") return n; if (n.shadowRoot !== null) { const hit = find(n.shadowRoot); if (hit !== undefined) return hit; } } return undefined; };
       const rows = [
-        ...(find(document)?.shadowRoot?.querySelectorAll(".screen-option, .screen-line") ?? []),
+        ...(find(document)?.shadowRoot?.querySelectorAll(".option-button, .screen-line") ?? []),
       ];
       const row = rows.find((node) => (node.textContent ?? "").includes("third"));
       if (row === undefined) return "no row";

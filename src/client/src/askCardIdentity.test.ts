@@ -51,6 +51,12 @@ describe("dialogCardNeedsRender", () => {
     expect(dialogCardNeedsRender(dialog(), dialog({ timeoutAt: "2026-09-18T00:00:00.000Z" }))).toBe(true);
   });
 
+  it("re-renders when a terminal screen redraws or a declared screen changes", () => {
+    const screen = dialog({ kind: "custom", options: [], lines: ["probe", "▸ first", "  second"] });
+    expect(dialogCardNeedsRender(screen, { ...screen, lines: ["probe", "  first", "▸ second"] })).toBe(true);
+    expect(dialogCardNeedsRender(screen, { ...screen, screen: { kind: "questions", questions: [{ id: "q", question: "Pick", options: [{ value: "a", label: "A" }] }] } })).toBe(true);
+  });
+
   it("re-renders when the card appears or goes away", () => {
     expect(dialogCardNeedsRender(undefined, dialog())).toBe(true);
     expect(dialogCardNeedsRender(dialog(), undefined)).toBe(true);

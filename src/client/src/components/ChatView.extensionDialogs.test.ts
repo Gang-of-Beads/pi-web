@@ -11,10 +11,11 @@ afterEach(() => {
 });
 
 describe("ChatView open extension dialogs", () => {
-  it("draws the oldest pending dialog last in the transcript, with nothing after it to push it", async () => {
+  it("draws every open dialog, oldest first, last in the transcript, with nothing after them to push them", async () => {
     const view = await mountView();
     const oldest = openDialog("dlg-1", "Allow file writes?");
-    view.pendingDialogs = [oldest, openDialog("dlg-2", "Pick a region", { kind: "select", options: ["eu", "us"] })];
+    const next = openDialog("dlg-2", "Pick a region", { kind: "select", options: ["eu", "us"] });
+    view.pendingDialogs = [oldest, next];
     await view.updateComplete;
 
     // In the transcript, and last: nothing is appended after a card that is
@@ -23,19 +24,22 @@ describe("ChatView open extension dialogs", () => {
     const chat = view.shadowRoot?.querySelector(".chat");
     const rows = [...(chat?.children ?? [])];
     expect(rows.findIndex((row) => row.classList.contains("waiting-slot"))).toBe(rows.length - 1);
-    const card = requiredElement(view.shadowRoot?.querySelector<ExtensionDialogCard>(".chat .waiting-slot > extension-dialog-card.open-dialog-card"), "open dialog card");
-    expect(card).toBeInstanceOf(ExtensionDialogCard);
-    expect(card.dialog).toBe(oldest);
-    expect(view.shadowRoot?.querySelector(".queued-dialogs")?.textContent).toContain("1 more extension dialog queued");
+    const cards = [...(view.shadowRoot?.querySelectorAll<ExtensionDialogCard>(".chat .waiting-slot > extension-dialog-card.open-dialog-card") ?? [])];
+    expect(cards.every((card) => card instanceof ExtensionDialogCard)).toBe(true);
+    expect(cards.map((card) => card.dialog)).toEqual([oldest, next]);
   });
 
-  it("renders no queued affordance for a single pending dialog", async () => {
+  /**
+   * The owner met a terminal screen with "1 more extension dialog queued" under it, and the
+   * native update card only after Close (2026-10-02): a card waiting unseen behind another.
+   */
+  it("never hides an open dialog behind another, and says nothing is queued", async () => {
     const view = await mountView();
-    view.pendingDialogs = [openDialog("dlg-1", "Allow file writes?")];
+    view.pendingDialogs = [openDialog("dlg-1", "Extension screen", { kind: "custom", lines: ["probe", "▸ first", "  second"] }), openDialog("dlg-2", "Extension updates available", { kind: "select", options: ["Update now", "Skip"] })];
     await view.updateComplete;
 
-    expect(view.shadowRoot?.querySelector(".waiting-slot > extension-dialog-card.open-dialog-card")).not.toBeNull();
-    expect(view.shadowRoot?.querySelector(".queued-dialogs")).toBeNull();
+    const text = view.shadowRoot?.querySelector(".waiting-slot")?.textContent ?? "";
+    expect({ cards: view.shadowRoot?.querySelectorAll(".waiting-slot > extension-dialog-card.open-dialog-card").length, saysQueued: text.includes("queued") }).toEqual({ cards: 2, saysQueued: false });
   });
 
   it("opens a dialog without scrolling the transcript underneath the reader", async () => {

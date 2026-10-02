@@ -164,6 +164,11 @@ stateDiagram-v2
   - A card renders once, natively. A declared screen is the Questions card; an undeclared terminal screen is a parsed native option card; the raw frame is the last resort. One question never passes through two cards.
   - A card has exactly one capped inner region, within the waiting slot's 60vh budget. It chains the wheel and touch to the transcript at its end and when it does not overflow; `overscroll-behavior: contain` is for overlays only. The action row never scrolls away.
   - The card re-renders whenever any rendered field changes, including `lines` and `screen`.
+  - **Slice a (2026-10-02, owner screenshots).** The reader met an "Extension screen" with "1 more extension dialog queued" under it, and found the native card (an update prompt) only after Close. Done here:
+    - Every open dialog renders, FIFO, each answerable on its own (the daemon keys answers, keys and cancels by `dialogId`). The "N more queued" line is gone.
+    - An undeclared screen that parses as a menu wears the select card: its own first line as the heading, the options as the select card's option buttons with the component's cursor marked, and Cancel. A tap walks the component's cursor and selects. No hint line, no key row, no monospace frame.
+    - A screen that does not parse keeps its lines and the key row: the last resort. Its close control reads Cancel, as on every other card.
+    - The 8505 test fixture (`ui-custom-probe`) opened its screen in every 8505 session, 351 times in the current log, so every page the owner checked carried it. It opens now only when a probe asks for it (`/ui-custom-probe`).
 - **Placement.** Open cards are the tail of the transcript (D1 order). In D4 `following` they stay in view. In `reading`, an open card below the fold lights the back-to-bottom key with "Waiting for you", whatever the distance. The reader is still never moved.
 - **An answer is a message.** Answering a card creates a D1 message:
   - it is `queued` from the moment it is submitted, and its answers record shows in the transcript;

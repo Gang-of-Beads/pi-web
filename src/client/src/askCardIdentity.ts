@@ -33,12 +33,15 @@ export function askCardNeedsRender(previous: AskLike | undefined, next: AskLike 
   return askCardFingerprint(previous) !== askCardFingerprint(next);
 }
 
-type DialogLike = Pick<PendingExtensionDialog, "dialogId" | "kind" | "title" | "message" | "placeholder" | "options" | "timeoutAt">;
+type DialogLike = Pick<PendingExtensionDialog, "dialogId" | "kind" | "title" | "message" | "placeholder" | "options" | "timeoutAt" | "lines" | "screen">;
 
 /**
  * The same reasoning for the extension dialog card, which sits in the same
  * waiting slot and arrives on the same status frames. Fixing only the ask card
- * would have left its sibling shaking.
+ * would have left its sibling shaking. A terminal screen's redrawn lines and a
+ * declared screen are rendered fields too: left out, the card kept marking the
+ * option the cursor had left, and a tap walked from where it used to be
+ * (state-diagram D2; found probing the extension screen, 2026-10-02).
  */
 export function dialogCardFingerprint(dialog: DialogLike | undefined): string {
   if (dialog === undefined) return "";
@@ -50,6 +53,8 @@ export function dialogCardFingerprint(dialog: DialogLike | undefined): string {
     dialog.placeholder ?? "",
     dialog.timeoutAt ?? "",
     (dialog.options ?? []).join("\u0001"),
+    (dialog.lines ?? []).join("\u0001"),
+    dialog.screen === undefined ? "" : JSON.stringify(dialog.screen),
   ].join("\n");
 }
 

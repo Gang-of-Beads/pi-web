@@ -550,3 +550,63 @@ describe("a screen the extension declared as questions", () => {
     expect(extensionDialogCloseSummary({ ...closedDialog("answered", { answers: [] }), dialog: declared })).toBe("Sent without answering.");
   });
 });
+
+/**
+ * An extension's terminal screen (state-diagram D2, slice a). The owner met it as a dump headed
+ * "Extension screen" with a key row and a mono frame (2026-10-02). One that reads as a menu wears
+ * the select card; one that does not keeps its lines and the key row, the last resort.
+ */
+describe("an extension's terminal screen", () => {
+  const menu = openDialog({
+    dialogId: "dlg-menu",
+    kind: "custom",
+    title: "Extension screen",
+    message: "ui-custom-probe · tap a line or press a key",
+    lines: ["ui-custom probe · tap a line or press a key", "▸ first", "  second", "  third", "enter to select · esc to close"],
+  });
+
+  it("that reads as a menu is the select card: its own heading, option buttons, the cursor marked, Cancel", async () => {
+    const card = await mountOpenDialog(menu);
+    const root = renderRoot(card);
+
+    expect({
+      heading: root.querySelector("h2")?.textContent.trim(),
+      options: [...root.querySelectorAll(".dialog-options .option-button")].map((option) => option.textContent.trim()),
+      current: root.querySelector(".option-button.current")?.textContent.trim(),
+      footer: [...root.querySelectorAll(".dialog-footer button")].map((button) => button.textContent.trim()),
+      terminal: root.querySelectorAll(".dialog-screen, .dialog-screen-keys, .dialog-screen-hint, pre").length,
+    }).toEqual({ heading: "ui-custom probe · tap a line or press a key", options: ["first", "second", "third"], current: "first", footer: ["Cancel"], terminal: 0 });
+  });
+
+  it("walks the component's cursor to a tapped option and selects it", async () => {
+    const keys: string[] = [];
+    const card = await mountOpenDialog(menu);
+    card.onKey = (_dialogId, key) => { keys.push(key); return Promise.resolve(); };
+    buttonWithText(renderRoot(card), "third").click();
+    await flushClose(card);
+
+    expect(keys).toEqual(["down", "down", "enter"]);
+  });
+
+  it("that does not read as a menu keeps its lines and the key row, and closes with Cancel", async () => {
+    const card = await mountOpenDialog(openDialog({ dialogId: "dlg-text", kind: "custom", title: "Extension screen", lines: ["Building index", "42% done"] }));
+    const root = renderRoot(card);
+
+    expect({
+      lines: [...root.querySelectorAll(".dialog-screen .screen-line")].map((line) => line.textContent.trim()),
+      keys: root.querySelectorAll(".dialog-screen-keys .screen-key").length > 0,
+      footer: [...root.querySelectorAll(".dialog-footer button")].map((button) => button.textContent.trim()),
+    }).toEqual({ lines: ["Building index", "42% done"], keys: true, footer: ["Cancel"] });
+  });
+
+  it("forwards a key from the key row to the component", async () => {
+    const keys: string[] = [];
+    const card = await mountOpenDialog(openDialog({ dialogId: "dlg-keys", kind: "custom", title: "Extension screen", lines: ["Building index", "42% done"] }));
+    card.onKey = (_dialogId, key) => { keys.push(key); return Promise.resolve(); };
+    const down = [...renderRoot(card).querySelectorAll<HTMLButtonElement>(".dialog-screen-keys .screen-key")].find((key) => key.getAttribute("aria-label") === "Down");
+    down?.click();
+    await flushClose(card);
+
+    expect(keys).toEqual(["down"]);
+  });
+});

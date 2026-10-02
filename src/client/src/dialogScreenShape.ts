@@ -62,11 +62,18 @@ function optionBlock(lines: readonly string[], cursor: number): number[] {
   // the cursor look more indented than its siblings and break the block apart.
   const indent = (line: string): number => stripFrame(line).length - stripFrame(line).trimStart().length;
   const baseline = indent(lines[cursor] ?? "");
+  // An unmarked option starts where the cursor's label does ("▸ first" over
+  // "  second"); a heading drawn flush above the options starts left of it and
+  // was read as one more option (the owner's screenshot, 2026-10-02). One column
+  // of slack keeps a cursor drawn one space deeper than its siblings.
+  const column = (line: string): number => unframed(line).length - unframed(line).trimStart().length;
+  const labelColumn = optionLabelColumn(unframed(lines[cursor] ?? ""));
+  const outdentedProse = (line: string): boolean => column(line) < labelColumn - 1 && !OPTION_MARKER.test(stripFrame(line));
   const block: number[] = [cursor];
   const walk = (direction: 1 | -1): void => {
     for (let index = cursor + direction; index >= 0 && index < lines.length; index += direction) {
       const line = lines[index] ?? "";
-      if (!isSibling(line)) break;
+      if (!isSibling(line) || outdentedProse(line)) break;
       // Indentation is a hint, not a rule: a TUI may mark the cursor with an extra
       // space and its siblings with a hanging indent, so the block is bounded by
       // blank lines, rules and the hint row instead.
@@ -78,6 +85,18 @@ function optionBlock(lines: readonly string[], cursor: number): number[] {
   walk(1);
   walk(-1);
   return block.sort((left, right) => left - right);
+}
+
+const OPTION_MARKER = /^\s*[›>▸▪•*○●◦]\s/u;
+
+/** A line with its frame edge removed and its own indentation kept. */
+function unframed(line: string): string {
+  return line.replace(/^\s*[│┃|]/u, "");
+}
+
+/** Where the cursor line's label starts, after its marker. */
+function optionLabelColumn(content: string): number {
+  return /^\s*[›>▸▪•*]\s+/u.exec(content)?.[0].length ?? 0;
 }
 
 /** Read the screen: a menu when it has options, text otherwise. */

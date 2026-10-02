@@ -311,7 +311,6 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   }
   .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
   @media (hover: hover) { .queued-clear-button:hover { border-color: var(--pi-warning); color: var(--pi-text-bright); } }
-  .queued-dialogs { margin: calc(-1 * var(--pi-space-4)) 0 var(--pi-space-7); padding: 0 var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
   /* Delivery mark: bottom-right of the sender's own bubble, quiet enough to
      ignore while reading and specific enough to answer "did that send?". */
   .delivery-mark { display: flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-3); margin: var(--pi-space-3) calc(-1 * var(--pi-space-1)) calc(-1 * var(--pi-space-2)) 0; color: var(--pi-dim); font: var(--pi-text-2xs) var(--pi-font-ui); line-height: inherit; }
@@ -715,7 +714,7 @@ export class ChatView extends LitElement {
    * standing finger does not remove the ground being pressed. Cleared when the
    * press settles or the session changes: it belongs to this session only.
    */
-  private heldWaiting: { ask: PendingAskUser | undefined; dialog: PendingExtensionDialog | undefined; queuedCount: number } | undefined;
+  private heldWaiting: { ask: PendingAskUser | undefined; dialogs: readonly PendingExtensionDialog[] } | undefined;
   private heldWaitingClearTimer: ReturnType<typeof setTimeout> | undefined;
   /** Which open card's alignment a press deferred, so the release can replay it. */
   private conversationRailFrame: number | undefined;
@@ -1562,14 +1561,14 @@ if (this.heldWaitingClearTimer !== undefined) {
    * the height, so nothing is covered and no tap is intercepted.
    */
   private renderWaitingForYou() {
-    const dialog = this.pendingDialogs[0];
-    if (this.pendingAsk !== undefined || this.pendingAsks.length > 0 || dialog !== undefined) {
-      this.heldWaiting = { ask: this.pendingAsk, dialog, queuedCount: this.pendingDialogs.length - 1 };
-      return this.renderWaitingSlot(this.pendingAsk, dialog, this.pendingDialogs.length - 1);
+    const dialogs = this.pendingDialogs;
+    if (this.pendingAsk !== undefined || this.pendingAsks.length > 0 || dialogs.length > 0) {
+      this.heldWaiting = { ask: this.pendingAsk, dialogs };
+      return this.renderWaitingSlot(this.pendingAsk, dialogs);
     }
     const held = this.heldWaiting;
     if (held !== undefined && this.followGate.holdsOrSettling(Date.now())) {
-      return this.renderWaitingSlot(held.ask, held.dialog, held.queuedCount);
+      return this.renderWaitingSlot(held.ask, held.dialogs);
     }
     this.heldWaiting = undefined;
     return null;
@@ -1594,7 +1593,14 @@ if (this.heldWaitingClearTimer !== undefined) {
     return notes.join(" · ");
   }
 
-  private renderWaitingSlot(ask: PendingAskUser | undefined, dialog: PendingExtensionDialog | undefined, queuedCount: number) {
+  /**
+   * Every open card, oldest first (state-diagram D2). Only the oldest dialog
+   * used to draw, with "N more extension dialogs queued" under it, so a native
+   * card waited unseen behind a terminal screen until the reader closed that
+   * screen (owner screenshots, 2026-10-02). Each card answers, keys and
+   * cancels its own dialog by id.
+   */
+  private renderWaitingSlot(ask: PendingAskUser | undefined, dialogs: readonly PendingExtensionDialog[]) {
     const forms = this.pendingAsks.length > 0 ? this.pendingAsks : (ask === undefined ? [] : [ask]);
     return html`
       <div class="waiting-slot" role="region" aria-label="Waiting for your answer">
@@ -1605,7 +1611,7 @@ if (this.heldWaitingClearTimer !== undefined) {
             .onSubmit=${this.onSubmitAsk}
           ></ask-user-card>
         `)}
-        ${dialog === undefined ? null : html`
+        ${repeat(dialogs, (dialog) => dialog.dialogId, (dialog) => html`
           <extension-dialog-card
             class="open-dialog-card"
             .dialog=${dialog}
@@ -1614,10 +1620,7 @@ if (this.heldWaitingClearTimer !== undefined) {
             .onKey=${this.onDialogKey}
             .draftSessionId=${this.askDraftSessionId}
           ></extension-dialog-card>
-          ${queuedCount > 0
-            ? html`<p class="queued-dialogs" role="status">${String(queuedCount)} more extension ${queuedCount === 1 ? "dialog" : "dialogs"} queued</p>`
-            : null}
-        `}
+        `)}
       </div>
     `;
   }
