@@ -55,7 +55,7 @@ import { computeEditPreview, type EditPreviewResult } from "./editPreview.js";
 import { attachmentsToInlineImages, saveAttachmentsToWorkspace } from "./attachmentService.js";
 import { parsePromptAttachments } from "../../../shared/promptAttachments.js";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_LIMIT } from "../../../shared/apiTypes.js";
-import { AGENT_NOTICE_DELIVERY, clearLanesKeepingNotices, commitQueuedNotices, queuedNotices } from "./agentNotices.js";
+import { AGENT_NOTICE_DELIVERY, AgentNotices } from "./agentNotices.js";
 import type {
   AskUserCloseResponse,
   AskUserOutcome,
@@ -1364,6 +1364,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly commandHandlers = new CommandHandlerScope();
   /** The answers records this daemon handed to pi, found again by identity while they wait in its queues. */
   private readonly sentAnswers = new WeakMap<object, AskUserOutcome>();
+  private readonly notices = new AgentNotices(new Set([ASK_USER_ANSWERS_CUSTOM_TYPE, SUBSESSION_NOTIFICATION_CUSTOM_TYPE]));
   /** Accepted prompt identities, so a lost response answers instead of re-running. */
   /**
    * Durable when the daemon has a data directory, in-memory otherwise (tests
@@ -1727,6 +1728,7 @@ export class PiSessionService implements SessionRouteService {
       this.workspaceActivity?.removeSession(active.runtime.session.sessionId, active.runtime.session.sessionManager.getCwd());
       try {
         await this.abortStampingCommits(active.runtime.session);
+        await this.notices.commit(active.runtime.session);
       } finally {
         await active.runtime.dispose();
       }
@@ -3709,7 +3711,7 @@ export class PiSessionService implements SessionRouteService {
     const { loopHeld, waiting } = partitionLanes(session, records);
     this.settleLoopHeld(sessionId, loopHeld);
     if (waiting.length === 0) return;
-    clearLanesKeepingNotices(session);
+    this.notices.clearLanesKeepingNotices(session);
     const entries = waiting.map((held): OwnedQueueEntry => {
       const original = records.find((record) => record.clientMessageId === held.clientMessageId)?.entry;
       if (original !== undefined) return original;
@@ -3772,7 +3774,7 @@ export class PiSessionService implements SessionRouteService {
 
   /** The answers records still waiting in pi's queues (B26): what the transcript shows as queued answers. */
   private queuedAnswers(session: PiAgentSession): AskUserOutcome[] {
-    return queuedNotices(session).flatMap((notice) => {
+    return this.notices.queued(session).flatMap((notice) => {
       if (notice.customType !== ASK_USER_ANSWERS_CUSTOM_TYPE || typeof notice.details !== "object" || notice.details === null) return [];
       const outcome = this.sentAnswers.get(notice.details);
       return outcome === undefined ? [] : [outcome];
@@ -4470,7 +4472,7 @@ export class PiSessionService implements SessionRouteService {
    * settling then would mark messages still waiting as read.
    */
   private async replayLanesWithout(session: PiAgentSession, target: { kind?: QueuedPromptKind; text: string }): Promise<boolean> {
-    const { steering, followUp } = clearLanesKeepingNotices(session);
+    const { steering, followUp } = this.notices.clearLanesKeepingNotices(session);
     const lanes: { kind: QueuedPromptKind; texts: string[] }[] = [
       { kind: "steer", texts: [...steering] },
       { kind: "followUp", texts: [...followUp] },
@@ -4568,7 +4570,7 @@ export class PiSessionService implements SessionRouteService {
     const { loopHeld, waiting } = partitionLanes(session, records);
     this.settleLoopHeld(sessionId, loopHeld);
     for (const entry of waiting) this.settleHanded(sessionId, entry.clientMessageId);
-    clearSessionQueue(session);
+    this.notices.clearLanesKeepingNotices(session);
     this.queuedPromptClientIds.delete(sessionId);
     this.queuedPromptImages.delete(sessionId);
     return waiting.map((entry) => {
@@ -4635,7 +4637,7 @@ export class PiSessionService implements SessionRouteService {
     try {
       await this.abortSessionOperations(active.runtime.session);
       await this.stopHandoffInFlight(active.runtime.session);
-      await commitQueuedNotices(active.runtime.session);
+      await this.notices.commit(active.runtime.session);
       this.publishActivity(active.runtime.session, "stopped", "idle");
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -4891,13 +4893,13 @@ export class PiSessionService implements SessionRouteService {
     // emit a "stopped working" event that notifies the parent (e.g. on archive).
     // The parent/children link is kept so the parent can still see the child.
     if (this.subsessionLinkForActiveChild(active.runtime.session) !== undefined) this.subsessionNotifyArmed.delete(sessionId);
-    clearSessionQueue(active.runtime.session);
+    this.notices.clearLanesKeepingNotices(active.runtime.session);
     active.unsubscribe();
     active.runtime.setRebindSession(undefined);
     try {
       this.events.publish(sessionId, { type: "session.stopped", cause: "closed" });
       await this.abortStampingCommits(active.runtime.session);
-      await commitQueuedNotices(active.runtime.session);
+      await this.notices.commit(active.runtime.session);
     } finally {
       await active.runtime.dispose();
     }
@@ -6596,10 +6598,6 @@ async function clearParentSession(sessionFile: string): Promise<void> {
 function clearParentSessionHeader(sessionManager: PiSessionManager): void {
   const header = sessionManager.getHeader?.();
   if (header !== undefined && header !== null) delete header.parentSession;
-}
-
-function clearSessionQueue(session: PiAgentSession): void {
-  clearLanesKeepingNotices(session);
 }
 
 /**

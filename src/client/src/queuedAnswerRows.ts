@@ -10,7 +10,9 @@ import type { ChatLine } from "./components/shared";
  * now its answers record marked Queued, placed by the time it was given:
  * before the first pending message known to be sent later, otherwise last.
  * An answer the transcript already holds is drawn there instead, so the
- * commit replaces the queued row rather than following it.
+ * commit replaces the queued row rather than following it. A row from the
+ * server queue (another device) carries no time, so an answer goes after it;
+ * exact order would need the queue position on the status (review of 4a1bdfd7).
  */
 export function withQueuedAnswers(pending: readonly ChatLine[], answers: readonly AskUserOutcome[] | undefined, transcript: readonly ChatLine[]): ChatLine[] {
   const rows = [...pending];

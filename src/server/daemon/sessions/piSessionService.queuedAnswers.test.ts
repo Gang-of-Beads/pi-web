@@ -88,6 +88,30 @@ describe("an answer the agent has not read yet (B26)", () => {
     await service.dispose();
   });
 
+  it("does not take a reader's message steered while the Stop settles (review of 4a1bdfd7)", async () => {
+    const { service, fake, queues } = await runningSessionWithAnAnswer();
+    const steered = { role: "user", content: [{ type: "text", text: "and rename the table" }], timestamp: 2 };
+    fake.session.abort = () => {
+      fake.calls.abort += 1;
+      queues.steeringQueue.messages.push(steered);
+      return Promise.resolve();
+    };
+
+    await service.abort(sessionRef(SESSION_ID));
+
+    expect(queues.steeringQueue.messages).toContain(steered);
+    await service.dispose();
+  });
+
+  it("is written into the transcript when the daemon shuts down", async () => {
+    const { service, fake } = await runningSessionWithAnAnswer();
+
+    await service.dispose();
+
+    const written = fake.calls.sendCustomMessage.at(-1);
+    expect({ type: written?.message.customType, options: written?.options }).toEqual({ type: ASK_USER_ANSWERS_CUSTOM_TYPE, options: { triggerTurn: false } });
+  });
+
   it("is written into the transcript before the runtime closes", async () => {
     const { service, fake } = await runningSessionWithAnAnswer();
 

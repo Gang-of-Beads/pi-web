@@ -19,7 +19,7 @@ const BASE = process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
 const CWD = process.env.PROBE_CWD ?? "/Users/hanxiao.du/.pi-web-8505/pi-web-8505-seed-workspace";
 const PROJECT = "991606fd-e498-4b93-a1ce-2af09efdb0e7";
 const WORKSPACE = "ef2cdf93e1ac";
-const SLEEP_SECONDS = 15;
+const SLEEP_SECONDS = 25;
 const ANSWERS_TEXT = "The user submitted answers to your questions.";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const results = [];

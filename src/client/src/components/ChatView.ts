@@ -1518,12 +1518,8 @@ if (this.heldWaitingClearTimer !== undefined) {
    * looks the same, so a bubble does not change appearance across a reload.
    */
   private renderDeliveryMark(message: ChatLine) {
-    if (isQueuedAnswer(message)) return this.renderQueuedAnswerMark();
-    const delivery = message.meta?.delivery;
-    if (!chatDeliveryMarkerVisible(delivery) || delivery === undefined) return null;
-    const queued = this.status?.queuedMessages ?? [];
-    const index = queued.findIndex((entry) => entry.clientMessageId === delivery.clientMessageId);
-    const presentation = chatDeliveryPresentation(delivery, index === -1 ? undefined : index + 1);
+    const presentation = this.deliveryMarkPresentation(message);
+    if (presentation === undefined) return null;
     return html`
       <div class=${`delivery-mark ${presentation.tone}`} role="status" aria-label=${presentation.label}>
         <span class="delivery-glyph" aria-hidden="true">${renderDeliveryGlyph(presentation.glyph)}</span>
@@ -1532,15 +1528,14 @@ if (this.heldWaitingClearTimer !== undefined) {
     `;
   }
 
-  /** The mark a queued message wears, on an answer the agent has not read yet (B26). */
-  private renderQueuedAnswerMark() {
-    const words = deliveryWords("queued");
-    return html`
-      <div class=${`delivery-mark ${words.tone}`} role="status" aria-label=${words.label}>
-        <span class="delivery-glyph" aria-hidden="true">${renderDeliveryGlyph(words.glyph)}</span>
-        <span class="delivery-text">${words.text}</span>
-      </div>
-    `;
+  /** The mark for a message this browser sent, or for an answer the agent has not read yet, which wears the queued words (B26). */
+  private deliveryMarkPresentation(message: ChatLine): DeliveryPresentation | undefined {
+    if (isQueuedAnswer(message)) return deliveryWords("queued");
+    const delivery = message.meta?.delivery;
+    if (!chatDeliveryMarkerVisible(delivery) || delivery === undefined) return undefined;
+    const queued = this.status?.queuedMessages ?? [];
+    const index = queued.findIndex((entry) => entry.clientMessageId === delivery.clientMessageId);
+    return chatDeliveryPresentation(delivery, index === -1 ? undefined : index + 1);
   }
 
   private renderPendingMessages() {
