@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { autoFocusesComposer } from "./appShellController";
+import { describe, expect, it, vi } from "vitest";
+import type { ReactiveControllerHost } from "lit";
+import { AppShellController, autoFocusesComposer } from "./appShellController";
 import { defaultRouteView } from "./appShellController";
 
 describe("defaultRouteView", () => {
@@ -52,3 +53,53 @@ describe("raising the keyboard where a finger is the pointer", () => {
   });
 });
 
+
+describe("the desktop side-by-side layout", () => {
+  /**
+   * Only this layout can show a workspace page on the whole canvas, and a page
+   * draws its own enter control from it (no-row review, 2026-10-02). A window
+   * dragged across the line has to redraw, or the control outlives the layout.
+   */
+  it("follows the window across the line and redraws when it crosses", () => {
+    const media = new FakeMedia(true);
+    const requestUpdate = vi.fn();
+    const host = fakeHost(requestUpdate);
+    const shell = new AppShellController(host, { desktopSideBySideMedia: media, mobileNavigationMedia: new FakeMedia(false), pwaDisplayModeMedia: [] });
+    shell.hostConnected();
+    const atStart = shell.isDesktopSideBySideLayout;
+
+    media.change(false);
+    const narrowed = shell.isDesktopSideBySideLayout;
+    media.change(false);
+    const redraws = requestUpdate.mock.calls.length;
+    shell.hostDisconnected();
+    media.change(true);
+
+    expect({ atStart, narrowed, redraws, afterDisconnect: shell.isDesktopSideBySideLayout }).toEqual({ atStart: true, narrowed: false, redraws: 1, afterDisconnect: false });
+  });
+});
+
+class FakeMedia extends EventTarget implements MediaQueryList {
+  readonly media = "(min-width: 1181px)";
+  onchange = null;
+  constructor(public matches: boolean) {
+    super();
+  }
+
+  change(matches: boolean): void {
+    this.matches = matches;
+    this.dispatchEvent(Object.assign(new Event("change"), { matches }));
+  }
+
+  addListener(): void {
+    return undefined;
+  }
+
+  removeListener(): void {
+    return undefined;
+  }
+}
+
+function fakeHost(requestUpdate: () => void): ReactiveControllerHost {
+  return { addController: vi.fn(), removeController: vi.fn(), requestUpdate, updateComplete: Promise.resolve(true) };
+}

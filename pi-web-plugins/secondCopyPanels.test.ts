@@ -79,6 +79,15 @@ function clickToolbar(copy: Copy, context: WorkspacePanelContext, label: string)
   button.click();
 }
 
+/** What the end of a copy's toolbar says, as the host draws it at the top of the page. */
+function toolbarStatus(copy: Copy, context: WorkspacePanelContext): string | undefined {
+  const toolbar = copy.panel.toolbar;
+  if (toolbar === undefined) throw new Error("no toolbar");
+  const bar = document.createElement("div");
+  render(toolbar(context), bar);
+  return bar.querySelector(".files-toolbar-status")?.textContent.trim();
+}
+
 const settle = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 
 function countCalls(element: HTMLElement, method: string): () => number {
@@ -99,7 +108,7 @@ afterEach(() => {
 });
 
 describe("a second copy's controls reach the panel its own registration rendered (B53)", () => {
-  it("files: Refresh and Upload reach the panel, and the stale mark clears when it refreshes", async () => {
+  it("files: Refresh and Upload reach the panel, and its out of date mark clears when it refreshes", async () => {
     const copy = await secondCopy("./files/pi-web-plugin.ts", "files");
     const context = panelContext("remote-b");
     const panel = mount(copy.panel.render(context));
@@ -108,12 +117,12 @@ describe("a second copy's controls reach the panel its own registration rendered
     const uploads = countCalls(panel, "openFilePicker");
 
     copy.emit({ kind: "session-activity-settled", sessionId: "s1", machineId: "remote-b" });
-    const staleAfterTurn = copy.panel.summary?.(context);
+    const staleAfterTurn = toolbarStatus(copy, context);
     clickToolbar(copy, context, "Upload");
     await copy.panel.onInvalidate?.(context);
 
-    expect({ staleAfterTurn, refreshed: refreshed(), uploads: uploads(), staleAfterRefresh: copy.panel.summary?.(context) })
-      .toEqual({ staleAfterTurn: "stale", refreshed: 1, uploads: 1, staleAfterRefresh: undefined });
+    expect({ staleAfterTurn, refreshed: refreshed(), uploads: uploads(), staleAfterRefresh: toolbarStatus(copy, context) })
+      .toEqual({ staleAfterTurn: "out of date", refreshed: 1, uploads: 1, staleAfterRefresh: undefined });
   });
 
   it("relays: Refresh reaches the panel", async () => {

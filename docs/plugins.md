@@ -6,7 +6,7 @@ Plugins can currently:
 
 - add action-palette commands;
 - add workspace tools/panels next to Files and Terminal;
-- add compact workspace-label items in the workspace list, panel header, and status bar;
+- add compact workspace-label items in the workspace list;
 - call browser APIs and documented PI WEB plugin context helpers;
 - read workspace files and start workspace terminal commands through documented helpers;
 - serve browser-public files from an explicitly declared `browserRoot`;
@@ -836,6 +836,8 @@ interface WorkspacePanelContribution {
   visible?: (context: WorkspacePanelContext) => boolean;
   badge?: (context: WorkspacePanelContext) => string | number | TemplateResult | undefined;
   onInvalidate?: (context: WorkspacePanelContext) => void | Promise<void>;
+  toolbar?: (context: WorkspacePanelContext) => TemplateResult;
+  fullscreen?: boolean;
   render: (context: WorkspacePanelContext) => TemplateResult;
 }
 
@@ -865,6 +867,9 @@ interface WorkspacePanelContext {
   };
   host: {
     requestRender(): void;
+    workspacePanelFullscreen(): boolean;
+    setWorkspacePanelFullscreen(fullscreen: boolean): void;
+    workspacePanelFullscreenAvailable?(): boolean;
   };
 }
 ```
@@ -901,9 +906,22 @@ interface Workspace {
 
 Use existing classes such as `toolbar`, `viewer`, `empty`, and `muted` for panel content when possible. Do not assume a panel owns the whole page; keep layout contained.
 
+#### Toolbar and status
+
+PI WEB draws no title row above a panel: the app bar already names the page. `toolbar` renders the panel's controls at the top of its page, always visible, and `render` renders everything below. A panel says its own status (a branch, an "out of date" mark) inside its toolbar or content, for example as short muted text at the end of the toolbar beside the control that changes it. `summary` is still accepted so older plugins type-check, but PI WEB no longer draws it.
+
+#### Taking the whole canvas
+
+A panel that declares `fullscreen: true` may take the whole app canvas on a desktop-wide window, hiding the navigation and chat columns. PI WEB draws no control for it, so the panel draws both of its own:
+
+- an enter control, shown only while `host.workspacePanelFullscreenAvailable?.()` is true, that calls `host.setWorkspacePanelFullscreen(true)`;
+- an exit control, shown whenever `host.workspacePanelFullscreen()` is true, that calls `host.setWorkspacePanelFullscreen(false)`.
+
+PI WEB ignores the request from a panel that did not declare `fullscreen`, never restores such a panel onto the whole canvas from a link, and gives the canvas back itself when the reader opens another panel, Chat or Sessions. `workspacePanelFullscreenAvailable` is optional because older hosts lack it; when it is absent, offer no enter control. The bundled Git panel is the reference: its Expand key opens a review layout of every changed file, and reads "Exit expanded" there.
+
 ### Workspace labels
 
-Workspace labels add compact inline metadata wherever PI WEB displays a workspace label: workspace list, workspace panel header, and status bar.
+Workspace labels add compact inline metadata beside each workspace in the workspace list.
 
 Use them for short facts like project environment, local URL, branch status, container name, or health state.
 

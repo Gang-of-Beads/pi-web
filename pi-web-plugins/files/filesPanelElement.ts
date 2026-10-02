@@ -38,7 +38,7 @@ export class FilesPanelLink {
     if (this.panel === panel) this.panel = undefined;
   }
 
-  /** Whether the shown tree has aged past a settled session activity; the host header reads this for its summary. */
+  /** Whether the shown tree has aged past a settled session activity; the toolbar says "out of date" while it has. */
   showsStale(): boolean {
     return this.stale;
   }
@@ -112,8 +112,8 @@ export class PiFilesPanel extends LitElement {
     this.context?.host.requestRender();
   }
 
-  /** The fold's stale summary and this panel share one flag; the host owns
-   *  the render, so the flag's flips ask it to redraw the header. */
+  /** The toolbar's "out of date" and this panel share one flag; the host owns
+   *  the render, so the flag's flips ask it to redraw the toolbar. */
   requestContextRender(): void {
     this.context?.host.requestRender();
   }

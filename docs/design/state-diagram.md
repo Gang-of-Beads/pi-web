@@ -515,6 +515,30 @@ stateDiagram-v2
   - **Appendages to fixed core states:** status-line notes and counts, row actions, docked cards (D2) and a settings page.
   - Nothing else: no bars, strips or drawers over or under the transcript (rule 7). The `drawerSections` contribution point is removed.
 - **Global prompts** such as an update offer are machine-scoped. The Updates plugin stores "asked for version v" per machine in its own storage and asks once per machine and version, never once per session.
+- **A page's own status belongs to the page.** The host draws no title row and no summary under the app bar (owner, 2026-10-01), so `summary` is no longer drawn. Each page says its own status inside itself (owner, 2026-10-02: "这是插件自己的设计"):
+  - Git writes its branch and its ahead and behind counts (`main ↑2 ↓1`) at the end of its own toolbar, as VS Code's status bar and lazygit's status panel do.
+  - Git and Files write "out of date" in the same place while their listing predates a change they were told about, beside the Refresh that clears it.
+
+### A page that takes the whole canvas (no-row review, 2026-10-02)
+
+```mermaid
+stateDiagram-v2
+    [*] --> column
+    column --> canvas: the page asks to expand, and it declared fullscreen
+    column --> column: a page that did not declare fullscreen asks (ignored)
+    column --> canvas: a link or a restored place says expanded, for a page that declared it
+    canvas --> column: the page asks to leave (its own exit control)
+    canvas --> column: the reader opens another page, Chat or Sessions
+    canvas --> column: Back to a place that was not expanded
+```
+
+- **Owner.** The host keeps the request. Whether the page *holds* the canvas is derived on every read from the request and the page actually shown (`workspacePanelHoldsCanvas`). A page that did not declare `fullscreen` never holds it, so neither a stale link nor a page that vanished (its plugin hidden, the workspace no longer a git checkout) can leave the reader under a hidden app bar with no way out.
+- **The host draws no control and favours no plugin** (owner, 2026-10-02: "pi web只做通用性，不对任何特别的插件做特别支持"). A page declares `fullscreen: true` and draws its own controls: enter only while `host.workspacePanelFullscreenAvailable()` says the window can show it (the desktop side-by-side width, 1181 px and up), exit whenever `host.workspacePanelFullscreen()` is true.
+- **Git** declares it. Its Expand key opens the review layout, every changed file's diff in one scroll, and reads "Exit expanded" there. No other bundled page declares it.
+- **Producers of the stuck state found in review (`4d54a383`):**
+  1. The removed header key was the only entry and the only exit, for every page.
+  2. A link carrying `core.workspace--expanded=1` restored any page into the canvas.
+  3. Opening another page through the quick switcher kept the flag for the next page.
 
 ## D8. Where the reader is (navigation)
 

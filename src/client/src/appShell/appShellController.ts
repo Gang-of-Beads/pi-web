@@ -3,38 +3,48 @@ import type { AppState } from "../appState";
 import { createPwaDisplayModeMedia, detectPwaDisplayMode } from "../pwaDisplayMode";
 import { ViewportPositionRepairer } from "./viewportPositionRepair";
 
-import { COARSE_OR_MOBILE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
+import { COARSE_OR_MOBILE_MEDIA_QUERY, DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
 export { MOBILE_NAVIGATION_MEDIA_QUERY };
 
 export interface AppShellControllerOptions {
   mobileNavigationMedia?: MediaQueryList | undefined;
+  desktopSideBySideMedia?: MediaQueryList | undefined;
   pwaDisplayModeMedia?: MediaQueryList[] | undefined;
   viewportPositionRepairer?: ViewportPositionRepairer | undefined;
 }
 
 export class AppShellController implements ReactiveController {
   private readonly mobileNavigationMedia: MediaQueryList | undefined;
+  private readonly desktopSideBySideMedia: MediaQueryList | undefined;
   private readonly pwaDisplayModeMedia: MediaQueryList[];
   private readonly viewportPositionRepairer: ViewportPositionRepairer;
   isMobileNavigationLayout: boolean;
+  /** Chat and a workspace page side by side, the only layout where a page can
+   *  take the whole canvas. A crossing redraws, so a page's enter control
+   *  appears and disappears with it. */
+  isDesktopSideBySideLayout: boolean;
   isPwaDisplayMode: boolean;
 
   constructor(private readonly host: ReactiveControllerHost, options: AppShellControllerOptions = {}) {
     host.addController(this);
     this.mobileNavigationMedia = options.mobileNavigationMedia ?? createMobileNavigationMedia();
+    this.desktopSideBySideMedia = options.desktopSideBySideMedia ?? createDesktopSideBySideMedia();
     this.pwaDisplayModeMedia = options.pwaDisplayModeMedia ?? createPwaDisplayModeMedia();
     this.viewportPositionRepairer = options.viewportPositionRepairer ?? new ViewportPositionRepairer();
     this.isMobileNavigationLayout = this.mobileNavigationMedia?.matches ?? false;
+    this.isDesktopSideBySideLayout = this.desktopSideBySideMedia?.matches ?? true;
     this.isPwaDisplayMode = detectPwaDisplayMode(this.pwaDisplayModeMedia);
   }
 
   hostConnected(): void {
     this.mobileNavigationMedia?.addEventListener("change", this.onMobileNavigationMediaChange);
+    this.desktopSideBySideMedia?.addEventListener("change", this.onDesktopSideBySideMediaChange);
     for (const media of this.pwaDisplayModeMedia) media.addEventListener("change", this.onPwaDisplayModeChange);
   }
 
   hostDisconnected(): void {
     this.mobileNavigationMedia?.removeEventListener("change", this.onMobileNavigationMediaChange);
+    this.desktopSideBySideMedia?.removeEventListener("change", this.onDesktopSideBySideMediaChange);
     for (const media of this.pwaDisplayModeMedia) media.removeEventListener("change", this.onPwaDisplayModeChange);
     this.viewportPositionRepairer.clear();
   }
@@ -69,12 +79,23 @@ export class AppShellController implements ReactiveController {
     this.host.requestUpdate();
   };
 
+  private readonly onDesktopSideBySideMediaChange = (event: MediaQueryListEvent) => {
+    if (this.isDesktopSideBySideLayout === event.matches) return;
+    this.isDesktopSideBySideLayout = event.matches;
+    this.host.requestUpdate();
+  };
+
   private readonly onPwaDisplayModeChange = () => {
     const isPwaDisplayMode = detectPwaDisplayMode(this.pwaDisplayModeMedia);
     if (this.isPwaDisplayMode === isPwaDisplayMode) return;
     this.isPwaDisplayMode = isPwaDisplayMode;
     this.host.requestUpdate();
   };
+}
+
+function createDesktopSideBySideMedia(): MediaQueryList | undefined {
+  if (typeof window === "undefined" || !("matchMedia" in window)) return undefined;
+  return window.matchMedia(DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY);
 }
 
 function createMobileNavigationMedia(): MediaQueryList | undefined {

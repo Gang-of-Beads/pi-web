@@ -201,6 +201,61 @@ describe("bundled Git browser plugin", () => {
     expect(button(container, "Expand all diffs")).toBeDefined();
   });
 
+  it("declares that its page can take the whole canvas", () => {
+    expect(requiredPanel(activate("git")).fullscreen).toBe(true);
+  });
+
+  it("draws its own key into and out of the review layout, only where the window can show it", async () => {
+    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}`);
+    const backend = backendFixture();
+    const panel = requiredPanel(activate("git"));
+    const container = document.createElement("div");
+    document.body.append(container);
+    const ask = vi.fn<WorkspaceHost["setWorkspacePanelFullscreen"]>();
+    const host = (holds: boolean, available: boolean | undefined): Partial<WorkspaceHost> => ({
+      workspacePanelFullscreen: () => holds,
+      setWorkspacePanelFullscreen: ask,
+      ...(available === undefined ? {} : { workspacePanelFullscreenAvailable: () => available }),
+    });
+    renderAsHost(panel, panelContext(backend.request, gitWorkspace, "local", host(false, true)), container);
+    await settleBackend();
+    ask.mockClear();
+
+    const wide = toolbarEnd(panel, panelContext(backend.request, gitWorkspace, "local", host(false, true)), container);
+    button(container, "Expand").click();
+    const holding = toolbarEnd(panel, panelContext(backend.request, gitWorkspace, "local", host(true, true)), container);
+    button(container, "Exit expanded").click();
+    const holdingNarrow = toolbarEnd(panel, panelContext(backend.request, gitWorkspace, "local", host(true, false)), container);
+    const narrow = toolbarEnd(panel, panelContext(backend.request, gitWorkspace, "local", host(false, false)), container);
+    const olderHost = toolbarEnd(panel, panelContext(backend.request, gitWorkspace, "local", host(false, undefined)), container);
+
+    expect({ wide: wide.keys, holding: holding.keys, holdingNarrow: holdingNarrow.keys, narrow: narrow.keys, olderHost: olderHost.keys, asked: ask.mock.calls })
+      .toEqual({ wide: ["Expand"], holding: ["Exit expanded"], holdingNarrow: ["Exit expanded"], narrow: [], olderHost: [], asked: [[true], [false]] });
+  });
+
+  it("says its branch, ahead and behind, and out of date at the end of its toolbar", async () => {
+    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}`);
+    const panel = requiredPanel(activate("git"));
+    const container = document.createElement("div");
+    document.body.append(container);
+    const even = panelContext(backendFixture({ branch: "feat/x" }).request);
+    renderAsHost(panel, even, container);
+    await settleBackend();
+    const inStep = toolbarEnd(panel, even, container).status;
+
+    const diverged = panelContext(backendFixture({ branch: "main", ahead: 2, behind: 1 }).request, { ...gitWorkspace, id: "workspace-2" });
+    renderAsHost(panel, diverged, container);
+    await settleBackend();
+    const apart = toolbarEnd(panel, diverged, container).status;
+    const invalidated = panel.onInvalidate?.(diverged);
+    const whileBehind = toolbarEnd(panel, diverged, container).status;
+    await invalidated;
+    const afterRefresh = toolbarEnd(panel, diverged, container).status;
+
+    expect({ inStep, apart, whileBehind, afterRefresh })
+      .toEqual({ inStep: "feat/x", apart: "main · ↑2 ↓1", whileBehind: "main · ↑2 ↓1 · out of date", afterRefresh: "main · ↑2 ↓1" });
+  });
+
   it("opens read-only current-HEAD history and renders the selected commit's diff", async () => {
     window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}`);
     const historyCommit = {
@@ -476,9 +531,18 @@ function activate(pluginId: string, runtimePluginId = pluginId) {
   return plugin.activate({ apiVersion: 2, pluginId, runtimePluginId, html, svg }).contributions;
 }
 
-/** What the host mounts for a tool: the summary, the folded toolbar (open here), and the page. */
+/** What the host mounts for a tool: its toolbar, then its page. */
 function renderAsHost(panel: WorkspacePanelContribution, context: WorkspacePanelContext, container: HTMLElement): void {
-  render(html`<span class="host-summary">${panel.summary?.(context) ?? ""}</span>${panel.toolbar?.(context) ?? null}${panel.render(context)}`, container);
+  render(html`${panel.toolbar?.(context) ?? null}${panel.render(context)}`, container);
+}
+
+function toolbarEnd(panel: WorkspacePanelContribution, context: WorkspacePanelContext, container: HTMLElement): { status: string | undefined; keys: string[] } {
+  render(panel.toolbar?.(context) ?? null, container);
+  const end = container.querySelector(".git-toolbar-end");
+  return {
+    status: end?.querySelector(".git-toolbar-status")?.textContent.trim(),
+    keys: [...(end?.querySelectorAll("button") ?? [])].map((key) => key.textContent.trim()),
+  };
 }
 
 function requiredPanel(contributions: ReturnType<typeof activate>) {
@@ -491,6 +555,8 @@ function backendFixture(patch: {
   files?: ReturnType<typeof changedFile>[];
   submodules?: string[];
   branch?: string;
+  ahead?: number;
+  behind?: number;
   history?: JsonValue;
   commitDiff?: string;
 } = {}) {
@@ -498,6 +564,8 @@ function backendFixture(patch: {
     isGitRepo: true,
     hash: `status-hash-${patch.branch ?? "main"}`,
     branch: patch.branch ?? "main",
+    ...(patch.ahead === undefined ? {} : { ahead: patch.ahead }),
+    ...(patch.behind === undefined ? {} : { behind: patch.behind }),
     files: patch.files ?? [changedFile("src/main.ts")],
     submodules: patch.submodules ?? [],
   };
@@ -559,6 +627,7 @@ function panelContext(
       requestRender: host.requestRender ?? noop,
       workspacePanelFullscreen: host.workspacePanelFullscreen ?? (() => false),
       setWorkspacePanelFullscreen: host.setWorkspacePanelFullscreen ?? noop,
+      ...(host.workspacePanelFullscreenAvailable === undefined ? {} : { workspacePanelFullscreenAvailable: host.workspacePanelFullscreenAvailable }),
     },
     prompt: { insertText: noop, getText: () => "", getSelection: () => null },
     terminal: noPanelTerminal(),

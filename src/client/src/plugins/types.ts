@@ -585,10 +585,18 @@ export interface WorkspaceBackend {
 
 export interface WorkspaceHost {
   requestRender(): void;
-  /** Whether the active workspace panel currently owns the full app canvas. */
+  /** Whether the shown page holds the whole app canvas. Always false for a
+   *  page that did not declare `fullscreen`. */
   workspacePanelFullscreen(): boolean;
-  /** Move the active workspace panel into or out of the main content area. */
+  /** Ask for the whole app canvas, or give it back. The host ignores the ask
+   *  from a page that did not declare `fullscreen`, and gives the canvas
+   *  back itself when the reader leaves the page. */
   setWorkspacePanelFullscreen(fullscreen: boolean): void;
+  /** Whether the window is wide enough to show a page on the whole canvas
+   *  (the desktop side-by-side layout). A page that declared `fullscreen`
+   *  draws its enter control only while this is true. Hosts older than this
+   *  method lack it: offer no enter control there. */
+  workspacePanelFullscreenAvailable?(): boolean;
   /** Re-read what the app shows about this machine, project and workspaces
    *  after the panel changed it on disk (a worktree added, a checkout gone):
    *  the host owns the catalog, so the panel reports and never edits it. */
@@ -775,10 +783,17 @@ export interface WorkspacePanelContribution {
   visible?: (context: WorkspacePanelContext) => boolean;
   badge?: (context: WorkspacePanelContext) => string | number | TemplateResult | undefined;
   onInvalidate?: (context: WorkspacePanelContext) => void | Promise<void>;
-  /** A short status shown beside the title in the host's panel header. */
+  /** No longer drawn: the host draws no title row under the app bar. */
   summary?: (context: WorkspacePanelContext) => string | undefined;
-  /** The panel's controls, placed by the host in its fold under the header. */
+  /** The panel's controls, drawn at the top of its page and always visible. */
   toolbar?: (context: WorkspacePanelContext) => TemplateResult;
+  /** The page can take the whole app canvas on a wide window, hiding the
+   *  app's other columns. The host draws no control for it: the page draws
+   *  its own enter control (while `host.workspacePanelFullscreenAvailable()`)
+   *  and its own exit control (while `host.workspacePanelFullscreen()`), and
+   *  asks through `host.setWorkspacePanelFullscreen`. A page that does not
+   *  declare it is never shown on the whole canvas, whatever a link says. */
+  fullscreen?: boolean;
   render: (context: WorkspacePanelContext) => TemplateResult;
 }
 

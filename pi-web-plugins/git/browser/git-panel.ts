@@ -765,7 +765,7 @@ function createGitPanel(
     order: 20,
     visible: (context) => controller.isOwnedWorkspace(context.workspace),
     onInvalidate: (context) => controller.invalidate(context),
-    summary: (context) => gitPanelSummary(controller, context),
+    fullscreen: true,
     toolbar: (context) => renderGitToolbar(html, controller, context),
     render: (context) => renderGitPanel(html, controller, context),
   };
@@ -795,8 +795,8 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
 }
 
 /**
- * The controls the host folds under its header: mode, view, expand/collapse,
- * refresh, new worktree. The git panel draws no bar of its own.
+ * Git's controls at the top of its page: mode, view, expand/collapse, refresh,
+ * new worktree, then the branch and the key into and out of the review layout.
  */
 function renderGitToolbar(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext) {
   const state = controller.state(context);
@@ -809,16 +809,38 @@ function renderGitToolbar(html: HtmlTemplateTag, controller: GitUiController, co
     ${state.mode !== "changes" || state.workspacePanelFullscreen || viewState.expandablePaths.length === 0 ? null : renderExpandCollapseAll(html, controller, context, state, viewState.expandablePaths)}
     <button type="button" ?disabled=${state.mode === "changes" ? state.statusLoading : state.historyLoading} @click=${() => { void (state.mode === "changes" ? controller.refresh(context) : controller.refreshHistory(context)); }}>Refresh</button>
     ${context.backend === undefined ? null : html`<button type="button" class="git-new-worktree" @click=${() => { openNewWorktreeDialog(html, context); }}>New worktree</button>`}
+    ${renderToolbarEnd(html, context, state)}
   `;
 }
 
-/** The branch beside the title, with the stale mark when the listing is behind the disk. */
-function gitPanelSummary(controller: GitUiController, context: WorkspacePanelContext): string | undefined {
-  const state = controller.state(context);
+/**
+ * The end of git's toolbar: its status, then its own key into and out of the
+ * review layout. The host draws no title row and no control for a page on the
+ * whole canvas (owner, 2026-10-01 and 2026-10-02), so both are git's to draw.
+ * The exit shows whenever the page holds the canvas; the entry only where the
+ * window can show it.
+ */
+function renderToolbarEnd(html: HtmlTemplateTag, context: WorkspacePanelContext, state: GitWorkspaceUiState) {
+  const status = gitToolbarStatus(state);
+  const holds = state.workspacePanelFullscreen;
+  const offersCanvas = holds || context.host.workspacePanelFullscreenAvailable?.() === true;
+  if (status === undefined && !offersCanvas) return null;
+  return html`<span class="git-toolbar-end">
+    ${status === undefined ? null : html`<span class="git-toolbar-status" title=${status}>${status}</span>`}
+    ${offersCanvas ? html`<button type="button" class="git-canvas-key" @click=${() => { context.host.setWorkspacePanelFullscreen(!holds); }}>${holds ? "Exit expanded" : "Expand"}</button>` : null}
+  </span>`;
+}
+
+/**
+ * The branch and its ahead and behind counts, as VS Code's status bar and
+ * lazygit's status panel carry them, and "out of date" while the list predates
+ * a change git was told about, beside the Refresh that clears it.
+ */
+function gitToolbarStatus(state: GitWorkspaceUiState): string | undefined {
   const status = state.status;
   if (status?.isGitRepo !== true) return undefined;
   const summary = gitSummary(status);
-  return state.mode === "changes" && state.stale ? `${summary} (stale)` : summary;
+  return state.mode === "changes" && state.stale ? `${summary} · out of date` : summary;
 }
 
 /**
@@ -1405,6 +1427,8 @@ function errorMessage(error: unknown): string {
 
 const gitToolbarStyles = `
   button:disabled { opacity: var(--pi-disabled-opacity); cursor: wait; }
+  .git-toolbar-end { margin-left: auto; min-width: 0; display: inline-flex; align-items: center; gap: var(--pi-space-4); }
+  .git-toolbar-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   .git-view-toggle { display: inline-flex; }
   .git-view-toggle button { border-radius: 0; }
   .git-view-toggle button:first-child { border-top-left-radius: var(--pi-radius-md); border-bottom-left-radius: var(--pi-radius-md); }

@@ -2,6 +2,7 @@ import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { Workspace } from "../api";
 import type { QualifiedContributionId, QualifiedWorkspacePanelContribution, WorkspacePanelContext } from "../plugins/types";
+import { shownWorkspacePanel } from "../workspacePanelCanvas";
 import { interactiveSurfaceStyles, workspacePanelStyles } from "./shared";
 
 /**
@@ -39,8 +40,7 @@ export class WorkspacePanel extends LitElement {
       title: "Workspace tools unavailable",
       body: "Try selecting the workspace again.",
     });
-    const visiblePanels = this.panels;
-    const selectedPanel = visiblePanels.find((panel) => panel.id === this.tool) ?? visiblePanels[0];
+    const selectedPanel = shownWorkspacePanel(this.panels, this.tool);
     return html`
       ${selectedPanel === undefined ? this.renderEmptyState({
         kind: "message",

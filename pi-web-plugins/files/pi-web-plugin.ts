@@ -26,10 +26,11 @@ const filesPlugin: PiWebPlugin = {
             icon: FOLDER_ICON,
             order: 10,
             routeAliases: ["files", "core:workspace.files"],
-            summary: () => (link.showsStale() ? "stale" : undefined),
             toolbar: () => html`
+              <style .textContent=${FILES_TOOLBAR_STYLES}></style>
               <button type="button" @click=${() => { link.requestUpload(); }}>Upload</button>
               <button type="button" @click=${() => { link.invalidate(); }}>Refresh</button>
+              ${link.showsStale() ? html`<span class="files-toolbar-status">out of date</span>` : null}
             `,
             render: (panelContext): TemplateResult => html`<pi-files-panel .context=${panelContext} .link=${link}></pi-files-panel>`,
             onInvalidate: () => { link.invalidate(); },
@@ -39,5 +40,14 @@ const filesPlugin: PiWebPlugin = {
     };
   },
 };
+
+/**
+ * Files says its own status at the end of its toolbar, beside the Refresh that
+ * clears it: the host draws no title row any more (owner, 2026-10-01), and the
+ * page owns what it shows (owner, 2026-10-02).
+ */
+const FILES_TOOLBAR_STYLES = `
+  .files-toolbar-status { margin-left: auto; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-xs); }
+`;
 
 export default filesPlugin;

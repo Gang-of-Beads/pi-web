@@ -52,6 +52,7 @@ import { machineSessionKey } from "../machineKeys";
 import { commandsForSession } from "../commandLedger";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
 import { routedWorkspaceTool } from "../routedWorkspaceTool";
+import { shownWorkspacePanel, workspacePanelHoldsCanvas } from "../workspacePanelCanvas";
 import { isWaitingForUser } from "../../../shared/sessionActivityState";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { SessionUnreadController } from "../sessionUnread";
@@ -281,7 +282,6 @@ const TERMINAL_ROUTE_NAMESPACE = queryNamespace("core:workspace.terminal");
 const WORKSPACE_ROUTE_NAMESPACE = queryNamespace("core:workspace");
 const MIN_RESIZABLE_CHAT_WIDTH_PX = 320;
 const PANEL_EDGE_COLUMNS_WIDTH_PX = 2;
-import { DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY } from "../breakpoints";
 import { deliveredClientMessageIds } from "../userMessageRegister";
 import { OUTBOX_CHANGED_EVENT, sessionsWithFailedSends } from "../pendingOutbox";
 import { rowedClientMessageIds } from "../messageDelivery";
@@ -1832,7 +1832,7 @@ export class PiWebApp extends LitElement {
 
   private currentMachineNavigationSnapshot(): MachineNavigationSnapshot {
     const snapshot = machineNavigationSnapshotFromState(this.state);
-    snapshot.surface.workspaceExpanded = this.state.mainView !== "chat" && this.state.mainView !== "navigation" && this.workspacePanelFullscreen;
+    snapshot.surface.workspaceExpanded = this.state.mainView !== "chat" && this.state.mainView !== "navigation" && this.workspacePanelHoldsCanvas();
     snapshot.surface.selectedFilePath = readNamespacedString(FILES_ROUTE_NAMESPACE, "file");
     return snapshot;
   }
@@ -1886,6 +1886,7 @@ export class PiWebApp extends LitElement {
   private openWorkspaceTool(tool: QualifiedContributionId) {
     if (tool === "core:workspace.terminal") this.terminalAutoStartWorkspaceId = this.state.selectedWorkspace?.id;
     if (!this.appShell.isMobileNavigationLayout) this.panelCollapse.expandWorkspacePanel();
+    if (tool !== this.state.workspaceTool) this.workspacePanelFullscreen = false;
     this.setState({ workspaceTool: tool, mainView: tool });
     this.updateUrl();
     this.refreshSelectedWorkspaceTool(tool);
@@ -2497,8 +2498,7 @@ export class PiWebApp extends LitElement {
   }
 
   private isDesktopSideBySideLayout(): boolean {
-    if (typeof window === "undefined" || !("matchMedia" in window)) return true;
-    return window.matchMedia(DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY).matches;
+    return this.appShell.isDesktopSideBySideLayout;
   }
 
   private measuredPanelWidth(side: ResizablePanelSide): number | undefined {
@@ -3250,6 +3250,15 @@ export class PiWebApp extends LitElement {
     `;
   }
 
+  private shownWorkspacePanel(): QualifiedWorkspacePanelContribution | undefined {
+    return shownWorkspacePanel(this.visibleWorkspacePanels(), this.state.workspaceTool);
+  }
+
+  /** The request alone never decides it: see `workspacePanelCanvas.ts`. */
+  private workspacePanelHoldsCanvas(): boolean {
+    return workspacePanelHoldsCanvas(this.workspacePanelFullscreen, this.shownWorkspacePanel());
+  }
+
   private visibleWorkspacePanels(): QualifiedWorkspacePanelContribution[] {
     const workspace = this.state.selectedWorkspace;
     if (workspace === undefined) return [];
@@ -3499,9 +3508,11 @@ export class PiWebApp extends LitElement {
   private createWorkspaceHost(): WorkspaceHost {
     return {
       requestRender: () => { this.requestUpdate(); },
-      workspacePanelFullscreen: () => this.workspacePanelFullscreen,
+      workspacePanelFullscreen: () => this.workspacePanelHoldsCanvas(),
+      workspacePanelFullscreenAvailable: () => this.appShell.isDesktopSideBySideLayout,
       setWorkspacePanelFullscreen: (fullscreen) => {
         if (this.workspacePanelFullscreen === fullscreen) return;
+        if (fullscreen && !workspacePanelHoldsCanvas(true, this.shownWorkspacePanel())) return;
         this.workspacePanelFullscreen = fullscreen;
         if (this.routeRestoreDepth === 0 && this.state.mainView !== "chat" && this.state.mainView !== "navigation") {
           setNamespacedQueryKey(WORKSPACE_ROUTE_NAMESPACE, "expanded", fullscreen ? "1" : undefined);
@@ -4621,7 +4632,7 @@ export class PiWebApp extends LitElement {
     // on screen.
     const displayView = this.displayMainView();
     return html`
-      <div class=${`${this.panelCollapse.shellClass(displayView, state.selectedWorkspace !== undefined)}${this.workspacePanelFullscreen ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
+      <div class=${`${this.panelCollapse.shellClass(displayView, state.selectedWorkspace !== undefined)}${this.workspacePanelHoldsCanvas() ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
         ${this.renderNavigationProgress()}
         <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigatePage(false)}</aside>
         ${this.contextSheetOpen ? null : this.renderNavigationPanelEdgeControl()}
