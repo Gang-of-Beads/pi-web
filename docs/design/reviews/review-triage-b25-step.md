@@ -20,4 +20,4 @@ Two lanes read the frozen commit (`/tmp/pw-b25`) with a directed hunt list, the 
 | 14 | DeepSeek F5 | The dock never narrates a step while an ask card is open. | TRUE (pre-existing) | Recorded: the card says "waiting for you" itself; the dock stays out of its way. |
 | 15 | DeepSeek F8 | A status-learned activity skips the frame clock, and a reconnect's catalog read does not adopt activities. | TRUE (bounded) | Not changed: the next live status (at most the 2 s heartbeat for a working session) brings it. |
 
-On a phone the narration is one line and its end ("… is read when these tools finish") is cut by the dock's ellipsis; the step and its time come first. Whether the dock may take two lines is the owner's call.
+On a phone the narration is one line and its end ("… is read when these tools finish") is cut by the dock's ellipsis; the step and its time come first. Owner ruling (2026-10-02): the dock stays one line.

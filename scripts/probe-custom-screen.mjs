@@ -12,9 +12,10 @@ import { chromium } from "@playwright/test";
  * tell the shapes apart: a dialog with the component's own lines, keys that redraw
  * it, and a result the extension receives.
  *
- * Its screen reads as a menu, so it wears the select card (state-diagram D2, slice
- * a): the component's first line as the heading, the options as option buttons, no
- * key row, and a tap that walks the cursor and selects.
+ * Its screen reads as a menu, so it is a choice card (state-diagram D2, slice a; the
+ * owner's default, 2026-10-02): the component's first line as the heading, radio
+ * choices starting on the component's cursor, no key row, and Confirm, which walks
+ * the cursor to the choice and selects.
  */
 const BASE = process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
 const CWD = process.env.PROBE_CWD ?? "/Users/hanxiao.du/.pi-web-8505/pi-web-8505-seed-workspace";
@@ -59,7 +60,7 @@ try {
       .map((candidate) => candidate.dialog ?? candidate)
       .find((candidate) => candidate.kind === "custom");
     const card = (() => { const walk = (root) => { for (const node of root.querySelectorAll("*")) { if (node.localName === "extension-dialog-card") return node; if (node.shadowRoot !== null) { const hit = walk(node.shadowRoot); if (hit !== undefined) return hit; } } return undefined; }; return walk(document); })();
-    const options = card?.shadowRoot?.querySelector(".dialog-options");
+    const options = card?.shadowRoot?.querySelector(".dialog-options[role='radiogroup']");
     const rendered = options === null || options === undefined
       ? card?.shadowRoot?.querySelector(".dialog-screen")?.textContent ?? undefined
       : `${card?.shadowRoot?.querySelector("h2")?.textContent ?? ""} | ${options.textContent ?? ""}`;
@@ -108,28 +109,29 @@ try {
       const root = find(document)?.shadowRoot;
       return {
         heading: root?.querySelector("h2")?.textContent?.trim() ?? null,
-        options: [...(root?.querySelectorAll(".dialog-options .option-button") ?? [])].map((node) => node.textContent.trim()),
-        current: root?.querySelector(".option-button.current")?.textContent?.trim() ?? null,
+        options: [...(root?.querySelectorAll(".dialog-options .screen-choice") ?? [])].map((node) => node.textContent.trim()),
+        current: root?.querySelector(".screen-choice.chosen")?.textContent?.trim() ?? null,
         keyRow: root?.querySelectorAll(".dialog-screen-keys").length ?? -1,
         footer: [...(root?.querySelectorAll(".dialog-footer button") ?? [])].map((node) => node.textContent.trim()),
       };
     });
     console.log("card:", JSON.stringify(card));
     if (card.heading === null || !card.heading.includes("ui-custom probe")) fail(`the card is not headed by the screen's own first line: ${JSON.stringify(card.heading)}`);
-    if (JSON.stringify(card.options) !== JSON.stringify(["first", "second", "third"])) fail(`the menu is not the select card's option buttons: ${JSON.stringify(card.options)}`);
-    if (card.current !== "second") fail(`the component's cursor is not marked on its option: ${JSON.stringify(card.current)}`);
+    if (JSON.stringify(card.options) !== JSON.stringify(["first", "second", "third"])) fail(`the menu is not radio choices: ${JSON.stringify(card.options)}`);
+    if (card.current !== "second") fail(`the choice does not start on the component's cursor: ${JSON.stringify(card.current)}`);
     if (card.keyRow !== 0) fail("a screen that reads as a menu still draws the key row");
-    if (JSON.stringify(card.footer) !== JSON.stringify(["Cancel"])) fail(`the card's close control is not Cancel: ${JSON.stringify(card.footer)}`);
+    if (JSON.stringify(card.footer) !== JSON.stringify(["Cancel", "Confirm"])) fail(`the card's controls are not Cancel and Confirm: ${JSON.stringify(card.footer)}`);
 
     const readLog = () => { try { return readFileSync(logPath, "utf8"); } catch { return ""; } };
     const tapped = await page.evaluate(() => {
       const find = (root) => { for (const n of root.querySelectorAll("*")) { if (n.localName === "extension-dialog-card") return n; if (n.shadowRoot !== null) { const hit = find(n.shadowRoot); if (hit !== undefined) return hit; } } return undefined; };
-      const rows = [
-        ...(find(document)?.shadowRoot?.querySelectorAll(".option-button, .screen-line") ?? []),
-      ];
-      const row = rows.find((node) => (node.textContent ?? "").includes("third"));
-      if (row === undefined) return "no row";
-      row.click();
+      const root = find(document)?.shadowRoot;
+      const choice = [...(root?.querySelectorAll(".screen-choice") ?? [])].find((node) => (node.textContent ?? "").includes("third"));
+      if (choice === undefined) return "no row";
+      choice.querySelector("input")?.click();
+      const confirm = [...(root?.querySelectorAll(".dialog-footer button") ?? [])].find((node) => node.textContent.trim() === "Confirm");
+      if (confirm === undefined) return "no confirm";
+      confirm.click();
       return "tapped third";
     });
     console.log("tap:", tapped);
@@ -138,9 +140,9 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 800));
       selected = countReturns() > beforeTap && readLog().includes("returned third");
     }
-    if (tapped === "no row") fail("the screen drew no tappable rows");
-    else if (!selected) fail(`tapping a line did not select it (log: ${readLog().split("ui-custom-probe] returned").slice(-1)[0]?.slice(0, 40)})`);
-    else console.log("tapping a line walked the cursor there and selected it");
+    if (tapped !== "tapped third") fail(`the card could not be answered: ${tapped}`);
+    else if (!selected) fail(`choosing an option and Confirm did not select it (log: ${readLog().split("ui-custom-probe] returned").slice(-1)[0]?.slice(0, 40)})`);
+    else console.log("choosing an option and Confirm walked the cursor there and selected it");
 
     const escape = await sendKey("escape");
     await new Promise((resolve) => setTimeout(resolve, 1200));

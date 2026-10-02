@@ -565,27 +565,51 @@ describe("an extension's terminal screen", () => {
     lines: ["ui-custom probe · tap a line or press a key", "▸ first", "  second", "  third", "enter to select · esc to close"],
   });
 
-  it("that reads as a menu is the select card: its own heading, option buttons, the cursor marked, Cancel", async () => {
+  it("that reads as a menu is a choice card: its own heading, radio choices on the component's cursor, Cancel and Confirm", async () => {
     const card = await mountOpenDialog(menu);
     const root = renderRoot(card);
 
     expect({
       heading: root.querySelector("h2")?.textContent.trim(),
-      options: [...root.querySelectorAll(".dialog-options .option-button")].map((option) => option.textContent.trim()),
-      current: root.querySelector(".option-button.current")?.textContent.trim(),
+      choices: [...root.querySelectorAll(".dialog-options[role='radiogroup'] .screen-choice")].map((choice) => choice.textContent.trim()),
+      checked: [...root.querySelectorAll<HTMLInputElement>(".screen-choice input[type='radio']")].map((radio) => radio.checked),
       footer: [...root.querySelectorAll(".dialog-footer button")].map((button) => button.textContent.trim()),
       terminal: root.querySelectorAll(".dialog-screen, .dialog-screen-keys, .dialog-screen-hint, pre").length,
-    }).toEqual({ heading: "ui-custom probe · tap a line or press a key", options: ["first", "second", "third"], current: "first", footer: ["Cancel"], terminal: 0 });
+    }).toEqual({ heading: "ui-custom probe · tap a line or press a key", choices: ["first", "second", "third"], checked: [true, false, false], footer: ["Cancel", "Confirm"], terminal: 0 });
   });
 
-  it("walks the component's cursor to a tapped option and selects it", async () => {
+  it("sends nothing on choosing, and on Confirm walks the component's cursor to the choice and selects it", async () => {
     const keys: string[] = [];
     const card = await mountOpenDialog(menu);
     card.onKey = (_dialogId, key) => { keys.push(key); return Promise.resolve(); };
-    buttonWithText(renderRoot(card), "third").click();
+    const third = [...renderRoot(card).querySelectorAll<HTMLInputElement>(".screen-choice input[type='radio']")][2];
+    third?.click();
+    await card.updateComplete;
+    const afterChoosing = [...keys];
+    buttonWithText(renderRoot(card), "Confirm").click();
     await flushClose(card);
 
-    expect(keys).toEqual(["down", "down", "enter"]);
+    expect({ afterChoosing, afterConfirm: keys }).toEqual({ afterChoosing: [], afterConfirm: ["down", "down", "enter"] });
+  });
+
+  it("confirms the component's own cursor when the reader chose nothing", async () => {
+    const keys: string[] = [];
+    const card = await mountOpenDialog(openDialog({ ...menu, dialogId: "dlg-menu-2", lines: ["probe", "  first", "▸ second", "  third"] }));
+    card.onKey = (_dialogId, key) => { keys.push(key); return Promise.resolve(); };
+    buttonWithText(renderRoot(card), "Confirm").click();
+    await flushClose(card);
+
+    expect(keys).toEqual(["enter"]);
+  });
+
+  it("keeps a choice to its own dialog: another dialog in the card starts on its own cursor", async () => {
+    const card = await mountOpenDialog(menu);
+    [...renderRoot(card).querySelectorAll<HTMLInputElement>(".screen-choice input[type='radio']")][2]?.click();
+    await card.updateComplete;
+    card.dialog = openDialog({ ...menu, dialogId: "dlg-other", lines: ["other", "▸ alpha", "  beta", "  gamma"] });
+    await card.updateComplete;
+
+    expect([...renderRoot(card).querySelectorAll<HTMLInputElement>(".screen-choice input[type='radio']")].map((radio) => radio.checked)).toEqual([true, false, false]);
   });
 
   it("that does not read as a menu keeps its lines and the key row, and closes with Cancel", async () => {

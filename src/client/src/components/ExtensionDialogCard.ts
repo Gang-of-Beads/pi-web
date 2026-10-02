@@ -171,6 +171,8 @@ export class ExtensionDialogCard extends LitElement {
   @state() private inputValue = "";
   @state() private closing = false;
   @state() private countdownNow = 0;
+  /** The option the reader chose on a terminal menu, for the dialog it belongs to; until then the component's own cursor. */
+  @state() private screenChoice: { dialogId: string; line: number } | undefined;
   private dialogIdentity: string | undefined;
   private countdownTimer: number | undefined;
 
@@ -255,30 +257,44 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   /**
-   * An extension's terminal screen that reads as a menu, drawn as the select
-   * card (state-diagram D2, slice a). The owner met these as a terminal dump
-   * headed "Extension screen", with a key row and a mono frame, and a native
-   * card queued behind them. The component's first line heads the card, its
-   * options are the select card's option buttons with its own cursor marked,
-   * and a tap walks that cursor and selects.
+   * An extension's terminal screen that reads as a menu, drawn as a native
+   * choice card (state-diagram D2, slice a). The owner met these as a terminal
+   * dump headed "Extension screen", with a key row and a mono frame, and a
+   * native card queued behind them. The component's first line heads the card;
+   * its options are radio choices starting on its own cursor, and Confirm walks
+   * that cursor to the chosen option and presses Enter. The owner chose radio
+   * choices with Confirm as the default for an undeclared menu (2026-10-02); an
+   * extension that wants another look declares its screen.
    */
   private renderScreenMenu(dialog: PendingExtensionDialog, shape: Extract<ScreenShape, { kind: "menu" }>): TemplateResult {
     const lines = dialog.lines ?? [];
+    const chosen = this.chosenScreenLine(dialog, shape);
     return html`
       ${shape.body.length === 0 ? null : html`<p class="dialog-message">${shape.body.join("\n")}</p>`}
-      <div class="dialog-options" role="group" aria-label="Choices">
-        ${shape.options.map((option) => html`<button
-          type="button"
-          class=${`option-button${option.current ? " current" : ""}`}
-          aria-current=${option.current ? "true" : "false"}
-          ?disabled=${this.closing}
-          @click=${() => { void this.tapScreenLine(dialog, lines, option.line); }}
-        >${option.label}</button>`)}
+      <div class="dialog-options" role="radiogroup" aria-label="Choices">
+        ${shape.options.map((option) => html`<label class=${`screen-choice${option.line === chosen ? " chosen" : ""}`}>
+          <input
+            type="radio"
+            name=${`screen-${dialog.dialogId}`}
+            .checked=${option.line === chosen}
+            ?disabled=${this.closing}
+            @change=${() => { this.screenChoice = { dialogId: dialog.dialogId, line: option.line }; }}
+          />
+          <span>${option.label}</span>
+        </label>`)}
       </div>
       <footer class="dialog-footer">
         <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Cancel</button>
+        <button class="primary-action" type="button" ?disabled=${this.closing || chosen === undefined} @click=${() => { if (chosen !== undefined) void this.tapScreenLine(dialog, lines, chosen); }}>Confirm</button>
       </footer>
     `;
+  }
+
+  /** The reader's choice on this dialog's menu while it is still one of its options, else the component's own cursor. */
+  private chosenScreenLine(dialog: PendingExtensionDialog, shape: Extract<ScreenShape, { kind: "menu" }>): number | undefined {
+    const choice = this.screenChoice;
+    if (choice?.dialogId === dialog.dialogId && shape.options.some((option) => option.line === choice.line)) return choice.line;
+    return shape.options.find((option) => option.current)?.line ?? shape.options[0]?.line;
   }
 
   /**
@@ -576,7 +592,9 @@ export class ExtensionDialogCard extends LitElement {
   /* A declared screen renders as a card, not a terminal: proportional text for the
      option rows (a real control with the touch floor), and the component's own text
      kept pre-formatted, because it may be a column-aligned list. */
-  .option-button.current { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+  .screen-choice { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-md); line-height: 1.35; overflow-wrap: anywhere; cursor: pointer; }
+  .screen-choice.chosen { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+  .screen-choice input { width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; accent-color: var(--pi-accent); }
   .dialog-screen-keys { display: flex; flex-wrap: wrap; gap: var(--pi-space-3); }
   .screen-key { box-sizing: border-box; min-width: var(--pi-panel-header-control-height, 36px); min-height: var(--pi-panel-header-control-height, 36px); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-family: inherit; font-size: var(--pi-text-sm); }
   .dialog-screen:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
