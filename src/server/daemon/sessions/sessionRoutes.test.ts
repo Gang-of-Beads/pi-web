@@ -1061,6 +1061,21 @@ describe("session routes", () => {
     }
   });
 
+  it("forwards the sender's message id and send time (B5)", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const routeService = new CapturingRouteSessionService();
+    registerSessionRoutes(routeApp, routeService, new SessionEventHub());
+
+    try {
+      const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: "/repo", text: "hello", clientMessageId: "c-1", sentAt: "2026-10-02T12:23:49.000Z" } });
+      expect({ status: response.statusCode, options: routeService.promptOptions }).toEqual({ status: 200, options: [{ clientMessageId: "c-1", sentAt: "2026-10-02T12:23:49.000Z" }] });
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
   it("passes cwd when per-session routes include workspace context", async () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
@@ -1746,7 +1761,10 @@ class CapturingRouteSessionService implements SessionRouteService {
   cycleThinkingLevel(): never { throw unusedRouteMethod("cycleThinkingLevel"); }
   commands(): Promise<[]> { return Promise.resolve([]); }
 
-  prompt(lookup: SessionRouteRef, text: unknown, _streamingBehavior?: unknown, attachments?: unknown): Promise<void> {
+  readonly promptOptions: unknown[] = [];
+
+  prompt(lookup: SessionRouteRef, text: unknown, _streamingBehavior?: unknown, attachments?: unknown, options?: { clientMessageId?: unknown; sentAt?: unknown }): Promise<void> {
+    this.promptOptions.push(options);
     this.calls.push(attachments === undefined ? { lookup, text } : { lookup, text, attachments });
     return Promise.resolve();
   }

@@ -13,8 +13,8 @@ describe("committed prompt expectations", () => {
     const expectations = new CommittedPromptExpectations();
     expectations.expect("s", { clientMessageId: "a", text: "", imageCount: 1 });
     expectations.expect("s", { clientMessageId: "b", text: "", imageCount: 1 });
-    expect(expectations.claim("s", { text: "", imageCount: 1 })).toBe("a");
-    expect(expectations.claim("s", { text: "", imageCount: 1 })).toBe("b");
+    expect(expectations.claim("s", { text: "", imageCount: 1 })?.clientMessageId).toBe("a");
+    expect(expectations.claim("s", { text: "", imageCount: 1 })?.clientMessageId).toBe("b");
     expect(expectations.claim("s", { text: "", imageCount: 1 })).toBeUndefined();
   });
 
@@ -23,7 +23,7 @@ describe("committed prompt expectations", () => {
     expectations.expect("s", { clientMessageId: "a", text: "", imageCount: 1 });
     expect(expectations.claim("s", { text: "an injected continuation", imageCount: 0 })).toBeUndefined();
     expect(expectations.claim("s", { text: "", imageCount: 2 })).toBeUndefined();
-    expect(expectations.claim("s", { text: "", imageCount: 1 })).toBe("a");
+    expect(expectations.claim("s", { text: "", imageCount: 1 })?.clientMessageId).toBe("a");
   });
 
   it("keeps sessions apart and forgets a closed one", () => {

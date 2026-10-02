@@ -104,6 +104,7 @@ import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
 import { HANDOFF_RUN_STATE, HANDOFF_WAKE_EVENTS, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffVerdict, type RunState } from "./promptHandoff.js";
 import { SETTLEABLE, createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
+import { messageSentAt } from "./messageSentAt.js";
 import { LOCAL_HOLD_ID_PREFIX, OwnedPromptQueue, dataDirInboxLocation, entryKey, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry } from "./ownedPromptQueue.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { branchFromFileEntries, isCurrentVersionFile } from "./fileBranch.js";
@@ -3190,7 +3191,7 @@ export class PiSessionService implements SessionRouteService {
     return resumed;
   }
 
-  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown }): Promise<void> {
+  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown }): Promise<void> {
     return this.inArrivalOrder(ref.id, () => this.acceptPrompt(ref, text, streamingBehavior, attachments, options));
   }
 
@@ -3201,7 +3202,7 @@ export class PiSessionService implements SessionRouteService {
     return next;
   }
 
-  private async acceptPrompt(ref: PiSessionRef, text: unknown, streamingBehavior: unknown, attachments: unknown, options: { echoUserMessage?: boolean; clientMessageId?: unknown } | undefined): Promise<void> {
+  private async acceptPrompt(ref: PiSessionRef, text: unknown, streamingBehavior: unknown, attachments: unknown, options: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown } | undefined): Promise<void> {
     const promptText = requirePromptText(text);
     const clientMessageId = parseClientMessageId(options?.clientMessageId);
     // Command-forwarded prompts (e.g. /skill:*) are expanded by the agent, which
@@ -3236,12 +3237,15 @@ export class PiSessionService implements SessionRouteService {
     // Accepted only after the inbox file commits. Otherwise a full disk or a
     // read-only workspace would make the browser settle its outbox for a
     // message the daemon forgets at its next restart.
+    const acceptedAt = new Date().toISOString();
+    const sentAt = messageSentAt(options?.sentAt, acceptedAt);
     await this.ownedQueue.push(sessionId, session.sessionManager.getCwd(), {
       ...(clientMessageId === undefined ? {} : { clientMessageId }),
       lane: "steer",
       text: promptText,
       images: images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType })),
-      acceptedAt: new Date().toISOString(),
+      acceptedAt,
+      sentAt,
       echoUserMessage,
     });
     if (clientMessageId !== undefined) {
@@ -3250,7 +3254,10 @@ export class PiSessionService implements SessionRouteService {
     }
     // Echoed at acceptance, whether or not it waits: a waiting message that
     // shows nothing until the agent reads it reads as "message disappeared".
-    if (echoUserMessage) this.events.publish(sessionId, { type: "message.append", message: userMessage(promptText, images), echo: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
+    // It carries its send time only when the committed copy will carry the
+    // same one, which needs the sender's id; one without keeps pi's time.
+    const echoed = clientMessageId === undefined ? userMessage(promptText, images) : { ...userMessage(promptText, images), timestamp: Date.parse(sentAt) };
+    if (echoUserMessage) this.events.publish(sessionId, { type: "message.append", message: echoed, echo: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
     this.publishActivity(session, busy ? "message queued" : "prompt accepted", "active");
     this.publishStatus(session);
     this.pumpInbox(session);
@@ -3347,7 +3354,7 @@ export class PiSessionService implements SessionRouteService {
     if (!this.servesSessionId(session)) return false;
     const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
     const { clientMessageId } = entry;
-    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text: entry.text, imageCount: images.length });
+    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text: entry.text, imageCount: images.length, ...(entry.sentAt === undefined ? {} : { sentAt: entry.sentAt }) });
     const growthAtCall = this.laneGrowth.get(sessionId) ?? 0;
     try {
       await session.steer(entry.text, images);
@@ -3462,7 +3469,7 @@ export class PiSessionService implements SessionRouteService {
     if (!this.servesSessionId(session) || this.liveRunState(session) !== HANDOFF_RUN_STATE[behavior ?? "direct"]) return "transient";
     const isCommand = this.isExtensionCommand(session, text);
     if (isCommand) this.settleHanded(sessionId, entryKey(entry));
-    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text, imageCount: images.length });
+    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text, imageCount: images.length, ...(entry.sentAt === undefined ? {} : { sentAt: entry.sentAt }) });
     if (behavior === "steer") this.publishActivity(session, "steering queued", "active");
     let committed = false;
     let landed: HandoffLanding | undefined;
@@ -3806,10 +3813,12 @@ export class PiSessionService implements SessionRouteService {
 
   /**
    * Stamp the runtime's committed copy of a user prompt with the id its
-   * sender minted. The message object is mutated in place before the event is
-   * converted and published: the runtime persists the same object, so the id
-   * survives into the stored transcript, and every client - the sender, other
-   * devices, a reload - receives a committed copy it can claim by identity.
+   * sender minted and the time it was sent. The message object is mutated in
+   * place before the event is converted and published: the runtime persists
+   * the same object, so both survive into the stored transcript, and every
+   * client - the sender, other devices, a reload - receives a committed copy it
+   * can claim by identity and that keeps the time its sender saw (B5). pi's
+   * own stamp is the moment the daemon handed the message over.
    */
   private stampCommittedUserMessage(session: PiAgentSession, event: unknown): void {
     // Both boundary events: the void gate listens to message_start too, and an
@@ -3822,9 +3831,10 @@ export class PiSessionService implements SessionRouteService {
     if (!isRecord(message) || message["role"] !== "user") return;
     if (typeof message["clientMessageId"] === "string") return;
     const shape = committedMessageShape(message["content"]);
-    const clientMessageId = this.committedExpectations.claim(session.sessionId, shape);
-    if (clientMessageId === undefined) return;
-    message["clientMessageId"] = clientMessageId;
+    const commit = this.committedExpectations.claim(session.sessionId, shape);
+    if (commit === undefined) return;
+    message["clientMessageId"] = commit.clientMessageId;
+    if (commit.sentAt !== undefined) message["timestamp"] = Date.parse(commit.sentAt);
   }
 
   /**

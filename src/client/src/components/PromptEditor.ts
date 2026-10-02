@@ -1238,7 +1238,7 @@ export class PromptEditor extends LitElement {
           savePendingPrompt(key, retried);
         }
         try {
-          const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: id, scope });
+          const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: id, scope, sentAt: prompt.at });
           if (accepted !== false) reserveAcceptedPrompt(key, id);
           else if (prompt.refused === true && loadPendingPrompts(key).some((entry) => entry.clientMessageId === id)) savePendingPrompt(key, prompt);
         } catch (failure) {
@@ -1319,13 +1319,14 @@ export class PromptEditor extends LitElement {
   private recordOutgoing(text: string, behavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery): OutgoingSend {
     const outboxKey = machineSessionKey(this.machineId, this.sessionId ?? "");
     const outboxId = newClientMessageId();
+    const sentAt = new Date().toISOString();
     const carried = attachments === undefined || attachments.length === 0 ? undefined : attachments;
     if (outboxKey !== "") {
-      savePendingPrompt(outboxKey, { text, ...(behavior === undefined ? {} : { behavior }), clientMessageId: outboxId, ...(carried === undefined ? {} : { attachments: carried, delivery }), at: new Date().toISOString() });
+      savePendingPrompt(outboxKey, { text, ...(behavior === undefined ? {} : { behavior }), clientMessageId: outboxId, ...(carried === undefined ? {} : { attachments: carried, delivery }), at: sentAt });
       this.pendingPrompts = this.pendingPromptsForSession();
     }
     this.outboxInFlight.add(outboxId);
-    return { outboxKey, outboxId, scope: { machineId: this.machineId, sessionId: this.sessionId ?? "" }, writtenOnPage: this.isConnected, text, behavior, attachments, delivery };
+    return { outboxKey, outboxId, sentAt, scope: { machineId: this.machineId, sessionId: this.sessionId ?? "" }, writtenOnPage: this.isConnected, text, behavior, attachments, delivery };
   }
 
   /**
@@ -1343,7 +1344,7 @@ export class PromptEditor extends LitElement {
     restorable: { text: string; attachments: PendingAttachment[] },
     outgoing: OutgoingSend = this.recordOutgoing(text, behavior, attachments, delivery),
   ): Promise<void> {
-    const { outboxKey, outboxId, scope } = outgoing;
+    const { outboxKey, outboxId, scope, sentAt } = outgoing;
     const scopeKey = outboxKey;
     const keepForItsSession = (): void => {
       this.outboxInFlight.delete(outboxId);
@@ -1358,7 +1359,7 @@ export class PromptEditor extends LitElement {
     let accepted: boolean | undefined;
     let failure: unknown;
     try {
-      const replay: SendReplay = { clientMessageId: outboxId, scope };
+      const replay: SendReplay = { clientMessageId: outboxId, scope, sentAt };
       accepted = await this.onSend?.(text, behavior, attachments, attachments === undefined ? undefined : delivery, replay);
     } catch (error) {
       accepted = false;
@@ -1559,6 +1560,8 @@ export function retryBlocked(online: boolean, replaying: boolean, held: boolean)
 interface OutgoingSend {
   outboxKey: string;
   outboxId: string;
+  /** When the reader pressed send; the time the message keeps (B5). */
+  sentAt: string;
   scope: SendScope;
   /**
    * Whether the composer was on the page when the message was written. One taken off the page

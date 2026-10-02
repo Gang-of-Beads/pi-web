@@ -8,6 +8,13 @@ function file(name: string, type: string, size = 10): CapturableFile {
 }
 
 /** The id the editor minted for this send; one message carries one identity. */
+/** The send time the composer recorded with the message (B5). */
+function lastSentAt(spy: Mock<NonNullable<PromptEditor["onSend"]>>): string {
+  const sentAt = spy.mock.calls.at(-1)?.[4]?.sentAt;
+  if (sentAt === undefined || Number.isNaN(Date.parse(sentAt))) throw new Error("send carried no send time");
+  return sentAt;
+}
+
 function lastClientMessageId(spy: Mock<NonNullable<PromptEditor["onSend"]>>): string {
   const id = spy.mock.calls.at(-1)?.[4]?.clientMessageId;
   if (id === undefined || id === "") throw new Error("send carried no identity");
@@ -128,7 +135,7 @@ describe("PromptEditor attachment wiring", () => {
       expect(onSend).toHaveBeenCalledTimes(1);
       expect(onSend).toHaveBeenCalledWith("inspect attachments", undefined, [
         { kind: "image", mimeType: "image/png", data: "UE5H", name: "shot.png" },
-      ], "inline", { clientMessageId: lastClientMessageId(onSend), scope: { machineId: "local", sessionId: "" } });
+      ], "inline", { clientMessageId: lastClientMessageId(onSend), scope: { machineId: "local", sessionId: "" }, sentAt: lastSentAt(onSend) });
     } finally {
       restoreFileReader();
     }
@@ -155,7 +162,7 @@ describe("PromptEditor attachment wiring", () => {
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(onSend).toHaveBeenCalledWith("please review", undefined, [
       { kind: "image", mimeType: "image/png", data: "UE5H", name: "shot.png" },
-    ], "inline", { clientMessageId: lastClientMessageId(onSend), scope: { machineId: "local", sessionId: "" } });
+    ], "inline", { clientMessageId: lastClientMessageId(onSend), scope: { machineId: "local", sessionId: "" }, sentAt: lastSentAt(onSend) });
   });
 });
 

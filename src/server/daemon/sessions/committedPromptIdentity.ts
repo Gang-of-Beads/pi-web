@@ -21,6 +21,8 @@ export interface ExpectedCommit {
   clientMessageId: string;
   text: string;
   imageCount: number;
+  /** The time the committed copy is stamped with, so taking the message never rewrites it (B5). */
+  sentAt?: string;
 }
 
 const MAX_PENDING_PER_SESSION = 50;
@@ -36,13 +38,13 @@ export class CommittedPromptExpectations {
     this.perSession.set(sessionId, list);
   }
 
-  claim(sessionId: string, committed: { text: string; imageCount: number }): string | undefined {
+  claim(sessionId: string, committed: { text: string; imageCount: number }): ExpectedCommit | undefined {
     const list = this.perSession.get(sessionId);
     if (list === undefined) return undefined;
     const index = list.findIndex((entry) => entry.text === committed.text && entry.imageCount === committed.imageCount);
     if (index === -1) return undefined;
     const [entry] = list.splice(index, 1);
-    return entry?.clientMessageId;
+    return entry;
   }
 
   /**

@@ -248,6 +248,28 @@ describe("a waiting send only ever goes to the session it was written for", () =
   });
 });
 
+describe("a message keeps the time it was sent (B5)", () => {
+  it("sends the time its outbox record was written, the first time and on a retry", async () => {
+    const element = await composer();
+    const sends: { sentAt: string | undefined; recorded: string | undefined }[] = [];
+    element.onSend = (_text, _behavior, _attachments, _delivery, replay) => {
+      sends.push({ sentAt: replay?.sentAt, recorded: loadPendingPrompts("local:session-1").find((prompt) => prompt.clientMessageId === replay?.clientMessageId)?.at });
+      return Promise.resolve(true);
+    };
+    savePendingPrompt("local:session-1", { text: "written before a reload", clientMessageId: "c-kept", state: "failed", at: "2026-10-02T08:55:49.698Z" });
+
+    element.replaceText("written now");
+    fireSend(element);
+    await flush();
+    element.retryOutbox("c-kept");
+    await flush();
+
+    const [first, retried] = sends;
+    expect({ firstMatchesRecord: first !== undefined && first.sentAt === first.recorded && first.sentAt !== undefined, retried: retried?.sentAt })
+      .toEqual({ firstMatchesRecord: true, retried: "2026-10-02T08:55:49.698Z" });
+  });
+});
+
 describe("the send chain's own order", () => {
   it("runs a step queued from inside the first step after that step, not beside it", async () => {
     const element = await composer();

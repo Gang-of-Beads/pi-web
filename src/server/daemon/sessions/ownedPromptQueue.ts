@@ -10,6 +10,8 @@ export interface OwnedQueueEntry {
   text: string;
   images: { type: "image"; data: string; mimeType: string }[];
   acceptedAt: string;
+  /** The time the message is shown with (B5): its sender's send time, never after acceptance. */
+  sentAt?: string;
   echoUserMessage: boolean;
 }
 
@@ -341,6 +343,8 @@ function parseEntries(value: unknown): OwnedQueueEntry[] {
     const inboxId = typeof rawInboxId === "string" ? rawInboxId : clientMessageId === undefined ? randomUUID() : undefined;
     const rawAccepted = field(raw, "acceptedAt");
     const acceptedAt = typeof rawAccepted === "string" ? rawAccepted : "";
+    const rawSentAt = field(raw, "sentAt");
+    const sentAt = typeof rawSentAt === "string" ? rawSentAt : acceptedAt === "" ? undefined : acceptedAt;
     const rawImages = field(raw, "images");
     const images: OwnedQueueEntry["images"] = [];
     if (Array.isArray(rawImages)) {
@@ -353,7 +357,7 @@ function parseEntries(value: unknown): OwnedQueueEntry[] {
       }
     }
     const echoUserMessage = field(raw, "echoUserMessage") !== false;
-    entries.push({ ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(inboxId === undefined ? {} : { inboxId }), lane, text, images, acceptedAt, echoUserMessage });
+    entries.push({ ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(inboxId === undefined ? {} : { inboxId }), lane, text, images, acceptedAt, ...(sentAt === undefined ? {} : { sentAt }), echoUserMessage });
   }
   return entries;
 }

@@ -1390,11 +1390,14 @@ describe("prompt submission for extension-injected user messages", () => {
         .filter(({ event }) => event.type === "message.append")
         .map(({ event }) => {
           if (event.type !== "message.append") throw new Error("unreachable");
-          return JSON.stringify(event.message);
+          const message: unknown = event.message;
+          const role: unknown = Reflect.get(Object(message), "role");
+          const content: unknown = Reflect.get(Object(message), "content");
+          return { body: JSON.stringify({ role, content }), stamped: typeof Reflect.get(Object(message), "timestamp") === "number" };
         });
       expect(echoes).toEqual([
-        JSON.stringify({ role: "user", content: "/feynman_teach What is NAT?" }),
-        JSON.stringify({ role: "user", content: "Let's learn NAT together." }),
+        { body: JSON.stringify({ role: "user", content: "/feynman_teach What is NAT?" }), stamped: false },
+        { body: JSON.stringify({ role: "user", content: "Let's learn NAT together." }), stamped: false },
       ]);
       await vi.waitFor(() => { expect(prompts).toEqual(["/feynman_teach What is NAT?", "Let's learn NAT together."]); });
     } finally {

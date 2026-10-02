@@ -33,8 +33,12 @@ export function newClientMessageId(): string {
   return `cm-${String(Date.now())}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** The bubble shown the instant the user hits send, before any round trip. */
-export function optimisticUserLine(text: string, clientMessageId: string, attachments: readonly PromptAttachment[] = []): ChatLine {
+/**
+ * The bubble shown the instant the user hits send, before any round trip. Its time is the send
+ * time the message keeps everywhere (B5): the daemon takes it with the message and stamps it on
+ * the committed copy, so the row never switches to the time a turn took it.
+ */
+export function optimisticUserLine(text: string, clientMessageId: string, attachments: readonly PromptAttachment[] = [], sentAt = new Date().toISOString()): ChatLine {
   // The images travel with the bubble because nothing else will carry them: the
   // session's queue keeps only the text of a pending message, so a queued
   // prompt that was mostly a screenshot showed up as an empty-looking line.
@@ -42,7 +46,7 @@ export function optimisticUserLine(text: string, clientMessageId: string, attach
     .filter((attachment) => attachment.kind === "image")
     .map((attachment): ChatPart => ({ type: "image", mimeType: attachment.mimeType, data: attachment.data }));
   const parts: ChatPart[] = text === "" ? [...images] : [{ type: "text", text }, ...images];
-  return { role: "user", parts, meta: { timestamp: new Date().toISOString(), delivery: { clientMessageId, state: "sending" } } };
+  return { role: "user", parts, meta: { timestamp: sentAt, delivery: { clientMessageId, state: "sending" } } };
 }
 
 /**
@@ -116,6 +120,11 @@ function chatLineText(line: ChatLine): string {
 function queuedUserLine(message: QueuedSessionMessage): ChatLine {
   const clientMessageId = message.clientMessageId ?? `queued:${message.kind}:${message.text}`;
   return { role: "user", parts: [{ type: "text", text: message.text }], meta: { delivery: { clientMessageId, state: "queued", kind: message.kind } } };
+}
+
+/** The time a tracked bubble shows, which is the time its message is sent with. */
+export function deliveryLineSentAt(messages: readonly ChatLine[], clientMessageId: string): string | undefined {
+  return messages[findDeliveryLineIndex(messages, clientMessageId)]?.meta?.timestamp;
 }
 
 export function findDeliveryLineIndex(messages: readonly ChatLine[], clientMessageId: string): number {

@@ -121,7 +121,12 @@ stateDiagram-v2
   - It is ordered by `seq`: the daemon emits it that way, and the lane-by-lane composition (`piSessionService.ts:6409-6420`) goes.
   - It only orders and counts records; it never changes a record's state.
   - Its position is the status stream's `{epoch, seq}` (`statusReadVerdict`).
-- **One timestamp that never moves.** A row shows when it was sent: the client's send time when this device sent it, the daemon's `acceptedAt` for a message from elsewhere. It never switches clocks. The commit time is in message info.
+- **One timestamp that never moves** (B5). A message shows the time its sender sent it, on every device and after every reload:
+  - The composer sends its send time (`sentAt`) with the message: the time its bubble already shows, and for an outbox retry the time the record was written. The daemon keeps it, clamped to its own acceptance time so a phone clock running fast cannot put a message after the reply to it. A message with an id but no send time (a browser older than this) takes the daemon's `acceptedAt`. A message without a sender id (the pi CLI, an extension) has no committed copy the daemon can claim, so it keeps pi's time and its echo carries none. The inbox file keeps it across a restart, and a message taken back to be handed again keeps it.
+  - The daemon stamps that time on the acceptance echo and on pi's committed copy, at the throat that already stamps the `clientMessageId`. pi persists that object, so history reads the same time from the session file.
+  - Handing the message to pi later (a held batch, compaction, a restart) never rewrites it.
+  - Producers found: pi builds the user message, and its timestamp, when the daemon hands it over, and the committed copy replaced the bubble's meta with it (12:23:49, :50 and :51 all became 12:24:04, audit `5d672be6` P2-3); the browser drew its own clock until the committed copy landed, by tens of milliseconds and more on a skewed phone (`probe-message-rows.mjs`), while every other device drew pi's.
+  - The commit time is not shown. If it is ever needed, it belongs in message info, never in the row.
 - **Words** (owner-approved vocabulary, output only):
 
   | State | Word |

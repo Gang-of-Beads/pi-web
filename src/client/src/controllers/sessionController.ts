@@ -22,7 +22,7 @@ import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessio
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
-import { deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
+import { deliveryLineSentAt, deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import { failPendingPrompt, forgetPendingPrompt, forgetReservedPrompt, isNetworkFailure, linkReportedOffline, moveOutbox, NetworkSendError, reserveAcceptedPrompt, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
 import { claimAfterMiss, isClaimOf, provenRowStep, VERIFY_AFTER_MS, VERIFY_RETRY_MS, verificationStep } from "../sendVerification";
 import { classifyReadError, type ReadMiss } from "../sync/readPhase";
@@ -154,7 +154,7 @@ interface BulkSessionMutationResult {
 type ClientPendingStartSessionInfo = SessionInfo & { clientPendingStart: true; machineId: string };
 
 type QueuedPendingSessionSendInput =
-  | { type: "prompt"; text: string; streamingBehavior?: "steer" | "followUp" | undefined; attachments?: PromptAttachment[] | undefined; delivery: PromptAttachmentDelivery }
+  | { type: "prompt"; text: string; streamingBehavior?: "steer" | "followUp" | undefined; attachments?: PromptAttachment[] | undefined; delivery: PromptAttachmentDelivery; sentAt: string }
   | { type: "shell"; text: string }
   | { type: "command"; text: string; ledgerId: string };
 
@@ -666,7 +666,7 @@ export class SessionController {
     if (isClientPendingStartSessionInfo(session)) {
       if (!hasAttachments && trimmed.startsWith("/")) { await this.runCommand(text); return true; }
       if (!hasAttachments && isShellInput(text)) this.enqueuePendingSessionSend(session, { type: "shell", text });
-      else this.enqueuePendingSessionSend(session, { type: "prompt", text, streamingBehavior, attachments, delivery });
+      else this.enqueuePendingSessionSend(session, { type: "prompt", text, streamingBehavior, attachments, delivery, sentAt: replay?.sentAt ?? new Date().toISOString() });
       // Queued against a session that is still starting: it will be delivered,
       // so the composer is right to have cleared.
       return true;
@@ -677,7 +677,7 @@ export class SessionController {
     // Capture the originating session/machine before any await so the request
     // and its sending indicator stay bound to the right session even if the
     // user navigates elsewhere mid-upload.
-    return await this.deliverPromptToSession(session, text, streamingBehavior, attachments, delivery, selectedMachineId(this.getState()), { markSending: hasAttachments, ...(replay?.clientMessageId === undefined ? {} : { replayClientMessageId: replay.clientMessageId }) });
+    return await this.deliverPromptToSession(session, text, streamingBehavior, attachments, delivery, selectedMachineId(this.getState()), { markSending: hasAttachments, ...(replay?.clientMessageId === undefined ? {} : { replayClientMessageId: replay.clientMessageId }), ...(replay?.sentAt === undefined ? {} : { sentAt: replay.sentAt }) });
   }
 
   private markSendingPrompt(sessionId: string, sending: boolean): void {
@@ -753,12 +753,12 @@ export class SessionController {
   }
 
   private async deliverQueuedPendingSend(session: SessionInfo, machineId: string, queued: QueuedPendingSessionSend): Promise<boolean> {
-    if (queued.type === "prompt") return this.deliverPromptToSession(session, queued.text, queued.streamingBehavior, queued.attachments, queued.delivery, machineId, { markSending: true });
+    if (queued.type === "prompt") return this.deliverPromptToSession(session, queued.text, queued.streamingBehavior, queued.attachments, queued.delivery, machineId, { markSending: true, sentAt: queued.sentAt });
     if (queued.type === "shell") return this.deliverShellToSession(session, queued.text, machineId, { optimisticLine: true });
     return this.deliverCommandToSession(session, queued.text, machineId, { applyResult: true, ledgerId: queued.ledgerId });
   }
 
-  private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean; replayClientMessageId?: string }): Promise<boolean> {
+  private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean; replayClientMessageId?: string; sentAt?: string }): Promise<boolean> {
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     if (options.markSending) this.markSendingPrompt(session.id, true);
     // One message carries one id for its whole life. The sender mints it before
@@ -766,18 +766,19 @@ export class SessionController {
     // here, so a retry revives the bubble that reads "Not sent" instead of
     // adding a second row beside it. An id that already has a row is a replay;
     // one that does not is this message's first attempt and needs the row.
-    const clientMessageId = this.beginTrackedSend(session, text, attachments ?? [], options.replayClientMessageId);
+    const clientMessageId = this.beginTrackedSend(session, text, attachments ?? [], options.replayClientMessageId, options.sentAt);
     if (clientMessageId !== undefined) {
       this.setState({ messages: restartDelivery(this.getState().messages, clientMessageId) });
     }
+    const sentAt = (clientMessageId === undefined ? undefined : deliveryLineSentAt(this.getState().messages, clientMessageId)) ?? options.sentAt ?? new Date().toISOString();
     try {
       if (hasAttachments && delivery === "folder") {
         const saved = await this.api.saveAttachments(session, attachments, machineId);
         const references = saved.map((file) => fileCompletionInsertText(file.path, false)).join(" ");
         const body = text === "" ? references : `${text}\n\n${references}`;
-        await this.api.prompt(session, body, streamingBehavior, machineId, undefined, clientMessageId);
+        await this.api.prompt(session, body, streamingBehavior, machineId, undefined, clientMessageId, sentAt);
       } else {
-        await this.api.prompt(session, text, streamingBehavior, machineId, attachments, clientMessageId);
+        await this.api.prompt(session, text, streamingBehavior, machineId, attachments, clientMessageId, sentAt);
       }
       if (clientMessageId !== undefined) this.settleAnsweredSend(session, machineId, clientMessageId);
       this.markCachedNewSessionPersisted(session);
@@ -836,12 +837,12 @@ export class SessionController {
    * Only the session on screen gets a bubble: a send to a background session
    * has nothing to attach a mark to, and the id would never be resolved.
    */
-  private beginTrackedSend(session: SessionInfo, text: string, attachments: readonly PromptAttachment[] = [], suppliedId?: string): string | undefined {
+  private beginTrackedSend(session: SessionInfo, text: string, attachments: readonly PromptAttachment[] = [], suppliedId?: string, sentAt?: string): string | undefined {
     if (text.trim() === "" && attachments.length === 0) return suppliedId;
     if (this.getState().selectedSession?.id !== session.id) return suppliedId;
     const clientMessageId = suppliedId ?? newClientMessageId();
     if (findDeliveryLineIndex(this.getState().messages, clientMessageId) !== -1) return clientMessageId;
-    this.setState({ messages: [...this.getState().messages, optimisticUserLine(text, clientMessageId, attachments)] });
+    this.setState({ messages: [...this.getState().messages, optimisticUserLine(text, clientMessageId, attachments, sentAt)] });
     return clientMessageId;
   }
 

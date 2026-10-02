@@ -114,3 +114,20 @@ describe("OwnedPromptQueue handed list", () => {
     });
   });
 });
+
+describe("the send time survives the inbox file (B5)", () => {
+  it("keeps a message's send time across a restart, and gives a file written before it the acceptance time", async () => {
+    const { dataDir, queue } = await inbox();
+    await queue.push("s1", "/work", { ...message("msg-0001", "A"), sentAt: "2026-09-30T23:59:58.000Z" });
+    const reopened = new OwnedPromptQueue(dataDirInboxLocation(dataDir));
+    await reopened.open("s1", "/work");
+    const kept = reopened.entries("s1")[0]?.sentAt;
+
+    await writeFile(join(inboxDirectory(dataDir), "s2.json"), JSON.stringify({ entries: [message("msg-0002", "B")], handed: [] }));
+    const older = new OwnedPromptQueue(dataDirInboxLocation(dataDir));
+    await older.open("s2", "/work");
+
+    expect({ kept, fromAnOlderFile: older.entries("s2")[0]?.sentAt }).toEqual({ kept: "2026-09-30T23:59:58.000Z", fromAnOlderFile: "2026-10-01T00:00:00.000Z" });
+  });
+});
+

@@ -140,6 +140,8 @@ export interface SendScope {
 export interface SendReplay {
   clientMessageId?: string;
   scope?: SendScope;
+  /** When the message was first sent: a retry keeps the time its row first showed (B5). */
+  sentAt?: string;
 }
 
 /**
