@@ -10,8 +10,13 @@ import type { CommandLedgerEntry } from "./commandLedger";
  * belongs at that moment, and only a command newer than everything on screen
  * stays in the tail.
  *
- * Placement is by issue time against each group's first message. A group with
- * no timestamp cannot order anything, so rows fall past it.
+ * Placement is by issue time against each group's first message: a command goes
+ * after the last group stamped at or before it, so nothing that happened before
+ * it is drawn below it. A group with no timestamp cannot order anything, so rows
+ * fall past it. The stamps do not rise steadily: a tool row carries the time it
+ * ended and a committed message the time it was sent, so "before the first group
+ * stamped later" drew a command typed during a bash run above that run and above
+ * a message sent before it (B2, probe-row-order.mjs).
  */
 export interface CommandPlacement {
   /** Rows to draw immediately before the group at this index. */
@@ -27,7 +32,8 @@ export function placeCommands(
   const before = new Map<number, CommandLedgerEntry[]>();
   const tail: CommandLedgerEntry[] = [];
   for (const entry of entries) {
-    const index = groupTimestamps.findIndex((at) => at !== undefined && at > entry.issuedAt);
+    const lastBefore = groupTimestamps.reduce<number>((last, at, position) => (at !== undefined && at <= entry.issuedAt ? position : last), -1);
+    const index = groupTimestamps.findIndex((at, position) => position > lastBefore && at !== undefined);
     if (index === -1) {
       tail.push(entry);
       continue;

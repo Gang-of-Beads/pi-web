@@ -41,6 +41,23 @@ describe("placing command bubbles in the transcript", () => {
     expect(tail).toEqual([]);
   });
 
+  it("puts a command after everything stamped before it, though a tool group carries the time it ended", () => {
+    const prompt = 46_700;
+    const bashEnded = 76_700;
+    const sentBeforeTheCommand = 52_200;
+    const reply = 76_800;
+
+    const { before, tail } = placeCommands([command("a", 54_900)], [prompt, bashEnded, sentBeforeTheCommand, reply]);
+
+    expect({ before: [...before.entries()].map(([index, rows]) => [index, rows.map((row) => row.id)]), tail }).toEqual({ before: [[3, ["a"]]], tail: [] });
+  });
+
+  it("puts a command after a group stamped at the same moment, as it happened no later", () => {
+    const { before } = placeCommands([command("a", 100)], [100, 200]);
+
+    expect([...before.keys()]).toEqual([1]);
+  });
+
   it("has nothing to place when there is no transcript", () => {
     const { before, tail } = placeCommands([command("a", 100)], []);
 

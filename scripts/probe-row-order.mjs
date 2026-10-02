@@ -8,7 +8,9 @@ import { chromium } from "@playwright/test";
  * - A message the daemon listed as queued moved into the pending block below every settled row,
  *   while a later message whose send could not be verified kept its slot above it, so the earlier
  *   message was drawn below the later one.
- * - A command typed after those waiting messages was drawn above them (review 1b6f1553).
+ * - A command typed after those waiting messages was drawn above them (review 1b6f1553), and once
+ *   the turn ended it was drawn above the bash run it was typed during and above the message sent
+ *   before it: the bash group carries the time the run ended.
  * - A failed message retried after the turn ended jumped back to its first slot, above the reply
  *   that came before the retry; a reload draws it at the end (review 1b6f1553). Live, a cut send
  *   stays unverifiable through the turn (the ledger has not answered yet), which keeps it at the
@@ -135,6 +137,7 @@ try {
   await page.waitForTimeout(2000);
   const afterTurn = await drawnRows(page);
   check("precondition: the turn ended and its reply is drawn", idle !== undefined && afterTurn.indexOf(REPLY, afterTurn.indexOf(FIRST)) !== -1, JSON.stringify(afterTurn));
+  check("once the turn ended, the command stays below the message sent before it", afterTurn.indexOf(COMMAND) > afterTurn.indexOf(FIRST), `command at ${String(afterTurn.indexOf(COMMAND))}, first at ${String(afterTurn.indexOf(FIRST))}`);
   await context.unroute(PROMPT_ROUTE);
   const secondRow = page.locator("chat-view article.msg.user").filter({ hasText: SECOND }).first();
   await secondRow.locator("button[data-action='retry']").click({ timeout: 5_000 });
