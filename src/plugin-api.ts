@@ -703,8 +703,10 @@ export interface WorkspaceBackend {
 
 export interface WorkspaceHost {
   requestRender(): void;
-  /** Whether the shown page holds the whole app canvas. Always false for a
-   *  page that did not declare `fullscreen`. */
+  /** Whether the shown page holds the whole app canvas now. False for a
+   *  page that did not declare `fullscreen`, and on a window too narrow to
+   *  show it (the request is kept; the page returns to the canvas when the
+   *  window widens). */
   workspacePanelFullscreen(): boolean;
   /** Ask for the whole app canvas, or give it back. The host ignores the ask
    *  from a page that did not declare `fullscreen`, and gives the canvas

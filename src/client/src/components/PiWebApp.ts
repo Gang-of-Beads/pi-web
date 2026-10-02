@@ -52,7 +52,7 @@ import { machineSessionKey } from "../machineKeys";
 import { commandsForSession } from "../commandLedger";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
 import { routedWorkspaceTool } from "../routedWorkspaceTool";
-import { shownWorkspacePanel, workspacePanelHoldsCanvas } from "../workspacePanelCanvas";
+import { shownWorkspacePanel, workspacePanelHoldsCanvas, workspacePanelMayHoldCanvas } from "../workspacePanelCanvas";
 import { isWaitingForUser } from "../../../shared/sessionActivityState";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { SessionUnreadController } from "../sessionUnread";
@@ -3256,7 +3256,13 @@ export class PiWebApp extends LitElement {
 
   /** The request alone never decides it: see `workspacePanelCanvas.ts`. */
   private workspacePanelHoldsCanvas(): boolean {
-    return workspacePanelHoldsCanvas(this.workspacePanelFullscreen, this.shownWorkspacePanel());
+    return workspacePanelHoldsCanvas({
+      requested: this.workspacePanelFullscreen,
+      windowShowsCanvas: this.appShell.isDesktopSideBySideLayout,
+      panelOnScreen: this.workspacePanelOnScreen(),
+      tool: this.state.workspaceTool,
+      shown: this.shownWorkspacePanel(),
+    });
   }
 
   private visibleWorkspacePanels(): QualifiedWorkspacePanelContribution[] {
@@ -3512,7 +3518,7 @@ export class PiWebApp extends LitElement {
       workspacePanelFullscreenAvailable: () => this.appShell.isDesktopSideBySideLayout,
       setWorkspacePanelFullscreen: (fullscreen) => {
         if (this.workspacePanelFullscreen === fullscreen) return;
-        if (fullscreen && !workspacePanelHoldsCanvas(true, this.shownWorkspacePanel())) return;
+        if (fullscreen && !workspacePanelMayHoldCanvas(this.state.workspaceTool, this.shownWorkspacePanel())) return;
         this.workspacePanelFullscreen = fullscreen;
         if (this.routeRestoreDepth === 0 && this.state.mainView !== "chat" && this.state.mainView !== "navigation") {
           setNamespacedQueryKey(WORKSPACE_ROUTE_NAMESPACE, "expanded", fullscreen ? "1" : undefined);

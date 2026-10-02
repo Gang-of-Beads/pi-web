@@ -2,7 +2,7 @@
 "@gang-of-beads/pi-web": patch
 ---
 
-Git's review mode is reachable again on desktop. Git now draws its own Expand key at the end of its toolbar; it opens every changed file's diff in one scroll across the whole window, and the same key reads Exit expanded there. A remembered or shared link that says a page is expanded no longer hides the app bar for a page that cannot expand, and opening another page gives the window back.
+Git's review mode is reachable again on desktop. Git now draws its own Expand key at the end of its toolbar; it opens every changed file's diff in one scroll across the whole window, and the same key reads Exit expanded there. A remembered or shared link that says a page is expanded no longer hides the app bar for a page that cannot expand, on a phone, or while the side panel is folded away (that case showed an empty window), and opening another page gives the window back.
 
 Git shows its branch and ahead and behind counts (`main · ↑2 ↓1`) at the end of its toolbar, and Git and Files say "out of date" there while their list predates a change, beside the Refresh that clears it.
 

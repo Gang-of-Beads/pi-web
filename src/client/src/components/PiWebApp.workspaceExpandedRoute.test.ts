@@ -115,16 +115,51 @@ describe("PiWebApp workspace expanded route", () => {
 
   it("says the canvas is available only in the desktop side-by-side layout", () => {
     const app = appAt("git:workspace.git", [page("git:workspace.git", true)]);
-    const shell: unknown = Reflect.get(app, "appShell");
-    if (typeof shell !== "object" || shell === null) throw new Error("PiWebApp has no app shell");
     const host = workspaceHost(app);
 
-    Reflect.set(shell, "isDesktopSideBySideLayout", true);
+    setWindowShowsCanvas(app, true);
     const wide = host.workspacePanelFullscreenAvailable?.();
-    Reflect.set(shell, "isDesktopSideBySideLayout", false);
+    setWindowShowsCanvas(app, false);
     const narrow = host.workspacePanelFullscreenAvailable?.();
 
     expect({ wide, narrow }).toEqual({ wide: true, narrow: false });
+  });
+
+  it("holds the canvas only while the window can show it, and returns to it when the window widens", () => {
+    const app = appAt("git:workspace.git", [page("git:workspace.git", true)]);
+    const host = workspaceHost(app);
+    host.setWorkspacePanelFullscreen(true);
+
+    setWindowShowsCanvas(app, false);
+    const narrowed = host.workspacePanelFullscreen();
+    setWindowShowsCanvas(app, true);
+
+    expect({ narrowed, widened: host.workspacePanelFullscreen() }).toEqual({ narrowed: false, widened: true });
+  });
+
+  it("never hides the app bar behind a workspace panel the reader folded away, and returns when it opens", () => {
+    const app = appAt("git:workspace.git", [page("git:workspace.git", true)]);
+    const fold: unknown = Reflect.get(app, "panelCollapse");
+    if (typeof fold !== "object" || fold === null) throw new Error("PiWebApp has no panel fold");
+    Reflect.set(fold, "workspacePanelCollapsed", true);
+    callAppMethod(app, "restoreWorkspaceExpandedRoute", { ...terminalRoute, tool: "git:workspace.git", view: "git:workspace.git" }, { workspaceExpanded: true }, "git:workspace.git");
+    const host = workspaceHost(app);
+    const folded = host.workspacePanelFullscreen();
+    Reflect.set(fold, "workspacePanelCollapsed", false);
+
+    expect({ folded, opened: host.workspacePanelFullscreen() }).toEqual({ folded: false, opened: true });
+  });
+
+  it("does not let a declared page standing in for a missing one take a request made for that one", () => {
+    const app = appAt("gone:panel", [page("git:workspace.git", true)]);
+    Reflect.set(app, "workspacePanelFullscreen", true);
+    const host = workspaceHost(app);
+    const inherited = host.workspacePanelFullscreen();
+    host.setWorkspacePanelFullscreen(false);
+    host.setWorkspacePanelFullscreen(true);
+    const requested: unknown = Reflect.get(app, "workspacePanelFullscreen");
+
+    expect({ inherited, requested }).toEqual({ inherited: false, requested: false });
   });
 
   it("restores expansion only for a matching active workspace-tool route", () => {
@@ -163,7 +198,14 @@ function appAt(tool: QualifiedContributionId, panels: QualifiedWorkspacePanelCon
     mainView: tool,
   });
   Reflect.set(app, "visibleWorkspacePanels", () => panels);
+  setWindowShowsCanvas(app, true);
   return app;
+}
+
+function setWindowShowsCanvas(app: PiWebApp, wide: boolean): void {
+  const shell: unknown = Reflect.get(app, "appShell");
+  if (typeof shell !== "object" || shell === null) throw new Error("PiWebApp has no app shell");
+  Reflect.set(shell, "isDesktopSideBySideLayout", wide);
 }
 
 function workspaceHost(app: PiWebApp): WorkspaceHost {

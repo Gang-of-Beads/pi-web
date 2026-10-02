@@ -21,3 +21,21 @@ Two lanes on the frozen tree `/tmp/pw-norow` (workflow `4d54a383`): Opus 5.5 (`n
 
 - Live on the rebuilt 8505 (`scripts/tmp-canvas-live.mjs`, 10/10): desktop Git shows `main` and Expand at the end of its toolbar; Expand puts it on the canvas with Exit expanded and `expanded=1`; Exit expanded gives it back; an old Files link with `expanded=1` leaves the app bar shown; a Git link with `expanded=1` opens on the canvas with its exit on screen; on a phone Git shows its status and no Expand. Screenshots in `/tmp/surfaces/canvas/`.
 - The old build (`96e054e1`) offered no Expand anywhere (prototype screenshot `C1`, taken on that build).
+
+## Second round: review of `d6bea8af` (workflow `671724cc`)
+
+Opus 5.5 returned OK with notes; DeepSeek 4.1 max returned BLOCK on one finding. Each was checked against the source and, where it is visible on screen, reproduced on the 8505 build of `d6bea8af` (`scripts/probe-workspace-canvas.mjs`, 12/14 there).
+
+| # | Finding | Lane | Verdict | Disposition |
+|---|---|---|---|---|
+| 11 | A Git expanded link opened while the reader has folded the workspace panel away leaves an empty window: the fold's rule (`.workspace-panel-collapsed > workspace-panel { display: none }`, later and equally specific) hides the page, and the canvas rule hides the app bar, the chat and the edge controls. | DeepSeek (P1) | TRUE. Reproduced: an empty window (`/tmp/surfaces/canvas/6-old-empty-window.png`). Present since `96e054e1`. | Fixed: holding the canvas also needs the workspace panel on screen. The request is kept; opening the panel returns the page to the canvas. Fourth producer recorded in state-diagram D6. |
+| 12 | Below 1181px the host said the page holds the canvas while nothing is hidden, so Git drew its review layout and an Exit expanded key on a phone opened from an expanded link. | Opus (P2) | TRUE. Reproduced on a 393px phone. | Fixed: holding the canvas also needs the desktop side-by-side window; the request is kept and the page returns when the window widens. Git's review layout is therefore desktop-only, as its Expand key already was. |
+| 13 | A declared page shown in place of a missing one inherits that page's request (a link to a gone tool with `expanded=1` in a workspace whose first page is Git). | Opus (P2) | TRUE. | Fixed: the request holds only for the page it names (`workspacePanelMayHoldCanvas`), and the setter refuses a page standing in for another. |
+| 14 | `fullscreen?: boolean` differs in spelling from the dialog's `presentation?: "overlay" \| "fullscreen"`. | Opus (P2), DeepSeek (no defect) | TRUE as a difference, FALSE as a defect. | Kept on purpose: it declares a capability, "may take the canvas", not the page's presentation. `presentation: "fullscreen"` on a panel would read as "always fullscreen". |
+| 15 | The live evidence script was not in the tree, and `probe-goto-desktop.mjs` still read the removed title. | DeepSeek (P2) | TRUE. | Fixed: `scripts/probe-workspace-canvas.mjs` is committed with the folded-panel and phone legs; `probe-goto-desktop.mjs` reads the app bar. |
+| 16 | `.stale` in `shared.ts` is drawn by nothing. | DeepSeek (P2) | TRUE (dead since `e381f1c4`). | Fixed: deleted. |
+| 17 | Five bundled pages still declare a `summary` nothing draws. | DeepSeek (P2) | TRUE. | Fixed: deleted with the host's forwarding; each page already shows the same facts in its content or its Go to badge (finding 2). |
+| 18 | An older remote Git on this host never takes the canvas, and its own route echo keeps a review layout in the column. | DeepSeek (P2) | TRUE that it never takes the canvas; FALSE that it keeps the review layout: Git's `state()` re-reads the host on every render and follows its false. | Documented: a page must declare `fullscreen` against the host it runs on (`docs/plugins.md`). |
+| 19 | The host tests read the private request field. | Opus (note) | TRUE. | Kept: those tests assert that a refused request is not stored, which the derived value alone cannot show. |
+| 20 | State diagram wrote `main ↑2 ↓1` where the code writes `main · ↑2 ↓1`. | DeepSeek (nit) | TRUE. | Fixed. |
+

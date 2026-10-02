@@ -917,7 +917,7 @@ A panel that declares `fullscreen: true` may take the whole app canvas on a desk
 - an enter control, shown only while `host.workspacePanelFullscreenAvailable?.()` is true, that calls `host.setWorkspacePanelFullscreen(true)`;
 - an exit control, shown whenever `host.workspacePanelFullscreen()` is true, that calls `host.setWorkspacePanelFullscreen(false)`.
 
-PI WEB ignores the request from a panel that did not declare `fullscreen`, never restores such a panel onto the whole canvas from a link, and gives the canvas back itself when the reader opens another panel, Chat or Sessions. `workspacePanelFullscreenAvailable` is optional because older hosts lack it; when it is absent, offer no enter control. The bundled Git panel is the reference: its Expand key opens a review layout of every changed file, and reads "Exit expanded" there.
+PI WEB ignores the request from a panel that did not declare `fullscreen`, never restores such a panel onto the whole canvas from a link, and gives the canvas back itself when the reader opens another panel, Chat or Sessions. On a window too narrow to show the canvas, or while the reader has folded the workspace panel away, `host.workspacePanelFullscreen()` is false; the request is kept, and the panel returns to the canvas when the window widens or the panel opens. Declare `fullscreen` in the plugin that draws the controls: a page from an older plugin that does not declare it is never given the canvas, whatever its own route says. `workspacePanelFullscreenAvailable` is optional because older hosts lack it; when it is absent, offer no enter control. The bundled Git panel is the reference: its Expand key opens a review layout of every changed file, and reads "Exit expanded" there.
 
 ### Workspace labels
 
