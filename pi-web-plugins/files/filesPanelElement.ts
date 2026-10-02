@@ -3,6 +3,7 @@ import { property, query, state } from "lit/decorators.js";
 import type { FileTreeEntry, WorkspacePanelContext, WorkspaceUploadBatchProgress } from "@gang-of-beads/pi-web/plugin-api";
 import { renderHostCloseIcon, renderHostDisclosureIcon, adoptFilesHostStyles, describeFilesError, filesQuery, filesRegisterModal } from "./hostUi";
 import { createStore } from "./viewMode";
+import { ShownPoll } from "./shownPoll";
 import { FilesExplorer, explorerIdentityKey } from "./explorer";
 import { createWorkspaceUploadBatchState, cancelWorkspaceUploadBatch, completeWorkspaceUploadBatch, failWorkspaceUploadBatch, updateWorkspaceUploadBatchProgress, type WorkspaceUploadBatchState, type WorkspaceUploadFileState } from "./uploadBatches";
 import { workspaceUploadPath } from "./uploadPaths";
@@ -82,6 +83,7 @@ export class PiFilesPanel extends LitElement {
   private uploadBatchSequence = 0;
   private explorer: FilesExplorer | undefined;
   private explorerIdentityKey = "";
+  private readonly poll = new ShownPoll(() => { this.pollTree(); });
 
   protected override willUpdate(changedProperties: PropertyValues<this>): void {
     if (!changedProperties.has("context")) return;
@@ -99,12 +101,26 @@ export class PiFilesPanel extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.link?.attach(this);
+    this.poll.start(this);
   }
 
   override disconnectedCallback(): void {
+    this.poll.stop();
     this.link?.detach(this);
     this.releaseUploadModal();
     super.disconnectedCallback();
+  }
+
+  /**
+   * The timed read while the page is on screen. It redraws only this panel,
+   * and asks the host to redraw only when the toolbar's "out of date" must go.
+   */
+  private pollTree(): void {
+    void this.explorer?.refresh().then(() => {
+      if (this.link?.showsStale() !== true) return;
+      this.link.clearStale();
+      this.context?.host.requestRender();
+    });
   }
 
   markStale(): void {

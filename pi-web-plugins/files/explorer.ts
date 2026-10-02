@@ -84,6 +84,8 @@ export class FilesExplorer {
       }
       if (generation !== this.refreshGeneration) return;
       this.snapshot = { ...this.snapshot, tree: root.entries, expandedDirs: expanded, stale: false, treeFailed: undefined };
+      const selected = this.snapshot.selectedFilePath;
+      if (selected !== undefined && selectedFileVerdict(this.snapshot) === "changed") void this.loadFile(selected);
     } catch (error) {
       if (generation !== this.refreshGeneration) return;
       this.snapshot = { ...this.snapshot, treeFailed: this.deps.describeError(error) };
@@ -152,6 +154,32 @@ export class FilesExplorer {
       && this.snapshot.selectedFilePath === path
       && explorerIdentityKey(identity) === explorerIdentityKey(this.identity);
   }
+}
+
+/** What a fresh listing says about the open file. */
+export type SelectedFileVerdict = "unchanged" | "changed" | "unknown";
+
+/**
+ * Whether the open file moved on disk, judged from the listing a read just
+ * brought. A read used to refresh the tree and leave the viewer on the
+ * content it first loaded, so a file the agent rewrote stayed old on screen
+ * while the tree beside it was new. The listing already carries each entry's
+ * `modifiedAt`, from the same stat the file read reports, so the content is
+ * re-read only when it changed or vanished from a folder the read holds. A
+ * folder the read does not hold says nothing, and nothing is re-read.
+ */
+export function selectedFileVerdict(snapshot: FilesExplorerSnapshot): SelectedFileVerdict {
+  const path = snapshot.selectedFilePath;
+  const loaded = snapshot.selectedFileContent;
+  if (path === undefined || loaded === undefined) return "unknown";
+  const slash = path.lastIndexOf("/");
+  const parent = slash === -1 ? "" : path.slice(0, slash);
+  const listing = parent === "" ? snapshot.tree : snapshot.expandedDirs[parent];
+  if (listing === undefined) return "unknown";
+  const entry = listing.find((candidate) => candidate.path === path);
+  if (entry === undefined) return "changed";
+  if (entry.modifiedAt === undefined) return "unknown";
+  return entry.modifiedAt === loaded.modifiedAt ? "unchanged" : "changed";
 }
 
 function emptySnapshot(): FilesExplorerSnapshot {

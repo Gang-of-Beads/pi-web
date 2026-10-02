@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FileContentResponse, FileTreeResponse } from "@gang-of-beads/pi-web/plugin-api";
-import { FilesExplorer, type FilesExplorerIdentity } from "./explorer";
+import { FilesExplorer, selectedFileVerdict, type FilesExplorerIdentity, type FilesExplorerSnapshot } from "./explorer";
 
 const identity: FilesExplorerIdentity = { machineId: "local", projectId: "p1", workspaceId: "w1" };
 
@@ -147,3 +147,69 @@ describe("FilesExplorer", () => {
     expect(h.explorer.state.tree).toHaveLength(1);
   });
 });
+
+/**
+ * A read refreshed the tree and left the viewer on the content it first loaded, so a file the
+ * agent rewrote stayed old on screen beside a new tree (Files and Git stay fresh, state-diagram D5).
+ */
+describe("the open file follows the tree", () => {
+  const at = (modifiedAt: string) => ({ ...content("notes.md"), modifiedAt });
+  const entry = (filePath: string, modifiedAt?: string) => ({ name: filePath.split("/").at(-1) ?? filePath, path: filePath, type: "file" as const, ...(modifiedAt === undefined ? {} : { modifiedAt }) });
+  const snapshot = (patch: Partial<FilesExplorerSnapshot>): FilesExplorerSnapshot => ({
+    tree: [], treeFailed: undefined, stale: false, expandedDirs: {}, selectedFilePath: undefined, selectedFileContent: undefined, selectedFileLoadError: undefined, ...patch,
+  });
+  const cases: { name: string; snapshot: FilesExplorerSnapshot; verdict: string }[] = [
+    { name: "nothing open", snapshot: snapshot({ tree: [entry("notes.md", "t2")] }), verdict: "unknown" },
+    { name: "open but not loaded yet", snapshot: snapshot({ tree: [entry("notes.md", "t2")], selectedFilePath: "notes.md" }), verdict: "unknown" },
+    { name: "same modifiedAt", snapshot: snapshot({ tree: [entry("notes.md", "t1")], selectedFilePath: "notes.md", selectedFileContent: at("t1") }), verdict: "unchanged" },
+    { name: "a newer modifiedAt", snapshot: snapshot({ tree: [entry("notes.md", "t2")], selectedFilePath: "notes.md", selectedFileContent: at("t1") }), verdict: "changed" },
+    { name: "gone from a held folder", snapshot: snapshot({ tree: [entry("other.md", "t1")], selectedFilePath: "notes.md", selectedFileContent: at("t1") }), verdict: "changed" },
+    { name: "in an expanded folder, newer", snapshot: snapshot({ expandedDirs: { "docs/a": [entry("docs/a/notes.md", "t2")] }, selectedFilePath: "docs/a/notes.md", selectedFileContent: at("t1") }), verdict: "changed" },
+    { name: "in a folder the read does not hold", snapshot: snapshot({ tree: [entry("docs")], selectedFilePath: "docs/notes.md", selectedFileContent: at("t1") }), verdict: "unknown" },
+    { name: "an entry without modifiedAt", snapshot: snapshot({ tree: [entry("notes.md")], selectedFilePath: "notes.md", selectedFileContent: at("t1") }), verdict: "unknown" },
+  ];
+
+  it.each(cases)("$name -> $verdict", ({ snapshot: given, verdict }) => {
+    expect(selectedFileVerdict(given)).toBe(verdict);
+  });
+
+  it("re-reads the open file when a read finds it changed, keeping the old content until the new arrives", async () => {
+    const h = harness("notes.md");
+    let modifiedAt = "2026-10-02T10:00:00.000Z";
+    let body = "old";
+    h.setListFiles((listed) => Promise.resolve({ ...tree(listed), entries: [{ name: "notes.md", path: "notes.md", type: "file", modifiedAt }] }));
+    let release: (() => void) | undefined;
+    h.setReadFile((read) => new Promise((resolve) => {
+      const answer = { ...content(read), modifiedAt, content: body };
+      if (body === "old") resolve(answer);
+      else release = () => { resolve(answer); };
+    }));
+    h.explorer.adopt(identity);
+    await vi.waitFor(() => { expect(h.explorer.state.selectedFileContent?.content).toBe("old"); });
+
+    modifiedAt = "2026-10-02T10:00:09.000Z";
+    body = "new";
+    await h.explorer.refresh();
+    const whileReading = h.explorer.state.selectedFileContent?.content;
+    release?.();
+    await vi.waitFor(() => { expect(h.explorer.state.selectedFileContent?.content).toBe("new"); });
+
+    expect(whileReading).toBe("old");
+  });
+
+  it("does not re-read an open file the read found unchanged", async () => {
+    const h = harness("notes.md");
+    h.setListFiles((listed) => Promise.resolve({ ...tree(listed), entries: [{ name: "notes.md", path: "notes.md", type: "file", modifiedAt: "2026-09-06T00:00:00.000Z" }] }));
+    const reads = vi.fn<(read: string) => Promise<FileContentResponse>>((read) => Promise.resolve(content(read)));
+    h.setReadFile(reads);
+    h.explorer.adopt(identity);
+    await vi.waitFor(() => { expect(h.explorer.state.selectedFileContent).toBeDefined(); });
+    const afterOpen = reads.mock.calls.length;
+
+    await h.explorer.refresh();
+    await h.explorer.refresh();
+
+    expect(reads.mock.calls.length - afterOpen).toBe(0);
+  });
+});
+

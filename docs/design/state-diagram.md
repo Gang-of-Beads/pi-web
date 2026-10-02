@@ -380,6 +380,27 @@ stateDiagram-v2
 - **The read on an edge** never trusts a read already on its way, which may predate the edge: `RunsRead.refresh()` reads once more when that read lands. There is still one read in flight at most.
 - Measured on 8505 (60 s idle, 1440×900). Before (HEAD `d085e874`): the subagents panel 41 requests a minute, git 47, files 40, chat 1. After: subagents 1, git 14–16 (git status 7 and pins 7–8; the pins go in P5, the git poll to its own head), files 0, chat 0. `probe-subagents-quiet.mjs` at 393×850: HEAD fails 5 of 14 legs, this slice passes 14 of 14.
 
+### Workspace pages stay fresh while someone looks (Files and Git)
+
+The owner asked for Git and Files to refresh by themselves, every few seconds (2026-10-02). Measured first on 8505: a file written from outside showed in both within 2.8 s, through the workspace watcher, and both re-read when a turn or the last background run ends. The gaps were in Files. It had no read of its own, and the watcher is only a hint: it can drop events and it watches only the directories of sessions the daemon holds open. The open file in the viewer was never re-read at all.
+
+```mermaid
+stateDiagram-v2
+    [*] --> shown: the page is on screen and the tab visible
+    shown --> shown: every 8 s, a change on disk, or the turn settles (read)
+    shown --> offScreen: the page leaves the screen (stop)
+    shown --> tabHidden: the tab is hidden (skip the ticks)
+    offScreen --> shown: back on screen (read at once)
+    tabHidden --> shown: the tab is visible again (the next tick reads)
+```
+
+- **Owner.** Each page owns its own read, as Git already did (`GIT_POLL_INTERVAL_MS`, 8 s). Files reads its tree on the same terms: only while its page is on screen and the tab is visible, and at once on coming back on screen. A read keeps the expanded folders and the selection, and the toolbar's "out of date" clears when it lands.
+- **The open file follows the tree.** Every Files read compares the open file with its entry in the listing it just got (`selectedFileVerdict`):
+  - a different `modifiedAt` re-reads it, keeping the old content on screen until the new content arrives;
+  - an entry gone from a folder listing the read holds re-reads it too, so the viewer says the file is gone;
+  - a folder listing the read does not hold says nothing, and nothing is re-read.
+- **Cost.** One listing per held folder every 8 s while Files is on screen, as Git costs one status read. Neither reads while off screen or in a hidden tab.
+
 ### A surface never gives up (B48)
 
 Owner, 2026-09-30, on "Couldn't read the projects on this machine." frozen on the phone board: "the page keeps trying to update itself, through event-based messages and, after n silent seconds, an active heartbeat that checks for messages from a newer version … so really there are only two states: trying to reconnect/sync, and syncing … the front end has to design well what it presents to the user".
