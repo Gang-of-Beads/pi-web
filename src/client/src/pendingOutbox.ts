@@ -381,15 +381,30 @@ export function markUnansweredPrompt(sessionKey: string, clientMessageId: string
   savePendingPrompt(sessionKey, bytesLeft ? marked : { ...marked, failure: "not-sent" }, storage);
 }
 
+/** How long after it was sent a message not sent from this device is still resent by itself (D1). */
+export const AUTOMATIC_RESEND_WINDOW_MS = 10 * 60_000;
+
 /**
- * Whether a replay sends this record. A replay of everything - on `online`, on the first render,
- * on a session switch - sends what stopped without an answer; a refused record goes only when
- * the reader presses its Retry.
+ * Whether a replay sends this record. The reader's Retry sends the record it names, whatever its
+ * state. A replay of everything - on `online`, on the first render, on a session switch - sends
+ * only a message that was not sent (never attempted, such as one kept for its own session while the
+ * composer showed another, or failed before its bytes left), within ten minutes of its send, and
+ * not refused (D1
+ * "Automatic resend"). It used to send everything that stopped without an answer, whatever its
+ * age, so a message stranded hours before came back the next time the page loaded, and an
+ * unverifiable one was resent where D1 asks the ledger (B4, probe-outbox-stale.mjs).
  */
-export function replaysRecord(record: PendingPrompt, only: string | undefined): boolean {
+export function replaysRecord(record: PendingPrompt, only: string | undefined, now = Date.now()): boolean {
   if (!outgoingStopped(record.state)) return false;
   if (only !== undefined) return record.clientMessageId === only;
-  return record.refused !== true;
+  return resendsByItself(record, now);
+}
+
+function resendsByItself(record: PendingPrompt, now: number): boolean {
+  const notSent = record.state === undefined || record.state === "failed";
+  if (!notSent || record.refused === true) return false;
+  const sentAt = Date.parse(record.at);
+  return Number.isFinite(sentAt) && now - sentAt <= AUTOMATIC_RESEND_WINDOW_MS;
 }
 
 /** The agent took it: nothing can refuse it any more. */

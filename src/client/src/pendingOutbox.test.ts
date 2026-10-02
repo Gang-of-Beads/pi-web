@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advancePendingPrompt, clearPendingPrompts, forgetReservedPrompt, failPendingPrompt, reserveAcceptedPrompt, isNetworkFailure, loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, sessionsWithFailedSends, type PendingPrompt } from "./pendingOutbox";
+import { advancePendingPrompt, AUTOMATIC_RESEND_WINDOW_MS, clearPendingPrompts, forgetReservedPrompt, failPendingPrompt, replaysRecord, reserveAcceptedPrompt, isNetworkFailure, loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, sessionsWithFailedSends, type PendingPrompt } from "./pendingOutbox";
 
 function memoryStorage(): Storage & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -112,6 +112,36 @@ class MemoryStorage implements Storage {
   removeItem(key: string): void { this.map.delete(key); }
   setItem(key: string, value: string): void { this.map.set(key, value); }
 }
+
+/**
+ * B4: old messages reappeared in the queue. A replay of everything sent every record that stopped
+ * without an answer, whatever its age, so a message stranded hours before came back on the next page
+ * load. D1: only a message not sent from this device in the last ten minutes goes by itself.
+ */
+describe("which records a replay sends", () => {
+  const now = Date.parse("2026-10-02T12:00:00.000Z");
+  const record = (state: PendingPrompt["state"], ageMs: number, extra: Partial<PendingPrompt> = {}): PendingPrompt => ({ ...(state === undefined ? {} : { state }), text: "t", clientMessageId: "c", at: new Date(now - ageMs).toISOString(), ...extra });
+  const minute = 60_000;
+
+  it("sends by itself only a message not sent within the window, and the reader's Retry sends the one it names", () => {
+    const cases: [string, PendingPrompt, string | undefined, boolean][] = [
+      ["never attempted, just written", record(undefined, minute), undefined, true],
+      ["not sent a minute ago", record("failed", minute, { failure: "not-sent" }), undefined, true],
+      ["not sent at the window's edge", record("failed", AUTOMATIC_RESEND_WINDOW_MS, { failure: "not-sent" }), undefined, true],
+      ["not sent just past the window", record("failed", AUTOMATIC_RESEND_WINDOW_MS + 1, { failure: "not-sent" }), undefined, false],
+      ["never attempted, two hours ago", record(undefined, 120 * minute), undefined, false],
+      ["unverifiable a minute ago", record("unverifiable", minute), undefined, false],
+      ["refused a minute ago", record("failed", minute, { refused: true }), undefined, false],
+      ["a send still waiting for its answer", record("sending", minute), undefined, false],
+      ["no readable send time", record("failed", 0, { at: "not a time" }), undefined, false],
+      ["Retry on an unverifiable one two hours old", record("unverifiable", 120 * minute), "c", true],
+      ["Retry on a refused one", record("failed", minute, { refused: true }), "c", true],
+      ["Retry naming another record", record("failed", minute), "other", false],
+    ];
+
+    expect(cases.map(([name, prompt, only]) => [name, replaysRecord(prompt, only, now)])).toEqual(cases.map(([name, , , sends]) => [name, sends]));
+  });
+});
 
 describe("moveOutbox", () => {
   it("carries a session's unsent records to its new identity, keeping each identity once", () => {
