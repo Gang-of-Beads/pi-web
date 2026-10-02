@@ -31,10 +31,10 @@ const ZOOM_TAP_SLOP_PX = 8;
 const WHEEL_ZOOM_STEP = 300;
 import type { ClosedExtensionDialog } from "../appState";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
-import { isWaitingForUser } from "../../../shared/sessionActivityState";
+import { sessionActivityCategory } from "../../../shared/sessionActivityState";
+import { isSessionActive } from "../../../shared/activity";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import type { QualifiedActivityNoteContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";
-import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback } from "./ExtensionDialogCard";
@@ -42,6 +42,7 @@ import { deliveryTaken, discardAction, retryableDeliveryId } from "../messageDel
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { isQueuedAnswer, withQueuedAnswers } from "../queuedAnswerRows";
 import { stepStatusText, stepWaitingText } from "../sessionStepWords";
+import { activityDockWords } from "../activityDockWords";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./FormattedText";
 import "./ToolExecutionView";
@@ -1462,39 +1463,32 @@ if (this.heldWaitingClearTimer !== undefined) {
         </div>
       `;
     }
-    const state = this.activityState();
-    if (state === undefined) return null;
-    const category = this.activityCategory(state);
-    const idle = category === "idle" || category === undefined;
-    const notes = this.contributedActivityNote(idle);
-    if (idle && notes !== undefined) {
-      return html`
-        <div class="activity-dock background" aria-live="polite">
-          <span class="dot"></span>
-          <span class="activity-text">idle</span>
-          ${renderActivityNote(notes)}
-        </div>
-      `;
-    }
+    const category = sessionActivityCategory(this.status, this.activity);
+    if (category === undefined) return null;
+    const notes = this.contributedActivityNote(this.turnIdle());
     const elapsed = category === "working" ? turnElapsedLabel(this.turnStartedAtMs, this.turnNowMs) : undefined;
+    const activity = this.activity;
+    const narrated = activity === undefined ? undefined : this.narratedStep(activity);
+    const words = activityDockWords(category, { ...(narrated === undefined ? {} : { narrated }), ...(activity === undefined ? {} : { activity }), ...(this.status === undefined ? {} : { status: this.status }), stoppable: isSessionActive(this.status, activity) });
     return html`
-      <div class=${`activity-dock ${category ?? ""}${elapsed?.long === true ? " long-running" : ""}`} aria-live="polite">
+      <div class=${`activity-dock ${category}${elapsed?.long === true ? " long-running" : ""}`} aria-live="polite">
         ${category === "working"
           ? html`<span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>`
           : html`<span class="dot"></span>`}
-        <span class="activity-text">${activityDockLabel(category, state, this.activityText(state))}</span>
+        <span class="activity-text">${words}</span>
         ${renderActivityNote(notes)}
         ${elapsed === undefined ? null : html`<span class="activity-elapsed" aria-hidden="true">${elapsed.text}</span>`}
       </div>
     `;
   }
 
-  /** Whether the assistant's turn is over, the fact a plugin note is told as `idle`. */
+  /**
+   * Whether the assistant's turn is over, the fact a plugin note is told as
+   * `idle`: the classifier says idle, background, or does not know yet.
+   */
   private turnIdle(): boolean {
-    const state = this.activityState();
-    if (state === undefined) return true;
-    const category = this.activityCategory(state);
-    return category === "idle" || category === undefined;
+    const category = sessionActivityCategory(this.status, this.activity);
+    return category === undefined || category === "idle" || category === "background";
   }
 
   /**
@@ -1699,40 +1693,6 @@ if (this.heldWaitingClearTimer !== undefined) {
         ${this.pendingMessageCount > 0 ? html`<small>${this.pendingMessageCount} queued ${this.pendingMessageCount === 1 ? "message" : "messages"}</small>` : null}
       </aside>
     `;
-  }
-
-  private activityState(): string | undefined {
-    const status = this.status;
-    if (status === undefined) return this.activity?.label;
-    if (status.isCompacting) return "compacting";
-    if (status.isBashRunning) return "bash";
-    if (status.isStreaming) return "running";
-    if (status.pendingMessageCount > 0) return "queued";
-    return "idle";
-  }
-
-  /**
-   * Map the coarse dock state onto the shared four-state badge so the dock and
-   * the session list rows agree: working (three dots), idle (green), asking
-   * (amber, a question set or an extension dialog is waiting), error (red).
-   */
-  private activityCategory(state: string): SessionStateBadgeKind | undefined {
-    if (this.activity?.phase === "error") return "error";
-    if (state === "idle" || state === "undefined") {
-      if (isWaitingForUser(this.status)) return "asking";
-      return "idle";
-    }
-    if (isWaitingForUser(this.status)) return "asking";
-    return "working";
-  }
-
-  private activityText(state: string): string {
-    const activity = this.activity;
-    if (activity === undefined) return state;
-    const narrated = this.narratedStep(activity);
-    if (narrated !== undefined) return narrated;
-    if (state !== "idle" && activity.phase === "idle") return state;
-    return activity.detail !== undefined && activity.detail !== "" ? `${activity.label}: ${activity.detail}` : activity.label;
   }
 
   /**
@@ -2793,9 +2753,6 @@ function renderActivityNote(notes: string | undefined): TemplateResult | null {
 }
 
 
-export function activityDockLabel(category: string | undefined, state: string, text: string): string {
-  return category === "asking" && state === "idle" ? "Waiting for your answer" : text;
-}
 
 
 function firstTouchY(event: TouchEvent): number | undefined {

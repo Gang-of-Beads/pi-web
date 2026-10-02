@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { SessionActivityCategory } from "../../shared/sessionActivityState";
 import { derivedTags, navigateModel, type NavigateInput } from "./navigateModel";
 import type { SessionInfo } from "./api";
 
@@ -14,6 +15,8 @@ const session = (id: string, cwd: string, name?: string): SessionInfo => ({
   ...(name === undefined ? {} : { name }),
 });
 
+const states = (byId: Readonly<Record<string, SessionActivityCategory>>): ReadonlyMap<string, SessionActivityCategory> => new Map(Object.entries(byId));
+
 const base: NavigateInput = {
   scope: { machineId: "local", projectId: undefined, folderPath: undefined, sessionId: undefined },
   machines: [{ id: "local", name: "Local" }, { id: "pi", name: "pi" }],
@@ -25,8 +28,7 @@ const base: NavigateInput = {
   ],
   sessions: [session("a", "/repos/pi-web", "fix login"), session("b", "/repos/pi-web-probe", "probe run"), session("c", "/repos/trade", "ledger")],
   pinned: [],
-  waitingSessionIds: new Set(),
-  activeSessionIds: new Set(),
+  sessionStates: new Map(),
   pinnedSessionIds: new Set(),
   query: "",
 };
@@ -76,8 +78,8 @@ describe("navigateModel", () => {
   });
 
   it("separates what waits for the reader from what is merely running", () => {
-    const model = navigateModel({ ...base, waitingSessionIds: new Set(["a"]), activeSessionIds: new Set(["a", "b"]) });
-    expect(sectionIds({ ...base, waitingSessionIds: new Set(["a"]), activeSessionIds: new Set(["a", "b"]) })).toEqual(["waiting", "running", "recent", "choices", "choices"]);
+    const model = navigateModel({ ...base, sessionStates: states({ a: "asking", b: "working" }) });
+    expect(sectionIds({ ...base, sessionStates: states({ a: "asking", b: "working" }) })).toEqual(["waiting", "running", "recent", "choices", "choices"]);
     expect(model.sections[0]?.rows.map((row) => row.session.id)).toEqual(["a"]);
     expect(model.sections[1]?.rows.map((row) => row.session.id)).toEqual(["b"]);
   });
@@ -101,7 +103,7 @@ describe("navigateModel", () => {
   });
 
   it("searches names, paths and tags, and reads #tag as a tag", () => {
-    const withState = { ...base, waitingSessionIds: new Set(["a"]) };
+    const withState = { ...base, sessionStates: states({ a: "asking" }) };
     expect(navigateModel({ ...withState, query: "ledger" }).matchCount).toBe(1);
     expect(navigateModel({ ...withState, query: "#waiting" }).sections[0]?.rows.map((row) => row.session.id)).toEqual(["a"]);
     expect(navigateModel({ ...withState, query: "#pi-web" }).matchCount).toBe(2);
@@ -114,14 +116,14 @@ describe("navigateModel", () => {
   });
 
   it("says state, size and folder under the name instead of a row of hashes", () => {
-    const model = navigateModel({ ...base, waitingSessionIds: new Set(["a"]) });
+    const model = navigateModel({ ...base, sessionStates: states({ a: "asking" }) });
     const rows = model.sections.flatMap((section) => section.rows);
     expect(rows.find((row) => row.session.id === "a")?.detail).toBe("waiting for you · 2 messages · main");
     expect(rows.find((row) => row.session.id === "c")?.detail).toBe("2 messages · main");
   });
 
   it("derives machine, project, folder and state tags", () => {
-    expect(derivedTags(session("a", "/repos/pi-web"), { ...base, waitingSessionIds: new Set(["a"]) }, "local")).toEqual(["local", "main", "pi-web", "waiting"]);
+    expect(derivedTags(session("a", "/repos/pi-web"), { ...base, sessionStates: states({ a: "asking" }) }, "local")).toEqual(["local", "main", "pi-web", "waiting"]);
   });
 
   it("offers machines as the only level when there are no projects to group by", () => {
@@ -137,11 +139,11 @@ describe("navigateModel", () => {
   });
 
   it("marks what each session is doing", () => {
-    const model = navigateModel({ ...base, waitingSessionIds: new Set(["a"]), activeSessionIds: new Set(["a", "b"]) });
-    const states = new Map(model.sections.flatMap((section) => section.rows).map((row) => [row.session.id, row.state]));
-    expect(states.get("a")).toBe("waiting");
-    expect(states.get("b")).toBe("working");
-    expect(states.get("c")).toBe("idle");
+    const model = navigateModel({ ...base, sessionStates: states({ a: "asking", b: "working" }) });
+    const marks = new Map(model.sections.flatMap((section) => section.rows).map((row) => [row.session.id, row.state]));
+    expect(marks.get("a")).toBe("asking");
+    expect(marks.get("b")).toBe("working");
+    expect(marks.get("c")).toBe("unknown");
   });
 });
 
@@ -199,8 +201,7 @@ describe("one session, one row", () => {
       ...base,
       pinned: [{ session: busy, machineId: "local" }],
       pinnedSessionIds: new Set(["a"]),
-      activeSessionIds: new Set(["a"]),
-      waitingSessionIds: new Set(["a"]),
+      sessionStates: states({ a: "asking" }),
     });
 
     const ids = model.sections.flatMap((section) => section.rows.map((row) => row.session.id));
@@ -209,7 +210,20 @@ describe("one session, one row", () => {
   });
 
   it("still lists an unpinned working session under Working", () => {
-    const model = navigateModel({ ...base, activeSessionIds: new Set(["b"]) });
+    const model = navigateModel({ ...base, sessionStates: states({ b: "working" }) });
     expect(model.sections.find((section) => section.id === "running")?.rows.map((row) => row.session.id)).toEqual(["b"]);
+  });
+});
+
+/**
+ * The page derived waiting, working and idle on its own, so a failed session read idle here and
+ * error in the switcher (B14, state-diagram D3). Its marks are now the classifier's, every state.
+ */
+describe("the Go to page's marks come from the one classifier", () => {
+  it("marks every category, and an unknown state as unknown rather than idle", () => {
+    const model = navigateModel({ ...base, sessionStates: states({ a: "error", b: "background" }) });
+    const marks = new Map(model.sections.flatMap((section) => section.rows).map((row) => [row.session.id, row.state]));
+
+    expect({ a: marks.get("a"), b: marks.get("b"), c: marks.get("c") }).toEqual({ a: "error", b: "background", c: "unknown" });
   });
 });

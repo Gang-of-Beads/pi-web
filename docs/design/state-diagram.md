@@ -220,7 +220,15 @@ stateDiagram-v2
 ```
 
 - **Owner.** One pure classifier (`sessionActivityCategory`) over typed fields: the status booleans, the open cards, the background-work count and the activity `phase`. The chat dock, the session list, the quick switcher and the status line all use it; none has its own ladder.
-- **Precedence:** `asking` > `error` > `working` > `background` > `idle`. A question waiting for the reader outranks the failure before it; the failure stays marked on its row.
+- **Precedence:** `asking` > `error` > `working` > `background` > `idle`.
+- **Built (B14, 2026-10-02).** Three derivations had grown beside the classifier, and they disagreed:
+  - the chat dock's own ladder (`activityState`) read the activity's *label* when no status had arrived, so a session whose last word was "stopped" showed working dots until its status came; it took "background" from a plugin's note being present rather than from the count, and ignored an active phase the classifier counts;
+  - the quick switcher drew its badge from the classifier but its WORKING and waiting groups from `isSessionActive` and `isWaitingForUser`, so a session being opened sat outside WORKING with working dots, and a failed session still streaming sat in WORKING with a red badge;
+  - the Go to page's rows knew only waiting, working and idle, from the same two sets, so a failed session and one with background work read idle there while the switcher said error and background.
+
+  Now every surface asks `sessionActivityCategory`. The dock's category is the classifier's, and its words are output only: the step narration (D3), else the activity's words, else the status's own work word; asking says "Waiting for your answer" unless there is work a reader could stop. The switcher's groups and the Go to page's sections are ids in a category, computed once from the same map. The Go to page marks all five categories with the switcher's colours, and a session whose state is unknown carries no mark: absence is not negation.
+- **Not a display state.** `isSessionActive` stays, for a different question: is there work a reader could stop or must wait for (Stop, reload gating, the workspace roll-up, a turn's falling edge). A session being opened is shown as working but has nothing to stop.
+ A question waiting for the reader outranks the failure before it; the failure stays marked on its row.
 - **Background work** is a count on the status, contributed by plugins (a `backgroundWork` contribution per plugin, summed by the daemon). The *category* is core. The *words* beside it ("2 background runs", "subagent: reviewing…") are the contributing plugin's appendage. A disabled plugin contributes neither count nor words.
 - **Sub-flags** (`compacting`, `bash`) qualify `working`. They are not categories.
 - **One `idle` per turn,** published at turn end only. `message_end` inside a turn is not idle.

@@ -20,7 +20,6 @@ import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, pro
 import type { BackgroundTasksRead, PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
 import type { AppAction } from "../actions";
 import { composerCwd, initialAppState, type AppState } from "../appState";
-import { isSessionActive } from "../../../shared/activity";
 import { isSessionNotFoundError } from "../sessionNotFound";
 import { renderArchivedStrip } from "./archivedStrip";
 import { sessionWorkSettled } from "../sessionWorkSettled";
@@ -53,7 +52,6 @@ import { commandsForSession } from "../commandLedger";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
 import { routedWorkspaceTool } from "../routedWorkspaceTool";
 import { shownWorkspacePanel, workspacePanelHoldsCanvas, workspacePanelMayHoldCanvas } from "../workspacePanelCanvas";
-import { isWaitingForUser } from "../../../shared/sessionActivityState";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { SessionUnreadController } from "../sessionUnread";
 import { workspaceViewTransition } from "../workspaceViewTransition";
@@ -104,7 +102,7 @@ import type { NavigateInput, NavigateLevel } from "../navigateModel";
 import type { ShellToolTab } from "../appShell/shellToolTabs";
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
-import { quickSwitcherSessionStates } from "../quickSwitcher";
+import { quickSwitcherSessionStates, sessionIdsIn } from "../quickSwitcher";
 import { reloadOffer } from "../versionSkew";
 import { oneRowPerIdentity } from "../transcriptInvariant";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
@@ -2570,11 +2568,7 @@ export class PiWebApp extends LitElement {
    * working badge would recreate the divergence this code exists to avoid.
    */
   private activeSessionIds(): ReadonlySet<string> {
-    const active = new Set<string>();
-    for (const session of this.quickSwitcherSessions) {
-      if (isSessionActive(this.state.sessionStatuses[session.id], this.state.sessionActivities[session.id])) active.add(session.id);
-    }
-    return active;
+    return sessionIdsIn(this.sessionStateKinds(), "working");
   }
 
   /** Four-state badge per session for the quick switcher and list rows. */
@@ -2633,11 +2627,7 @@ export class PiWebApp extends LitElement {
    * above work that is merely running.
    */
   private waitingSessionIds(): ReadonlySet<string> {
-    const waiting = new Set<string>();
-    for (const session of this.quickSwitcherSessions) {
-      if (isWaitingForUser(this.state.sessionStatuses[session.id])) waiting.add(session.id);
-    }
-    return waiting;
+    return sessionIdsIn(this.sessionStateKinds(), "asking");
   }
 
   /** True while a modal layer owns the back gesture. */
@@ -2813,8 +2803,7 @@ export class PiWebApp extends LitElement {
       pinned: dedupeById(browsingElsewhere ? [...this.quickSwitcherSessions, ...this.quickSwitcherPinnedElsewhere] : [...this.quickSwitcherSessions, ...sessions, ...this.quickSwitcherPinnedElsewhere])
         .filter((session) => pinnedIds.has(session.id))
         .map((session) => ({ session, machineId })),
-      waitingSessionIds: this.waitingSessionIds(),
-      activeSessionIds: this.activeSessionIds(),
+      sessionStates: this.sessionStateKinds(),
       pinnedSessionIds: pinnedIds,
     };
   }

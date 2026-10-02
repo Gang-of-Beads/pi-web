@@ -241,6 +241,11 @@ export function renameSessionInList(
  * a green dot. Deriving from the list being rendered keeps group placement and
  * badge color from the same source, so WORKING and three dots cannot diverge.
  */
+/** The sessions in one category of the map, for a group or section built from the classifier (B14). */
+export function sessionIdsIn(states: ReadonlyMap<string, SessionStateBadgeKind>, category: SessionStateBadgeKind): ReadonlySet<string> {
+  return new Set([...states].flatMap(([sessionId, kind]) => (kind === category ? [sessionId] : [])));
+}
+
 export function quickSwitcherSessionStates(
   sessions: readonly SessionInfo[],
   statuses: Readonly<Record<string, SessionStatus>>,

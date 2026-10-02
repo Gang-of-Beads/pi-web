@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo, Workspace } from "./api";
 import { sessionLabel } from "./sessionLabels";
-import { quickSwitcherFilterActive, quickSwitcherFilterSessions, renameSessionInList, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces } from "./quickSwitcher";
+import { quickSwitcherFilterActive, quickSwitcherFilterSessions, renameSessionInList, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, sessionIdsIn } from "./quickSwitcher";
 
 const NOW = Date.parse("2026-08-14T12:00:00.000Z");
 
@@ -370,5 +370,19 @@ describe("filtering to a project whose workspaces have not arrived", () => {
     const filtered = quickSwitcherFilterSessions(sessions, { projectId: "pi-web" }, workspaces);
 
     expect(filtered.map((session) => session.id)).toEqual(["a"]);
+  });
+});
+
+/**
+ * The switcher's WORKING and waiting groups came from isSessionActive and isWaitingForUser while
+ * its badges came from the classifier, so a group and its badge could disagree (B14). Both come
+ * from one map now.
+ */
+describe("the sessions in one category", () => {
+  it("are exactly those the classifier put there", () => {
+    const states = new Map([["a", "working"], ["b", "asking"], ["c", "working"], ["d", "error"]] as const);
+
+    expect({ working: [...sessionIdsIn(states, "working")], asking: [...sessionIdsIn(states, "asking")], idle: [...sessionIdsIn(states, "idle")] })
+      .toEqual({ working: ["a", "c"], asking: ["b"], idle: [] });
   });
 });

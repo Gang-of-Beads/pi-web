@@ -10,6 +10,7 @@ import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
 import type { BoardAnswer } from "../../sync/sessionBoard";
 import { sessionStateBadgeStyles } from "../sessionStateBadgeStyles.js";
+import { SESSION_STATE_LABELS } from "../activityBadge";
 import { actionMenuPanelStyle } from "../actionMenu";
 import { navigateRowActions, type NavigateRowActionId, type NavigateRowKind } from "../../navigateRowActions";
 import { sessionLabel } from "../../sessionLabels";
@@ -30,24 +31,20 @@ import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningWor
  */
 export type NavigateKind = "sessions" | "machine" | "project";
 
-const STATE_LABEL: Record<NavigateSessionState, string> = {
-  waiting: "Waiting for you",
-  working: "Working",
-  idle: "Idle",
-};
-
 /**
  * Work in progress is the shared bouncing dots, not a static green pip: a
  * still dot the owner had to squint at could not be told from the idle one,
- * and the transcript already animates work this way.
+ * and the transcript already animates work this way. Every category wears the
+ * switcher's mark and words (B14); an unknown state wears none.
  */
 function renderNavigateStateMark(state: NavigateSessionState) {
-  const label = STATE_LABEL[state];
+  if (state === "unknown") return nothing;
+  const label = SESSION_STATE_LABELS[state];
   if (state === "working") {
     const dots = [0, 1, 2].map((index) => html`<span class="state-dot" style=${`animation-delay:${(index * 0.14).toFixed(2)}s`}></span>`);
     return html`<span class="session-state running" role="img" title=${label} aria-label=${label}><span class="state-dots">${dots}</span></span>`;
   }
-  return html`<span class=${`state ${state}`} role="img" title=${label} aria-label=${label}></span>`;
+  return html`<span class=${`session-state ${state}`} role="img" title=${label} aria-label=${label}></span>`;
 }
 
 @customElement("app-navigate-page")
@@ -426,18 +423,12 @@ export class AppNavigatePage extends LitElement {
     /* Two lines of name, like the quick-access card: a one-line clamp turned
        every session into the same truncated prefix. */
     .row .row-title { display: flex; align-items: flex-start; gap: var(--pi-space-2); white-space: normal; }
-    .state { flex: 0 0 auto; margin-left: auto; margin-top: calc(0.65em - var(--pi-dot-sm) / 2); }
-    .state { flex: 0 0 auto; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; }
-    .state.waiting { background: var(--pi-accent); }
-    /* The working mark is the shared badge's three dots; this block keeps
-       only the still states. */
     .session-state { flex: 0 0 auto; margin-left: auto; margin-top: calc(0.65em - var(--pi-dot-md) / 2); }
     /* The working mark is three dots in a row, not one dot: the shared badge
        box is a circle the width of a single dot, which cut the third one in
        half on the board. Only the animated mark widens; the still states keep
        the circle. */
     .session-state.running { width: auto; min-width: var(--pi-dot-md); overflow: visible; }
-    .state.idle { background: var(--pi-border); }
     /* One box, two things: the name on the left and the menu on the right
        live inside the same bordered row. The menu used to float outside the
        box, which read as a stray glyph beside the list. */

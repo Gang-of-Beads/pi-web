@@ -14,6 +14,7 @@
  */
 
 import type { SessionInfo } from "./api";
+import type { SessionActivityCategory } from "../../shared/sessionActivityState";
 
 /**
  * The levels a reader navigates. There is no folder level: the owner could not
@@ -42,7 +43,8 @@ export interface NavigateChoice {
   sessionCount?: number;
 }
 
-export type NavigateSessionState = "waiting" | "working" | "idle";
+/** The mark beside a session's name: its category from the one classifier (B14), or unknown before its state is known. */
+export type NavigateSessionState = SessionActivityCategory | "unknown";
 
 export interface NavigateSessionRow {
   session: SessionInfo;
@@ -87,8 +89,8 @@ export interface NavigateInput {
   sessions: readonly SessionInfo[];
   /** Pinned sessions from every machine, each carrying the machine it belongs to. */
   pinned: readonly { session: SessionInfo; machineId: string }[];
-  waitingSessionIds: ReadonlySet<string>;
-  activeSessionIds: ReadonlySet<string>;
+  /** Each session's category from `sessionActivityCategory`; a session missing from it is unknown. */
+  sessionStates: ReadonlyMap<string, SessionActivityCategory>;
   pinnedSessionIds: ReadonlySet<string>;
   query: string;
   /** Manual tags per session id, merged with the derived ones. */
@@ -116,10 +118,10 @@ export function navigateModel(input: NavigateInput): NavigateModel {
   // which read as two selections. Its state is on the pinned row already.
   const unpinned = matching.filter((entry) => !entry.pinned);
 
-  const waiting = unpinned.filter((entry) => input.waitingSessionIds.has(entry.session.id));
+  const waiting = unpinned.filter((entry) => entry.state === "asking");
   if (waiting.length > 0) sections.push({ id: "waiting", title: "Waiting for you", rows: waiting, choices: [] });
 
-  const running = unpinned.filter((entry) => input.activeSessionIds.has(entry.session.id) && !input.waitingSessionIds.has(entry.session.id));
+  const running = unpinned.filter((entry) => entry.state === "working");
   if (running.length > 0) sections.push({ id: "running", title: "Working", rows: running, choices: [] });
 
   const rest = unpinned.filter((entry) => !waiting.includes(entry) && !running.includes(entry));
@@ -142,7 +144,7 @@ export function navigateModel(input: NavigateInput): NavigateModel {
 }
 
 /** The tags a session carries without anyone typing one. */
-export function derivedTags(session: SessionInfo, input: Pick<NavigateInput, "projects" | "folders" | "machines" | "waitingSessionIds" | "activeSessionIds" | "pinnedSessionIds">, machineId: string): string[] {
+export function derivedTags(session: SessionInfo, input: Pick<NavigateInput, "projects" | "folders" | "machines" | "sessionStates" | "pinnedSessionIds">, machineId: string): string[] {
   const tags: string[] = [];
   const machine = input.machines.find((entry) => entry.id === machineId);
   if (machine !== undefined) tags.push(machine.name);
@@ -152,21 +154,41 @@ export function derivedTags(session: SessionInfo, input: Pick<NavigateInput, "pr
     const project = input.projects.find((entry) => entry.id === folder.projectId);
     if (project !== undefined) tags.push(project.name);
   }
-  if (input.waitingSessionIds.has(session.id)) tags.push("waiting");
-  else if (input.activeSessionIds.has(session.id)) tags.push("running");
+  const stateTag = STATE_TAG[input.sessionStates.get(session.id) ?? "unknown"];
+  if (stateTag !== undefined) tags.push(stateTag);
   if (input.pinnedSessionIds.has(session.id)) tags.push("pinned");
   return [...new Set(tags.map((tag) => tag.toLowerCase()))];
 }
 
+/** The searchable tag each state carries, where it carries one. */
+const STATE_TAG: Readonly<Record<NavigateSessionState, string | undefined>> = {
+  asking: "waiting",
+  working: "running",
+  background: undefined,
+  error: undefined,
+  idle: undefined,
+  unknown: undefined,
+};
+
+/** The word each state puts first under a session's name, where it says one. */
+const STATE_DETAIL: Readonly<Record<NavigateSessionState, string | undefined>> = {
+  asking: "waiting for you",
+  working: "working",
+  background: undefined,
+  error: undefined,
+  idle: undefined,
+  unknown: undefined,
+};
+
 /**
  * A list of names alone could not say which session was working and which was
- * waiting for an answer, which is what a reader scans for. Waiting outranks
- * working: an answer the agent is blocked on is the only state that needs a
- * person.
+ * waiting for an answer, which is what a reader scans for. The state is the
+ * classifier's, as on every other surface (B14): the page used to derive
+ * waiting, working and idle on its own, so a failed session read idle here and
+ * error in the switcher.
  */
 function sessionState(session: SessionInfo, input: NavigateInput): NavigateSessionState {
-  if (input.waitingSessionIds.has(session.id)) return "waiting";
-  return input.activeSessionIds.has(session.id) ? "working" : "idle";
+  return input.sessionStates.get(session.id) ?? "unknown";
 }
 
 function row(session: SessionInfo, machineId: string, input: NavigateInput): NavigateSessionRow {
@@ -201,8 +223,8 @@ function sessionPath(session: SessionInfo, input: NavigateInput): string {
 
 function sessionDetail(session: SessionInfo, machineId: string, input: NavigateInput): string {
   const parts: string[] = [];
-  if (input.waitingSessionIds.has(session.id)) parts.push("waiting for you");
-  else if (input.activeSessionIds.has(session.id)) parts.push("working");
+  const stateWord = STATE_DETAIL[sessionState(session, input)];
+  if (stateWord !== undefined) parts.push(stateWord);
   const count = session.messageCount;
   if (typeof count === "number" && count > 0) parts.push(count === 1 ? "1 message" : `${String(count)} messages`);
   const folder = input.folders.find((entry) => entry.path === session.cwd);

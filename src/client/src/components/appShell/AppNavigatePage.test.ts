@@ -26,8 +26,7 @@ function input(patch: Partial<Omit<NavigateInput, "query">> = {}): Omit<Navigate
     folders: [{ id: "w1", label: "main", path: "/repos/pi-web", projectId: "p1" }],
     sessions: [session("a", "/repos/pi-web", "fix login")],
     pinned: [],
-    waitingSessionIds: new Set(),
-    activeSessionIds: new Set(),
+    sessionStates: new Map(),
     pinnedSessionIds: new Set(),
     ...patch,
   };
@@ -99,7 +98,7 @@ describe("app-navigate-page", () => {
   });
 
   it("lists a session by name with the project it runs in under it", async () => {
-    const page = await mount({}, input({ waitingSessionIds: new Set(["a"]) }));
+    const page = await mount({}, input({ sessionStates: new Map([["a", "asking"]]) }));
     expect(texts(page, ".row.session .row-name")).toEqual(["fix login"]);
     expect(texts(page, ".row.session .row-path")).toEqual(["pi-web"]);
   });
@@ -116,7 +115,7 @@ describe("app-navigate-page", () => {
   });
 
   it("filters by tag from the search field", async () => {
-    const page = await mount({}, input({ waitingSessionIds: new Set(["a"]) }));
+    const page = await mount({}, input({ sessionStates: new Map([["a", "asking"]]) }));
     const search = page.renderRoot.querySelector<HTMLInputElement>(".search");
     if (search === null) throw new Error("no search field");
     search.value = "#waiting";
@@ -327,25 +326,40 @@ describe("the working mark", () => {
     const working = session("busy", "/repos/pi-web", "running now");
     const page = await mount({}, input({
       sessions: [working],
-      activeSessionIds: new Set(["busy"]),
+      sessionStates: new Map([["busy", "working"]]),
     }));
 
     const running = page.renderRoot.querySelector(".session-state.running");
 
     expect(running).not.toBeNull();
     expect(running?.querySelectorAll(".state-dot").length).toBe(3);
-    expect(running?.getAttribute("aria-label")).toBe("Working");
+    expect(running?.getAttribute("aria-label")).toBe("Session is working");
     expect(page.renderRoot.querySelector(".state.working")).toBeNull();
   });
 
   it("keeps a still dot for idle and waiting", async () => {
     const page = await mount({}, input({
       sessions: [session("idle-one", "/repos/pi-web", "done"), session("asked", "/repos/pi-web", "asking")],
-      waitingSessionIds: new Set(["asked"]),
+      sessionStates: new Map([["idle-one", "idle"], ["asked", "asking"]]),
     }));
 
-    expect(page.renderRoot.querySelector(".state.idle")).not.toBeNull();
-    expect(page.renderRoot.querySelector(".state.waiting")).not.toBeNull();
+    expect(page.renderRoot.querySelector(".session-state.idle")).not.toBeNull();
+    expect(page.renderRoot.querySelector(".session-state.asking")).not.toBeNull();
     expect(page.renderRoot.querySelector(".session-state.running")).toBeNull();
+  });
+
+  /**
+   * The page knew only waiting, working and idle, so a failed session and one with background work
+   * read idle here while the switcher said error and background (B14). It wears the switcher's mark
+   * and words for every state, and none for a state it does not know.
+   */
+  it("wears the switcher's mark for every state, and none when the state is unknown", async () => {
+    const page = await mount({}, input({
+      sessions: [session("bad", "/repos/pi-web", "failed"), session("bg", "/repos/pi-web", "children"), session("new", "/repos/pi-web", "unknown")],
+      sessionStates: new Map([["bad", "error"], ["bg", "background"]]),
+    }));
+    const marks = [...page.renderRoot.querySelectorAll(".row.session")].map((row) => row.querySelector(".session-state")?.getAttribute("aria-label") ?? null);
+
+    expect(marks).toEqual(["Session hit an error", "Turn ended; background work still running", null]);
   });
 });

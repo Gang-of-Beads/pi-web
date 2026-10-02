@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionActivity, SessionStatus } from "../../../shared/apiTypes";
-import { activityDockLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
+import { sessionActivityCategory } from "../../../shared/sessionActivityState";
+import { activityDockWords } from "../activityDockWords";
+import { ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
 
 function status(over: Partial<SessionStatus>): SessionStatus {
   return {
@@ -267,9 +269,9 @@ describe("a question the user has not answered", () => {
   });
 
   it("leaves every other state's words alone", () => {
-    expect(activityDockLabel("idle", "idle", "idle")).toBe("idle");
-    expect(activityDockLabel("working", "running", "reading a file")).toBe("reading a file");
-    expect(activityDockLabel("asking", "compacting", "compacting")).toBe("compacting");
+    expect(activityDockWords("idle", { stoppable: false })).toBe("idle");
+    expect(activityDockWords("working", { activity: activity("active", "reading a file"), stoppable: true })).toBe("reading a file");
+    expect(activityDockWords("asking", { status: status({ isCompacting: true }), activity: activity("idle", "idle"), stoppable: true })).toBe("compacting");
   });
 
   /**
@@ -278,7 +280,7 @@ describe("a question the user has not answered", () => {
    * past a check written against the words.
    */
   it("reads the state rather than the words drawn from it", () => {
-    expect(activityDockLabel("asking", "idle", "waiting on the model")).toBe("Waiting for your answer");
+    expect(activityDockWords("asking", { activity: activity("idle", "waiting on the model"), stoppable: false })).toBe("Waiting for your answer");
   });
 });
 
@@ -341,5 +343,32 @@ describe("the status line narrates the agent's step", () => {
     const error = await dockWith(status({ isStreaming: true }), failed);
 
     expect({ old: old.text, error: error.text }).toEqual({ old: "agent running", error: "extension error" });
+  });
+});
+
+/**
+ * The dock had its own ladder beside the classifier the session rows and the switcher use, and it
+ * read the activity's label when no status had arrived (B14, state-diagram D3). For every state the
+ * dock's category is now the classifier's.
+ */
+describe("the dock and the session rows agree", () => {
+  const dialog = { dialogId: "d1", kind: "confirm" as const, title: "Ship?", askedAt: "", runScoped: false };
+  const cases: { name: string; status: SessionStatus | undefined; activity: SessionActivity | undefined }[] = [
+    { name: "a word that is not idle, before any status", status: undefined, activity: activity("idle", "stopped") },
+    { name: "an active word before any status", status: undefined, activity: activity("active", "thinking") },
+    { name: "an error before any status", status: undefined, activity: activity("error", "model failed") },
+    { name: "streaming", status: status({ isStreaming: true }), activity: activity("active") },
+    { name: "an active word on an idle status", status: status({}), activity: activity("active", "thinking") },
+    { name: "background work with no plugin words", status: status({ backgroundRunCount: 2 }), activity: activity("idle", "idle") },
+    { name: "a dialog waiting", status: status({ pendingDialogs: [dialog] }), activity: activity("idle", "idle") },
+    { name: "a failed run", status: status({}), activity: activity("error", "model failed") },
+    { name: "idle", status: status({}), activity: activity("idle", "idle") },
+  ];
+
+  it.each(cases)("$name", async ({ status: given, activity: last }) => {
+    const dock = await dockWith(given, last);
+    const category = sessionActivityCategory(given, last);
+
+    expect(category === undefined ? dock.className : dock.className.split(" ")).toEqual(category === undefined ? "" : expect.arrayContaining(["activity-dock", category]));
   });
 });
