@@ -37,6 +37,17 @@ describe("a session whose turn ended while its children run on", () => {
     expect(sessionActivityCategory(status(), activity)).toBe("idle");
   });
 
+  it("lets a question waiting for the reader outrank the failure before it, as D3 orders them", () => {
+    const dialog = { dialogId: "d1", kind: "confirm" as const, title: "?", askedAt: "", runScoped: true };
+    const failed = { ...activity, phase: "error" as const };
+
+    expect({
+      asked: sessionActivityCategory(status({ pendingDialogs: [dialog] }), failed),
+      notAsked: sessionActivityCategory(status(), failed),
+      noStatus: sessionActivityCategory(undefined, failed),
+    }).toEqual({ asked: "asking", notAsked: "error", noStatus: "error" });
+  });
+
   it("still reports the work the user is actually blocked on", () => {
     // Background is the weakest signal there is: it must never hide an error,
     // a question, or a turn that is genuinely still running.

@@ -293,7 +293,7 @@ export class QuickSwitcher extends LitElement {
     const selected = this.selectedSession?.id === session.id;
     const unread = this.unreadSessionIds.has(session.id);
     const pinned = this.pinnedSessionIds.has(session.id);
-    const rawStateKind = this.sessionStates.get(session.id) ?? (this.activeSessionIds.has(session.id) ? "working" : undefined);
+    const rawStateKind = this.sessionStates.get(session.id);
     // An interrupted run's marker replaces any idle-state dot: being cut off by
     // a restart is more informative than being briefly quiet, and two marks in
     // the same corner read as noise. The moment the session works again the

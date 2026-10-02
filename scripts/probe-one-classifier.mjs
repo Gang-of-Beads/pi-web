@@ -15,6 +15,10 @@ import { chromium } from "@playwright/test";
  *   same mark: "Waiting for your answer" for the asking one, "Session is working" for the running one.
  * - The dock of the running session is in the working category. pi-updater opens update dialogs
  *   in new sessions on 8505; the probe keeps closing them so the running session stays working.
+ * - A third session opens a dialog (`/ui-custom-probe`), then, while the phone page is open, its
+ *   shell command fails: a question waiting for the reader outranks the failure before it (D3
+ *   precedence, B14 review 6bf7aee1), so both surfaces give it the asking mark. Before, the
+ *   classifier put the failure first and the phone's Go to page said "Session hit an error".
  */
 const BASE = process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
 const CWD = process.env.PROBE_CWD ?? "/Users/hanxiao.du/.pi-web-8505/pi-web-8505-seed-workspace";
@@ -24,6 +28,7 @@ const HOME_SESSION = "01a05000-5eed-7c00-8000-0000000000e1";
 const STAMP = String(Date.now()).slice(-6);
 const ASK_NAME = `classify ask ${STAMP}`;
 const RUN_NAME = `classify run ${STAMP}`;
+const FAIL_NAME = `classify fail ${STAMP}`;
 const results = [];
 const check = (name, pass, detail = "") => {
   results.push(pass);
@@ -85,8 +90,14 @@ const markIn = (page, host, rowSelector, name) => page.evaluate(({ host, rowSele
 
 const browser = await chromium.launch();
 const sessions = [];
+const kept = [];
 let dialogCloser;
 try {
+  const failing = await startSession(FAIL_NAME, "probe-classify-fail: say ok");
+  kept.push(failing);
+  await waitFor(() => status(failing), (state) => state.isStreaming !== true && state.activity?.phase !== "active", 30_000);
+  void api(`sessions/${failing}/commands/run`, { text: "/ui-custom-probe" }).catch(() => undefined);
+  const dialogOpen = await waitFor(() => status(failing), (state) => (state.pendingDialogs ?? []).length > 0, 20_000);
   const asking = await startSession(ASK_NAME, "probe-classify-ask: ask me something");
   const running = await startSession(RUN_NAME, "probe-classify-run: run a long command");
   sessions.push(asking, running);
@@ -100,8 +111,7 @@ try {
   };
   await closeDialogs();
   dialogCloser = setInterval(() => { void closeDialogs().catch(() => undefined); }, 1000);
-  await sleep(1500);
-  const quiet = (await Promise.all(sessions.map(status))).every((state) => (state.pendingDialogs ?? []).length === 0);
+  const quiet = await waitFor(() => Promise.all(sessions.map(status)), (states) => states.every((state) => (state.pendingDialogs ?? []).length === 0), 15_000) !== undefined;
   check("precondition: one session asks, the other runs, and no extension dialog (pi-updater opens one in a new session) is open", askReady !== undefined && runReady !== undefined && quiet);
 
   const phone = await browser.newContext({ viewport: { width: 393, height: 850 }, hasTouch: true, isMobile: true });
@@ -116,9 +126,15 @@ try {
   check("the running session's dock is in the working category", dockClass.split(" ").includes("working"), JSON.stringify(dockClass));
   await phonePage.goto(`${BASE}/?project=${PROJECT}&workspace=${WORKSPACE}&session=${HOME_SESSION}&view=chat`);
   await phonePage.waitForTimeout(5000);
+  await api(`sessions/${failing}/shell`, { text: "!exit 3" });
+  const failReady = await waitFor(() => status(failing), (state) => state.activity?.phase === "error" && (state.pendingDialogs ?? []).length > 0, 20_000);
+  check("precondition: the third session's shell command failed while a dialog is open in it", dialogOpen !== undefined && failReady !== undefined, JSON.stringify((await status(failing)).activity ?? null));
+  const learned = await waitFor(() => phonePage.evaluate((id) => document.querySelector("pi-web-app")?.state?.sessionActivities?.[id]?.phase ?? null, failing), (phase) => phase === "error", 10_000);
+  check("precondition: the open phone page learned the failure from the live event", learned === "error");
   await phonePage.locator("app-context-bar button[aria-label='Open navigation']").tap();
   await phonePage.waitForTimeout(2500);
-  const goTo = { ask: await markIn(phonePage, "app-navigate-page", "button.row.session", ASK_NAME), run: await markIn(phonePage, "app-navigate-page", "button.row.session", RUN_NAME) };
+  console.log("page facts for the failed session:", JSON.stringify(await phonePage.evaluate((id) => { const state = document.querySelector("pi-web-app")?.state; return { activity: state?.sessionActivities?.[id] ?? null, dialogs: (state?.sessionStatuses?.[id]?.pendingDialogs ?? []).length, hasStatus: state?.sessionStatuses?.[id] !== undefined }; }, failing)));
+  const goTo = { ask: await markIn(phonePage, "app-navigate-page", "button.row.session", ASK_NAME), run: await markIn(phonePage, "app-navigate-page", "button.row.session", RUN_NAME), fail: await markIn(phonePage, "app-navigate-page", "button.row.session", FAIL_NAME) };
   await phonePage.screenshot({ path: "/tmp/surfaces/one-classifier-goto-phone.png" });
   await phone.close();
 
@@ -129,20 +145,22 @@ try {
   await desktopPage.waitForTimeout(6000);
   await desktopPage.keyboard.press("ControlOrMeta+p");
   await desktopPage.waitForTimeout(2000);
-  const switcher = { ask: await markIn(desktopPage, "quick-switcher", "button.session-row", ASK_NAME), run: await markIn(desktopPage, "quick-switcher", "button.session-row", RUN_NAME) };
+  const switcher = { ask: await markIn(desktopPage, "quick-switcher", "button.session-row", ASK_NAME), run: await markIn(desktopPage, "quick-switcher", "button.session-row", RUN_NAME), fail: await markIn(desktopPage, "quick-switcher", "button.session-row", FAIL_NAME) };
   await desktopPage.screenshot({ path: "/tmp/surfaces/one-classifier-switcher-desktop.png" });
   await desktop.close();
 
   console.log("go to:", JSON.stringify(goTo), "switcher:", JSON.stringify(switcher));
-  check("precondition: both surfaces list both sessions", ![goTo.ask, goTo.run, switcher.ask, switcher.run].includes("no row"));
+  check("precondition: both surfaces list all three sessions", ![goTo.ask, goTo.run, goTo.fail, switcher.ask, switcher.run, switcher.fail].includes("no row"));
   check("the asking session wears the same mark on the Go to page and in the switcher", goTo.ask === switcher.ask && switcher.ask === "Waiting for your answer", `${goTo.ask} / ${switcher.ask}`);
   check("the running session wears the same mark on the Go to page and in the switcher", goTo.run === switcher.run && switcher.run === "Session is working", `${goTo.run} / ${switcher.run}`);
+  check("a failed session with a dialog open wears the asking mark on both surfaces", goTo.fail === switcher.fail && switcher.fail === "Waiting for your answer", `${goTo.fail} / ${switcher.fail}`);
 } finally {
   clearInterval(dialogCloser);
   await browser.close();
   server.close();
-  for (const sessionId of sessions) {
+  for (const sessionId of [...sessions, ...kept]) {
     const state = await status(sessionId).catch(() => ({}));
+    for (const dialog of state.pendingDialogs ?? []) await api(`sessions/${sessionId}/dialogs/cancel`, { dialogId: dialog.dialogId }).catch(() => undefined);
     if (state.pendingAsk !== undefined) await api(`sessions/${sessionId}/ask/cancel`, { askId: state.pendingAsk.askId }).catch(() => undefined);
     await api(`sessions/${sessionId}/abort`, {}).catch(() => undefined);
     await api(`sessions/${sessionId}/archive`, {}).catch(() => undefined);

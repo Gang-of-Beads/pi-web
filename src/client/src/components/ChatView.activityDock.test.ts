@@ -288,9 +288,8 @@ describe("the dock's row cannot vanish mid-stream", () => {
   /**
    * The suspected jitter producer was a beat where streaming had begun but no
    * renderable state existed, collapsing the row. Investigated and NOT
-   * REPRODUCED: with a status present, activityState() always answers -
-   * compacting, bash, running, queued, or idle - so a live session always has
-   * a dock. These pins keep that true; if someone adds an early return that
+   * REPRODUCED: with a status present, the classifier always answers a
+   * category (sessionActivityCategory), so a live session always has a dock. These pins keep that true; if someone adds an early return that
    * can fire mid-stream, the collapse becomes possible again and this fails.
    */
   it("renders the working dock even before any activity state arrives", async () => {

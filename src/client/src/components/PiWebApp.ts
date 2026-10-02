@@ -2571,9 +2571,14 @@ export class PiWebApp extends LitElement {
     return sessionIdsIn(this.sessionStateKinds(), "working");
   }
 
-  /** Four-state badge per session for the quick switcher and list rows. */
+  /**
+   * The category of every session the switcher or the Go to page lists: the board's rows, pinned
+   * sessions whose project is closed, and the stepped-into project's own sessions. Built from the
+   * board alone, a session being created or a pinned one still loaded wore no mark on the page while
+   * its dock said working (B14 review 6bf7aee1).
+   */
   private sessionStateKinds(): ReadonlyMap<string, SessionStateBadgeKind> {
-    return quickSwitcherSessionStates(this.quickSwitcherSessions, this.state.sessionStatuses, this.state.sessionActivities);
+    return quickSwitcherSessionStates([...this.quickSwitcherSessions, ...this.quickSwitcherPinnedElsewhere, ...this.state.sessions], this.state.sessionStatuses, this.state.sessionActivities);
   }
 
   /**
@@ -2582,11 +2587,7 @@ export class PiWebApp extends LitElement {
    * even with an answer typed into them.
    */
   private errorSessionIds(): ReadonlySet<string> {
-    const errored = new Set<string>();
-    for (const [sessionId, kind] of this.sessionStateKinds()) {
-      if (kind === "error") errored.add(sessionId);
-    }
-    return errored;
+    return sessionIdsIn(this.sessionStateKinds(), "error");
   }
 
   private pinnedProjectCache: { machineId: string; ids: ReadonlySet<string> } | undefined;
@@ -2803,7 +2804,7 @@ export class PiWebApp extends LitElement {
       pinned: dedupeById(browsingElsewhere ? [...this.quickSwitcherSessions, ...this.quickSwitcherPinnedElsewhere] : [...this.quickSwitcherSessions, ...sessions, ...this.quickSwitcherPinnedElsewhere])
         .filter((session) => pinnedIds.has(session.id))
         .map((session) => ({ session, machineId })),
-      sessionStates: this.sessionStateKinds(),
+      sessionStates: browsingElsewhere ? EMPTY_STATE_MAP : this.sessionStateKinds(),
       pinnedSessionIds: pinnedIds,
     };
   }

@@ -193,6 +193,44 @@ describe("rows while browsing another machine", () => {
 });
 
 /**
+ * B14 review 6bf7aee1: the state map was built from the board alone, so a session the Go to page
+ * listed from the stepped-into project, or a pinned one whose project is closed, wore no mark while
+ * its dock said working; and the page paired another machine's rows with this machine's statuses.
+ */
+describe("the session states the Go to page draws", () => {
+  const busy = { isStreaming: true, isCompacting: false, isBashRunning: false, pendingMessageCount: 0, queuedMessages: [], tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, cost: 0 };
+  const statesOf = (app: PiWebApp): unknown => {
+    const build: unknown = Reflect.get(app, "navigateInput");
+    if (typeof build !== "function") throw new Error("navigateInput was unavailable");
+    const input: unknown = Reflect.apply(build, app, []);
+    if (typeof input !== "object" || input === null) throw new Error("navigateInput returned nothing");
+    const states: unknown = Reflect.get(input, "sessionStates");
+    return states instanceof Map ? Object.fromEntries(states) : states;
+  };
+
+  it("cover the stepped-into project's sessions and pinned ones whose project is closed, though the board lists neither", () => {
+    const app = createApp();
+    const local = machine("local");
+    const opened = { ...sessionOn("/alpha"), id: "opened" };
+    const pinned = { ...sessionOn("/closed"), id: "pinned" };
+    applyState(app, { machines: [local], selectedMachine: local, sessions: [opened], sessionStatuses: { opened: { ...busy, sessionId: "opened" }, pinned: { ...busy, sessionId: "pinned", isStreaming: false } } });
+    if (!Reflect.set(app, "quickSwitcherSessions", [])) throw new Error("Could not seed the board");
+    if (!Reflect.set(app, "quickSwitcherPinnedElsewhere", [pinned])) throw new Error("Could not seed pinned rows");
+
+    expect(statesOf(app)).toEqual({ opened: "working", pinned: "idle" });
+  });
+
+  it("are none while another machine is browsed, as in the switcher", () => {
+    const app = createApp();
+    applyState(app, { machines: [machine("local"), machine("remote-b")], selectedMachine: machine("local"), sessions: [], sessionStatuses: { "s-1": { ...busy, sessionId: "s-1" } } });
+    if (!Reflect.set(app, "quickSwitcherSessions", [sessionOn("/on-remote")])) throw new Error("Could not seed browsed rows");
+    if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "remote-b")) throw new Error("Could not set browse machine");
+
+    expect(statesOf(app)).toEqual({});
+  });
+});
+
+/**
  * Owner report from the desktop: "Pin to top" did nothing. The rail's rows
  * come from the machine listing, and the action looked the row up only in the
  * selected workspace's sessions, so it found nothing and returned silently.

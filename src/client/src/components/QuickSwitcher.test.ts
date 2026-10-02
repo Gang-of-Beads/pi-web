@@ -74,7 +74,7 @@ describe("quick-switcher", () => {
     expect(byName("streaming")?.querySelector(".row-flag.active")).toBeNull();
   });
 
-  it("falls back to a working badge for active sessions the state map has not reached yet", async () => {
+  it("draws no badge for a session the state map does not know: absence is not a state", async () => {
     const switcher = await mount({
       sessions: [session("fresh", { name: "just opened" })],
       selectedWorkspace: workspace("main"),
@@ -83,8 +83,7 @@ describe("quick-switcher", () => {
     });
 
     const row = sessionRows(switcher).find((candidate) => rowTitle(candidate) === "just opened");
-    expect(row?.querySelectorAll(".state-dot").length).toBe(3);
-    expect(row?.querySelector(".session-state")?.getAttribute("class")).toContain("running");
+    expect(row?.querySelector(".session-state")).toBeNull();
   });
 
   it("shows only the interrupted ring for a cut-off session, not a green idle dot", async () => {

@@ -334,7 +334,6 @@ describe("the working mark", () => {
     expect(running).not.toBeNull();
     expect(running?.querySelectorAll(".state-dot").length).toBe(3);
     expect(running?.getAttribute("aria-label")).toBe("Session is working");
-    expect(page.renderRoot.querySelector(".state.working")).toBeNull();
   });
 
   it("keeps a still dot for idle and waiting", async () => {
