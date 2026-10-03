@@ -267,6 +267,31 @@ describe("the open session answers session-not-found (P2 slice b part 2; owner: 
     expect({ selected: state().selectedSession?.id, target: state().sessionTarget, writes: urlModes }).toEqual({ selected: undefined, target: undefined, writes: [] });
   });
 
+  /** Review ca45d6ed (both lanes' residual): a located session belongs to the machine it was looked for on. */
+  it("opens nothing on another machine when the located session answers after a machine switch", async () => {
+    const elsewhere = { ...workspace, id: "ws-elsewhere", path: "/elsewhere", label: "elsewhere", isMain: false };
+    const located: SessionInfo = { ...otherRow, cwd: elsewhere.path };
+    const readOn: (string | undefined)[] = [];
+    let answer: () => void = () => undefined;
+    const { sessions, state, patch } = await opened({
+      messages: (session, _query, machineId) => {
+        readOn.push(machineId);
+        return session.id === otherRow.id && session.cwd === workspace.path ? Promise.reject(notFound()) : Promise.resolve(emptyPage);
+      },
+      locateSession: () => new Promise((resolve) => { answer = () => { resolve({ kind: "found" as const, session: located }); }; }),
+    });
+    patch({ workspaces: [workspace, elsewhere] });
+
+    await sessions.selectSession(otherRow, { updateUrl: false });
+    await settle();
+    readOn.length = 0;
+    patch({ selectedMachine: { id: "remote", name: "remote", kind: "remote", createdAt: "2026-07-27T10:00:00.000Z", updatedAt: "2026-07-27T10:00:00.000Z" } });
+    answer();
+    for (let turn = 0; turn < 6; turn++) await settle();
+
+    expect({ selected: state().selectedSession?.id, target: state().sessionTarget, readOn }).toEqual({ selected: undefined, target: undefined, readOn: [] });
+  });
+
   it("adds no entry when an open session its pick already wrote answers the code later", async () => {
     const { sessions, deleted, urlModes } = await opened();
     await sessions.selectSession(oldSession);

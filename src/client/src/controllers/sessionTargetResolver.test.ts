@@ -17,6 +17,7 @@ function harness(answers: (() => Promise<SessionLocation>)[]) {
   const reported: string[] = [];
   const clock = { now: 5_000 };
   const opened: string[] = [];
+  const openedOn: string[] = [];
   const asked: { id: string; cwd: string; machineId: string }[] = [];
   const timers: { run: () => void; ms: number; cancelled: boolean }[] = [];
   const resolver = new SessionTargetResolver({
@@ -29,7 +30,8 @@ function harness(answers: (() => Promise<SessionLocation>)[]) {
       published.push(target === undefined ? undefined : target.target.kind);
       unansweredSince.push(target?.unansweredSince);
     },
-    open: (opening, options) => {
+    open: (opening, options, followed) => {
+      openedOn.push(followed.machineId);
       if (opening.id === "fails-to-open") return Promise.reject(new Error("the transcript read failed"));
       opened.push(options.updateUrl === false ? `${opening.id} (url kept)` : opening.id);
       return Promise.resolve();
@@ -49,7 +51,7 @@ function harness(answers: (() => Promise<SessionLocation>)[]) {
     timer.run();
     await settle();
   };
-  return { resolver, published, opened, asked, timers, fire, unansweredSince, reported, clock };
+  return { resolver, published, opened, openedOn, asked, timers, fire, unansweredSince, reported, clock };
 }
 
 async function settle(): Promise<void> {
@@ -84,6 +86,17 @@ describe("resolving a session a link names (P2 slice b)", () => {
     await settle();
 
     expect({ published, opened, asked }).toEqual({ published: ["asking", "gone"], opened: [], asked: [{ id: "s-1", cwd: "/repo", machineId: "local" }] });
+  });
+
+  /** Review ca45d6ed: the session a retry finds belongs to the machine it was followed on, which the opener checks against the page's. */
+  it("tells the opener which machine a retry found the session on", async () => {
+    const { resolver, openedOn, fire } = harness([unanswered, () => Promise.resolve({ kind: "found", session: session("s-1") })]);
+
+    await resolver.follow({ ...scope, machineId: "remote-b" }, { kind: "asking", sessionId: "s-1" });
+    await settle();
+    await fire();
+
+    expect(openedOn).toEqual(["remote-b"]);
   });
 
   it("opens a session the daemon locates, wherever it is recorded", async () => {

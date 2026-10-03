@@ -7,7 +7,7 @@ import { SessionGapRepair, type StreamFrontier } from "../sessionGapRepair";
 import { describeError, noticeForReader } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
-import { MACHINE_WIDE_LOCATE_START, targetInListing, type SessionTarget } from "../sessionTarget";
+import { MACHINE_WIDE_LOCATE_START, targetInListing, type SessionTarget, type SessionTargetScope } from "../sessionTarget";
 import { SessionTargetResolver, type SessionTargetOpenOptions } from "./sessionTargetResolver";
 import { openAsksIn } from "../openAsks";
 import type { SessionTranscriptTail } from "../../../shared/apiTypes";
@@ -343,8 +343,8 @@ export class SessionController {
     this.targets = new SessionTargetResolver({
       locate: (ref, machineId) => this.api.locateSession(ref, machineId),
       publish: (sessionTarget) => { this.setState({ sessionTarget }); },
-      open: (session, openOptions) => {
-        if (openOptions.correctsUrl === true && !this.urlNames(session.id)) {
+      open: (session, openOptions, scope) => {
+        if (!this.mayOpenFollowed(session.id, openOptions, scope)) {
           this.targets.drop();
           return Promise.resolve();
         }
@@ -2302,6 +2302,16 @@ export class SessionController {
     if (url !== undefined) url.settled = true;
     if (write) this.updateUrl();
     else if (url?.placed === true && this.urlNames(url.sessionId)) this.updateUrl({ replace: true });
+  }
+
+  /**
+   * Whether a session the resolver found may open: only on the machine it was followed on (a
+   * machine switch whose route names no session leaves a pending retry behind), and a correction
+   * only while the address still names it (review ca45d6ed).
+   */
+  private mayOpenFollowed(sessionId: string, options: SessionTargetOpenOptions, scope: SessionTargetScope): boolean {
+    if (scope.machineId !== selectedMachineId(this.getState())) return false;
+    return options.correctsUrl !== true || this.urlNames(sessionId);
   }
 
   /** Whether the address names this session, so rewriting its entry corrects the reader's own place. */

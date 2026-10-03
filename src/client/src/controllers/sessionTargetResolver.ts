@@ -15,7 +15,8 @@ export interface SessionTargetOpenOptions {
 export interface SessionTargetResolverDeps {
   locate(ref: SessionRef, machineId: string): Promise<SessionLocation>;
   publish(target: ScopedSessionTarget | undefined): void;
-  open(session: SessionInfo, options: SessionTargetOpenOptions): Promise<void>;
+  /** `scope` is where the target was followed: the session it found belongs to that machine. */
+  open(session: SessionInfo, options: SessionTargetOpenOptions, scope: SessionTargetScope): Promise<void>;
   readonly schedule?: (run: () => void, ms: number) => () => void;
   readonly now?: () => number;
   /** A session that fails to open after a retry has no caller left to tell; it goes here. */
@@ -65,7 +66,7 @@ export class SessionTargetResolver {
 
   private async settle(following: Following, target: SessionTarget, attempt: number): Promise<void> {
     if (target.kind === "open" || target.kind === "archived") {
-      await this.deps.open(target.session, following.options);
+      await this.deps.open(target.session, following.options, following.scope);
       return;
     }
     this.shown = true;
