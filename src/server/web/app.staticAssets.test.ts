@@ -59,6 +59,28 @@ describe("static client assets", () => {
     }
   });
 
+  /** An unknown /api path answered 200 with the document, so a client read HTML where it expected an answer or a refusal. */
+  it("answers an unknown API path with a JSON 404, never the document", async () => {
+    const app = await appWithClient();
+    try {
+      const answers = await Promise.all(["/api/no-such-route", "/api/machines/local/no-such-route"].map(async (url) => {
+        const response = await app.inject({ method: "GET", url });
+        return { url, status: response.statusCode, json: response.headers["content-type"]?.includes("application/json") === true };
+      }));
+      const posted = await app.inject({ method: "POST", url: "/api/no-such-route", payload: {} });
+
+      expect({ answers, posted: posted.statusCode }).toEqual({
+        answers: [
+          { url: "/api/no-such-route", status: 404, json: true },
+          { url: "/api/machines/local/no-such-route", status: 404, json: true },
+        ],
+        posted: 404,
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it("still serves the document for an application route", async () => {
     // The fallback exists for client-side routing and must keep working.
     const app = await appWithClient();

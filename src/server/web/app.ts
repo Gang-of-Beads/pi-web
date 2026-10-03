@@ -2,7 +2,8 @@ import { homedir } from "node:os";
 import { existsSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import Fastify, { type FastifyInstance, type FastifyReply, type FastifyServerOptions } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions } from "fastify";
+import { notFoundAnswer, type NotFoundAnswer } from "./notFoundAnswer.js";
 import fastifyCompress from "@fastify/compress";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
@@ -401,20 +402,12 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
         else if (filePath.includes(`${sep}assets${sep}`)) response.header("cache-control", "public, max-age=31536000, immutable");
       },
     });
-    app.setNotFoundHandler((request, reply) => {
-      // The SPA fallback must not answer for assets. A browser holding a
-      // cached index.html from a previous build asks for hashed files that no
-      // longer exist; answering those with index.html hands HTML to a <script>
-      // tag, which throws on the first '<' and leaves a blank page - looking
-      // like the app is broken, while an incognito window works because it has
-      // no cached document. A 404 lets the browser fail the request it made,
-      // and the reload it prompts fetches the current index.
-      const path = request.url.split("?")[0] ?? "";
-      if (/\.(?:js|mjs|css|map|json|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf)$/i.test(path)) {
-        return reply.code(404).type("text/plain").send("Not found");
-      }
-      return reply.sendFile("index.html");
-    });
+    const notFoundReplies: Record<NotFoundAnswer, (request: FastifyRequest, reply: FastifyReply) => FastifyReply> = {
+      document: (_request, reply) => reply.sendFile("index.html"),
+      "missing-asset": (_request, reply) => reply.code(404).type("text/plain").send("Not found"),
+      "missing-api": (request, reply) => reply.code(404).send({ message: `Route ${request.method}:${request.url} not found`, error: "Not Found", statusCode: 404 }),
+    };
+    app.setNotFoundHandler((request, reply) => notFoundReplies[notFoundAnswer(request.url)](request, reply));
   }
 
   return app;
