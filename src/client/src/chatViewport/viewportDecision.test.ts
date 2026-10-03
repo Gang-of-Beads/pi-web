@@ -14,8 +14,8 @@ const metrics = { scrollTop: 0, scrollHeight: 4000, clientHeight: 800 };
 const atTop = { scrollTop: 0, scrollHeight: 40_000, clientHeight: 800 };
 const atBottom = { scrollTop: 39_200, scrollHeight: 40_000, clientHeight: 800 };
 
-const window: ViewportWindow = { hasOlder: true, hasNewer: true, loading: false };
-const fullWindow: ViewportWindow = { hasOlder: false, hasNewer: false, loading: false };
+const window: ViewportWindow = { hasOlder: true, hasNewer: true, loading: false, held: false };
+const fullWindow: ViewportWindow = { hasOlder: false, hasNewer: false, loading: false, held: false };
 
 const decide = (state: ViewportState, event: ViewportEvent, rest: Partial<ViewportInput> = {}) =>
   viewportDecision({ state, event, window, measured: true, fillsViewport: true, ...rest });
@@ -117,8 +117,8 @@ describe("only an upward scroll asks for history", () => {
   it("follows again once the reader scrolls down to the bottom of the newest, and not to the end of an older window", () => {
     const bottom = { scrollTop: 39_200, scrollHeight: 40_000, clientHeight: 800 };
     expect({
-      newest: decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: bottom }, { window: { hasOlder: true, hasNewer: false, loading: false } }),
-      olderWindow: decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: bottom }, { window: { hasOlder: true, hasNewer: true, loading: true } }),
+      newest: decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: bottom }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } }),
+      olderWindow: decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: bottom }, { window: { hasOlder: true, hasNewer: true, loading: true, held: false } }),
     }).toEqual({
       newest: { action: "idle", next: { kind: "following" } },
       olderWindow: { action: "idle", next: { kind: "holding" } },
@@ -130,6 +130,45 @@ describe("only an upward scroll asks for history", () => {
   });
 });
 
+describe("a restore that finished (D4, review ca45d6ed)", () => {
+  it("leaves restoring for reading at a restored spot and for following at the bottom, and changes nothing else", () => {
+    const awaiting: ViewportState = { kind: "awaitingPage", want: "older", resume: { kind: "restoring" } };
+    expect({
+      spot: decide({ kind: "restoring" }, { kind: "restoreSettled", landed: "spot" }),
+      bottom: decide({ kind: "restoring" }, { kind: "restoreSettled", landed: "bottom" }),
+      holding: decide({ kind: "holding" }, { kind: "restoreSettled", landed: "bottom" }),
+      awaiting: decide(awaiting, { kind: "restoreSettled", landed: "spot" }),
+    }).toEqual({
+      spot: { action: "idle", next: { kind: "holding" } },
+      bottom: { action: "idle", next: { kind: "following" } },
+      holding: { action: "idle", next: { kind: "holding" } },
+      awaiting: { action: "idle", next: awaiting },
+    });
+  });
+
+  it("loads older history once a reader the restore left reading reaches the top", () => {
+    const settled = decide({ kind: "restoring" }, { kind: "restoreSettled", landed: "spot" }).next;
+    expect({ settled: decide(settled, { kind: "scrolled", direction: "up", metrics: atTop }).action, stillRestoring: decide({ kind: "restoring" }, { kind: "scrolled", direction: "up", metrics: atTop }).action }).toEqual({ settled: "load-older", stillRestoring: "idle" });
+  });
+});
+
+describe("a failed read's hold (D4, review ca45d6ed)", () => {
+  const held: ViewportWindow = { ...window, held: true };
+
+  it("asks for no page while held, from either end, an unfilled view or a restore's missing spot", () => {
+    expect({
+      older: decide({ kind: "holding" }, { kind: "scrolled", direction: "up", metrics: atTop }, { window: held }).action,
+      newer: decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: atBottom }, { window: held }).action,
+      unfilled: decide({ kind: "holding" }, { kind: "scrolled", direction: "none", metrics }, { window: held, fillsViewport: false }).action,
+      missingSpot: decide({ kind: "restoring" }, { kind: "anchorMissing" }, { window: held }).action,
+    }).toEqual({ older: "idle", newer: "idle", unfilled: "idle", missingSpot: "snap-bottom" });
+  });
+
+  it("lets the reader's jump ask through the hold", () => {
+    expect(decide({ kind: "holding" }, { kind: "jumpNewest" }, { window: held }).action).toBe("load-newest-page");
+  });
+});
+
 describe("the jump-to-newest control", () => {
   it("jumps to the newest page rather than walking there", () => {
     const decision = decide({ kind: "holding" }, { kind: "jumpNewest" });
@@ -138,7 +177,7 @@ describe("the jump-to-newest control", () => {
   });
 
   it("just lands at the bottom when the newest is already loaded", () => {
-    expect(decide({ kind: "holding" }, { kind: "jumpNewest" }, { window: { hasOlder: true, hasNewer: false, loading: false } })).toEqual({
+    expect(decide({ kind: "holding" }, { kind: "jumpNewest" }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } })).toEqual({
       action: "snap-bottom",
       next: { kind: "following" },
     });
@@ -159,7 +198,7 @@ describe("one page in flight at a time", () => {
   });
 
   it("does not start a second fetch while one is in flight", () => {
-    expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "up", metrics: atTop }, { window: { ...window, loading: true } }).action).toBe("idle");
+    expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "up", metrics: atTop }, { window: { ...window, loading: true, held: false } }).action).toBe("idle");
   });
 
   it("resumes where it was after a page arrives", () => {

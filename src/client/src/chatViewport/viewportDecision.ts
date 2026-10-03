@@ -33,12 +33,15 @@ export type ViewportEvent =
   | { kind: "jumpNewest" }
   | { kind: "pageArrived"; want: PageWant }
   | { kind: "pageFailed" }
-  | { kind: "anchorMissing" };
+  | { kind: "anchorMissing" }
+  | { kind: "restoreSettled"; landed: "spot" | "bottom" };
 
 export interface ViewportWindow {
   hasOlder: boolean;
   hasNewer: boolean;
   loading: boolean;
+  /** A failed read is waiting out its retry (`pageRetry`): only the reader's jump asks before it ends. */
+  held: boolean;
 }
 
 export type ViewportState =
@@ -74,8 +77,12 @@ const NEAR_TOP = 600;
 const idle = (state: ViewportState): ViewportDecision => ({ action: "idle", next: state });
 const decide = (action: ViewportAction, next: ViewportState): ViewportDecision => ({ action, next });
 
-const canLoad = (input: ViewportInput, want: PageWant): boolean =>
-  !input.window.loading && (want === "older" ? input.window.hasOlder : input.window.hasNewer);
+const hasPage = (input: ViewportInput, want: PageWant): boolean => (want === "older" ? input.window.hasOlder : input.window.hasNewer);
+
+/** The reader's own jump asks through a failed read's hold; nothing else does (D4, review ca45d6ed). */
+const canLoadOnIntent = (input: ViewportInput, want: PageWant): boolean => !input.window.loading && hasPage(input, want);
+
+const canLoad = (input: ViewportInput, want: PageWant): boolean => !input.window.held && canLoadOnIntent(input, want);
 
 const load = (input: ViewportInput, want: PageWant, resume: ViewportState): ViewportDecision =>
   decide(want === "older" ? "load-older" : want === "newer" ? "load-newer-page" : "load-newest-page", {
@@ -103,7 +110,7 @@ const onAnchorMissing: Handler = (input, event) => {
 const onJumpNewest: Handler = (input, event) => {
   if (event.kind !== "jumpNewest") return idle(input.state);
   if (input.state.kind === "awaitingPage") return idle({ kind: "awaitingPage", want: input.state.want, resume: { kind: "following" } });
-  if (canLoad(input, "newest")) return load(input, "newest", { kind: "following" });
+  if (canLoadOnIntent(input, "newest")) return load(input, "newest", { kind: "following" });
   return decide("snap-bottom", { kind: "following" });
 };
 
@@ -126,6 +133,16 @@ const AFTER_PAGE: Record<PageWant, ViewportDecision> = {
 const onPageArrived: Handler = (input, event) => {
   if (event.kind !== "pageArrived" || input.state.kind !== "awaitingPage") return idle(input.state);
   return input.state.resume.kind === "following" && input.state.want !== "older" ? AFTER_PAGE.newest : AFTER_PAGE[input.state.want];
+};
+
+/**
+ * A restore that finished leaves `restoring`: a restored (or skipped) spot is reading, a landing at
+ * the bottom is following. A viewport left restoring asks for no page, so a session reopened where
+ * the reader left it loaded nothing however far they scrolled (D4, review ca45d6ed).
+ */
+const onRestoreSettled: Handler = (input, event) => {
+  if (event.kind !== "restoreSettled" || input.state.kind !== "restoring") return idle(input.state);
+  return idle(event.landed === "bottom" ? { kind: "following" } : { kind: "holding" });
 };
 
 const onPageFailed: Handler = (input, event) => {
@@ -181,6 +198,7 @@ const EVENT_HANDLERS: Record<ViewportEvent["kind"], Handler> = {
   pageArrived: onPageArrived,
   pageFailed: onPageFailed,
   scrolled: onScrolled,
+  restoreSettled: onRestoreSettled,
 };
 
 export function viewportDecision(input: ViewportInput): ViewportDecision {

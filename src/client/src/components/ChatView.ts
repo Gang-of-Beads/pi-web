@@ -16,6 +16,7 @@ import { writeClipboardText } from "../clipboard";
 import { followScrollVerdict } from "../followScrollAdoption.js";
 import { scrollDirection, viewportDecision, followsAfterScroll } from "../chatViewport/viewportDecision.js";
 import type { ViewportAction, ViewportEvent, ViewportState } from "../chatViewport/viewportDecision.js";
+import { holdAfterFailure, isHeld, PAGE_RETRY_OPEN, type PageRetry } from "../chatViewport/pageRetry.js";
 import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { doesNotFillViewport, shouldRequestNewerMessages } from "../chatHistoryLoading";
@@ -965,6 +966,7 @@ export class ChatView extends LitElement {
       clearTimeout(this.catchUpFollowTimer);
       this.catchUpFollowTimer = undefined;
     }
+    this.clearPageRetryTimer();
     window.removeEventListener("resize", this.onViewportResize);
     window.removeEventListener("pagehide", this.onPageHide);
     window.visualViewport?.removeEventListener("resize", this.onViewportResize);
@@ -1051,19 +1053,25 @@ export class ChatView extends LitElement {
     this.observeStreamingContent();
     if (changed.has("loadingMore") && !this.loadingMore) {
       this.loadMoreRequested = false;
+      this.newerRequested = false;
       if (!changed.has("messages") && this.viewportState.kind === "awaitingPage") {
+        this.holdPagesAfterFailure();
         this.runViewport({ kind: "pageFailed" });
       }
     }
     if (changed.has("messages") && this.viewportState.kind === "awaitingPage") {
+      this.openPages();
       this.runViewport({ kind: "pageArrived", want: this.viewportState.want });
     }
     if (changed.has("hasNewer") && this.viewportState.kind === "awaitingPage" && !this.hasNewer) {
+      this.openPages();
       this.runViewport({ kind: "pageArrived", want: this.viewportState.want });
     }
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
-    if (changed.has("sessionId")) this.restoreScrollPosition();
-    else if (!changed.has("sessionId") && (changed.has("messages") || this.queueGrew(changed.get("status")) || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) && this.pinnedToBottom) this.scrollToBottom();
+    if (changed.has("sessionId")) {
+      this.openPages();
+      this.restoreScrollPosition();
+    } else if (!changed.has("sessionId") && (changed.has("messages") || this.queueGrew(changed.get("status")) || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) && this.pinnedToBottom) this.scrollToBottom();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestPages(false);
@@ -1116,6 +1124,9 @@ export class ChatView extends LitElement {
    * one place instead of being re-derived at each call site.
    */
   private viewportState: ViewportState = { kind: "holding" };
+  /** A failed page read holds both ends on the read ladder; a page that lands opens them (D4, review ca45d6ed). */
+  private pageRetry: PageRetry = PAGE_RETRY_OPEN;
+  private pageRetryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly viewportExecutors: Record<ViewportAction, () => boolean> = {
     idle: () => true,
     "snap-bottom": () => { this.scrollToBottom(); return true; },
@@ -2336,6 +2347,33 @@ export class ChatView extends LitElement {
     });
   }
 
+  /**
+   * A page read failed: hold both ends on the read ladder, then ask again from where the reader is.
+   * The update that follows the failure must not ask sooner; it re-evaluated the reader's last
+   * scroll and repeated a failing read at network pace (D4, review ca45d6ed).
+   */
+  private holdPagesAfterFailure(): void {
+    const now = Date.now();
+    const held = holdAfterFailure(this.pageRetry, now);
+    this.pageRetry = held;
+    this.clearPageRetryTimer();
+    this.pageRetryTimer = setTimeout(() => {
+      this.pageRetryTimer = undefined;
+      this.requestPages(false);
+    }, held.until - now);
+  }
+
+  private openPages(): void {
+    this.pageRetry = PAGE_RETRY_OPEN;
+    this.clearPageRetryTimer();
+  }
+
+  private clearPageRetryTimer(): void {
+    if (this.pageRetryTimer === undefined) return;
+    clearTimeout(this.pageRetryTimer);
+    this.pageRetryTimer = undefined;
+  }
+
   private startNewerPage(): boolean {
     const chat = this.chat;
     if (chat === undefined) return false;
@@ -2481,6 +2519,7 @@ export class ChatView extends LitElement {
         hasOlder: this.hasMore,
         hasNewer: this.hasNewer,
         loading: this.loadingMore || this.loadMoreRequested || this.newerRequested,
+        held: isHeld(this.pageRetry, Date.now()),
       },
       measured: chat !== undefined && chat.clientHeight > 0,
       fillsViewport: chat !== undefined && !doesNotFillViewport(chat),
@@ -2544,6 +2583,7 @@ export class ChatView extends LitElement {
     this.syncScrollMetrics();
     if (result.status !== "missing") {
       this.updatePinnedToBottomAfterRestore(result.status);
+      this.runViewport({ kind: "restoreSettled", landed: result.status === "bottom" ? "bottom" : "spot" });
       if (result.status === "restored" || result.status === "bottom") this.cancelPrependRestore();
       this.pendingScrollRestoreSessionId = undefined;
       this.pendingScrollRestorePosition = undefined;
