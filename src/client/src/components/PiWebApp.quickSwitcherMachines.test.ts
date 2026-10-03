@@ -33,6 +33,8 @@ function createApp(): PiWebApp {
   vi.stubGlobal("requestAnimationFrame", () => 1);
   const app = new PiWebApp();
   if (!Reflect.set(app, "updateUrl", () => undefined)) throw new Error("Could not replace updateUrl");
+  if (!Reflect.set(app, "ensureGatewayPluginsLoaded", () => Promise.resolve())) throw new Error("Could not replace the gateway plugin load");
+  if (!Reflect.set(app, "loadPluginsForMachine", () => Promise.resolve())) throw new Error("Could not replace a machine's plugin load");
   return app;
 }
 

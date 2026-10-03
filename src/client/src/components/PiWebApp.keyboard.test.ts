@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { render } from "lit";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionInfo, Workspace } from "../api";
 import { initialAppState, type AppState } from "../appState";
 import { AuthDialog } from "./AuthDialog";
@@ -17,6 +17,15 @@ import { WorkspacePanel } from "./WorkspacePanel";
 import type { PluginHostUi } from "../plugins/types";
 
 const IMAGE_DATA = "iVBORw0KGgo=";
+
+/**
+ * The app reads its config, plugins and projects as it connects. Under happy-dom those reads went to
+ * localhost:3000 and failed after the test had ended, and their logs surfaced as unhandled errors in
+ * the commit hook; no test here needs an answer, so none comes.
+ */
+beforeEach(() => {
+  vi.stubGlobal("fetch", () => new Promise<Response>(() => undefined));
+});
 
 afterEach(() => {
   document.body.replaceChildren();

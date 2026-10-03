@@ -312,7 +312,10 @@ function createApp(): PiWebApp {
     vi.stubGlobal("document", { baseURI: "https://pi.example.test/", visibilityState: "visible", hasFocus: () => true, addEventListener: () => undefined, removeEventListener: () => undefined });
   }
   vi.stubGlobal("requestAnimationFrame", () => 1);
-  return new PiWebApp();
+  const app = new PiWebApp();
+  if (!Reflect.set(app, "ensureGatewayPluginsLoaded", () => Promise.resolve())) throw new Error("Could not replace the gateway plugin load");
+  if (!Reflect.set(app, "loadPluginsForMachine", () => Promise.resolve())) throw new Error("Could not replace a machine's plugin load");
+  return app;
 }
 
 function stubWindowLocation(search: string): void {

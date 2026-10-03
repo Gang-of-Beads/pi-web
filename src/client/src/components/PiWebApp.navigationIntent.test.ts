@@ -32,6 +32,8 @@ function createApp(search = ""): PiWebApp {
   vi.stubGlobal("requestAnimationFrame", () => 1);
   const app = new PiWebApp();
   replace(app, "updateUrl", () => undefined);
+  replace(app, "ensureGatewayPluginsLoaded", () => Promise.resolve());
+  replace(app, "loadPluginsForMachine", () => Promise.resolve());
   return app;
 }
 
