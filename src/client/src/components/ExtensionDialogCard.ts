@@ -559,7 +559,6 @@ export class ExtensionDialogCard extends LitElement {
       flex: 1 1 auto;
       min-height: 0;
       overflow-y: auto;
-      overscroll-behavior-y: contain;
     }
     .dialog-detail:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     .dialog-options {
@@ -694,7 +693,7 @@ export class ExtensionDialogCard extends LitElement {
          option buttons below it. A goal draft showed its wording between and
          behind the answers. A height limit has to say what happens to what
          does not fit. */
-      .dialog-detail { max-height: min(40vh, 320px); overflow-y: auto; overscroll-behavior: contain; }
+      .dialog-detail { max-height: min(40vh, 320px); overflow-y: auto; }
     }
   `];
 }
