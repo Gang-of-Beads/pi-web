@@ -473,6 +473,37 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     await service.dispose();
   });
 
+  /** The three filing paths share one helper (review ca45d6ed); this one had no test of its notification. */
+  it("files a command that ended its turn without any output in the session's notifications", async () => {
+    const hub = new CapturingSessionEventHub();
+    let listener: ((event: unknown) => void) | undefined;
+    const fake = fakeRuntime("quiet-command-session", {
+      subscribe: (next) => {
+        listener = next;
+        return () => undefined;
+      },
+    });
+    fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "quiet" }];
+    fake.session.prompt = () => Promise.resolve();
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("quiet-command-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    await service.status(sessionRef("quiet-command-session"));
+    await service.runCommand(sessionRef("quiet-command-session"), "/quiet");
+    listener?.({ type: "agent_end" });
+
+    expect(service.notificationInbox(sessionRef("quiet-command-session")).notifications.map((notification) => ({ message: notification.message, severity: notification.severity }))).toEqual([
+      { message: "/quiet finished without any output.", severity: "warning" },
+    ]);
+
+    await service.dispose();
+  });
+
   it("surfaces notifications when an extension command shares a bare name with a skill", async () => {
     const hub = new CapturingSessionEventHub();
     const fake = fakeRuntime("extension-command-session", {

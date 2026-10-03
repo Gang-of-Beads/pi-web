@@ -193,9 +193,12 @@
                 resolves them immediately with the kind's cancel value (<code>false</code> for confirm,
                 <code>undefined</code> for select and input), and the effective deadline — the sooner of the extension's
                 own <code>timeout</code> and the daemon's <code>extensionDialogsTimeoutMs</code> safety valve (default 5
-                minutes, <code>0</code> waits forever) — does the same when no one answers. Other
-                <code>ExtensionUIContext</code> surfaces (widgets, status, editor, <code>custom</code>) remain no-ops
-                despite <code>hasUI === true</code>.
+                minutes, <code>0</code> waits forever) — does the same when no one answers. <code>custom</code> draws its
+                screen as a card: a menu as choices with Confirm, anything else as its text, and a screen declared
+                with <code>web: { kind: "questions" }</code> as the Questions card (<code>ctx.ui.piWebScreens</code> lists
+                what this host draws). A dialog the host cannot show (an empty select, a title past its limit)
+                rejects the call and the open conversation says so. Other <code>ExtensionUIContext</code> surfaces
+                (widgets, status, editor) remain no-ops despite <code>hasUI === true</code>.
               </p>
               <p>
                 For the full behavior notes and author guidance, read <a href="plugins.md">plugins.md</a>; for the

@@ -1557,10 +1557,7 @@ export class PiSessionService implements SessionRouteService {
         onSilentCommand: (sessionId, command) => {
           const session = this.active.get(sessionId)?.runtime.session;
           if (session === undefined) return;
-          const generation = this.notificationGenerationBySession.get(session);
-          if (generation === undefined) return;
-          const added = this.notificationStore.addNotification(generation, `${command} finished without any output.`, "warning");
-          this.publishNotificationMutations(added.mutations);
+          this.fileSessionNotification(session, `${command} finished without any output.`, "warning");
         },
       },
       { listSessionNames: (cwd) => this.listSessionNames(cwd) },
@@ -2392,9 +2389,14 @@ export class PiSessionService implements SessionRouteService {
   private reportRefusedDialog(session: PiAgentSession, reason: string): void {
     const message = `An extension asked something PI WEB could not show: ${reason}.`;
     this.events.publish(session.sessionId, { type: "command.output", level: "error", message });
+    this.fileSessionNotification(session, message, "error");
+  }
+
+  /** File a notification in the session's current generation, if it has one, and tell the browsers. */
+  private fileSessionNotification(session: PiAgentSession, message: string, severity: "info" | "warning" | "error"): void {
     const generation = this.notificationGenerationBySession.get(session);
     if (generation === undefined) return;
-    const added = this.notificationStore.addNotification(generation, message, "error");
+    const added = this.notificationStore.addNotification(generation, message, severity);
     this.publishNotificationMutations(added.mutations);
   }
 
@@ -2407,12 +2409,9 @@ export class PiSessionService implements SessionRouteService {
    */
   private recordAnsweredDialogNotification(session: PiAgentSession, pending: PendingExtensionDialog | undefined, value: ExtensionDialogAnswer): void {
     if (pending === undefined) return;
-    const generation = this.notificationGenerationBySession.get(session);
-    if (generation === undefined) return;
     const title = pending.title.replace(/\s+/gu, " ").trim();
     const answer = dialogAnswerText(pending.screen, value);
-    const added = this.notificationStore.addNotification(generation, `Answered "${title}": ${answer === "" ? (typeof value === "string" ? "an empty response" : "no answers") : answer}`, "info");
-    this.publishNotificationMutations(added.mutations);
+    this.fileSessionNotification(session, `Answered "${title}": ${answer === "" ? (typeof value === "string" ? "an empty response" : "no answers") : answer}`, "info");
   }
 
   /**
