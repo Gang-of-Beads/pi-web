@@ -94,7 +94,7 @@ import { readSessionHeaderSummary } from "./sessionFileHeader.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
 import { createAskUserToolDefinition, type AskUserInvocation, type AskUserToolDeps } from "./askUserTool.js";
 import { PendingAskStore, renderAskUserAnswersText, type PendingAskCloseResult, type PendingAskOpenResult } from "./pendingAskStore.js";
-import { PendingExtensionDialogStore, type ExtensionDialogCancelReason } from "./pendingExtensionDialogStore.js";
+import { PendingExtensionDialogStore, PendingExtensionDialogValidationError, type ExtensionDialogCancelReason, type PendingExtensionDialogOpenInput } from "./pendingExtensionDialogStore.js";
 import type { PendingExtensionDialog } from "../../../shared/apiTypes.js";
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../../config.js";
@@ -2125,7 +2125,7 @@ export class PiSessionService implements SessionRouteService {
     // A pre-aborted signal dismisses the dialog before it ever opens.
     if (signal?.aborted === true) return extensionDialogCancelValue(request.kind);
     const timeoutMs = effectiveExtensionDialogTimeoutMs(opts?.timeout, this.extensionDialogsTimeoutMs);
-    const dialog = this.pendingExtensionDialogStore.open({
+    const dialog = this.openDialogRecord(session, {
       sessionId: session.sessionId,
       kind: request.kind,
       title: request.title,
@@ -2266,7 +2266,7 @@ export class PiSessionService implements SessionRouteService {
     openedBy: string | undefined,
     screen?: ExtensionDialogScreen,
   ): string {
-    const dialog = this.pendingExtensionDialogStore.open({
+    const dialog = this.openDialogRecord(session, {
       sessionId: session.sessionId,
       kind: "custom",
       title: screen === undefined ? "Extension screen" : screen.title ?? "Questions",
@@ -2371,6 +2371,31 @@ export class PiSessionService implements SessionRouteService {
   /** The surface's current revision without mutating it; a status read is not a mutation. */
   private currentDialogRevision(sessionId: string): number {
     return this.dialogRevisionBySession.get(sessionId) ?? 0;
+  }
+
+  /**
+   * Open a dialog's record, or tell the reader why it could not open. The store refuses a dialog it
+   * cannot show (an empty select, a title past its limit); the extension's call still rejects, and
+   * the reader is told the way `notify` tells them: a row in the live transcript and a filed
+   * notification (state-diagram D2, B10). The owner met "dialog title exceeds its length limit" only
+   * as a failure inside the goal extension while the screen showed nothing.
+   */
+  private openDialogRecord(session: PiAgentSession, input: PendingExtensionDialogOpenInput): PendingExtensionDialog {
+    try {
+      return this.pendingExtensionDialogStore.open(input);
+    } catch (error) {
+      if (error instanceof PendingExtensionDialogValidationError) this.reportRefusedDialog(session, error.message);
+      throw error;
+    }
+  }
+
+  private reportRefusedDialog(session: PiAgentSession, reason: string): void {
+    const message = `An extension asked something PI WEB could not show: ${reason}.`;
+    this.events.publish(session.sessionId, { type: "command.output", level: "error", message });
+    const generation = this.notificationGenerationBySession.get(session);
+    if (generation === undefined) return;
+    const added = this.notificationStore.addNotification(generation, message, "error");
+    this.publishNotificationMutations(added.mutations);
   }
 
   /**

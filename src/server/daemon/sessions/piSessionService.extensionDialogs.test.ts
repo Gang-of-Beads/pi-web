@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import type { PendingExtensionDialog, SessionUiEvent } from "../../../shared/apiTypes.js";
+import { EXTENSION_DIALOG_PROSE_MAX_LENGTH, type PendingExtensionDialog, type SessionUiEvent } from "../../../shared/apiTypes.js";
 import { PiSessionService, type PiAgentSession } from "./piSessionService.js";
 import { PendingExtensionDialogStore, PendingExtensionDialogValidationError } from "./pendingExtensionDialogStore.js";
 import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
@@ -160,6 +160,20 @@ describe("PiSessionService extension dialog UI context", () => {
 
     expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toEqual([]);
     expect(dialogEvents(events)).toEqual([]);
+    await service.dispose();
+  });
+
+  /** D2, B10: a refusal is a state the reader sees, not only an error inside the extension. */
+  it("tells the reader, in the conversation and the notifications, why a dialog could not open", async () => {
+    const { service, events, fake } = dialogService();
+    const ui = await boundUiContext(service, fake);
+    const reason = "An extension asked something PI WEB could not show: dialog title exceeds its length limit.";
+
+    await expect(ui.confirm("x".repeat(EXTENSION_DIALOG_PROSE_MAX_LENGTH + 1), "Proceed?")).rejects.toThrow(PendingExtensionDialogValidationError);
+
+    const said = events.sessionEvents.flatMap(({ event }) => (event.type === "command.output" ? [{ level: event.level, message: event.message }] : []));
+    const filed = service.notificationInbox(sessionRef(ACTIVE_SESSION_ID)).notifications.map((notification) => ({ message: notification.message, severity: notification.severity }));
+    expect({ said, filed }).toEqual({ said: [{ level: "error", message: reason }], filed: [{ message: reason, severity: "error" }] });
     await service.dispose();
   });
 
