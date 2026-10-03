@@ -130,6 +130,15 @@ const onPageFailed: Handler = (input, event) => {
 const nearTop = (metrics: ViewportMetrics): boolean =>
   isNearTop({ scrollTop: metrics.scrollTop, clientHeight: metrics.clientHeight });
 
+/**
+ * Still at the bottom after the scroll. When the view grows (the dock or the composer gets shorter),
+ * the browser lowers `scrollTop` to keep the bottom, and that scroll reads as upward though the
+ * reader went nowhere (D4, B12; seen on 8505 with a card docked: following -> holding with the
+ * reader still at the bottom, no input).
+ */
+const atBottom = (metrics: ViewportMetrics): boolean =>
+  metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight <= 1;
+
 const nearBottom = (metrics: ViewportMetrics): boolean =>
   metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight < Math.max(NEAR_TOP, metrics.clientHeight * 1.5);
 
@@ -143,7 +152,7 @@ const onScrolled: Handler = (input, event) => {
   if (!input.fillsViewport && canLoad(input, "older")) return load(input, "older", input.state);
   if (input.state.kind === "restoring") return idle(input.state);
   if (input.state.kind === "following") {
-    return event.direction === "up" ? decide("stop-following", { kind: "holding" }) : idle(input.state);
+    return event.direction === "up" && !atBottom(event.metrics) ? decide("stop-following", { kind: "holding" }) : idle(input.state);
   }
   if (input.state.kind !== "holding") return idle(input.state);
   if (event.direction !== "up" && nearBottom(event.metrics) && canLoad(input, "newer")) {
