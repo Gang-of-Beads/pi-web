@@ -83,6 +83,24 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+async function farJumpThatFails(view: ChatView, scrollTo: (top: number) => Promise<void>): Promise<{ asks: () => number; before: unknown; asked: number }> {
+  view.messageEnd = 300;
+  view.messageTotal = 300;
+  await view.updateComplete;
+  await vi.advanceTimersByTimeAsync(100);
+  Reflect.set(view, "pinnedToBottom", false);
+  await scrollTo(1000);
+  let asks = 0;
+  view.onLoadNewer = () => { asks += 1; };
+  view.messageTotal = 900;
+  view.hasNewer = true;
+  await view.updateComplete;
+  const before: unknown = Reflect.get(view, "viewportState");
+  await pressTheKey(view);
+  const asked = asks;
+  await readFails(view);
+  return { asks: () => asks, before, asked };
+}
 describe("a failed page read", () => {
   it("leaves the newer end askable, and asks again from the end once its hold is over", async () => {
     const { view, scrollTo } = await mount();
@@ -150,24 +168,6 @@ describe("a failed page read", () => {
 });
 
 describe("a jump whose read failed (reviews 754821b2, 9f8186d0)", () => {
-  async function farJumpThatFails(view: ChatView, scrollTo: (top: number) => Promise<void>): Promise<{ asks: () => number; before: unknown; asked: number }> {
-    view.messageEnd = 300;
-    view.messageTotal = 300;
-    await view.updateComplete;
-    await vi.advanceTimersByTimeAsync(100);
-    Reflect.set(view, "pinnedToBottom", false);
-    await scrollTo(1000);
-    let asks = 0;
-    view.onLoadNewer = () => { asks += 1; };
-    view.messageTotal = 900;
-    view.hasNewer = true;
-    await view.updateComplete;
-    const before: unknown = Reflect.get(view, "viewportState");
-    await pressTheKey(view);
-    const asked = asks;
-    await readFails(view);
-    return { asks: () => asks, before, asked };
-  }
 
   /** The hold's end re-applied the scroll rules, so a reader far from the end got nothing and had to press again. */
   it("leaves the reader reading, unpinned, and asks for the newest again once the hold is over, wherever they are", async () => {
@@ -202,6 +202,44 @@ describe("a jump whose read failed (reviews 754821b2, 9f8186d0)", () => {
     await wait(view, 1000);
 
     expect(asks()).toBe(1);
+  });
+});
+
+describe("a write that holds the reader's place (review bbe5adc9)", () => {
+  /** An image that loaded above the reader, or the render-time anchor, moved the transcript without resyncing, so its scroll read as the reader's and dropped a failed jump's debt. */
+  it("keeps a failed jump's debt through an image or anchor compensation", async () => {
+    const compensations = {
+      anchor: (view: ChatView) => {
+        const anchorFor: unknown = Reflect.get(view, "restoreReadingAnchor");
+        if (typeof anchorFor !== "function") throw new Error("the anchor restore is missing, so this test proves nothing");
+        const row = document.createElement("div");
+        view.renderRoot.querySelector(".chat")?.append(row);
+        Reflect.apply(anchorFor, view, [{ element: row, offset: -200 }]);
+      },
+      image: (view: ChatView) => {
+        const onImageLoad: unknown = Reflect.get(view, "onImageLoad");
+        if (typeof onImageLoad !== "function") throw new Error("the image handler is missing, so this test proves nothing");
+        Reflect.set(view, "lastScrollHeight", 3800);
+        const image = document.createElement("img");
+        view.renderRoot.querySelector(".chat")?.append(image);
+        Reflect.apply(onImageLoad, view, [{ target: image }]);
+      },
+    };
+    const outcomes: Record<string, { moved: boolean; afterHold: number }> = {};
+    for (const [name, compensate] of Object.entries(compensations)) {
+      document.body.innerHTML = "";
+      const { view, scrollTo } = await mount();
+      const { asks } = await farJumpThatFails(view, scrollTo);
+      const before = view.renderRoot.querySelector(".chat")?.scrollTop;
+      compensate(view);
+      const after = view.renderRoot.querySelector(".chat")?.scrollTop;
+      await vi.advanceTimersByTimeAsync(40);
+      await view.updateComplete;
+      await wait(view, 1000);
+      outcomes[name] = { moved: before !== after, afterHold: asks() };
+    }
+
+    expect(outcomes).toEqual({ anchor: { moved: true, afterHold: 2 }, image: { moved: true, afterHold: 2 } });
   });
 });
 
@@ -487,6 +525,27 @@ describe("a restore whose spot is in a page not loaded (review 754821b2)", () =>
     await view.updateComplete;
 
     expect({ queued: queued !== undefined, restores }).toEqual({ queued: true, restores: 0 });
+  });
+
+  /** Review bbe5adc9: the spot's one owner, through the handler whose own clears were deleted. */
+  it("ends a restore found while its page is on its way, and forgets the spot", async () => {
+    const { view } = await mount();
+    view.onLoadMore = () => undefined;
+    view.hasMore = true;
+    await view.updateComplete;
+    await restoringFar(view);
+    const before: unknown = Reflect.get(view, "viewportState");
+    const settle: unknown = Reflect.get(view, "handleScrollRestoreResult");
+    if (typeof settle !== "function") throw new Error("the restore result handler is missing, so this test proves nothing");
+    Reflect.apply(settle, view, [view.sessionId, { status: "restored" }]);
+    const state: unknown = Reflect.get(view, "viewportState");
+    const spot: unknown = Reflect.get(view, "pendingScrollRestorePosition");
+
+    expect({ before, state, spot }).toEqual({
+      before: { kind: "awaitingPage", want: "older", resume: { kind: "restoring" } },
+      state: { kind: "awaitingPage", want: "older", resume: { kind: "following" } },
+      spot: undefined,
+    });
   });
 
   it("does not re-arm a missing spot once the restore is over", async () => {

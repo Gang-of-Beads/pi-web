@@ -15,7 +15,7 @@ import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type 
 import { writeClipboardText } from "../clipboard";
 import { followScrollVerdict } from "../followScrollAdoption.js";
 import { scrollDirection, viewportDecision, followsAfterScroll, isRestoring, readerCanTakeOver } from "../chatViewport/viewportDecision.js";
-import type { ViewportAction, ViewportEvent, ViewportState } from "../chatViewport/viewportDecision.js";
+import type { PageWant, ViewportAction, ViewportEvent, ViewportState } from "../chatViewport/viewportDecision.js";
 import { holdAfterFailure, isHeld, owedAfter, PAGE_RETRY_OPEN, readerMoved, releaseHold, type PageRetry } from "../chatViewport/pageRetry.js";
 import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
@@ -825,7 +825,7 @@ export class ChatView extends LitElement {
       imageEndsAboveViewport: target.getBoundingClientRect().bottom <= chat.getBoundingClientRect().top,
       heightGained: previousHeight === undefined ? 0 : chat.scrollHeight - previousHeight,
     });
-    if (outcome.action === "compensate") chat.scrollTop += outcome.pixels;
+    if (outcome.action === "compensate") this.holdThePlace(chat, outcome.pixels);
   };
 
   /** The scroller's height as of the last render, so a lazy image can report
@@ -1043,7 +1043,17 @@ export class ChatView extends LitElement {
     const chat = this.chat;
     if (!chat || !anchor.element.isConnected) return;
     const offset = anchor.element.getBoundingClientRect().top - chat.getBoundingClientRect().top;
-    chat.scrollTop += readingScrollCorrection(anchor.offset, offset);
+    this.holdThePlace(chat, readingScrollCorrection(anchor.offset, offset));
+  }
+
+  /**
+   * Move the transcript to keep the reader on the same row, and say it was ours: every sibling
+   * writer resyncs `lastScrollTop`, and these two did not, so their scroll read as the reader's and
+   * dropped a failed jump's debt (review bbe5adc9).
+   */
+  private holdThePlace(chat: HTMLElement, pixels: number): void {
+    chat.scrollTop += pixels;
+    this.lastScrollTop = chat.scrollTop;
   }
 
   protected override updated(changed: Map<string, unknown>): void {
@@ -1056,9 +1066,10 @@ export class ChatView extends LitElement {
       this.newerRequested = false;
       if (!changed.has("sessionId")) this.settlePageRead(changed.has("messages") ? "landed" : "failed");
     }
-    if (changed.has("hasNewer") && this.viewportState.kind === "awaitingPage" && !this.hasNewer && !this.loadingMore && !changed.has("sessionId")) {
+    const rescued = this.waitRescuedByTheNewest(changed);
+    if (rescued !== undefined) {
       this.openPages();
-      this.runViewport({ kind: "pageArrived", want: this.viewportState.want });
+      this.runViewport({ kind: "pageArrived", want: rescued });
     }
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
     if (changed.has("sessionId")) {
@@ -2373,10 +2384,19 @@ export class ChatView extends LitElement {
       this.runViewport({ kind: "pageArrived", want: this.viewportState.want });
       return;
     }
-    const jumped = owedAfter(this.viewportState) === "newest";
+    const owedTheNewest = owedAfter(this.viewportState) === "newest";
     this.holdPagesAfterFailure();
     this.runViewport({ kind: "pageFailed" });
-    if (jumped) this.unpinWhenReading();
+    if (owedTheNewest) this.unpinWhenReading();
+  }
+
+  /**
+   * The window reached its newest end while a page was awaited and no read is out, in this session:
+   * a read the host refused is rescued, and a read in flight is left to its own end (review 7b1987f0).
+   */
+  private waitRescuedByTheNewest(changed: Map<string, unknown>): PageWant | undefined {
+    if (!changed.has("hasNewer") || this.hasNewer || this.loadingMore || changed.has("sessionId")) return undefined;
+    return this.viewportState.kind === "awaitingPage" ? this.viewportState.want : undefined;
   }
 
   /** A failed jump leaves the reader reading; only a jump's failure unpins (review 7b1987f0). */

@@ -191,11 +191,13 @@ describe("a restore that finished (D4, review ca45d6ed)", () => {
       spot: decide({ kind: "restoring" }, { kind: "restoreSettled", landed: "spot" }),
       bottom: decide({ kind: "restoring" }, { kind: "restoreSettled", landed: "bottom" }),
       holding: decide({ kind: "holding" }, { kind: "restoreSettled", landed: "bottom" }),
+      following: decide({ kind: "following" }, { kind: "restoreSettled", landed: "spot" }),
       awaiting: decide(awaiting, { kind: "restoreSettled", landed: "spot" }),
     }).toEqual({
       spot: { action: "idle", next: { kind: "holding" } },
       bottom: { action: "idle", next: { kind: "following" } },
       holding: { action: "idle", next: { kind: "holding" } },
+      following: { action: "idle", next: { kind: "following" } },
       awaiting: { action: "idle", next: awaiting },
     });
   });
