@@ -192,7 +192,7 @@ stateDiagram-v2
   - *Stop, close and shutdown write it down.* After a Stop, when the session's runtime closes, and when the daemon shuts down, a notice still queued is written into the transcript without starting a run (`triggerTurn: false`); the agent reads it with its next turn. Only the notices leave the queue: a reader's message steered while the Stop settled stays for the take-back (review of 4a1bdfd7). At close the page gets no live frame for it, because the session's events are already unsubscribed; it is on the transcript the next time the session is read.
   - *Known limit.* A daemon that dies while an answer is queued loses it, as before, because pi's queues live in the runtime. Its queued record then leaves the transcript tail with the status.
 - **A refusal is a state the reader sees.** A refused open files a session notification. It is owned by the notification inbox, scoped to the session, and dismissible. It is never only an error inside the extension.
-- **A closed card is inert.** A card kept on screen while a gesture settles has no live handlers. A tap on a card answered elsewhere shows "Answered elsewhere".
+- **A closed card is inert.** A card kept on screen while a gesture settles has no live handlers. A tap on a card answered elsewhere shows "Answered elsewhere". Built 2026-10-03 (B22): the held copy renders `inert`, with no answer, cancel or key handler bound, so a tap that lands after the card closed answers nothing; its layout is the live card's, so nothing moves under the finger. The "Answered elsewhere" words wait on the owner (the no-UI ruling).
 
 ## D3. What a session is doing
 

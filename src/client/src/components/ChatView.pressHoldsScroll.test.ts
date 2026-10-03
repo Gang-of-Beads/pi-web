@@ -116,47 +116,6 @@ describe("ChatView catching up after a press that suppressed following", () => {
  * reader's touchend and the click it produced.
  */
 
-/**
- * A settled outcome may not change the ground under a standing finger. The
- * dialog the finger is over may settle server-side mid-press; removing its row
- * at that instant retargets the imminent click to whatever slides underneath -
- * the same theft the waiting row was built to end, reintroduced at its exit.
- * The row leaves after the release settles, on the same grace the transcript's
- * own catch-up uses.
- */
-describe("ChatView holding the waiting row for a press", () => {
-  const dialog = { dialogId: "dlg-held", kind: "select" as const, title: "Pick", message: "", options: ["A", "B"], askedAt: "2026-08-30T00:00:00.000Z", runScoped: false };
-
-  it("keeps the row while the finger is down and lets it go after the settle", async () => {
-    const view = await mountView();
-    view.pendingDialogs = [dialog];
-    await view.updateComplete;
-    expect(view.renderRoot.querySelector(".waiting-slot")).not.toBeNull();
-
-    scroller(view).dispatchEvent(pointerEvent("pointerdown"));
-    view.pendingDialogs = [];
-    await view.updateComplete;
-    expect(view.renderRoot.querySelector(".waiting-slot"), "settling mid-press must not remove the row").not.toBeNull();
-
-    scroller(view).dispatchEvent(pointerEvent("pointerup"));
-    await view.updateComplete;
-    expect(view.renderRoot.querySelector(".waiting-slot"), "the click's grace still owns the release instant").not.toBeNull();
-
-    vi.advanceTimersByTime(TOUCH_SETTLE_MS + 1);
-    await view.updateComplete;
-    expect(view.renderRoot.querySelector(".waiting-slot")).toBeNull();
-  });
-
-  it("lets a settled row go at once when no finger is down", async () => {
-    const view = await mountView();
-    view.pendingDialogs = [dialog];
-    await view.updateComplete;
-    view.pendingDialogs = [];
-    await view.updateComplete;
-    expect(view.renderRoot.querySelector(".waiting-slot")).toBeNull();
-  });
-});
-
 let scrollHeightDescriptor: PropertyDescriptor | undefined;
 let clientHeightDescriptor: PropertyDescriptor | undefined;
 
@@ -233,6 +192,40 @@ describe("ChatView holding the waiting row for a press", () => {
     view.pendingDialogs = [];
     await view.updateComplete;
     expect(view.renderRoot.querySelector(".waiting-slot")).toBeNull();
+  });
+
+  /** D2, B22: the card kept for the press is closed; a tap that lands on it answers nothing. */
+  it("keeps the closed cards inert while it holds them", async () => {
+    const view = await mountView();
+    const ask = { askId: "ask-held", questions: [{ id: "q", question: "Pick", options: [{ value: "a", label: "A" }] }], askedAt: "2026-08-30T00:00:00.000Z" };
+    view.onSubmitAsk = () => undefined;
+    view.onAnswerDialog = () => undefined;
+    view.onCancelDialog = () => undefined;
+    view.onDialogKey = () => undefined;
+    view.pendingAsk = ask;
+    view.pendingDialogs = [dialog];
+    await view.updateComplete;
+    const liveness = () => {
+      const slot = view.renderRoot.querySelector(".waiting-slot");
+      const card = view.renderRoot.querySelector("ask-user-card");
+      const dialogCard = view.renderRoot.querySelector("extension-dialog-card");
+      return {
+        inert: slot?.hasAttribute("inert") ?? null,
+        submit: card === null ? null : Reflect.get(card, "onSubmit") !== undefined,
+        dialog: dialogCard === null ? null : ["onAnswer", "onCancel", "onKey"].map((name) => Reflect.get(dialogCard, name) !== undefined),
+      };
+    };
+    const open = liveness();
+
+    scroller(view).dispatchEvent(pointerEvent("pointerdown"));
+    Reflect.set(view, "pendingAsk", undefined);
+    view.pendingDialogs = [];
+    await view.updateComplete;
+
+    expect({ open, held: liveness() }).toEqual({
+      open: { inert: false, submit: true, dialog: [true, true, true] },
+      held: { inert: true, submit: false, dialog: [false, false, false] },
+    });
   });
 });
 

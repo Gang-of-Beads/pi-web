@@ -1573,11 +1573,11 @@ if (this.heldWaitingClearTimer !== undefined) {
     const dialogs = this.pendingDialogs;
     if (this.pendingAsk !== undefined || this.pendingAsks.length > 0 || dialogs.length > 0) {
       this.heldWaiting = { ask: this.pendingAsk, dialogs };
-      return this.renderWaitingSlot(this.pendingAsk, dialogs);
+      return this.renderWaitingSlot(this.pendingAsk, dialogs, "live");
     }
     const held = this.heldWaiting;
     if (held !== undefined && this.followGate.holdsOrSettling(Date.now())) {
-      return this.renderWaitingSlot(held.ask, held.dialogs);
+      return this.renderWaitingSlot(held.ask, held.dialogs, "held");
     }
     this.heldWaiting = undefined;
     return null;
@@ -1609,24 +1609,29 @@ if (this.heldWaitingClearTimer !== undefined) {
    * screen (owner screenshots, 2026-10-02). Each card answers, keys and
    * cancels its own dialog by id.
    */
-  private renderWaitingSlot(ask: PendingAskUser | undefined, dialogs: readonly PendingExtensionDialog[]) {
+  /**
+   * A `held` slot is the closed cards kept on screen while a press settles (D2, B22): same layout,
+   * nothing live, so a tap that lands after the card closed answers nothing.
+   */
+  private renderWaitingSlot(ask: PendingAskUser | undefined, dialogs: readonly PendingExtensionDialog[], presence: "live" | "held") {
     const forms = this.pendingAsks.length > 0 ? this.pendingAsks : (ask === undefined ? [] : [ask]);
+    const live = presence === "live";
     return html`
-      <div class="waiting-slot" role="region" aria-label="Waiting for your answer">
+      <div class="waiting-slot" role="region" aria-label="Waiting for your answer" ?inert=${!live}>
         ${forms.map((form) => html`
           <ask-user-card
             .ask=${form}
             .draftSessionId=${this.askDraftSessionId}
-            .onSubmit=${this.onSubmitAsk}
+            .onSubmit=${live ? this.onSubmitAsk : undefined}
           ></ask-user-card>
         `)}
         ${repeat(dialogs, (dialog) => dialog.dialogId, (dialog) => html`
           <extension-dialog-card
             class="open-dialog-card"
             .dialog=${dialog}
-            .onAnswer=${this.onAnswerDialog}
-            .onCancel=${this.onCancelDialog}
-            .onKey=${this.onDialogKey}
+            .onAnswer=${live ? this.onAnswerDialog : undefined}
+            .onCancel=${live ? this.onCancelDialog : undefined}
+            .onKey=${live ? this.onDialogKey : undefined}
             .draftSessionId=${this.askDraftSessionId}
           ></extension-dialog-card>
         `)}
