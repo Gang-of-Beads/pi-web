@@ -5,9 +5,10 @@ import { outgoingStateFromStorage, outgoingStopped, outgoingVerdict } from "./ou
 import type { DeliveryFailureCause } from "./deliveryWords";
 /**
  * Pending-message outbox: survives network drops so a send is never silently
- * lost. When a prompt fails with a network error, its contents are persisted
- * per session and retried automatically once the browser reports connectivity
- * again (`window.online`) or on the next manual retry.
+ * lost. Every prompt is persisted per session before it is sent. One that was
+ * not sent is sent again by itself within ten minutes of its send, when the
+ * browser reports connectivity again (`window.online`), on the first render or
+ * on a session switch; anything else waits for the reader's Retry (D1, B4).
  *
  * Storage mirrors the prompt-draft conventions (localStorage, best-effort).
  */
@@ -385,12 +386,13 @@ export function markUnansweredPrompt(sessionKey: string, clientMessageId: string
 export const AUTOMATIC_RESEND_WINDOW_MS = 10 * 60_000;
 
 /**
- * Whether a replay sends this record. The reader's Retry sends the record it names, whatever its
- * state. A replay of everything - on `online`, on the first render, on a session switch - sends
- * only a message that was not sent (never attempted, such as one kept for its own session while the
- * composer showed another, or failed before its bytes left), within ten minutes of its send, and
- * not refused (D1
- * "Automatic resend"). It used to send everything that stopped without an answer, whatever its
+ * Whether a replay sends this record. The reader's Retry sends the stopped record it names. A
+ * replay of everything - on `online`, on the first render, on a session switch - sends only a
+ * message that was not sent (failed before its bytes left, or proven not received by the ledger)
+ * or whose send never finished on this page (a page that closed mid-send), within ten minutes of
+ * its send, and not refused (D1 "Automatic resend"); its id makes a second copy impossible. It used
+ * to send everything that
+ * stopped without an answer, whatever its
  * age, so a message stranded hours before came back the next time the page loaded, and an
  * unverifiable one was resent where D1 asks the ledger (B4, probe-outbox-stale.mjs).
  */

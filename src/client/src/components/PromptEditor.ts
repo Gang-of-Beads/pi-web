@@ -628,7 +628,7 @@ export class PromptEditor extends LitElement {
 
   private renderPendingPrompts() {
     const now = Date.now();
-    const lingering = this.pendingPrompts.filter((prompt) => now - Date.parse(prompt.at) > 4000 && !this.rowedMessageIds.has(prompt.clientMessageId ?? ""));
+    const lingering = this.pendingPrompts.filter((prompt) => !(now - Date.parse(prompt.at) <= 4000) && !this.rowedMessageIds.has(prompt.clientMessageId ?? ""));
     if (lingering.length === 0) {
       const rowless = this.pendingPrompts.some((prompt) => !this.rowedMessageIds.has(prompt.clientMessageId ?? ""));
       if (rowless && this.pendingRevealTimer === undefined) {
@@ -1348,6 +1348,7 @@ export class PromptEditor extends LitElement {
     const scopeKey = outboxKey;
     const keepForItsSession = (): void => {
       this.outboxInFlight.delete(outboxId);
+      if (outboxKey !== "") advancePendingPrompt(outboxKey, outboxId, "send-refused-network");
       this.pendingPrompts = this.pendingPromptsForSession();
       this.flushPendingPrompts();
     };

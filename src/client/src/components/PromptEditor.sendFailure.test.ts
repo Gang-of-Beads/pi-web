@@ -152,4 +152,15 @@ describe("unsent messages are visible and retryable", () => {
     expect(strip?.textContent).toContain("Retry");
     expect(strip?.textContent).toContain("Discard");
   });
+
+  it("shows a stored record whose send time cannot be read, rather than hiding it", async () => {
+    savePendingPrompt("m1:s1", { text: "time unreadable", clientMessageId: "c-unreadable", at: "not a time" });
+    const editor = new PromptEditor();
+    editor.machineId = "m1";
+    editor.sessionId = "s1";
+
+    document.body.append(editor);
+    await editor.updateComplete;
+    expect(editor.shadowRoot?.querySelector(".pending-prompts")?.textContent).toContain("time unreadable");
+  });
 });

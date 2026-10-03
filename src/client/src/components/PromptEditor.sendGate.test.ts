@@ -94,8 +94,8 @@ describe("one composer's sends reach the daemon in the order they were made", ()
     first.resolve(true);
     await flush();
 
-    expect({ sent, keptForItsSession: loadPendingPrompts("local:session-1").map((prompt) => prompt.text) })
-      .toEqual({ sent: ["first"], keptForItsSession: ["second"] });
+    expect({ sent, keptForItsSession: loadPendingPrompts("local:session-1").map((prompt) => [prompt.text, prompt.state, prompt.failure]) })
+      .toEqual({ sent: ["first"], keptForItsSession: [["second", "failed", "not-sent"]] });
   });
 });
 
@@ -117,8 +117,8 @@ describe("a waiting send only ever goes to the session it was written for", () =
     first.resolve(true);
     await flush();
 
-    expect({ sent, keptForItsSession: loadPendingPrompts("local:session-1").map((prompt) => prompt.text) })
-      .toEqual({ sent: ["first"], keptForItsSession: ["second"] });
+    expect({ sent, keptForItsSession: loadPendingPrompts("local:session-1").map((prompt) => [prompt.text, prompt.state, prompt.failure]) })
+      .toEqual({ sent: ["first"], keptForItsSession: [["second", "failed", "not-sent"]] });
   });
 
   it("hands a send it kept for its own session over once the composer shows that session again", async () => {

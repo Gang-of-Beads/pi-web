@@ -129,6 +129,7 @@ describe("which records a replay sends", () => {
       ["not sent a minute ago", record("failed", minute, { failure: "not-sent" }), undefined, true],
       ["not sent at the window's edge", record("failed", AUTOMATIC_RESEND_WINDOW_MS, { failure: "not-sent" }), undefined, true],
       ["not sent just past the window", record("failed", AUTOMATIC_RESEND_WINDOW_MS + 1, { failure: "not-sent" }), undefined, false],
+      ["proven not received by the ledger a minute ago", record("failed", minute, { failure: "not-received" }), undefined, true],
       ["never attempted, two hours ago", record(undefined, 120 * minute), undefined, false],
       ["unverifiable a minute ago", record("unverifiable", minute), undefined, false],
       ["refused a minute ago", record("failed", minute, { refused: true }), undefined, false],
