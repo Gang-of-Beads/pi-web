@@ -1553,7 +1553,7 @@ export class PiWebApp extends LitElement {
       if (routeSurface.selectedTerminalId !== undefined) this.rememberSelectedTerminal(routeSurface.selectedTerminalId);
       await this.refreshRestoredWorkspaceTool(route.tool);
       if (updateUrl) this.updateUrl();
-      else if (restoreOpenedUnnamedSession(route, placeSessionId(this.state))) this.updateUrl({ replace: true });
+      else if (this.isCurrentRouteRestore(restoreSeq, intent) && restoreOpenedUnnamedSession(parsedRoute, readRoute(), placeSessionId(this.state))) this.updateUrl({ replace: true });
     } finally {
       this.routeRestoreDepth = Math.max(0, this.routeRestoreDepth - 1);
       if (this.routeRestoreDepth === 0) this.restoringRouteTerminalId = undefined;
@@ -4781,16 +4781,28 @@ function patchChangesState(state: AppState, patch: Partial<AppState>): boolean {
   return Object.entries(patch).some(([key, value]) => Reflect.get(state, key) !== value);
 }
 
-/** Only the fields the strip shows: a byte counter ticking must not re-render. */
-/**
- * Whether a restore opened a session its route did not name: a workspace link on the desktop opens
- * the latest session. The URL then names it, so it describes the chat on screen and a reload opens
- * the same one even after a newer session appears (D8).
- */
-export function restoreOpenedUnnamedSession(route: { readonly sessionId?: string | undefined }, shownSessionId: string | undefined): boolean {
-  return (route.sessionId === undefined || route.sessionId === "") && shownSessionId !== undefined && shownSessionId !== "";
+interface RouteScope {
+  readonly machineId?: string | undefined;
+  readonly projectId?: string | undefined;
+  readonly workspaceId?: string | undefined;
+  readonly sessionId?: string | undefined;
 }
 
+/**
+ * Whether a restore should name, in the URL, the session it opened: a workspace link on the desktop
+ * opens the latest session, and the URL then names it, so it describes the chat on screen and a
+ * reload opens the same one after a newer session appears (D8). Only while the URL still holds the
+ * route being restored: a machine switch or a terminal run restores a route the URL does not hold
+ * yet, and replacing that entry took the reader's previous place out of Back (review 61021b3f).
+ */
+export function restoreOpenedUnnamedSession(restored: RouteScope, inUrl: RouteScope, shownSessionId: string | undefined): boolean {
+  const unnamed = (route: RouteScope): boolean => route.sessionId === undefined || route.sessionId === "";
+  const sameMachine = (restored.machineId ?? "local") === (inUrl.machineId ?? "local");
+  const samePlace = (restored.projectId ?? "") === (inUrl.projectId ?? "") && (restored.workspaceId ?? "") === (inUrl.workspaceId ?? "");
+  return unnamed(restored) && unnamed(inUrl) && sameMachine && samePlace && shownSessionId !== undefined && shownSessionId !== "";
+}
+
+/** Only the fields the strip shows: a byte counter ticking must not re-render. */
 export function sameBackgroundTasks(left: readonly SessionBackgroundTaskInfo[], right: readonly SessionBackgroundTaskInfo[]): boolean {
   if (left.length !== right.length) return false;
   return left.every((entry, index) => {
