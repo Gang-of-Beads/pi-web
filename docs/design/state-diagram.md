@@ -850,7 +850,7 @@ Every owner report, the domain it breaks, and its producers (file:line in the in
 | B38 | a failed plugin toggle leaves a contradictory card | D6 | a failed save reverts and says why | EACCES on a read-only config; card says "Desired enabled" beside an unticked box | plugin-lifecycle |
 | B39 | the Actions palette has no touch opener | D8 | every surface reachable by touch | `actions.show` is the only opener | navigation |
 | B40 | permanent delete uses `window.confirm` | chrome | the app's own dialog | `PiWebApp.ts:2742` | bulk |
-| B41 | the URL does not describe the Sessions board | D8 | a place survives a reload | stale `tool=` and no `view=` | navigation |
+| B41 | the URL does not describe the Sessions board | D8 | a place survives a reload | not reproduced since D8 (2026-10-03, `probe-board-url.mjs` 5/5): the phone shows the board only when no session is selected (the way back forgets the target; ≡ opens the Go to page over a chat), so the board's URL names no session and a reload keeps it. The audit's path, "Sessions" in Go to from an open session, no longer exists | navigation |
 | B42 | `#` search has no suggestions and misses shown states | - | tags are discoverable | only three derived tags | maintenance |
 | B43 | Archived hides at 0 and sits seven screens down | bulk | a stable home for Archived | group removed when empty | bulk |
 | B44 | phone board chrome takes 20 % of the screen | D4 | owner: keep as it is | 171 px pinned | closed |
