@@ -608,7 +608,7 @@ export class PiWebApp extends LitElement {
     this.navigation.begin();
     void this.withChatScrollTransition(async () => {
       this.restoreSettingsRoute();
-      await this.restoreRoute(false);
+      await this.restoreRoute();
     });
   };
 
@@ -1357,7 +1357,7 @@ export class PiWebApp extends LitElement {
       this.deferRemoteRouteRestore(effectiveRoute, intent);
       return;
     }
-    await this.withChatScrollTransition(() => this.restoreRouteFor(effectiveRoute, false, undefined, undefined, intent));
+    await this.withChatScrollTransition(() => this.restoreRouteFor(effectiveRoute, undefined, undefined, intent));
     if (this.shouldDeferRemoteRouteRestore(effectiveRoute, initialRouteMachineHealth)) this.deferRemoteRouteRestore(effectiveRoute, intent);
     else {
       this.clearPendingRemoteRouteRestore();
@@ -1487,8 +1487,8 @@ export class PiWebApp extends LitElement {
     window.location.reload();
   }
 
-  private async restoreRoute(updateUrl: boolean) {
-    await this.restoreRouteFor(readRoute(), updateUrl);
+  private async restoreRoute() {
+    await this.restoreRouteFor(readRoute());
     this.rememberCurrentMachineNavigation();
   }
 
@@ -1497,7 +1497,7 @@ export class PiWebApp extends LitElement {
    * reader's latest intent when the restore was asked for; a tap made since then wins, and the
    * restore stops moving the page (D8, B29).
    */
-  private async restoreRouteFor(parsedRoute: ParsedAppRoute, updateUrl: boolean, surface = this.readWorkspaceRouteSurface(parsedRoute), restoredMainView?: AppState["mainView"], intent = this.navigation.latest()) {
+  private async restoreRouteFor(parsedRoute: ParsedAppRoute, surface = this.readWorkspaceRouteSurface(parsedRoute), restoredMainView?: AppState["mainView"], intent = this.navigation.latest()) {
     const machineBeforeRestore = selectedMachineId(this.state);
     const routeSurface = parsedRoute.projectId === undefined || parsedRoute.projectId === "" ? emptyWorkspaceRouteSurface() : surface;
     const restoreSeq = ++this.routeRestoreSeq;
@@ -1505,7 +1505,7 @@ export class PiWebApp extends LitElement {
     this.routeRestoreDepth += 1;
     this.restoringRouteTerminalId = routeSurface.selectedTerminalId;
     try {
-      await this.restoreRouteMachine(parsedRoute, false);
+      await this.restoreRouteMachine(parsedRoute);
       await this.loadPluginsForSelectedMachine();
       if (!this.isCurrentRouteRestore(restoreSeq, intent)) return;
       const route = resolveAppRoute(parsedRoute, (value) => this.plugins.resolveWorkspacePanelRouteId(value, selectedMachineId(this.state)));
@@ -1521,14 +1521,12 @@ export class PiWebApp extends LitElement {
           this.workspaces.clearSelection({ updateUrl: false });
           await this.sessions.openSessionAlone(route.sessionId, { updateUrl: false });
         }
-        if (updateUrl) this.updateUrl();
         return;
       }
       if (this.routeMatchesCurrentSelection(route)) {
         this.restoreWorkspaceExpandedRoute(route, routeSurface, mainView);
         if (routeSurface.selectedTerminalId !== undefined) this.rememberSelectedTerminal(routeSurface.selectedTerminalId);
         await this.refreshRestoredWorkspaceTool(route.tool);
-        if (updateUrl) this.updateUrl();
         return;
       }
       // A project missing from the loaded list is not a project that does not
@@ -1543,7 +1541,6 @@ export class PiWebApp extends LitElement {
       }
       if (!project) {
         this.setState({ selectedTerminalId: undefined });
-        if (updateUrl) this.updateUrl();
         return;
       }
       const landed = await this.workspaces.selectProject(project, { workspaceId: route.workspaceId, sessionId: route.sessionId, updateUrl: false });
@@ -1552,8 +1549,7 @@ export class PiWebApp extends LitElement {
       this.restoreWorkspaceExpandedRoute(route, routeSurface, mainView);
       if (routeSurface.selectedTerminalId !== undefined) this.rememberSelectedTerminal(routeSurface.selectedTerminalId);
       await this.refreshRestoredWorkspaceTool(route.tool);
-      if (updateUrl) this.updateUrl();
-      else if (this.isCurrentRouteRestore(restoreSeq, intent) && restoreOpenedUnnamedSession(parsedRoute, readRoute(), placeSessionId(this.state))) this.updateUrl({ replace: true });
+      if (this.isCurrentRouteRestore(restoreSeq, intent) && restoreOpenedUnnamedSession(parsedRoute, readRoute(), placeSessionId(this.state))) this.updateUrl({ replace: true });
     } finally {
       this.routeRestoreDepth = Math.max(0, this.routeRestoreDepth - 1);
       if (this.routeRestoreDepth === 0) this.restoringRouteTerminalId = undefined;
@@ -1689,7 +1685,7 @@ export class PiWebApp extends LitElement {
         return;
       }
 
-      await this.withChatScrollTransition(() => this.restoreRouteFor(route, false, undefined, undefined, this.pendingRestoreIntent));
+      await this.withChatScrollTransition(() => this.restoreRouteFor(route, undefined, undefined, this.pendingRestoreIntent));
       if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
       this.clearPendingRemoteRouteRestore();
       this.rememberCurrentMachineNavigation();
@@ -1749,12 +1745,13 @@ export class PiWebApp extends LitElement {
     this.remoteRouteRestoreTimer = undefined;
   }
 
-  private async restoreRouteMachine(route: ParsedAppRoute, updateUrl: boolean): Promise<void> {
+  /** A restore owns the URL it came from, so the machine move writes none. */
+  private async restoreRouteMachine(route: ParsedAppRoute): Promise<void> {
     const routeMachineId = route.machineId ?? "local";
     if (this.state.selectedMachine?.id === routeMachineId) return;
     const machine = this.state.machines.find((candidate) => candidate.id === routeMachineId);
     if (machine === undefined) return;
-    await this.machines.selectMachine(machine, { updateUrl });
+    await this.machines.selectMachine(machine, { updateUrl: false });
   }
 
   private routeMatchesCurrentSelection(route: AppRoute): boolean {
@@ -1861,7 +1858,7 @@ export class PiWebApp extends LitElement {
     if (options.rememberCurrent !== false && !this.routeRestoreInProgress) this.rememberCurrentMachineNavigation();
     const seq = ++this.machineNavigationRestoreSeq;
     const snapshot = this.machineNavigation.latest(machine.id) ?? emptyMachineNavigationSnapshot(machine.id);
-    await this.restoreRouteFor(routeFromMachineNavigationSnapshot(snapshot), false, snapshot.surface, snapshot.view);
+    await this.restoreRouteFor(routeFromMachineNavigationSnapshot(snapshot), snapshot.surface, snapshot.view);
     if (seq !== this.machineNavigationRestoreSeq || this.state.selectedMachine?.id !== machine.id) return;
     if (this.shouldPreserveUnrestoredMachineNavigation(snapshot)) {
       this.machineNavigation.remember(snapshot);
@@ -1925,7 +1922,7 @@ export class PiWebApp extends LitElement {
         sessionId: undefined,
         tool: "core:workspace.terminal",
         view: "core:workspace.terminal",
-      }, false, { selectedTerminalId: options?.terminalId }, "core:workspace.terminal", intent);
+      }, { selectedTerminalId: options?.terminalId }, "core:workspace.terminal", intent);
       if (!this.navigation.isCurrent(intent)) return;
       if (selectedMachineId(this.state) !== machineId) {
         this.setState(noticePatch(noticeForReader("Machine not found for terminal command run")));

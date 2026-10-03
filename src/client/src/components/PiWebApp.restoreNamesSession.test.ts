@@ -77,7 +77,7 @@ function restoringTheWorkspaceLink(urlSearch: string) {
     call(app, "setState", { selectedProject: project, selectedSession: sessionNamed("latest") });
     return Promise.resolve(true);
   });
-  const restoring = call(app, "restoreRouteFor", { machineId: undefined, projectId: "p1", workspaceId: "w1", sessionId: undefined, tool: undefined, view: undefined }, false);
+  const restoring = call(app, "restoreRouteFor", { machineId: undefined, projectId: "p1", workspaceId: "w1", sessionId: undefined, tool: undefined, view: undefined });
   const finish = async (): Promise<void> => {
     for (let i = 0; i < 20 && toolRefreshed.release === undefined; i += 1) await Promise.resolve();
     if (toolRefreshed.release === undefined) throw new Error("the restore never reached the tool refresh");

@@ -414,7 +414,7 @@ describe("a route restore the reader has overtaken", () => {
     replace(app, "restoreRouteMachine", () => machineRestored.promise);
     replace(app, "loadPluginsForSelectedMachine", () => Promise.resolve());
 
-    const restoring = call(app, "restoreRouteFor", { machineId: "local", projectId: undefined, workspaceId: undefined, sessionId: undefined, tool: undefined, view: undefined }, false, undefined, "navigation");
+    const restoring = call(app, "restoreRouteFor", { machineId: "local", projectId: undefined, workspaceId: undefined, sessionId: undefined, tool: undefined, view: undefined }, undefined, "navigation");
     call(app, "selectMainView", "chat");
     machineRestored.resolve();
     await restoring;
