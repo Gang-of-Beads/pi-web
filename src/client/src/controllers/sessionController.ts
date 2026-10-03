@@ -254,7 +254,11 @@ export class SessionController {
    * leaves the write to it, and one that lands after replaces that same entry,
    * so the address and the history always name the place the page shows.
    */
-  private selectionUrl: { seq: number; settled: boolean; placed: boolean } | undefined;
+  /**
+   * The URL a selection owes: `write` when its caller left the push to it, `placed` once the place
+   * moved from what the caller wrote (a placement, or a selection into another workspace).
+   */
+  private selectionUrl: { seq: number; settled: boolean; placed: boolean; write: boolean } | undefined;
   private disposed = false;
   private refreshRetryCount = 0;
   private refreshRetryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -457,7 +461,8 @@ export class SessionController {
     }
     this.sessionSelection.rememberSession({ ...session, cwd: this.workspaceSelectionKey(session.cwd) });
     const seq = ++this.selectionSeq;
-    this.selectionUrl = { seq, settled: false, placed: false };
+    const selectionUrl = { seq, settled: false, placed: false, write: options?.updateUrl !== false };
+    this.selectionUrl = selectionUrl;
     this.socket.close();
     this.streamWatermark = undefined;
     // A new selection is a new dialog surface with its own revision space; the
@@ -474,6 +479,7 @@ export class SessionController {
     const ancestors = ancestorsForSession(session, { workspaces: state.workspaces, projects: state.projects });
     const workspaceMoved = ancestors !== undefined
       && (ancestors.workspace.id !== state.selectedWorkspace?.id || ancestors.workspace.projectId !== state.selectedProject?.id);
+    selectionUrl.placed = workspaceMoved;
     this.setState({
       ...(workspaceMoved ? resetWorkspaceScopedState() : {}),
       selectedSession: session,
@@ -1819,11 +1825,13 @@ export class SessionController {
     }
     const scope = { machineId: selectedMachineId(state), workspaceId: workspace.id, cwd: workspace.path, sessionId };
     const target: SessionTarget = this.locatedAfterGone === sessionId ? { kind: "gone", sessionId } : { kind: "asking", sessionId };
+    const owed = this.selectionUrl;
+    const owesPush = owed?.seq === this.selectionSeq && !owed.settled && owed.write;
     this.locatedAfterGone = undefined;
     this.seamLocating = target.kind === "asking" ? sessionId : undefined;
     this.clearActiveSession();
-    const following = this.targets.follow(scope, target);
-    this.updateUrl();
+    const following = this.targets.follow(scope, target, { updateUrl: false });
+    this.updateUrl(owesPush ? undefined : { replace: true });
     await following;
   }
 

@@ -173,9 +173,11 @@ describe("opening a session the reader tapped", () => {
  */
 describe("the history entry a tap adds", () => {
   function recordingWrites(app: PiWebApp) {
-    const writes: { session: string | undefined; view: string; replace: boolean }[] = [];
-    replace(app, "updateUrl", (options?: { replace?: boolean }) => {
-      writes.push({ session: state(app).selectedSessionId, view: state(app).mainView, replace: options?.replace === true });
+    const writes: { machine: unknown; session: string | undefined; view: string; replace: boolean; newEntry: boolean }[] = [];
+    replace(app, "updateUrl", (options?: { replace?: boolean; forcePush?: boolean }) => {
+      const appState = member(app, "state");
+      const machine: unknown = Reflect.get(appState, "selectedMachine");
+      writes.push({ machine: typeof machine === "object" && machine !== null ? Reflect.get(machine, "id") : undefined, session: state(app).selectedSessionId, view: state(app).mainView, replace: options?.replace === true, newEntry: options?.forcePush === true });
     });
     const selectOptions: unknown[] = [];
     const machineOptions: unknown[] = [];
@@ -203,7 +205,7 @@ describe("the history entry a tap adds", () => {
     read.resolve();
     await flush();
 
-    expect({ writes, selectOptions }).toEqual({ writes: [{ session: "target", view: "chat", replace: false }], selectOptions: [{ updateUrl: false }] });
+    expect({ writes, selectOptions }).toEqual({ writes: [{ machine: "local", session: "target", view: "chat", replace: false, newEntry: true }], selectOptions: [{ updateUrl: false }] });
   });
 
   it("is still one entry when the tap moves to the machine the row was read from", async () => {
@@ -216,10 +218,28 @@ describe("the history entry a tap adds", () => {
     read.resolve();
     await flush();
 
-    expect({ writes, machineOptions }).toEqual({ writes: [{ session: "target", view: "chat", replace: false }], machineOptions: [{ updateUrl: false }] });
+    expect({ writes, machineOptions }).toEqual({ writes: [{ machine: "remote-b", session: "target", view: "chat", replace: false, newEntry: true }], machineOptions: [{ updateUrl: false }] });
   });
 
-  it("leaves the entry of a workspace opened from another machine's tab to the workspace pick", async () => {
+  it("names the machine it moved to when the reader moves on while it was moving", async () => {
+    const read = deferred();
+    const { app } = readerOnTheSessionsPage({ cached: false, read: read.promise });
+    const { writes } = recordingWrites(app);
+    replace(member(app, "machines"), "selectMachine", (machine: Machine) => {
+      call(app, "setState", { selectedMachine: machine });
+      call(member(app, "navigation"), "begin");
+      return Promise.resolve();
+    });
+
+    void call(app, "openSessionFromQuickSwitcher", sessionNamed("target"), "remote-b");
+    await flush();
+    read.resolve();
+    await flush();
+
+    expect(writes).toEqual([{ machine: "remote-b", session: undefined, view: "navigation", replace: false, newEntry: false }]);
+  });
+
+  it("writes once after the workspace pick, whether or not the pick wrote, naming the machine it moved to", async () => {
     const app = createApp();
     const project = { id: "p", name: "p", path: "/p", createdAt: "" };
     call(app, "setState", { machines: [local, remote], selectedMachine: local, projects: [project], mainView: "navigation" });
@@ -230,7 +250,7 @@ describe("the history entry a tap adds", () => {
 
     await call(app, "openWorkspaceFromQuickSwitcher", { id: "w", projectId: "p", path: "/p", label: "w", isMain: true, effectiveConfig: {} });
 
-    expect({ machineOptions, picked, writes }).toEqual({ machineOptions: [{ updateUrl: false }], picked: ["p"], writes: [] });
+    expect({ machineOptions, picked, writes }).toEqual({ machineOptions: [{ updateUrl: false }], picked: ["p"], writes: [{ machine: "remote-b", session: undefined, view: "navigation", replace: false, newEntry: false }] });
   });
 
   it("names the machine it moved to when the workspace's project cannot be found there", async () => {
@@ -242,7 +262,7 @@ describe("the history entry a tap adds", () => {
 
     await call(app, "openWorkspaceFromQuickSwitcher", { id: "w", projectId: "p", path: "/p", label: "w", isMain: true, effectiveConfig: {} });
 
-    expect(writes).toEqual([{ session: undefined, view: "navigation", replace: false }]);
+    expect(writes).toEqual([{ machine: "remote-b", session: undefined, view: "navigation", replace: false, newEntry: false }]);
   });
 });
 

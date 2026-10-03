@@ -104,4 +104,16 @@ describe("route helpers", () => {
     expect(pushed).toEqual([]);
     expect(replaced).toEqual([]);
   });
+
+  /** D8: a tap's committed write is a new entry even when another write landed less than 400 ms before. */
+  it("pushes a committed intent's write right after another write, which an ordinary write would have replaced", () => {
+    const { pushed, replaced } = installWindow("http://localhost/app");
+    const place = (projectId: string): AppRoute => ({ machineId: undefined, projectId, workspaceId: undefined, sessionId: undefined, tool: undefined, view: undefined });
+
+    writeRoute(place("first"));
+    writeRoute(place("committed"), { forcePush: true });
+    writeRoute(place("piece"));
+
+    expect({ committed: pushed.some((url) => url.includes("committed")), piece: replaced.some((url) => url.includes("piece")) }).toEqual({ committed: true, piece: true });
+  });
 });

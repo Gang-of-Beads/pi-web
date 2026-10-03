@@ -53,7 +53,8 @@ export function resolveWorkspacePanelRouteValue(value: string, resolveWorkspaceP
   return resolveWorkspacePanel(value) ?? (isQualifiedContributionId(value) ? value : undefined);
 }
 
-export function writeRoute(route: ParsedAppRoute, options?: { replace?: boolean | undefined }): void {
+/** `forcePush` is a reader's committed intent: its entry is new even when another write landed less than 400 ms before. */
+export function writeRoute(route: ParsedAppRoute, options?: { replace?: boolean | undefined; forcePush?: boolean | undefined }): void {
   const url = new URL(window.location.href);
   url.searchParams.delete("machine");
   url.searchParams.delete("project");
@@ -70,7 +71,7 @@ export function writeRoute(route: ParsedAppRoute, options?: { replace?: boolean 
   const next = `${url.pathname}${url.search}${url.hash}`;
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (next === current) return;
-  writeRouteUrl(String(url), options?.replace === true);
+  writeRouteUrl(String(url), options?.replace === true, Date.now(), options?.forcePush === true);
 }
 
 function nonEmpty(value: string | null): string | undefined {

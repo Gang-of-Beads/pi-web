@@ -1817,7 +1817,7 @@ export class PiWebApp extends LitElement {
     return this.appShell.defaultRouteView(route);
   }
 
-  private updateUrl(options?: { replace?: boolean | undefined }) {
+  private updateUrl(options?: { replace?: boolean | undefined; forcePush?: boolean | undefined }) {
     this.rememberCurrentMachineNavigation();
     writeRoute({
       machineId: this.state.selectedMachine?.id,
@@ -3079,16 +3079,10 @@ export class PiWebApp extends LitElement {
     // panel waits on "Loading sessions..." forever.
     const project = this.state.projects.find((candidate) => candidate.id === workspace.projectId)
       ?? await this.locateRouteProject(workspace.projectId);
-    if (project === undefined) {
-      this.setState(noticePatch(noticeForReader("The project this workspace belongs to is not in the project list.")));
-      this.updateUrl();
-      return;
-    }
-    if (this.state.selectedProject?.id !== project.id) {
-      await this.workspaces.selectProject(project, { workspaceId: workspace.id });
-      return;
-    }
-    await this.workspaces.selectWorkspace(workspace);
+    if (project === undefined) this.setState(noticePatch(noticeForReader("The project this workspace belongs to is not in the project list.")));
+    else if (this.state.selectedProject?.id !== project.id) await this.workspaces.selectProject(project, { workspaceId: workspace.id });
+    else await this.workspaces.selectWorkspace(workspace);
+    this.updateUrl();
   }
 
   /**
@@ -3117,7 +3111,7 @@ export class PiWebApp extends LitElement {
       this.setState(noticePatch(noticeForReader(`The machine this item lives on (${browsed}) is not in the machine list.`)));
       return false;
     }
-    await this.machines.selectMachine(target, { updateUrl: options.updateUrl });
+    await this.machines.selectMachine(target, options);
     return true;
   }
 
@@ -3145,17 +3139,21 @@ export class PiWebApp extends LitElement {
       }
       if (!this.navigation.isCurrent(seq)) return;
     }
+    const machineBefore = selectedMachineId(this.state);
     const moved = await this.moveToMachine(machineId, { updateUrl: false });
     if (!moved) {
       this.navigation.fail(seq);
       return;
     }
-    if (!this.navigation.isCurrent(seq)) return;
+    if (!this.navigation.isCurrent(seq)) {
+      if (selectedMachineId(this.state) !== machineBefore) this.updateUrl();
+      return;
+    }
     this.closeNavigate();
     this.quickSwitcherOpen = false;
     this.showView("chat", { updateUrl: false });
     const selecting = this.sessions.selectSession(session, { updateUrl: false });
-    this.updateUrl();
+    this.updateUrl({ forcePush: true });
     this.navigation.settle(seq);
     await selecting;
     if (this.navigation.isCurrent(seq) && this.state.selectedSession?.id === session.id) await this.focusComposerAfterRender();

@@ -15,9 +15,15 @@ function harness(api: Partial<typeof defaultApi> = {}) {
   let state: AppState = { ...initialAppState(), projects: [project], selectedProject: project };
   let gone = false;
   const urlNames: (string | undefined)[] = [];
+  const urlModes: ("push" | "replace")[] = [];
+  const urlPlaces: (string | undefined)[] = [];
   const getState = () => state;
   const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
-  const writeUrl = () => { urlNames.push(state.sessionTarget?.sessionId ?? state.selectedSession?.id); };
+  const writeUrl = (options?: { replace?: boolean | undefined }) => {
+    urlNames.push(state.sessionTarget?.sessionId ?? state.selectedSession?.id);
+    urlModes.push(options?.replace === true ? "replace" : "push");
+    urlPlaces.push(state.selectedWorkspace?.id);
+  };
   const whileThere = <T>(answer: () => Promise<T>) => () => (gone ? Promise.reject(notFound()) : answer());
   const sessions = new SessionController(getState, setState, writeUrl, undefined, {
     api: {
@@ -35,7 +41,7 @@ function harness(api: Partial<typeof defaultApi> = {}) {
   const workspaces = new WorkspaceController(getState, setState, vi.fn(), sessions, undefined, {
     api: { workspaces: () => Promise.resolve([workspace]), sessions: () => Promise.resolve([oldSession, otherRow]) },
   });
-  return { sessions, workspaces, state: () => state, deleted: () => { gone = true; }, patch: setState, urlNames };
+  return { sessions, workspaces, state: () => state, deleted: () => { gone = true; }, patch: setState, urlNames, urlModes, urlPlaces };
 }
 
 async function settle(): Promise<void> {
@@ -180,6 +186,60 @@ describe("the open session answers session-not-found (P2 slice b part 2; owner: 
       target: { ...goneTarget, sessionId: otherRow.id, target: { kind: "gone", sessionId: otherRow.id } },
       url: otherRow.id,
     });
+  });
+
+  /** D8, one intent adds at most one history entry (review ae155c79): the tap already wrote its entry. */
+  it("adds no entry of its own when a row the tap already wrote answers the code", async () => {
+    const { sessions, urlNames, urlModes } = await opened({ messages: (session) => (session.id === otherRow.id ? Promise.reject(notFound()) : Promise.resolve(emptyPage)) });
+    urlNames.length = 0;
+    urlModes.length = 0;
+
+    await sessions.selectSession(otherRow, { updateUrl: false });
+    await settle();
+
+    expect({ urlNames, urlModes }).toEqual({ urlNames: [otherRow.id], urlModes: ["replace"] });
+  });
+
+  it("pushes the one entry a pick left to it when its first read answers the code", async () => {
+    const { sessions, urlNames, urlModes } = await opened({ messages: (session) => (session.id === otherRow.id ? Promise.reject(notFound()) : Promise.resolve(emptyPage)) });
+    urlNames.length = 0;
+    urlModes.length = 0;
+
+    await sessions.selectSession(otherRow);
+    await settle();
+
+    expect({ urlNames, urlModes }).toEqual({ urlNames: [otherRow.id], urlModes: ["push"] });
+  });
+
+  it("replaces the tap's entry when the row it picked is located and opened in another workspace", async () => {
+    const elsewhere = { ...workspace, id: "ws-elsewhere", path: "/elsewhere", label: "elsewhere", isMain: false };
+    const located: SessionInfo = { ...otherRow, cwd: elsewhere.path };
+    const { sessions, state, patch, urlNames, urlModes, urlPlaces } = await opened({
+      messages: (session) => (session.id === otherRow.id && session.cwd === workspace.path ? Promise.reject(notFound()) : Promise.resolve(emptyPage)),
+      locateSession: foundAtMost(1, () => located),
+    });
+    patch({ workspaces: [workspace, elsewhere] });
+    urlNames.length = 0;
+    urlModes.length = 0;
+
+    await sessions.selectSession(otherRow, { updateUrl: false });
+    for (let turn = 0; turn < 20 && (state().selectedSession?.cwd !== elsewhere.path || state().isLoadingTranscript); turn++) await settle();
+
+    expect({ opened: state().selectedSession?.cwd, workspace: state().selectedWorkspace?.id, pushes: urlModes.filter((mode) => mode === "push").length, last: urlNames.at(-1), lastPlace: urlPlaces.at(-1) })
+      .toEqual({ opened: elsewhere.path, workspace: elsewhere.id, pushes: 0, last: otherRow.id, lastPlace: elsewhere.id });
+  });
+
+  it("adds no entry when an open session its pick already wrote answers the code later", async () => {
+    const { sessions, deleted, urlModes } = await opened();
+    await sessions.selectSession(oldSession);
+    await settle();
+    urlModes.length = 0;
+
+    deleted();
+    await sessions.refreshSelectedSession();
+    await settle();
+
+    expect({ writes: urlModes.length > 0, pushes: urlModes.filter((mode) => mode === "push").length }).toEqual({ writes: true, pushes: 0 });
   });
 
   it("does the same when cancelling a tree summary answers the code", async () => {
