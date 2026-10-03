@@ -15,7 +15,7 @@ const CWD = `${process.env.HOME}/.pi-web-8505/pi-web-8505-seed-workspace`;
 const PROJECT = "991606fd-e498-4b93-a1ce-2af09efdb0e7";
 const WORKSPACE = "ef2cdf93e1ac";
 const SESSION = process.env.PROBE_SESSION ?? "01a0fe63-b06a-7019-b764-3740fee34c3f";
-const ANSWER = /\/sessions\/[^/]+\/dialogs\/(answer|cancel)$/u;
+const ANSWER = /\/sessions\/[^/]+\/dialogs\/answer$/u;
 
 const results = [];
 const check = (name, pass, detail = "") => {
@@ -55,7 +55,15 @@ try {
   await cancelAll();
   await page.waitForTimeout(1500);
 
+  await page.evaluate(() => {
+    window.__probeClicks = [];
+    document.addEventListener("click", (event) => {
+      window.__probeClicks.push(event.composedPath().some((node) => node instanceof Element && node.tagName === "EXTENSION-DIALOG-CARD"));
+    }, { capture: true });
+  });
+  const clicks = () => page.evaluate(() => window.__probeClicks.splice(0));
   const card = page.locator("extension-dialog-card.open-dialog-card ask-user-card");
+  answers.length = 0;
   const control = await openQuestions();
   const controlShown = await card.first().waitFor({ state: "visible", timeout: 20_000 }).then(() => true, () => false);
   check("precondition: /questions-probe opens a Questions card", control !== undefined && controlShown, String(control?.dialogId));
@@ -65,6 +73,7 @@ try {
   check("control: a tap on a live card's Send answers it", answers.length > 0 && (await pendingDialogs()).length === 0, answers.join(", "));
 
   answers.length = 0;
+  await clicks();
   const dialog = await openQuestions();
   const shown = await card.first().waitFor({ state: "visible", timeout: 20_000 }).then(() => true, () => false);
   check("precondition: a second opening shows the card again", dialog !== undefined && shown, String(dialog?.dialogId));
@@ -74,6 +83,7 @@ try {
   if (box === null) throw new Error("Send answers has no box");
   const cdp = await context.newCDPSession(page);
   const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await clicks();
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
   await post("dialogs/cancel", { dialogId: dialog.dialogId });
   await page.waitForTimeout(2500);
@@ -86,14 +96,20 @@ try {
       return undefined;
     };
     const slot = find(document);
-    return { present: slot !== undefined, inert: slot?.hasAttribute("inert") ?? false };
+    const held = slot?.querySelector("extension-dialog-card");
+    return { present: held !== null && held !== undefined, inert: held?.hasAttribute("inert") === true || slot?.hasAttribute("inert") === true };
   });
+  const aimed = await send.boundingBox();
   check("precondition: the machine has closed the dialog while the finger is down", (await pendingDialogs()).length === 0);
+  check("precondition: the finger is still on Send after the close", aimed !== null && point.x >= aimed.x && point.x <= aimed.x + aimed.width && point.y >= aimed.y && point.y <= aimed.y + aimed.height, JSON.stringify({ point, aimed }));
   check("the closed card stays under the finger", held.present, JSON.stringify(held));
   check("and it is inert while it is held", held.inert, JSON.stringify(held));
   await page.screenshot({ path: "/tmp/surfaces/held-card-phone.png" });
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await page.waitForTimeout(2000);
+  const lifted = await clicks();
+  check("precondition: lifting the finger delivers a click", lifted.length > 0, JSON.stringify(lifted));
+  check("the click never reaches the closed card", lifted.every((reached) => !reached), JSON.stringify(lifted));
   check("lifting the finger on its Send sends nothing", answers.length === 0, answers.join(", "));
   await context.close();
 } finally {

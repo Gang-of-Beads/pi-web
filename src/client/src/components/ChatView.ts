@@ -7,6 +7,7 @@ import { resolveAppUrl } from "../appUrl";
 import type { SessionRef } from "../../../shared/apiTypes";
 import { showsJumpToBottom } from "../chatScrollPosition";
 import { ScrollFollowGate, TOUCH_SETTLE_MS } from "../scrollFollowGate";
+import { drawnWaitingCards, shownWaitingCards, type ShownWaiting, type WaitingCards } from "../waitingSlotHold";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { ChatDisclosureController } from "../chatDisclosure";
@@ -721,11 +722,11 @@ export class ChatView extends LitElement {
   private scrollToBottomFrame: number | undefined;
   private catchUpFollowTimer: ReturnType<typeof setTimeout> | undefined;
   /**
-   * The waiting row's last content, kept so an outcome that settles under a
-   * standing finger does not remove the ground being pressed. Cleared when the
-   * press settles or the session changes: it belongs to this session only.
+   * The cards the waiting row last drew, kept so a card that closes under a
+   * standing finger keeps its place (`waitingSlotHold`). Cleared when the slot
+   * empties or the session changes: it belongs to this session only.
    */
-  private heldWaiting: { ask: PendingAskUser | undefined; dialogs: readonly PendingExtensionDialog[] } | undefined;
+  private drawnWaiting: WaitingCards | undefined;
   private heldWaitingClearTimer: ReturnType<typeof setTimeout> | undefined;
   /** Which open card's alignment a press deferred, so the release can replay it. */
   private conversationRailFrame: number | undefined;
@@ -988,9 +989,9 @@ export class ChatView extends LitElement {
     this.suppressLoadMoreRequests = false;
     this.pendingScrollRestoreSessionId = undefined;
     this.pendingScrollRestorePosition = undefined;
-    this.heldWaiting = undefined;
+    this.drawnWaiting = undefined;
     this.quoteChip = undefined;
-if (this.heldWaitingClearTimer !== undefined) {
+    if (this.heldWaitingClearTimer !== undefined) {
       clearTimeout(this.heldWaitingClearTimer);
       this.heldWaitingClearTimer = undefined;
     }
@@ -1570,17 +1571,10 @@ if (this.heldWaitingClearTimer !== undefined) {
    * the height, so nothing is covered and no tap is intercepted.
    */
   private renderWaitingForYou() {
-    const dialogs = this.pendingDialogs;
-    if (this.pendingAsk !== undefined || this.pendingAsks.length > 0 || dialogs.length > 0) {
-      this.heldWaiting = { ask: this.pendingAsk, dialogs };
-      return this.renderWaitingSlot(this.pendingAsk, dialogs, "live");
-    }
-    const held = this.heldWaiting;
-    if (held !== undefined && this.followGate.holdsOrSettling(Date.now())) {
-      return this.renderWaitingSlot(held.ask, held.dialogs, "held");
-    }
-    this.heldWaiting = undefined;
-    return null;
+    const open = { forms: this.pendingAsks.length > 0 ? this.pendingAsks : (this.pendingAsk === undefined ? [] : [this.pendingAsk]), dialogs: this.pendingDialogs };
+    const shown = shownWaitingCards(this.drawnWaiting, open, this.followGate.holdsOrSettling(Date.now()));
+    this.drawnWaiting = drawnWaitingCards(shown);
+    return this.drawnWaiting === undefined ? null : this.renderWaitingSlot(shown);
   }
 
   /**
@@ -1607,31 +1601,29 @@ if (this.heldWaitingClearTimer !== undefined) {
    * used to draw, with "N more extension dialogs queued" under it, so a native
    * card waited unseen behind a terminal screen until the reader closed that
    * screen (owner screenshots, 2026-10-02). Each card answers, keys and
-   * cancels its own dialog by id.
+   * cancels its own dialog by id. A held card (closed under a standing finger,
+   * `waitingSlotHold`) keeps its place inert, with nothing bound, so a tap that
+   * lands after it closed answers nothing (B22).
    */
-  /**
-   * A `held` slot is the closed cards kept on screen while a press settles (D2, B22): same layout,
-   * nothing live, so a tap that lands after the card closed answers nothing.
-   */
-  private renderWaitingSlot(ask: PendingAskUser | undefined, dialogs: readonly PendingExtensionDialog[], presence: "live" | "held") {
-    const forms = this.pendingAsks.length > 0 ? this.pendingAsks : (ask === undefined ? [] : [ask]);
-    const live = presence === "live";
+  private renderWaitingSlot(shown: ShownWaiting) {
     return html`
-      <div class="waiting-slot" role="region" aria-label="Waiting for your answer" ?inert=${!live}>
-        ${forms.map((form) => html`
+      <div class="waiting-slot" role="region" aria-label="Waiting for your answer">
+        ${repeat(shown.forms, ({ card }) => card.askId, ({ card, presence }) => html`
           <ask-user-card
-            .ask=${form}
+            ?inert=${presence === "held"}
+            .ask=${card}
             .draftSessionId=${this.askDraftSessionId}
-            .onSubmit=${live ? this.onSubmitAsk : undefined}
+            .onSubmit=${presence === "live" ? this.onSubmitAsk : undefined}
           ></ask-user-card>
         `)}
-        ${repeat(dialogs, (dialog) => dialog.dialogId, (dialog) => html`
+        ${repeat(shown.dialogs, ({ card }) => card.dialogId, ({ card, presence }) => html`
           <extension-dialog-card
             class="open-dialog-card"
-            .dialog=${dialog}
-            .onAnswer=${live ? this.onAnswerDialog : undefined}
-            .onCancel=${live ? this.onCancelDialog : undefined}
-            .onKey=${live ? this.onDialogKey : undefined}
+            ?inert=${presence === "held"}
+            .dialog=${card}
+            .onAnswer=${presence === "live" ? this.onAnswerDialog : undefined}
+            .onCancel=${presence === "live" ? this.onCancelDialog : undefined}
+            .onKey=${presence === "live" ? this.onDialogKey : undefined}
             .draftSessionId=${this.askDraftSessionId}
           ></extension-dialog-card>
         `)}
@@ -2228,7 +2220,7 @@ if (this.heldWaitingClearTimer !== undefined) {
    */
   private releasePointer(): void {
     this.followGate.notePointerUp(Date.now());
-    if (this.heldWaiting !== undefined) {
+    if (this.drawnWaiting !== undefined) {
       if (this.heldWaitingClearTimer !== undefined) clearTimeout(this.heldWaitingClearTimer);
       this.heldWaitingClearTimer = setTimeout(() => {
         this.heldWaitingClearTimer = undefined;
