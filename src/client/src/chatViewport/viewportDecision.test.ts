@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  followsAfterScroll,
   scrollDirection,
   viewportDecision,
   type PageWant,
@@ -73,6 +74,19 @@ describe("only an upward scroll asks for history", () => {
     });
   });
 
+  /** D4, B12: a view that grew lowers scrollTop to keep the bottom; that is not the reader leaving it. */
+  it("keeps following through an upward scroll that ends at the bottom", () => {
+    const grown = { scrollTop: 1819, scrollHeight: 2465, clientHeight: 646 };
+    const leftIt = { scrollTop: 1719, scrollHeight: 2465, clientHeight: 646 };
+    expect({
+      grown: decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: grown }),
+      leftIt: decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: leftIt }),
+    }).toEqual({
+      grown: { action: "idle", next: { kind: "following" } },
+      leftIt: { action: "stop-following", next: { kind: "holding" } },
+    });
+  });
+
   it("does not fetch on the scroll that stops the follow", () => {
     expect(decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: atTop }).action).toBe("stop-following");
   });
@@ -97,6 +111,18 @@ describe("only an upward scroll asks for history", () => {
   it("fetches from an end before anything opened, holding being the same as unknown", () => {
     expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: atBottom }).action).toBe("load-newer-page");
     expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "up", metrics: atTop }).action).toBe("load-older");
+  });
+
+  /** D4: reading -> following when the reader scrolls down to the bottom of the newest (review ca45d6ed). */
+  it("follows again once the reader scrolls down to the bottom of the newest, and not to the end of an older window", () => {
+    const bottom = { scrollTop: 39_200, scrollHeight: 40_000, clientHeight: 800 };
+    expect({
+      newest: decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: bottom }, { window: { hasOlder: true, hasNewer: false, loading: false } }),
+      olderWindow: decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: bottom }, { window: { hasOlder: true, hasNewer: true, loading: true } }),
+    }).toEqual({
+      newest: { action: "idle", next: { kind: "following" } },
+      olderWindow: { action: "idle", next: { kind: "holding" } },
+    });
   });
 
   it("ignores a downward scroll while still following", () => {
@@ -141,22 +167,15 @@ describe("one page in flight at a time", () => {
   });
 
   /** D4, B13: the end of an older window is not the bottom; the newer page the reader scrolled into leaves them reading. */
-  /** D4, B12: a view that grew lowers scrollTop to keep the bottom; that is not the reader leaving it. */
-  it("keeps following through an upward scroll that ends at the bottom", () => {
-    const grown = { scrollTop: 1819, scrollHeight: 2465, clientHeight: 646 };
-    const leftIt = { scrollTop: 1719, scrollHeight: 2465, clientHeight: 646 };
-    expect({
-      grown: decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: grown }),
-      leftIt: decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: leftIt }),
-    }).toEqual({
-      grown: { action: "idle", next: { kind: "following" } },
-      leftIt: { action: "stop-following", next: { kind: "holding" } },
-    });
-  });
-
   it("keeps the reader reading after a newer page they scrolled into", () => {
     const scrolledInto: ViewportState = { kind: "awaitingPage", want: "newer", resume: { kind: "holding" } };
     expect(decide(scrolledInto, { kind: "pageArrived", want: "newer" })).toEqual({ action: "restore-anchor", next: { kind: "holding" } });
+  });
+
+  /** Review ca45d6ed: the jump pressed while a newer page was on its way asked to follow. */
+  it("lands at the newest when a newer page lands after the reader jumped", () => {
+    const jumpedMidFlight: ViewportState = { kind: "awaitingPage", want: "newer", resume: { kind: "following" } };
+    expect(decide(jumpedMidFlight, { kind: "pageArrived", want: "newer" })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
   });
 
   it("lands at the newest after a page that was asked for by a jump", () => {
@@ -205,6 +224,22 @@ describe("every state answers every event", () => {
       if (state.kind === "awaitingPage") continue;
       expect(decide(state, { kind: "pageArrived", want: "older" }).action).toBe("idle");
     }
+  });
+});
+
+/** D4: whether the reader follows the newest after a scroll, every state (review ca45d6ed, B13). */
+describe("following after a scroll", () => {
+  const facts = { hasNewer: false, atBottom: false, moved: true, scrollingUp: false, nearBottom: false, wasFollowing: false };
+  it.each<[string, Partial<typeof facts>, boolean]>([
+    ["the end of an older window is not the bottom, even at its very end", { hasNewer: true, atBottom: true, nearBottom: true, wasFollowing: true }, false],
+    ["at the bottom of the newest", { atBottom: true }, true],
+    ["a scroll that did not move keeps following", { moved: false, wasFollowing: true }, true],
+    ["a scroll that did not move keeps reading", { moved: false, wasFollowing: false }, false],
+    ["an upward scroll releases, even near the bottom", { scrollingUp: true, nearBottom: true, wasFollowing: true }, false],
+    ["a downward scroll that ends near the bottom follows", { nearBottom: true }, true],
+    ["a downward scroll that ends far from it reads", { nearBottom: false, wasFollowing: true }, false],
+  ])("%s", (_name, overrides, follows) => {
+    expect(followsAfterScroll({ ...facts, ...overrides })).toBe(follows);
   });
 });
 

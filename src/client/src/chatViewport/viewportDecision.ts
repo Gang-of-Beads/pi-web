@@ -14,6 +14,8 @@
  * and callers are dumb executors of the action they are handed.
  */
 import { isNearTop } from "../chatHistoryLoading.js";
+import { distanceFromScrollBottom } from "../chatScrollPosition.js";
+import { BOTTOM_SLACK_PX } from "../streamingBottomHold.js";
 
 export interface ViewportMetrics {
   scrollTop: number;
@@ -117,9 +119,13 @@ const AFTER_PAGE: Record<PageWant, ViewportDecision> = {
   newest: decide("snap-bottom", { kind: "following" }),
 };
 
+/**
+ * A page that lands after the reader asked to follow (the jump pressed while a newer page was on
+ * its way) lands them at the newest like the jump does (review ca45d6ed).
+ */
 const onPageArrived: Handler = (input, event) => {
   if (event.kind !== "pageArrived" || input.state.kind !== "awaitingPage") return idle(input.state);
-  return AFTER_PAGE[input.state.want];
+  return input.state.resume.kind === "following" && input.state.want !== "older" ? AFTER_PAGE.newest : AFTER_PAGE[input.state.want];
 };
 
 const onPageFailed: Handler = (input, event) => {
@@ -136,8 +142,7 @@ const nearTop = (metrics: ViewportMetrics): boolean =>
  * reader went nowhere (D4, B12; seen on 8505 with a card docked: following -> holding with the
  * reader still at the bottom, no input).
  */
-const atBottom = (metrics: ViewportMetrics): boolean =>
-  metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight <= 1;
+const atBottom = (metrics: ViewportMetrics): boolean => distanceFromScrollBottom(metrics) < BOTTOM_SLACK_PX;
 
 const nearBottom = (metrics: ViewportMetrics): boolean =>
   metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight < Math.max(NEAR_TOP, metrics.clientHeight * 1.5);
@@ -161,6 +166,7 @@ const onScrolled: Handler = (input, event) => {
   if (event.direction === "up" && nearTop(event.metrics) && canLoad(input, "older")) {
     return load(input, "older", { kind: "holding" });
   }
+  if (event.direction === "down" && atBottom(event.metrics) && !input.window.hasNewer) return idle({ kind: "following" });
   return idle(input.state);
 };
 
@@ -180,6 +186,20 @@ const EVENT_HANDLERS: Record<ViewportEvent["kind"], Handler> = {
 export function viewportDecision(input: ViewportInput): ViewportDecision {
   if (!input.measured) return idle(input.state);
   return EVENT_HANDLERS[input.event.kind](input, input.event);
+}
+
+/**
+ * Whether the reader follows the newest after a scroll (D4). The end of an older window is not the
+ * bottom: reaching it pinned the reader there, so the newer page landing under them carried them
+ * through everything that loaded, a page at a time (review ca45d6ed, B13). An upward scroll
+ * releases; a downward one that ends near the bottom follows; a scroll that did not move keeps what
+ * was.
+ */
+export function followsAfterScroll(facts: { readonly hasNewer: boolean; readonly atBottom: boolean; readonly moved: boolean; readonly scrollingUp: boolean; readonly nearBottom: boolean; readonly wasFollowing: boolean }): boolean {
+  if (facts.hasNewer) return false;
+  if (facts.atBottom) return true;
+  if (!facts.moved) return facts.wasFollowing;
+  return !facts.scrollingUp && facts.nearBottom;
 }
 
 /** The direction of a scroll event, so callers do not compare positions themselves. */

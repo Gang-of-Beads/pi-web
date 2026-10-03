@@ -32,6 +32,7 @@ export function streamingBottomHold(input: StreamingBottomHoldInput): StreamingB
 /**
  * Sub-pixel layout rounding leaves a fraction of a pixel at the bottom on
  * fractional device scales; correcting that would mean writing scrollTop every
- * frame of every turn for a distance nobody can see.
+ * frame of every turn for a distance nobody can see. The viewport decision and ChatView read "at the
+ * bottom" through it too, so the three never disagree on a fractional scrollTop (review ca45d6ed).
  */
-const BOTTOM_SLACK_PX = 2;
+export const BOTTOM_SLACK_PX = 2;

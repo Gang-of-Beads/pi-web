@@ -14,7 +14,7 @@ import { ChatDisclosureController } from "../chatDisclosure";
 import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type ChatGroup } from "../chatGroups";
 import { writeClipboardText } from "../clipboard";
 import { followScrollVerdict } from "../followScrollAdoption.js";
-import { scrollDirection, viewportDecision } from "../chatViewport/viewportDecision.js";
+import { scrollDirection, viewportDecision, followsAfterScroll } from "../chatViewport/viewportDecision.js";
 import type { ViewportAction, ViewportEvent, ViewportState } from "../chatViewport/viewportDecision.js";
 import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
@@ -53,7 +53,7 @@ import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPositi
 import { imageLoadScrollCorrection } from "../imageLoadScroll";
 import { quotedPrompt } from "../selectionComposer";
 import { bottomAnchorAction } from "../bottomAnchor";
-import { streamingBottomHold } from "../streamingBottomHold";
+import { streamingBottomHold, BOTTOM_SLACK_PX } from "../streamingBottomHold";
 
 /** A line's time in milliseconds, or undefined when it carries none it can be ordered by. */
 function lineTimestamp(line: ChatLine): number | undefined {
@@ -2285,9 +2285,7 @@ export class ChatView extends LitElement {
       this.scrollToBottom();
       return;
     }
-    if (this.isAtBottom()) this.pinnedToBottom = true;
-    else if (moved) this.pinnedToBottom = scrollingUp ? false : this.isNearBottom();
-    else this.pinnedToBottom = wasPinnedToBottom;
+    this.pinnedToBottom = followsAfterScroll({ hasNewer: this.hasNewer, atBottom: this.isAtBottom(), moved, scrollingUp, nearBottom: this.isNearBottom(), wasFollowing: wasPinnedToBottom });
     this.jumpToBottomVisible = showsJumpToBottom(chat);
     this.lastScrollTop = chat.scrollTop;
     this.lastClientHeight = chat.clientHeight;
@@ -2371,7 +2369,7 @@ export class ChatView extends LitElement {
   private isAtBottom(): boolean {
     const chat = this.chat;
     if (!chat) return true;
-    return distanceFromScrollBottom(chat) < 2;
+    return distanceFromScrollBottom(chat) < BOTTOM_SLACK_PX;
   }
 
   private canScrollUp(): boolean {
