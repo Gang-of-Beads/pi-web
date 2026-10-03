@@ -1054,9 +1054,9 @@ export class ChatView extends LitElement {
     if (changed.has("loadingMore") && !this.loadingMore) {
       this.loadMoreRequested = false;
       this.newerRequested = false;
-      this.settlePageRead(changed.has("messages"));
+      if (!changed.has("sessionId")) this.settlePageRead(changed.has("messages") ? "landed" : "failed");
     }
-    if (changed.has("hasNewer") && this.viewportState.kind === "awaitingPage" && !this.hasNewer) {
+    if (changed.has("hasNewer") && this.viewportState.kind === "awaitingPage" && !this.hasNewer && !this.loadingMore && !changed.has("sessionId")) {
       this.openPages();
       this.runViewport({ kind: "pageArrived", want: this.viewportState.want });
     }
@@ -2284,6 +2284,7 @@ export class ChatView extends LitElement {
     const heightChanged = this.didChatHeightChange();
     const wasPinnedToBottom = this.pinnedToBottom;
     const moved = chat.scrollTop !== this.lastScrollTop;
+    if (moved) this.pageRetry = readerMoved(this.pageRetry);
     const scrollingUp = chat.scrollTop < this.lastScrollTop;
     if (heightChanged && wasPinnedToBottom) {
       this.lastClientHeight = chat.clientHeight;
@@ -2363,20 +2364,22 @@ export class ChatView extends LitElement {
   /**
    * A page read ended: with messages it is the awaited page's arrival, without them it failed. Only
    * the read's own end counts; any messages change while a page was awaited counted as its arrival
-   * (review 9f8186d0). A failed read leaves the reader unpinned wherever the decision left them.
+   * (review 9f8186d0). A session switch settles nothing: the read belonged to the session left.
    */
-  private settlePageRead(landed: boolean): void {
+  private settlePageRead(end: "landed" | "failed"): void {
     if (this.viewportState.kind !== "awaitingPage") return;
-    if (landed) {
+    if (end === "landed") {
       this.openPages();
       this.runViewport({ kind: "pageArrived", want: this.viewportState.want });
       return;
     }
+    const jumped = owedAfter(this.viewportState) === "newest";
     this.holdPagesAfterFailure();
     this.runViewport({ kind: "pageFailed" });
-    this.unpinWhenReading();
+    if (jumped) this.unpinWhenReading();
   }
 
+  /** A failed jump leaves the reader reading; only a jump's failure unpins (review 7b1987f0). */
   private unpinWhenReading(): void {
     if (this.viewportState.kind === "holding") this.pinnedToBottom = false;
   }
@@ -2631,15 +2634,11 @@ export class ChatView extends LitElement {
       this.updatePinnedToBottomAfterRestore(result.status);
       this.runViewport({ kind: "restoreSettled", landed: this.pinnedToBottom ? "bottom" : "spot" });
       if (result.status === "restored" || result.status === "bottom") this.cancelPrependRestore();
-      this.pendingScrollRestoreSessionId = undefined;
-      this.pendingScrollRestorePosition = undefined;
       return;
     }
 
     const action = this.dispatchViewport({ kind: "anchorMissing" });
     if (action === "snap-bottom") {
-      this.pendingScrollRestoreSessionId = undefined;
-      this.pendingScrollRestorePosition = undefined;
       this.scrollToBottom();
       return;
     }

@@ -54,6 +54,19 @@ async function wait(view: ChatView, ms: number): Promise<void> {
   await view.updateComplete;
 }
 
+async function newestLands(view: ChatView, end: number, total: number): Promise<void> {
+  view.loadingMore = true;
+  await view.updateComplete;
+  view.messages = [];
+  view.messageEnd = end;
+  view.messageTotal = total;
+  view.hasNewer = end < total;
+  view.loadingMore = false;
+  await view.updateComplete;
+  await vi.advanceTimersByTimeAsync(40);
+  await view.updateComplete;
+}
+
 async function pressTheKey(view: ChatView): Promise<void> {
   const jump: unknown = Reflect.get(view, "jumpToNewest");
   if (typeof jump !== "function") throw new Error("the jump is missing, so this test proves nothing");
@@ -176,6 +189,51 @@ describe("a jump whose read failed (reviews 754821b2, 9f8186d0)", () => {
 
     expect(asks()).toBe(1);
   });
+
+  /** Review 7b1987f0: a key or scrollbar scroll during the hold left the debt, and the hold's end carried the reader to the newest. */
+  it("drops the debt for a scroll that was not a wheel or a touch, such as a key", async () => {
+    const { view, scrollTo } = await mount();
+    const { asks } = await farJumpThatFails(view, scrollTo);
+    const chat = view.renderRoot.querySelector(".chat");
+    if (chat === null) throw new Error("the transcript scroller is missing, so this test proves nothing");
+    chat.scrollTop = 1400;
+    await vi.advanceTimersByTimeAsync(40);
+    await view.updateComplete;
+    await wait(view, 1000);
+
+    expect(asks()).toBe(1);
+  });
+});
+
+describe("the back-to-newest key (D4)", () => {
+  /**
+   * Pressed mid-window in an older window, the key asked nothing and moved nothing: the newest read
+   * waited for the reader to be near the end. A newest page that lands short of the newest asks
+   * again wherever the reader is (review 7b1987f0: this test was lost in the batch-4 rewrite).
+   */
+  it("asks for the newest page wherever the reader is, walks on while the newest is not reached, and lands them there", async () => {
+    const { view, scrollTo } = await mount();
+    view.messageEnd = 300;
+    view.messageTotal = 300;
+    await view.updateComplete;
+    await vi.advanceTimersByTimeAsync(100);
+    Reflect.set(view, "pinnedToBottom", false);
+    await scrollTo(400);
+    let asks = 0;
+    view.onLoadNewer = () => { asks += 1; };
+    view.messageTotal = 900;
+    view.hasNewer = true;
+    await view.updateComplete;
+    await pressTheKey(view);
+    const asked = asks;
+    Reflect.set(view, "pinnedToBottom", false);
+    await newestLands(view, 600, 900);
+    const walked = asks;
+    await newestLands(view, 900, 900);
+    const top = view.renderRoot.querySelector(".chat")?.scrollTop;
+
+    expect({ asked, walked, top }).toEqual({ asked: 1, walked: 2, top: 3200 });
+  });
 });
 
 describe("the hold's lifetime", () => {
@@ -231,6 +289,84 @@ describe("the hold's lifetime", () => {
     const afterAFrame: unknown = Reflect.get(view, "viewportState");
 
     expect({ awaiting, afterAFrame }).toEqual({ awaiting: { kind: "awaitingPage", want: "older", resume: { kind: "holding" } }, afterAFrame: { kind: "awaitingPage", want: "older", resume: { kind: "holding" } } });
+  });
+
+  /** Review 7b1987f0: a failed read that was not a jump's unpinned a following reader, so growth stopped following. */
+  it("keeps the pin after a failed read that was not a jump", async () => {
+    const { view } = await mount();
+    view.onLoadMore = () => undefined;
+    view.hasMore = true;
+    await view.updateComplete;
+    Reflect.set(view, "viewportState", { kind: "awaitingPage", want: "older", resume: { kind: "holding" } });
+    Reflect.set(view, "pinnedToBottom", true);
+    view.loadingMore = true;
+    await view.updateComplete;
+    view.loadingMore = false;
+    await view.updateComplete;
+    const pinned: unknown = Reflect.get(view, "pinnedToBottom");
+
+    expect(pinned).toBe(true);
+  });
+
+  /** Review 7b1987f0: a session switch settled the previous session's wait against the new session's window. */
+  it("does not settle the previous session's read against the next session", async () => {
+    const { view } = await mount();
+    let asks = 0;
+    view.onLoadNewer = () => { asks += 1; };
+    view.messageEnd = 300;
+    view.messageTotal = 900;
+    view.hasNewer = true;
+    view.loadingMore = true;
+    await view.updateComplete;
+    Reflect.set(view, "viewportState", { kind: "awaitingPage", want: "newest", resume: { kind: "following" } });
+    view.sessionId = "the-next-session";
+    view.messages = [];
+    view.loadingMore = false;
+    await view.updateComplete;
+
+    expect(asks).toBe(0);
+  });
+
+  /** Review 7b1987f0: the next session's window, ending at its newest, settled the previous session's wait and moved the new view. */
+  it("does not take the newest end a session switch brings as the previous session's arrival", async () => {
+    const { view } = await mount();
+    view.messageEnd = 300;
+    view.messageTotal = 900;
+    view.hasNewer = true;
+    await view.updateComplete;
+    Reflect.set(view, "viewportState", { kind: "awaitingPage", want: "newest", resume: { kind: "following" } });
+    const snap: unknown = Reflect.get(view, "scrollToBottom");
+    if (typeof snap !== "function") throw new Error("the snap is missing, so this test proves nothing");
+    let snaps = 0;
+    Reflect.set(view, "scrollToBottom", () => {
+      snaps += 1;
+      Reflect.apply(snap, view, []);
+    });
+    view.sessionId = "the-next-session";
+    view.messageEnd = 900;
+    view.hasNewer = false;
+    await view.updateComplete;
+
+    expect(snaps).toBe(0);
+  });
+
+  /** Review 7b1987f0: the window reaching its newest end while a read was still out counted as that read's arrival. */
+  it("leaves a read in flight to its own end when the window reaches the newest meanwhile", async () => {
+    const { view } = await mount();
+    view.onLoadMore = () => undefined;
+    view.hasMore = true;
+    view.messageEnd = 300;
+    view.messageTotal = 900;
+    view.hasNewer = true;
+    view.loadingMore = true;
+    await view.updateComplete;
+    Reflect.set(view, "viewportState", { kind: "awaitingPage", want: "older", resume: { kind: "holding" } });
+    view.messageEnd = 900;
+    view.hasNewer = false;
+    await view.updateComplete;
+    const state: unknown = Reflect.get(view, "viewportState");
+
+    expect(state).toEqual({ kind: "awaitingPage", want: "older", resume: { kind: "holding" } });
   });
 
   it("asks nothing once the view is gone", async () => {

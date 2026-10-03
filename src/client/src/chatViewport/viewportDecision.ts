@@ -121,15 +121,18 @@ const onJumpNewest: Handler = (input, event) => {
   return decide("snap-bottom", { kind: "following" });
 };
 
+/** A newest page the reader did not wait for lands like any newer page. */
+const LANDS_AS: Record<PageWant, PageWant> = { older: "older", newer: "newer", newest: "newer" };
+
+/** A page the reader followed into lands at the newest, unless it was history above them. */
+const FOLLOWED_LANDS_AS: Record<PageWant, PageWant> = { older: "older", newer: "newest", newest: "newest" };
+
 /**
  * Where a page leaves the reader. Only the jump to the newest moves them; a page they scrolled into,
  * older or newer, keeps them reading where they were (D4, B13). The end of an older window is not
  * the bottom: a newer page snapped the reader there and set them following, so the follow carried
  * them through everything that loaded.
  */
-/** A newest page the reader did not wait for lands like any newer page. */
-const LANDS_AS: Record<PageWant, PageWant> = { older: "older", newer: "newer", newest: "newer" };
-
 const AFTER_PAGE: Record<PageWant, ViewportDecision> = {
   older: decide("restore-anchor", { kind: "holding" }),
   newer: decide("restore-anchor", { kind: "holding" }),
@@ -149,17 +152,20 @@ const onPageArrived: Handler = (input, event) => {
   if (resume.kind === "restoring") return decide("restore-anchor", { kind: "restoring" });
   if (resume.kind !== "following") return AFTER_PAGE[LANDS_AS[want]];
   if (input.window.hasNewer && canLoadOnIntent(input, "newest")) return load(input, "newest", { kind: "following" });
-  return want === "older" ? AFTER_PAGE.older : AFTER_PAGE.newest;
+  return AFTER_PAGE[FOLLOWED_LANDS_AS[want]];
 };
 
 /**
  * A restore that finished leaves `restoring`: a restored (or skipped) spot is reading, a landing at
  * the bottom is following. A viewport left restoring asks for no page, so a session reopened where
- * the reader left it loaded nothing however far they scrolled (D4, review ca45d6ed).
+ * the reader left it loaded nothing however far they scrolled (D4, review ca45d6ed). A spot found
+ * while its page is still on its way ends the restore too; the page lands as the reader's (review
+ * 7b1987f0: it left the restore standing once the page landed).
  */
 const onRestoreSettled: Handler = (input, event) => {
-  if (event.kind !== "restoreSettled" || input.state.kind !== "restoring") return idle(input.state);
-  return idle(event.landed === "bottom" ? { kind: "following" } : { kind: "holding" });
+  if (event.kind !== "restoreSettled" || !isRestoring(input.state)) return idle(input.state);
+  const landed: ViewportState = event.landed === "bottom" ? { kind: "following" } : { kind: "holding" };
+  return idle(input.state.kind === "awaitingPage" ? { ...input.state, resume: landed } : landed);
 };
 
 /**

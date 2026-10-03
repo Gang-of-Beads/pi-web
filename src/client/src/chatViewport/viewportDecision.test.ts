@@ -186,7 +186,7 @@ describe("a restore that reads older pages (review 754821b2)", () => {
 
 describe("a restore that finished (D4, review ca45d6ed)", () => {
   it("leaves restoring for reading at a restored spot and for following at the bottom, and changes nothing else", () => {
-    const awaiting: ViewportState = { kind: "awaitingPage", want: "older", resume: { kind: "restoring" } };
+    const awaiting: ViewportState = { kind: "awaitingPage", want: "older", resume: { kind: "holding" } };
     expect({
       spot: decide({ kind: "restoring" }, { kind: "restoreSettled", landed: "spot" }),
       bottom: decide({ kind: "restoring" }, { kind: "restoreSettled", landed: "bottom" }),
@@ -197,6 +197,18 @@ describe("a restore that finished (D4, review ca45d6ed)", () => {
       bottom: { action: "idle", next: { kind: "following" } },
       holding: { action: "idle", next: { kind: "holding" } },
       awaiting: { action: "idle", next: awaiting },
+    });
+  });
+
+  /** Review 7b1987f0: a spot found while its page was still on its way left the restore standing once the page landed. */
+  it("ends a restore found while its page is on its way: the page lands as the reader's", () => {
+    const forTheRestore: ViewportState = { kind: "awaitingPage", want: "older", resume: { kind: "restoring" } };
+    expect({
+      spot: decide(forTheRestore, { kind: "restoreSettled", landed: "spot" }),
+      bottom: decide(forTheRestore, { kind: "restoreSettled", landed: "bottom" }),
+    }).toEqual({
+      spot: { action: "idle", next: { kind: "awaitingPage", want: "older", resume: { kind: "holding" } } },
+      bottom: { action: "idle", next: { kind: "awaitingPage", want: "older", resume: { kind: "following" } } },
     });
   });
 
