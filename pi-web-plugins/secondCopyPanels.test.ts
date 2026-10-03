@@ -108,9 +108,10 @@ afterEach(() => {
 });
 
 describe("a second copy's controls reach the panel its own registration rendered (B53)", () => {
-  it("files: Refresh and Upload reach the panel, and its out of date mark clears when it refreshes", async () => {
+  it("files: Refresh and Upload reach the panel, and its out of date mark clears once that refresh lands", async () => {
     const copy = await secondCopy("./files/pi-web-plugin.ts", "files");
-    const context = panelContext("remote-b");
+    const listing = (path: string) => Promise.resolve({ path, entries: [], scannedAt: "2026-10-03T00:00:00.000Z", truncated: false });
+    const context = { ...panelContext("remote-b"), files: stubWorkspaceFiles({ listFiles: listing }) };
     const panel = mount(copy.panel.render(context));
     await settle();
     const refreshed = countCalls(panel, "refresh");
@@ -120,6 +121,7 @@ describe("a second copy's controls reach the panel its own registration rendered
     const staleAfterTurn = toolbarStatus(copy, context);
     clickToolbar(copy, context, "Upload");
     await copy.panel.onInvalidate?.(context);
+    await vi.waitFor(() => { if (toolbarStatus(copy, context) !== undefined) throw new Error("the refresh has not landed"); });
 
     expect({ staleAfterTurn, refreshed: refreshed(), uploads: uploads(), staleAfterRefresh: toolbarStatus(copy, context) })
       .toEqual({ staleAfterTurn: "out of date", refreshed: 1, uploads: 1, staleAfterRefresh: undefined });
