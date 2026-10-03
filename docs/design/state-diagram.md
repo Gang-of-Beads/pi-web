@@ -704,6 +704,10 @@ stateDiagram-v2
   - A terminal run checks, once accepted, that the intent current at its start still is; `openRuntimeTerminal` checks again after restoring the terminal's workspace, and a workspace removal checks before opening its terminal.
   - The chrome draws the progress line from the intent. The tapped row draws its `going` look by comparing its key with the intent's target.
 - **A deep link to a session opens that session, or says why it cannot.** It never silently opens another one (audit, B31).
+- **One intent adds at most one history entry** (seen 2026-10-03, `probe-board-url.mjs` at load 11: Back from a chat opened on the phone board landed on "chat, no session"). A tap writes the URL once, when it commits, naming the place it committed to. Its steps (the machine move, the view, the selection) write nothing on their own. A step that later corrects the place (a placement, a session located in another workspace) replaces that entry. The clock that merges writes 400 ms apart (`historyWrites.ts`) stays for the pieces of one surface (a tool and its arguments); it cannot tell one intent from two once a read takes longer. Producers found:
+  1. a session tap: `showView("chat")` pushed the chat view before the selection, then the selection pushed the session once its first read settled; a cross-machine tap first pushed the machine as well;
+  2. a workspace opened from the switcher: the machine move pushed, then the project or workspace pick pushed.
+
 
 ### The target of a session link (P2 slice b, B31; owner Q8)
 

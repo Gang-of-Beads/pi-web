@@ -11,6 +11,11 @@ import { chromium } from "@playwright/test";
  * with no session opens the board and a reload keeps it; a session opened from the board and left
  * with Back returns to the board, and a reload keeps it. No session is created and nothing is
  * prompted.
+ *
+ * One tap adds one history entry (D8, seen 2026-10-03 at load 11): the tap pushed the chat view
+ * before the selection, and the selection pushed the session once its read settled, so a read
+ * slower than 400 ms left "chat, no session" between the board and the chat. The last legs slow
+ * the tapped session's reads to make that window certain.
  */
 const BASE = process.env.PROBE_BASE ?? "http://127.0.0.1:8505";
 const PROJECT = "991606fd-e498-4b93-a1ce-2af09efdb0e7";
@@ -28,6 +33,8 @@ const boardVisible = (page) => page.evaluate(() => {
 });
 const onBoard = async (page) => (await mainView(page)) === "navigation" && (await boardVisible(page));
 const where = async (page) => `${String(await mainView(page))} ${new URL(page.url()).search}`;
+const historyLength = (page) => page.evaluate(() => window.history.length);
+const SESSION_READ = /\/sessions\/[^/]+\/(messages|transcript-tail|status|stream-snapshot)(?:\?|$)/u;
 
 const browser = await chromium.launch();
 try {
@@ -53,6 +60,28 @@ try {
   await page.waitForTimeout(6000);
   check("and a reload keeps the board", await onBoard(page), await where(page));
   await page.screenshot({ path: "/tmp/surfaces/board-url-reloaded-phone.png" });
+
+  await page.close();
+  const fresh = await context.newPage();
+  await fresh.goto(`${BASE}/?project=${PROJECT}&workspace=${WORKSPACE}`);
+  await fresh.waitForTimeout(6000);
+  check("precondition: a fresh tab opens on the board", await onBoard(fresh), await where(fresh));
+  let slowed = 0;
+  await fresh.route(SESSION_READ, async (route) => {
+    slowed += 1;
+    await new Promise((resolve) => { setTimeout(resolve, 1500); });
+    await route.continue();
+  });
+  const before = await historyLength(fresh);
+  await fresh.locator("app-navigate-page button.row.session").first().tap({ timeout: 5_000 });
+  await fresh.waitForTimeout(7000);
+  const slowOpened = new URL(fresh.url()).searchParams.get("session");
+  check("precondition: a tap whose reads take 1.5 s opens its chat", (await mainView(fresh)) === "chat" && slowOpened !== null && slowed > 0, `${await where(fresh)}, ${String(slowed)} slowed reads`);
+  check("that tap adds one history entry", (await historyLength(fresh)) - before === 1, `${String(before)} -> ${String(await historyLength(fresh))}`);
+  await fresh.unroute(SESSION_READ);
+  await fresh.goBack();
+  await fresh.waitForTimeout(4000);
+  check("and Back from it returns to the board, naming no session", (await onBoard(fresh)) && new URL(fresh.url()).searchParams.get("session") === null, await where(fresh));
   await context.close();
 } finally {
   await browser.close();

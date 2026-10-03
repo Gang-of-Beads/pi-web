@@ -1963,14 +1963,14 @@ export class PiWebApp extends LitElement {
     this.showView(view);
   }
 
-  private showView(view: AppState["mainView"]) {
+  private showView(view: AppState["mainView"], options: { readonly updateUrl?: boolean } = {}) {
     if (view !== "navigation" && view !== "chat") {
       this.openWorkspaceTool(view);
       return;
     }
     this.workspacePanelFullscreen = false;
     this.setState({ mainView: view });
-    this.updateUrl();
+    if (options.updateUrl !== false) this.updateUrl();
   }
 
   /**
@@ -3072,7 +3072,7 @@ export class PiWebApp extends LitElement {
    * after an explicit pick would undo the tap the user just made.
    */
   private async openWorkspaceFromQuickSwitcher(workspace: Workspace): Promise<void> {
-    const moved = await this.moveToBrowsedMachine();
+    const moved = await this.moveToBrowsedMachine({ updateUrl: false });
     if (!moved) return;
     // selectWorkspace's landing guard requires the workspace's own project to
     // be selected; without it the returned session list is discarded and the
@@ -3081,6 +3081,7 @@ export class PiWebApp extends LitElement {
       ?? await this.locateRouteProject(workspace.projectId);
     if (project === undefined) {
       this.setState(noticePatch(noticeForReader("The project this workspace belongs to is not in the project list.")));
+      this.updateUrl();
       return;
     }
     if (this.state.selectedProject?.id !== project.id) {
@@ -3096,8 +3097,8 @@ export class PiWebApp extends LitElement {
    * click during a refresh select a session on a machine that had never
    * heard of it - the wrong-machine read the qwen presence lane found.
    */
-  private async moveToBrowsedMachine(): Promise<boolean> {
-    return this.moveToMachine(this.quickSwitcherMachineId ?? this.quickSwitcherBrowseMachineId);
+  private async moveToBrowsedMachine(options: { readonly updateUrl?: boolean } = {}): Promise<boolean> {
+    return this.moveToMachine(this.quickSwitcherMachineId ?? this.quickSwitcherBrowseMachineId, options);
   }
 
   /** The machine the listed rows belong to: the one the list was read from. */
@@ -3105,14 +3106,18 @@ export class PiWebApp extends LitElement {
     return this.quickSwitcherMachineId ?? this.browsedMachineId();
   }
 
-  private async moveToMachine(browsed: string): Promise<boolean> {
+  /**
+   * A tap that goes on to select something passes `updateUrl: false`: the selection writes the one
+   * history entry the tap adds, naming where it landed (D8). A move that is the whole action writes it.
+   */
+  private async moveToMachine(browsed: string, options: { readonly updateUrl?: boolean } = {}): Promise<boolean> {
     if (browsed === "" || browsed === selectedMachineId(this.state)) return true;
     const target = this.state.machines.find((candidate) => candidate.id === browsed);
     if (target === undefined) {
       this.setState(noticePatch(noticeForReader(`The machine this item lives on (${browsed}) is not in the machine list.`)));
       return false;
     }
-    await this.machines.selectMachine(target);
+    await this.machines.selectMachine(target, { updateUrl: options.updateUrl });
     return true;
   }
 
@@ -3140,7 +3145,7 @@ export class PiWebApp extends LitElement {
       }
       if (!this.navigation.isCurrent(seq)) return;
     }
-    const moved = await this.moveToMachine(machineId);
+    const moved = await this.moveToMachine(machineId, { updateUrl: false });
     if (!moved) {
       this.navigation.fail(seq);
       return;
@@ -3148,8 +3153,9 @@ export class PiWebApp extends LitElement {
     if (!this.navigation.isCurrent(seq)) return;
     this.closeNavigate();
     this.quickSwitcherOpen = false;
-    this.showView("chat");
-    const selecting = this.sessions.selectSession(session);
+    this.showView("chat", { updateUrl: false });
+    const selecting = this.sessions.selectSession(session, { updateUrl: false });
+    this.updateUrl();
     this.navigation.settle(seq);
     await selecting;
     if (this.navigation.isCurrent(seq) && this.state.selectedSession?.id === session.id) await this.focusComposerAfterRender();

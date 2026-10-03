@@ -164,6 +164,86 @@ describe("opening a session the reader tapped", () => {
   });
 });
 
+/**
+ * D8, one intent adds at most one history entry. Seen 2026-10-03 at load 11 (probe-board-url): a tap
+ * pushed the chat view before the selection and the selection pushed the session once its read
+ * settled, so Back from the chat landed on "chat, no session".
+ */
+describe("the history entry a tap adds", () => {
+  function recordingWrites(app: PiWebApp) {
+    const writes: { session: string | undefined; view: string; replace: boolean }[] = [];
+    replace(app, "updateUrl", (options?: { replace?: boolean }) => {
+      writes.push({ session: state(app).selectedSessionId, view: state(app).mainView, replace: options?.replace === true });
+    });
+    const selectOptions: unknown[] = [];
+    const machineOptions: unknown[] = [];
+    const sessions = member(app, "sessions");
+    replace(sessions, "selectSession", (session: SessionInfo, options?: unknown) => {
+      selectOptions.push(options);
+      call(app, "setState", { selectedSession: session });
+      return Promise.resolve();
+    });
+    replace(member(app, "machines"), "selectMachine", (machine: Machine, options?: unknown) => {
+      machineOptions.push(options);
+      call(app, "setState", { selectedMachine: machine });
+      return Promise.resolve();
+    });
+    return { writes, selectOptions, machineOptions };
+  }
+
+  it("is one entry naming the session in the chat it opened, written by the tap and not by its steps", async () => {
+    const read = deferred();
+    const { app } = readerOnTheSessionsPage({ cached: false, read: read.promise });
+    const { writes, selectOptions } = recordingWrites(app);
+
+    void call(app, "openSessionFromQuickSwitcher", sessionNamed("target"));
+    await flush();
+    read.resolve();
+    await flush();
+
+    expect({ writes, selectOptions }).toEqual({ writes: [{ session: "target", view: "chat", replace: false }], selectOptions: [{ updateUrl: false }] });
+  });
+
+  it("is still one entry when the tap moves to the machine the row was read from", async () => {
+    const read = deferred();
+    const { app } = readerOnTheSessionsPage({ cached: false, read: read.promise });
+    const { writes, machineOptions } = recordingWrites(app);
+
+    void call(app, "openSessionFromQuickSwitcher", sessionNamed("target"), "remote-b");
+    await flush();
+    read.resolve();
+    await flush();
+
+    expect({ writes, machineOptions }).toEqual({ writes: [{ session: "target", view: "chat", replace: false }], machineOptions: [{ updateUrl: false }] });
+  });
+
+  it("leaves the entry of a workspace opened from another machine's tab to the workspace pick", async () => {
+    const app = createApp();
+    const project = { id: "p", name: "p", path: "/p", createdAt: "" };
+    call(app, "setState", { machines: [local, remote], selectedMachine: local, projects: [project], mainView: "navigation" });
+    replace(app, "quickSwitcherBrowseMachineId", "remote-b");
+    const { writes, machineOptions } = recordingWrites(app);
+    const picked: string[] = [];
+    replace(member(app, "workspaces"), "selectProject", (chosen: { id: string }) => { picked.push(chosen.id); return Promise.resolve(true); });
+
+    await call(app, "openWorkspaceFromQuickSwitcher", { id: "w", projectId: "p", path: "/p", label: "w", isMain: true, effectiveConfig: {} });
+
+    expect({ machineOptions, picked, writes }).toEqual({ machineOptions: [{ updateUrl: false }], picked: ["p"], writes: [] });
+  });
+
+  it("names the machine it moved to when the workspace's project cannot be found there", async () => {
+    const app = createApp();
+    call(app, "setState", { machines: [local, remote], selectedMachine: local, projects: [], mainView: "navigation" });
+    replace(app, "quickSwitcherBrowseMachineId", "remote-b");
+    const { writes } = recordingWrites(app);
+    replace(app, "locateRouteProject", () => Promise.resolve(undefined));
+
+    await call(app, "openWorkspaceFromQuickSwitcher", { id: "w", projectId: "p", path: "/p", label: "w", isMain: true, effectiveConfig: {} });
+
+    expect(writes).toEqual([{ session: undefined, view: "navigation", replace: false }]);
+  });
+});
+
 /** A machine switch restores the view remembered for that machine, after the machine answers. */
 /** Review run c336e7e7: the paths the first version left able to move the page late. */
 describe("what supersedes an open still loading", () => {
