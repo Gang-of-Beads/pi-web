@@ -292,6 +292,42 @@ describe("placing a session through the catalogue (B48)", () => {
     });
   });
 
+  /** Review ca45d6ed: a restore's caller writes its own entry after the restore; a placement replacing first took the reader's previous place out of Back. */
+  it("corrects only an entry that names the session it placed", async () => {
+    const run = async (address: string, placementFirst: boolean) => {
+      let answerProjects: () => void = () => undefined;
+      let answerMessages: () => void = () => undefined;
+      const writes: { replace: boolean; project: string | undefined }[] = [];
+      let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedProject: here, workspaces: [workspace], projects: [here], sessions: [oldSession], sessionsLoad: "loaded" };
+      const catalogue = {
+        projects: (_machineId: string, wanted: () => boolean) => new Promise<readonly Project[] | undefined>((resolve) => { answerProjects = () => { resolve(wanted() ? [here, there] : undefined); }; }),
+        workspaces: (_machineId: string, projectId: string, wanted: () => boolean) => Promise.resolve(wanted() ? (projectId === there.id ? [elsewhere] : [workspace]) : undefined),
+      };
+      const controller = new SessionController(
+        () => state,
+        (next) => { state = { ...state, ...next }; },
+        (options) => { writes.push({ replace: options?.replace === true, project: state.selectedProject?.id }); },
+        undefined,
+        { api: { ...api(), messages: () => new Promise((resolve) => { answerMessages = () => { resolve(emptyPage); }; }) }, socket: new EmitSocket(), catalogue, urlSessionId: () => address },
+      );
+      const selecting = controller.selectSession(sessionOverThere, { updateUrl: false });
+      const settle = async () => { for (let turn = 0; turn < 12; turn += 1) await Promise.resolve(); };
+      await settle();
+      if (placementFirst) { answerProjects(); await settle(); answerMessages(); } else { answerMessages(); await settle(); answerProjects(); }
+      await selecting;
+      await settle();
+      return { project: state.selectedProject?.id, writes };
+    };
+
+    expect({
+      restoreBeforeItsCallerWrote: [await run("previous-place", true), await run("previous-place", false)],
+      entryNamingTheSession: [await run(sessionOverThere.id, true), await run(sessionOverThere.id, false)],
+    }).toEqual({
+      restoreBeforeItsCallerWrote: [{ project: "project-2", writes: [] }, { project: "project-2", writes: [] }],
+      entryNamingTheSession: [{ project: "project-2", writes: [{ replace: true, project: "project-2" }] }, { project: "project-2", writes: [{ replace: true, project: "project-2" }] }],
+    });
+  });
+
   it("stops a placement still on its way when the reader asks for another place (review 39f920d2)", async () => {
     let answerProjects: () => void = () => undefined;
     const writes: boolean[] = [];

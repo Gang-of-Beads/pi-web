@@ -221,6 +221,21 @@ describe("the history entry a tap adds", () => {
     expect({ writes, machineOptions }).toEqual({ writes: [{ machine: "remote-b", session: "target", view: "chat", replace: false, newEntry: true }], machineOptions: [{ updateUrl: false }] });
   });
 
+  /** Review ca45d6ed: a move overtaken by this open left the URL to it; when it fails, the URL still named the old machine. */
+  it("names the machine the page is on when it fails after overtaking a move", async () => {
+    const read = deferred();
+    const { app } = readerOnTheSessionsPage({ cached: false, read: read.promise });
+    call(app, "setState", { selectedMachine: remote });
+    const { writes } = recordingWrites(app);
+
+    void call(app, "openSessionFromQuickSwitcher", sessionNamed("target"), "remote-b");
+    await flush();
+    read.reject(new Error("offline"));
+    await flush();
+
+    expect(writes).toEqual([{ machine: "remote-b", session: undefined, view: "navigation", replace: false, newEntry: false }]);
+  });
+
   it("names the machine it moved to when the reader moves on while it was moving", async () => {
     const read = deferred();
     const { app } = readerOnTheSessionsPage({ cached: false, read: read.promise });

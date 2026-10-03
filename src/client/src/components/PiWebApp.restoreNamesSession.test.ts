@@ -87,6 +87,22 @@ function restoringTheWorkspaceLink(urlSearch: string) {
   return { app, writes, finish };
 }
 
+/** Review ca45d6ed: a placement corrects only an entry that names its session, so the session layer reads the address. */
+describe("the address the session layer reads", () => {
+  it("is the session the URL names, read when asked", () => {
+    vi.stubGlobal("fetch", () => new Promise<Response>(() => undefined));
+    window.history.replaceState(null, "", "/?project=p1&workspace=w1&session=named");
+    const app = new PiWebApp();
+    const read: unknown = Reflect.get(member(app, "sessions"), "urlSessionId");
+    if (typeof read !== "function") throw new Error("the session layer was given no address");
+    const first: unknown = Reflect.apply(read, undefined, []);
+    window.history.replaceState(null, "", "/?project=p1&workspace=w1");
+    const after: unknown = Reflect.apply(read, undefined, []);
+
+    expect({ first, after }).toEqual({ first: "named", after: undefined });
+  });
+});
+
 describe("a restore that opened a session its route did not name", () => {
   it("names it by replacing the entry that holds the link", async () => {
     const { writes, finish } = restoringTheWorkspaceLink("?project=p1&workspace=w1");

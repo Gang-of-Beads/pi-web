@@ -17,12 +17,14 @@ function harness(api: Partial<typeof defaultApi> = {}) {
   const urlNames: (string | undefined)[] = [];
   const urlModes: ("push" | "replace")[] = [];
   const urlPlaces: (string | undefined)[] = [];
+  let address: string | undefined;
   const getState = () => state;
   const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
   const writeUrl = (options?: { replace?: boolean | undefined }) => {
     urlNames.push(state.sessionTarget?.sessionId ?? state.selectedSession?.id);
     urlModes.push(options?.replace === true ? "replace" : "push");
     urlPlaces.push(state.selectedWorkspace?.id);
+    address = state.sessionTarget?.sessionId ?? state.selectedSession?.id;
   };
   const whileThere = <T>(answer: () => Promise<T>) => () => (gone ? Promise.reject(notFound()) : answer());
   const sessions = new SessionController(getState, setState, writeUrl, undefined, {
@@ -37,11 +39,12 @@ function harness(api: Partial<typeof defaultApi> = {}) {
       ...api,
     },
     socket: new FakeSocket(),
+    urlSessionId: () => address,
   });
   const workspaces = new WorkspaceController(getState, setState, vi.fn(), sessions, undefined, {
     api: { workspaces: () => Promise.resolve([workspace]), sessions: () => Promise.resolve([oldSession, otherRow]) },
   });
-  return { sessions, workspaces, state: () => state, deleted: () => { gone = true; }, patch: setState, urlNames, urlModes, urlPlaces };
+  return { sessions, workspaces, state: () => state, deleted: () => { gone = true; }, patch: setState, urlNames, urlModes, urlPlaces, goElsewhere: () => { address = undefined; } };
 }
 
 async function settle(): Promise<void> {
@@ -241,6 +244,27 @@ describe("the open session answers session-not-found (P2 slice b part 2; owner: 
     await settle();
 
     expect({ workspace: state().selectedWorkspace?.id, writes: urlModes }).toEqual({ workspace: elsewhere.id, writes: [] });
+  });
+
+  /** Review ca45d6ed: a correction that lands after the reader left took the page and the entry they went to. */
+  it("opens nothing when the located session answers after the reader went elsewhere", async () => {
+    const elsewhere = { ...workspace, id: "ws-elsewhere", path: "/elsewhere", label: "elsewhere", isMain: false };
+    const located: SessionInfo = { ...otherRow, cwd: elsewhere.path };
+    let answer: () => void = () => undefined;
+    const { sessions, state, patch, urlModes, goElsewhere } = await opened({
+      messages: (session) => (session.id === otherRow.id && session.cwd === workspace.path ? Promise.reject(notFound()) : Promise.resolve(emptyPage)),
+      locateSession: () => new Promise((resolve) => { answer = () => { resolve({ kind: "found" as const, session: located }); }; }),
+    });
+    patch({ workspaces: [workspace, elsewhere] });
+
+    await sessions.selectSession(otherRow, { updateUrl: false });
+    await settle();
+    urlModes.length = 0;
+    goElsewhere();
+    answer();
+    for (let turn = 0; turn < 6; turn++) await settle();
+
+    expect({ selected: state().selectedSession?.id, target: state().sessionTarget, writes: urlModes }).toEqual({ selected: undefined, target: undefined, writes: [] });
   });
 
   it("adds no entry when an open session its pick already wrote answers the code later", async () => {

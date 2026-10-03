@@ -342,6 +342,7 @@ export class PiWebApp extends LitElement {
     (options) => { this.updateUrl(options); },
     new SessionStorageSessionSelectionMemory(),
     {
+      urlSessionId: () => readRoute().sessionId,
       onBackgroundRunCountChanged: (sessionId: string) => {
         if (this.state.selectedSession?.id !== sessionId) return;
         void this.refreshSubagents();
@@ -3091,7 +3092,8 @@ export class PiWebApp extends LitElement {
   /**
    * A tap overtaken after it moved the machine leaves the URL to the intent that took over; it
    * names the machine only when that intent wrote nothing and restores nothing, so a reload stays
-   * on the machine the page shows (D8; review 1c0cb377).
+   * on the machine the page shows (D8; review 1c0cb377). An open that fails asks again, because the
+   * move it overtook left the URL to it (review ca45d6ed).
    */
   private nameMachineAfterSupersededMove(): void {
     const pending = this.navigation.view();
@@ -3147,6 +3149,7 @@ export class PiWebApp extends LitElement {
       } catch (error) {
         if (!isSessionNotFoundError(error)) {
           this.navigation.fail(seq);
+          this.nameMachineAfterSupersededMove();
           return;
         }
       }
@@ -3156,6 +3159,7 @@ export class PiWebApp extends LitElement {
     const moved = await this.moveToMachine(machineId, { updateUrl: false });
     if (!moved) {
       this.navigation.fail(seq);
+      this.nameMachineAfterSupersededMove();
       return;
     }
     if (!this.navigation.isCurrent(seq)) {

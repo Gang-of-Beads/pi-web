@@ -129,6 +129,13 @@ export interface SessionControllerDependencies {
    * (B48). Without it the lookup reads the API once, as it did before.
    */
   catalogue?: SessionCatalogue;
+  /**
+   * The session the address names. A placement or a late correction rewrites only an entry that
+   * names its session: a restore's caller (a machine switch, a terminal run) writes its own entry
+   * after the restore, and a correction whose session the address no longer names arrives after
+   * the reader went elsewhere (review ca45d6ed). Absent, every placement may correct.
+   */
+  urlSessionId?: () => string | undefined;
 }
 
 /**
@@ -259,7 +266,8 @@ export class SessionController {
    * workspace is not a correction: its caller writes the entry (a machine switch, a terminal run),
    * and replacing would take the reader's previous place out of Back (review 1c0cb377).
    */
-  private selectionUrl: { seq: number; settled: boolean; placed: boolean; write: boolean } | undefined;
+  private selectionUrl: { seq: number; sessionId: string; settled: boolean; placed: boolean; write: boolean } | undefined;
+  private readonly urlSessionId: (() => string | undefined) | undefined;
   private disposed = false;
   private refreshRetryCount = 0;
   private refreshRetryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -331,10 +339,15 @@ export class SessionController {
     this.onSelectedSessionIdle = deps.onSelectedSessionIdle;
     this.onBackgroundRunCountChanged = deps.onBackgroundRunCountChanged;
     this.catalogue = deps.catalogue ?? directCatalogue;
+    this.urlSessionId = deps.urlSessionId;
     this.targets = new SessionTargetResolver({
       locate: (ref, machineId) => this.api.locateSession(ref, machineId),
       publish: (sessionTarget) => { this.setState({ sessionTarget }); },
       open: (session, openOptions) => {
+        if (openOptions.correctsUrl === true && !this.urlNames(session.id)) {
+          this.targets.drop();
+          return Promise.resolve();
+        }
         this.locatedAfterGone = this.seamLocating === session.id ? session.id : undefined;
         this.seamLocating = undefined;
         return this.selectSession(session, openOptions);
@@ -462,7 +475,7 @@ export class SessionController {
     }
     this.sessionSelection.rememberSession({ ...session, cwd: this.workspaceSelectionKey(session.cwd) });
     const seq = ++this.selectionSeq;
-    this.selectionUrl = { seq, settled: false, placed: options?.correctsUrl === true, write: options?.updateUrl !== false };
+    this.selectionUrl = { seq, sessionId: session.id, settled: false, placed: options?.correctsUrl === true, write: options?.updateUrl !== false };
     this.socket.close();
     this.streamWatermark = undefined;
     // A new selection is a new dialog surface with its own revision space; the
@@ -2288,15 +2301,20 @@ export class SessionController {
     const url = this.selectionUrl?.seq === seq ? this.selectionUrl : undefined;
     if (url !== undefined) url.settled = true;
     if (write) this.updateUrl();
-    else if (url?.placed === true) this.updateUrl({ replace: true });
+    else if (url?.placed === true && this.urlNames(url.sessionId)) this.updateUrl({ replace: true });
+  }
+
+  /** Whether the address names this session, so rewriting its entry corrects the reader's own place. */
+  private urlNames(sessionId: string): boolean {
+    return this.urlSessionId === undefined || this.urlSessionId() === sessionId;
   }
 
   /** A placement moved the selection's place: replace the URL the selection wrote, or leave the write to it if it has not written yet. */
   private placedSelectionUrl(seq: number): void {
     const url = this.selectionUrl;
     if (url?.seq !== seq) return;
-    if (url.settled) this.updateUrl({ replace: true });
-    else url.placed = true;
+    if (!url.settled) url.placed = true;
+    else if (this.urlNames(url.sessionId)) this.updateUrl({ replace: true });
   }
 
   private applyReleasedCreatedSessions(sessions: readonly SessionInfo[], machineId: string): void {
