@@ -736,6 +736,8 @@ stateDiagram-v2
 
 The way back forgets the target: the URL stops naming it, and the phone shows the workspace's Sessions page.
 
+A link that names a workspace but no session lands where the layout puts the reader, and the URL says so (built 2026-10-03, `probe-workspace-link.mjs`). The desktop shows a chat, so it opens the workspace's latest session and the restore names it in the URL (replacing the entry), so a reload opens the same session after a newer one appears. The phone shows the workspace's Sessions board and selects nothing: before, it selected the latest session behind the board and read its transcript (the 17.8 MB seed on 8505) for nobody, and the URL could not name it.
+
 - **Absence is not negation.** A target missing from the listing is `asking`: the daemon is asked where that id is, machine-wide (`GET /sessions/:id/locate`), because the listing is of one workspace's tree and a read by the workspace's cwd cannot see a session recorded in a subdirectory, or an archived one recorded there. Only the daemon's code makes it `gone`. A located session opens where it lives, as a switcher pick does. The fallback to the latest session applies only when no session was named.
 - **An older daemon without the locate route** answers the route-not-found envelope. For one release, the answered listing is then the evidence, and the words say only what it proves: "This session isn't in *workspace* on *machine*."
 - **Nothing else is selected** while the target is `asking`, `unknown` or `gone`. On the phone, the chat view stays on screen for the target instead of falling back to the Sessions page, so the answer is visible.

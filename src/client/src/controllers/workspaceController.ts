@@ -14,6 +14,8 @@ import { InMemoryWorkspaceSelectionMemory, selectPreferredWorkspace, type Worksp
 const WORKSPACE_TOPOLOGY_REFRESH_DEBOUNCE_MS = 50;
 
 export interface WorkspaceControllerDependencies {
+  /** Whether a workspace chosen without a named session opens its latest one (false on the phone). */
+  opensPreferredSession?: () => boolean;
   api?: Pick<typeof defaultApi, "sessions" | "workspaces">;
   topologyRefreshDebounceMs?: number;
   clock?: ResourceClock;
@@ -46,6 +48,13 @@ export class WorkspaceController {
   private mirrored: Workspace[] | undefined;
   private noticedFact: ReadFact["kind"] = "none";
   private projectSelectionSeq = 0;
+  /**
+   * Whether a workspace chosen without a named session opens its latest one. The desktop shows a
+   * chat, so it does, and the restore names it in the URL. The phone shows the workspace's Sessions
+   * board then, so it selects nothing: a session selected behind the board read its transcript (the
+   * 17.8 MB seed on 8505) for nobody, and the URL could not name it (D8).
+   */
+  private readonly opensPreferredSession: () => boolean;
 
   constructor(
     private readonly getState: GetState,
@@ -56,6 +65,7 @@ export class WorkspaceController {
     deps: WorkspaceControllerDependencies = {},
   ) {
     this.api = deps.api ?? defaultApi;
+    this.opensPreferredSession = deps.opensPreferredSession ?? (() => true);
     this.topologyRefreshes = new TrailingRefreshCoordinator(
       deps.topologyRefreshDebounceMs ?? WORKSPACE_TOPOLOGY_REFRESH_DEBOUNCE_MS,
     );
@@ -166,7 +176,7 @@ export class WorkspaceController {
         if (target?.updateUrl !== false && this.getState().selectedSession === undefined) this.updateUrl();
         return;
       }
-      const session = this.sessions.preferredSession(workspace.path, sessions);
+      const session = this.opensPreferredSession() ? this.sessions.preferredSession(workspace.path, sessions) : undefined;
       if (session) await this.sessions.selectSession(session, { updateUrl: target?.updateUrl });
       else if (target?.updateUrl !== false) this.updateUrl();
     } catch (error) {

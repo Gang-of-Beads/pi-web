@@ -377,6 +377,7 @@ export class PiWebApp extends LitElement {
     (options) => { this.updateUrl(options); },
     this.sessions,
     new SessionStorageWorkspaceSelectionMemory(),
+    { opensPreferredSession: () => !this.appShell.isMobileNavigationLayout },
   );
   private readonly projects: ProjectController = new ProjectController(
     () => this.state,
@@ -1552,6 +1553,7 @@ export class PiWebApp extends LitElement {
       if (routeSurface.selectedTerminalId !== undefined) this.rememberSelectedTerminal(routeSurface.selectedTerminalId);
       await this.refreshRestoredWorkspaceTool(route.tool);
       if (updateUrl) this.updateUrl();
+      else if (restoreOpenedUnnamedSession(route, placeSessionId(this.state))) this.updateUrl({ replace: true });
     } finally {
       this.routeRestoreDepth = Math.max(0, this.routeRestoreDepth - 1);
       if (this.routeRestoreDepth === 0) this.restoringRouteTerminalId = undefined;
@@ -4780,6 +4782,15 @@ function patchChangesState(state: AppState, patch: Partial<AppState>): boolean {
 }
 
 /** Only the fields the strip shows: a byte counter ticking must not re-render. */
+/**
+ * Whether a restore opened a session its route did not name: a workspace link on the desktop opens
+ * the latest session. The URL then names it, so it describes the chat on screen and a reload opens
+ * the same one even after a newer session appears (D8).
+ */
+export function restoreOpenedUnnamedSession(route: { readonly sessionId?: string | undefined }, shownSessionId: string | undefined): boolean {
+  return (route.sessionId === undefined || route.sessionId === "") && shownSessionId !== undefined && shownSessionId !== "";
+}
+
 export function sameBackgroundTasks(left: readonly SessionBackgroundTaskInfo[], right: readonly SessionBackgroundTaskInfo[]): boolean {
   if (left.length !== right.length) return false;
   return left.every((entry, index) => {

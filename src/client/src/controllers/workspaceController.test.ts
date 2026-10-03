@@ -81,6 +81,41 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/**
+ * D8: a workspace link with no session opened its latest session behind the phone's Sessions board,
+ * reading its transcript for nobody, and on the desktop the URL never named the chat it opened.
+ */
+describe("a workspace chosen without a named session", () => {
+  const build = (opensPreferredSession: (() => boolean) | undefined) => {
+    const repo = project("p1", "/repo");
+    let state: AppState = { ...initialAppState(), selectedMachine: machine("local"), projects: [repo], selectedProject: repo };
+    const latest = session("/repo", "latest");
+    const selectSession = vi.fn(() => Promise.resolve());
+    const controller = new WorkspaceController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      vi.fn(),
+      { clearActiveSession: vi.fn(), preferredSession: vi.fn(() => latest), selectSession, openNamedSession: vi.fn(() => Promise.resolve()) },
+      undefined,
+      {
+        api: { workspaces: vi.fn(() => Promise.resolve([])), sessions: vi.fn(() => Promise.resolve([latest])) },
+        ...(opensPreferredSession === undefined ? {} : { opensPreferredSession }),
+      },
+    );
+    return { controller, selectSession };
+  };
+
+  it("opens the latest session where a chat is shown, and selects nothing where the board is", async () => {
+    const desktop = build(undefined);
+    const phone = build(() => false);
+
+    await desktop.controller.selectWorkspace(workspace("p1", "/repo"));
+    await phone.controller.selectWorkspace(workspace("p1", "/repo"));
+
+    expect({ desktop: desktop.selectSession.mock.calls.length, phone: phone.selectSession.mock.calls.length }).toEqual({ desktop: 1, phone: 0 });
+  });
+});
+
 describe("WorkspaceController.selectProject", () => {
   /**
    * B48: a lost answer used to paint the error banner and leave the project
