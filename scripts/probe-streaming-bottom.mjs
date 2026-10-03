@@ -22,7 +22,12 @@ const WORKSPACE = process.env.PI_WEB_PROBE_WORKSPACE ?? "ef2cdf93e1ac";
 const SESSION = process.env.PI_WEB_PROBE_SESSION ?? "01a05000-5eed-7c00-8000-0000000000c1";
 /** The seed session's own model can be slow or rate limited; the bug under
  * test is about layout, not about which model answers. */
-const MODEL = process.env.PI_WEB_PROBE_MODEL ?? "anthropic/claude-haiku-4-5";
+/** This probe prompts a real model, which costs money: it runs only on a model named on purpose. */
+const MODEL = process.env.PI_WEB_PROBE_MODEL ?? "";
+if (MODEL === "") {
+  console.error("This probe prompts a real, paid model. Set PI_WEB_PROBE_MODEL=provider/model to run it on purpose.");
+  process.exit(2);
+}
 const WATCH_MS = Number(process.env.PI_WEB_PROBE_WATCH_MS ?? 25_000);
 
 function fail(message) {
