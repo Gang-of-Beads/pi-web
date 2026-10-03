@@ -105,9 +105,21 @@ const onJumpNewest: Handler = (input, event) => {
   return decide("snap-bottom", { kind: "following" });
 };
 
+/**
+ * Where a page leaves the reader. Only the jump to the newest moves them; a page they scrolled into,
+ * older or newer, keeps them reading where they were (D4, B13). The end of an older window is not
+ * the bottom: a newer page snapped the reader there and set them following, so the follow carried
+ * them through everything that loaded.
+ */
+const AFTER_PAGE: Record<PageWant, ViewportDecision> = {
+  older: decide("restore-anchor", { kind: "holding" }),
+  newer: decide("restore-anchor", { kind: "holding" }),
+  newest: decide("snap-bottom", { kind: "following" }),
+};
+
 const onPageArrived: Handler = (input, event) => {
   if (event.kind !== "pageArrived" || input.state.kind !== "awaitingPage") return idle(input.state);
-  return input.state.want === "older" ? decide("restore-anchor", { kind: "holding" }) : decide("snap-bottom", { kind: "following" });
+  return AFTER_PAGE[input.state.want];
 };
 
 const onPageFailed: Handler = (input, event) => {

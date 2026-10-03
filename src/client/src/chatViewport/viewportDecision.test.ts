@@ -139,6 +139,12 @@ describe("one page in flight at a time", () => {
     expect(decide(awaiting, { kind: "pageArrived", want: "older" })).toEqual({ action: "restore-anchor", next: { kind: "holding" } });
   });
 
+  /** D4, B13: the end of an older window is not the bottom; the newer page the reader scrolled into leaves them reading. */
+  it("keeps the reader reading after a newer page they scrolled into", () => {
+    const scrolledInto: ViewportState = { kind: "awaitingPage", want: "newer", resume: { kind: "holding" } };
+    expect(decide(scrolledInto, { kind: "pageArrived", want: "newer" })).toEqual({ action: "restore-anchor", next: { kind: "holding" } });
+  });
+
   it("lands at the newest after a page that was asked for by a jump", () => {
     const jumped: ViewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
     expect(decide(jumped, { kind: "pageArrived", want: "newest" })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
