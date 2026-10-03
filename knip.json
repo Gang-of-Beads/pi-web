@@ -16,13 +16,9 @@
   ],
   "ignoreExportsUsedInFile": true,
   "ignoreBinaries": [
-    "lsof",
-    "pgrep",
-    "systemd-run",
-    "tmux"
+    "systemd-run"
   ],
   "ignoreDependencies": [
-    "playwright",
     "@earendil-works/pi-server",
     "mermaid"
   ]
