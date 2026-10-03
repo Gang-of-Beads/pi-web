@@ -3,14 +3,17 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+/**
+ * The pre-commit check: static only (typecheck, Knip, ESLint on the staged files).
+ *
+ * Tests do not run per commit (owner, 2026-10-03): the suite runs locally before a change is
+ * merged to main (the pre-push hook runs `pnpm run verify` for a push to main), and CI runs it
+ * on a release tag.
+ */
+
 const FULL_LINT_TRIGGERS = new Set([
   "eslint.config.js",
   "tsconfig.json",
-]);
-
-const FULL_TEST_TRIGGERS = new Set([
-  "tsconfig.json",
-  "vitest.config.ts",
 ]);
 
 const LINTABLE_ROOT_FILES = new Set([
@@ -18,34 +21,11 @@ const LINTABLE_ROOT_FILES = new Set([
   "vitest.config.ts",
 ]);
 
-const PUBLIC_DECLARATION_FILES = new Set([
-  "plugin-api.d.ts",
-  "server-plugin-api.d.ts",
-]);
-
 const LINTABLE_DIRECTORIES = [
   "extensions/",
   "pi-web-plugins/",
   "src/",
 ];
-
-const RELATED_SOURCE_DIRECTORIES = [
-  "extensions/",
-  "pi-web-plugins/",
-  "plugin-api/",
-  "scripts/",
-  "src/",
-];
-
-// `vitest related` follows imports, but these suites inspect repository assets at runtime.
-const DOCKER_TESTS = [
-  "src/docker/piWebDockerDocs.test.ts",
-  "src/docker/piWebDockerEntrypoint.test.ts",
-  "src/docker/dockerControlAssets.test.ts",
-];
-
-const DOCKER_DOCS_TEST = "src/docker/piWebDockerDocs.test.ts";
-const PLUGIN_PUBLIC_API_TEST = "pi-web-plugins/pluginPublicApi.test.ts";
 
 export function parseNullDelimitedPaths(output) {
   const value = Buffer.isBuffer(output) ? output.toString("utf8") : output;
@@ -60,11 +40,7 @@ export function createValidationPlan(stagedPaths, options = {}) {
     ? { mode: "full", files: [] }
     : scopedValidation(paths.filter((path) => isLintablePath(path) && pathExists(path)), "scoped");
 
-  const tests = paths.some((path) => FULL_TEST_TRIGGERS.has(path))
-    ? { mode: "full", files: [] }
-    : scopedValidation(relatedTestInputs(paths), "related");
-
-  return { paths, lint, tests };
+  return { paths, lint };
 }
 
 export function createValidationSteps(plan) {
@@ -88,25 +64,6 @@ export function createValidationSteps(plan) {
     });
   }
 
-  if (plan.tests.mode === "full") {
-    steps.push({ label: "full Vitest validation (configuration changed)", args: ["test"] });
-  } else if (plan.tests.mode === "related") {
-    steps.push({
-      label: `Vitest validation related to ${String(plan.tests.files.length)} staged input(s)`,
-      args: [
-        "exec",
-        "--",
-        "vitest",
-        "related",
-        "--run",
-        "--config",
-        "vitest.config.ts",
-        "--passWithNoTests",
-        ...plan.tests.files,
-      ],
-    });
-  }
-
   return steps;
 }
 
@@ -119,33 +76,9 @@ function readStagedPaths() {
   return parseNullDelimitedPaths(output);
 }
 
-function relatedTestInputs(paths) {
-  const inputs = new Set();
-
-  for (const path of paths) {
-    if (isRelatedSourcePath(path)) inputs.add(path);
-
-    if (path.startsWith("docker/")) {
-      for (const test of DOCKER_TESTS) inputs.add(test);
-    } else if (path === "README.md" || path.startsWith("docs/")) {
-      inputs.add(DOCKER_DOCS_TEST);
-    }
-
-    if (path.startsWith("pi-web-plugins/")) inputs.add(PLUGIN_PUBLIC_API_TEST);
-  }
-
-  return [...inputs].sort();
-}
-
 function isLintablePath(path) {
   if (LINTABLE_ROOT_FILES.has(path)) return true;
   return path.endsWith(".ts") && LINTABLE_DIRECTORIES.some((directory) => path.startsWith(directory));
-}
-
-function isRelatedSourcePath(path) {
-  if (PUBLIC_DECLARATION_FILES.has(path)) return true;
-  if (!/\.(?:[cm]?[jt]s|[jt]sx|json)$/u.test(path)) return false;
-  return RELATED_SOURCE_DIRECTORIES.some((directory) => path.startsWith(directory));
 }
 
 function normalizeRepoPath(path) {
@@ -178,7 +111,6 @@ function main() {
   }
 
   if (plan.lint.mode === "skip") console.log("\n[pre-commit] No staged files require ESLint.");
-  if (plan.tests.mode === "skip") console.log("[pre-commit] No staged files have related Vitest coverage.");
   return 0;
 }
 

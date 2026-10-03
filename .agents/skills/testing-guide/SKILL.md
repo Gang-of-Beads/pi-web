@@ -5,6 +5,8 @@ description: "Repository-specific testing guide. Use for any test work: planning
 
 # Testing guide
 
+**Do not write new unit tests (owner, 2026-10-03).** The existing Vitest suite runs locally before a change is merged to main (`pnpm run verify`; the pre-push hook runs it for a push to main) and in CI only on a release tag. Keep it green when a change breaks an existing test: fix the code, or update or delete the test that pinned old behavior. There are no committed Playwright probe scripts or e2e suite; verify live in a browser on the 8505 stack instead. The rest of this guide applies to maintaining the existing suite.
+
 Use this skill for test-specific decisions in this repository. The goal is useful regression coverage without letting test helpers, mocks, or component harnesses become a second application that is harder to maintain than the code under test.
 
 For production-code design and testability seams, also use the `code-quality-architecture` skill. This guide owns test strategy, test helper conventions, and UI test escape hatches.
@@ -104,6 +106,6 @@ Run the narrowest meaningful check first:
 - Changed test file: `npm test -- --run <test-file>`.
 - Source or exported type changes: also run `npm run typecheck`.
 - Non-trivial test helper, component, or lint-sensitive changes: run `npx eslint <changed-file>` or `npm run lint` when broader lint coverage is needed.
-- Cross-cutting changes or final merge review: prefer `npm run verify`.
+- Before a change is merged to main: `pnpm run verify` (the pre-push hook runs it for a push to main).
 
 Record exact commands and results when working under relay/audit workflows or when handing work to another agent.

@@ -31,6 +31,8 @@ Use `.agents/skills/documentation-guide/SKILL.md` whenever writing, modifying, r
 
 ## Testing guidance
 
+Do not write new unit tests (owner, 2026-10-03). The existing suite runs locally before a change is merged to main (`pnpm run verify`; the pre-push hook runs it for a push to main), and in CI only on a release tag (`publish.yml`). A merge to main and a pull request run no CI. The pre-commit hook runs static checks only. Committed Playwright probe scripts and the e2e suite were removed (owner, 2026-10-03).
+
 Project-specific testing rules live in `.agents/skills/testing-guide/SKILL.md`.
 
 Use that skill whenever writing, modifying, reviewing, or planning tests, closing coverage gaps, triaging test failures, or creating test helpers/harnesses. Keep detailed testing conventions there rather than growing this top-level orientation file.
@@ -66,13 +68,12 @@ Never report failed, incomplete, or skipped verification as passing. Identify an
   "why" - design rationale, invariants, the incident that motivated the shape.
 - Design before code: name the module boundary, what it encapsulates, and what
   it exposes. Prefer small cohesive modules over growth inside an existing god
-  file. New behavior gets its own unit with its own tests when it has its own
-  reason to change.
+  file. New behavior gets its own unit when it has its own reason to change.
 - Prefer state machines and enums over string comparison and if/else ladders.
   A branchy decision that appears twice or carries product meaning gets its
   states named in one pure classifier (see `revisionVerdict`, `replayDecision`,
-  `bottomAnchorAction`, `promptDeliveryBehavior`); callers stay dumb executors;
-  tests enumerate every state so an unhandled one fails in CI, not production.
+  `bottomAnchorAction`, `promptDeliveryBehavior`); callers stay dumb executors,
+  and a `Record` keyed by the state type makes an unhandled state a type error.
 - Keep cyclomatic complexity down: early returns over nesting, lookup tables
   over switch ladders, extraction over accumulation. If a function needs a
   paragraph to explain its branches, it wants to be a classifier plus
@@ -93,12 +94,13 @@ Never report failed, incomplete, or skipped verification as passing. Identify an
 - User-visible changes carry a patch-level changeset in the same commit (see
   the changeset skill); minor-level bumps are forbidden - they roll the fake
   CalVer month.
-- Untracked scratch (CHECKLIST.md, /tmp artifacts, probe screenshots) stays
+- Untracked scratch (CHECKLIST.md, /tmp artifacts, screenshots) stays
   untracked; do not let a broad stage sweep it in.
 - Push promptly after committing (the fork updater hard-resets unpushed work),
   verify the push landed under the right GitHub account
-  (`gh auth switch --user VincentHanxiaoDu` first when needed), and watch CI
-  on main afterwards - a red main is the next person's ambush.
+  (`gh auth switch --user VincentHanxiaoDu` first when needed). Run
+  `pnpm run verify` locally before a change reaches main (the pre-push hook
+  runs it for a push to main); CI runs the suite only on a release tag.
 - PRs from forks get a real review before merge; never claim merged without
   checking `gh pr view` says so.
 
@@ -115,13 +117,12 @@ Every non-trivial change wave gets, before it is called done:
    Triage in writing (fixed / not-fixed-with-reason / judged-not-true) before
    fixing; two lanes disagreeing is settled by reading the source, not by
    trusting either lane.
-2. **Live Playwright verification on the 8505 stack**: rebuild and restart via
-   `scripts/stack-8505.sh up`, then drive the real UI (`scripts/probe-*.mjs`
-   pattern) for the touched flows - real session, real daemon, coarse-pointer
-   393x850 where the surface is phone-relevant. Probe assertions must fail
-   loudly on missing preconditions rather than passing empty. When a probe and
-   the product disagree, first establish which one rotted before changing
-   either.
+2. **Live verification on the 8505 stack**: rebuild and restart via
+   `scripts/stack-8505.sh up`, then drive the real UI in a browser (Playwright
+   MCP or the browser tool; no committed probe scripts) for the touched flows -
+   real session, real daemon, coarse-pointer 393x850 where the surface is
+   phone-relevant. A check must fail loudly on a missing precondition rather
+   than passing empty.
 
 ## How we work
 

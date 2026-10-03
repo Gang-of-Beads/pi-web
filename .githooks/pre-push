@@ -1,12 +1,26 @@
 #!/bin/sh
 # A push whose working tree differs from the pushed commits under checked
-# paths is how a locally-green, CI-red split happens: the fix sits uncommitted
-# while the commit under test lacks it. Refuse that push loudly.
+# paths is how a locally-green, release-red split happens: the fix sits
+# uncommitted while the commit under test lacks it. Refuse that push loudly.
 dirty=$(git status --porcelain -- src extensions pi-web-plugins 2>/dev/null | grep -v '^??' || true)
 if [ -n "$dirty" ]; then
   echo "pre-push: refusing - tracked source files are modified but not committed:" >&2
   echo "$dirty" >&2
-  echo "Commit or stash them so local verification matches what CI will see." >&2
+  echo "Commit or stash them so local verification matches what is pushed." >&2
   exit 1
+fi
+
+# Tests run locally before a change reaches main, and in CI only on a release
+# tag (owner, 2026-10-03). A push to main therefore runs the full verify here.
+pushes_main=false
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then pushes_main=true; fi
+done
+if [ "$pushes_main" = true ]; then
+  echo "pre-push: pushing to main - running pnpm run verify (static checks and the test suite)"
+  pnpm run verify || {
+    echo "pre-push: refusing - pnpm run verify failed; fix it before the change reaches main." >&2
+    exit 1
+  }
 fi
 exit 0

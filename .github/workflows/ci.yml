@@ -1,20 +1,18 @@
 name: CI
 
-# Pull requests validate feature branches on Linux; main is validated again
-# after every merge. Windows compatibility is checked only by the release
-# workflow, where it gates publication. Tag pushes are covered by publish.yml.
+# Tests run locally before a change is merged to main, and in CI only on a
+# release tag (publish.yml runs the full verify on Linux and Windows before
+# publishing; owner, 2026-10-03). Neither a merge to main nor a pull request
+# runs this workflow; it stays available to run by hand.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   verify:
