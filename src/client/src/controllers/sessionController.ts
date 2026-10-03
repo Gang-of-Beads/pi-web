@@ -250,14 +250,14 @@ export class SessionController {
   private readonly catalogue: SessionCatalogue;
   private selectionSeq = 0;
   /**
-   * Who writes the URL for the current selection's place. The selection's own
-   * write comes at the end of its first read; a placement that lands before it
-   * leaves the write to it, and one that lands after replaces that same entry,
-   * so the address and the history always name the place the page shows.
-   */
-  /**
-   * The URL a selection owes: `write` when its caller left the push to it, `placed` once the place
-   * moved from what the caller wrote (a placement, or a selection into another workspace).
+   * Who writes the URL for the current selection's place. The selection's own write comes at the
+   * end of its first read when its caller left the push to it (`write`); otherwise the caller wrote
+   * it. A placement, or a reopen that corrects the entry naming this session (`correctsUrl`, the
+   * locate after a not-found read), marks the place moved (`placed`): before the first read settles
+   * it leaves the write to the settle, after it replaces that same entry, so the address and the
+   * history always name the place the page shows. A restore that opens a session in another
+   * workspace is not a correction: its caller writes the entry (a machine switch, a terminal run),
+   * and replacing would take the reader's previous place out of Back (review 1c0cb377).
    */
   private selectionUrl: { seq: number; settled: boolean; placed: boolean; write: boolean } | undefined;
   private disposed = false;
@@ -445,7 +445,7 @@ export class SessionController {
     await this.targets.follow(scope, { kind: "asking", sessionId }, options);
   }
 
-  async selectSession(session: SessionInfo, options?: { updateUrl?: boolean | undefined; preserveTreeDialog?: boolean | undefined; propagateRefreshError?: boolean | undefined }) {
+  async selectSession(session: SessionInfo, options?: { updateUrl?: boolean | undefined; correctsUrl?: boolean | undefined; preserveTreeDialog?: boolean | undefined; propagateRefreshError?: boolean | undefined }) {
     if (this.disposed) return;
     this.targets.drop();
     // The row refuses to open when its folder is gone (the list stamps it);
@@ -462,8 +462,7 @@ export class SessionController {
     }
     this.sessionSelection.rememberSession({ ...session, cwd: this.workspaceSelectionKey(session.cwd) });
     const seq = ++this.selectionSeq;
-    const selectionUrl = { seq, settled: false, placed: false, write: options?.updateUrl !== false };
-    this.selectionUrl = selectionUrl;
+    this.selectionUrl = { seq, settled: false, placed: options?.correctsUrl === true, write: options?.updateUrl !== false };
     this.socket.close();
     this.streamWatermark = undefined;
     // A new selection is a new dialog surface with its own revision space; the
@@ -480,7 +479,6 @@ export class SessionController {
     const ancestors = ancestorsForSession(session, { workspaces: state.workspaces, projects: state.projects });
     const workspaceMoved = ancestors !== undefined
       && (ancestors.workspace.id !== state.selectedWorkspace?.id || ancestors.workspace.projectId !== state.selectedProject?.id);
-    selectionUrl.placed = workspaceMoved;
     this.setState({
       ...(workspaceMoved ? resetWorkspaceScopedState() : {}),
       selectedSession: session,
@@ -1831,7 +1829,7 @@ export class SessionController {
     this.locatedAfterGone = undefined;
     this.seamLocating = target.kind === "asking" ? sessionId : undefined;
     this.clearActiveSession();
-    const following = this.targets.follow(scope, target, { updateUrl: false });
+    const following = this.targets.follow(scope, target, { updateUrl: false, correctsUrl: true });
     this.updateUrl(owesPush ? undefined : { replace: true });
     await following;
   }

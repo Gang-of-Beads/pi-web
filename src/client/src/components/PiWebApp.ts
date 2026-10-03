@@ -3072,6 +3072,7 @@ export class PiWebApp extends LitElement {
    * after an explicit pick would undo the tap the user just made.
    */
   private async openWorkspaceFromQuickSwitcher(workspace: Workspace): Promise<void> {
+    const seq = this.navigation.begin();
     const moved = await this.moveToBrowsedMachine({ updateUrl: false });
     if (!moved) return;
     // selectWorkspace's landing guard requires the workspace's own project to
@@ -3079,10 +3080,25 @@ export class PiWebApp extends LitElement {
     // panel waits on "Loading sessions..." forever.
     const project = this.state.projects.find((candidate) => candidate.id === workspace.projectId)
       ?? await this.locateRouteProject(workspace.projectId);
+    if (!this.navigation.isCurrent(seq)) {
+      this.nameMachineAfterSupersededMove();
+      return;
+    }
     if (project === undefined) this.setState(noticePatch(noticeForReader("The project this workspace belongs to is not in the project list.")));
     else if (this.state.selectedProject?.id !== project.id) await this.workspaces.selectProject(project, { workspaceId: workspace.id });
     else await this.workspaces.selectWorkspace(workspace);
-    this.updateUrl();
+    if (this.navigation.isCurrent(seq)) this.updateUrl();
+    else this.nameMachineAfterSupersededMove();
+  }
+
+  /**
+   * A tap overtaken after it moved the machine leaves the URL to the intent that took over; it
+   * names the machine only when that intent wrote nothing and restores nothing, so a reload stays
+   * on the machine the page shows (D8; review 1c0cb377).
+   */
+  private nameMachineAfterSupersededMove(): void {
+    const pending = this.navigation.view();
+    if (supersededMoveOwesUrl({ restoring: this.routeRestoreDepth > 0, opening: pending !== undefined && pending.phase !== "failed", urlMachineId: readRoute().machineId, pageMachineId: selectedMachineId(this.state) })) this.updateUrl();
   }
 
   /**
@@ -3146,7 +3162,7 @@ export class PiWebApp extends LitElement {
       return;
     }
     if (!this.navigation.isCurrent(seq)) {
-      if (selectedMachineId(this.state) !== machineBefore) this.updateUrl();
+      if (selectedMachineId(this.state) !== machineBefore) this.nameMachineAfterSupersededMove();
       return;
     }
     this.closeNavigate();
@@ -4804,6 +4820,16 @@ export function restoreOpenedUnnamedSession(restored: RouteScope, inUrl: RouteSc
   const sameMachine = (restored.machineId ?? "local") === (inUrl.machineId ?? "local");
   const samePlace = (restored.projectId ?? "") === (inUrl.projectId ?? "") && (restored.workspaceId ?? "") === (inUrl.workspaceId ?? "");
   return unnamed(restored) && unnamed(inUrl) && sameMachine && samePlace && shownSessionId !== undefined && shownSessionId !== "";
+}
+
+/**
+ * Whether a tap overtaken after it moved the machine still owes the URL: not while a route
+ * restore (Back, a machine switch) runs or another open is on its way, either of which writes the
+ * URL itself, and not once the URL names the machine the page is on, because the intent that took
+ * over wrote it or a restore put it there.
+ */
+export function supersededMoveOwesUrl(facts: { readonly restoring: boolean; readonly opening: boolean; readonly urlMachineId: string | undefined; readonly pageMachineId: string }): boolean {
+  return !facts.restoring && !facts.opening && (facts.urlMachineId ?? "local") !== facts.pageMachineId;
 }
 
 /** Only the fields the strip shows: a byte counter ticking must not re-render. */

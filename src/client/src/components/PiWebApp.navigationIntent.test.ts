@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PiWebApp } from "./PiWebApp";
+import { PiWebApp, supersededMoveOwesUrl } from "./PiWebApp";
 import type { Machine, SessionInfo } from "../api";
 import { HttpError } from "../api/http";
 
@@ -253,6 +253,46 @@ describe("the history entry a tap adds", () => {
     expect({ machineOptions, picked, writes }).toEqual({ machineOptions: [{ updateUrl: false }], picked: ["p"], writes: [{ machine: "remote-b", session: undefined, view: "navigation", replace: false, newEntry: false }] });
   });
 
+  /** Review 1c0cb377: an overtaken open went on to pick, and wrote the in-between place. */
+  it.each<[string, number, unknown[]]>([
+    ["picks nothing once the reader moved on while it was moving, and names only the machine", 0, [{ machine: "remote-b", session: undefined, view: "navigation", replace: false, newEntry: false }]],
+    ["picks nothing and writes nothing while a route restore owns the URL", 1, []],
+  ])("a workspace open %s", async (_name, restoring, expected) => {
+    const app = createApp();
+    const project = { id: "p", name: "p", path: "/p", createdAt: "" };
+    call(app, "setState", { machines: [local, remote], selectedMachine: local, projects: [project], mainView: "navigation" });
+    replace(app, "quickSwitcherBrowseMachineId", "remote-b");
+    replace(app, "routeRestoreDepth", restoring);
+    const { writes } = recordingWrites(app);
+    replace(member(app, "machines"), "selectMachine", (machine: Machine) => {
+      call(app, "setState", { selectedMachine: machine });
+      call(member(app, "navigation"), "begin");
+      return Promise.resolve();
+    });
+    const picked: string[] = [];
+    replace(member(app, "workspaces"), "selectProject", (chosen: { id: string }) => { picked.push(chosen.id); return Promise.resolve(true); });
+
+    await call(app, "openWorkspaceFromQuickSwitcher", { id: "w", projectId: "p", path: "/p", label: "w", isMain: true, effectiveConfig: {} });
+
+    expect({ picked, writes }).toEqual({ picked: [], writes: expected });
+  });
+
+  it("leaves the URL to an open the reader started while its pick was on its way", async () => {
+    const app = createApp();
+    const project = { id: "p", name: "p", path: "/p", createdAt: "" };
+    call(app, "setState", { machines: [local, remote], selectedMachine: local, projects: [project], mainView: "navigation" });
+    replace(app, "quickSwitcherBrowseMachineId", "remote-b");
+    const { writes } = recordingWrites(app);
+    replace(member(app, "workspaces"), "selectProject", () => {
+      call(member(app, "navigation"), "begin", { key: "remote-b:other", label: "other" });
+      return Promise.resolve(false);
+    });
+
+    await call(app, "openWorkspaceFromQuickSwitcher", { id: "w", projectId: "p", path: "/p", label: "w", isMain: true, effectiveConfig: {} });
+
+    expect(writes).toEqual([]);
+  });
+
   it("names the machine it moved to when the workspace's project cannot be found there", async () => {
     const app = createApp();
     call(app, "setState", { machines: [local, remote], selectedMachine: local, projects: [], mainView: "navigation" });
@@ -380,5 +420,18 @@ describe("a route restore the reader has overtaken", () => {
     await restoring;
 
     expect(state(app).mainView).toBe("chat");
+  });
+});
+
+/** D8: who names the machine after a tap that moved it was overtaken (review 1c0cb377). */
+describe("whether an overtaken move still owes the URL", () => {
+  it.each<[string, Parameters<typeof supersededMoveOwesUrl>[0], boolean]>([
+    ["the URL still names the machine the tap left: name the one the page is on", { restoring: false, opening: false, urlMachineId: undefined, pageMachineId: "remote-b" }, true],
+    ["the intent that took over wrote the machine: nothing", { restoring: false, opening: false, urlMachineId: "remote-b", pageMachineId: "remote-b" }, false],
+    ["a restore put the page back on the local machine: nothing", { restoring: false, opening: false, urlMachineId: undefined, pageMachineId: "local" }, false],
+    ["a route restore is running: it owns the URL", { restoring: true, opening: false, urlMachineId: undefined, pageMachineId: "remote-b" }, false],
+    ["another open is on its way: it writes the URL when it commits", { restoring: false, opening: true, urlMachineId: undefined, pageMachineId: "remote-b" }, false],
+  ])("%s", (_name, facts, owes) => {
+    expect(supersededMoveOwesUrl(facts)).toBe(owes);
   });
 });

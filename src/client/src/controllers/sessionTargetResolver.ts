@@ -3,9 +3,13 @@ import type { SessionLocation } from "../api/clients";
 import { isResolved, targetFromLocateError, targetFromLocation, type ScopedSessionTarget, type SessionTarget, type SessionTargetScope } from "../sessionTarget";
 import { QUIET_WINDOW_MS, retryDelayMs } from "../sync/readPhase";
 
-/** How an answered target opens: a restore keeps the URL it came from. */
+/**
+ * How an answered target opens: a restore keeps the URL it came from. `correctsUrl` is a reopen of
+ * a session the URL already names, found elsewhere: its place replaces that entry (D8).
+ */
 export interface SessionTargetOpenOptions {
   readonly updateUrl?: boolean | undefined;
+  readonly correctsUrl?: boolean | undefined;
 }
 
 export interface SessionTargetResolverDeps {

@@ -229,6 +229,20 @@ describe("the open session answers session-not-found (P2 slice b part 2; owner: 
       .toEqual({ opened: elsewhere.path, workspace: elsewhere.id, pushes: 0, last: otherRow.id, lastPlace: elsewhere.id });
   });
 
+  /** Review 1c0cb377: a restore's caller (a machine switch, a terminal run) writes the entry; a replace took the reader's previous place out of Back. */
+  it("writes nothing for a restore that opens a session in another workspace, leaving the entry to its caller", async () => {
+    const elsewhere = { ...workspace, id: "ws-elsewhere", path: "/elsewhere", label: "elsewhere", isMain: false };
+    const restored: SessionInfo = { ...otherRow, cwd: elsewhere.path };
+    const { sessions, state, patch, urlModes } = await opened();
+    patch({ workspaces: [workspace, elsewhere] });
+    urlModes.length = 0;
+
+    await sessions.selectSession(restored, { updateUrl: false });
+    await settle();
+
+    expect({ workspace: state().selectedWorkspace?.id, writes: urlModes }).toEqual({ workspace: elsewhere.id, writes: [] });
+  });
+
   it("adds no entry when an open session its pick already wrote answers the code later", async () => {
     const { sessions, deleted, urlModes } = await opened();
     await sessions.selectSession(oldSession);

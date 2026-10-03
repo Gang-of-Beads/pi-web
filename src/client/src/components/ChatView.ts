@@ -727,7 +727,7 @@ export class ChatView extends LitElement {
    * empties or the session changes: it belongs to this session only.
    */
   private drawnWaiting: WaitingCards | undefined;
-  private heldWaitingClearTimer: ReturnType<typeof setTimeout> | undefined;
+  private drawnWaitingClearTimer: ReturnType<typeof setTimeout> | undefined;
   /** Which open card's alignment a press deferred, so the release can replay it. */
   private conversationRailFrame: number | undefined;
   private groupedMessagesInput?: ChatLine[];
@@ -991,9 +991,9 @@ export class ChatView extends LitElement {
     this.pendingScrollRestorePosition = undefined;
     this.drawnWaiting = undefined;
     this.quoteChip = undefined;
-    if (this.heldWaitingClearTimer !== undefined) {
-      clearTimeout(this.heldWaitingClearTimer);
-      this.heldWaitingClearTimer = undefined;
+    if (this.drawnWaitingClearTimer !== undefined) {
+      clearTimeout(this.drawnWaitingClearTimer);
+      this.drawnWaitingClearTimer = undefined;
     }
     this.prependRestoreToken += 1;
     if (this.restoreScrollFrame !== undefined) {
@@ -2221,9 +2221,9 @@ export class ChatView extends LitElement {
   private releasePointer(): void {
     this.followGate.notePointerUp(Date.now());
     if (this.drawnWaiting !== undefined) {
-      if (this.heldWaitingClearTimer !== undefined) clearTimeout(this.heldWaitingClearTimer);
-      this.heldWaitingClearTimer = setTimeout(() => {
-        this.heldWaitingClearTimer = undefined;
+      if (this.drawnWaitingClearTimer !== undefined) clearTimeout(this.drawnWaitingClearTimer);
+      this.drawnWaitingClearTimer = setTimeout(() => {
+        this.drawnWaitingClearTimer = undefined;
         this.requestUpdate();
       }, TOUCH_SETTLE_MS + 1);
     }
