@@ -38,7 +38,7 @@ describe("regions drawn in the transcript chain to it", () => {
   it("finds the cards, the message text and the renderer plugins it guards", () => {
     const named = (path: string) => path.slice(path.lastIndexOf("/") + 1);
     expect({
-      components: ["AskUserCard.ts", "ExtensionDialogCard.ts", "FormattedText.ts", "ToolExecutionView.ts"].filter((name) => !drawnInTheTranscript.map(named).includes(name)),
+      components: ["AskUserCard.ts", "ExtensionDialogCard.ts", "FormattedText.ts", "ToolExecutionView.ts", "uiIcons.ts"].filter((name) => !drawnInTheTranscript.map(named).includes(name)),
       plugins: rendererPlugins.length > 0,
     }).toEqual({ components: [], plugins: true });
   });

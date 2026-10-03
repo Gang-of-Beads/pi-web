@@ -125,8 +125,47 @@ describe("only an upward scroll asks for history", () => {
     });
   });
 
+  /** D4: a downward scroll that lands within 48 px of the newest bottom reaches it (review 754821b2: the edge read 2 px). */
+  it("follows again from a downward scroll that lands within 48 px of the newest bottom, not further", () => {
+    const newest: ViewportWindow = { hasOlder: true, hasNewer: false, loading: false, held: false };
+    const near = { scrollTop: 39_170, scrollHeight: 40_000, clientHeight: 800 };
+    const far = { scrollTop: 39_100, scrollHeight: 40_000, clientHeight: 800 };
+    expect({
+      near: decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: near }, { window: newest }).next,
+      far: decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: far }, { window: newest }).next,
+    }).toEqual({ near: { kind: "following" }, far: { kind: "holding" } });
+  });
+
   it("ignores a downward scroll while still following", () => {
     expect(decide({ kind: "following" }, { kind: "scrolled", direction: "down", metrics: atBottom }).action).toBe("idle");
+  });
+});
+
+describe("a reader who scrolls during a restore (D4, review 754821b2)", () => {
+  it("takes over: a restore stops, a page on its way for it or for a jump lands as the reader's, and nothing else changes", () => {
+    const forTheRestore: ViewportState = { kind: "awaitingPage", want: "older", resume: { kind: "restoring" } };
+    const forTheReader: ViewportState = { kind: "awaitingPage", want: "older", resume: { kind: "holding" } };
+    const forTheJump: ViewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
+    expect({
+      restoring: decide({ kind: "restoring" }, { kind: "readerTookOver" }),
+      inFlight: decide(forTheRestore, { kind: "readerTookOver" }),
+      jump: decide(forTheJump, { kind: "readerTookOver" }),
+      reading: decide(forTheReader, { kind: "readerTookOver" }),
+      following: decide({ kind: "following" }, { kind: "readerTookOver" }),
+    }).toEqual({
+      restoring: { action: "idle", next: { kind: "holding" } },
+      inFlight: { action: "idle", next: forTheReader },
+      jump: { action: "idle", next: { kind: "awaitingPage", want: "newest", resume: { kind: "holding" } } },
+      reading: { action: "idle", next: forTheReader },
+      following: { action: "idle", next: { kind: "following" } },
+    });
+  });
+});
+
+describe("a restore that reads older pages (review 754821b2)", () => {
+  it("goes on restoring after each page, so the next miss asks through the decision", () => {
+    const reading: ViewportState = { kind: "awaitingPage", want: "older", resume: { kind: "restoring" } };
+    expect(decide(reading, { kind: "pageArrived", want: "older" })).toEqual({ action: "restore-anchor", next: { kind: "restoring" } });
   });
 });
 
@@ -161,7 +200,32 @@ describe("a failed read's hold (D4, review ca45d6ed)", () => {
       newer: decide({ kind: "holding" }, { kind: "scrolled", direction: "down", metrics: atBottom }, { window: held }).action,
       unfilled: decide({ kind: "holding" }, { kind: "scrolled", direction: "none", metrics }, { window: held, fillsViewport: false }).action,
       missingSpot: decide({ kind: "restoring" }, { kind: "anchorMissing" }, { window: held }).action,
-    }).toEqual({ older: "idle", newer: "idle", unfilled: "idle", missingSpot: "snap-bottom" });
+    }).toEqual({ older: "idle", newer: "idle", unfilled: "idle", missingSpot: "idle" });
+  });
+
+  /** Review 754821b2: a failed read is unknown, not "the spot is gone"; only an older end that is not there lands at the newest. */
+  it("keeps restoring while the spot's page waits out a hold or is on its way, and lands at the newest only when there is no older page", () => {
+    expect({
+      held: decide({ kind: "restoring" }, { kind: "anchorMissing" }, { window: held }),
+      inFlight: decide({ kind: "restoring" }, { kind: "anchorMissing" }, { window: { ...window, loading: true } }),
+      noOlder: decide({ kind: "restoring" }, { kind: "anchorMissing" }, { window: { ...fullWindow, held: true } }),
+    }).toEqual({
+      held: { action: "idle", next: { kind: "restoring" } },
+      inFlight: { action: "idle", next: { kind: "restoring" } },
+      noOlder: { action: "snap-bottom", next: { kind: "following" } },
+    });
+  });
+
+  /** Review 754821b2: a jump whose read failed left the reader "following" an older window's end, where nothing loads. */
+  it("leaves a failed jump reading at an older window's end, so the hold's end asks again", () => {
+    const jumped: ViewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
+    expect({
+      olderWindow: decide(jumped, { kind: "pageFailed" }),
+      newest: decide(jumped, { kind: "pageFailed" }, { window: { hasOlder: true, hasNewer: false, loading: false, held: true } }),
+    }).toEqual({
+      olderWindow: { action: "idle", next: { kind: "holding" } },
+      newest: { action: "idle", next: { kind: "following" } },
+    });
   });
 
   it("lets the reader's jump ask through the hold", () => {
@@ -214,12 +278,25 @@ describe("one page in flight at a time", () => {
   /** Review ca45d6ed: the jump pressed while a newer page was on its way asked to follow. */
   it("lands at the newest when a newer page lands after the reader jumped", () => {
     const jumpedMidFlight: ViewportState = { kind: "awaitingPage", want: "newer", resume: { kind: "following" } };
-    expect(decide(jumpedMidFlight, { kind: "pageArrived", want: "newer" })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
+    expect(decide(jumpedMidFlight, { kind: "pageArrived", want: "newer" }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
   });
 
   it("lands at the newest after a page that was asked for by a jump", () => {
     const jumped: ViewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
-    expect(decide(jumped, { kind: "pageArrived", want: "newest" })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
+    expect(decide(jumped, { kind: "pageArrived", want: "newest" }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
+  });
+
+  /** Review 754821b2: a newest page that landed short of the newest left the reader "following" a window that loads nothing newer. */
+  it("asks for the newest again when a jump's page lands short of it, and keeps a taken-over page the reader's", () => {
+    const jumped: ViewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
+    const takenOver: ViewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "holding" } };
+    expect({
+      short: decide(jumped, { kind: "pageArrived", want: "newest" }),
+      takenOver: decide(takenOver, { kind: "pageArrived", want: "newest" }),
+    }).toEqual({
+      short: { action: "load-newest-page", next: jumped },
+      takenOver: { action: "restore-anchor", next: { kind: "holding" } },
+    });
   });
 
   it("returns to the previous state when the page fails", () => {

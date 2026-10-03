@@ -14,9 +14,9 @@ import { ChatDisclosureController } from "../chatDisclosure";
 import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type ChatGroup } from "../chatGroups";
 import { writeClipboardText } from "../clipboard";
 import { followScrollVerdict } from "../followScrollAdoption.js";
-import { scrollDirection, viewportDecision, followsAfterScroll } from "../chatViewport/viewportDecision.js";
+import { scrollDirection, viewportDecision, followsAfterScroll, isRestoring } from "../chatViewport/viewportDecision.js";
 import type { ViewportAction, ViewportEvent, ViewportState } from "../chatViewport/viewportDecision.js";
-import { holdAfterFailure, isHeld, PAGE_RETRY_OPEN, type PageRetry } from "../chatViewport/pageRetry.js";
+import { holdAfterFailure, isHeld, PAGE_RETRY_OPEN, releaseHold, type PageRetry } from "../chatViewport/pageRetry.js";
 import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { doesNotFillViewport, shouldRequestNewerMessages } from "../chatHistoryLoading";
@@ -982,7 +982,6 @@ export class ChatView extends LitElement {
 
   private prepareSessionUiState(): void {
     this.lastScrollDirection = "none";
-    this.jumpToNewestPending = false;
     this.lastScrollTop = this.chat?.scrollTop ?? 0;
     this.turnStartedAtMs = undefined;
     this.disclosures.syncSession(this.sessionId);
@@ -1075,10 +1074,7 @@ export class ChatView extends LitElement {
     if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestPages(false);
-    if (changed.has("messages") || changed.has("messageEnd") || changed.has("hasNewer")) {
-      this.newerRequested = false;
-      if (this.jumpToNewestPending) this.continueJumpToNewest();
-    }
+    if (changed.has("messages") || changed.has("messageEnd") || changed.has("hasNewer")) this.newerRequested = false;
     this.publishScrollbarWidth();
     this.observeDock();
     const chat = this.chat;
@@ -1117,7 +1113,6 @@ export class ChatView extends LitElement {
    * nothing above had changed - the owner's jitter.
    */
   private lastScrollDirection: "up" | "down" | "none" = "none";
-  private jumpToNewestPending = false;
   /**
    * Where the reader is and which page is owed, per the one policy table. Every writer
    * below reports an event and executes the action it answers, so the decision lives in
@@ -1132,7 +1127,7 @@ export class ChatView extends LitElement {
     "snap-bottom": () => { this.scrollToBottom(); return true; },
     "restore-anchor": () => true,
     "load-older": () => this.requestLoadMore(),
-    "load-newest-page": () => this.startNewerPage(),
+    "load-newest-page": () => this.startNewestPage(),
     "load-newer-page": () => this.startNewerPage(),
     "stop-following": () => { this.pinnedToBottom = false; return true; },
   };
@@ -1294,13 +1289,10 @@ export class ChatView extends LitElement {
     this.jumpToBottomVisible = false;
     const action = this.dispatchViewport({ kind: "jumpNewest" });
     if (action !== "load-newest-page") {
-      this.jumpToNewestPending = false;
       this.scrollToBottom();
       return;
     }
-    this.jumpToNewestPending = true;
-    this.newerRequested = false;
-    this.startNewerPage();
+    if (!this.startNewestPage()) this.dispatchViewport({ kind: "pageFailed" });
   }
 
   private renderJumpToBottom() {
@@ -2210,6 +2202,7 @@ export class ChatView extends LitElement {
   }
 
   private onWheel(event: WheelEvent) {
+    this.readerTookTheScroll();
     if (event.deltaY < 0 && this.canScrollUp()) this.pinnedToBottom = false;
   }
 
@@ -2265,8 +2258,18 @@ export class ChatView extends LitElement {
    */
   private onTouchMove(event: TouchEvent) {
     this.userScrollInFlight = true;
+    this.readerTookTheScroll();
     const y = firstTouchY(event);
     if (this.touchStartY !== undefined && y !== undefined && y > this.touchStartY && this.canScrollUp()) this.pinnedToBottom = false;
+  }
+
+  /** D4: a reader who scrolls during a restore or a jump takes the scroll; the restore stops where it is. */
+  private readerTookTheScroll(): void {
+    if (isRestoring(this.viewportState)) {
+      this.pendingScrollRestoreSessionId = undefined;
+      this.pendingScrollRestorePosition = undefined;
+    }
+    this.runViewport({ kind: "readerTookOver" });
   }
 
   private updatePinnedToBottomFromScroll() {
@@ -2353,14 +2356,15 @@ export class ChatView extends LitElement {
    * scroll and repeated a failing read at network pace (D4, review ca45d6ed).
    */
   private holdPagesAfterFailure(): void {
-    const now = Date.now();
-    const held = holdAfterFailure(this.pageRetry, now);
+    const held = holdAfterFailure(this.pageRetry);
     this.pageRetry = held;
     this.clearPageRetryTimer();
     this.pageRetryTimer = setTimeout(() => {
       this.pageRetryTimer = undefined;
+      this.pageRetry = releaseHold(this.pageRetry);
+      this.continuePendingScrollRestore();
       this.requestPages(false);
-    }, held.until - now);
+    }, held.waitMs);
   }
 
   private openPages(): void {
@@ -2372,6 +2376,18 @@ export class ChatView extends LitElement {
     if (this.pageRetryTimer === undefined) return;
     clearTimeout(this.pageRetryTimer);
     this.pageRetryTimer = undefined;
+  }
+
+  /**
+   * The back-to-newest key asks for the newest page wherever the reader is (D4). It went through
+   * the forward end's prefetch distance, so pressed mid-window in an older window it asked nothing
+   * and moved nothing, and the viewport waited on a page nobody had asked for.
+   */
+  private startNewestPage(): boolean {
+    if (!this.hasNewer || this.newerRequested || this.onLoadNewer === undefined) return false;
+    this.newerRequested = true;
+    this.onLoadNewer();
+    return true;
   }
 
   private startNewerPage(): boolean {
@@ -2519,7 +2535,7 @@ export class ChatView extends LitElement {
         hasOlder: this.hasMore,
         hasNewer: this.hasNewer,
         loading: this.loadingMore || this.loadMoreRequested || this.newerRequested,
-        held: isHeld(this.pageRetry, Date.now()),
+        held: isHeld(this.pageRetry),
       },
       measured: chat !== undefined && chat.clientHeight > 0,
       fillsViewport: chat !== undefined && !doesNotFillViewport(chat),
@@ -2583,7 +2599,7 @@ export class ChatView extends LitElement {
     this.syncScrollMetrics();
     if (result.status !== "missing") {
       this.updatePinnedToBottomAfterRestore(result.status);
-      this.runViewport({ kind: "restoreSettled", landed: result.status === "bottom" ? "bottom" : "spot" });
+      this.runViewport({ kind: "restoreSettled", landed: this.pinnedToBottom ? "bottom" : "spot" });
       if (result.status === "restored" || result.status === "bottom") this.cancelPrependRestore();
       this.pendingScrollRestoreSessionId = undefined;
       this.pendingScrollRestorePosition = undefined;
@@ -2600,26 +2616,7 @@ export class ChatView extends LitElement {
     this.pinnedToBottom = false;
     this.pendingScrollRestoreSessionId = sessionId;
     this.pendingScrollRestorePosition = result.position;
-    const chat = this.chat;
-    if (chat === undefined || !this.hasMore || this.loadingMore) return;
-    this.requestLoadMore();
-  }
-
-  /** Keep the promised landing: one page at a time until the newest is loaded. */
-  private continueJumpToNewest(): void {
-    if (!this.pinnedToBottom) {
-      this.jumpToNewestPending = false;
-      return;
-    }
-    if (!this.hasNewer) {
-      this.jumpToNewestPending = false;
-      this.viewportState = { kind: "following" };
-      this.scrollToBottom();
-      return;
-    }
-    this.viewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
-    if (this.isNearBottom()) this.requestPages(false);
-    else this.jumpToNewestPending = false;
+    if (!this.viewportExecutors[action]()) this.dispatchViewport({ kind: "pageFailed" });
   }
 
   private shouldFallbackToBottomForMissingAnchor(): boolean {
@@ -2635,8 +2632,9 @@ export class ChatView extends LitElement {
   }
 
   private updatePinnedToBottomAfterRestore(status: Exclude<ChatScrollRestoreResult["status"], "missing">): void {
-    if (status === "bottom") this.pinnedToBottom = true;
-    else if (status === "restored") this.pinnedToBottom = this.isNearBottom();
+    if (status === "bottom") this.pinnedToBottom = !this.hasNewer;
+    else if (status === "restored") this.pinnedToBottom = !this.hasNewer && this.isNearBottom();
+    else this.pinnedToBottom = this.pinnedToBottom && !this.hasNewer;
   }
 
   private syncScrollMetrics(): void {

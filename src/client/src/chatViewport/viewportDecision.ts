@@ -14,7 +14,7 @@
  * and callers are dumb executors of the action they are handed.
  */
 import { isNearTop } from "../chatHistoryLoading.js";
-import { distanceFromScrollBottom } from "../chatScrollPosition.js";
+import { distanceFromScrollBottom, isNearScrollBottom } from "../chatScrollPosition.js";
 import { BOTTOM_SLACK_PX } from "../streamingBottomHold.js";
 
 export interface ViewportMetrics {
@@ -34,7 +34,8 @@ export type ViewportEvent =
   | { kind: "pageArrived"; want: PageWant }
   | { kind: "pageFailed" }
   | { kind: "anchorMissing" }
-  | { kind: "restoreSettled"; landed: "spot" | "bottom" };
+  | { kind: "restoreSettled"; landed: "spot" | "bottom" }
+  | { kind: "readerTookOver" };
 
 export interface ViewportWindow {
   hasOlder: boolean;
@@ -99,10 +100,16 @@ const onOpened: Handler = (input, event) => {
   return event.saved === "anchor" ? decide("restore-anchor", { kind: "restoring" }) : decide("snap-bottom", { kind: "following" });
 };
 
-/** The spot is above the loaded window: fetch the page it lives in and stay put. */
+/**
+ * The spot is above the loaded window: fetch the page it lives in and stay put. A page that waits
+ * out a failed read's hold, or is on its way, is unknown, not a spot that is gone: the restore
+ * waits for it, and only an older end that is not there lands at the newest (review 754821b2:
+ * one failed read threw the remembered place away within a frame).
+ */
 const onAnchorMissing: Handler = (input, event) => {
   if (event.kind !== "anchorMissing" || input.state.kind !== "restoring") return idle(input.state);
   if (canLoad(input, "older")) return load(input, "older", { kind: "restoring" });
+  if (input.window.hasOlder) return idle(input.state);
   return decide("snap-bottom", { kind: "following" });
 };
 
@@ -128,11 +135,18 @@ const AFTER_PAGE: Record<PageWant, ViewportDecision> = {
 
 /**
  * A page that lands after the reader asked to follow (the jump pressed while a newer page was on
- * its way) lands them at the newest like the jump does (review ca45d6ed).
+ * its way) lands them at the newest like the jump does (review ca45d6ed); while the newest is still
+ * not loaded, the jump asks for it again. The walk lived in ChatView behind the follow flag, which an
+ * older window's end clears, so a newest page that landed short left the reader "following" a window
+ * that loads nothing newer (review 754821b2). A page whose jump the reader took over lands as theirs.
  */
 const onPageArrived: Handler = (input, event) => {
   if (event.kind !== "pageArrived" || input.state.kind !== "awaitingPage") return idle(input.state);
-  return input.state.resume.kind === "following" && input.state.want !== "older" ? AFTER_PAGE.newest : AFTER_PAGE[input.state.want];
+  const resume = input.state.resume.kind;
+  if (resume === "restoring") return decide("restore-anchor", { kind: "restoring" });
+  if (resume !== "following" || input.state.want === "older") return AFTER_PAGE[input.state.want === "older" ? "older" : "newer"];
+  if (input.window.hasNewer && canLoadOnIntent(input, "newest")) return load(input, "newest", { kind: "following" });
+  return AFTER_PAGE.newest;
 };
 
 /**
@@ -145,9 +159,23 @@ const onRestoreSettled: Handler = (input, event) => {
   return idle(event.landed === "bottom" ? { kind: "following" } : { kind: "holding" });
 };
 
+/**
+ * D4: only the reader's intent moves the reader. A reader who scrolls during a restore, or while a
+ * jump's page is on its way, takes over: the restore stops, and a page on its way lands as theirs,
+ * so it cannot move a reader who already went elsewhere (review 754821b2: a restore that waits out a
+ * failed read would otherwise move them seconds later).
+ */
+const onReaderTookOver: Handler = (input, event) => {
+  if (event.kind !== "readerTookOver") return idle(input.state);
+  if (input.state.kind === "restoring") return idle({ kind: "holding" });
+  if (input.state.kind === "awaitingPage" && input.state.resume.kind !== "holding") return idle({ ...input.state, resume: { kind: "holding" } });
+  return idle(input.state);
+};
+
 const onPageFailed: Handler = (input, event) => {
-  if (event.kind !== "pageFailed") return idle(input.state);
-  return idle(input.state.kind === "awaitingPage" ? input.state.resume : input.state);
+  if (event.kind !== "pageFailed" || input.state.kind !== "awaitingPage") return idle(input.state);
+  const resume = input.state.resume;
+  return idle(resume.kind === "following" && input.window.hasNewer ? { kind: "holding" } : resume);
 };
 
 const nearTop = (metrics: ViewportMetrics): boolean =>
@@ -183,7 +211,7 @@ const onScrolled: Handler = (input, event) => {
   if (event.direction === "up" && nearTop(event.metrics) && canLoad(input, "older")) {
     return load(input, "older", { kind: "holding" });
   }
-  if (event.direction === "down" && atBottom(event.metrics) && !input.window.hasNewer) return idle({ kind: "following" });
+  if (event.direction === "down" && isNearScrollBottom(event.metrics) && !input.window.hasNewer) return idle({ kind: "following" });
   return idle(input.state);
 };
 
@@ -199,7 +227,13 @@ const EVENT_HANDLERS: Record<ViewportEvent["kind"], Handler> = {
   pageFailed: onPageFailed,
   scrolled: onScrolled,
   restoreSettled: onRestoreSettled,
+  readerTookOver: onReaderTookOver,
 };
+
+/** A restore is under way: restoring, or a page on its way for it. */
+export function isRestoring(state: ViewportState): boolean {
+  return state.kind === "restoring" || (state.kind === "awaitingPage" && state.resume.kind === "restoring");
+}
 
 export function viewportDecision(input: ViewportInput): ViewportDecision {
   if (!input.measured) return idle(input.state);
