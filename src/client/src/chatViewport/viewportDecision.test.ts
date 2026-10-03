@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   followsAfterScroll,
+  readerCanTakeOver,
   scrollDirection,
   viewportDecision,
   type PageWant,
@@ -162,6 +163,20 @@ describe("a reader who scrolls during a restore (D4, review 754821b2)", () => {
   });
 });
 
+describe("what a reader's scroll takes over (review 9f8186d0)", () => {
+  it("is a restore, or a page waited for on someone else's behalf, and nothing else", () => {
+    const states: ViewportState[] = [
+      { kind: "restoring" },
+      { kind: "awaitingPage", want: "older", resume: { kind: "restoring" } },
+      { kind: "awaitingPage", want: "newest", resume: { kind: "following" } },
+      { kind: "awaitingPage", want: "older", resume: { kind: "holding" } },
+      { kind: "holding" },
+      { kind: "following" },
+    ];
+    expect(states.map(readerCanTakeOver)).toEqual([true, true, true, false, false, false]);
+  });
+});
+
 describe("a restore that reads older pages (review 754821b2)", () => {
   it("goes on restoring after each page, so the next miss asks through the decision", () => {
     const reading: ViewportState = { kind: "awaitingPage", want: "older", resume: { kind: "restoring" } };
@@ -284,6 +299,18 @@ describe("one page in flight at a time", () => {
   it("lands at the newest after a page that was asked for by a jump", () => {
     const jumped: ViewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
     expect(decide(jumped, { kind: "pageArrived", want: "newest" }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
+  });
+
+  /** Review 9f8186d0: a jump pressed while an older page was on its way was lost when that page landed. */
+  it("goes on to the newest when an older page lands after the reader jumped", () => {
+    const jumpedDuringOlder: ViewportState = { kind: "awaitingPage", want: "older", resume: { kind: "following" } };
+    expect({
+      jumped: decide(jumpedDuringOlder, { kind: "pageArrived", want: "older" }),
+      newestLoaded: decide(jumpedDuringOlder, { kind: "pageArrived", want: "older" }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } }),
+    }).toEqual({
+      jumped: { action: "load-newest-page", next: { kind: "awaitingPage", want: "newest", resume: { kind: "following" } } },
+      newestLoaded: { action: "restore-anchor", next: { kind: "holding" } },
+    });
   });
 
   /** Review 754821b2: a newest page that landed short of the newest left the reader "following" a window that loads nothing newer. */

@@ -14,9 +14,9 @@ import { ChatDisclosureController } from "../chatDisclosure";
 import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type ChatGroup } from "../chatGroups";
 import { writeClipboardText } from "../clipboard";
 import { followScrollVerdict } from "../followScrollAdoption.js";
-import { scrollDirection, viewportDecision, followsAfterScroll, isRestoring } from "../chatViewport/viewportDecision.js";
+import { scrollDirection, viewportDecision, followsAfterScroll, isRestoring, readerCanTakeOver } from "../chatViewport/viewportDecision.js";
 import type { ViewportAction, ViewportEvent, ViewportState } from "../chatViewport/viewportDecision.js";
-import { holdAfterFailure, isHeld, PAGE_RETRY_OPEN, releaseHold, type PageRetry } from "../chatViewport/pageRetry.js";
+import { holdAfterFailure, isHeld, owedAfter, PAGE_RETRY_OPEN, readerMoved, releaseHold, type PageRetry } from "../chatViewport/pageRetry.js";
 import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { doesNotFillViewport, shouldRequestNewerMessages } from "../chatHistoryLoading";
@@ -967,6 +967,7 @@ export class ChatView extends LitElement {
       this.catchUpFollowTimer = undefined;
     }
     this.clearPageRetryTimer();
+    this.pageRetry = releaseHold(this.pageRetry);
     window.removeEventListener("resize", this.onViewportResize);
     window.removeEventListener("pagehide", this.onPageHide);
     window.visualViewport?.removeEventListener("resize", this.onViewportResize);
@@ -1053,14 +1054,7 @@ export class ChatView extends LitElement {
     if (changed.has("loadingMore") && !this.loadingMore) {
       this.loadMoreRequested = false;
       this.newerRequested = false;
-      if (!changed.has("messages") && this.viewportState.kind === "awaitingPage") {
-        this.holdPagesAfterFailure();
-        this.runViewport({ kind: "pageFailed" });
-      }
-    }
-    if (changed.has("messages") && this.viewportState.kind === "awaitingPage") {
-      this.openPages();
-      this.runViewport({ kind: "pageArrived", want: this.viewportState.want });
+      this.settlePageRead(changed.has("messages"));
     }
     if (changed.has("hasNewer") && this.viewportState.kind === "awaitingPage" && !this.hasNewer) {
       this.openPages();
@@ -2265,11 +2259,8 @@ export class ChatView extends LitElement {
 
   /** D4: a reader who scrolls during a restore or a jump takes the scroll; the restore stops where it is. */
   private readerTookTheScroll(): void {
-    if (isRestoring(this.viewportState)) {
-      this.pendingScrollRestoreSessionId = undefined;
-      this.pendingScrollRestorePosition = undefined;
-    }
-    this.runViewport({ kind: "readerTookOver" });
+    this.pageRetry = readerMoved(this.pageRetry);
+    if (readerCanTakeOver(this.viewportState)) this.runViewport({ kind: "readerTookOver" });
   }
 
   private updatePinnedToBottomFromScroll() {
@@ -2356,15 +2347,38 @@ export class ChatView extends LitElement {
    * scroll and repeated a failing read at network pace (D4, review ca45d6ed).
    */
   private holdPagesAfterFailure(): void {
-    const held = holdAfterFailure(this.pageRetry);
+    const held = holdAfterFailure(this.pageRetry, owedAfter(this.viewportState));
     this.pageRetry = held;
     this.clearPageRetryTimer();
     this.pageRetryTimer = setTimeout(() => {
       this.pageRetryTimer = undefined;
+      const owes = this.pageRetry.kind === "held" ? this.pageRetry.owes : "reevaluate";
       this.pageRetry = releaseHold(this.pageRetry);
       this.continuePendingScrollRestore();
+      if (owes === "newest") this.runViewport({ kind: "jumpNewest" });
       this.requestPages(false);
     }, held.waitMs);
+  }
+
+  /**
+   * A page read ended: with messages it is the awaited page's arrival, without them it failed. Only
+   * the read's own end counts; any messages change while a page was awaited counted as its arrival
+   * (review 9f8186d0). A failed read leaves the reader unpinned wherever the decision left them.
+   */
+  private settlePageRead(landed: boolean): void {
+    if (this.viewportState.kind !== "awaitingPage") return;
+    if (landed) {
+      this.openPages();
+      this.runViewport({ kind: "pageArrived", want: this.viewportState.want });
+      return;
+    }
+    this.holdPagesAfterFailure();
+    this.runViewport({ kind: "pageFailed" });
+    this.unpinWhenReading();
+  }
+
+  private unpinWhenReading(): void {
+    if (this.viewportState.kind === "holding") this.pinnedToBottom = false;
   }
 
   private openPages(): void {
@@ -2540,8 +2554,24 @@ export class ChatView extends LitElement {
       measured: chat !== undefined && chat.clientHeight > 0,
       fillsViewport: chat !== undefined && !doesNotFillViewport(chat),
     });
+    const wasRestoring = isRestoring(this.viewportState);
     this.viewportState = decision.next;
+    if (wasRestoring && !isRestoring(decision.next)) this.forgetPendingRestore();
     return decision.action;
+  }
+
+  /**
+   * The remembered spot belongs to the restore: whatever ends the restore (a jump, the reader's
+   * scroll, the spot found or given up) forgets it, so a page that lands later cannot move the
+   * reader there (review 9f8186d0: a jump during a restore left the spot armed, and the reader was
+   * moved to it after scrolling on).
+   */
+  private forgetPendingRestore(): void {
+    this.pendingScrollRestoreSessionId = undefined;
+    this.pendingScrollRestorePosition = undefined;
+    if (this.restoreScrollFrame === undefined) return;
+    cancelAnimationFrame(this.restoreScrollFrame);
+    this.restoreScrollFrame = undefined;
   }
 
   /**
@@ -2613,6 +2643,7 @@ export class ChatView extends LitElement {
       this.scrollToBottom();
       return;
     }
+    if (!isRestoring(this.viewportState)) return;
     this.pinnedToBottom = false;
     this.pendingScrollRestoreSessionId = sessionId;
     this.pendingScrollRestorePosition = result.position;

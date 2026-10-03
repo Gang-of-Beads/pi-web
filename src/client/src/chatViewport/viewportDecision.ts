@@ -127,6 +127,9 @@ const onJumpNewest: Handler = (input, event) => {
  * the bottom: a newer page snapped the reader there and set them following, so the follow carried
  * them through everything that loaded.
  */
+/** A newest page the reader did not wait for lands like any newer page. */
+const LANDS_AS: Record<PageWant, PageWant> = { older: "older", newer: "newer", newest: "newer" };
+
 const AFTER_PAGE: Record<PageWant, ViewportDecision> = {
   older: decide("restore-anchor", { kind: "holding" }),
   newer: decide("restore-anchor", { kind: "holding" }),
@@ -142,11 +145,11 @@ const AFTER_PAGE: Record<PageWant, ViewportDecision> = {
  */
 const onPageArrived: Handler = (input, event) => {
   if (event.kind !== "pageArrived" || input.state.kind !== "awaitingPage") return idle(input.state);
-  const resume = input.state.resume.kind;
-  if (resume === "restoring") return decide("restore-anchor", { kind: "restoring" });
-  if (resume !== "following" || input.state.want === "older") return AFTER_PAGE[input.state.want === "older" ? "older" : "newer"];
+  const { resume, want } = input.state;
+  if (resume.kind === "restoring") return decide("restore-anchor", { kind: "restoring" });
+  if (resume.kind !== "following") return AFTER_PAGE[LANDS_AS[want]];
   if (input.window.hasNewer && canLoadOnIntent(input, "newest")) return load(input, "newest", { kind: "following" });
-  return AFTER_PAGE.newest;
+  return want === "older" ? AFTER_PAGE.older : AFTER_PAGE.newest;
 };
 
 /**
@@ -166,10 +169,8 @@ const onRestoreSettled: Handler = (input, event) => {
  * failed read would otherwise move them seconds later).
  */
 const onReaderTookOver: Handler = (input, event) => {
-  if (event.kind !== "readerTookOver") return idle(input.state);
-  if (input.state.kind === "restoring") return idle({ kind: "holding" });
-  if (input.state.kind === "awaitingPage" && input.state.resume.kind !== "holding") return idle({ ...input.state, resume: { kind: "holding" } });
-  return idle(input.state);
+  if (event.kind !== "readerTookOver" || !readerCanTakeOver(input.state)) return idle(input.state);
+  return idle(input.state.kind === "awaitingPage" ? { ...input.state, resume: { kind: "holding" } } : { kind: "holding" });
 };
 
 const onPageFailed: Handler = (input, event) => {
@@ -229,6 +230,11 @@ const EVENT_HANDLERS: Record<ViewportEvent["kind"], Handler> = {
   restoreSettled: onRestoreSettled,
   readerTookOver: onReaderTookOver,
 };
+
+/** What a reader's scroll takes over: a restore, or a page waited for on a restore's or a jump's behalf. */
+export function readerCanTakeOver(state: ViewportState): boolean {
+  return state.kind === "restoring" || (state.kind === "awaitingPage" && state.resume.kind !== "holding");
+}
 
 /** A restore is under way: restoring, or a page on its way for it. */
 export function isRestoring(state: ViewportState): boolean {

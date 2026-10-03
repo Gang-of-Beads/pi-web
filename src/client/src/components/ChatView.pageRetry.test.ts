@@ -54,6 +54,13 @@ async function wait(view: ChatView, ms: number): Promise<void> {
   await view.updateComplete;
 }
 
+async function pressTheKey(view: ChatView): Promise<void> {
+  const jump: unknown = Reflect.get(view, "jumpToNewest");
+  if (typeof jump !== "function") throw new Error("the jump is missing, so this test proves nothing");
+  Reflect.apply(jump, view, []);
+  await view.updateComplete;
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "requestAnimationFrame", "cancelAnimationFrame"] });
 });
@@ -129,88 +136,45 @@ describe("a failed page read", () => {
   });
 });
 
-describe("a jump whose read failed (review 754821b2)", () => {
-  /** The failed jump left the reader "following" an older window's end, and the next frame claimed a read nobody sent. */
-  it("leaves the reader reading at the older window's end, and asks for the newer page once the hold is over", async () => {
-    const { view, scrollTo } = await mount();
-    let asks = 0;
-    view.onLoadNewer = () => { asks += 1; };
-    view.messageEnd = 300;
-    view.messageTotal = 700;
-    view.hasNewer = true;
-    await view.updateComplete;
-    await vi.advanceTimersByTimeAsync(100);
-    Reflect.set(view, "pinnedToBottom", false);
-    await scrollTo(1000);
-    const far = view.renderRoot.querySelector(".chat")?.scrollTop;
-    const jump: unknown = Reflect.get(view, "jumpToNewest");
-    if (typeof jump !== "function") throw new Error("the jump is missing, so this test proves nothing");
-    Reflect.apply(jump, view, []);
-    await view.updateComplete;
-    const asked = asks;
-    await readFails(view);
-    const afterFailure: unknown = Reflect.get(view, "viewportState");
-    view.messages = [];
-    await view.updateComplete;
-    await vi.advanceTimersByTimeAsync(20);
-    await view.updateComplete;
-    const afterFrame: unknown = Reflect.get(view, "viewportState");
-    await wait(view, 1000);
-
-    expect({ far, asked, afterFailure, afterFrame, afterHold: asks }).toEqual({ far: 1000, asked: 1, afterFailure: { kind: "holding" }, afterFrame: { kind: "holding" }, afterHold: 2 });
-  });
-});
-
-describe("the back-to-newest key (D4)", () => {
-  async function pressTheKey(view: ChatView): Promise<void> {
-    const jump: unknown = Reflect.get(view, "jumpToNewest");
-    if (typeof jump !== "function") throw new Error("the jump is missing, so this test proves nothing");
-    Reflect.apply(jump, view, []);
-    await view.updateComplete;
-  }
-
-  async function newestLands(view: ChatView, end: number, total: number): Promise<void> {
-    view.loadingMore = true;
-    await view.updateComplete;
-    view.messages = [];
-    view.messageEnd = end;
-    view.messageTotal = total;
-    view.hasNewer = end < total;
-    view.loadingMore = false;
-    await view.updateComplete;
-    await vi.advanceTimersByTimeAsync(40);
-    await view.updateComplete;
-  }
-
-  /**
-   * Pressed mid-window in an older window, the key asked nothing and moved nothing: the newest read
-   * waited for the reader to be near the end. A newest page that lands short of the newest asks
-   * again wherever the reader is; the walk lived behind a follow flag an older window's end clears.
-   */
-  it("asks for the newest page wherever the reader is, walks on while the newest is not reached, and lands them there", async () => {
-    const { view, scrollTo } = await mount();
+describe("a jump whose read failed (reviews 754821b2, 9f8186d0)", () => {
+  async function farJumpThatFails(view: ChatView, scrollTo: (top: number) => Promise<void>): Promise<{ asks: () => number; before: unknown; asked: number }> {
     view.messageEnd = 300;
     view.messageTotal = 300;
     await view.updateComplete;
     await vi.advanceTimersByTimeAsync(100);
     Reflect.set(view, "pinnedToBottom", false);
-    await scrollTo(400);
+    await scrollTo(1000);
     let asks = 0;
     view.onLoadNewer = () => { asks += 1; };
     view.messageTotal = 900;
     view.hasNewer = true;
     await view.updateComplete;
-    const stateBefore: unknown = Reflect.get(view, "viewportState");
-    const before = { asks, top: view.renderRoot.querySelector(".chat")?.scrollTop, state: stateBefore };
+    const before: unknown = Reflect.get(view, "viewportState");
     await pressTheKey(view);
     const asked = asks;
-    Reflect.set(view, "pinnedToBottom", false);
-    await newestLands(view, 600, 900);
-    const walked = asks;
-    await newestLands(view, 900, 900);
-    const top = view.renderRoot.querySelector(".chat")?.scrollTop;
+    await readFails(view);
+    return { asks: () => asks, before, asked };
+  }
 
-    expect({ before, asked, walked, top }).toEqual({ before: { asks: 0, top: 400, state: { kind: "holding" } }, asked: 1, walked: 2, top: 3200 });
+  /** The hold's end re-applied the scroll rules, so a reader far from the end got nothing and had to press again. */
+  it("leaves the reader reading, unpinned, and asks for the newest again once the hold is over, wherever they are", async () => {
+    const { view, scrollTo } = await mount();
+    const { asks, before, asked } = await farJumpThatFails(view, scrollTo);
+    const afterFailure: unknown = Reflect.get(view, "viewportState");
+    const pinned: unknown = Reflect.get(view, "pinnedToBottom");
+    const top = view.renderRoot.querySelector(".chat")?.scrollTop;
+    await wait(view, 1000);
+
+    expect({ before, asked, afterFailure, pinned, top, afterHold: asks() }).toEqual({ before: { kind: "holding" }, asked: 1, afterFailure: { kind: "holding" }, pinned: false, top: 1000, afterHold: 2 });
+  });
+
+  it("does not ask for the newest at the hold's end once the reader scrolled away meanwhile", async () => {
+    const { view, scrollTo } = await mount();
+    const { asks } = await farJumpThatFails(view, scrollTo);
+    await scrollTo(600);
+    await wait(view, 1000);
+
+    expect(asks()).toBe(1);
   });
 });
 
@@ -230,7 +194,43 @@ describe("the hold's lifetime", () => {
     const retry: unknown = Reflect.get(view, "pageRetry");
     const timer: unknown = Reflect.get(view, "pageRetryTimer");
 
-    expect({ asks, held, retry, timer }).toEqual({ asks: 1, held: { kind: "held", failures: 1, waitMs: 1000 }, retry: { kind: "open" }, timer: undefined });
+    expect({ asks, held, retry, timer }).toEqual({ asks: 1, held: { kind: "held", failures: 1, waitMs: 1000, owes: "reevaluate" }, retry: { kind: "open" }, timer: undefined });
+  });
+
+  /** Review 9f8186d0: a hold whose timer the disconnect cleared stood forever once the view was put back. */
+  it("ends with the view: a view put back is not held", async () => {
+    const { view, scrollTo } = await mount();
+    let asks = 0;
+    view.onLoadMore = () => { asks += 1; };
+    view.hasMore = true;
+    await view.updateComplete;
+    await scrollTo(3000);
+    await scrollTo(0);
+    await readFails(view);
+    view.remove();
+    document.body.append(view);
+    await view.updateComplete;
+    const retry: unknown = Reflect.get(view, "pageRetry");
+
+    expect({ asks, retry }).toEqual({ asks: 1, retry: { kind: "released", failures: 1 } });
+  });
+
+  /** Review 9f8186d0: any messages change while a page was awaited counted as that page's arrival. */
+  it("takes only the read's own end as the page's arrival", async () => {
+    const { view, scrollTo } = await mount();
+    view.onLoadMore = () => undefined;
+    view.hasMore = true;
+    await view.updateComplete;
+    await scrollTo(3000);
+    await scrollTo(0);
+    const awaiting: unknown = Reflect.get(view, "viewportState");
+    view.loadingMore = true;
+    await view.updateComplete;
+    view.messages = [];
+    await view.updateComplete;
+    const afterAFrame: unknown = Reflect.get(view, "viewportState");
+
+    expect({ awaiting, afterAFrame }).toEqual({ awaiting: { kind: "awaitingPage", want: "older", resume: { kind: "holding" } }, afterAFrame: { kind: "awaitingPage", want: "older", resume: { kind: "holding" } } });
   });
 
   it("asks nothing once the view is gone", async () => {
@@ -302,6 +302,69 @@ describe("a restore whose spot is in a page not loaded (review 754821b2)", () =>
     await view.updateComplete;
 
     expect({ afterFirstPage, soonAfterSecondFailure: asks }).toEqual({ afterFirstPage: 2, soonAfterSecondFailure: 2 });
+  });
+
+  /** Review 9f8186d0: a jump during a restore left the remembered spot armed, and a later page moved the reader to it. */
+  it("forgets the remembered spot once the reader jumps away from the restore", async () => {
+    const { view } = await mount();
+    view.onLoadMore = () => undefined;
+    view.onLoadNewer = () => undefined;
+    view.hasMore = true;
+    await view.updateComplete;
+    await restoringFar(view);
+    view.messageEnd = 300;
+    view.messageTotal = 900;
+    view.hasNewer = true;
+    await view.updateComplete;
+    const armed: unknown = Reflect.get(view, "pendingScrollRestorePosition");
+    await pressTheKey(view);
+    const spot: unknown = Reflect.get(view, "pendingScrollRestorePosition");
+
+    expect({ armed, spot }).toEqual({ armed: position, spot: undefined });
+  });
+
+  /** Review 9f8186d0: a restore already queued for the next frame ran after the reader took over. */
+  it("drops the restore queued for the next frame once the reader takes over", async () => {
+    const { view } = await mount();
+    view.onLoadMore = () => undefined;
+    view.hasMore = true;
+    await view.updateComplete;
+    await restoringFar(view);
+    const controller: unknown = Reflect.get(view, "scrollController");
+    if (typeof controller !== "object" || controller === null) throw new Error("the scroll controller is missing, so this test proves nothing");
+    const restore: unknown = Reflect.get(controller, "restoreExplicitPosition");
+    if (typeof restore !== "function") throw new Error("the restore is missing, so this test proves nothing");
+    let restores = 0;
+    Reflect.set(controller, "restoreExplicitPosition", (...args: unknown[]): unknown => {
+      restores += 1;
+      const result: unknown = Reflect.apply(restore, controller, args);
+      return result;
+    });
+    view.loadingMore = true;
+    await view.updateComplete;
+    view.messages = [];
+    view.loadingMore = false;
+    await view.updateComplete;
+    const queued: unknown = Reflect.get(view, "restoreScrollFrame");
+    view.renderRoot.querySelector(".chat")?.dispatchEvent(new WheelEvent("wheel", { deltaY: -120 }));
+    await vi.advanceTimersByTimeAsync(40);
+    await view.updateComplete;
+
+    expect({ queued: queued !== undefined, restores }).toEqual({ queued: true, restores: 0 });
+  });
+
+  it("does not re-arm a missing spot once the restore is over", async () => {
+    const { view } = await mount();
+    view.onLoadMore = () => undefined;
+    view.hasMore = true;
+    await view.updateComplete;
+    Reflect.set(view, "viewportState", { kind: "holding" });
+    const settle: unknown = Reflect.get(view, "handleScrollRestoreResult");
+    if (typeof settle !== "function") throw new Error("the restore result handler is missing, so this test proves nothing");
+    Reflect.apply(settle, view, [view.sessionId, { status: "missing", position }]);
+    const spot: unknown = Reflect.get(view, "pendingScrollRestorePosition");
+
+    expect(spot).toBeUndefined();
   });
 
   /** D4: restoring --> reading when the reader scrolls during the restore; the page on its way lands as theirs. */
