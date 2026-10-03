@@ -27,15 +27,20 @@ function sourceFiles(dir: string): string[] {
 }
 
 const chatView = join(componentsDir, "ChatView.ts");
-const chatViewImports = [...readFileSync(chatView, "utf8").matchAll(/from "\.\/([A-Za-z]+)"/gu)].map((match) => join(componentsDir, `${match[1] ?? ""}.ts`));
+const chatViewImports = [...new Set([...readFileSync(chatView, "utf8").matchAll(/(?:from\s+|import\s+)"\.\/([A-Za-z]+)(?:\.js)?"/gu)].map((match) => match[1] ?? ""))].map((name) => join(componentsDir, `${name}.ts`));
 const rendererPlugins = readdirSync(pluginsDir)
   .map((entry) => join(pluginsDir, entry))
   .filter((dir) => existsSync(join(dir, "pi-web-plugin.ts")) && /messageRenderers|codeFenceRenderers/u.test(readFileSync(join(dir, "pi-web-plugin.ts"), "utf8")));
 const drawnInTheTranscript = [...new Set([chatView, ...chatViewImports, ...rendererPlugins.flatMap(sourceFiles)])];
 
 describe("regions drawn in the transcript chain to it", () => {
-  it("finds the components and renderer plugins it guards", () => {
-    expect({ components: chatViewImports.length > 3, plugins: rendererPlugins.length > 0 }).toEqual({ components: true, plugins: true });
+  /** Review ca45d6ed: a pattern that missed side-effect imports dropped the cards themselves while a count still passed. */
+  it("finds the cards, the message text and the renderer plugins it guards", () => {
+    const named = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+    expect({
+      components: ["AskUserCard.ts", "ExtensionDialogCard.ts", "FormattedText.ts", "ToolExecutionView.ts"].filter((name) => !drawnInTheTranscript.map(named).includes(name)),
+      plugins: rendererPlugins.length > 0,
+    }).toEqual({ components: [], plugins: true });
   });
 
   it.each(drawnInTheTranscript.map((path) => [path.slice(path.includes("/src/") ? path.indexOf("/src/") + 1 : path.indexOf("/pi-web-plugins/") + 1), path]))("%s declares no vertical overscroll containment", (_name, path) => {
