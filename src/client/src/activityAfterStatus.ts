@@ -16,8 +16,8 @@ export function activityOutlivesStatus(activity: SessionActivity | undefined, st
  * status said idle (review of 2dcf8caa). `keeps` names the activities the read cannot speak for: one
  * applied from a frame while the read was on its way, or a session this page is still starting.
  *
- * A status also brings the session's latest activity, and a session the page knows none for takes
- * it, as a live status does (`statusActivityToAdopt`). Without that a page loaded after a session
+ * A status also brings the session's latest activity, and the page takes it when it knows none for
+ * the session or holds an earlier one, as a live status does (`statusActivityToAdopt`). Without that a page loaded after a session
  * failed never learned the failure: every session but the selected one read idle in the switcher and
  * on the Go to page, while a page open at the time said error (B14, probe-one-classifier.mjs).
  * `adopts` names the sessions the read may teach; the selected session learns from its own status
@@ -41,11 +41,20 @@ export function activitiesAfterStatuses(
 }
 
 /**
- * The activity a status brings, taken only when the page knows none for the
- * session: a page that opens in the middle of a long step learns it here,
- * before the next frame (B25). A live frame already seen is newer and stays.
+ * The activity a status brings, taken when the page knows none for the session or holds an earlier
+ * one: a page that opens in the middle of a long step learns it here, before the next frame (B25),
+ * and a page that missed a frame while its socket was down learns what happened, such as a failure
+ * after the idle it holds (review bd7a6a81). A frame as new or newer stays. Both stamps are the
+ * daemon's, so they compare.
  */
 export function statusActivityToAdopt(known: SessionActivity | undefined, status: SessionStatus): SessionActivity | undefined {
-  if (known !== undefined || status.activity === undefined) return undefined;
-  return activityOutlivesStatus(status.activity, status) ? undefined : status.activity;
+  const brought = status.activity;
+  if (brought === undefined || activityOutlivesStatus(brought, status)) return undefined;
+  return known === undefined || stampedLater(brought.at, known.at) ? brought : undefined;
+}
+
+function stampedLater(at: string, than: string): boolean {
+  const atMs = Date.parse(at);
+  const thanMs = Date.parse(than);
+  return Number.isFinite(atMs) && (!Number.isFinite(thanMs) || atMs > thanMs);
 }

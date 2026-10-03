@@ -39,6 +39,24 @@ describe("activitiesAfterStatuses (state-diagram D3)", () => {
     expect(after).toEqual({ known: idleActivity("known"), failed });
   });
 
+  it("replaces an activity the page holds when the status brings a later one, and keeps it otherwise (review bd7a6a81)", () => {
+    const at = (seconds: number): string => new Date(Date.parse("2026-10-01T00:00:00.000Z") + seconds * 1000).toISOString();
+    const held = (sessionId: string): SessionActivity => ({ ...idleActivity(sessionId), at: at(10) });
+    const failure = (sessionId: string, seconds: number): SessionActivity => ({ sessionId, phase: "error", label: "bash complete", at: at(seconds) });
+    const after = activitiesAfterStatuses(
+      { later: held("later"), same: held("same"), earlier: held("earlier"), unstamped: { ...held("unstamped"), at: "not a time" } },
+      {
+        later: { ...status("later", false), activity: failure("later", 20) },
+        same: { ...status("same", false), activity: failure("same", 10) },
+        earlier: { ...status("earlier", false), activity: failure("earlier", 5) },
+        unstamped: { ...status("unstamped", false), activity: failure("unstamped", 5) },
+      },
+      { retractsMissing: false, adopts: () => true },
+    );
+
+    expect(Object.fromEntries(Object.entries(after).map(([sessionId, activity]) => [sessionId, activity.phase]))).toEqual({ later: "error", same: "idle", earlier: "idle", unstamped: "error" });
+  });
+
   it("keeps an active activity with no status unless the caller replaces what it knew", () => {
     const activities = { unlisted: active("unlisted") };
     expect({
