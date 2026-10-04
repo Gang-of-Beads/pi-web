@@ -29,6 +29,10 @@ SESSIOND_TMUX=pi-web-8505-sessiond
 WEB_TMUX=pi-web-8505-web
 BASE_URL="http://127.0.0.1:$PORT"
 READY_TIMEOUT_SECONDS=120
+# The user config (~/.config/pi-web/config.json) is shared with 8504 and may be
+# read-only (sops-rendered). PI_WEB_8505_CONFIG points this stack at its own
+# writable copy, so Settings saves can be exercised without touching 8504's.
+CONFIG_ENV="${PI_WEB_8505_CONFIG:+PI_WEB_CONFIG=$PI_WEB_8505_CONFIG }"
 
 usage() {
   sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -178,7 +182,7 @@ start_stack() {
   # in the tmux pane - killed pane, lost cause. Every run appends to a log so a
   # crash leaves evidence; the pane stays for interactive watching.
   tmux new-session -d -s "$SESSIOND_TMUX" -c "$REPO_ROOT" \
-    "PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET PI_WEB_UI_CUSTOM_PROBE=${PI_WEB_UI_CUSTOM_PROBE:-1} PI_WEB_DEBUG_FRAME_DROP=${PI_WEB_DEBUG_FRAME_DROP:-0} PI_WEB_DEBUG_PROMPT_CAPTURE=${PI_WEB_DEBUG_PROMPT_CAPTURE:-0} node dist/server/sessiond.js 2>&1 | tee -a $DATA_DIR/logs/sessiond.log"
+    "${CONFIG_ENV}PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET PI_WEB_UI_CUSTOM_PROBE=${PI_WEB_UI_CUSTOM_PROBE:-1} PI_WEB_DEBUG_FRAME_DROP=${PI_WEB_DEBUG_FRAME_DROP:-0} PI_WEB_DEBUG_PROMPT_CAPTURE=${PI_WEB_DEBUG_PROMPT_CAPTURE:-0} node dist/server/sessiond.js 2>&1 | tee -a $DATA_DIR/logs/sessiond.log"
   tmux set-option -t "$SESSIOND_TMUX" remain-on-exit on >/dev/null
   local waited=0
   while [ ! -S "$SOCKET" ]; do
@@ -191,7 +195,7 @@ start_stack() {
     waited=$((waited + 1))
   done
   tmux new-session -d -s "$WEB_TMUX" -c "$REPO_ROOT" \
-    "PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET PI_WEB_PORT=$PORT node dist/server/index.js 2>&1 | tee -a $DATA_DIR/logs/web.log"
+    "${CONFIG_ENV}PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET PI_WEB_PORT=$PORT node dist/server/index.js 2>&1 | tee -a $DATA_DIR/logs/web.log"
   tmux set-option -t "$WEB_TMUX" remain-on-exit on >/dev/null
 }
 
