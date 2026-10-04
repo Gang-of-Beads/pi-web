@@ -15,6 +15,7 @@ import { bootstrapAndFreezeGlobalExtensionProviders } from "./daemon/sessions/gl
 import { registerAuthRoutes } from "./daemon/sessions/authRoutes.js";
 import { ModelCatalogRefresher } from "./daemon/sessions/modelCatalogRefresher.js";
 import { PiSessionService } from "./daemon/sessions/piSessionService.js";
+import { installPlainGlobalTheme } from "./daemon/sessions/piGlobalTheme.js";
 import { createPiSessionManagerGateway } from "./daemon/sessions/piSessionManagerGateway.js";
 import { registerSessionRoutes } from "./daemon/sessions/sessionRoutes.js";
 import { registerChangeNudgeRoutes } from "./daemon/realtime/changeNudgeRoutes.js";
@@ -212,6 +213,7 @@ async function createSessionDaemonRuntime() {
     // the projection, the projection reads the record. The notification runs
     // long after both are constructed.
     const workspaceActivity = new WorkspaceActivityService(() => { machineStatus.notifyChanged(); });
+    installPlainGlobalTheme();
     const auth = await AuthService.create({ agentDir: activeAgentProfile.dir, logger: app.log });
     // Capture providers registered by global extensions while the runtime is
     // still mutable, then freeze every later extension-provider mutation before
