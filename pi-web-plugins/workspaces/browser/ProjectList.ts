@@ -7,7 +7,7 @@ import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
-import { renderHostCloseIcon, renderHostDisclosureIcon, adoptWorkspacesHostStyles } from "./hostUi";
+import { renderHostCloseIcon, renderHostDisclosureIcon, adoptWorkspacesHostStyles, confirmWithHost } from "./hostUi";
 
 export class ProjectList extends LitElement implements KeyboardNavigableSection {
   protected override createRenderRoot(): HTMLElement | DocumentFragment {
@@ -129,7 +129,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
                   <button class="action-menu-toggle" title="Project actions" aria-label=${`Actions for ${project.name}`} @click=${(event: MouseEvent) => { event.stopPropagation(); this.toggleMenu(project.id, event.currentTarget); }}>⋯</button>
                   ${this.openMenuProjectId === project.id ? html`
                     <div class="action-menu-panel" style=${this.menuStyle}>
-                      <button title="Close project" @click=${() => { this.close(project); }}>Close</button>
+                      <button title="Close project" @click=${() => { void this.close(project); }}>Close</button>
                     </div>
                   ` : null}
                 </div>
@@ -251,9 +251,10 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     this.openMenuProjectId = projectId;
   }
 
-  private close(project: NavProjectSnapshot) {
+  private async close(project: NavProjectSnapshot) {
     this.openMenuProjectId = undefined;
-    if (confirm(`Close ${project.name}?\n\nThis only removes it from PI WEB; it will not change the project folder.`)) this.onClose?.(project);
+    const confirmed = await confirmWithHost({ title: `Close ${project.name}?`, message: "This only removes it from PI WEB; the project folder does not change.", confirmLabel: "Close project", tone: "danger" });
+    if (confirmed) this.onClose?.(project);
   }
 
   static override styles = [css`

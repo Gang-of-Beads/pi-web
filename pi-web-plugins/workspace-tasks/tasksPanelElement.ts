@@ -1,4 +1,4 @@
-import type { WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
+import type { PluginConfirmRequest, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { TASKS_CONFIG_PATH, type WorkspaceTask } from "./config.js";
 import { runWorkspaceTaskInTerminal } from "./taskRunner.js";
 import { loadWorkspaceTasksConfig, tasksConfigRefreshHint, tasksConfigUnavailableMessage, type WorkspaceTasksConfigLoadResult } from "./workspaceTasksClient.js";
@@ -34,6 +34,8 @@ export class TasksPanelLink {
   /** The loaded configurations, per machine, project and workspace; the panel writes, the badge reads. */
   readonly configs: ConfigCache = new Map();
   private panel: PiWebTasksPanel | undefined;
+
+  constructor(readonly confirm?: (request: PluginConfirmRequest) => Promise<boolean>) {}
 
   attach(panel: PiWebTasksPanel): void {
     this.panel = panel;
@@ -178,13 +180,20 @@ class PiWebTasksPanel extends HTMLElement {
     this.render();
   }
 
+  private confirmRun(task: WorkspaceTask): Promise<boolean> {
+    const request = { title: `Run ${task.title}?`, message: task.command, confirmLabel: "Run" };
+    const confirm = this.link?.confirm;
+    if (confirm !== undefined) return confirm(request);
+    return Promise.resolve(globalThis.confirm(`${request.title}\n\n${request.message}`));
+  }
+
   private async dispatchTask(context: WorkspacePanelContext, task: WorkspaceTask): Promise<void> {
     if (this.runningTaskId !== undefined) {
       this.status = { kind: "info", message: "Another task is already starting. Wait for it to finish dispatching, then try again." };
       this.render();
       return;
     }
-    if (task.confirm && !window.confirm(`Run ${task.title}?\n\n${task.command}`)) {
+    if (task.confirm && !(await this.confirmRun(task))) {
       this.status = { kind: "info", message: `Cancelled ${task.title}.` };
       this.render();
       return;

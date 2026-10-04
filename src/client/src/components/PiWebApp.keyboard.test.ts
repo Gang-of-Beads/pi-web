@@ -315,6 +315,7 @@ function fakeFilesHostUi(): PluginHostUi {
     textStyles: [],
     registerModal: (registration) => registerRenderedModal({ ...registration, focus: registration.focus ?? (() => undefined) }),
     showDialog: () => ({ close: () => undefined }),
+    confirm: () => Promise.resolve(false),
     query: { read: () => undefined, write: () => undefined },
   };
 }

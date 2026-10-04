@@ -5,9 +5,9 @@ import { defineTasksPanelElement, TasksPanelLink } from "./tasksPanelElement.js"
 const plugin: PiWebPlugin = {
   apiVersion: 2,
   name: "Tasks",
-  activate: ({ runtimePluginId, html, svg }) => {
+  activate: ({ runtimePluginId, html, svg, ui }) => {
     defineTasksPanelElement();
-    const link = new TasksPanelLink();
+    const link = new TasksPanelLink(ui?.confirm);
 
     return {
       contributions: {

@@ -48,6 +48,7 @@ import { sessionTargetView, type SessionTargetNames } from "../sessionTargetView
 import { recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { keyboardInset, visualViewportOffsetTop } from "../appShell/keyboardInset";
 import { machineSessionKey, machineWorkspaceKey } from "../machineKeys";
+import { askConfirmation, confirmationText, type ConfirmRequest } from "../confirmDialog";
 import { commandsForSession } from "../commandLedger";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
 import { routedWorkspaceTool } from "../routedWorkspaceTool";
@@ -134,6 +135,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   /* The fullscreen presentation is the plugin page form: edge-to-edge, no
      card chrome, so content authored against a large canvas survives direct
      load instead of being squeezed into the centered overlay card. */
+  .plugin-dialog-alert { --modal-surface-width: min(480px, calc(100vw - 40px)); --modal-surface-max-height: calc(100vh - 40px); }
   .plugin-dialog-fullscreen { --modal-surface-width: 100%; --modal-surface-height: 100%; --modal-surface-max-height: 100%; --modal-surface-radius: 0; --modal-surface-border: 0; --modal-surface-shadow: none; }
   /* Motion is decoration here: scroll shadows, hover fades, pulsing dots. A
      reader who asked the system for less motion gets none of it. */
@@ -2728,6 +2730,10 @@ export class PiWebApp extends LitElement {
    * its close callbacks; the shell owns the surface, the modal-layer frame,
    * and the back gesture, exactly as for its own dialogs.
    */
+  private confirm(request: ConfirmRequest): Promise<boolean> {
+    return askConfirmation({ showDialog: (dialog) => this.openPluginDialog(dialog) }, request);
+  }
+
   private openPluginDialog(dialog: PluginDialog): PluginDialogHandle {
     const id = ++this.pluginDialogSeq;
     const entry: PluginDialogEntry = {
@@ -2896,6 +2902,7 @@ export class PiWebApp extends LitElement {
       await writeClipboardText(project.path);
       return;
     }
+    if (!(await this.confirm({ title: `Close ${project.name}?`, message: "This only removes it from PI WEB; the project folder does not change.", confirmLabel: "Close project", tone: "danger" }))) return;
     await this.projects.closeProject(project.id);
   }
 
@@ -2906,7 +2913,7 @@ export class PiWebApp extends LitElement {
    * removes the transcript file (owner, 2026-09-30: archive first, then delete).
    */
   private async changeArchiveState(action: "archive" | "restore" | "delete-archived", session: SessionInfo): Promise<void> {
-    if (action === "delete-archived" && !confirm(`Permanently delete archived session “${sessionLabel(session)}”? This cannot be undone.`)) return;
+    if (action === "delete-archived" && !(await this.confirm({ title: `Delete “${sessionLabel(session)}” permanently?`, message: "The archived session and its transcript file are removed. This cannot be undone.", confirmLabel: "Delete permanently", tone: "danger" }))) return;
     if (action === "archive") await this.sessions.archiveSessions([session]);
     else if (action === "restore") await this.sessions.restoreSession(session);
     else await this.sessions.deleteArchivedSessions([session]);
@@ -3875,7 +3882,7 @@ export class PiWebApp extends LitElement {
     if (isWorkspaceDeletionPending(this.state, workspace)) return;
     const removal = workspace.removal;
     const confirmation = workspaceRemovalConfirmation(workspace);
-    if (removal === undefined || confirmation === undefined || !confirm(confirmation)) return;
+    if (removal === undefined || confirmation === undefined || !(await this.confirm({ ...confirmationText(confirmation), confirmLabel: "Delete workspace", tone: "danger" }))) return;
 
     const machineId = selectedMachineId(this.state);
     const intent = this.navigation.latest();
@@ -4030,7 +4037,7 @@ export class PiWebApp extends LitElement {
 
   private async removeMachine(machine: Machine | undefined = this.state.selectedMachine): Promise<void> {
     if (machine === undefined || machine.kind === "local") return;
-    if (!window.confirm(`Remove ${machine.name}?\n\nThis only removes it from this PI WEB gateway.`)) return;
+    if (!(await this.confirm({ title: `Remove ${machine.name}?`, message: "This only removes it from this PI WEB gateway; nothing on that machine changes.", confirmLabel: "Remove", tone: "danger" }))) return;
     const wasSelected = this.state.selectedMachine?.id === machine.id;
     if (wasSelected) this.rememberCurrentMachineNavigation();
     const fallback = await this.machines.deleteMachine(machine, { selectFallback: !wasSelected });
@@ -4736,10 +4743,10 @@ export class PiWebApp extends LitElement {
         ></quick-switcher>` : null}
         ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
         ${this.renderSessionTreeNavigator(state)}
-        ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
+        ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onConfirm=${(request: ConfirmRequest) => this.confirm(request)} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
         ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
-        ${this.pluginDialogs.map((entry) => html`<div class="plugin-dialog${entry.dialog.presentation === "fullscreen" ? " plugin-dialog-fullscreen" : ""}"><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
+        ${this.pluginDialogs.map((entry) => html`<div class=${PLUGIN_DIALOG_CLASS[entry.dialog.presentation ?? "overlay"]}><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
       ${this.contextSheetOpen ? html`<context-switcher-sheet
         .title=${[state.selectedMachine?.name, state.selectedProject?.name].filter((part) => part !== undefined && part !== "").join(" · ") || "Projects"}
@@ -4762,6 +4769,12 @@ export class PiWebApp extends LitElement {
 
   static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, appStyles];
 }
+
+const PLUGIN_DIALOG_CLASS: Record<NonNullable<PluginDialog["presentation"]>, string> = {
+  overlay: "plugin-dialog",
+  fullscreen: "plugin-dialog plugin-dialog-fullscreen",
+  alert: "plugin-dialog plugin-dialog-alert",
+};
 
 function createPluginRegistry(dialogHost: PluginDialogHost, readPiWebStatus: (machineId: string) => Promise<unknown>): PluginRegistry {
   const registry = new PluginRegistry({

@@ -8,6 +8,7 @@ import { registerRenderedModal } from "../components/modalLayerRegistry";
 import { readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
 import { renderWorkspaceMarkdownHtml } from "../formatting/workspaceMarkdown";
 import { describeError } from "../notice";
+import { askConfirmation } from "../confirmDialog";
 import type { PluginDialog, PluginDialogHandle, PluginHostUi } from "./types";
 
 /**
@@ -55,6 +56,10 @@ export function createPluginHostUi(dialogHost?: PluginDialogHost): PluginHostUi 
     showDialog: (dialog) => {
       if (dialogHost === undefined) throw new Error("This host does not present plugin dialogs.");
       return dialogHost.showDialog(dialog);
+    },
+    confirm: (request) => {
+      if (dialogHost === undefined) throw new Error("This host does not present plugin dialogs.");
+      return askConfirmation(dialogHost, request);
     },
     query: {
       read: (namespace, key) => readNamespacedString(namespace, key),

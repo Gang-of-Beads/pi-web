@@ -1,4 +1,4 @@
-import type { PluginHostUi } from "@gang-of-beads/pi-web/plugin-api";
+import type { PluginConfirmRequest, PluginHostUi } from "@gang-of-beads/pi-web/plugin-api";
 
 /**
  * What this plugin actually consumes from the host: the shell-owned styles
@@ -6,7 +6,7 @@ import type { PluginHostUi } from "@gang-of-beads/pi-web/plugin-api";
  * plugin's real dependencies visible and lets tests stand a host in with
  * just these faces.
  */
-export type WorkspacesHostUi = Pick<PluginHostUi, "surfaceStyles" | "renderDisclosureIcon" | "renderCloseIcon" | "listStyles" | "showDialog" | "adoptSheets">;
+export type WorkspacesHostUi = Pick<PluginHostUi, "surfaceStyles" | "renderDisclosureIcon" | "renderCloseIcon" | "listStyles" | "showDialog" | "adoptSheets" | "confirm">;
 
 /**
  * The host utilities and context actions this plugin was activated with.
@@ -39,6 +39,13 @@ export function adoptWorkspacesHostStyles(root: ShadowRoot): void {
 
 export function workspacesHostUi(): WorkspacesHostUi | undefined {
   return hostUi;
+}
+
+/** The host's own confirmation dialog; a host too old to have one falls back to the browser's. */
+export async function confirmWithHost(request: PluginConfirmRequest): Promise<boolean> {
+  const confirm = workspacesHostUi()?.confirm;
+  if (confirm !== undefined) return confirm(request);
+  return globalThis.confirm(request.message === "" ? request.title : `${request.title}\n\n${request.message}`);
 }
 
 /**

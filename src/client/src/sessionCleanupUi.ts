@@ -1,3 +1,4 @@
+import type { ConfirmRequest } from "./confirmDialog";
 import type { SessionCleanupPreviewResponse, SessionCleanupRequest } from "./api";
 
 export interface SessionCleanupDraft {
@@ -93,18 +94,19 @@ export function sessionCleanupPreviewForSelectedProjects(preview: SessionCleanup
   };
 }
 
-export function confirmSessionCleanup(preview: Pick<SessionCleanupPreviewResponse, "totals">, confirmCleanup: (message: string) => boolean): boolean {
-  return confirmCleanup(sessionCleanupConfirmationMessage(preview));
-}
-
-export function sessionCleanupConfirmationMessage(preview: Pick<SessionCleanupPreviewResponse, "totals">): string {
+export function sessionCleanupConfirmation(preview: Pick<SessionCleanupPreviewResponse, "totals">): ConfirmRequest {
   const archiveCount = preview.totals.archiveCount;
   const deleteCount = preview.totals.deleteCount;
   const parts: string[] = [];
   if (archiveCount > 0) parts.push(`archive ${String(archiveCount)} idle ${archiveCount === 1 ? "session" : "sessions"}`);
   if (deleteCount > 0) parts.push(`permanently delete ${String(deleteCount)} archived ${deleteCount === 1 ? "session" : "sessions"}`);
   const action = parts.length === 0 ? "run cleanup" : parts.join(" and ");
-  return `Run cleanup and ${action}?\n\nPermanent deletion only applies to archived sessions and cannot be undone.`;
+  return {
+    title: `Run cleanup and ${action}?`,
+    message: "Permanent deletion only applies to archived sessions and cannot be undone.",
+    confirmLabel: "Run cleanup",
+    tone: deleteCount > 0 ? "danger" : "default",
+  };
 }
 
 function parseDayThreshold(value: string, label: string): number | string {

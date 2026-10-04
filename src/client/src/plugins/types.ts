@@ -59,6 +59,14 @@ export type PluginLifecycleEvent =
  */
 export type PluginSettings = Readonly<Record<string, unknown>>;
 
+/** What a plugin asks the reader to confirm (mirrors plugin-api.ts). */
+export interface PluginConfirmRequest {
+  readonly title: string;
+  readonly message: string;
+  readonly confirmLabel: string;
+  readonly tone?: "danger" | "default";
+}
+
 export interface PluginHostUi {
   readonly copyText: (text: string) => Promise<boolean>;
   readonly describeError: (error: unknown) => string;
@@ -92,6 +100,10 @@ export interface PluginHostUi {
    *  surface, focus, Escape, backdrop, and the back gesture; the plugin owns
    *  only the content and its close callbacks. */
   readonly showDialog: (dialog: PluginDialog) => PluginDialogHandle;
+  /** Ask the reader to confirm on the app's own dialog (B40), never `window.confirm`.
+   *  Resolves true only for the confirming key; Cancel, Escape, the backdrop and
+   *  the back gesture resolve false. */
+  readonly confirm: (request: PluginConfirmRequest) => Promise<boolean>;
   /** Namespaced query-string state the host keeps coordinated with route
    *  restoration. The namespace is the plugin's wire format for deep links. */
   readonly query: {
@@ -113,7 +125,9 @@ export interface PluginDialog {
    *  work at both presentations unless it pins one explicitly. Fullscreen
    *  covers the backdrop entirely, so the content MUST provide its own close
    *  control - Escape and the backdrop are overlay affordances only. */
-  readonly presentation?: "overlay" | "fullscreen";
+  /** `alert` is the compact centered card a confirmation uses: at most 480px wide and
+   *  never touching a phone's edges, like the app's own small dialogs. */
+  readonly presentation?: "overlay" | "fullscreen" | "alert";
   /** Called once for every close: Escape, backdrop, close(), or unregistration.
    *  On a fullscreen presentation only close() and unregistration fire. */
   readonly onClose?: () => void;
