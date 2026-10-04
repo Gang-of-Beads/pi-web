@@ -18,7 +18,7 @@ import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
 import { interactiveSurfaceStyles } from "./shared";
 import { actionMenuPanelStyle } from "./actionMenu.js";
-import { machineSessionKey } from "../machineKeys";
+import { machineSessionKey, machineWorkspaceKey } from "../machineKeys";
 import type { PendingNavigation } from "../navigationIntent";
 import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningWords } from "./openingMark";
 
@@ -128,9 +128,10 @@ export class QuickSwitcher extends LitElement {
             <h3>Workspaces</h3>
             <div class="rows">
               ${otherWorkspaces.map((workspace) => html`
-                <button class="row workspace-row" @click=${() => { this.selectWorkspace(workspace); }}>
+                <button class=${`row workspace-row ${isOpeningKey(this.opening, this.workspaceKey(workspace)) ? "opening" : ""}`} aria-busy=${isOpeningKey(this.opening, this.workspaceKey(workspace)) ? "true" : "false"} @click=${() => { this.selectWorkspace(workspace); }}>
                   <span class="row-title-line"><span class="row-title">${workspace.label}</span>${workspace.isMain ? html`<span class="row-tag" title="Main workspace" aria-label="Main workspace">main</span>` : nothing}</span>
-                  <span class="row-subtitle">${workspace.path}</span>
+                  <span class="row-subtitle">${renderOpeningWords(this.opening, this.workspaceKey(workspace)) ?? workspace.path}</span>
+                  ${isOpeningKey(this.opening, this.workspaceKey(workspace)) ? html`<span class="row-state">${renderOpeningSpinner()}</span>` : nothing}
                 </button>
               `)}
             </div>
@@ -445,6 +446,10 @@ export class QuickSwitcher extends LitElement {
 
   private rowKey(session: SessionInfo): string {
     return machineSessionKey(this.rowsMachineId, session.id);
+  }
+
+  private workspaceKey(workspace: Workspace): string {
+    return machineWorkspaceKey(this.rowsMachineId, workspace.projectId, workspace.id);
   }
 
   private selectWorkspace(workspace: Workspace): void {

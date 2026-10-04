@@ -47,7 +47,7 @@ import { placeSessionId, targetInScope, targetUnanswered, type ScopedSessionTarg
 import { sessionTargetView, type SessionTargetNames } from "../sessionTargetView";
 import { recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { keyboardInset, visualViewportOffsetTop } from "../appShell/keyboardInset";
-import { machineSessionKey } from "../machineKeys";
+import { machineSessionKey, machineWorkspaceKey } from "../machineKeys";
 import { commandsForSession } from "../commandLedger";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
 import { routedWorkspaceTool } from "../routedWorkspaceTool";
@@ -3070,9 +3070,25 @@ export class PiWebApp extends LitElement {
    * after an explicit pick would undo the tap the user just made.
    */
   private async openWorkspaceFromQuickSwitcher(workspace: Workspace): Promise<void> {
-    const seq = this.navigation.begin();
+    const key = machineWorkspaceKey(this.rowsMachineId(), workspace.projectId, workspace.id);
+    if (this.navigation.isOpening(key)) return;
+    const seq = this.navigation.begin({ key, label: workspace.label });
+    try {
+      await this.landOnWorkspace(workspace, seq);
+    } catch (error) {
+      this.navigation.fail(seq);
+      throw error;
+    }
+  }
+
+  /** The open behind a workspace tap. It settles or fails the tap's intent on every path, so the row never keeps an "Opening" that would swallow the next tap. */
+  private async landOnWorkspace(workspace: Workspace, seq: number): Promise<void> {
     const moved = await this.moveToBrowsedMachine({ updateUrl: false });
-    if (!moved) return;
+    if (!moved) {
+      this.navigation.fail(seq);
+      this.nameMachineAfterSupersededMove();
+      return;
+    }
     // selectWorkspace's landing guard requires the workspace's own project to
     // be selected; without it the returned session list is discarded and the
     // panel waits on "Loading sessions..." forever.
@@ -3082,11 +3098,19 @@ export class PiWebApp extends LitElement {
       this.nameMachineAfterSupersededMove();
       return;
     }
-    if (project === undefined) this.setState(noticePatch(noticeForReader("The project this workspace belongs to is not in the project list.")));
-    else if (this.state.selectedProject?.id !== project.id) await this.workspaces.selectProject(project, { workspaceId: workspace.id });
+    if (project === undefined) {
+      this.setState(noticePatch(noticeForReader("The project this workspace belongs to is not in the project list.")));
+      this.navigation.fail(seq);
+      return;
+    }
+    if (this.state.selectedProject?.id !== project.id) await this.workspaces.selectProject(project, { workspaceId: workspace.id });
     else await this.workspaces.selectWorkspace(workspace);
-    if (this.navigation.isCurrent(seq)) this.updateUrl();
-    else this.nameMachineAfterSupersededMove();
+    if (!this.navigation.isCurrent(seq)) {
+      this.nameMachineAfterSupersededMove();
+      return;
+    }
+    this.updateUrl();
+    this.navigation.settle(seq);
   }
 
   /**
