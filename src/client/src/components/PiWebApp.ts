@@ -3134,6 +3134,7 @@ export class PiWebApp extends LitElement {
     if (project === undefined) {
       this.setState(noticePatch(noticeForReader("The project this workspace belongs to is not in the project list.")));
       this.navigation.fail(seq);
+      this.updateUrl();
       return;
     }
     if (this.state.selectedProject?.id !== project.id) await this.workspaces.selectProject(project, { workspaceId: workspace.id });
