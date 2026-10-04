@@ -189,7 +189,7 @@ async function withProfileDependency<T>(reply: FastifyReply, operation: () => Pr
 }
 
 export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: deps.logger ?? true, ...(deps.bodyLimit === undefined ? {} : { bodyLimit: deps.bodyLimit }) });
+  const app = Fastify({ logger: deps.logger ?? true, disableRequestLogging: true, ...(deps.bodyLimit === undefined ? {} : { bodyLimit: deps.bodyLimit }) });
   // Vite proxies development API requests here, while production and machine-scoped
   // API requests already terminate here, so this is the shared browser HTTP edge.
   await app.register(fastifyCompress, {

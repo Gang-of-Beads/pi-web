@@ -12,6 +12,30 @@ export interface MachineAccessConfigDraft {
   uploadDefaultFolder: string;
 }
 
+/** The Logs card's fields as typed; numbers stay text until saved. */
+export interface MachineLoggingDraft {
+  level: "errors" | "requests" | "debug";
+  maxFileMb: string;
+  keepFiles: string;
+}
+
+export function machineLoggingDraftFromConfig(config: PiWebConfigValues): MachineLoggingDraft {
+  return {
+    level: config.logging?.level ?? "errors",
+    maxFileMb: String(config.logging?.maxFileMb ?? 50),
+    keepFiles: String(config.logging?.keepFiles ?? 3),
+  };
+}
+
+/** The logging patch for a draft, or the reason it cannot be saved. */
+export function machineLoggingPatchFromDraft(draft: MachineLoggingDraft): { ok: true; patch: PiWebConfigValues } | { ok: false; error: string } {
+  const maxFileMb = Number(draft.maxFileMb.trim());
+  const keepFiles = Number(draft.keepFiles.trim());
+  if (!Number.isInteger(maxFileMb) || maxFileMb < 1) return { ok: false, error: "Largest log file must be a whole number of megabytes, at least 1." };
+  if (!Number.isInteger(keepFiles) || keepFiles < 1 || keepFiles > 20) return { ok: false, error: "Older copies kept must be a whole number from 1 to 20." };
+  return { ok: true, patch: { logging: { level: draft.level, maxFileMb, keepFiles } } };
+}
+
 export function emptyGatewayServerConfigDraft(): GatewayServerConfigDraft {
   return { host: "", port: "", allowedHostsMode: "list", allowedHostsText: "" };
 }

@@ -97,6 +97,8 @@ export interface PiWebConfigValues {
     uploads?: PiWebUploadsConfig;
     /** Maximum accepted HTTP request body size in bytes (uploads/attachments). */
     maxUploadBytes?: number;
+    /** What the web and session daemon logs record, and how much of them stays on disk. */
+    logging?: PiWebLoggingConfig;
     /**
      * When true, LLMs can post a question set to the browser via the ask_user
      * tool. On by default; set to `false` to remove the tool from the runtime.
@@ -117,6 +119,16 @@ export interface PiWebConfigValues {
     extensionDialogsTimeoutMs?: number;
     /** Deprecated agent-configuration keys, still honored as aliases during the deprecation window and detected for the deprecation warning (see PiWebAgentConfig). */
     agent?: PiWebAgentConfig;
+}
+/**
+ * `level`: `errors` records failed (5xx) and slow requests, `requests` every request, `debug`
+ * every request and debug messages. `maxFileMb` and `keepFiles`: a log file larger than
+ * `maxFileMb` is moved to `<name>.1` and started again; `keepFiles` older copies are kept.
+ */
+export interface PiWebLoggingConfig {
+    level?: "errors" | "requests" | "debug";
+    maxFileMb?: number;
+    keepFiles?: number;
 }
 export type PiWebPluginScope = "bundled" | "local" | "user" | "project";
 export declare const PI_WEB_PLUGIN_LIFECYCLE_VERSION = 1;

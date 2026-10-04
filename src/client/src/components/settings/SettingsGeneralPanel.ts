@@ -13,6 +13,9 @@ import {
   machineAccessDraftFromConfig,
   type GatewayServerConfigDraft,
   type MachineAccessConfigDraft,
+  machineLoggingDraftFromConfig,
+  machineLoggingPatchFromDraft,
+  type MachineLoggingDraft,
 } from "./settingsConfigDraft";
 import { describeError } from "../../notice";
 import { interactiveSurfaceStyles } from "../shared";
@@ -36,8 +39,12 @@ export class SettingsGeneralPanel extends LitElement {
   @property({ attribute: false }) onReloadMachine?: () => void | Promise<void>;
   @property({ attribute: false }) onSave?: (config: PiWebConfigValues) => void | Promise<void>;
   @property({ attribute: false }) onSaveMachineConfig?: (config: PiWebConfigValues) => void | Promise<void>;
+  /** Saves the Logs card; rejects with the reason, which the card shows itself. */
+  @property({ attribute: false }) onSaveMachineLogging?: (config: PiWebConfigValues) => Promise<void>;
   @state() private gatewayDraft: GatewayServerConfigDraft = emptyGatewayServerConfigDraft();
   @state() private machineDraft: MachineAccessConfigDraft = emptyMachineAccessConfigDraft();
+  @state() private loggingDraft: MachineLoggingDraft = machineLoggingDraftFromConfig({});
+  @state() private loggingError = "";
   @state() private gatewayLocalError = "";
   @state() private machineLocalError = "";
 
@@ -48,7 +55,9 @@ export class SettingsGeneralPanel extends LitElement {
     }
     if (changed.has("machineConfigResponse") && this.machineConfigResponse !== undefined) {
       this.machineDraft = machineAccessDraftFromConfig(this.machineConfigResponse.config);
+      this.loggingDraft = machineLoggingDraftFromConfig(this.machineConfigResponse.effectiveConfig);
       this.machineLocalError = "";
+      this.loggingError = "";
     }
   }
 
@@ -65,6 +74,7 @@ export class SettingsGeneralPanel extends LitElement {
         <div class="settings-sections">
           ${this.renderGatewayServerSettings()}
           ${this.renderSelectedMachineAccessSettings()}
+          ${this.renderSelectedMachineLogging()}
         </div>
       </settings-panel-frame>
     `;
@@ -168,6 +178,69 @@ export class SettingsGeneralPanel extends LitElement {
         `}
       </section>
     `;
+  }
+
+/**
+   * What this machine's web and session daemon logs record, and how much stays on disk (owner,
+   * 2026-10-04). Saved in the machine's config; both processes pick it up within a minute.
+   */
+  private renderSelectedMachineLogging(): TemplateResult {
+    const config = this.machineConfigResponse;
+    return html`
+      <section class="settings-card" aria-label="Selected machine logs">
+        <div class="card-heading">
+          <h3>Logs</h3>
+          <p>What the PI WEB web and session daemon logs on ${this.targetLabel} record, and how much of them stays on disk. Changes apply within a minute, without a restart.</p>
+        </div>
+        ${this.loggingError === "" ? null : html`<div class="message error-message">${this.loggingError}</div>`}
+        ${config === undefined ? html`<div class="loading-card">${this.machineLoading ? "Loading selected-machine log settings…" : "Selected-machine log settings are unavailable. Reload before saving."}</div>` : html`
+          <form class="config-form" @submit=${(event: Event) => { void this.saveMachineLogging(event); }}>
+            <label class="field">
+              <span class="field-heading"><span>What to record</span></span>
+              <select .value=${this.loggingDraft.level} @change=${(event: Event) => { this.updateLoggingDraft({ level: loggingLevelValue(event) }); }}>
+                <option value="errors" ?selected=${this.loggingDraft.level === "errors"}>Failures and slow requests</option>
+                <option value="requests" ?selected=${this.loggingDraft.level === "requests"}>Every request</option>
+                <option value="debug" ?selected=${this.loggingDraft.level === "debug"}>Every request and debug messages</option>
+              </select>
+              <small>Failures are requests that answered with a server error; slow ones took a second or more. Every request writes one line each.</small>
+            </label>
+            <label class="field">
+              <span class="field-heading"><span>Largest log file (MB)</span></span>
+              <input inputmode="numeric" .value=${this.loggingDraft.maxFileMb} autocomplete="off" @input=${(event: Event) => { this.updateLoggingDraft({ maxFileMb: inputValue(event) }); }}>
+              <small>A log file larger than this is moved aside as <code>web.log.1</code> or <code>sessiond.log.1</code> and started again.</small>
+            </label>
+            <label class="field">
+              <span class="field-heading"><span>Older copies kept</span></span>
+              <input inputmode="numeric" .value=${this.loggingDraft.keepFiles} autocomplete="off" @input=${(event: Event) => { this.updateLoggingDraft({ keepFiles: inputValue(event) }); }}>
+              <small>How many moved-aside copies stay; the oldest beyond this is deleted.</small>
+            </label>
+            <footer class="form-actions">
+              <button class="primary" ?disabled=${this.machineLoading || this.saving}>${this.saving ? "Saving…" : "Save log settings"}</button>
+            </footer>
+          </form>
+        `}
+      </section>
+    `;
+  }
+
+  private async saveMachineLogging(event: Event): Promise<void> {
+    event.preventDefault();
+    const result = machineLoggingPatchFromDraft(this.loggingDraft);
+    if (!result.ok) {
+      this.loggingError = result.error;
+      return;
+    }
+    this.loggingError = "";
+    try {
+      await this.onSaveMachineLogging?.(result.patch);
+    } catch (error) {
+      this.loggingError = describeError(error);
+    }
+  }
+
+  private updateLoggingDraft(patch: Partial<MachineLoggingDraft>): void {
+    this.loggingDraft = { ...this.loggingDraft, ...patch };
+    this.loggingError = "";
   }
 
   private panelNotices(): readonly SettingsNotice[] {
@@ -275,6 +348,7 @@ export class SettingsGeneralPanel extends LitElement {
     .field { display: grid; gap: var(--pi-space-4); }
     .field-heading { display: flex; align-items: center; gap: var(--pi-space-4); }
     input, select, textarea { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5) var(--pi-space-5);  font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; }
+    select { padding-block: 0; }
     input:focus, select:focus, textarea:focus { border-color: var(--pi-accent); outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     textarea { resize: vertical; min-height: calc(var(--pi-control-height) * 3); font-family: var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     textarea:disabled { opacity: var(--pi-disabled-opacity); }
@@ -314,4 +388,11 @@ function selectValue(event: Event): string {
 
 function textAreaValue(event: Event): string {
   return event.target instanceof HTMLTextAreaElement ? event.target.value : "";
+}
+
+const LOGGING_LEVELS: readonly MachineLoggingDraft["level"][] = ["errors", "requests", "debug"];
+
+function loggingLevelValue(event: Event): MachineLoggingDraft["level"] {
+  const value = event.target instanceof HTMLSelectElement ? event.target.value : "";
+  return LOGGING_LEVELS.find((level) => level === value) ?? "errors";
 }

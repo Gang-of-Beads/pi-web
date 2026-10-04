@@ -99,6 +99,7 @@
             <a href="#keys">Config matrix</a>
             <a href="#path-access">External path access</a>
             <a href="#manual-uploads">Manual uploads</a>
+            <a href="#logs">Logs</a>
             <a href="#agent-runtime">Agent state directory</a>
             <a href="#pi-extension-provider-baseline">Pi extension providers</a>
             <a href="#catalog-refresh">Model catalog refresh</a>
@@ -183,6 +184,7 @@
                 <li><code>maxUploadBytes</code>: restart both the web/API process and the session daemon on that machine.</li>
                 <li><code>askUser</code> / <code>extensionDialogsTimeoutMs</code> / <code>environmentFacts</code>: restart the session daemon on that machine.</li>
                 <li><code>pathAccess</code>: applies on the next request; existing file views may need a browser refresh.</li>
+                <li><code>logging</code>: the web/API process and the session daemon re-read it within a minute; no restart.</li>
                 <li><code>uploads.defaultFolder</code>: applies to newly opened Files upload dialogs and new direct drag/drop batches after config/workspace refresh.</li>
                 <li><code>plugins</code>: browser-only changes apply after a tab reload. Any enablement, settings, source, or package-revision change affecting a <code>serverModule</code> requires a manual sessiond restart, then a tab reload for its paired UI.</li>
                 <li><code>serverPlugins.safeStart</code>: offline recovery state applied before server-plugin discovery/import on the next sessiond start; manage it with <code>pi-web plugins safe-start ...</code>.</li>
@@ -336,7 +338,7 @@ worktree_path="$1"
                 it, and whether project-local config overrides or merges with global config. Rows with JSON key
                 <code>—</code> are runtime-only environment variables, not config-file keys. <code>Global</code> means
                 machine-global. In Settings, selected-machine-safe global keys (<code>pathAccess</code>, <code>uploads</code>,
-                <code>maxUploadBytes</code>, <code>askUser</code>, and <code>plugins</code>)
+                <code>maxUploadBytes</code>, <code>askUser</code>, <code>logging</code>, and <code>plugins</code>)
                 are edited for the selected machine; gateway host/port/allowed-hosts, keyboard shortcuts, and machine
                 registry/tokens stay local.
               </p>
@@ -393,6 +395,14 @@ worktree_path="$1"
                       <td>Global + project</td>
                       <td><strong>Overrides:</strong> project value wins for workspaces in that project; otherwise global/default applies</td>
                       <td>New Upload dialogs and direct drag/drop batches after config/workspace refresh</td>
+                    </tr>
+                    <tr>
+                      <td>Log level and retention</td>
+                      <td><code>logging.level</code>, <code>logging.maxFileMb</code>, <code>logging.keepFiles</code></td>
+                      <td>—</td>
+                      <td>Global (web/API and session daemon)</td>
+                      <td>Not supported locally</td>
+                      <td>Within a minute, no restart</td>
                     </tr>
                     <tr>
                       <td>Upload/body limit</td>
@@ -635,6 +645,39 @@ worktree_path="$1"
                 For machine federation, Settings saves the global upload default on the selected machine. Remote
                 PI WEB servers always return workspace-effective upload defaults on workspace responses, and the Files
                 panel uses them as the default upload destination.
+              </p>
+            </section>
+
+            <section id="logs">
+              <h2>Logs</h2>
+              <p>
+                <code>logging</code> decides what the web/API and session daemon logs record and how much of them stays
+                on disk. Edit it in <strong>Settings → General → Logs</strong> for the selected machine, or in the
+                global config:
+              </p>
+              <pre><code>{
+  "logging": {
+    "level": "errors",
+    "maxFileMb": 50,
+    "keepFiles": 3
+  }
+}</code></pre>
+              <ul>
+                <li><code>level</code>: <code>errors</code> (default) records requests that failed with a server error or
+                  took a second or more; <code>requests</code> records every request; <code>debug</code> records every
+                  request and the processes' debug messages. Startup, shutdown, and error messages are recorded at every
+                  level.</li>
+                <li><code>maxFileMb</code> (default 50) and <code>keepFiles</code> (default 3): once
+                  <code>$PI_WEB_DATA_DIR/logs/web.log</code> or <code>sessiond.log</code> grows past
+                  <code>maxFileMb</code>, its last <code>maxFileMb</code> is copied to <code>web.log.1</code> (older copies
+                  move to <code>.2</code>, <code>.3</code>, …, and the oldest beyond <code>keepFiles</code> is removed),
+                  then the file is emptied in place. Only the tail is copied, so trimming a very large log does not need
+                  that much free disk.</li>
+              </ul>
+              <p>
+                Both processes check the setting and the file sizes once a minute. Retention applies to the log files the
+                installed launchd services write; on systemd, output that goes to the journal is kept by journald's own
+                settings instead.
               </p>
             </section>
 

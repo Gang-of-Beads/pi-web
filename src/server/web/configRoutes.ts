@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { loadPiWebConfig, parseAgentConfig, parseUploadsConfig, resolveEffectivePiWebConfig, savePiWebConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
+import { loadPiWebConfig, parseAgentConfig, parseLoggingConfig, parseUploadsConfig, resolveEffectivePiWebConfig, savePiWebConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
 import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues } from "../../shared/apiTypes.js";
 import { isPiWebPluginId } from "../../shared/pluginIds.js";
 
@@ -13,6 +13,7 @@ export const SELECTED_MACHINE_CONFIG_KEYS = [
   "pathAccess",
   "uploads",
   "maxUploadBytes",
+  "logging",
   "askUser",
   "agent",
 ] as const satisfies readonly (keyof PiWebConfigValues)[];
@@ -128,6 +129,7 @@ function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "curr
   const pathAccess = value["pathAccess"];
   const uploads = value["uploads"];
   const maxUploadBytes = value["maxUploadBytes"];
+  const logging = value["logging"];
   const askUser = value["askUser"];
   const agent = value["agent"];
   if (host !== undefined) {
@@ -144,6 +146,7 @@ function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "curr
   if (pathAccess !== undefined) config.pathAccess = parsePathAccessRequest(pathAccess);
   if (uploads !== undefined) config.uploads = parseUploadsConfig(uploads, "request");
   if (maxUploadBytes !== undefined) config.maxUploadBytes = parseMaxUploadBytesRequest(maxUploadBytes);
+  if (logging !== undefined) config.logging = parseLoggingConfig(logging, "request");
   if (askUser !== undefined) {
     if (typeof askUser !== "boolean") throw new Error("PI WEB config askUser must be a boolean");
     config.askUser = askUser;
@@ -158,6 +161,7 @@ function pickSelectedMachineConfig(config: PiWebConfigValues): PiWebConfig {
     ...(config.pathAccess !== undefined ? { pathAccess: config.pathAccess } : {}),
     ...(config.uploads !== undefined ? { uploads: config.uploads } : {}),
     ...(config.maxUploadBytes !== undefined ? { maxUploadBytes: config.maxUploadBytes } : {}),
+    ...(config.logging !== undefined ? { logging: config.logging } : {}),
     ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
   };

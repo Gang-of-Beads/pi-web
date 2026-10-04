@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
-import type { PiWebConfigValues, PiWebDeprecatedAgentInput } from "./shared/apiTypes.js";
+import type { PiWebConfigValues, PiWebDeprecatedAgentInput, PiWebLoggingConfig } from "./shared/apiTypes.js";
 import { isPiWebPluginId, piWebPluginIdPattern } from "./shared/pluginIds.js";
 
 export type PiWebConfig = PiWebConfigValues;
@@ -14,8 +14,9 @@ export interface LoadedPiWebConfig {
   deprecatedAgentInputs: readonly DeprecatedAgentInput[];
 }
 
-export interface EffectivePiWebConfig extends Omit<PiWebConfig, "uploads" | "askUser" | "dockerEnvironmentFacts" | "agent" | "extensionDialogsTimeoutMs"> {
+export interface EffectivePiWebConfig extends Omit<PiWebConfig, "uploads" | "askUser" | "dockerEnvironmentFacts" | "agent" | "extensionDialogsTimeoutMs" | "logging"> {
   uploads: NonNullable<PiWebConfig["uploads"]>;
+  logging: Required<PiWebLoggingConfig>;
   askUser: boolean;
   environmentFacts: boolean;
   extensionDialogsTimeoutMs: number;
@@ -129,6 +130,13 @@ export function detectDeprecatedAgentInputs(env: Readonly<NodeJS.ProcessEnv>, co
   return inputs;
 }
 
+/** The log settings with their defaults: failures and slow requests, 50 MB files, three copies kept. */
+export const DEFAULT_LOGGING: Required<PiWebLoggingConfig> = { level: "errors", maxFileMb: 50, keepFiles: 3 };
+
+export function effectiveLoggingConfig(config: Pick<PiWebConfig, "logging"> = {}): Required<PiWebLoggingConfig> {
+  return { ...DEFAULT_LOGGING, ...config.logging };
+}
+
 export function effectiveUploadsConfig(config: Pick<PiWebConfig, "uploads"> = {}): NonNullable<PiWebConfig["uploads"]> {
   return { defaultFolder: config.uploads?.defaultFolder ?? DEFAULT_UPLOADS_FOLDER };
 }
@@ -187,6 +195,7 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
       ...(allowedHosts !== undefined && allowedHosts !== "" ? { allowedHosts: parseAllowedHostsEnv(allowedHosts) } : {}),
       ...(maxUpload !== undefined && maxUpload !== "" ? { maxUploadBytes: parseMaxUploadBytes(maxUpload, "PI_WEB_MAX_UPLOAD_BYTES") } : {}),
       uploads: effectiveUploadsConfig(loaded.config),
+      logging: effectiveLoggingConfig(loaded.config),
       // Always resolved (on by default); the user is present for every ask.
       askUser: askUserEnabled(env, loaded.config),
       // Always resolved (on by default); inert outside Docker deployments.
@@ -213,6 +222,7 @@ export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}):
   delete existing["pathAccess"];
   delete existing["uploads"];
   delete existing["maxUploadBytes"];
+  delete existing["logging"];
   delete existing["askUser"];
   delete existing["respectProjectTrust"];
   delete existing["environmentFacts"];
@@ -240,6 +250,7 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
     ...(config.pathAccess !== undefined ? { pathAccess: config.pathAccess } : {}),
     ...(config.uploads !== undefined ? { uploads: config.uploads } : {}),
     ...(config.maxUploadBytes !== undefined ? { maxUploadBytes: config.maxUploadBytes } : {}),
+    ...(config.logging !== undefined ? { logging: config.logging } : {}),
     ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.environmentFacts !== undefined ? { environmentFacts: config.environmentFacts } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
@@ -257,6 +268,7 @@ function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebCo
     ...(value["pathAccess"] !== undefined ? { pathAccess: parsePathAccessConfig(value["pathAccess"], path) } : {}),
     ...(value["uploads"] !== undefined ? { uploads: parseUploadsConfig(value["uploads"], path) } : {}),
     ...(value["maxUploadBytes"] !== undefined ? { maxUploadBytes: parseMaxUploadBytes(value["maxUploadBytes"], "maxUploadBytes", path) } : {}),
+    ...(value["logging"] !== undefined ? { logging: parseLoggingConfig(value["logging"], path) } : {}),
     ...(value["askUser"] !== undefined ? { askUser: parseAskUser(value["askUser"], path) } : {}),
     ...(value["environmentFacts"] !== undefined ? { environmentFacts: parseBooleanKey(value["environmentFacts"], "environmentFacts", path) } : {}),
     ...(value["extensionDialogsTimeoutMs"] !== undefined ? { extensionDialogsTimeoutMs: parseExtensionDialogsTimeoutMs(value["extensionDialogsTimeoutMs"], path) } : {}),
@@ -425,6 +437,27 @@ export function parsePathAccessConfig(value: unknown, path: string): NonNullable
 function parseAllowedPaths(value: unknown, path: string): string[] {
   if (!isNonEmptyStringArray(value)) throw new Error(`PI WEB config pathAccess.allowedPaths must be an array of non-empty strings: ${path}`);
   return value;
+}
+
+const LOGGING_LEVELS: readonly string[] = ["errors", "requests", "debug"];
+
+function isLoggingLevel(value: unknown): value is NonNullable<PiWebLoggingConfig["level"]> {
+  return typeof value === "string" && LOGGING_LEVELS.includes(value);
+}
+
+export function parseLoggingConfig(value: unknown, path: string): PiWebLoggingConfig {
+  if (!isRecord(value)) throw new Error(`PI WEB config logging must be an object: ${path}`);
+  const level = value["level"];
+  const maxFileMb = value["maxFileMb"];
+  const keepFiles = value["keepFiles"];
+  if (level !== undefined && !isLoggingLevel(level)) throw new Error(`PI WEB config logging.level must be "errors", "requests" or "debug": ${path}`);
+  if (maxFileMb !== undefined && (typeof maxFileMb !== "number" || !Number.isInteger(maxFileMb) || maxFileMb < 1)) throw new Error(`PI WEB config logging.maxFileMb must be a whole number of megabytes, at least 1: ${path}`);
+  if (keepFiles !== undefined && (typeof keepFiles !== "number" || !Number.isInteger(keepFiles) || keepFiles < 1 || keepFiles > 20)) throw new Error(`PI WEB config logging.keepFiles must be a whole number from 1 to 20: ${path}`);
+  return {
+    ...(level !== undefined ? { level } : {}),
+    ...(typeof maxFileMb === "number" ? { maxFileMb } : {}),
+    ...(typeof keepFiles === "number" ? { keepFiles } : {}),
+  };
 }
 
 export function parseUploadsConfig(value: unknown, path: string): NonNullable<PiWebConfigValues["uploads"]> {

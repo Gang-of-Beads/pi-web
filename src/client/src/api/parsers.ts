@@ -1826,10 +1826,23 @@ function parsePiWebConfigValues(value: unknown): PiWebConfigValues {
     ...optionalField("pathAccess", optionalPathAccess(record["pathAccess"])),
     ...optionalField("uploads", optionalUploads(record["uploads"])),
     ...optionalField("maxUploadBytes", optionalNumber(record, "maxUploadBytes")),
+    ...optionalField("logging", optionalLogging(record["logging"])),
     ...optionalField("agent", optionalAgent(record["agent"])),
     ...optionalField("askUser", optionalBoolean(record, "askUser")),
     ...optionalField("environmentFacts", optionalBoolean(record, "environmentFacts")),
     ...optionalField("extensionDialogsTimeoutMs", optionalNumber(record, "extensionDialogsTimeoutMs")),
+  };
+}
+
+function optionalLogging(value: unknown): PiWebConfigValues["logging"] | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value) || Array.isArray(value)) throw new Error("Invalid PI WEB logging field");
+  const level = value["level"];
+  if (level !== undefined && level !== "errors" && level !== "requests" && level !== "debug") throw new Error("Invalid PI WEB logging level");
+  return {
+    ...optionalField("level", level),
+    ...optionalField("maxFileMb", optionalNumber(value, "maxFileMb")),
+    ...optionalField("keepFiles", optionalNumber(value, "keepFiles")),
   };
 }
 

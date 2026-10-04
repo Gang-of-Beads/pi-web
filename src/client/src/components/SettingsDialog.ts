@@ -374,6 +374,7 @@ export class SettingsDialog extends LitElement {
         .onReloadMachine=${() => this.loadAccessConfigForTarget()}
         .onSave=${(config: PiWebConfigValues) => this.saveConfig(config)}
         .onSaveMachineConfig=${(config: PiWebConfigValues) => this.saveMachineAccessConfig(config)}
+        .onSaveMachineLogging=${(config: PiWebConfigValues) => this.saveMachineLogging(config)}
       ></settings-general-panel>
     `;
   }
@@ -601,6 +602,25 @@ export class SettingsDialog extends LitElement {
       if (this.isCurrentSettingsTarget(target)) {
         this.accessError = `Failed to save file access/upload config on ${settingsMachineTargetLabel(target)}: ${friendlySelectedMachineSettingsErrorMessage(describeError(error), target)}`;
       }
+    } finally {
+      this.saving = false;
+    }
+  }
+
+/** The Logs card's save. A failure is thrown back to the card, which says it in place, instead of landing in another card's message. */
+  private async saveMachineLogging(config: PiWebConfigValues): Promise<void> {
+    if (this.saving) return;
+    const target = this.settingsTarget();
+    this.saving = true;
+    this.savedMessage = "";
+    try {
+      const response = await configApi.saveConfig(config, target.id);
+      if (!this.isCurrentSettingsTarget(target)) return;
+      this.accessConfigResponse = response;
+      if (target.kind === "local" && this.configResponse !== undefined) this.configResponse = mergeSelectedMachineAccessConfig(this.configResponse, response);
+      this.showSavedMessage();
+    } catch (error) {
+      throw new Error(`Failed to save log settings on ${settingsMachineTargetLabel(target)}: ${friendlySelectedMachineSettingsErrorMessage(describeError(error), target)}`, { cause: error });
     } finally {
       this.saving = false;
     }

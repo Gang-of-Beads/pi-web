@@ -16,6 +16,7 @@ import { registerAuthRoutes } from "./daemon/sessions/authRoutes.js";
 import { ModelCatalogRefresher } from "./daemon/sessions/modelCatalogRefresher.js";
 import { PiSessionService } from "./daemon/sessions/piSessionService.js";
 import { installPlainGlobalTheme } from "./daemon/sessions/piGlobalTheme.js";
+import { startProcessLogging } from "./shared/logging/processLogging.js";
 import { createPiSessionManagerGateway } from "./daemon/sessions/piSessionManagerGateway.js";
 import { registerSessionRoutes } from "./daemon/sessions/sessionRoutes.js";
 import { registerChangeNudgeRoutes } from "./daemon/realtime/changeNudgeRoutes.js";
@@ -77,7 +78,8 @@ if (agentSessionDirOverride !== undefined) {
 // session can tell it runs inside this pi-web instance. The session
 // environment facts below explain the precautions that follow from it.
 process.env[PI_WEB_SESSION_ENV] = "1";
-const app = Fastify({ logger: true, bodyLimit: maxUploadBytes(daemonEnvironment, config) });
+const app = Fastify({ logger: true, disableRequestLogging: true, bodyLimit: maxUploadBytes(daemonEnvironment, config) });
+startProcessLogging(app, "sessiond.log");
 if (deprecatedAgentInputs.length > 0) {
   app.log.warn({ deprecatedAgentInputs }, "deprecated agent configuration inputs detected; support will be removed in a future release");
 }

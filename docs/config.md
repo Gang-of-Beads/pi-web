@@ -42,6 +42,7 @@ Process restarts depend on the key:
 - `askUser` / `extensionDialogsTimeoutMs` / `environmentFacts`: restart the session daemon on that machine.
 - `pathAccess`: applies on the next request; existing file views may need a browser refresh.
 - `uploads.defaultFolder`: applies to newly opened Files upload dialogs and new direct drag/drop batches after config/workspace refresh.
+- `logging`: the web/API process and the session daemon re-read it within a minute; no restart.
 - `plugins`: browser-only changes apply after a browser-tab reload. Any enablement, settings, package-source, or package-revision change affecting a `serverModule` requires a manual session-daemon restart, then a browser reload for its paired UI.
 - `serverPlugins.safeStart`: persistent offline recovery state applied before server-plugin discovery/import on the next sessiond start; use the `pi-web plugins safe-start ...` CLI rather than hand-editing it.
 - Pi package install/remove/update: not a PI WEB config key; after a mutation, type `/reload` in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. For a PI WEB package with `serverModule`, manually restart `pi-web-sessiond.service`, then reload the browser. If a global Pi extension adds or removes a model provider, or changes a provider's connection settings, the same manual sessiond restart is required; `/reload` cannot change either startup snapshot. A known Pi model provider refreshing only its own model list is applied without a restart. See [Pi extension provider baseline](#pi-extension-provider-baseline).
@@ -141,7 +142,7 @@ worktree_path="$1"
 
 ## Configuration matrix
 
-Rows with JSON key `—` are runtime-only environment variables, not config-file keys. `Global` means machine-global. In Settings, selected-machine-safe global keys (`pathAccess`, `uploads`, `maxUploadBytes`, `askUser`, and `plugins`) are edited for the selected machine; gateway host/port/allowed-hosts, keyboard shortcuts, and machine registry/tokens stay local.
+Rows with JSON key `—` are runtime-only environment variables, not config-file keys. `Global` means machine-global. In Settings, selected-machine-safe global keys (`pathAccess`, `uploads`, `maxUploadBytes`, `askUser`, `logging`, and `plugins`) are edited for the selected machine; gateway host/port/allowed-hosts, keyboard shortcuts, and machine registry/tokens stay local.
 
 | Config | JSON key | Env var | Scope | Project-local behavior | Applies / restart |
 | --- | --- | --- | --- | --- | --- |
@@ -151,6 +152,7 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | Dev-server allowed hosts | `allowedHosts` | `PI_WEB_ALLOWED_HOSTS` | Global | Not supported locally | Restart dev web/UI |
 | External filesystem roots | `pathAccess.allowedPaths` | — | Global + project | **Merges**: global roots first, then project roots; duplicates removed | Next file request; refresh existing views if needed |
 | Manual file upload default folder | `uploads.defaultFolder` | — | Global + project | **Overrides**: project value wins for workspaces in that project; otherwise global/default applies | New Upload dialogs and direct drag/drop batches after config/workspace refresh |
+| Log level and retention | `logging.level`, `logging.maxFileMb`, `logging.keepFiles` | — | Global (web/API and session daemon) | Not supported locally | Within a minute, no restart |
 | Upload/body limit | `maxUploadBytes` | `PI_WEB_MAX_UPLOAD_BYTES` | Global | Not supported locally | Restart web/API and session daemon on that machine |
 | Agent can post question forms | `askUser` | `PI_WEB_ASK_USER` | Global/session daemon | Not supported locally | Restart session daemon on that machine |
 | Extension dialog auto-cancel timeout | `extensionDialogsTimeoutMs` | — | Global/session daemon | Not supported locally | Restart session daemon on that machine |
@@ -235,6 +237,25 @@ Manual uploads use the workspace file-write path: paths stay workspace-relative,
 For machine federation, Settings saves the global upload default on the selected machine. Remote PI WEB servers always return `workspace.effectiveConfig.uploads.defaultFolder` on the workspace-list response, and the Files panel uses it as the default upload destination.
 
 The per-request size limit is still controlled by `maxUploadBytes` / `PI_WEB_MAX_UPLOAD_BYTES` on the machine serving the upload.
+
+### Logs
+
+`logging` decides what the web/API and session daemon logs record and how much of them stays on disk. Edit it in **Settings → General → Logs** for the selected machine, or in the global config:
+
+```json
+{
+  "logging": {
+    "level": "errors",
+    "maxFileMb": 50,
+    "keepFiles": 3
+  }
+}
+```
+
+- `level`: `errors` (default) records requests that failed with a server error or took a second or more; `requests` records every request; `debug` records every request and the processes' debug messages. Startup, shutdown, and error messages are recorded at every level.
+- `maxFileMb` (default 50) and `keepFiles` (default 3): once `$PI_WEB_DATA_DIR/logs/web.log` or `sessiond.log` grows past `maxFileMb`, its last `maxFileMb` is copied to `web.log.1` (older copies move to `.2`, `.3`, …, and the oldest beyond `keepFiles` is removed), then the file is emptied in place. Only the tail is copied, so trimming a very large log does not need that much free disk.
+
+Both processes check the setting and the file sizes once a minute. Retention applies to the log files the installed launchd services write; on systemd, output that goes to the journal is kept by journald's own settings instead.
 
 ### Agent state directory
 
