@@ -21,6 +21,10 @@ import { actionMenuPanelStyle } from "./actionMenu.js";
 import { machineSessionKey, machineWorkspaceKey } from "../machineKeys";
 import type { PendingNavigation } from "../navigationIntent";
 import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningWords } from "./openingMark";
+import { ActivityClock, CORE_SESSION_SECTIONS, modifiedMs, type SessionSectionDefinition } from "../sessionOrder";
+import { createHeldRowOrder } from "../heldRowOrder";
+import { listFolds } from "../listFolds";
+import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
 
 /**
  * One-surface session switcher for touch layouts.
@@ -42,6 +46,16 @@ export class QuickSwitcher extends LitElement {
   @property({ attribute: false }) activeSessionIds: ReadonlySet<string> = new Set();
   @property({ attribute: false }) waitingSessionIds: ReadonlySet<string> = new Set();
   @property({ attribute: false }) unreadSessionIds: ReadonlySet<string> = new Set();
+  /** Core's and the plugins' session sections, in order (navigation-lists.md section 4). */
+  @property({ attribute: false }) sessionSections: readonly SessionSectionDefinition[] = CORE_SESSION_SECTIONS;
+  /** Holds a working session's place while it runs; see `ActivityClock`. */
+  private readonly activityClock = new ActivityClock();
+  private readonly folds = listFolds("quick-switcher");
+  /** Bumped when the reader folds or unfolds a section, so the sheet draws the stored choice. */
+  @state() private foldRevision = 0;
+  /** Rows re-sort live, but never under a finger; see `heldRowOrder`. */
+  private readonly rowOrder = createHeldRowOrder<SessionInfo>((session) => this.rowKey(session));
+  private holdRecheck: ReturnType<typeof setTimeout> | undefined;
   /** Sessions the daemon reported as cut off by a restart. */
   @property({ attribute: false }) interruptedSessionIds: ReadonlySet<string> = new Set();
   /** Sessions whose agent stopped on an error; listed above everything else. */
@@ -280,13 +294,35 @@ export class QuickSwitcher extends LitElement {
     `;
   }
 
+  /**
+   * One foldable section, as on the Navigate page: folded or open as the reader last left it in this
+   * sheet; a section folded by default says its count, and an open empty one says so.
+   */
   private renderGroup(group: QuickSwitcherGroup) {
+    const foldedByDefault = group.foldedByDefault === true;
+    const folded = this.folds.isFolded(group.id, foldedByDefault);
+    const title = foldedByDefault ? `${group.title} (${String(group.sessions.length)})` : group.title;
     return html`
-      <h3>${group.title}</h3>
-      <div class="rows">
-        ${group.sessions.map((session) => this.renderSessionRow(session))}
-      </div>
+      <h3><button type="button" class="section-toggle" aria-expanded=${folded ? "false" : "true"} @click=${() => { this.folds.toggle(group.id, foldedByDefault); this.foldRevision += 1; }}><span class="section-fold" aria-hidden="true">${renderDisclosureIcon(folded)}</span>${title}</button></h3>
+      ${folded ? nothing : group.sessions.length === 0 && group.emptyText !== undefined
+        ? html`<p class="section-empty" role="status">${group.emptyText}</p>`
+        : html`<div class="rows" @pointerdown=${() => { this.rowOrder.hold(); }} @pointerup=${() => { this.letGoOfRows(); }} @pointercancel=${() => { this.letGoOfRows(); }}>
+          ${this.heldOrder(group.sessions).map((session) => this.renderSessionRow(session))}
+        </div>`}
     `;
+  }
+
+  /** A section's rows in the held order while a finger is on the sheet; see `heldRowOrder`. */
+  private heldOrder(sessions: readonly SessionInfo[]): SessionInfo[] {
+    const order = this.rowOrder.order(sessions, Date.now());
+    return order.filter((session) => sessions.includes(session));
+  }
+
+  /** The finger lifted: the order still holds for a moment, then takes the live one. */
+  private letGoOfRows(): void {
+    const holdMs = this.rowOrder.letGo(Date.now());
+    if (this.holdRecheck !== undefined) clearTimeout(this.holdRecheck);
+    this.holdRecheck = setTimeout(() => { this.holdRecheck = undefined; this.requestUpdate(); }, holdMs);
   }
 
   private renderSessionRow(session: SessionInfo) {
@@ -398,7 +434,7 @@ export class QuickSwitcher extends LitElement {
   // on a phone keyboard without reaching for the list.
   private handleKeyDown(event: KeyboardEvent): void {
     if (event.key !== "Enter" || keyBelongsToInputMethod(event) || keyboardEventOriginatesFromNativeActivationControl(event)) return;
-    const first = this.model().groups[0]?.sessions[0];
+    const first = this.model().groups.find((group) => group.sessions.length > 0 && !this.folds.isFolded(group.id, group.foldedByDefault === true))?.sessions[0];
     if (first === undefined) return;
     event.preventDefault();
     this.openSession(first);
@@ -418,7 +454,9 @@ export class QuickSwitcher extends LitElement {
       interruptedSessionIds: this.interruptedSessionIds,
       pinnedSessionIds: this.pinnedSessionIds,
       query: this.query,
-      now: Date.now(),
+      machineId: this.rowsMachineId,
+      sections: this.sessionSections,
+      activityAt: (session, rank) => this.activityClock.timeOf(this.rowKey(session), rank, modifiedMs(session.modified)),
     });
   }
 
@@ -469,7 +507,7 @@ export class QuickSwitcher extends LitElement {
     this.onClose?.();
   }
 
-  static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, openingMarkStyles, css`${unsafeCSS(uiIconStyle)}
+  static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, openingMarkStyles, css`${unsafeCSS(disclosureIconStyle)}`, css`${unsafeCSS(uiIconStyle)}
     .session-row.opening { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; --qs-menu-size: var(--pi-control-height); }
     @media (pointer: coarse) { :host { --qs-menu-size: var(--pi-control-height-touch, 44px); } }
@@ -487,6 +525,11 @@ export class QuickSwitcher extends LitElement {
     @media (pointer: coarse) { .close:active { background: var(--pi-surface-hover); } }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--pi-space-5); overscroll-behavior: contain; }
     h3 { margin: var(--pi-space-7) 0 var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); text-transform: uppercase; }
+    .section-toggle { display: inline-flex; align-items: center; gap: var(--pi-space-2); box-sizing: border-box; min-height: var(--pi-control-height); margin: 0; padding: 0 var(--pi-space-2); border: 1px solid transparent; border-radius: var(--pi-radius-md); background: transparent; color: inherit; font: inherit; text-transform: inherit; cursor: pointer; }
+    .section-toggle:focus-visible { border-color: var(--pi-accent); }
+    .section-fold { display: inline-grid; place-items: center; width: 12px; height: 12px; }
+    .section-empty { margin: 0 0 var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-sm); }
+    @media (pointer: coarse) { .section-toggle { min-height: var(--pi-control-height-touch, 44px); } }
     /* Tiles rather than one session per row. A phone showed four wide,
        mostly empty cards at a time, so choosing between a dozen sessions meant
        scrolling a list that wasted half its width on every row. auto-fit keeps

@@ -4,7 +4,10 @@ import type { SessionInfo } from "../../api";
 import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow, type NavigateSessionState } from "../../navigateModel";
 import { switcherBreadcrumb, type BreadcrumbLevel } from "../../switcherBreadcrumb";
 import "./AppRefreshControl";
-import { createStableRowOrder } from "../../stableRowOrder";
+import { createHeldRowOrder } from "../../heldRowOrder";
+import { ActivityClock, modifiedMs } from "../../sessionOrder";
+import { listFolds } from "../../listFolds";
+import { disclosureIconStyle, renderDisclosureIcon } from "../disclosureIcon.js";
 import { renderChatIcon, renderChevronRightIcon, renderGearIcon, renderGridIcon, renderMachineIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
@@ -58,6 +61,8 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onCreateSession?: () => void;
   @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onClose?: () => void;
+  /** Opens the Go to sheet; the host passes it on the phone, where Navigate is a page with no app bar. */
+  @property({ attribute: false }) onOpenGoTo?: () => void;
   /**
    * Settings used to hang off the navigation panel; when that panel was
    * deleted the only way in was a page a phone could not open. Navigation is
@@ -91,11 +96,16 @@ export class AppNavigatePage extends LitElement {
    */
   @property({ type: Boolean }) returnable = false;
   @state() private query = "";
-  /** Live refreshes may not move a row under a thumb; see `stableRowOrder`. */
-  private readonly rowOrder = createStableRowOrder<NavigateSessionRow>((row) => `${row.machineId}:${row.session.id}`);
+  /** Rows re-sort live, but never under a finger; see `heldRowOrder`. */
+  private readonly rowOrder = createHeldRowOrder<NavigateSessionRow>((row) => `${row.machineId}:${row.session.id}`);
+  /** Holds a working session's place while it runs; see `ActivityClock`. */
+  private readonly activityClock = new ActivityClock();
+  private readonly folds = listFolds("navigate");
+  private holdRecheck: ReturnType<typeof setTimeout> | undefined;
 
   override disconnectedCallback(): void {
     this.rowOrder.release();
+    if (this.holdRecheck !== undefined) clearTimeout(this.holdRecheck);
     super.disconnectedCallback();
   }
 
@@ -111,8 +121,8 @@ export class AppNavigatePage extends LitElement {
   @state() private kind: NavigateKind = "sessions";
   /** The project the reader stepped into on this page, if any. */
   @state() private pathProjectId: string | undefined = undefined;
-  /** Owner, 2026-09-30: archived sessions sit in a group at the bottom, collapsed until asked for. */
-  @state() private archivedOpen = false;
+  /** Bumped when the reader folds or unfolds a section, so the page draws the stored choice. */
+  @state() private foldRevision = 0;
   @state() private openMenuRowId: string | undefined = undefined;
   @state() private menuStyle = "";
 
@@ -121,24 +131,60 @@ export class AppNavigatePage extends LitElement {
     this.kind = kind;
   }
 
-  /** Opening lands on the machine's whole list; see `listedInput`. */
   /**
-   * The key that opened the page closes it: pressed once it widens to every
-   * session on the machine, pressed again - already showing everything -
-   * there is nothing left to widen to, so it goes back where it came from.
+   * The project the scope switch names when the list shows the whole machine: the one the reader
+   * last stepped into on this page, else the project of the session behind it.
    */
+  @state() private lastProjectId: string | undefined = undefined;
+
   /**
-   * The grid key widens to every session here, and closes the page once there is nothing left to
-   * widen and somewhere to return to. Only a project the reader stepped into is widened through
-   * the app: the machine-wide list needs no selection change, and widening there cleared the
-   * session behind the page - with the close key gone, the key meant as the way back dropped the
-   * very session it was going back to.
+   * The grid key is a two-place toggle (owner, 2026-10-04): from a page it opens Navigate, and on
+   * Navigate it returns to that page. With nowhere to return to it is only a "you are here" mark,
+   * so it never draws as a pressed key that does nothing (B46). Widening the list is the scope
+   * switch's job, not this key's.
    */
-  private quickAccessPressed(): void {
-    if (this.returnable && this.showsEverything()) { this.onClose?.(); return; }
-    const steppedIn = this.pathProjectId !== undefined;
-    this.showEverything();
-    if (steppedIn) this.onWiden?.("project");
+  private renderQuickAccess() {
+    if (this.returnable) {
+      return html`<button
+        type="button"
+        class="quick-access current"
+        aria-pressed="true"
+        title="Back"
+        aria-label="Back to where you were"
+        @click=${() => { this.onClose?.(); }}
+      >${renderGridIcon()}</button>`;
+    }
+    return html`<span class="quick-access here" role="img" aria-label="Navigation" title="Navigation">${renderGridIcon()}</span>`;
+  }
+
+  /**
+   * `<project> | All projects` (owner, 2026-10-04): one tap narrows the list to a project or
+   * widens it to the machine. The path stays the place indicator; it is no longer the only way out
+   * of a project.
+   */
+  private renderScopeSwitch(projects: readonly { id: string; name: string }[], sessionProjectId: string | undefined) {
+    const projectId = this.pathProjectId ?? this.lastProjectId ?? sessionProjectId;
+    const project = projectId === undefined ? undefined : projects.find((candidate) => candidate.id === projectId);
+    if (project === undefined) return nothing;
+    const narrowed = this.pathProjectId !== undefined;
+    return html`<div class="scope-switch" role="group" aria-label="Which sessions to list">
+      <button type="button" class=${narrowed ? "scope current" : "scope"} aria-pressed=${narrowed ? "true" : "false"} title=${project.name} @click=${() => { this.narrowTo(project.id); }}>${project.name}</button>
+      <button type="button" class=${narrowed ? "scope" : "scope current"} aria-pressed=${narrowed ? "false" : "true"} @click=${() => { this.widenToMachine(); }}>All projects</button>
+    </div>`;
+  }
+
+  private narrowTo(projectId: string): void {
+    if (this.pathProjectId === projectId) return;
+    this.pathProjectId = projectId;
+    this.lastProjectId = projectId;
+    this.onChoose?.("project", projectId);
+  }
+
+  /** Only a project the reader stepped into is widened through the app: the machine-wide list needs no selection change. */
+  private widenToMachine(): void {
+    if (this.pathProjectId === undefined) return;
+    this.pathProjectId = undefined;
+    this.onWiden?.("project");
   }
 
   /**
@@ -155,10 +201,6 @@ export class AppNavigatePage extends LitElement {
     if (level !== "project" || steppedIn) this.onWiden?.(level);
   }
 
-  private showsEverything(): boolean {
-    return this.pathProjectId === undefined && this.kind === "sessions";
-  }
-
   showEverything(): void {
     this.pathProjectId = undefined;
     this.kind = "sessions";
@@ -169,7 +211,7 @@ export class AppNavigatePage extends LitElement {
     const input = this.input;
     if (input === undefined) return html`<p class="empty" role="status">Reading this machine…</p>`;
     const listed = this.listedInput(input);
-    const model = navigateModel({ ...listed, query: this.query });
+    const model = navigateModel({ ...listed, query: this.query, activityAt: (row, rank) => this.activityClock.timeOf(`${row.machineId}:${row.session.id}`, rank, modifiedMs(row.session.modified)) });
     const segments = switcherBreadcrumb({
       machines: listed.machines,
       machineId: listed.scope.machineId,
@@ -184,14 +226,7 @@ export class AppNavigatePage extends LitElement {
     return html`
       <section class="navigate">
         <header class="path-bar">
-          <button
-            type="button"
-            class=${this.pathProjectId === undefined && this.kind === "sessions" ? "quick-access current" : "quick-access"}
-            aria-pressed=${this.pathProjectId === undefined && this.kind === "sessions" ? "true" : "false"}
-            title=${this.returnable && this.showsEverything() ? "Close navigation" : "All sessions on this machine"}
-            aria-label=${this.returnable && this.showsEverything() ? "Close navigation" : "All sessions on this machine"}
-            @click=${() => { this.quickAccessPressed(); }}
-          >${renderGridIcon()}</button>
+          ${this.renderQuickAccess()}
           <div class="path-row">
             ${segments.map((segment, index) => html`
               ${index === 0 ? nothing : html`<span class="path-sep">${renderChevronRightIcon()}</span>`}
@@ -206,6 +241,7 @@ export class AppNavigatePage extends LitElement {
           <div class="path-bar-actions">
             ${this.onOpenSettings === undefined ? nothing : html`<button type="button" class="settings" aria-label="Settings" title="Settings" @click=${() => { this.onOpenSettings?.(); }}>${renderGearIcon()}</button>`}
             ${this.onReload === undefined ? nothing : html`<app-refresh-control .onReload=${this.onReload}></app-refresh-control>`}
+            ${this.pathProjectId === undefined || this.onOpenGoTo === undefined ? nothing : html`<button type="button" class="settings menu-key" aria-label="Go to a view" title="Go to a view" aria-haspopup="dialog" @click=${() => { this.onOpenGoTo?.(); }}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>`}
           </div>
         </header>
         <nav class="kinds" aria-label="What to list">
@@ -213,6 +249,7 @@ export class AppNavigatePage extends LitElement {
           ${segments.some((segment) => segment.level === "machine") ? this.renderKindTab("machine", "Machines", renderMachineIcon()) : nothing}
           ${this.renderKindTab("project", "Projects", renderProjectIcon())}
         </nav>
+        ${showsSessions ? this.renderScopeSwitch(listed.projects, input.scope.projectId) : nothing}
         ${showsSessions ? html`
           <div class="search-row">
             <input
@@ -236,13 +273,15 @@ export class AppNavigatePage extends LitElement {
               ? html`<button type="button" class="create" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>`
               : nothing}
         </div>
-        <div class="body">
+        <div
+          class="body"
+          @pointerdown=${() => { this.rowOrder.hold(); }}
+          @pointerup=${() => { this.letGoOfRows(); }}
+          @pointercancel=${() => { this.letGoOfRows(); }}
+        >
           ${showsSessions
             ? html`
-                ${this.orderedSections(model.sections).map((section) => section.id === "archived" ? this.renderArchivedSection(section) : html`
-                  <h3 class="section-title">${section.title}</h3>
-                  ${section.rows.map((row) => this.renderSession(row))}
-                `)}
+                ${this.orderedSections(model.sections).map((section) => this.renderSessionSection(section))}
                 ${this.renderSessionsEmptyState(model.matchCount)}
               `
             : html`
@@ -261,10 +300,10 @@ export class AppNavigatePage extends LitElement {
    * refresh changes what a row says, never where it sits.
    */
   private orderedSections(sections: readonly NavigateSection[]): NavigateSection[] {
-    const ordered = this.rowOrder.order(sections.flatMap((section) => section.rows));
+    const ordered = this.rowOrder.order(sections.flatMap((section) => section.rows), Date.now());
     const placeOf = new Map(ordered.map((row, index) => [`${row.machineId}:${row.session.id}`, index]));
     return sections
-      .filter((section) => section.rows.length > 0)
+      .filter((section) => section.id !== "choices" && (section.rows.length > 0 || section.emptyText !== undefined))
       .map((section) => ({ ...section, rows: [...section.rows].sort((left, right) => (placeOf.get(`${left.machineId}:${left.session.id}`) ?? 0) - (placeOf.get(`${right.machineId}:${right.session.id}`) ?? 0)) }));
   }
 
@@ -320,7 +359,7 @@ export class AppNavigatePage extends LitElement {
         class=${choice.current ? "row current" : "row"}
         title=${choice.detail ?? choice.label}
         @click=${() => {
-          if (choice.level === "project") this.pathProjectId = choice.id;
+          if (choice.level === "project") { this.pathProjectId = choice.id; this.lastProjectId = choice.id; }
           this.onChoose?.(choice.level, choice.id);
           this.kind = "sessions";
         }}
@@ -407,15 +446,37 @@ export class AppNavigatePage extends LitElement {
    * The Archived group: one key that says how many there are and opens the rows. Collapsed
    * by default, because the list is scanned for what the reader works in.
    */
-  private renderArchivedSection(section: NavigateSection) {
+  /**
+   * One foldable section (owner, 2026-10-04): its title, folded or open as the reader last left it
+   * in this list, and its rows. A section folded by default (Archived) says its count, so a folded
+   * list still answers "how many"; one that is open and empty says so instead of vanishing.
+   */
+  private renderSessionSection(section: NavigateSection) {
+    const foldedByDefault = section.foldedByDefault === true;
+    const folded = this.folds.isFolded(section.id, foldedByDefault);
+    const title = foldedByDefault ? `${section.title} (${String(section.rows.length)})` : section.title;
     return html`
-      <button type="button" class="archived-toggle section-title" aria-expanded=${this.archivedOpen ? "true" : "false"} @click=${() => { this.archivedOpen = !this.archivedOpen; }}>Archived (${String(section.rows.length)})</button>
-      ${this.archivedOpen ? section.rows.map((row) => this.renderSession(row)) : nothing}
+      <button
+        type="button"
+        class="section-toggle section-title"
+        aria-expanded=${folded ? "false" : "true"}
+        @click=${() => { this.folds.toggle(section.id, foldedByDefault); this.foldRevision += 1; }}
+      ><span class="section-fold" aria-hidden="true">${renderDisclosureIcon(folded)}</span>${title}</button>
+      ${folded ? nothing : section.rows.length === 0 && section.emptyText !== undefined
+        ? html`<p class="empty section-empty" role="status">${section.emptyText}</p>`
+        : section.rows.map((row) => this.renderSession(row))}
     `;
   }
 
+  /** The finger lifted: the order still holds for a moment, then takes the live one. */
+  private letGoOfRows(): void {
+    const holdMs = this.rowOrder.letGo(Date.now());
+    if (this.holdRecheck !== undefined) clearTimeout(this.holdRecheck);
+    this.holdRecheck = setTimeout(() => { this.holdRecheck = undefined; this.requestUpdate(); }, holdMs);
+  }
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, sessionStateBadgeStyles, openingMarkStyles, css`
+
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, sessionStateBadgeStyles, openingMarkStyles, css`
     .row.session.opening { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row .row-title { flex: 1 1 auto; min-width: 0; }
     .row-name { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); line-height: 1.3; overflow-wrap: anywhere; }
@@ -466,6 +527,13 @@ export class AppNavigatePage extends LitElement {
     .quick-access { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     .quick-access.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-accent); }
     .quick-access .ui-icon { width: 18px; height: 18px; }
+    .quick-access.here { border-color: transparent; background: transparent; color: var(--pi-accent); cursor: default; }
+    .settings.menu-key svg { width: 18px; height: 18px; }
+    .scope-switch { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; margin: var(--pi-space-3) var(--pi-bar-inset) 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); overflow: hidden; }
+    .scope { box-sizing: border-box; min-height: var(--pi-control-height-comfort); min-width: 0; padding: 0 var(--pi-space-4); border: 0; background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+    .scope + .scope { border-left: 1px solid var(--pi-border); }
+    .scope.current { background: var(--pi-selection-bg); color: var(--pi-accent); }
+    .scope:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: calc(-1 * var(--pi-focus-ring-width)); }
     .path-bar-actions { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); }
     .settings { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     .settings .ui-icon { width: 18px; height: 18px; }
@@ -497,9 +565,11 @@ export class AppNavigatePage extends LitElement {
     .section-title, .empty { grid-column: 1 / -1; }
     .row-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .section-title { margin: var(--pi-space-4) 0 var(--pi-space-1); color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
-    .archived-toggle { justify-self: start; box-sizing: border-box; min-height: var(--pi-control-height); padding: 0 var(--pi-space-2); border: 1px solid transparent; border-radius: var(--pi-radius-md); background: transparent; cursor: pointer; text-align: start; }
-    .archived-toggle:focus-visible { border-color: var(--pi-accent); }
-    @media (pointer: coarse) { .archived-toggle { min-height: var(--pi-control-height-touch, 44px); } }
+    .section-toggle { justify-self: start; display: inline-flex; align-items: center; gap: var(--pi-space-2); box-sizing: border-box; min-height: var(--pi-control-height); padding: 0 var(--pi-space-2); border: 1px solid transparent; border-radius: var(--pi-radius-md); background: transparent; cursor: pointer; text-align: start; }
+    .section-toggle:focus-visible { border-color: var(--pi-accent); }
+    .section-fold { display: inline-grid; place-items: center; width: 12px; height: 12px; }
+    .section-empty { margin: 0 0 var(--pi-space-2); }
+    @media (pointer: coarse) { .section-toggle { min-height: var(--pi-control-height-touch, 44px); } }
     .row { box-sizing: border-box; display: grid; gap: var(--pi-space-2); width: 100%; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); padding: var(--pi-space-4) calc(var(--tile-menu-size) + var(--pi-space-2)) var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
     .row.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row-title { min-width: 0; overflow: hidden; }

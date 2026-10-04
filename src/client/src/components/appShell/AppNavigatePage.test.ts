@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "./AppNavigatePage";
+
+afterEach(() => { localStorage.removeItem("pi-web.list-folds.navigate"); });
 import type { AppNavigatePage } from "./AppNavigatePage";
 import type { SessionInfo } from "../../api";
 import type { NavigateInput, NavigateLevel } from "../../navigateModel";
@@ -38,6 +40,8 @@ function press(element: HTMLElement | null | undefined): void {
   element.click();
 }
 
+const archivedToggle = (page: AppNavigatePage) => [...page.renderRoot.querySelectorAll<HTMLButtonElement>(".section-toggle")].find((button) => button.textContent.trim().startsWith("Archived"));
+
 async function mount(patch: Partial<AppNavigatePage> = {}, modelInput = input()): Promise<AppNavigatePage> {
   const page = document.createElement("app-navigate-page");
   page.input = modelInput;
@@ -66,7 +70,7 @@ describe("app-navigate-page", () => {
     const page = await mount();
     expect(texts(page, ".path-step")).toEqual(["All projects"]);
     expect(texts(page, ".row.session").join(" ")).toContain("fix login");
-    expect(texts(page, ".section-title")).toEqual(["Recent"]);
+    expect(texts(page, ".section-title")).toEqual(["Active", "Archived (0)"]);
     expect(texts(page, ".kind")).toEqual(["Sessions", "Projects"]);
   });
 
@@ -121,7 +125,7 @@ describe("app-navigate-page", () => {
     search.value = "#waiting";
     search.dispatchEvent(new Event("input"));
     await page.updateComplete;
-    expect(texts(page, ".section-title")).toContain("Waiting for you");
+    expect(page.renderRoot.querySelectorAll(".row.session")).toHaveLength(1);
 
     search.value = "#nothing";
     search.dispatchEvent(new Event("input"));
@@ -132,7 +136,7 @@ describe("app-navigate-page", () => {
   it("has no close key of its own: the grid key is the way back (owner, 2026-09-30)", async () => {
     const overlay = await mount({ returnable: true });
     expect({ close: overlay.renderRoot.querySelector(".close"), grid: overlay.renderRoot.querySelector(".quick-access")?.getAttribute("aria-label") })
-      .toEqual({ close: null, grid: "Close navigation" });
+      .toEqual({ close: null, grid: "Back to where you were" });
   });
 
   it("gives every row one name on the left and one menu on the right, with no second line", async () => {
@@ -183,7 +187,7 @@ describe("app-navigate-page", () => {
   it("keeps archived sessions in a collapsed group at the bottom that opens on a tap", async () => {
     const old = { ...session("z", "/repos/pi-web", "old spike"), archived: true };
     const page = await mount({}, input({ sessions: [session("a", "/repos/pi-web", "fix login"), old] }));
-    const group = page.renderRoot.querySelector<HTMLButtonElement>(".archived-toggle");
+    const group = archivedToggle(page);
     expect(group?.textContent.trim()).toBe("Archived (1)");
     expect(group?.getAttribute("aria-expanded")).toBe("false");
     expect(texts(page, ".row.session .row-name")).toEqual(["fix login"]);
@@ -195,7 +199,7 @@ describe("app-navigate-page", () => {
   it("offers Archive on a live session and Restore / Delete permanently on an archived one", async () => {
     const old = { ...session("z", "/repos/pi-web", "old spike"), archived: true };
     const page = await mount({ canArchiveSessions: true }, input({ sessions: [session("a", "/repos/pi-web", "fix login"), old] }));
-    press(page.renderRoot.querySelector<HTMLButtonElement>(".archived-toggle"));
+    press(archivedToggle(page));
     await page.updateComplete;
     const menuOf = async (name: string) => {
       const wrap = [...page.renderRoot.querySelectorAll<HTMLElement>(".row-wrap")].find((row) => row.textContent.includes(name));
@@ -235,22 +239,24 @@ describe("app-navigate-page", () => {
   });
 });
 
-describe("the quick-access key over an open session", () => {
-  it("returns from a Projects tab without touching the selection, and widens through the app only from a project stepped into", async () => {
+describe("the grid key (owner, 2026-10-04: a two-place toggle)", () => {
+  it("returns to the page the reader came from, wherever the list is scoped, and never widens", async () => {
     const widened: string[] = [];
     const closes: number[] = [];
     const page = await mount({ returnable: true, onClose: () => { closes.push(1); }, onWiden: (level: string) => { widened.push(level); } });
-    Reflect.set(page, "kind", "project");
-    await page.updateComplete;
-    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
-    await page.updateComplete;
-    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
-    const fromTab = { widened: [...widened], closes: closes.length };
     Reflect.set(page, "pathProjectId", "project-1");
     await page.updateComplete;
     press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
 
-    expect({ fromTab, fromProject: widened }).toEqual({ fromTab: { widened: [], closes: 1 }, fromProject: ["project"] });
+    expect({ closes: closes.length, widened }).toEqual({ closes: 1, widened: [] });
+    page.remove();
+  });
+
+  it("is only a you-are-here mark with nowhere to return to (B46)", async () => {
+    const page = await mount({ returnable: false });
+    const key = page.renderRoot.querySelector(".quick-access");
+
+    expect({ tag: key?.tagName, label: key?.getAttribute("aria-label") }).toEqual({ tag: "SPAN", label: "Navigation" });
     page.remove();
   });
 });
@@ -278,41 +284,6 @@ describe("the path steps over an open session", () => {
     await page.updateComplete;
 
     expect(page.renderRoot.textContent).toContain("No sessions yet.");
-    page.remove();
-  });
-});
-
-describe("the quick-access key", () => {
-  it("widens to everything first and closes the page when there is nothing left to widen", async () => {
-    const closes: number[] = [];
-    const page = await mount({ returnable: true, onClose: () => { closes.push(1); } });
-    Reflect.set(page, "kind", "project");
-    await page.updateComplete;
-
-    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
-    await page.updateComplete;
-
-    expect(Reflect.get(page, "kind")).toBe("sessions");
-    expect(closes).toHaveLength(0);
-
-    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
-
-    expect(closes).toHaveLength(1);
-    page.remove();
-  });
-});
-
-describe("the quick-access key with nowhere to return to", () => {
-  it("only widens on the desktop rail, which is the page's permanent home", async () => {
-    const closes: number[] = [];
-    const page = await mount({ returnable: false, onClose: () => { closes.push(1); } });
-
-    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
-    await page.updateComplete;
-    press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
-
-    expect(closes).toHaveLength(0);
-    expect(page.renderRoot.querySelector(".quick-access")?.getAttribute("aria-label")).toBe("All sessions on this machine");
     page.remove();
   });
 });

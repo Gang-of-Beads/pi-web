@@ -34,26 +34,28 @@ const base: NavigateInput = {
 };
 
 const sectionIds = (input: NavigateInput) => navigateModel(input).sections.map((section) => section.id);
+const rowsIn = (input: NavigateInput, id: string) => navigateModel(input).sections.find((section) => section.id === id)?.rows.map((entry) => entry.session.id);
 
 describe("archived sessions (owner, 2026-09-30: a collapsed Archived group at the bottom)", () => {
   const archived = { ...session("z", "/repos/pi-web", "old spike"), archived: true, archivedAt: "2026-09-02T00:00:00.000Z" };
   const withArchived: NavigateInput = { ...base, sessions: [...base.sessions, archived] };
 
-  it("lists them in their own section after the sessions, never under Recent", () => {
-    const model = navigateModel(withArchived);
-    const ids = model.sections.map((section) => section.id);
-    expect(ids.indexOf("archived")).toBe(ids.indexOf("recent") + 1);
-    expect(model.sections.find((section) => section.id === "recent")?.rows.map((entry) => entry.session.id)).not.toContain("z");
-    expect(model.sections.find((section) => section.id === "archived")?.rows.map((entry) => entry.session.id)).toEqual(["z"]);
+  it("lists them in their own section after the sessions, never under Active", () => {
+    const ids = sectionIds(withArchived);
+    expect(ids.indexOf("archived")).toBe(ids.indexOf("active") + 1);
+    expect(rowsIn(withArchived, "active")).not.toContain("z");
+    expect(rowsIn(withArchived, "archived")).toEqual(["z"]);
   });
 
   it("narrows them with the path and the search like any other session", () => {
-    expect(sectionIds({ ...withArchived, query: "login" })).not.toContain("archived");
-    expect(sectionIds({ ...withArchived, scope: { ...base.scope, projectId: "p2" } })).not.toContain("archived");
+    expect(rowsIn({ ...withArchived, query: "login" }, "archived")).toEqual([]);
+    expect(rowsIn({ ...withArchived, scope: { ...base.scope, projectId: "p2" } }, "archived")).toEqual([]);
   });
 
-  it("has no section when nothing is archived", () => {
-    expect(sectionIds(base)).not.toContain("archived");
+  it("keeps an empty Archived section that says so (owner, 2026-10-04)", () => {
+    const archivedSection = navigateModel(base).sections.find((section) => section.id === "archived");
+    expect(archivedSection?.rows).toEqual([]);
+    expect(archivedSection?.emptyText).toBe("Nothing archived yet");
   });
 });
 
@@ -61,27 +63,25 @@ describe("navigateModel", () => {
   it("offers projects and every session while the path is empty", () => {
     const model = navigateModel(base);
     expect(model.nextLevel).toBe("project");
-    expect(sectionIds(base)).toEqual(["recent", "choices", "choices"]);
-    expect(model.sections.find((section) => section.id === "recent")?.rows).toHaveLength(3);
+    expect(sectionIds(base)).toEqual(["active", "archived", "choices", "choices"]);
+    expect(model.sections.find((section) => section.id === "active")?.rows).toHaveLength(3);
     expect(model.sections.filter((section) => section.id === "choices").flatMap((section) => section.choices).filter((choice) => choice.level === "project").map((choice) => choice.label)).toEqual(["pi-web", "trade"]);
   });
 
   it("lists a chosen project's sessions across all of its folders", () => {
     const model = navigateModel({ ...base, scope: { machineId: "local", projectId: "p1", folderPath: undefined, sessionId: undefined } });
     expect(model.nextLevel).toBe("project");
-    expect(model.sections.find((section) => section.id === "recent")?.rows.map((row) => row.session.id)).toEqual(["a", "b"]);
+    expect(model.sections.find((section) => section.id === "active")?.rows.map((row) => row.session.id).sort()).toEqual(["a", "b"]);
   });
 
   it("keeps every session listed while a chosen project's folders are unknown", () => {
     const model = navigateModel({ ...base, folders: [], scope: { machineId: "local", projectId: "p1", folderPath: undefined, sessionId: undefined } });
-    expect(model.sections.find((section) => section.id === "recent")?.rows).toHaveLength(3);
+    expect(model.sections.find((section) => section.id === "active")?.rows).toHaveLength(3);
   });
 
-  it("separates what waits for the reader from what is merely running", () => {
-    const model = navigateModel({ ...base, sessionStates: states({ a: "asking", b: "working" }) });
-    expect(sectionIds({ ...base, sessionStates: states({ a: "asking", b: "working" }) })).toEqual(["waiting", "running", "recent", "choices", "choices"]);
-    expect(model.sections[0]?.rows.map((row) => row.session.id)).toEqual(["a"]);
-    expect(model.sections[1]?.rows.map((row) => row.session.id)).toEqual(["b"]);
+  it("orders what waits for the reader before what is merely running (owner, 2026-10-04)", () => {
+    const ids = rowsIn({ ...base, sessionStates: states({ a: "asking", b: "working" }) }, "active") ?? [];
+    expect(ids.slice(0, 2)).toEqual(["a", "b"]);
   });
 
   it("marks the session the reader already has open", () => {
@@ -209,9 +209,8 @@ describe("one session, one row", () => {
     expect(model.sections.find((section) => section.id === "pinned")?.rows[0]?.session.id).toBe("a");
   });
 
-  it("still lists an unpinned working session under Working", () => {
-    const model = navigateModel({ ...base, sessionStates: states({ b: "working" }) });
-    expect(model.sections.find((section) => section.id === "running")?.rows.map((row) => row.session.id)).toEqual(["b"]);
+  it("still lists an unpinned working session under Active", () => {
+    expect(rowsIn({ ...base, sessionStates: states({ b: "working" }) }, "active")).toContain("b");
   });
 });
 

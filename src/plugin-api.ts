@@ -403,6 +403,33 @@ export interface PluginContributions {
   messageRenderers?: MessageRendererContribution[];
   codeFenceRenderers?: CodeFenceRendererContribution[];
   activityNotes?: ActivityNoteContribution[];
+  sessionSections?: SessionSectionContribution[];
+}
+
+/**
+ * A section in every list of sessions (the Navigate page, the session search). A session lands in
+ * the first section, by `order`, that claims it; core's are Pinned (100), Active (500) and Archived
+ * (900), so a plugin picks an order between them. Inside a section, sessions order by what they need
+ * from the reader, then by their last activity; a section does not choose its own order.
+ */
+export interface SessionSectionContribution {
+  id: string;
+  title: string;
+  order: number;
+  /** Folded until the reader opens it, the first time a list shows it. */
+  foldedByDefault?: boolean;
+  /** Whether the session belongs here. A claim that throws claims nothing. */
+  claims: (subject: SessionSectionSubject) => boolean;
+}
+
+/** What a section's claim sees of a session. */
+export interface SessionSectionSubject {
+  readonly sessionId: string;
+  readonly machineId: string;
+  readonly cwd: string;
+  readonly name: string | undefined;
+  readonly pinned: boolean;
+  readonly archived: boolean;
 }
 
 /**

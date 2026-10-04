@@ -1034,6 +1034,29 @@ export default {
 };
 ```
 
+### Session sections
+
+Every list of sessions (the Navigate page and the session search) is built from sections. Core's are Pinned (`order` 100), Active (500) and Archived (900). A plugin adds its own with `sessionSections`:
+
+```ts
+contributions: {
+  sessionSections: [{
+    id: "goal",
+    title: "Goal",
+    order: 200,
+    claims: (session) => goalSessionIds.has(session.sessionId),
+  }],
+}
+```
+
+A session lands in the first section, by `order`, whose `claims` returns true; a claim that throws claims nothing. `claims` receives `{ sessionId, machineId, cwd, name, pinned, archived }`. Inside a section the host orders sessions by what they need from the reader (failed, asking, unread, running, the rest), then by last activity; a section does not choose its own order. Sections fold, and the host remembers each list's folds on the device; `foldedByDefault: true` starts a section folded.
+
+## Asking the reader to confirm
+
+`ui.confirm({ title, message, confirmLabel, tone })` asks on the host's own dialog and resolves `true` only for the confirming key; Cancel, Escape, the backdrop and the back gesture resolve `false`. Name the thing in `title` ("Close notes?"), say the consequence in `message`, and use `tone: "danger"` for anything that cannot be undone. Do not call `window.confirm`: on a phone it shows the page's address as its title and never names what is about to change. `ui.confirm` is optional on older hosts, so fall back when it is missing.
+
+A plugin's own small dialog can use the same compact card with `ui.showDialog({ presentation: "alert", ... })`: at most 480px wide and never touching a phone's edges.
+
 ## Calling paired workspace backends
 
 Workspace panel and label contexts include an optional JSON-only backend helper. It is present only for a browser entry paired with an active server backend:

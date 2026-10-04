@@ -3,7 +3,6 @@ import type { SessionInfo, Workspace } from "./api";
 import { sessionLabel } from "./sessionLabels";
 import { quickSwitcherFilterActive, quickSwitcherFilterSessions, renameSessionInList, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, sessionIdsIn } from "./quickSwitcher";
 
-const NOW = Date.parse("2026-08-14T12:00:00.000Z");
 
 function session(id: string, overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
@@ -31,62 +30,6 @@ function workspace(id: string, overrides: Partial<Workspace> = {}): Workspace {
   };
 }
 
-function groupIds(sessions: SessionInfo[], activeSessionIds: ReadonlySet<string> = new Set(), query = ""): string[] {
-  return quickSwitcherModel({ sessions, activeSessionIds, query, now: NOW }).groups.map((group) => group.id);
-}
-
-describe("quickSwitcherModel attention ordering", () => {
-  const attn = session("attn", { modified: "2026-08-01T00:00:00.000Z" });
-
-  it("floats an errored session above every other group", () => {
-    const ids = quickSwitcherModel({
-      sessions: [session("working"), attn],
-      activeSessionIds: new Set(["working"]),
-      errorSessionIds: new Set(["attn"]),
-      query: "",
-      now: NOW,
-    }).groups.map((group) => group.id);
-    expect(ids[0]).toBe("error");
-  });
-
-  it("ranks error over waiting over interrupted over active over unread", () => {
-    const ids = quickSwitcherModel({
-      sessions: [session("e"), session("w"), session("i"), session("a"), session("u")],
-      activeSessionIds: new Set(["a"]),
-      errorSessionIds: new Set(["e"]),
-      waitingSessionIds: new Set(["w"]),
-      interruptedSessionIds: new Set(["i"]),
-      unreadSessionIds: new Set(["u"]),
-      query: "",
-      now: NOW,
-    }).groups.map((group) => group.id);
-    expect(ids).toEqual(["error", "waiting", "interrupted", "active", "unread"]);
-  });
-
-  it("lifts a pinned idle session above plain recency but not above attention", () => {
-    const model = quickSwitcherModel({
-      sessions: [session("today-one"), session("pinned-old", { modified: "2026-08-01T00:00:00.000Z" })],
-      activeSessionIds: new Set(),
-      pinnedSessionIds: new Set(["pinned-old"]),
-      query: "",
-      now: NOW,
-    });
-    expect(model.groups.map((group) => group.id)).toEqual(["pinned", "today"]);
-  });
-
-  it("does not bury an errored session just because it is pinned", () => {
-    const model = quickSwitcherModel({
-      sessions: [session("p")],
-      activeSessionIds: new Set(),
-      errorSessionIds: new Set(["p"]),
-      pinnedSessionIds: new Set(["p"]),
-      query: "",
-      now: NOW,
-    });
-    expect(model.groups[0]?.id).toBe("error");
-  });
-});
-
 describe("quickSwitcherFilterSessions", () => {
   const ws = [workspace("main", { projectId: "proj-a", path: "/a/main" }), workspace("feat", { projectId: "proj-a", path: "/a/feat" }), workspace("other", { projectId: "proj-b", path: "/b/main" })];
   const all = [session("1", { cwd: "/a/main" }), session("2", { cwd: "/a/feat" }), session("3", { cwd: "/b/main" })];
@@ -103,70 +46,6 @@ describe("quickSwitcherFilterSessions", () => {
   it("narrows to a project through its workspaces", () => {
     expect(quickSwitcherFilterSessions(all, { projectId: "proj-a" }, ws).map((s) => s.id)).toEqual(["1", "2"]);
     expect(quickSwitcherFilterActive({ projectId: "proj-a" })).toBe(true);
-  });
-});
-
-describe("quickSwitcherModel", () => {
-  it("groups sessions by age, newest group first", () => {
-    const sessions = [
-      session("today", { modified: "2026-08-14T09:00:00.000Z" }),
-      session("yesterday", { modified: "2026-08-13T09:00:00.000Z" }),
-      session("earlier", { modified: "2026-08-01T09:00:00.000Z" }),
-    ];
-
-    expect(groupIds(sessions)).toEqual(["today", "yesterday", "earlier"]);
-  });
-
-  it("promotes running sessions above every date group", () => {
-    const sessions = [
-      session("today", { modified: "2026-08-14T09:00:00.000Z" }),
-      session("old-but-running", { modified: "2026-06-01T09:00:00.000Z" }),
-    ];
-
-    const model = quickSwitcherModel({ sessions, activeSessionIds: new Set(["old-but-running"]), query: "", now: NOW });
-
-    expect(model.groups[0]?.id).toBe("active");
-    expect(model.groups[0]?.sessions.map((item) => item.id)).toEqual(["old-but-running"]);
-  });
-
-  it("orders each group by most recently modified", () => {
-    const sessions = [
-      session("older", { modified: "2026-08-14T08:00:00.000Z" }),
-      session("newer", { modified: "2026-08-14T10:00:00.000Z" }),
-    ];
-
-    const model = quickSwitcherModel({ sessions, activeSessionIds: new Set(), query: "", now: NOW });
-
-    expect(model.groups[0]?.sessions.map((item) => item.id)).toEqual(["newer", "older"]);
-  });
-
-  it("hides archived sessions", () => {
-    const sessions = [session("live"), session("gone", { archived: true })];
-
-    const model = quickSwitcherModel({ sessions, activeSessionIds: new Set(), query: "", now: NOW });
-
-    expect(model.matchCount).toBe(1);
-    expect(model.groups.flatMap((group) => group.sessions).map((item) => item.id)).toEqual(["live"]);
-  });
-
-  it("filters by the shared session search rules", () => {
-    const sessions = [session("a", { name: "billing refactor" }), session("b", { name: "mobile layout" })];
-
-    const model = quickSwitcherModel({ sessions, activeSessionIds: new Set(), query: "mobile", now: NOW });
-
-    expect(model.matchCount).toBe(1);
-    expect(model.groups.flatMap((group) => group.sessions).map((item) => item.id)).toEqual(["b"]);
-  });
-
-  it("reports no groups when nothing matches", () => {
-    const model = quickSwitcherModel({ sessions: [session("a", { name: "billing" })], activeSessionIds: new Set(), query: "zzzz", now: NOW });
-
-    expect(model.groups).toEqual([]);
-    expect(model.matchCount).toBe(0);
-  });
-
-  it("treats an unparsable timestamp as an old session instead of dropping it", () => {
-    expect(groupIds([session("broken", { modified: "not-a-date" })])).toEqual(["earlier"]);
   });
 });
 
@@ -199,120 +78,6 @@ describe("quickSwitcherSessionSubtitle", () => {
   });
 });
 
-describe("quickSwitcherModel attention ranking", () => {
-  const now = Date.parse("2026-08-18T12:00:00.000Z");
-
-  function session(id: string, modified = "2026-08-18T11:59:00.000Z") {
-    return { id, cwd: "/repo", path: `/s/${id}.jsonl`, created: modified, modified, messageCount: 1, firstMessage: id };
-  }
-
-  it("ranks waiting above running, running above unread, and unread above plain recency", () => {
-    const sessions = [session("recent"), session("unread"), session("running"), session("waiting")];
-
-    const model = quickSwitcherModel({
-      sessions,
-      activeSessionIds: new Set(["running"]),
-      waitingSessionIds: new Set(["waiting"]),
-      unreadSessionIds: new Set(["unread"]),
-      query: "",
-      now,
-    });
-
-    expect(model.groups.map((group) => group.id)).toEqual(["waiting", "active", "unread", "today"]);
-    expect(model.groups[0]?.sessions.map((entry) => entry.id)).toEqual(["waiting"]);
-    expect(model.groups[3]?.sessions.map((entry) => entry.id)).toEqual(["recent"]);
-  });
-
-  it("puts a session blocked on a question above one that is merely running", () => {
-    // Both need attention, but only the blocked one cannot progress without it.
-    const model = quickSwitcherModel({
-      sessions: [session("both")],
-      activeSessionIds: new Set(["both"]),
-      waitingSessionIds: new Set(["both"]),
-      unreadSessionIds: new Set(["both"]),
-      query: "",
-      now,
-    });
-
-    expect(model.groups.map((group) => group.id)).toEqual(["waiting"]);
-  });
-
-  it("names the attention groups for what they mean to the user", () => {
-    const model = quickSwitcherModel({
-      sessions: [session("a"), session("b")],
-      activeSessionIds: new Set(["b"]),
-      waitingSessionIds: new Set(["a"]),
-      unreadSessionIds: new Set(),
-      query: "",
-      now,
-    });
-
-    expect(model.groups.map((group) => group.title)).toEqual(["Waiting for you", "Working"]);
-  });
-
-  it("still ranks by attention when a query filters the list", () => {
-    const model = quickSwitcherModel({
-      sessions: [session("alpha-recent"), session("alpha-waiting")],
-      activeSessionIds: new Set(),
-      waitingSessionIds: new Set(["alpha-waiting"]),
-      unreadSessionIds: new Set(),
-      query: "alpha",
-      now,
-    });
-
-    expect(model.groups[0]?.id).toBe("waiting");
-    expect(model.matchCount).toBe(2);
-  });
-
-  it("falls back to date grouping when no attention signals are supplied", () => {
-    // The sets are optional so callers without unread/ask data keep working.
-    const model = quickSwitcherModel({
-      sessions: [session("only")],
-      activeSessionIds: new Set(),
-      query: "",
-      now,
-    });
-
-    expect(model.groups.map((group) => group.id)).toEqual(["today"]);
-  });
-});
-
-describe("interrupted runs", () => {
-  // A session a restart cut off is not going to finish on its own, and looks
-  // identical to an idle one in the list -- which is how a running session
-  // became impossible to find again after the daemon restarted under it.
-  it("ranks an interrupted session above everything except a blocked one", () => {
-    const model = quickSwitcherModel({
-      sessions: [
-        session("idle", { modified: "2026-08-18T10:00:00Z" }),
-        session("cut-off", { modified: "2026-08-18T08:00:00Z" }),
-        session("busy", { modified: "2026-08-18T09:00:00Z" }),
-      ],
-      activeSessionIds: new Set(["busy"]),
-      interruptedSessionIds: new Set(["cut-off"]),
-      query: "",
-      now: Date.parse("2026-08-18T11:00:00Z"),
-    });
-
-    const order = model.groups.flatMap((group) => group.sessions.map((entry) => entry.id));
-    expect(order.indexOf("cut-off")).toBeLessThan(order.indexOf("busy"));
-    expect(order.indexOf("cut-off")).toBeLessThan(order.indexOf("idle"));
-    expect(model.groups.find((group) => group.id === "interrupted")?.title).toBe("Interrupted");
-  });
-
-  it("does not report a session as interrupted once it is working again", () => {
-    const model = quickSwitcherModel({
-      sessions: [session("resumed", { modified: "2026-08-18T10:00:00Z" })],
-      activeSessionIds: new Set(["resumed"]),
-      interruptedSessionIds: new Set(["resumed"]),
-      query: "",
-      now: Date.parse("2026-08-18T11:00:00Z"),
-    });
-    expect(model.groups.find((group) => group.id === "interrupted")).toBeUndefined();
-    expect(model.groups.find((group) => group.id === "active")?.sessions).toHaveLength(1);
-  });
-});
-
 describe("renamed sessions", () => {
   // The switcher keeps its own copy of the session list, loaded once. Renaming
   // a session updated the context bar and the navigation list but not that
@@ -330,7 +95,6 @@ describe("renamed sessions", () => {
       sessions: updated,
       activeSessionIds: new Set(),
       query: "",
-      now: Date.parse("2026-08-18T11:00:00Z"),
     });
     const titles = model.groups.flatMap((group) => group.sessions.map((entry) => sessionLabel(entry)));
     expect(titles).toContain("web pi");

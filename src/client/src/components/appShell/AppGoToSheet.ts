@@ -12,6 +12,8 @@ export interface GoToDestination {
   badge?: string | number | undefined;
   badgeLabel?: string | undefined;
   selected?: boolean | undefined;
+  /** A command rather than a place (Actions…): listed last, under a divider, full width. */
+  command?: boolean | undefined;
 }
 
 /**
@@ -46,8 +48,13 @@ export class AppGoToSheet extends LitElement {
             </svg>
           </button>
         </header>
-        <div class="body" role="list">
-          ${this.destinations.map((destination) => this.renderDestination(destination))}
+        <div class="body">
+          <div class="views" role="list">
+            ${this.destinations.filter((destination) => destination.command !== true).map((destination) => this.renderDestination(destination))}
+          </div>
+          ${this.destinations.some((destination) => destination.command === true) ? html`<div class="commands" role="list">
+            ${this.destinations.filter((destination) => destination.command === true).map((destination) => this.renderDestination(destination))}
+          </div>` : nothing}
         </div>
       </modal-surface>
     `;
@@ -88,7 +95,9 @@ export class AppGoToSheet extends LitElement {
     @media (hover: hover) { .panel-key:hover { background: var(--pi-surface-hover); } }
     .panel-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
     .panel-header-title { margin: 0; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-text); line-height: var(--pi-panel-header-control-height); }
-    .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-reading-edge); padding-bottom: max(var(--pi-space-4), env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+    .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-reading-edge); padding-bottom: max(var(--pi-space-4), env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+    .views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pi-space-3); }
+    .commands { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-3); padding-top: var(--pi-space-4); border-top: 1px solid var(--pi-border); }
     .destination:last-child:nth-child(odd) { grid-column: 1 / -1; }
     .destination { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-row-min-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: start; cursor: pointer; }
     .destination.current { border-color: var(--pi-accent); background: var(--pi-selection-bg); }

@@ -2,6 +2,7 @@ import type { SessionActivity, SessionInfo, SessionStatus, Workspace } from "./a
 import { sessionActivityCategory } from "../../shared/sessionActivityState";
 import type { SessionStateBadgeKind } from "./components/activityBadge";
 import { sessionMatchesSearch } from "./sessionSearch";
+import { CORE_SESSION_SECTIONS, compareRanked, modifiedMs, sectionOf, sessionRank, type SessionRank, type SessionRankCategory, type SessionSectionDefinition } from "./sessionOrder";
 
 /**
  * Model for the mobile quick switcher.
@@ -18,7 +19,8 @@ import { sessionMatchesSearch } from "./sessionSearch";
  * testable without rendering the sheet.
  */
 
-export type QuickSwitcherGroupId = "error" | "waiting" | "interrupted" | "active" | "unread" | "pinned" | "today" | "yesterday" | "earlier";
+/** A section's id: core's (pinned, active, archived) or a plugin's. */
+export type QuickSwitcherGroupId = string;
 
 /** Filters applied before grouping; an empty filter is focus mode (everything). */
 export interface QuickSwitcherFilter {
@@ -31,6 +33,8 @@ export interface QuickSwitcherGroup {
   id: QuickSwitcherGroupId;
   title: string;
   sessions: SessionInfo[];
+  foldedByDefault?: boolean;
+  emptyText?: string;
 }
 
 export interface QuickSwitcherModelInput {
@@ -44,10 +48,15 @@ export interface QuickSwitcherModelInput {
   unreadSessionIds?: ReadonlySet<string>;
   /** Sessions whose run a restart cut off, from the daemon's interrupted record. */
   interruptedSessionIds?: ReadonlySet<string>;
-  /** Sessions the user pinned, kept above plain recency. */
+  /** Sessions the user pinned. */
   pinnedSessionIds?: ReadonlySet<string>;
   query: string;
-  now: number;
+  /** The machine the rows belong to, for a plugin section's claim. */
+  machineId?: string;
+  /** Core's and the plugins' sections, in order; core's alone when absent. */
+  sections?: readonly SessionSectionDefinition[];
+  /** A session's last activity for ordering; the switcher's `ActivityClock`. The session file's time when absent. */
+  activityAt?: (session: SessionInfo, rank: SessionRank) => number;
 }
 
 export interface QuickSwitcherModel {
@@ -55,105 +64,48 @@ export interface QuickSwitcherModel {
   matchCount: number;
 }
 
-/**
- * Groups in the order they are shown, which is the order of how much they want
- * the user: an agent that errored is stuck until someone looks, one blocked on
- * a question cannot progress without an answer, a cut-off run will never finish
- * on its own, work in flight may still need them, finished-but-unseen work is
- * the reason they opened the switcher, a pinned session is one they chose to
- * keep close, and everything else is plain recency.
- */
-const GROUP_ORDER = ["error", "waiting", "interrupted", "active", "unread", "pinned", "today", "yesterday", "earlier"] as const;
-
-const GROUP_TITLES: Record<QuickSwitcherGroupId, string> = {
-  error: "Needs attention",
-  waiting: "Waiting for you",
-  interrupted: "Interrupted",
-  active: "Working",
-  unread: "Finished",
-  pinned: "Pinned",
-  today: "Today",
-  yesterday: "Yesterday",
-  earlier: "Earlier",
-};
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 const EMPTY_IDS: ReadonlySet<string> = new Set();
 
-export function quickSwitcherModel(input: QuickSwitcherModelInput): QuickSwitcherModel {
-  const matches = input.sessions
-    .filter((session) => session.archived !== true)
-    .filter((session) => sessionMatchesSearch(session, input.query));
-
-  const byGroup = new Map<QuickSwitcherGroupId, SessionInfo[]>();
-  for (const session of matches) {
-    const groupId = quickSwitcherGroupId(session, {
-      active: input.activeSessionIds,
-      error: input.errorSessionIds ?? EMPTY_IDS,
-      waiting: input.waitingSessionIds ?? EMPTY_IDS,
-      unread: input.unreadSessionIds ?? EMPTY_IDS,
-      interrupted: input.interruptedSessionIds ?? EMPTY_IDS,
-      pinned: input.pinnedSessionIds ?? EMPTY_IDS,
-    }, input.now);
-    const group = byGroup.get(groupId) ?? [];
-    group.push(session);
-    byGroup.set(groupId, group);
-  }
-
-  const groups: QuickSwitcherGroup[] = [];
-  for (const id of GROUP_ORDER) {
-    const sessions = byGroup.get(id);
-    if (sessions === undefined || sessions.length === 0) continue;
-    groups.push({ id, title: GROUP_TITLES[id], sessions: sessions.sort(byMostRecentlyModified) });
-  }
-
-  return { groups, matchCount: matches.length };
-}
-
 /**
- * Attention beats recency: a session that needs the user is promoted above
- * every date group no matter when it was last modified. Within that, being
- * blocked on a question outranks still running, which outranks finished work
- * the user has not read.
+ * The switcher's sections are every session list's (navigation-lists.md sections 4 and 5): Pinned,
+ * Active, Archived and any a plugin adds, each ordered by what the session needs from the reader
+ * (error, asking, unread, working, read), then by last activity. The attention groups and the
+ * date groups this replaced ranked the same session differently from the Navigate page (B14
+ * review item 9).
  */
-interface SessionStateSets {
-  active: ReadonlySet<string>;
-  error: ReadonlySet<string>;
-  waiting: ReadonlySet<string>;
-  unread: ReadonlySet<string>;
-  interrupted: ReadonlySet<string>;
-  pinned: ReadonlySet<string>;
+export function quickSwitcherModel(input: QuickSwitcherModelInput): QuickSwitcherModel {
+  const matches = input.sessions.filter((session) => sessionMatchesSearch(session, input.query));
+  const definitions = input.sections ?? CORE_SESSION_SECTIONS;
+  const pinned = input.pinnedSessionIds ?? EMPTY_IDS;
+  const bySection = new Map<string, { session: SessionInfo; rank: SessionRank; at: number }[]>();
+  for (const session of matches) {
+    const archived = session.archived === true;
+    const id = sectionOf({ sessionId: session.id, machineId: input.machineId ?? "", cwd: session.cwd, name: session.name, pinned: pinned.has(session.id), archived }, definitions);
+    const rank = sessionRank({ category: switcherCategory(session.id, input), unread: (input.unreadSessionIds ?? EMPTY_IDS).has(session.id), interrupted: (input.interruptedSessionIds ?? EMPTY_IDS).has(session.id) });
+    const at = input.activityAt?.(session, rank) ?? modifiedMs(session.modified);
+    const list = bySection.get(id) ?? [];
+    list.push({ session, rank, at });
+    bySection.set(id, list);
+  }
+  const groups = definitions
+    .map((definition) => ({ definition, ranked: (bySection.get(definition.id) ?? []).sort(compareRanked) }))
+    .filter(({ definition, ranked }) => ranked.length > 0 || definition.emptyText !== undefined)
+    .map(({ definition, ranked }) => ({
+      id: definition.id,
+      title: definition.title,
+      sessions: ranked.map((entry) => entry.session),
+      ...(definition.foldedByDefault === true ? { foldedByDefault: true } : {}),
+      ...(definition.emptyText === undefined ? {} : { emptyText: definition.emptyText }),
+    }));
+  return { groups, matchCount: matches.filter((session) => session.archived !== true).length };
 }
 
-function quickSwitcherGroupId(session: SessionInfo, sets: SessionStateSets, now: number): QuickSwitcherGroupId {
-  // An error stops the agent until someone intervenes, so it outranks even a
-  // question the user could answer to keep going.
-  if (sets.error.has(session.id)) return "error";
-  if (sets.waiting.has(session.id)) return "waiting";
-  // Only while it is still stopped: a session that has been picked up again is
-  // reported by what it is doing now, not by what a past restart did to it.
-  if (sets.interrupted.has(session.id) && !sets.active.has(session.id)) return "interrupted";
-  if (sets.active.has(session.id)) return "active";
-  if (sets.unread.has(session.id)) return "unread";
-  // A pin is a floor, not a ceiling: it lifts an otherwise-idle session above
-  // plain recency, but never hides that the same session needs attention.
-  if (sets.pinned.has(session.id)) return "pinned";
-  const modified = Date.parse(session.modified);
-  if (Number.isNaN(modified)) return "earlier";
-  const age = now - modified;
-  if (age < DAY_MS) return "today";
-  if (age < 2 * DAY_MS) return "yesterday";
-  return "earlier";
-}
-
-function byMostRecentlyModified(first: SessionInfo, second: SessionInfo): number {
-  return sortableTimestamp(second.modified) - sortableTimestamp(first.modified);
-}
-
-function sortableTimestamp(value: string): number {
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? 0 : parsed;
+/** The switcher's state sets as the classifier's category, most urgent first. */
+function switcherCategory(sessionId: string, input: QuickSwitcherModelInput): SessionRankCategory {
+  if ((input.errorSessionIds ?? EMPTY_IDS).has(sessionId)) return "error";
+  if ((input.waitingSessionIds ?? EMPTY_IDS).has(sessionId)) return "asking";
+  if (input.activeSessionIds.has(sessionId)) return "working";
+  return "idle";
 }
 
 /**

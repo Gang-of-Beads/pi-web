@@ -13,6 +13,7 @@
  * there is no screen to return from.
  */
 
+import { CORE_SESSION_SECTIONS, compareRanked, modifiedMs, sectionOf, sessionRank, type SessionRank, type SessionSectionDefinition } from "./sessionOrder";
 import type { SessionInfo } from "./api";
 import type { SessionActivityCategory } from "../../shared/sessionActivityState";
 
@@ -63,10 +64,13 @@ export interface NavigateSessionRow {
 }
 
 export interface NavigateSection {
-  id: "pinned" | "waiting" | "running" | "recent" | "archived" | "choices";
+  /** A session section's id (core: pinned, active, archived; or a plugin's), or "choices". */
+  id: string;
   title: string;
   rows: NavigateSessionRow[];
   choices: NavigateChoice[];
+  foldedByDefault?: boolean;
+  emptyText?: string;
 }
 
 export interface NavigateModel {
@@ -95,6 +99,14 @@ export interface NavigateInput {
   query: string;
   /** Manual tags per session id, merged with the derived ones. */
   manualTags?: Readonly<Record<string, readonly string[]>>;
+  /** Sessions with a finished reply the reader has not seen. */
+  unreadSessionIds?: ReadonlySet<string>;
+  /** Sessions whose run a restart cut off. */
+  interruptedSessionIds?: ReadonlySet<string>;
+  /** Core's and the plugins' sections, in order; core's alone when absent. */
+  sections?: readonly SessionSectionDefinition[];
+  /** A row's last activity for ordering; the page's `ActivityClock`. The session file's time when absent. */
+  activityAt?: (row: NavigateSessionRow, rank: SessionRank) => number;
 }
 
 export function navigateModel(input: NavigateInput): NavigateModel {
@@ -109,28 +121,11 @@ export function navigateModel(input: NavigateInput): NavigateModel {
     .filter((entry) => matches(entry, input.query));
   const matching = rows.filter((entry) => matches(entry, input.query));
 
-  const sections: NavigateSection[] = [];
   const pinnedRows = pinnedSection(input).filter((entry) => matches(entry, input.query));
-  if (pinnedRows.length > 0) sections.push({ id: "pinned", title: "Pinned", rows: pinnedRows, choices: [] });
-
-  // One session, one row. A pinned session that is also waiting or working
-  // appeared twice, and both copies drew the "this is the open one" highlight,
-  // which read as two selections. Its state is on the pinned row already.
+  // One session, one row: a pinned session is listed once, from the pins, wherever its
+  // state would otherwise put it.
   const unpinned = matching.filter((entry) => !entry.pinned);
-
-  const waiting = unpinned.filter((entry) => entry.state === "asking");
-  if (waiting.length > 0) sections.push({ id: "waiting", title: "Waiting for you", rows: waiting, choices: [] });
-
-  const running = unpinned.filter((entry) => entry.state === "working");
-  if (running.length > 0) sections.push({ id: "running", title: "Working", rows: running, choices: [] });
-
-  const rest = unpinned.filter((entry) => !waiting.includes(entry) && !running.includes(entry));
-  if (rest.length > 0) sections.push({ id: "recent", title: "Recent", rows: rest, choices: [] });
-
-  // Owner, 2026-09-30: archived sessions live in a collapsed group at the bottom, where
-  // they can be restored or deleted for good. They are not counted as matches: the empty
-  // state speaks about the sessions a reader works in.
-  if (archivedRows.length > 0) sections.push({ id: "archived", title: "Archived", rows: archivedRows, choices: [] });
+  const sections: NavigateSection[] = sessionSectionsFor([...pinnedRows, ...unpinned, ...archivedRows], input);
 
   // Every level's choices, not just the next one: the page lists one kind at a
   // time, and asking for Machines while standing in a project used to answer
@@ -141,6 +136,41 @@ export function navigateModel(input: NavigateInput): NavigateModel {
   }
 
   return { nextLevel, sections, matchCount: matching.length + pinnedRows.length };
+}
+
+/**
+ * Every session row into its section, each section in rank-then-activity order (navigation-lists.md
+ * sections 4 and 5). A section with nothing in it is left out, except one that says so when empty
+ * (Archived). Archived rows are not matches: the empty state speaks about the sessions a reader
+ * works in.
+ */
+function sessionSectionsFor(rows: readonly NavigateSessionRow[], input: NavigateInput): NavigateSection[] {
+  const definitions = input.sections ?? CORE_SESSION_SECTIONS;
+  const seen = new Set<string>();
+  const bySection = new Map<string, { row: NavigateSessionRow; rank: SessionRank; at: number }[]>();
+  for (const entry of rows) {
+    const key = `${entry.machineId}:${entry.session.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const archived = entry.session.archived === true;
+    const id = sectionOf({ sessionId: entry.session.id, machineId: entry.machineId, cwd: entry.session.cwd, name: entry.session.name, pinned: entry.pinned, archived }, definitions);
+    const rank = sessionRank({ category: entry.state, unread: input.unreadSessionIds?.has(entry.session.id) === true, interrupted: input.interruptedSessionIds?.has(entry.session.id) === true });
+    const at = input.activityAt?.(entry, rank) ?? modifiedMs(entry.session.modified);
+    const list = bySection.get(id) ?? [];
+    list.push({ row: entry, rank, at });
+    bySection.set(id, list);
+  }
+  return definitions
+    .map((definition) => ({ definition, ranked: (bySection.get(definition.id) ?? []).sort(compareRanked) }))
+    .filter(({ definition, ranked }) => ranked.length > 0 || definition.emptyText !== undefined)
+    .map(({ definition, ranked }) => ({
+      id: definition.id,
+      title: definition.title,
+      rows: ranked.map((entry) => entry.row),
+      choices: [],
+      ...(definition.foldedByDefault === true ? { foldedByDefault: true } : {}),
+      ...(definition.emptyText === undefined ? {} : { emptyText: definition.emptyText }),
+    }));
 }
 
 /** The tags a session carries without anyone typing one. */
@@ -245,7 +275,7 @@ function sessionDetail(session: SessionInfo, machineId: string, input: NavigateI
 function pinnedSection(input: NavigateInput): NavigateSessionRow[] {
   return input.pinned
     .filter((entry) => inScope(entry.session, input))
-    .map((entry) => row(entry.session, entry.machineId, input));
+    .map((entry) => ({ ...row(entry.session, entry.machineId, input), pinned: true }));
 }
 
 function inScope(session: SessionInfo, input: NavigateInput): boolean {

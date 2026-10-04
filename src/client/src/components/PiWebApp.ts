@@ -1,5 +1,5 @@
 import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
-import { uiIconStyle, renderChatIcon, renderListIcon, renderPluginIcon } from "./uiIcons.js";
+import { uiIconStyle, renderChatIcon, renderCommandIcon, renderListIcon, renderPluginIcon } from "./uiIcons.js";
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
@@ -49,6 +49,7 @@ import { recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { keyboardInset, visualViewportOffsetTop } from "../appShell/keyboardInset";
 import { machineSessionKey, machineWorkspaceKey } from "../machineKeys";
 import { askConfirmation, confirmationText, type ConfirmRequest } from "../confirmDialog";
+import { modifiedMs, sessionSections } from "../sessionOrder";
 import { commandsForSession } from "../commandLedger";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
 import { routedWorkspaceTool } from "../routedWorkspaceTool";
@@ -216,6 +217,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: var(--pi-space-5); text-align: center; color: var(--pi-muted); }
   .archived-strip { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-5); padding: var(--pi-space-5) var(--pi-space-7); border-top: 1px solid var(--pi-border); color: var(--pi-muted); }
   .archived-strip p { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .empty .empty-link { min-height: var(--pi-control-height-touch); border-color: transparent; background: transparent; color: var(--pi-muted); text-decoration: underline; }
   .empty button, .archived-strip button { box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-4) var(--pi-space-6); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-accent); font: var(--pi-text-sm) var(--pi-font-ui); line-height: inherit; cursor: pointer; }
   .error { display: flex; gap: var(--pi-space-4); align-items: flex-start; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
@@ -472,6 +474,10 @@ export class PiWebApp extends LitElement {
   @state() private navigateOpen = false;
   @state() private contextSheetOpen = false;
   @state() private goToSheetOpen = false;
+  /** The first-boot centre asked for a new session in whichever project the reader picks next. */
+  private startSessionOnProjectChoice = false;
+  /** The first-boot centre's Add a project: the added project opens with a new session. */
+  private startSessionAfterAddingProject = false;
   /** The session the rename dialog names, with the machine it lives on: a row of a browsed machine is renamed there. */
   @state() private renameFromBar: { session: SessionInfo; machineId: string } | undefined;
   /** How much of the browsed machine's board has answered; the lists claim emptiness only for a complete one. */
@@ -2672,9 +2678,10 @@ export class PiWebApp extends LitElement {
    * dialog seam; the shell's affordances run the plugin's reserved action.
    * Absent plugin means no dialog: the affordances hide with it.
    */
-  private openProjectDialog(): void {
+  private openProjectDialog(options: { readonly startSessionAfter?: boolean } = {}): void {
     const action = this.plugins.getActions(this.createPluginRuntimeContext()).find((candidate) => candidate.localId === "add-project");
     if (action === undefined) return;
+    this.startSessionAfterAddingProject = options.startSessionAfter === true;
     void action.run();
   }
 
@@ -2714,10 +2721,15 @@ export class PiWebApp extends LitElement {
       { id: "navigation", label: "Sessions", icon: renderListIcon(), selected: view === "navigation" },
       { id: "chat", label: "Chat", icon: renderChatIcon(), selected: view === "chat" },
       ...this.shellToolTabs().map((tab) => ({ id: tab.id, label: tab.label, icon: tab.icon, badge: tab.badge, badgeLabel: tab.badgeLabel, selected: tab.selected })),
+      { id: GO_TO_ACTIONS, label: "Actions…", icon: renderCommandIcon(), command: true },
     ];
   }
 
   private goTo(id: string): void {
+    if (id === GO_TO_ACTIONS) {
+      this.openActionPalette();
+      return;
+    }
     if (id === "navigation" || id === "chat") {
       this.selectMainView(id);
       return;
@@ -2725,15 +2737,16 @@ export class PiWebApp extends LitElement {
     this.openShellToolTab(id);
   }
 
+  /** Ask on the app's own dialog (B40); see askConfirmation. */
+  private confirm(request: ConfirmRequest): Promise<boolean> {
+    return askConfirmation({ showDialog: (dialog) => this.openPluginDialog(dialog) }, request);
+  }
+
   /**
    * The host half of the plugin dialog seam: the plugin owns the content and
    * its close callbacks; the shell owns the surface, the modal-layer frame,
    * and the back gesture, exactly as for its own dialogs.
    */
-  private confirm(request: ConfirmRequest): Promise<boolean> {
-    return askConfirmation({ showDialog: (dialog) => this.openPluginDialog(dialog) }, request);
-  }
-
   private openPluginDialog(dialog: PluginDialog): PluginDialogHandle {
     const id = ++this.pluginDialogSeq;
     const entry: PluginDialogEntry = {
@@ -2774,6 +2787,7 @@ export class PiWebApp extends LitElement {
   private navigationViewLoaded = false;
 
   private closeNavigate(): void {
+    this.startSessionOnProjectChoice = false;
     this.navigateOpen = false;
   }
 
@@ -2812,6 +2826,9 @@ export class PiWebApp extends LitElement {
         .map((session) => ({ session, machineId })),
       sessionStates: browsingElsewhere ? EMPTY_STATE_MAP : this.sessionStateKinds(),
       pinnedSessionIds: pinnedIds,
+      unreadSessionIds: browsingElsewhere ? EMPTY_ID_SET : this.unreadSessionIds,
+      interruptedSessionIds: browsingElsewhere ? EMPTY_ID_SET : this.interruptedRunsByMachine.get(selectedMachineId(state)) ?? EMPTY_ID_SET,
+      sections: sessionSections(this.plugins.getSessionSections(machineId)),
     };
   }
 
@@ -2835,6 +2852,7 @@ export class PiWebApp extends LitElement {
       .pinnedProjectIds=${this.pinnedProjectIds}
       ?returnable=${overlay || (this.appShell.isMobileNavigationLayout && this.hasChatSubject())}
       .onClose=${() => { this.leaveNavigate(); }}
+      .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? () => { this.toggleGoToSheet(); } : undefined}
       .onChoose=${(level: NavigateLevel, id: string) => { void this.navigateChoose(level, id); }}
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
       .onOpenSession=${(session: SessionInfo, machineId: string) => { void this.openSessionFromQuickSwitcher(session, machineId); }}
@@ -2922,9 +2940,17 @@ export class PiWebApp extends LitElement {
 
   private async navigateChoose(level: NavigateLevel, id: string): Promise<void> {
     if (level === "machine") { this.browseQuickSwitcherMachine(id); return; }
+    const startSession = this.startSessionOnProjectChoice;
+    this.startSessionOnProjectChoice = false;
     this.navigation.begin();
     const project = this.state.projects.find((entry) => entry.id === id);
-    if (project !== undefined) await this.workspaces.selectProject(project);
+    if (project === undefined) return;
+    if (!startSession) {
+      await this.workspaces.selectProject(project);
+      return;
+    }
+    this.closeNavigate();
+    await this.startSessionInProject(project);
   }
 
   /** Widening drops the level and everything under it; the page stays put. */
@@ -3352,7 +3378,7 @@ export class PiWebApp extends LitElement {
     if (this.state.selectedWorkspace !== undefined) return "Select or start a session.";
     if (this.state.selectedProject !== undefined) return "Select a workspace to start a session.";
     if (this.state.projects.length === 0) return "Add a project to start a session.";
-    return "Select a project and workspace to start a session.";
+    return "Open a session on the left, or start a new one.";
   }
 
   /** The one action that unblocks an empty chat surface, next to its text. */
@@ -3362,9 +3388,40 @@ export class PiWebApp extends LitElement {
       return html`<button @click=${() => { void this.startSessionAndOpenChat(); }}>Start a session</button>`;
     }
     if (this.state.projects.length === 0) {
-      return this.hasAddProjectEntry() ? html`<button @click=${() => { this.openProjectDialog(); }}>Add a project</button>` : html``;
+      return this.hasAddProjectEntry() ? html`<button @click=${() => { this.openProjectDialog({ startSessionAfter: true }); }}>Add a project</button>` : html``;
     }
-    return html``;
+    if (this.state.selectedWorkspace !== undefined) return html``;
+    const recent = this.recentProject();
+    if (recent === undefined) return html`<button @click=${() => { this.chooseProjectForNewSession(); }}>New session…</button>`;
+    return html`
+      <button @click=${() => { void this.startSessionInProject(recent); }}>New session in ${recent.name}</button>
+      <button class="empty-link" @click=${() => { this.chooseProjectForNewSession(); }}>Choose another project</button>
+    `;
+  }
+
+  /**
+   * The project of the newest session on this machine, for the first-boot centre's "New session in
+   * <project>" (navigation-lists.md section 6). A session's project is the one whose folder holds it.
+   */
+  private recentProject(): Project | undefined {
+    const newest = [...this.quickSwitcherSessions].sort((left, right) => modifiedMs(right.modified) - modifiedMs(left.modified));
+    for (const session of newest) {
+      const project = this.state.projects.find((candidate) => session.cwd === candidate.path || session.cwd.startsWith(`${candidate.path}/`));
+      if (project !== undefined) return project;
+    }
+    return undefined;
+  }
+
+  private async startSessionInProject(project: Project): Promise<void> {
+    if (this.state.selectedProject?.id !== project.id) await this.workspaces.selectProject(project);
+    if (this.state.selectedProject?.id !== project.id || this.state.selectedWorkspace === undefined) return;
+    await this.startSessionAndOpenChat();
+  }
+
+  /** The Projects list, where choosing a project starts the new session in it. */
+  private chooseProjectForNewSession(): void {
+    this.startSessionOnProjectChoice = true;
+    this.openNavigateOn("project");
   }
 
   /** Text-safe badge for the panel row; rich badges stay in list rows. */
@@ -3815,7 +3872,13 @@ export class PiWebApp extends LitElement {
       openActionPalette: () => { this.openActionPalette(); },
       focusPrompt: () => { void this.focusChatComposer(); },
       addProject: () => { this.openProjectDialog(); },
-      createProject: async (input) => await this.projects.addProject(input.path, input.create, input.trust),
+      createProject: async (input) => {
+        const startSession = this.startSessionAfterAddingProject;
+        this.startSessionAfterAddingProject = false;
+        const failure = await this.projects.addProject(input.path, input.create, input.trust);
+        if (failure === undefined && startSession && this.state.selectedWorkspace !== undefined) void this.startSessionAndOpenChat();
+        return failure;
+      },
       projectDirectories: (query, signal) => api.projectDirectories(query, selectedMachineId(this.state), { signal }),
       projectTrust: async (path) => await trustApi.projectTrust(path, selectedMachineId(this.state)),
       createMachine: async (input) => {
@@ -4717,6 +4780,7 @@ export class PiWebApp extends LitElement {
           .sessionStates=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_STATE_MAP : this.sessionStateKinds()}
           .waitingSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.waitingSessionIds()}
           .unreadSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.unreadSessionIds}
+          .sessionSections=${sessionSections(this.plugins.getSessionSections(this.rowsMachineId()))}
           .failedSendSessionIds=${this.failedSendSessionIds}
           .interruptedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.interruptedRunsByMachine.get(selectedMachineId(state)) ?? EMPTY_ID_SET}
           .errorSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.errorSessionIds()}
@@ -4769,6 +4833,9 @@ export class PiWebApp extends LitElement {
 
   static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, appStyles];
 }
+
+/** The Go to sheet's command line: opens the action palette, the touch opener ⌘K never had (B39). */
+const GO_TO_ACTIONS = "actions";
 
 const PLUGIN_DIALOG_CLASS: Record<NonNullable<PluginDialog["presentation"]>, string> = {
   overlay: "plugin-dialog",
