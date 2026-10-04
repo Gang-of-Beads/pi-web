@@ -1,6 +1,7 @@
 # Message states: a message is never lost and never fails for good
 
-Status: design, waiting for the owner (2026-10-04). Revises D1 in
+Status: approved by the owner (2026-10-04), with the details below (time,
+the queue list, a failed take-back, and the state-merging rule). Revises D1 in
 `state-diagram.md`.
 
 ## The owner's rules (2026-10-04)
@@ -123,15 +124,68 @@ Two changes:
 
 ## Time
 
-A row shows the machine's acceptance time (`acceptedAt`): the moment the
-machine took the message, the same on every device and after every reload.
+A message's time is the moment the agent got it (`handedAt`), owner
+2026-10-04: until then it sits in the queue, where it can still be taken back,
+so it has not been sent to the agent yet.
 
-- A `sending` row shows no clock, only "Sending…". On a good link it is accepted
-  within a frame or two.
-- This replaces B5's rule (the device's send time, clamped to acceptance). A
-  message delivered a day late shows the day it arrived, not the day it was
-  typed.
-- The time pi wrote it (`committed`) is shown in message info, not in the row.
+- `sending`, `takingBack` and `queued` rows show no clock: "Sending…",
+  "Taking back…", "Queued · n".
+- The daemon stamps `handedAt` when it hands the message to pi, writes it on
+  pi's committed copy (the throat that stamps `clientMessageId` today), and
+  every device shows it after every reload.
+- A message pi returns unread (`handed -> queued`) loses its `handedAt`; the
+  next handoff stamps a new one.
+- This replaces B5's rule (the device's send time, clamped to acceptance).
+- Message info shows all three: written on this device, accepted by the
+  machine, handed to the agent.
+
+## The queue list
+
+Everything that has not reached the agent is in the queue list, which is where
+the reader controls it (owner: "用户如果不想发则应该在message queue里面选择撤回"):
+this device's `sending` and `takingBack` records first in their written
+order, then the machine's `queued` records by `seq`. Each has Take back. A
+message leaves the list the moment the device learns it reached the agent
+(`handed`, `committed`, `consumed`), was withdrawn, or was cancelled; it does
+not wait for any other answer.
+
+## One merge rule for every update
+
+A record's state can be reported by several sources that race: the answer to
+the send, the answer to a take-back, socket frames, and the reconciliation read
+after a reconnect. They are applied by one rule, so the order they arrive in
+does not matter:
+
+- The machine stamps every transition of a record with a revision `rev`
+  (1, 2, 3, … per record, persisted with the inbox and the ledger). Every frame
+  and every answer carries `(state, rev)`.
+- The device keeps the highest `rev` it has applied, and applies an update only
+  if its `rev` is higher. A stale frame, a late answer or a replayed read is
+  dropped.
+- Device-only states (`sending`, `takingBack`) are rev 0: any machine report
+  wins over them.
+- `handed -> queued` (pi returned it unread) is an ordinary later revision, so
+  it applies even though it looks like a step back.
+
+This is the pattern of an idempotent outbox with a monotonic version per record
+(a last-writer-wins register ordered by the machine's revision). The state
+machine above stays the single place that says which transitions exist; the
+merge rule only decides whether an update is new.
+
+**A take-back that turns out too late**, under this rule:
+
+1. The reader presses Take back on a queued message. The device records the
+   request (`takingBack`, rev unchanged) and sends `withdraw(id)`.
+2. A frame arrives first: `(handed, rev 3)`. It is newer, so it applies: the
+   message leaves the queue list at once and appears in the conversation as
+   handed. The pending take-back is now moot.
+3. The take-back's answer arrives later: `(handed, rev 3)` or
+   `(committed, rev 4)`. It applies or is dropped by `rev` like anything else;
+   because the device had requested a take-back for this record, it also shows
+   the notice "Already with the agent; it could not be taken back." once.
+
+If the answer arrives before the frame, step 3 happens first and step 2 is
+dropped as stale. Either way the end state and the notice are the same.
 
 ## Order
 
@@ -169,7 +223,7 @@ device could run again. This window is the only one left.
   ("Not received · Retry", "Not accepted · Retry", "Receiving…").
 - Retry and Discard.
 - The 10-minute automatic-resend window (B4); every `sending` record is resent.
-- `sentAt` as the shown time.
+- `sentAt` and `acceptedAt` as the shown time (both stay in message info).
 
 ## Words
 
@@ -186,9 +240,10 @@ device could run again. This window is the only one left.
 
 ## Upgrade
 
-Outbox records written by an older version as "not sent" or "unverifiable" become
-`sending` and are delivered on the first load after the upgrade, as the rule
-says. Records several days old will then reach the agent unless taken back.
+Outbox records written by an older version as "not sent" or "unverifiable"
+become `sending`, appear in the queue list with Take back, and are delivered on
+the first load after the upgrade (owner: no age limit; the queue list is where a
+reader stops a message).
 
 ## Order of work
 

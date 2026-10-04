@@ -1,6 +1,6 @@
 # Navigation and session lists
 
-Status: design, waiting for the owner (2026-10-04). Covers B37, B39, B43, B45,
+Status: approved by the owner (2026-10-04). Covers B37, B39, B43, B45,
 B46 and the switcher-rank item; extends D8 in `state-diagram.md`.
 
 ## 1. The grid key (B46)
@@ -40,11 +40,14 @@ the same three-bar menu the chat has.
 
 Agreed, with two details:
 
-- The menu acts on a workspace. In a chat that is the session's workspace; on a
-  project it is the project's main checkout, and the menu's first line names it
-  with a switch when the project has more than one worktree.
+- The menu acts on the project's workspace. PI WEB has no worktree concept in
+  core (it was removed; a plugin can add one), so a project has one workspace
+  and there is nothing to choose.
 - The menu gets an **Actions…** line that opens the action palette, which is
-  the touch opener B39 asks for (today only ⌘K opens it).
+  the touch opener B39 asks for (today only ⌘K opens it). It goes last, under a
+  divider, after the views (Files, Git, Terminal, Tasks): the views are places,
+  Actions is a command list, and the chat's menu gets the same line in the same
+  place so both menus read the same.
 
 On the machine-wide list (no project chosen) there is no menu: Files, Git,
 Terminal and Tasks have no workspace to act on.

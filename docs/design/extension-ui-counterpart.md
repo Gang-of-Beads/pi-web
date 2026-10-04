@@ -1,6 +1,8 @@
 # Extension UI: the PI WEB counterpart of pi's `ctx.ui`
 
-Status: design, waiting for the owner (2026-10-04).
+Status: approved by the owner (2026-10-04), with two additions: several
+extensions writing at once, and what happens when a surface has no room. Both
+are the section "Many writers, little room".
 
 ## Why
 
@@ -111,6 +113,33 @@ never draws one for a session it is not showing.
 pi's own terminal chrome with terminal components. PI WEB has its own chrome, so
 these stay no-ops. `getToolsExpanded` / `setToolsExpanded` stay headless until a
 reader asks for an extension to drive the tool fold.
+
+## Many writers, little room
+
+pi's `ctx.ui` does not say which extension is calling, and every extension of
+a session shares one UI context. So writers are told apart only by the key they
+choose, exactly as in pi's terminal.
+
+**Keyed slots** (`setStatus`, `setWidget`): one value per key; a second write
+to the same key replaces the first; `undefined` removes it. Keys keep the
+order in which they were first set, so a status does not jump when another one
+changes.
+
+**Single slots** (`setWorkingMessage`, `setWorkingVisible`,
+`setWorkingIndicator`, `setHiddenThinkingLabel`, `setTitle`): the last write
+wins, and a reset restores PI WEB's default even if another extension set the
+value. That is pi's rule; PI WEB does not invent a stack pi does not have.
+
+**Room**, per surface:
+
+| Surface | Limit | When it does not fit |
+|---|---|---|
+| Footer statuses | one line; each status at most 40 characters (ellipsis) | as many whole statuses as fit, then "+n"; tapping the footer opens a sheet that lists every status in full |
+| Widgets | each at most 6 lines (10 on desktop); all widgets together at most a third of the viewport | a longer widget shows its first lines and "Show all"; the widget area scrolls inside itself, the transcript never moves for it |
+| Working words | one line in the activity dock | ellipsis; the full text in the dock's title |
+| Info notify line | one line in the transcript | wraps up to 3 lines, then ellipsis; the full text in its title |
+| Warning / error lines | appended | the same message again within 10 seconds becomes "×n" on the existing line instead of a new line |
+| Tab title | the browser's | as the browser truncates |
 
 ## Wire
 

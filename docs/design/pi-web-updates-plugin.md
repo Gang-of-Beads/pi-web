@@ -1,6 +1,8 @@
 # The PI WEB Updates plugin
 
-Status: design, waiting for the owner (2026-10-04). Supersedes the B18 line in
+Status: approved for PI WEB itself, nix included (owner, 2026-10-04: "先只做
+PI WEB 本身的更新（含 nix），pi 和扩展以后再说"). The pi CLI and extension
+rows, and keeping pi-updater quiet inside PI WEB, wait. Supersedes the B18 line in
 `state-diagram.md` D6 ("pi-updater retired in nix-config").
 
 ## Why
