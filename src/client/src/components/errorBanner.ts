@@ -1,13 +1,13 @@
 import { html, type TemplateResult } from "lit";
 import type { RetiredBy } from "../notice.js";
-import { renderCrossIcon } from "./uiIcons.js";
 import type { ReadMiss } from "../sync/readPhase.js";
 
 /**
- * The shared error banner. It leaves when the user dismisses it, another
- * message replaces it, the owning action clears it, or - for the transport
- * claims below - the machine's own answers or the expiry retire it, so a
- * background refresh cannot hide a failure the user has not read yet.
+ * The shared error banner. Every state in the app row is momentary (owner,
+ * 2026-10-04): it has no close key, and it leaves when another message replaces
+ * it, the owning action clears it, its expiry passes (`noticeExpiryMs`), or -
+ * for a claim about a link - the machine's own answers retire it. A failure the
+ * reader can act on keeps its Retry while it shows.
  *
  * A few transport/reconnect failures are noisy but usually self-heal after the
  * next retry or a sessiond restart. Those still deserve visibility, but not a
@@ -22,7 +22,6 @@ import type { ReadMiss } from "../sync/readPhase.js";
  */
 export function errorBanner(
   error: string,
-  onDismiss: () => void,
   retiredBy: RetiredBy = "reply",
   onRetry?: () => void,
 ): TemplateResult | null {
@@ -37,7 +36,6 @@ export function errorBanner(
   return html`<div class=${`error${transient === undefined ? "" : " transient"}`} role=${transient === undefined ? "alert" : "status"}>
     <span class="error-text">${transient ?? error}</span>
     ${retry}
-    <button type="button" class="error-dismiss" aria-label="Dismiss error" title="Dismiss error" @click=${() => { onDismiss(); }}>${renderCrossIcon()}</button>
   </div>`;
 }
 
@@ -86,6 +84,22 @@ export function isTransientError(error: string): boolean {
  * not outlive the reconnect it describes.
  */
 export const TRANSIENT_ERROR_TIMEOUT_MS = 6000;
+
+/** How long a notice about one operation stays: long enough to read and press Retry. */
+export const READER_NOTICE_TIMEOUT_MS = 10_000;
+
+/**
+ * When a row message leaves by itself. A self-healing transport claim goes after
+ * `TRANSIENT_ERROR_TIMEOUT_MS`; a notice about an operation after
+ * `READER_NOTICE_TIMEOUT_MS`; a claim that asserts a machine's state (a composed
+ * "X is unavailable; reconnecting…") stays until that machine answers, so it is
+ * never undefined while true.
+ */
+export function noticeExpiryMs(retiredBy: RetiredBy, error: string): number | undefined {
+  if (error === "") return undefined;
+  if (retiredBy === "reader") return READER_NOTICE_TIMEOUT_MS;
+  return normalizeTransientError(error) === undefined ? undefined : TRANSIENT_ERROR_TIMEOUT_MS;
+}
 
 export function normalizeTransientError(error: string): string | undefined {
   // ENOENT when the socket file is gone, ECONNREFUSED while the daemon is

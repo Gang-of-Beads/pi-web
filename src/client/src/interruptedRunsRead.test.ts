@@ -3,12 +3,12 @@ import { interruptedRunsReadPlan } from "./interruptedRunsRead";
 
 describe("interruptedRunsReadPlan", () => {
   it("a failed read is not a record", () => {
-    expect(interruptedRunsReadPlan(undefined, false)).toEqual({ failed: true, adoptMarkers: false, resolveUnknown: false });
+    expect(interruptedRunsReadPlan(undefined, false)).toEqual({ failed: true, adoptMarkers: false });
   });
 
   it("a non-empty record is adopted and resolves the unknown state", () => {
     const plan = interruptedRunsReadPlan(new Set(["s1"]), false);
-    expect(plan).toEqual({ failed: false, adoptMarkers: true, resolveUnknown: true });
+    expect(plan).toEqual({ failed: false, adoptMarkers: true });
   });
 
   /**
@@ -19,11 +19,11 @@ describe("interruptedRunsReadPlan", () => {
    */
   it("an empty post-boot read resolves the unknown banner without erasing on-screen markers", () => {
     const plan = interruptedRunsReadPlan(new Set<string>(), false);
-    expect(plan).toEqual({ failed: false, adoptMarkers: false, resolveUnknown: true });
+    expect(plan).toEqual({ failed: false, adoptMarkers: false });
   });
 
   it("the boot read may adopt an empty record as a true retraction", () => {
     const plan = interruptedRunsReadPlan(new Set<string>(), true);
-    expect(plan).toEqual({ failed: false, adoptMarkers: true, resolveUnknown: true });
+    expect(plan).toEqual({ failed: false, adoptMarkers: true });
   });
 });

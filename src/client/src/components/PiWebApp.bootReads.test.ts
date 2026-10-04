@@ -139,13 +139,13 @@ describe("PiWebApp boot reads (P6 slice a)", () => {
   it("leaves a remote machine's unread set to its activity socket when the roster brings both at once (review 44fc106b)", async () => {
     const fetchMock = stubFetch();
     stubWindow();
-    const sockets: { url: string; onopen: (() => void) | null }[] = [];
+    const sockets: { url: string; onopen: (() => void) | null; onmessage: ((message: { data: string }) => void) | null }[] = [];
     vi.stubGlobal("WebSocket", class {
       static readonly CONNECTING = 0;
       static readonly OPEN = 1;
       readyState = 0;
       onopen: (() => void) | null = null;
-      onmessage: unknown = null;
+      onmessage: ((message: { data: string }) => void) | null = null;
       onerror: unknown = null;
       onclose: unknown = null;
       constructor(readonly url: string) { sockets.push(this); }
@@ -161,7 +161,9 @@ describe("PiWebApp boot reads (P6 slice a)", () => {
     await settle();
     const remoteReads = () => fetchMock.mock.calls.filter(([input]) => requestUrl(input).endsWith("/machines/remote-1/sessions/unread")).length;
     const beforeOpen = remoteReads();
-    sockets.find((socket) => socket.url.includes("/machines/remote-1/events"))?.onopen?.();
+    const remoteSocket = sockets.find((socket) => socket.url.includes("/machines/remote-1/events"));
+    remoteSocket?.onopen?.();
+    remoteSocket?.onmessage?.({ data: JSON.stringify({ type: "keepalive" }) });
     await settle();
 
     expect({ sockets: sockets.length, beforeOpen, afterOpen: remoteReads() }).toEqual({ sockets: 1, beforeOpen: 0, afterOpen: 1 });

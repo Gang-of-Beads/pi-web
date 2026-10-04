@@ -686,7 +686,7 @@ describe("RealtimeSocket phase after a liveness drop (review 44fc106b)", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps the first wait's start when a connection that never opened is dropped for a slow handshake, and starts again when an open one goes silent", () => {
+  it("keeps the first wait's start when a connection that never opened is dropped for a slow handshake, and starts again when an open one goes silent", async () => {
     let now = 1_000;
     vi.spyOn(Date, "now").mockImplementation(() => now);
     const realtime = new RealtimeSocket();
@@ -702,6 +702,8 @@ describe("RealtimeSocket phase after a liveness drop (review 44fc106b)", () => {
     const opened = FakeWebSocket.instances[1];
     if (opened === undefined) throw new Error("expected a reconnect");
     opened.onopen?.();
+    opened.onmessage?.({ data: JSON.stringify({ type: "keepalive" }) });
+    await new Promise((resolve) => { nativeSetTimeout(resolve, 0); });
     now = 60_000;
     realtime.checkLiveness(now);
 
@@ -726,7 +728,7 @@ describe("RealtimeSocket phase (P6 slice a)", () => {
     vi.restoreAllMocks();
   });
 
-  it("is absent until asked and for other machines, connecting until its connection opens, open after, and connecting again from the moment an open connection goes", () => {
+  it("is absent until asked and for other machines, connecting until the machine first speaks through it (an accepted upgrade alone proves only the proxy), open after, and connecting again from the moment an open connection goes", async () => {
     let now = 1_000;
     vi.spyOn(Date, "now").mockImplementation(() => now);
     const realtime = new RealtimeSocket();
@@ -748,6 +750,9 @@ describe("RealtimeSocket phase (P6 slice a)", () => {
     if (reopened === undefined) throw new Error("expected a reconnect");
     reopened.onopen?.();
     phases.push(realtime.phaseFor("m1"));
+    reopened.onmessage?.({ data: JSON.stringify({ type: "keepalive" }) });
+    await new Promise((resolve) => { nativeSetTimeout(resolve, 0); });
+    phases.push(realtime.phaseFor("m1"));
     now = 2_000;
     reopened.onclose?.();
     phases.push(realtime.phaseFor("m1"));
@@ -758,6 +763,7 @@ describe("RealtimeSocket phase (P6 slice a)", () => {
       { kind: "absent" },
       { kind: "connecting", since: 1_000 },
       { kind: "absent" },
+      { kind: "connecting", since: 1_000 },
       { kind: "connecting", since: 1_000 },
       { kind: "open" },
       { kind: "connecting", since: 2_000 },

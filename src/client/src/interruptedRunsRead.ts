@@ -12,11 +12,9 @@ export interface InterruptedRunsReadPlan {
   failed: boolean;
   /** Replace the on-screen marker set with the read's (possibly empty) set. */
   adoptMarkers: boolean;
-  /** A successful read answers the unknown-state banner, empty or not. */
-  resolveUnknown: boolean;
 }
 
 export function interruptedRunsReadPlan(ids: ReadonlySet<string> | undefined, adoptEmpty: boolean): InterruptedRunsReadPlan {
-  if (ids === undefined) return { failed: true, adoptMarkers: false, resolveUnknown: false };
-  return { failed: false, adoptMarkers: ids.size > 0 || adoptEmpty, resolveUnknown: true };
+  if (ids === undefined) return { failed: true, adoptMarkers: false };
+  return { failed: false, adoptMarkers: ids.size > 0 || adoptEmpty };
 }

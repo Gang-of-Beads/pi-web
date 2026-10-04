@@ -1,17 +1,17 @@
 // @vitest-environment happy-dom
 import { render } from "lit";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { errorBanner, isTransientError, unansweredRowText } from "./errorBanner";
 
 afterEach(() => {
   document.body.replaceChildren();
 });
 
-function renderBanner(error: string, onDismiss = vi.fn()): { host: HTMLElement; onDismiss: ReturnType<typeof vi.fn> } {
+function renderBanner(error: string): { host: HTMLElement } {
   const host = document.createElement("div");
   document.body.append(host);
-  render(errorBanner(error, onDismiss), host);
-  return { host, onDismiss };
+  render(errorBanner(error), host);
+  return { host };
 }
 
 describe("errorBanner", () => {
@@ -21,18 +21,13 @@ describe("errorBanner", () => {
     expect(host.querySelector(".error")).toBeNull();
   });
 
-  it("announces the message and dismisses it on request", () => {
-    const { host, onDismiss } = renderBanner("Failed to start workspace removal: HTTP request cancelled");
+  it("announces the message with no close key: every row state is momentary (owner, 2026-10-04)", () => {
+    const { host } = renderBanner("Failed to start workspace removal: HTTP request cancelled");
 
     const banner = host.querySelector(".error");
     expect(banner?.getAttribute("role")).toBe("alert");
     expect(banner?.textContent).toContain("Failed to start workspace removal: HTTP request cancelled");
-
-    const dismiss = host.querySelector<HTMLButtonElement>(".error-dismiss");
-    expect(dismiss?.getAttribute("aria-label")).toBe("Dismiss error");
-    dismiss?.click();
-
-    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(host.querySelector(".error-dismiss")).toBeNull();
   });
 });
 
@@ -165,7 +160,7 @@ describe("a reader-retired banner offers a way to try again", () => {
   it("renders Retry and calls it", () => {
     const retries: number[] = [];
     const host = document.createElement("div");
-    render(errorBanner("Session not found", () => undefined, "reader", () => { retries.push(1); }), host);
+    render(errorBanner("Session not found", "reader", () => { retries.push(1); }), host);
     const retry = host.querySelector<HTMLButtonElement>(".error-retry");
 
     expect(retry).not.toBeNull();
@@ -175,7 +170,7 @@ describe("a reader-retired banner offers a way to try again", () => {
 
   it("does not add Retry to a self-healing transport claim", () => {
     const host = document.createElement("div");
-    render(errorBanner("remote machine request cancelled", () => undefined, "reply", () => undefined), host);
+    render(errorBanner("remote machine request cancelled", "reply", () => undefined), host);
 
     expect(host.querySelector(".error-retry")).toBeNull();
   });

@@ -170,7 +170,7 @@ export class ModalSurface extends LitElement {
          --modal-surface-height / --modal-surface-max-height / --modal-surface-min-height
          --modal-surface-border / --modal-surface-radius / --modal-surface-shadow */
     :host { display: block; width: 100%; height: 100%; }
-    .backdrop { box-sizing: border-box; width: 100%; height: 100%; display: grid; place-items: var(--modal-surface-place-items, center); padding: var(--modal-surface-backdrop-padding, 0); background: var(--pi-overlay); overflow: hidden; }
+    .backdrop { box-sizing: border-box; width: 100%; height: 100%; display: grid; place-items: var(--modal-surface-place-items, center); padding: var(--modal-surface-backdrop-padding, 0); border-top: var(--pi-app-row-inset, 0px) solid transparent; background: var(--pi-overlay); overflow: hidden; }
     /* The shell takes focus when a host names no first control, and the
        browser then paints a focus ring around the whole surface - a gold frame
        the length of the screen that marks nothing a reader can act on, and

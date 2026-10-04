@@ -27,6 +27,7 @@ interface RegisteredModalLayer {
 }
 
 const registeredModalLayers = new Set<RegisteredModalLayer>();
+const presenceListeners = new Set<() => void>();
 let modalLayerOrder = 0;
 
 /**
@@ -94,6 +95,17 @@ function notifyModalLayers(ownerDocument: Document): void {
   for (const registered of [...registeredModalLayers]) {
     if (registered.layer.element.ownerDocument === ownerDocument) registered.layer.onTopChange?.(registered === top);
   }
+  for (const listener of [...presenceListeners]) listener();
+}
+
+/**
+ * Hear every registration and removal of a modal layer. The app row rides above whatever dialog
+ * is open (owner, 2026-10-04), so the app has to know when one opens or closes; read
+ * `hasRenderedModal` in the listener.
+ */
+export function onModalPresenceChange(listener: () => void): () => void {
+  presenceListeners.add(listener);
+  return () => { presenceListeners.delete(listener); };
 }
 
 function topModalLayer(ownerDocument: Document): RegisteredModalLayer | undefined {

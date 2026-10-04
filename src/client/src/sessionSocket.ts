@@ -3,6 +3,7 @@ import { parseRealtimeStreamEvent, parseSessionAskClosedEvent, parseSessionAskOp
 import type { RealtimeEvent, SessionRef, SessionUiEvent } from "../../shared/apiTypes";
 import { socketLivenessVerdict, type SocketReadyState } from "./socketLiveness";
 import type { SocketPhase } from "./socketAnchoredRead";
+import type { Unanswered } from "./sync/scopedResource";
 import type { SessionSocketHandlers } from "./controllers/sessionController";
 
 export type { GlobalSessionEvent, RealtimeEvent, SessionUiEvent } from "../../shared/apiTypes";
@@ -129,7 +130,6 @@ export class SessionSocket {
     this.connectStartedAt = Date.now();
     socket.onopen = () => {
       if (this.socket !== socket) return;
-      this.reconnectDelay = 500;
       this.lastFrameAt = Date.now();
       // Reconnect refetches everything, and a daemon restart resets the hub's
       // counter, so the first frame after an open says nothing about loss.
@@ -169,8 +169,14 @@ export class SessionSocket {
 
   private async handleMessage(data: MessageEvent["data"], socket: WebSocket, session: SessionRef): Promise<void> {
     // Any frame is proof of life, including the keepalive, which parses to
-    // nothing and is dropped below.
-    if (this.socket === socket) this.lastFrameAt = Date.now();
+    // nothing and is dropped below. It is also the first proof the session's
+    // machine answered: the web proxy accepts the upgrade before it reaches
+    // the daemon, so the backoff resets here and not at the open, or a daemon
+    // that is down is retried every half second for as long as it stays down.
+    if (this.socket === socket) {
+      this.lastFrameAt = Date.now();
+      this.reconnectDelay = 500;
+    }
     const raw = await parseSocketEvent(data);
     this.seqMonitor.observe(raw);
     const event = parseSessionSocketEvent(raw);
@@ -201,6 +207,8 @@ export class RealtimeSocket {
   private connectStartedAt = 0;
   private openedSocket: WebSocket | undefined;
   private waitingSince = 0;
+  private reachedServer = false;
+  private phaseListener: (() => void) | undefined;
 
   /**
    * Where this socket stands for `machineId` (state-diagram D5, P6 slice a): absent when it is not
@@ -212,6 +220,22 @@ export class RealtimeSocket {
     if (!this.shouldReconnect || this.machineId !== machineId) return { kind: "absent" };
     if (this.socket !== undefined && this.openedSocket === this.socket) return { kind: "open" };
     return { kind: "connecting", since: this.waitingSince };
+  }
+
+  /**
+   * Since when `machineId` has gone without speaking on this socket, and why, for the app row
+   * (B48): the link itself is down while no attempt reaches the server, and the machine is not
+   * answering while attempts reach the server but nothing comes back through it.
+   */
+  unanswered(machineId: string): Unanswered | undefined {
+    const phase = this.phaseFor(machineId);
+    if (phase.kind !== "connecting") return undefined;
+    return { since: phase.since, miss: this.reachedServer ? { kind: "machine-unanswering", machineId } : { kind: "link-down" } };
+  }
+
+  /** Told whenever phaseFor or unanswered may answer differently. */
+  watchPhase(listener: (() => void) | undefined): void {
+    this.phaseListener = listener;
   }
 
   /** Same liveness contract as SessionSocket; see checkLiveness there. */
@@ -273,21 +297,22 @@ export class RealtimeSocket {
     const socket = realtimeEvents(this.machineId);
     this.socket = socket;
     this.connectStartedAt = Date.now();
+    let reached = false;
     socket.onopen = () => {
       if (this.socket !== socket) return;
-      this.openedSocket = socket;
-      this.reconnectDelay = 500;
+      reached = true;
+      this.reachedServer = true;
       this.lastFrameAt = Date.now();
-      this.seqMonitor.reset();
-      this.onOpen?.();
     };
     socket.onmessage = (message) => void this.handleMessage(message.data, socket);
     socket.onerror = () => { socket.close(); };
     socket.onclose = () => {
       if (this.socket !== socket) return;
       this.socket = undefined;
+      this.reachedServer = reached;
       if (this.openedSocket === socket) this.waitingSince = Date.now();
       this.scheduleReconnect();
+      this.phaseListener?.();
     };
   }
 
@@ -317,11 +342,28 @@ export class RealtimeSocket {
     // dropped from the typed event stream, but its stamp still costs a number
     // in the global sequence and must advance the client's last-seen with it.
     if (this.socket !== socket) return;
+    if (this.openedSocket !== socket) this.prove(socket);
     this.seqMonitor.observe(raw);
     const head = heartbeatHeadSeq(raw);
     if (head !== undefined) this.seqMonitor.observeHead(head);
     const event = parseRealtimeSocketEvent(raw);
     if (event !== undefined) this.onEvent?.(event);
+  }
+
+  /**
+   * The machine spoke, so the connection is open. The transport's own open is not that proof:
+   * the web proxy accepts the upgrade first and bridges to the daemon second, so a daemon that is
+   * down still opens the socket and closes it a moment later. Opening there reset the backoff and
+   * re-read the machine's facts on every flap - 931 rounds of four failing reads in eight minutes
+   * on 8505 (2026-10-04), each one a line in the error log. The daemon sends its machine status
+   * the moment a global subscriber joins, so a live machine proves itself at once.
+   */
+  private prove(socket: WebSocket): void {
+    this.openedSocket = socket;
+    this.reconnectDelay = 500;
+    this.seqMonitor.reset();
+    this.onOpen?.();
+    this.phaseListener?.();
   }
 }
 

@@ -90,7 +90,7 @@ import "./CommandPicker";
 import "./ModelPicker";
 import "./ActionPalette";
 import "./AuthDialog";
-import { hasRenderedModal } from "./modalLayerRegistry";
+import { hasRenderedModal, onModalPresenceChange } from "./modalLayerRegistry";
 import "./WorkspacePanel";
 import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
 import "./appShell/AppContextBar";
@@ -111,7 +111,7 @@ import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } fr
 import { readPinnedProjectIds, togglePinnedProjectId, writePinnedProjectIds } from "../projectPins";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
-import { errorBanner, normalizeTransientError, unansweredRow, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
+import { errorBanner, noticeExpiryMs, normalizeTransientError, unansweredRow } from "./errorBanner";
 import { rowDecision, type ShownUnanswered } from "../sync/connectionSummary";
 import { messageStatusUnanswered } from "../sendVerification";
 import { earliestUnanswered } from "../sync/scopedResource";
@@ -224,7 +224,8 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
   .error .error-retry { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-5); border: 1px solid currentColor; border-radius: var(--pi-radius-md); background: none; color: inherit; font: inherit; cursor: pointer; }
   @media (pointer: coarse) { .error .error-retry { min-height: var(--pi-control-height-touch); } }
-  .error .error-dismiss { box-sizing: border-box; flex: 0 0 auto; display: grid; place-items: center; min-width: var(--pi-control-height); min-height: var(--pi-control-height); padding: 0 var(--pi-space-3); border: 0; background: none; color: inherit; line-height: 1.4; }
+  .app-row-layer { position: fixed; top: 0; left: 0; right: 0; z-index: calc(var(--pi-layer-dialog) + 5); padding-top: env(safe-area-inset-top); background: var(--pi-bg); box-shadow: var(--pi-elevation-2); }
+  .app-row-layer:empty { display: none; }
   .deprecation-notice { padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-warning); }
   .deprecation-notice .deprecation-notice-text { margin: 0; overflow-wrap: anywhere; }
   .deprecation-notice .deprecation-notice-text + .deprecation-notice-text { margin-top: var(--pi-space-2); }
@@ -234,7 +235,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   /* The banner sits in the same column as the transcript controls, which are
      all 44px on a finger; a 32px row here was a second touch floor. */
   .self-update-banner button { box-sizing: border-box; min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; padding: var(--pi-space-2) var(--pi-space-5); }
-  @media (pointer: coarse) { .self-update-banner button { min-height: var(--pi-control-height-touch); } .error .error-dismiss { min-width: var(--pi-control-height-touch); min-height: var(--pi-control-height-touch); } }
+  @media (pointer: coarse) { .self-update-banner button { min-height: var(--pi-control-height-touch); } }
   @media (hover: hover) { .self-update-banner button:hover { border-color: var(--pi-accent); } }
   .self-update-banner button.skip { color: var(--pi-muted); background: transparent; }
   .self-update-banner .state-dot { background: currentColor; }
@@ -272,7 +273,6 @@ const SOCKET_LIVENESS_CHECK_MS = 5_000;
 /** A tap is a person waiting: probe the sockets, but not on every finger down. */
 const INTERACTION_LIVENESS_THROTTLE_MS = 2_000;
 
-const INTERRUPTED_RUNS_UNKNOWN_MESSAGE = "Interrupted-run status is unknown: the read failed. Reconnect to read it again.";
 const PI_WEB_STATUS_DEFER_MS = 750;
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
 const THEME_AUTO_ON_VALUE = "auto:on";
@@ -469,11 +469,15 @@ export class PiWebApp extends LitElement {
   private lastScheduledError = "";
   private lastScheduledMachineId: string | undefined = undefined;
   private bannerContextKey = "";
+  private appRowInset = 0;
   @state() private quickSwitcherOpen = false;
   /** The one navigation surface; see `navigateModel`. */
   @state() private navigateOpen = false;
   @state() private contextSheetOpen = false;
   @state() private goToSheetOpen = false;
+  /** Whether any modal layer is open; the app row then rides above it. */
+  @state() private modalPresent = false;
+  private stopModalPresence: (() => void) | undefined;
   /** The first-boot centre asked for a new session in whichever project the reader picks next. */
   private startSessionOnProjectChoice = false;
   /** The first-boot centre's Add a project: the added project opens with a new session. */
@@ -777,6 +781,7 @@ export class PiWebApp extends LitElement {
   }
 
   protected override updated(): void {
+    this.syncAppRowInset();
     // Saved reading positions were never evicted, and they were keyed by bare session
     // id across machines. Prune against the sessions this machine actually lists, once
     // a list exists: a pruned position only costs a landing at the newest, a stale one
@@ -898,34 +903,16 @@ export class PiWebApp extends LitElement {
       if (selectedMachineId(this.state) !== machineId) return;
       const adoptEmpty = options.adoptEmpty ?? !this.interruptedRunsBootReadByMachine.has(machineId);
       const plan = interruptedRunsReadPlan(ids, adoptEmpty);
-      if (plan.failed) {
-        // A failed read is only worth a banner AFTER a successful read on the
-        // same machine: that is when markers may sit unread on the daemon and
-        // the reader has something to lose. At cold boot the record is simply
-        // not read yet - the next reconnect's read delivers it without a
-        // scary banner over an otherwise empty screen.
-        if (this.interruptedRunsBootReadByMachine.has(machineId) && this.state.error === "") {
-          this.setState(noticePatch(noticeForReader(INTERRUPTED_RUNS_UNKNOWN_MESSAGE, machineId)));
-        }
-        return;
-      }
+      // A failed read says nothing in the app row (owner, 2026-10-04): the
+      // next reconnect reads the record again by itself, and while the link
+      // is down the row already says it is reconnecting. Its old notice told
+      // the reader to reconnect, which is the page's job, and took the row
+      // from "Reconnecting…".
+      if (plan.failed) return;
       this.interruptedRunsBootReadByMachine.add(machineId);
       if (plan.adoptMarkers && ids !== undefined) {
         this.interruptedRunsByMachine.set(machineId, ids);
       }
-      // A successful read is the answer the banner asked for, whether or not
-      // the record had content - after the boot read, emptiness is the only
-      // answer a recovery can ever bring. This sits after every early
-      // return: the round-25 fix moved a flag write above the emptiness
-      // check and left this retraction unreachable on the very path its
-      // sentence promises.
-      // The retraction is an identity match on this feature's own private
-      // wording (INTERRUPTED_RUNS_UNKNOWN_MESSAGE has a single producer), and
-      // the banner's machine stamp must be this read's machine - a success
-      // from machine B may not clear machine A's unknown banner now that
-      // banners survive scope switches. The stamp lives on the state, so it
-      // travels with the banner instead of a private that cannot follow it.
-      if (plan.resolveUnknown && this.state.error === INTERRUPTED_RUNS_UNKNOWN_MESSAGE && this.state.errorMachineId === machineId) this.setState(clearErrorPatch());
     });
   }
 
@@ -1120,6 +1107,10 @@ export class PiWebApp extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    this.stopModalPresence = onModalPresenceChange(() => {
+      const present = hasRenderedModal(this.ownerDocument);
+      if (present !== this.modalPresent) this.modalPresent = present;
+    });
     // Past first paint, fetch the dialogs nobody has opened yet, so an open is
     // instant without the entry bundle carrying them.
     warmLazySurfaces();
@@ -1127,6 +1118,7 @@ export class PiWebApp extends LitElement {
     // not the one that failed; the realtime socket alone was leaving a banner
     // on screen until the page was reloaded by hand.
     observeTransportRecovery((machineId) => { this.clearTransientError(machineId); });
+    this.realtime.watchPhase(() => { this.requestUpdate(); });
     // A failed send is a fact about a session the reader may not be looking at, so the
     // list must learn about it from the outbox rather than from a visit.
     window.addEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
@@ -1213,15 +1205,12 @@ export class PiWebApp extends LitElement {
       window.clearTimeout(this.transientErrorTimer);
       this.transientErrorTimer = undefined;
     }
-    // Expiry is a property of the retirement model, not of the words: only a
-    // reply-retired transport claim heals on its own. A reply-retired message
-    // the wording layer declines to shorten (a composed "X is unavailable;
-    // reconnecting… <detail>", the retry ladder's terminal sentence) asserts
-    // a state, renders with the permanent style, and stays until its machine's
-    // answers or the reader retire it - expiring it contradicted its own
-    // rendering and deleted the ladder's final word six seconds in.
-    if (this.state.errorRetiredBy !== RetiredBy.reply) return;
-    if (normalizeTransientError(error) === undefined) return;
+    // Expiry is the retirement model's (noticeExpiryMs): a notice about an
+    // operation and a self-healing transport claim leave by themselves; a
+    // composed claim about a machine stays until that machine answers.
+    const retiredBy = this.state.errorRetiredBy;
+    const expiry = noticeExpiryMs(retiredBy, error);
+    if (expiry === undefined) return;
     this.transientErrorTimer = window.setTimeout(() => {
       this.transientErrorTimer = undefined;
       // Only clear what we scheduled for: a newer message must not be
@@ -1234,14 +1223,18 @@ export class PiWebApp extends LitElement {
       // wording: two machines down in a row can produce identical text, and
       // the first machine's timer must not delete the second machine's claim
       // that never answered once.
-      if (this.state.error === error && this.state.errorMachineId === machineId && this.state.errorRetiredBy === RetiredBy.reply) {
+      if (this.state.error === error && this.state.errorMachineId === machineId && this.state.errorRetiredBy === retiredBy) {
         this.setState(clearErrorPatch());
       }
-    }, TRANSIENT_ERROR_TIMEOUT_MS);
+    }, expiry);
   }
 
   override disconnectedCallback(): void {
+    this.stopModalPresence?.();
+    if (this.appRowInset !== 0) this.ownerDocument.documentElement.style.removeProperty("--pi-app-row-inset");
+    this.appRowInset = 0;
     observeTransportRecovery(undefined);
+    this.realtime.watchPhase(undefined);
     this.navigation.dispose();
     if (this.transientErrorTimer !== undefined) window.clearTimeout(this.transientErrorTimer);
     if (this.bannerHoldTimer !== undefined) window.clearTimeout(this.bannerHoldTimer);
@@ -2179,12 +2172,10 @@ export class PiWebApp extends LitElement {
           this.rereadAnnounced(machineId);
           return;
         }
-        // The proxies accept the upgrade first and bridge upstream second, so
-        // onopen proves the web process is alive - not that this machine's
-        // daemon answered anything. Retiring the claim here retracted a
-        // daemon-down banner half a second after it was raised, for as long
-        // as the outage lasted; the reads below fire the reports that are
-        // allowed to retire claims.
+        // This runs once the machine's first frame arrived (RealtimeSocket
+        // prove), yet it still retires no claim itself: the reads below fire
+        // the reports that are allowed to retire claims, each for the fact it
+        // read.
         void this.sessionUnread.refresh(machineId);
         this.refreshMachinePins(machineId);
         // Status updates that landed during the gap are gone for good, so this
@@ -4487,7 +4478,7 @@ export class PiWebApp extends LitElement {
 
   private renderUnansweredRow(noticeShown: boolean) {
     const messageStatus = messageStatusUnanswered(this.state.messageStatusUnanswered, { machineId: selectedMachineId(this.state), sessionId: this.state.selectedSession?.id });
-    const unanswered = [this.machines.unanswered(), targetUnanswered(this.namedTargetInScope()), messageStatus].reduce(earliestUnanswered, this.projects.unanswered());
+    const unanswered = [this.machines.unanswered(), targetUnanswered(this.namedTargetInScope()), messageStatus, this.realtime.unanswered(selectedMachineId(this.state))].reduce(earliestUnanswered, this.projects.unanswered());
     const decision = rowDecision({ notice: noticeShown, unanswered, shown: this.unansweredShown, now: Date.now() });
     if (this.reconnectingRecheck !== undefined) window.clearTimeout(this.reconnectingRecheck);
     this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : window.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
@@ -4553,13 +4544,7 @@ export class PiWebApp extends LitElement {
         this.bannerShownAt = Date.now();
         this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
       }
-      this.heldErrorBanner = errorBanner(error, () => {
-        this.bannerDismissedByReader = true;
-        this.bannerShownAt = undefined;
-        if (this.transientErrorTimer !== undefined) { window.clearTimeout(this.transientErrorTimer); this.transientErrorTimer = undefined; }
-        this.heldErrorBanner = null;
-        this.setState(clearErrorPatch());
-      }, "reply");
+      this.heldErrorBanner = errorBanner(error, "reply");
       return this.heldErrorBanner;
     }
     this.transientPendingSince = undefined;
@@ -4588,20 +4573,7 @@ export class PiWebApp extends LitElement {
       this.bannerShownAt = Date.now();
       this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
     }
-    this.heldErrorBanner = errorBanner(error, () => {
-      // The reader acted; the 1.5s minimum-visibility window exists for
-      // replacement churn, not to outvote a dismissal. The expiry timer goes
-      // with it: an identical re-raise in the same batch is a new claim, not
-      // something the old schedule may erase.
-      this.bannerDismissedByReader = true;
-      this.bannerShownAt = undefined;
-      if (this.transientErrorTimer !== undefined) {
-        window.clearTimeout(this.transientErrorTimer);
-        this.transientErrorTimer = undefined;
-      }
-      this.heldErrorBanner = null;
-      this.setState(clearErrorPatch());
-    }, retiredBy, () => { void this.retryAfterError(); });
+    this.heldErrorBanner = errorBanner(error, retiredBy, () => { void this.retryAfterError(); });
     return this.heldErrorBanner;
   }
 
@@ -4753,7 +4725,7 @@ export class PiWebApp extends LitElement {
         <main class=${mainViewClass(displayView)}>
           ${this.appShell.isMobileNavigationLayout && displayView === "navigation" ? null : this.renderContextBar()}
 
-          ${this.renderAppRow(state.error, state.errorRetiredBy)}
+          ${this.modalPresent ? null : this.renderAppRow(state.error, state.errorRetiredBy)}
           ${this.renderStaleClientBanner()}
           ${this.renderSelfUpdateBanner()}
           ${deprecatedAgentInputsBanner(deprecatedAgentInputsWarnings(state.machines, state.machineRuntimes))}
@@ -4829,7 +4801,24 @@ export class PiWebApp extends LitElement {
         .onSelect=${(id: string) => { this.goTo(id); }}
         .onClose=${() => { this.goToSheetOpen = false; }}
       ></app-go-to-sheet>` : null}
+      ${this.modalPresent ? html`<div class="app-row-layer">${this.renderAppRow(state.error, state.errorRetiredBy)}</div>` : null}
     `;
+  }
+
+  /**
+   * While a dialog is open the app row rides above it (owner, 2026-10-04), and every dialog
+   * surface moves down by the row's height so the row never covers a dialog's header or its
+   * close key. ModalSurface reads the inset from the document, through every shadow root.
+   */
+  private syncAppRowInset(): void {
+    if (!this.modalPresent && this.appRowInset === 0) return;
+    const layer = this.renderRoot.querySelector(".app-row-layer");
+    const height = layer === null ? 0 : Math.round(layer.getBoundingClientRect().height);
+    if (height === this.appRowInset) return;
+    this.appRowInset = height;
+    const style = this.ownerDocument.documentElement.style;
+    if (height > 0) style.setProperty("--pi-app-row-inset", `${String(height)}px`);
+    else style.removeProperty("--pi-app-row-inset");
   }
 
   static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, appStyles];
