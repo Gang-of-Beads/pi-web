@@ -186,7 +186,7 @@
                 <li><code>pathAccess</code>: applies on the next request; existing file views may need a browser refresh.</li>
                 <li><code>logging</code>: the web/API process and the session daemon re-read it within a minute; no restart.</li>
                 <li><code>uploads.defaultFolder</code>: applies to newly opened Files upload dialogs and new direct drag/drop batches after config/workspace refresh.</li>
-                <li><code>plugins</code>: browser-only changes apply after a tab reload. Any enablement, settings, source, or package-revision change affecting a <code>serverModule</code> requires a manual sessiond restart, then a tab reload for its paired UI.</li>
+                <li><code>plugins</code>: a browser-only change saved in <strong>Settings → PI WEB plugins</strong> applies when Settings closes: the page reloads itself. A change made in the config file by hand applies after a tab reload. Any enablement, settings, source, or package-revision change affecting a <code>serverModule</code> requires a manual sessiond restart, then a tab reload for its paired UI.</li>
                 <li><code>serverPlugins.safeStart</code>: offline recovery state applied before server-plugin discovery/import on the next sessiond start; manage it with <code>pi-web plugins safe-start ...</code>.</li>
                 <li>Pi package install/remove/update: not a PI WEB config key; after a mutation, type <code>/reload</code> in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. For a PI WEB package with <code>serverModule</code>, manually restart <code>pi-web-sessiond.service</code>, then reload the browser. If a global Pi extension changes model-provider registration/settings, the same manual restart is required; <code>/reload</code> cannot change either startup snapshot. A known Pi model provider refreshing only its own model list is applied without a restart. See <a href="#pi-extension-provider-baseline">Pi extension provider baseline</a>.</li>
                 <li><code>shortcuts</code>: saved settings apply in the browser after config refresh/save.</li>
@@ -1005,7 +1005,7 @@ PI_CODING_AGENT_SESSION_DIR=/opt/pi-profiles/lab-sessions</code></pre>
               <ol>
                 <li>Install or update the package on the target machine.</li>
                 <li>Save desired enablement/settings.</li>
-                <li>For browser-only code, reload the tab.</li>
+                <li>For a browser-only plugin, close Settings: the page reloads itself to load or unload it. After editing the config file by hand, reload the browser tab.</li>
                 <li>For server-backed code, restart target sessiond, wait for it, then reload the tab.</li>
               </ol>
               <div class="callout warning">

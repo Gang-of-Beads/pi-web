@@ -277,7 +277,7 @@ Use this sequence:
 
 1. Install or update the package on the target machine.
 2. Set the desired plugin enablement/settings.
-3. For a browser-only plugin, reload the browser tab.
+3. For a browser-only plugin, close Settings: the page reloads itself to load or unload it. After editing the config file by hand, reload the browser tab.
 4. For a server-backed plugin, manually restart sessiond, wait for it to become available, then reload the browser tab.
 
 > **Manual session-daemon restart:** for the native systemd user service, run `systemctl --user restart pi-web-sessiond` (the unit is `pi-web-sessiond.service`). Restarting sessiond may interrupt active sessions and runtime ownership. Web/UI autoreload, restarting only the web/API service, browser reload, and Pi's `/reload` command do not activate server-plugin changes.

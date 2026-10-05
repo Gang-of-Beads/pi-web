@@ -18,6 +18,8 @@ export class SettingsPluginsPanel extends LitElement {
   @property({ type: Boolean }) recoveryCommandsSupported = false;
   @property() error = "";
   @property() savedMessage = "";
+  /** A plugin change was saved this visit; the page reloads when Settings closes (owner, 2026-10-04). */
+  @property({ type: Boolean }) reloadOnClose = false;
   @property() targetLabel = "local (local gateway)";
   @property({ attribute: false }) onReload?: () => void | Promise<void>;
   @property({ attribute: false }) onTogglePlugin?: (pluginId: string, enabled: boolean) => void | Promise<void>;
@@ -47,6 +49,7 @@ export class SettingsPluginsPanel extends LitElement {
       notices.push({ type: "availability", content: "Configuration is unavailable. Reload to try again before changing plugin enablement." });
     }
     if (this.savedMessage !== "") notices.push({ type: "success", content: this.savedNotice() });
+    if (this.reloadOnClose) notices.push({ type: "info", content: "Browser plugin changes apply when you close Settings: the page reloads then." });
 
     const runtime = this.pluginsResponse?.serverRuntime;
     if (runtime?.status === "unavailable") {
@@ -105,9 +108,9 @@ export class SettingsPluginsPanel extends LitElement {
 
   private savedNotice(): string {
     if (this.pluginsResponse?.serverRuntime.status !== "available" || this.pluginsResponse.serverRuntime.restartRequired) {
-      return `${this.savedMessage} Restart the session daemon to apply server-plugin changes; browser-only changes apply after reloading this tab.`;
+      return `${this.savedMessage} Restart the session daemon to apply server-plugin changes.`;
     }
-    return `${this.savedMessage} Reload the browser tab to apply browser-only plugin changes.`;
+    return this.savedMessage;
   }
 
   private shouldShowConfigUnavailableNotice(hasLoadedPlugins: boolean): boolean {

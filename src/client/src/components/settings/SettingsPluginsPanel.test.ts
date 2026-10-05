@@ -12,6 +12,7 @@ describe("settings-plugins-panel layout", () => {
     panel.pluginsResponse = pluginsResponse([pluginInfo("remote-enabled", true)]);
     panel.error = "Failed to load PI WEB plugin settings from Lab Mac: PI WEB plugins: timed out.";
     panel.savedMessage = "Config saved.";
+    panel.reloadOnClose = true;
 
     const rendered = flattenTemplateContent(panel.render());
 
@@ -20,7 +21,8 @@ describe("settings-plugins-panel layout", () => {
       "Compare desired plugin config with the active sessiond startup snapshot on ",
       "Lab Mac (remote machine)",
       "Failed to load PI WEB plugin settings from Lab Mac: PI WEB plugins: timed out.",
-      "Config saved. Reload the browser tab to apply browser-only plugin changes.",
+      "Config saved.",
+      "Browser plugin changes apply when you close Settings: the page reloads then.",
       "Trusted code warning:",
       "Config key on Lab Mac (remote machine):",
       "remote-enabled",
@@ -35,7 +37,7 @@ describe("settings-plugins-panel layout", () => {
     const rendered = flattenTemplateContent(panel.render());
 
     expect(rendered).toContain("Config saved. Restart the session daemon to apply server-plugin changes");
-    expect(rendered).not.toContain("Config saved. Reload the browser tab to apply browser-only plugin changes.");
+    expect(rendered).not.toContain("Reload the browser tab");
   });
 
   it("does not show a false empty state when the plugin response is missing", () => {

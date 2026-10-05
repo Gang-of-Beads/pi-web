@@ -595,6 +595,7 @@ export class PiWebApp extends LitElement {
   @state() private pluginDialogs: readonly PluginDialogEntry[] = [];
   private pluginDialogSeq = 0;
   @state() private settingsOpen = readSettingsOpen();
+  @state() private reloadAfterSettings = false;
   private settingsListFramePushed = false;
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
   @state() private fleetReport: PiWebFleetReport | undefined;
@@ -2048,11 +2049,18 @@ export class PiWebApp extends LitElement {
     }
   }
 
+  /**
+   * A plugin turned on or off in Settings changes which code this page runs, and the page cannot
+   * load or unload a plugin in place. Owner, 2026-10-04: the page reloads itself when Settings
+   * closes, rather than asking the reader to reload; drafts, form answers and the outbox are kept
+   * in local storage across it.
+   */
   private closeSettings(): void {
     this.settingsOpen = false;
     this.settingsSection = undefined;
     this.settingsListFramePushed = false;
     writeSettingsSection(undefined);
+    if (this.reloadAfterSettings) this.hardReloadApp();
   }
 
   private navigateSettings(section: SettingsSection): void {
@@ -4788,7 +4796,7 @@ export class PiWebApp extends LitElement {
         ${this.renderSessionTreeNavigator(state)}
         ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onConfirm=${(request: ConfirmRequest) => this.confirm(request)} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
-        ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
+        ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} ?reloadOnClose=${this.reloadAfterSettings} .onPluginsChanged=${() => { this.reloadAfterSettings = true; }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
         ${this.pluginDialogs.map((entry) => html`<div class=${PLUGIN_DIALOG_CLASS[entry.dialog.presentation ?? "overlay"]}><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
       ${this.contextSheetOpen ? html`<context-switcher-sheet

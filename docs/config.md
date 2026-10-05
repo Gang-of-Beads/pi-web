@@ -43,7 +43,7 @@ Process restarts depend on the key:
 - `pathAccess`: applies on the next request; existing file views may need a browser refresh.
 - `uploads.defaultFolder`: applies to newly opened Files upload dialogs and new direct drag/drop batches after config/workspace refresh.
 - `logging`: the web/API process and the session daemon re-read it within a minute; no restart.
-- `plugins`: browser-only changes apply after a browser-tab reload. Any enablement, settings, package-source, or package-revision change affecting a `serverModule` requires a manual session-daemon restart, then a browser reload for its paired UI.
+- `plugins`: a browser-only change saved in **Settings → PI WEB plugins** applies when Settings closes: the page reloads itself. A change made in the config file by hand applies after a browser-tab reload. Any enablement, settings, package-source, or package-revision change affecting a `serverModule` requires a manual session-daemon restart, then a browser reload for its paired UI.
 - `serverPlugins.safeStart`: persistent offline recovery state applied before server-plugin discovery/import on the next sessiond start; use the `pi-web plugins safe-start ...` CLI rather than hand-editing it.
 - Pi package install/remove/update: not a PI WEB config key; after a mutation, type `/reload` in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. For a PI WEB package with `serverModule`, manually restart `pi-web-sessiond.service`, then reload the browser. If a global Pi extension adds or removes a model provider, or changes a provider's connection settings, the same manual sessiond restart is required; `/reload` cannot change either startup snapshot. A known Pi model provider refreshing only its own model list is applied without a restart. See [Pi extension provider baseline](#pi-extension-provider-baseline).
 - `shortcuts`: saved settings apply in the browser after config refresh/save.
@@ -408,7 +408,7 @@ Apply changes in this order:
 
 1. Install or update the package on the target machine.
 2. Save desired enablement/settings.
-3. For a browser-only plugin, reload the browser tab.
+3. For a browser-only plugin, close Settings: the page reloads itself to load or unload it. After editing the config file by hand, reload the browser tab.
 4. For a server-backed plugin, manually restart the target session daemon, wait for it, then reload the browser tab.
 
 > **Manual restart warning:** for the native user service, run `systemctl --user restart pi-web-sessiond` (unit `pi-web-sessiond.service`). Restarting sessiond may interrupt active sessions and runtime ownership. A browser reload, web/UI autoreload, restarting only web/API, and Pi's `/reload` do not activate server-plugin state.

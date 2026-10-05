@@ -60,6 +60,9 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) pluginRuntimeContext?: PluginRuntimeContext;
   @property({ attribute: false }) onClose?: () => void;
   @property({ attribute: false }) onConfigSaved?: (config: PiWebConfigValues) => void;
+  /** A plugin's enablement was saved; the host reloads the page when Settings closes, so its code loads or leaves. */
+  @property({ attribute: false }) onPluginsChanged?: () => void;
+  @property({ type: Boolean }) reloadOnClose = false;
   @property({ attribute: false }) onRefreshMachineRuntime?: (machineId: string) => void | Promise<void>;
   @state() private configResponse: PiWebConfigResponse | undefined;
   @state() private accessConfigResponse: PiWebConfigResponse | undefined;
@@ -353,6 +356,7 @@ export class SettingsDialog extends LitElement {
           .recoveryCommandsSupported=${this.pluginLifecycleSupport().state === "supported"}
           .error=${this.pluginError}
           .savedMessage=${this.savedMessage}
+          ?reloadOnClose=${this.reloadOnClose}
           .targetLabel=${settingsMachineTargetLabel(this.settingsTarget())}
           .onReload=${() => this.loadPluginsForTarget()}
           .onTogglePlugin=${(pluginId: string, enabled: boolean) => this.togglePlugin(pluginId, enabled)}
@@ -543,6 +547,7 @@ export class SettingsDialog extends LitElement {
       const response = await configApi.saveConfig(patch, target.id);
       if (!this.isCurrentSettingsTarget(target)) return;
       this.selectedPluginConfigResponse = response;
+      this.onPluginsChanged?.();
       if (target.kind === "local" && this.configResponse !== undefined) {
         this.configResponse = mergeSelectedMachinePluginConfig(this.configResponse, response);
         this.onConfigSaved?.(this.configResponse.effectiveConfig);
