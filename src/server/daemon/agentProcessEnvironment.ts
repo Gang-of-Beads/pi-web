@@ -29,6 +29,10 @@
  *   it is documented `pi` configuration, not daemon wiring, so a deployment
  *   that sets it wants every `pi` process — whether daemon-spawned or started
  *   by an agent — using the same session storage.
+ * - `PI_SKIP_VERSION_CHECK` is added, not removed: the daemon sets it for the
+ *   extensions it runs (`piVersionChecks.ts`). Terminals drop it again; the
+ *   bash tool keeps it, so a `pi` or `pi-web` an agent runs skips its update
+ *   notice.
  * - `NODE_ENV` and `PORT` are app-runtime configuration and the only removals:
  *   `NODE_ENV=production` makes npm skip devDependencies and flips Node
  *   package-export conditions, and `PORT` leaks into the listener

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import * as pty from "node-pty";
 import { statSync } from "node:fs";
 import { ensureSpawnHelperExecutable, spawnHelperFailureReason } from "./nodePtySpawnHelper.js";
+import { terminalEnvironment } from "../piVersionChecks.js";
 import type { TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunStatus, TerminalUiEvent } from "../../../shared/apiTypes.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
@@ -166,7 +167,7 @@ export class TerminalService {
       cwd: record.cwd,
       cols: 100,
       rows: 30,
-      env: { ...process.env, TERM: "xterm-256color", PI_WEB_TERMINAL: "1" },
+      env: { ...terminalEnvironment(), TERM: "xterm-256color", PI_WEB_TERMINAL: "1" },
     });
     this.attachPtyEvents(record);
     const info = toInfo(record);
@@ -209,7 +210,7 @@ export class TerminalService {
       cwd: options.cwd,
       cols: options.cols ?? 100,
       rows: options.rows ?? 30,
-      env: { ...process.env, TERM: "xterm-256color", PI_WEB_TERMINAL: "1" },
+      env: { ...terminalEnvironment(), TERM: "xterm-256color", PI_WEB_TERMINAL: "1" },
     }));
     const requestedName = options.name?.trim();
     const record: TerminalRecord = {

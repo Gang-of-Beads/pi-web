@@ -555,7 +555,7 @@ worktree_path="$1"
                       <td><code>PI_WEB_SKIP_VERSION_CHECK</code>, <code>PI_WEB_OFFLINE</code>, <code>PI_SKIP_VERSION_CHECK</code>, <code>PI_OFFLINE</code></td>
                       <td>Web/API env</td>
                       <td>Not supported locally</td>
-                      <td>Restart web/API after env changes</td>
+                      <td>Restart web/API after env changes. The session daemon always sets <code>PI_SKIP_VERSION_CHECK</code> for its own process (not for its terminals), so pi extensions that prompt for pi updates stay quiet in PI WEB sessions</td>
                     </tr>
                     <tr>
                       <td>Offline mode</td>
