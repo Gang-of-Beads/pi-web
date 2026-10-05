@@ -2371,11 +2371,11 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * Open a dialog's record, or tell the reader why it could not open. The store refuses a dialog it
-   * cannot show (an empty select, a title past its limit); the extension's call still rejects, and
+   * Open a dialog's record, or tell the reader why it could not open. Content is never refused
+   * (owner, 2026-10-04: show everything, as pi's terminal does); what remains is a dialog kind this
+   * daemon does not know, which a newer pi could introduce. Then the extension's call rejects, and
    * the reader is told the way `notify` tells them: a row in the live transcript and a filed
-   * notification (state-diagram D2, B10). The owner met "dialog title exceeds its length limit" only
-   * as a failure inside the goal extension while the screen showed nothing.
+   * notification (state-diagram D2, B10).
    */
   private openDialogRecord(session: PiAgentSession, input: PendingExtensionDialogOpenInput): PendingExtensionDialog {
     try {

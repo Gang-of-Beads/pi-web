@@ -647,11 +647,26 @@ function parsePendingExtensionDialog(value: unknown): PendingExtensionDialog {
   };
 }
 
+/**
+ * The open dialogs a status carries, each read on its own. One dialog this build cannot read (a
+ * newer daemon's shape, an extension's bad value) used to throw the whole status away, and with it
+ * every status read of the machine (review 1005 full pass P1/P2); it is now the only thing dropped.
+ */
 function optionalPendingDialogs(value: unknown): Pick<SessionStatus, "pendingDialogs"> | object {
   if (value === undefined) return {};
-  const dialogs = arrayOf(parsePendingExtensionDialog)(value);
+  if (!Array.isArray(value)) throw new Error("Expected array field: pendingDialogs");
+  const dialogs = value.flatMap((entry: unknown) => readableDialog(entry));
   assertUniqueStrings(dialogs.map((dialog) => dialog.dialogId), "dialog id");
   return { pendingDialogs: dialogs };
+}
+
+function readableDialog(entry: unknown): PendingExtensionDialog[] {
+  try {
+    return [parsePendingExtensionDialog(entry)];
+  } catch (error) {
+    console.warn("An open extension dialog could not be read and is not shown", error);
+    return [];
+  }
 }
 
 export function parseSessionDialogOpenedEvent(value: unknown): { type: "dialog.opened"; dialog: PendingExtensionDialog; revision?: number; daemonInstanceId?: string } {

@@ -196,8 +196,10 @@
                 minutes, <code>0</code> waits forever) — does the same when no one answers. <code>custom</code> draws its
                 screen as a card: a menu as choices with Confirm, anything else as its text, and a screen declared
                 with <code>web: { kind: "questions" }</code> as the Questions card (<code>ctx.ui.piWebScreens</code> lists
-                what this host draws). A dialog the host cannot show (an empty select, a title or message past its length limit)
-                rejects the call and the open conversation says so. Other <code>ExtensionUIContext</code> surfaces
+                what this host draws). Every dialog is shown, as pi's terminal shows it: an empty title gets a generic
+                heading, a select with no options says so and offers Cancel, and repeated, blank or any number of options
+                are listed as given; a title or message longer than 32,000 characters is cut, and the cut says how much
+                is missing. Other <code>ExtensionUIContext</code> surfaces
                 (widgets, status, editor) remain no-ops despite <code>hasUI === true</code>.
               </p>
               <p>

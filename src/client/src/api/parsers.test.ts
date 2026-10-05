@@ -1155,15 +1155,16 @@ describe("API parsers", () => {
 
   it("validates an extension dialog before rendering it", () => {
     const dialog = confirmDialogWire();
-    expect(() => parseSessionStatus({ ...statusWire(), pendingDialogs: [{ ...dialog, kind: "modal" }] })).toThrow("Invalid extension dialog kind");
+    const shown = (entry: Record<string, unknown>) => parseSessionStatus({ ...statusWire(), pendingDialogs: [entry, inputDialogWire()] }).pendingDialogs?.map((open) => open.dialogId);
+    expect(shown({ ...dialog, kind: "modal" })).toEqual(["dialog-3"]);
     expect(parseSessionStatus({ ...statusWire(), pendingDialogs: [{ ...dialog, title: "" }] }).pendingDialogs?.[0]?.title).toBe("");
     expect(parseSessionStatus({ ...statusWire(), pendingDialogs: [{ ...dialog, title: "x".repeat(EXTENSION_DIALOG_TEXT_MAX_LENGTH + 1) }] }).pendingDialogs?.[0]?.title).toHaveLength(EXTENSION_DIALOG_TEXT_MAX_LENGTH + 1);
-    expect(() => parseSessionStatus({ ...statusWire(), pendingDialogs: [{ ...dialog, title: "x".repeat(EXTENSION_DIALOG_PROSE_MAX_LENGTH + 1) }] })).toThrow("String field exceeds limit: title");
-    expect(() => parseSessionStatus({ ...statusWire(), pendingDialogs: [{ ...dialog, runScoped: "yes" }] })).toThrow("Expected boolean field: runScoped");
-    expect(() => parseSessionStatus({ ...statusWire(), pendingDialogs: [{ ...dialog, timeoutAt: "" }] })).toThrow("Expected non-empty string field: timeoutAt");
+    expect(shown({ ...dialog, title: "x".repeat(EXTENSION_DIALOG_PROSE_MAX_LENGTH + 1) })).toEqual(["dialog-3"]);
+    expect(shown({ ...dialog, runScoped: "yes" })).toEqual(["dialog-3"]);
+    expect(shown({ ...dialog, timeoutAt: "" })).toEqual(["dialog-3"]);
     expect(parseSessionStatus({ ...statusWire(), pendingDialogs: [{ ...selectDialogWire(), options: [] }] }).pendingDialogs?.[0]?.options).toEqual([]);
     expect(parseSessionStatus({ ...statusWire(), pendingDialogs: [{ ...selectDialogWire(), options: ["a", "a", ""] }] }).pendingDialogs?.[0]?.options).toEqual(["a", "a", ""]);
-    expect(() => parseSessionStatus({ ...statusWire(), pendingDialogs: [{ ...selectDialogWire(), options: ["a", 1] }] })).toThrow("Expected string field: option");
+    expect(shown({ ...selectDialogWire(), options: ["a", 1] })).toEqual(["dialog-3"]);
     expect(() => parseSessionStatus({ ...statusWire(), pendingDialogs: [dialog, { ...inputDialogWire(), dialogId: "dialog-1" }] })).toThrow("Duplicate dialog id");
   });
 

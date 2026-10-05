@@ -221,7 +221,7 @@ function kindFields(
       return message === undefined ? {} : { message };
     }
     case "select":
-      return { options: [...(input.options ?? [])] };
+      return { options: optionTexts(input.options) };
     case "input": {
       const placeholder = optionalShownText(input.placeholder, EXTENSION_DIALOG_TEXT_MAX_LENGTH);
       return placeholder === undefined ? {} : { placeholder };
@@ -244,6 +244,23 @@ function validateCustomAnswer(dialog: PendingExtensionDialog, value: ExtensionDi
   } catch (error) {
     throw new PendingExtensionDialogValidationError(error instanceof Error ? error.message : String(error));
   }
+}
+
+/**
+ * The options as text. They cross extension code, which can pass a number where pi's types say
+ * string; an option that is not text reached the status payload as-is and the browser refused the
+ * whole status for it (review 1005 full pass P1), so it is written as its JSON text instead.
+ */
+function optionTexts(options: string[] | undefined): string[] {
+  const offered: readonly unknown[] = options ?? [];
+  return offered.map(optionText);
+}
+
+function optionText(option: unknown): string {
+  if (typeof option === "string") return option;
+  if (typeof option === "number" || typeof option === "boolean" || typeof option === "bigint") return String(option);
+  if (option === null || typeof option === "object") return JSON.stringify(option);
+  return "";
 }
 
 /** A timeout that is not a positive number of milliseconds means none, as in pi's terminal. */

@@ -100,6 +100,12 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
     private readonly naming: SessionCommandNaming = {},
   ) {}
 
+  /**
+   * Run a command the reader typed. It is named and forwarded trimmed: the SDK reads the name up to
+   * the first space, so trailing newlines (a phone's Enter before Send) became part of the name, the
+   * command was missed and the text went to the model while this answered "done" (review 1005 full
+   * pass P1; every producer goes through here).
+   */
   async run(sessionId: string, text: string): Promise<ClientCommandResult> {
     const active = await this.getActive(sessionId);
     const session = active.runtime.session;
@@ -118,7 +124,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
         // vanished reads as a command that never ran.
         this.silentCommandWatches.set(session.sessionId, `/${name}`);
         const deferred = this.hasActiveWork(session);
-        await this.prompt(sessionId, text);
+        await this.prompt(sessionId, text.trim());
         return deferred ? { type: "done", deferred: true } : { type: "done" };
       }
       return { type: "unsupported", message: `Unknown command: /${name}` };
