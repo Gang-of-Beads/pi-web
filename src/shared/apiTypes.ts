@@ -940,6 +940,26 @@ export const EXTENSION_DIALOG_OPTION_LIMIT = 24;
 /** Length bound for the text a user types into an `input` dialog. */
 export const EXTENSION_DIALOG_INPUT_MAX_LENGTH = 4_000;
 
+/** Where an extension widget sits: pi's `WidgetPlacement`. */
+export type ExtensionWidgetPlacement = "aboveEditor" | "belowEditor";
+
+/**
+ * What a session's extensions left standing through `ctx.ui` (extension-ui-counterpart.md):
+ * footer statuses sorted by key, widgets, the working row's words, mark and visibility, the
+ * hidden-thinking label and the tab title. Absent when nothing stands, and from a daemon that
+ * predates the field. Every field is the extension's; PI WEB's own default applies when absent.
+ */
+export interface ExtensionUiStanding {
+  statuses?: { key: string; text: string }[];
+  widgets?: { key: string; placement: ExtensionWidgetPlacement; lines: string[] }[];
+  workingMessage?: string;
+  workingHidden?: true;
+  /** `[]`: no mark; otherwise the first frame stands as the mark. */
+  workingFrames?: string[];
+  hiddenThinkingLabel?: string;
+  title?: string;
+}
+
 /** The level of an extension's `ctx.ui.notify`, as pi's terminal draws it. */
 export type ExtensionNoticeLevel = "info" | "warning" | "error";
 
@@ -1377,6 +1397,7 @@ export interface SessionStatus {
    * server/sessions/backgroundRunCount.ts for how it is counted.
    */
   backgroundRunCount?: number;
+  extensionUi?: ExtensionUiStanding;
 }
 
 export interface SlashCommand {

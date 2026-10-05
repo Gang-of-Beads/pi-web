@@ -766,7 +766,50 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     ...optionalPendingAsks(record["pendingAsks"]),
     ...optionalPendingDialogs(record["pendingDialogs"]),
     ...optionalStreamPosition(record["streamPosition"]),
+    ...optionalExtensionUi(record["extensionUi"]),
   };
+}
+
+/**
+ * What the session's extensions left standing. Read field by field and never fatal: a value this
+ * build cannot read is left out, so it can never cost the whole status (review 1005).
+ */
+function optionalExtensionUi(value: unknown): Pick<SessionStatus, "extensionUi"> | object {
+  if (typeof value !== "object" || value === null) return {};
+  const strings = (items: unknown): string[] | undefined => (Array.isArray(items) && items.every((item) => typeof item === "string") ? items : undefined);
+  const text = (key: string): string | undefined => {
+    const field: unknown = Reflect.get(value, key);
+    return typeof field === "string" && field !== "" ? field : undefined;
+  };
+  const statusList: unknown = Reflect.get(value, "statuses");
+  const statuses = Array.isArray(statusList) ? statusList.flatMap((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const key: unknown = Reflect.get(entry, "key");
+    const statusText: unknown = Reflect.get(entry, "text");
+    return typeof key === "string" && typeof statusText === "string" ? [{ key, text: statusText }] : [];
+  }) : [];
+  const widgetList: unknown = Reflect.get(value, "widgets");
+  const widgets = Array.isArray(widgetList) ? widgetList.flatMap((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const key: unknown = Reflect.get(entry, "key");
+    const lines = strings(Reflect.get(entry, "lines"));
+    const placement = Reflect.get(entry, "placement") === "belowEditor" ? "belowEditor" as const : "aboveEditor" as const;
+    return typeof key === "string" && lines !== undefined ? [{ key, placement, lines }] : [];
+  }) : [];
+  const workingMessage = text("workingMessage");
+  const workingFrames = strings(Reflect.get(value, "workingFrames"));
+  const hiddenThinkingLabel = text("hiddenThinkingLabel");
+  const title = text("title");
+  const standing: NonNullable<SessionStatus["extensionUi"]> = {
+    ...(statuses.length === 0 ? {} : { statuses }),
+    ...(widgets.length === 0 ? {} : { widgets }),
+    ...(workingMessage === undefined ? {} : { workingMessage }),
+    ...(Reflect.get(value, "workingHidden") === true ? { workingHidden: true as const } : {}),
+    ...(workingFrames === undefined ? {} : { workingFrames }),
+    ...(hiddenThinkingLabel === undefined ? {} : { hiddenThinkingLabel }),
+    ...(title === undefined ? {} : { title }),
+  };
+  return Object.keys(standing).length === 0 ? {} : { extensionUi: standing };
 }
 
 function optionalStreamPosition(value: unknown): { streamPosition?: { seq: number; epoch: string } } {

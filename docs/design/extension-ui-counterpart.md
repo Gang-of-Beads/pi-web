@@ -64,7 +64,8 @@ never draws one for a session it is not showing.
 
 - **`setStatus(key, text)`** - pi shows extension statuses in its footer. PI
   WEB's counterpart is the session footer (the line with tokens, ctx and cost):
-  each key's text joins it, in key order; `undefined` removes that key.
+  each key's text joins it, sorted by key as pi's footer sorts them (newlines
+  and tabs flattened, as pi does); `undefined` removes that key.
 - **`setWidget(key, lines, { placement })`** - a plain text block above or below
   the composer, keyed. The factory form renders through the same headless
   harness as `custom` (component to lines), re-rendered when the component asks.
@@ -121,9 +122,9 @@ a session shares one UI context. So writers are told apart only by the key they
 choose, exactly as in pi's terminal.
 
 **Keyed slots** (`setStatus`, `setWidget`): one value per key; a second write
-to the same key replaces the first; `undefined` removes it. Keys keep the
-order in which they were first set, so a status does not jump when another one
-changes.
+to the same key replaces the first; `undefined` removes it. Statuses sort by
+key, as pi's footer does, so a status does not jump when another one changes;
+widgets keep the order in which their keys were first set.
 
 **Single slots** (`setWorkingMessage`, `setWorkingVisible`,
 `setWorkingIndicator`, `setHiddenThinkingLabel`, `setTitle`): the last write
@@ -154,6 +155,28 @@ The session snapshot a browser reads on attach carries the standing map, so a
 reload and a second device draw the same footer, widgets and working words.
 `command.output` keeps its current meaning for command results; `notify` stops
 using it.
+
+## As built (2026-10-05)
+
+- Step 2 (`notify`): `d15204fa`. Step 3 (standing values): this section.
+- Standing values ride on the session status (`SessionStatus.extensionUi`)
+  rather than an `extension.ui` "standing" frame: the status is already the
+  snapshot a browser reads on attach and the frame it applies live, so one
+  carrier serves both. Writes are coalesced into one status frame per 100 ms.
+  The daemon keeps them per session runtime (`extensionStanding.ts`); a reload
+  of the session's extensions or the runtime's end clears them, as pi's reset
+  does.
+- Statuses have a footer line of their own above the session's numbers, as
+  pi's footer gives them one: measured at 393 px, the numbers alone fill a
+  phone's line and left the statuses 26 px. Each status is cut at 40
+  characters, the line ends in an ellipsis, and a tap opens every status in
+  full, one per line. This replaces "+n" and a separate sheet.
+- `setWorkingIndicator` frames do not animate: no frames hides the mark, and
+  otherwise the first frame stands as the mark.
+- Widget factories render through the custom-screen harness at its width (56),
+  and redraw when the component calls `tui.requestRender()`.
+- Payload bounds, never refusals: a status (and the working words, label and
+  title) is cut at 1,000 characters, a widget at 100 lines, each saying so.
 
 ## Order of work
 

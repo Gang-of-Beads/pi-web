@@ -123,6 +123,7 @@ import {
   type SessionNotificationMutation,
 } from "./sessionNotificationStore.js";
 import { plainTextTheme } from "./plainTextTheme.js";
+import { ExtensionStanding } from "./extensionStanding.js";
 import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
 import { DECLARABLE_SCREENS, declaredScreen, refusedDeclarationSummary } from "./declaredScreen.js";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
@@ -155,6 +156,8 @@ const DEFAULT_UNREAD_PUBLICATION_RETRY_MS = 1_000;
  * the bound keeps that from holding a close or a daemon shutdown open.
  */
 const TEARDOWN_TAKE_BACK_MS = 5_000;
+/** How long an extension's standing-value writes gather before one status frame carries them. */
+const STANDING_PUBLISH_MS = 100;
 /**
  * The longest a closing session holds back its reopen. A close normally finishes within its
  * abort; an abort that never returns (a tool ignoring the signal) must not lock the session id
@@ -1460,6 +1463,9 @@ export class PiSessionService implements SessionRouteService {
   private customScreenStack: string | undefined;
   /** Open extension screens, by dialog id, so a keypress can find its component. */
   private readonly customScreens = new Map<string, (key: string) => void>();
+  /** Per runtime, so a disposed or rebound runtime takes its values with it; see extensionStanding.ts. */
+  private readonly extensionStanding = new WeakMap<PiAgentSession, ExtensionStanding>();
+  private readonly standingPublishPending = new WeakSet<PiAgentSession>();
   /** Sessions whose running turn the reader stopped, with the moment recorded; settled once, at the latest when that turn ends. */
   private readonly stoppedByReader = new Map<string, string>();
   private readonly dialogWaiters = new ExtensionDialogWaiters();
@@ -4146,6 +4152,7 @@ export class PiSessionService implements SessionRouteService {
               candidateGeneration = this.notificationStore.beginReplacement(priorGeneration, notificationIdentityForSession(session));
               this.notificationGenerationBySession.set(session, candidateGeneration);
               this.replaceSessionNotificationContext(session, candidateGeneration);
+              this.extensionStanding.get(session)?.clear();
             },
           });
           applyProviderSafeToolSchemas(session);
@@ -4915,6 +4922,7 @@ export class PiSessionService implements SessionRouteService {
     // An open ask is meaningful only while the runtime that posted it exists: no
     // one is left to receive the answers, so it is dropped without an outcome.
     this.pendingAskStore.forgetSession(sessionId);
+    this.extensionStanding.get(active.runtime.session)?.clear();
     // Open dialogs share that stance, but their extension waiters are parked
     // Promises inside the dying runtime: settle them rather than dropping them.
     this.endSessionExtensionDialogs(sessionId);
@@ -5373,6 +5381,16 @@ export class PiSessionService implements SessionRouteService {
     generation: SessionNotificationGeneration | undefined,
   ): ExtensionUIContext {
     const baseUiContext = session.extensionRunner.getUIContext();
+    const standing = this.standingFor(session);
+    const standingMembers: Readonly<Record<string, unknown>> = {
+      setStatus: (key: string, text: string | undefined) => { standing.setStatus(key, text); },
+      setWidget: (key: string, content: unknown, options?: { placement?: "aboveEditor" | "belowEditor" }) => { standing.setWidget(key, content, options); },
+      setWorkingMessage: (message?: string) => { standing.setWorkingMessage(message); },
+      setWorkingVisible: (visible: boolean) => { standing.setWorkingVisible(visible); },
+      setWorkingIndicator: (options?: { frames?: string[] }) => { standing.setWorkingIndicator(options); },
+      setHiddenThinkingLabel: (label?: string) => { standing.setHiddenThinkingLabel(label); },
+      setTitle: (title: string) => { standing.setTitle(title); },
+    };
     // A notification is written twice on purpose: to the browsers attached now,
     // which draw it as pi's terminal does (extension-ui-counterpart.md), and into
     // the notification store, which carries the unread state.
@@ -5390,6 +5408,7 @@ export class PiSessionService implements SessionRouteService {
     return new Proxy(baseUiContext, {
       get: (target, property, receiver): unknown => {
         if (property === "notify") return notify;
+        if (typeof property === "string" && Object.hasOwn(standingMembers, property)) return standingMembers[property];
         if (property === "theme") return plainTextTheme;
         if (property === "piWebScreens") return DECLARABLE_SCREENS;
         // The headless default resolves `custom` to undefined without a word,
@@ -5401,7 +5420,6 @@ export class PiSessionService implements SessionRouteService {
           // without running the factory, so a screen the extension meant to show
           // was an immediate no-op; here the factory runs, its component draws
           // into lines, and the browser shows them.
-          console.error(`[custom-trap] hit for ${session.sessionId}`);
           return (factory: unknown, opts?: unknown) => this.openCustomScreen(session, factory, opts);
         }
         if (property === "confirm") {
@@ -5420,6 +5438,28 @@ export class PiSessionService implements SessionRouteService {
         return value;
       },
     });
+  }
+
+  private standingFor(session: PiAgentSession): ExtensionStanding {
+    const existing = this.extensionStanding.get(session);
+    if (existing !== undefined) return existing;
+    const standing = new ExtensionStanding(() => { this.scheduleStandingPublish(session); }, plainTextTheme);
+    this.extensionStanding.set(session, standing);
+    return standing;
+  }
+
+  /**
+   * A standing value reaches the browsers on the session's status. Writes are coalesced:
+   * ponytail: a fixed 100 ms window, so an extension that animates its working words at 60 fps
+   * costs ten status frames a second; make it per-slot if a status frame ever grows expensive.
+   */
+  private scheduleStandingPublish(session: PiAgentSession): void {
+    if (this.standingPublishPending.has(session)) return;
+    this.standingPublishPending.add(session);
+    setTimeout(() => {
+      this.standingPublishPending.delete(session);
+      this.publishStatusForSessionId(session.sessionId);
+    }, STANDING_PUBLISH_MS).unref();
   }
 
   private publishNotificationMutations(mutations: readonly SessionNotificationMutation[]): void {
@@ -5994,6 +6034,7 @@ export class PiSessionService implements SessionRouteService {
     const working = session.isStreaming || session.isCompacting || session.isBashRunning;
     const turnStartedAt = working ? turnStartedAtFromBranch(session.sessionManager.getBranch()) : undefined;
     const surfaces = pluginSurfacePresence(session.resourceLoader);
+    const extensionUi = this.extensionStanding.get(session)?.snapshot();
     return {
       sessionId: session.sessionId,
       persisted: sessionFileExists(session.sessionFile),
@@ -6028,6 +6069,7 @@ export class PiSessionService implements SessionRouteService {
       pendingDialogsRevision: this.currentDialogRevision(session.sessionId),
       daemonInstanceId: this.notificationStore.daemonInstanceId,
       ...(backgroundRunCount === 0 ? {} : { backgroundRunCount }),
+      ...(extensionUi === undefined ? {} : { extensionUi }),
     };
   }
 

@@ -1487,13 +1487,14 @@ export class ChatView extends LitElement {
     const elapsed = category === "working" ? turnElapsedLabel(this.turnStartedAtMs, this.turnNowMs) : undefined;
     const activity = this.activity;
     const narrated = activity === undefined ? undefined : this.narratedStep(activity);
-    const words = activityDockWords(category, { ...(narrated === undefined ? {} : { narrated }), ...(activity === undefined ? {} : { activity }), ...(this.status === undefined ? {} : { status: this.status }), stoppable: isSessionActive(this.status, activity) });
+    const standing = this.status?.extensionUi;
+    if (category === "working" && standing?.workingHidden === true) return null;
+    const ownWords = activityDockWords(category, { ...(narrated === undefined ? {} : { narrated }), ...(activity === undefined ? {} : { activity }), ...(this.status === undefined ? {} : { status: this.status }), stoppable: isSessionActive(this.status, activity) });
+    const words = category === "working" ? standing?.workingMessage ?? ownWords : ownWords;
     return html`
       <div class=${`activity-dock ${category}${elapsed?.long === true ? " long-running" : ""}`} aria-live="polite">
-        ${category === "working"
-          ? html`<span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>`
-          : html`<span class="dot"></span>`}
-        <span class="activity-text">${words}</span>
+        ${category === "working" ? workingMark(standing?.workingFrames) : html`<span class="dot"></span>`}
+        <span class="activity-text" title=${words}>${words}</span>
         ${renderActivityNote(notes)}
         ${elapsed === undefined ? null : html`<span class="activity-elapsed" aria-hidden="true">${elapsed.text}</span>`}
       </div>
@@ -2170,7 +2171,7 @@ export class ChatView extends LitElement {
     if (part.type === "extensionNotice") return this.renderExtensionNotice(part);
     if (part.type === "text" && message?.role === "bash") return html`<pre class="part shell-output">${part.text}</pre>`;
     if (part.type === "text") return html`<formatted-text class="part" .text=${part.text} .findCodeFenceRenderer=${this.findCodeFenceRenderer} .streaming=${this.status?.isStreaming === true}></formatted-text>`;
-    if (part.type === "thinking") return html`<details class="part thinking"><summary>thinking</summary><formatted-text .text=${part.text}></formatted-text></details>`;
+    if (part.type === "thinking") return html`<details class="part thinking"><summary>${this.status?.extensionUi?.hiddenThinkingLabel ?? "thinking"}</summary><formatted-text .text=${part.text}></formatted-text></details>`;
     if (part.type === "skillInvocation") return html`
       <details class="part skill-invocation">
         <summary><b>[skill]</b> ${part.name}</summary>
@@ -2888,4 +2889,15 @@ export function turnElapsedLabel(startedAtMs: number | undefined, nowMs: number)
   const elapsedMs = Math.max(0, nowMs - startedAtMs);
   if (elapsedMs < 5000) return undefined;
   return { text: subagentRunDuration(elapsedMs), long: elapsedMs >= LONG_TURN_AFTER_MS };
+}
+
+/**
+ * The working row's mark: PI WEB's dots, or what an extension set with `setWorkingIndicator`
+ * (extension-ui-counterpart.md): no frames, no mark; otherwise its first frame stands still.
+ * ponytail: frames do not animate; cycle them on a timer if an extension's mark needs motion.
+ */
+function workingMark(frames: readonly string[] | undefined) {
+  if (frames === undefined) return html`<span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>`;
+  const frame = frames[0];
+  return frame === undefined ? null : html`<span class="working-mark" aria-hidden="true">${frame}</span>`;
 }
