@@ -108,11 +108,13 @@ Never report failed, incomplete, or skipped verification as passing. Identify an
 
 Every non-trivial change wave gets, before it is called done:
 
-1. **Multi-lane bllm max-thinking review**: anonymous parallel lanes on the
-   builtin `reviewer` shell with `botim-bllm/deepseek-v4.1-flash:max` (two
-   split-focus lanes plus one full pass is the working shape). Give each
-   lane the diff, the live
-   file paths, and a directed hunt list; require file:line findings with a
+1. **Multi-lane max-thinking review**: anonymous parallel lanes on the
+   builtin `reviewer` shell - two split-focus lanes on
+   `botim-bllm/deepseek-v4.1-flash:max` plus one full pass on
+   `anthropic-merchant/claude-opus-5:max` (owner, 2026-10-05). Check the
+   names against the model registry (`subagent` action `models`) before
+   launching; an unknown model fails every lane at start. Give each lane
+   the diff, the live file paths, and a directed hunt list; require file:line findings with a
    minimal failure scenario and true/false adjudication of each suspicion.
    Triage in writing (fixed / not-fixed-with-reason / judged-not-true) before
    fixing; two lanes disagreeing is settled by reading the source, not by
