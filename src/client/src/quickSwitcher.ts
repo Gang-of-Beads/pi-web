@@ -97,7 +97,7 @@ export function quickSwitcherModel(input: QuickSwitcherModelInput): QuickSwitche
       ...(definition.foldedByDefault === true ? { foldedByDefault: true } : {}),
       ...(definition.emptyText === undefined ? {} : { emptyText: definition.emptyText }),
     }));
-  return { groups, matchCount: matches.filter((session) => session.archived !== true).length };
+  return { groups, matchCount: matches.length };
 }
 
 /** The switcher's state sets as the classifier's category, most urgent first. */

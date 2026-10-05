@@ -135,7 +135,7 @@ export class QuickSwitcher extends LitElement {
         ${this.renderBreadcrumb()}
         <div class="body">
           ${this.renderCreateRow()}
-          ${model.groups.map((group) => this.renderGroup(group))}
+          ${this.renderGroups(model.groups)}
           ${this.renderScopeNotice()}
           ${this.renderEmptyMeaning(model.matchCount)}
           ${otherWorkspaces.length === 0 ? null : html`
@@ -296,26 +296,30 @@ export class QuickSwitcher extends LitElement {
 
   /**
    * One foldable section, as on the Navigate page: folded or open as the reader last left it in this
-   * sheet; a section folded by default says its count, and an open empty one says so.
+   * sheet; a folded section, or one folded by default, says its count, and an open empty one says so.
+   * Its rows come in the order the whole sheet holds (`held`), so a finger on any section keeps every
+   * row in place (review 1005 navigation P1-3).
    */
-  private renderGroup(group: QuickSwitcherGroup) {
+  private renderGroup(group: QuickSwitcherGroup, held: readonly SessionInfo[]) {
     const foldedByDefault = group.foldedByDefault === true;
     const folded = this.folds.isFolded(group.id, foldedByDefault);
-    const title = foldedByDefault ? `${group.title} (${String(group.sessions.length)})` : group.title;
+    const title = foldedByDefault || folded ? `${group.title} (${String(group.sessions.length)})` : group.title;
+    const members = new Set(group.sessions);
     return html`
       <h3><button type="button" class="section-toggle" aria-expanded=${folded ? "false" : "true"} @click=${() => { this.folds.toggle(group.id, foldedByDefault); this.foldRevision += 1; }}><span class="section-fold" aria-hidden="true">${renderDisclosureIcon(folded)}</span>${title}</button></h3>
       ${folded ? nothing : group.sessions.length === 0 && group.emptyText !== undefined
         ? html`<p class="section-empty" role="status">${group.emptyText}</p>`
         : html`<div class="rows" @pointerdown=${() => { this.rowOrder.hold(); }} @pointerup=${() => { this.letGoOfRows(); }} @pointercancel=${() => { this.letGoOfRows(); }}>
-          ${this.heldOrder(group.sessions).map((session) => this.renderSessionRow(session))}
+          ${held.filter((session) => members.has(session)).map((session) => this.renderSessionRow(session))}
         </div>`}
     `;
   }
 
-  /** A section's rows in the held order while a finger is on the sheet; see `heldRowOrder`. */
-  private heldOrder(sessions: readonly SessionInfo[]): SessionInfo[] {
-    const order = this.rowOrder.order(sessions, Date.now());
-    return order.filter((session) => sessions.includes(session));
+
+  /** The sheet's sections over one held order of all their rows; see `heldRowOrder`. */
+  private renderGroups(groups: readonly QuickSwitcherGroup[]) {
+    const held = this.rowOrder.order(groups.flatMap((group) => group.sessions), Date.now());
+    return groups.map((group) => this.renderGroup(group, held));
   }
 
   /** The finger lifted: the order still holds for a moment, then takes the live one. */

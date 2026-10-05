@@ -442,13 +442,14 @@ export class AppNavigatePage extends LitElement {
    */
   /**
    * One foldable section (owner, 2026-10-04): its title, folded or open as the reader last left it
-   * in this list, and its rows. A section folded by default (Archived) says its count, so a folded
-   * list still answers "how many"; one that is open and empty says so instead of vanishing.
+   * in this list, and its rows. A folded section, and one folded by default (Archived), says its
+   * count, so a folded list still answers "how many"; one that is open and empty says so instead of
+   * vanishing.
    */
   private renderSessionSection(section: NavigateSection) {
     const foldedByDefault = section.foldedByDefault === true;
     const folded = this.folds.isFolded(section.id, foldedByDefault);
-    const title = foldedByDefault ? `${section.title} (${String(section.rows.length)})` : section.title;
+    const title = foldedByDefault || folded ? `${section.title} (${String(section.rows.length)})` : section.title;
     return html`
       <button
         type="button"
