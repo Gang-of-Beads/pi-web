@@ -45,6 +45,11 @@ export interface DialogTitleParts {
   body?: string;
 }
 
+/** The heading of a dialog whose extension gave it no title. */
+const UNTITLED_DIALOG_HEADING = "An extension is asking";
+const NO_CHOICES_TEXT = "This question offers no choices.";
+const BLANK_OPTION_LABEL = "(blank)";
+
 /**
  * Split a dialog title into a one-line heading and an optional detail body.
  *
@@ -62,6 +67,7 @@ export interface DialogTitleParts {
  */
 export function splitDialogTitle(title: string): DialogTitleParts {
   const normalized = title.replace(/\r\n/g, "\n").replace(/^\n+/, "").trimEnd();
+  if (normalized === "") return { heading: UNTITLED_DIALOG_HEADING };
   const newlineIndex = normalized.indexOf("\n");
   if (newlineIndex === -1) return splitLongLine(normalized);
   const firstLine = normalized.slice(0, newlineIndex).trimEnd();
@@ -362,13 +368,19 @@ export class ExtensionDialogCard extends LitElement {
     `;
   }
 
+  /**
+   * Every option the extension offered, as it offered it (owner, 2026-10-04: show everything, as
+   * pi's terminal does): any number, repeated ones as they are, a blank one named so it can be
+   * tapped. With none there is nothing to choose, and the card says so beside its Cancel.
+   */
   private renderSelectBody(dialog: PendingExtensionDialog): TemplateResult {
+    const options = dialog.options ?? [];
     return html`
-      <div class="dialog-options" role="group" aria-label="Choices">
-        ${(dialog.options ?? []).map((option) => html`
-          <button class="option-button" type="button" ?disabled=${this.closing} @click=${() => { this.answerDialog(dialog, option); }}>${option}</button>
+      ${options.length === 0 ? html`<p class="dialog-message">${NO_CHOICES_TEXT}</p>` : html`<div class="dialog-options" role="group" aria-label="Choices">
+        ${options.map((option) => html`
+          <button class="option-button" type="button" ?disabled=${this.closing} @click=${() => { this.answerDialog(dialog, option); }}>${option === "" ? BLANK_OPTION_LABEL : option}</button>
         `)}
-      </div>
+      </div>`}
       <footer class="dialog-footer">
         <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Cancel</button>
       </footer>

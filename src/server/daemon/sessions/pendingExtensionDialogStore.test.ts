@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
-  EXTENSION_DIALOG_OPTION_LIMIT,
   EXTENSION_DIALOG_PROSE_MAX_LENGTH,
   EXTENSION_DIALOG_TEXT_MAX_LENGTH,
   type ExtensionDialogAnswer,
 } from "../../../shared/apiTypes.js";
 import {
   PendingExtensionDialogStore,
-  PendingExtensionDialogValidationError,
   type ExtensionDialogCancelReason,
 } from "./pendingExtensionDialogStore.js";
 
@@ -140,28 +138,35 @@ describe("PendingExtensionDialogStore open", () => {
     expect(confirm.message).toHaveLength(EXTENSION_DIALOG_PROSE_MAX_LENGTH);
   });
 
-  it("rejects dialogs the user could not meaningfully answer", () => {
-    const store = testStore();
-    const open = (overrides: Record<string, unknown>) => () =>
-      store.open({ sessionId, kind: "confirm", title: "Ok?", runScoped: false, ...overrides });
+  it("opens whatever pi's terminal would show, and refuses only a kind it does not know (owner, 2026-10-04)", () => {
+    const store = testStore((() => { let next = 0; return () => { next += 1; return `dialog-${next.toString()}`; }; })());
+    const open = (overrides: Record<string, unknown>) => store.open({ sessionId, kind: "confirm", title: "Ok?", runScoped: false, ...overrides });
+    const longTitle = open({ title: "x".repeat(EXTENSION_DIALOG_PROSE_MAX_LENGTH + 500) }).title;
+    const longMessage = open({ message: "y".repeat(EXTENSION_DIALOG_PROSE_MAX_LENGTH * 2) }).message ?? "";
+    const thirtyOptions = Array.from({ length: 30 }, (_, index) => `v${index.toString()}`);
 
-    expect(open({ title: "  " })).toThrow(/dialog title must not be empty/);
-    expect(open({ title: "x".repeat(EXTENSION_DIALOG_PROSE_MAX_LENGTH + 1) })).toThrow(/dialog title exceeds its length limit/);
-    expect(open({ message: "x".repeat(EXTENSION_DIALOG_PROSE_MAX_LENGTH + 1) })).toThrow(/dialog message exceeds its length limit/);
-    expect(open({ kind: "select", options: ["x".repeat(EXTENSION_DIALOG_TEXT_MAX_LENGTH + 1)] })).toThrow(/select option exceeds its length limit/);
-    expect(open({ kind: "widget" })).toThrow(/Unknown dialog kind widget/);
-    expect(open({ kind: "select", options: undefined })).toThrow(/at least one option/);
-    expect(open({ kind: "select", options: [] })).toThrow(/at least one option/);
-    expect(open({ kind: "select", options: ["a", "a"] })).toThrow(/Duplicate select option a/);
-    expect(open({ kind: "select", options: ["  "] })).toThrow(/select option must not be empty/);
-    expect(open({
-      kind: "select",
-      options: Array.from({ length: EXTENSION_DIALOG_OPTION_LIMIT + 1 }, (_, index) => `v${index.toString()}`),
-    })).toThrow(/more than 24 options/);
-    expect(open({ timeoutMs: 0 })).toThrow(PendingExtensionDialogValidationError);
-    expect(open({ timeoutMs: -5 })).toThrow(PendingExtensionDialogValidationError);
-    expect(open({ timeoutMs: Number.NaN })).toThrow(PendingExtensionDialogValidationError);
-    expect(store.pendingDialogs(sessionId)).toEqual([]);
+    expect(() => open({ kind: "widget" })).toThrow(/Unknown dialog kind widget/);
+    expect({
+      blankTitle: open({ title: "  " }).title,
+      longTitle: { withinBound: longTitle.length <= EXTENSION_DIALOG_PROSE_MAX_LENGTH, note: longTitle.endsWith(`${(EXTENSION_DIALOG_PROSE_MAX_LENGTH + 500 - longTitle.indexOf("\n…")).toString()} more characters not shown`) },
+      longMessage: { withinBound: longMessage.length <= EXTENSION_DIALOG_PROSE_MAX_LENGTH, noted: longMessage.includes("more characters not shown") },
+      longOption: open({ kind: "select", options: ["x".repeat(EXTENSION_DIALOG_TEXT_MAX_LENGTH + 1)] }).options?.[0]?.length,
+      noOptions: open({ kind: "select", options: undefined }).options,
+      emptyOptions: open({ kind: "select", options: [] }).options,
+      repeated: open({ kind: "select", options: ["a", "a", "  "] }).options,
+      many: open({ kind: "select", options: thirtyOptions }).options?.length,
+      timeouts: [0, -5, Number.NaN].map((timeoutMs) => open({ timeoutMs }).timeoutAt),
+    }).toEqual({
+      blankTitle: "  ",
+      longTitle: { withinBound: true, note: true },
+      longMessage: { withinBound: true, noted: true },
+      longOption: EXTENSION_DIALOG_TEXT_MAX_LENGTH + 1,
+      noOptions: [],
+      emptyOptions: [],
+      repeated: ["a", "a", "  "],
+      many: 30,
+      timeouts: [undefined, undefined, undefined],
+    });
   });
 
   it("rejects an open whose id collides with a still-open dialog", () => {

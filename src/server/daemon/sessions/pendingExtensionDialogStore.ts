@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import {
   EXTENSION_DIALOG_ID_MAX_LENGTH,
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
-  EXTENSION_DIALOG_OPTION_LIMIT,
   EXTENSION_DIALOG_SCREEN_MAX_LINES,
   EXTENSION_DIALOG_PROSE_MAX_LENGTH,
   EXTENSION_DIALOG_TEXT_MAX_LENGTH,
@@ -105,7 +104,7 @@ export class PendingExtensionDialogStore {
     const dialog: PendingExtensionDialog = {
       dialogId: requireId(this.createDialogId(), "dialogId"),
       kind,
-      title: requireProse(input.title, "dialog title"),
+      title: shownText(input.title, EXTENSION_DIALOG_PROSE_MAX_LENGTH),
       ...kindFields(kind, input),
       askedAt: now.toISOString(),
       ...timeoutField(input.timeoutMs, now),
@@ -218,13 +217,13 @@ function kindFields(
 ): Pick<PendingExtensionDialog, "message" | "options" | "placeholder" | "lines" | "screen"> {
   switch (kind) {
     case "confirm": {
-      const message = optionalProse(input.message, "dialog message");
+      const message = optionalShownText(input.message, EXTENSION_DIALOG_PROSE_MAX_LENGTH);
       return message === undefined ? {} : { message };
     }
     case "select":
-      return { options: validateOptions(input.options) };
+      return { options: [...(input.options ?? [])] };
     case "input": {
-      const placeholder = optionalText(input.placeholder, "dialog placeholder");
+      const placeholder = optionalShownText(input.placeholder, EXTENSION_DIALOG_TEXT_MAX_LENGTH);
       return placeholder === undefined ? {} : { placeholder };
     }
     case "custom":
@@ -247,27 +246,9 @@ function validateCustomAnswer(dialog: PendingExtensionDialog, value: ExtensionDi
   }
 }
 
-function validateOptions(options: string[] | undefined): string[] {
-  if (options === undefined || options.length === 0) {
-    throw new PendingExtensionDialogValidationError("A select dialog must offer at least one option");
-  }
-  if (options.length > EXTENSION_DIALOG_OPTION_LIMIT) {
-    throw new PendingExtensionDialogValidationError(`A select dialog must not offer more than ${EXTENSION_DIALOG_OPTION_LIMIT.toString()} options`);
-  }
-  const seen = new Set<string>();
-  return options.map((option) => {
-    const validated = requireText(option, "select option");
-    if (seen.has(validated)) throw new PendingExtensionDialogValidationError(`Duplicate select option ${validated}`);
-    seen.add(validated);
-    return validated;
-  });
-}
-
+/** A timeout that is not a positive number of milliseconds means none, as in pi's terminal. */
 function timeoutField(timeoutMs: number | undefined, now: Date): Pick<PendingExtensionDialog, "timeoutAt"> {
-  if (timeoutMs === undefined) return {};
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    throw new PendingExtensionDialogValidationError("A dialog timeout must be a positive number of milliseconds");
-  }
+  if (timeoutMs === undefined || !Number.isFinite(timeoutMs) || timeoutMs <= 0) return {};
   return { timeoutAt: new Date(now.getTime() + timeoutMs).toISOString() };
 }
 
@@ -292,35 +273,21 @@ function requireId(value: string, field: string): string {
   return value;
 }
 
-function requireText(value: string, field: string): string {
-  return requireBoundedText(value, field, EXTENSION_DIALOG_TEXT_MAX_LENGTH);
+/**
+ * What the card shows of an extension's text: all of it, as pi's terminal does (owner, 2026-10-04:
+ * a dialog is never refused for its content; the goal extension's long title was). The bound only
+ * protects the status payload the open dialog rides: past it the text is cut, and the cut says how
+ * much is missing, within the bound.
+ */
+function shownText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  const cutNote = (hidden: number): string => `\n… ${hidden.toString()} more characters not shown`;
+  const kept = value.slice(0, maxLength - cutNote(value.length).length);
+  return kept + cutNote(value.length - kept.length);
 }
 
-/** Prose a dialog presents, which the card is built to scroll. */
-function requireProse(value: string, field: string): string {
-  return requireBoundedText(value, field, EXTENSION_DIALOG_PROSE_MAX_LENGTH);
-}
-
-function requireBoundedText(value: string, field: string, maxLength: number): string {
-  if (value.trim() === "") throw new PendingExtensionDialogValidationError(`${field} must not be empty`);
-  if (value.length > maxLength) throw new PendingExtensionDialogValidationError(`${field} exceeds its length limit`);
-  return value;
-}
-
-/** Optional cosmetic label: blank means absent rather than being a validation error. */
-function optionalText(value: string | undefined, field: string): string | undefined {
-  return optionalBoundedText(value, field, EXTENSION_DIALOG_TEXT_MAX_LENGTH);
-}
-
-/** Optional prose the dialog presents, bounded like the title it accompanies. */
-function optionalProse(value: string | undefined, field: string): string | undefined {
-  return optionalBoundedText(value, field, EXTENSION_DIALOG_PROSE_MAX_LENGTH);
-}
-
-function optionalBoundedText(value: string | undefined, field: string, maxLength: number): string | undefined {
+/** Optional text: blank means absent. */
+function optionalShownText(value: string | undefined, maxLength: number): string | undefined {
   if (value === undefined || value.trim() === "") return undefined;
-  if (value.length > maxLength) {
-    throw new PendingExtensionDialogValidationError(`${field} exceeds its length limit`);
-  }
-  return value;
+  return shownText(value, maxLength);
 }

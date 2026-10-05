@@ -909,18 +909,19 @@ export interface AskUserCloseResponse {
 
 /** Length bound for extension-dialog ids. */
 export const EXTENSION_DIALOG_ID_MAX_LENGTH = 128;
-/** Length bound for extension-authored dialog labels: options and placeholders. */
+/**
+ * Payload bound for an input dialog's placeholder. A dialog is never refused for its content
+ * (owner, 2026-10-04: show everything, as pi's terminal does); past a bound the daemon cuts the
+ * text and says how much is missing.
+ */
 export const EXTENSION_DIALOG_TEXT_MAX_LENGTH = 1_000;
 /**
- * Length bound for the prose a dialog presents: its title and message.
- *
- * A label is something the user clicks and has to stay short, but the body of
- * a decision can legitimately be long - a goal proposal, a diff summary, a
- * migration plan. The card already renders that shape, splitting the first
- * line into the heading and scrolling the rest in a focusable detail region,
- * so the tighter label bound was rejecting content the UI was built to show.
+ * Payload bound for the prose a dialog presents: its title and message. The card splits the first
+ * line into the heading and scrolls the rest, so long prose is shown; the bound only keeps one
+ * dialog from swelling every status read while it is open, and matches a declared screen's
+ * detail. Options have no bound: cutting one would change the answer the extension receives.
  */
-export const EXTENSION_DIALOG_PROSE_MAX_LENGTH = 8_000;
+export const EXTENSION_DIALOG_PROSE_MAX_LENGTH = 32_000;
 
 /**
  * Longest detail a question on a declared extension screen may carry. A goal draft
@@ -931,7 +932,10 @@ export const EXTENSION_DIALOG_PROSE_MAX_LENGTH = 8_000;
  */
 export const EXTENSION_SCREEN_DETAIL_MAX_LENGTH = 32_000;
 
-/** Largest option list one `select` dialog may offer. */
+/**
+ * @deprecated No longer enforced: a select dialog shows every option it is given (owner, 2026-10-04).
+ * @public Kept for plugins that import it.
+ */
 export const EXTENSION_DIALOG_OPTION_LIMIT = 24;
 /** Length bound for the text a user types into an `input` dialog. */
 export const EXTENSION_DIALOG_INPUT_MAX_LENGTH = 4_000;

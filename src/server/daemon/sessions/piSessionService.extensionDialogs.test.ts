@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import { EXTENSION_DIALOG_PROSE_MAX_LENGTH, type PendingExtensionDialog, type SessionUiEvent } from "../../../shared/apiTypes.js";
+import type { PendingExtensionDialog, SessionUiEvent } from "../../../shared/apiTypes.js";
 import { PiSessionService, type PiAgentSession } from "./piSessionService.js";
 import { PendingExtensionDialogStore, PendingExtensionDialogValidationError } from "./pendingExtensionDialogStore.js";
 import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
@@ -152,24 +152,27 @@ describe("PiSessionService extension dialog UI context", () => {
     await service.dispose();
   });
 
-  it("rejects a malformed dialog without opening anything", async () => {
-    const { service, store, events, fake } = dialogService();
+  it("opens a select with no options, as pi's terminal would, for the reader to cancel (owner, 2026-10-04)", async () => {
+    const { service, store, fake } = dialogService();
     const ui = await boundUiContext(service, fake);
 
-    await expect(ui.select("Pick one", [])).rejects.toThrow(PendingExtensionDialogValidationError);
+    void ui.select("Pick one", []);
 
-    expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toEqual([]);
-    expect(dialogEvents(events)).toEqual([]);
+    expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toEqual([expect.objectContaining({ kind: "select", title: "Pick one", options: [] })]);
     await service.dispose();
   });
 
-  /** D2, B10: a refusal is a state the reader sees, not only an error inside the extension. */
+  /**
+   * D2, B10: a refusal is a state the reader sees, not only an error inside the extension. Content
+   * is never refused any more; a dialog kind PI WEB does not know (a newer pi) still is.
+   */
   it("tells the reader, in the conversation and the notifications, why a dialog could not open", async () => {
-    const { service, events, fake } = dialogService();
+    const { service, store, events, fake } = dialogService();
     const ui = await boundUiContext(service, fake);
-    const reason = "An extension asked something PI WEB could not show: dialog title exceeds its length limit.";
+    const reason = "An extension asked something PI WEB could not show: Unknown dialog kind widget.";
+    vi.spyOn(store, "open").mockImplementation(() => { throw new PendingExtensionDialogValidationError("Unknown dialog kind widget"); });
 
-    await expect(ui.confirm("x".repeat(EXTENSION_DIALOG_PROSE_MAX_LENGTH + 1), "Proceed?")).rejects.toThrow(PendingExtensionDialogValidationError);
+    await expect(ui.confirm("Proceed?", "Really?")).rejects.toThrow(PendingExtensionDialogValidationError);
 
     const said = events.sessionEvents.flatMap(({ event }) => (event.type === "command.output" ? [{ level: event.level, message: event.message }] : []));
     const filed = service.notificationInbox(sessionRef(ACTIVE_SESSION_ID)).notifications.map((notification) => ({ message: notification.message, severity: notification.severity }));
