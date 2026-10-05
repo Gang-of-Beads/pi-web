@@ -1,3 +1,4 @@
+import type { NavigateListScope } from "../../goToScope";
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionInfo } from "../../api";
@@ -65,7 +66,8 @@ export class AppNavigatePage extends LitElement {
    * bar. It shows in every scope, with or without a chosen project: Go to also holds Settings and
    * Actions, so it is how the phone reaches them (owner, 2026-10-04).
    */
-  @property({ attribute: false }) onOpenGoTo?: () => void;
+  /** Opens Go to, told what this page lists so Go to offers that scope's pages (go-to-scopes.md). */
+  @property({ attribute: false }) onOpenGoTo?: (scope: NavigateListScope) => void;
   /**
    * The Settings key, for the desktop overlay, where nothing else on the page reaches Settings.
    * The phone host leaves it out: its Settings is a line in Go to, so the header is the path and
@@ -235,7 +237,7 @@ export class AppNavigatePage extends LitElement {
           </div>
           <div class="path-bar-actions">
             ${this.onOpenSettings === undefined ? nothing : html`<button type="button" class="settings" aria-label="Settings" title="Settings" @click=${() => { this.onOpenSettings?.(); }}>${renderGearIcon()}</button>`}
-            ${this.onOpenGoTo === undefined ? nothing : html`<button type="button" class="settings menu-key" aria-label="Go to a view" title="Go to a view" aria-haspopup="dialog" @click=${() => { this.onOpenGoTo?.(); }}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>`}
+            ${this.onOpenGoTo === undefined ? nothing : html`<button type="button" class="settings menu-key" aria-label="Go to a view" title="Go to a view" aria-haspopup="dialog" @click=${() => { this.onOpenGoTo?.(this.pathProjectId === undefined ? "machine" : "project"); }}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>`}
           </div>
         </header>
         <nav class="kinds" aria-label="What to list">

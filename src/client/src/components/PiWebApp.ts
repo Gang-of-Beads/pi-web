@@ -104,6 +104,7 @@ import type { NavigateInput, NavigateLevel } from "../navigateModel";
 import type { ShellToolTab } from "../appShell/shellToolTabs";
 import "./appShell/AppPanelEdgeControl";
 import "./ExtensionWidgets";
+import { goToScope, type NavigateListScope } from "../goToScope";
 import { quickSwitcherSessionStates, sessionIdsIn } from "../quickSwitcher";
 import { reloadOffer } from "../versionSkew";
 import { oneRowPerIdentity } from "../transcriptInvariant";
@@ -479,6 +480,8 @@ export class PiWebApp extends LitElement {
   @state() private navigateOpen = false;
   @state() private contextSheetOpen = false;
   @state() private goToSheetOpen = false;
+  /** What the Navigate page that opened Go to listed; undefined when a chat or plugin page opened it. */
+  private goToOpenedFrom: NavigateListScope | undefined;
   /** Whether any modal layer is open; the app row then rides above it. */
   @state() private modalPresent = false;
   private stopModalPresence: (() => void) | undefined;
@@ -2719,8 +2722,9 @@ export class PiWebApp extends LitElement {
    * it opened. A key that only opens leaves the reader hunting for the way
    * back out.
    */
-  private toggleGoToSheet(): void {
+  private toggleGoToSheet(openedFrom?: NavigateListScope): void {
     if (this.goToSheetOpen) { this.goToSheetOpen = false; return; }
+    this.goToOpenedFrom = openedFrom;
     this.openGoToSheet();
   }
 
@@ -2731,15 +2735,19 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * The phone's destinations by name: the list, the conversation, then every
-   * workspace tool, each marked when it is the view on screen.
+   * The phone's destinations by name: the list, the conversation, then the
+   * pages of the scope the reader is looking at (goToScope), each marked when
+   * it is the view on screen. A plugin page that needs a project has no
+   * button while no project is in scope.
    */
   private goToDestinations(): GoToDestination[] {
     const view = this.displayMainView();
+    const scope = goToScope({ hasWorkspace: this.state.selectedWorkspace !== undefined, openedFrom: this.goToOpenedFrom });
+    const pages = scope === "workspace" ? this.shellToolTabs() : [];
     return [
       { id: "navigation", label: "Sessions", icon: renderListIcon(), selected: view === "navigation" },
       { id: "chat", label: "Chat", icon: renderChatIcon(), selected: view === "chat" },
-      ...this.shellToolTabs().map((tab) => ({ id: tab.id, label: tab.label, icon: tab.icon, badge: tab.badge, badgeLabel: tab.badgeLabel, selected: tab.selected })),
+      ...pages.map((tab) => ({ id: tab.id, label: tab.label, icon: tab.icon, badge: tab.badge, badgeLabel: tab.badgeLabel, selected: tab.selected })),
       { id: GO_TO_ACTIONS, label: "Actions…", icon: renderCommandIcon(), command: true },
       { id: GO_TO_SETTINGS, label: "Settings", icon: renderGearIcon(), command: true },
     ];
@@ -2751,12 +2759,17 @@ export class PiWebApp extends LitElement {
     [GO_TO_SETTINGS, () => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }],
   ]);
 
+  /**
+   * Every view destination closes the Navigate overlay first, as Settings does: a view chosen
+   * under the overlay changed nothing the reader could see (owner report 2026-10-05).
+   */
   private goTo(id: string): void {
     const command = this.goToCommands.get(id);
     if (command !== undefined) {
       command();
       return;
     }
+    this.closeNavigate();
     if (id === "navigation" || id === "chat") {
       this.selectMainView(id);
       return;
@@ -2879,7 +2892,7 @@ export class PiWebApp extends LitElement {
       .pinnedProjectIds=${this.pinnedProjectIds}
       ?returnable=${overlay || (this.appShell.isMobileNavigationLayout && this.hasChatSubject())}
       .onClose=${() => { this.leaveNavigate(); }}
-      .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? () => { this.toggleGoToSheet(); } : undefined}
+      .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? (scope: NavigateListScope) => { this.toggleGoToSheet(scope); } : undefined}
       .onChoose=${(level: NavigateLevel, id: string) => { void this.navigateChoose(level, id); }}
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
       .onOpenSession=${(session: SessionInfo, machineId: string) => { void this.openSessionFromQuickSwitcher(session, machineId); }}
