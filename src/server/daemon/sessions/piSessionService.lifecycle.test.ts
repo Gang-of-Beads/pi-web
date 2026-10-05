@@ -536,9 +536,9 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     await expect(service.runCommand(sessionRef("extension-command-session"), "/ctx-stats")).resolves.toEqual({ type: "done" });
 
     expect(extensionMode).toBe("rpc");
-    // The command's answer reaches the transcript as well as the store.
-    expect(hub.sessionEvents.filter(({ event }) => event.type === "command.output").map(({ event }) => event)).toEqual([
-      { type: "command.output", level: "info", message: "context-mode stats" },
+    // The command's answer reaches the attached browsers as well as the store.
+    expect(hub.sessionEvents.filter(({ event }) => event.type === "extension.ui").map(({ event }) => event)).toEqual([
+      { type: "extension.ui", kind: "notify", level: "info", message: "context-mode stats" },
     ]);
     const inboxEvent = hub.sessionEvents.find(({ event }) => event.type === "notifications.inbox");
     expect(inboxEvent).toMatchObject({
@@ -590,11 +590,11 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     ]);
     expect(fake.session.sessionManager.getBranch()).toBe(branch);
     expect(fake.session.messages).toEqual([]);
-    // Both surfaces: the store carries unread state, the command.output row is
-    // what a reader actually sees - nothing reads the store yet.
-    expect(hub.sessionEvents.filter(({ event }) => event.type === "command.output").map(({ event }) => event)).toEqual([
-      { type: "command.output", level: "info", message: "duplicate" },
-      { type: "command.output", level: "error", message: "duplicate" },
+    // Both surfaces: the store carries unread state, the extension.ui frame is
+    // what a reader sees, at the level the extension gave.
+    expect(hub.sessionEvents.filter(({ event }) => event.type === "extension.ui").map(({ event }) => event)).toEqual([
+      { type: "extension.ui", kind: "notify", level: "warning", message: "duplicate" },
+      { type: "extension.ui", kind: "notify", level: "error", message: "duplicate" },
     ]);
     expect(hub.sessionEvents.filter(({ event }) => event.type === "notifications.inbox")).toHaveLength(2);
 

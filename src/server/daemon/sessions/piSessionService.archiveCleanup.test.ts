@@ -160,7 +160,7 @@ describe("PiSessionService archive and cleanup", () => {
     expect(() => notificationStore.inboxSnapshot("archived", "/workspace")).toThrow("Session not found");
     expect(hub.sessionEvents).toContainEqual({
       sessionId: "archived",
-      event: { type: "command.output", level: "error", message: "archived startup" },
+      event: { type: "extension.ui", kind: "notify", level: "error", message: "archived startup" },
     });
     await service.dispose();
   });

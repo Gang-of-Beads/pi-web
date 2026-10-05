@@ -1,6 +1,6 @@
 import { css } from "lit";
 import type { ChatRole } from "../chatRole";
-import type { AskUserOutcome } from "../../../shared/apiTypes";
+import type { AskUserOutcome, ExtensionNoticeLevel } from "../../../shared/apiTypes";
 
 /**
  * What every interactive control in this app owes a touch.
@@ -93,6 +93,8 @@ export type ChatPart =
   | ToolExecutionPart
   | { type: "toolResult"; toolCallId?: string; toolName: string; text: string; isError: boolean; content?: unknown; details?: unknown }
   | { type: "custom"; tag: string; payload: unknown }
+  /** An extension's notify, live only; see extensionNotices.ts. */
+  | { type: "extensionNotice"; level: ExtensionNoticeLevel; text: string; count: number; at: number }
   | { type: "empty" };
 
 /**

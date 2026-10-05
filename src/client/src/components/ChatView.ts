@@ -12,6 +12,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { ChatDisclosureController } from "../chatDisclosure";
 import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type ChatGroup } from "../chatGroups";
+import { extensionNoticeOf, NOTICE_PREFIX, type ExtensionNoticePart } from "../extensionNotices";
 import { writeClipboardText } from "../clipboard";
 import { followScrollVerdict } from "../followScrollAdoption.js";
 import { scrollDirection, viewportDecision, followsAfterScroll, isRestoring, readerCanTakeOver } from "../chatViewport/viewportDecision.js";
@@ -260,6 +261,12 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg.user.queued .msg-action { color: var(--pi-warning); }
   .msg.tool { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
   .msg.tool-execution-shell, .msg.ask-user-record-shell { padding: 0; border: 0; background: transparent; color: var(--pi-text); }
+  /* An extension's notify (extensionNotices.ts): a line, not a card, as pi's terminal draws it.
+     Three lines at most until tapped, since a phone has no hover title. */
+  .extension-notice { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; margin: 0; padding: 0 var(--pi-space-7); border: 0; background: none; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); line-height: 1.45; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; cursor: pointer; }
+  .extension-notice.expanded { display: block; -webkit-line-clamp: unset; }
+  .extension-notice.warning { color: var(--pi-warning); }
+  .extension-notice.error { color: var(--pi-danger); }
   .msg.ask-user-record-shell ask-user-card { margin: 0 auto; }
   .msg.ask-user-record-shell > .delivery-mark { margin-inline-end: 0; }
   /* A system line reports whatever the runtime has to say - a background task
@@ -645,6 +652,8 @@ export class ChatView extends LitElement {
   @property({ type: Boolean }) hasNewer = false;
   /** One newer fetch in flight; cleared when the loaded range moves. */
   @state() private newerRequested = false;
+  /** Notify lines the reader opened past their three-line cut, by the moment each arrived. */
+  @state() private expandedNotices: ReadonlySet<string> = new Set();
   @property({ type: Number }) newerCount = 0;
   @property({ type: Boolean }) loadingMore = false;
   /** True while this session's transcript is being read for the first time. */
@@ -1937,6 +1946,8 @@ export class ChatView extends LitElement {
   }
 
   private renderMessage(message: ChatLine, index: number) {
+    const notice = extensionNoticeOf(message);
+    if (notice !== undefined) return html`${this.renderScrollMarker(this.messageScrollMarkerId(index))}<div class="msg-notice" data-index=${index} data-scroll-anchor-id=${this.messageAnchorKey(index)}>${this.renderExtensionNotice(notice)}</div>`;
     const toolOnly = this.isToolExecutionOnlyMessage(message);
     const askUserRecordOnly = this.isAskUserRecordOnlyMessage(message);
     const shellClass = toolOnly ? "msg tool-execution-shell" : "msg ask-user-record-shell";
@@ -2141,7 +2152,22 @@ export class ChatView extends LitElement {
     return label;
   }
 
+  /** One notify line; a tap shows the whole of a line cut at three lines, and a second tap folds it. */
+  private renderExtensionNotice(part: ExtensionNoticePart) {
+    const key = String(part.at);
+    const expanded = this.expandedNotices.has(key);
+    const count = part.count > 1 ? ` ×${String(part.count)}` : "";
+    return html`<button type="button" class=${`extension-notice ${part.level}${expanded ? " expanded" : ""}`} aria-expanded=${expanded ? "true" : "false"} title=${part.text} @click=${() => { this.toggleNotice(key); }}>${NOTICE_PREFIX[part.level]}${part.text}${count}</button>`;
+  }
+
+  private toggleNotice(key: string): void {
+    const next = new Set(this.expandedNotices);
+    if (!next.delete(key)) next.add(key);
+    this.expandedNotices = next;
+  }
+
   private renderPart(part: ChatPart, message?: ChatLine) {
+    if (part.type === "extensionNotice") return this.renderExtensionNotice(part);
     if (part.type === "text" && message?.role === "bash") return html`<pre class="part shell-output">${part.text}</pre>`;
     if (part.type === "text") return html`<formatted-text class="part" .text=${part.text} .findCodeFenceRenderer=${this.findCodeFenceRenderer} .streaming=${this.status?.isStreaming === true}></formatted-text>`;
     if (part.type === "thinking") return html`<details class="part thinking"><summary>thinking</summary><formatted-text .text=${part.text}></formatted-text></details>`;

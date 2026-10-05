@@ -795,6 +795,8 @@ export declare const EXTENSION_SCREEN_DETAIL_MAX_LENGTH = 32000;
 export declare const EXTENSION_DIALOG_OPTION_LIMIT = 24;
 /** Length bound for the text a user types into an `input` dialog. */
 export declare const EXTENSION_DIALOG_INPUT_MAX_LENGTH = 4000;
+/** The level of an extension's `ctx.ui.notify`, as pi's terminal draws it. */
+export type ExtensionNoticeLevel = "info" | "warning" | "error";
 /** Which extension UI dialog primitive a pending dialog belongs to. */
 export type ExtensionDialogKind = "confirm" | "select" | "input" | "custom";
 /**
@@ -1509,6 +1511,16 @@ type SessionUiEventBody =
 } | {
     type: "command.output";
     level: "info" | "success" | "error";
+    message: string;
+}
+/**
+ * An extension's `ctx.ui` reaching the browser (extension-ui-counterpart.md). `notify` is
+ * momentary: drawn by the browsers attached at that moment and never saved, as in pi's terminal.
+ */
+ | {
+    type: "extension.ui";
+    kind: "notify";
+    level: ExtensionNoticeLevel;
     message: string;
 }
 /**

@@ -3,6 +3,7 @@ import { deliverySettled } from "./messageDelivery";
 import { resolveArrival } from "./transcriptArrival";
 import { placeByTimestamp } from "./transcriptOrder";
 import { withoutRetriedAttempt } from "./retriedAttempt";
+import { withExtensionNotice } from "./extensionNotices";
 import type { ChatLine, ToolExecutionPart } from "./components/shared";
 import { carryDeliveryForward, findTrackedUserLineIndex, isEchoOfTrackedMessage } from "./messageDelivery";
 import { appendShellChunk, finalizeShellMessage, shellStartMessage } from "./shellMessages";
@@ -46,7 +47,7 @@ export function seedStreamingPartial(messages: ChatLine[], partial: unknown): Ch
   return lines.length === 0 ? messages : [...messages, ...lines];
 }
 
-export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent): ChatLine[] | undefined {
+export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent, now: number = Date.now()): ChatLine[] | undefined {
   if (event.type === "message.append") return appendNewMessage(messages, event.message, event.clientMessageId, event.echo === true);
   if (event.type === "assistant.delta") return appendText(messages, "assistant", event.text);
   if (event.type === "assistant.thinking.delta") return appendThinking(messages, event.text);
@@ -69,6 +70,7 @@ export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent
   // A command's answer is the point of running it, so it is its own visible
   // row rather than a tool line folded into a collapsed event group.
   if (event.type === "command.output") return [...messages, textMessage("system", event.message)];
+  if (event.type === "extension.ui") return withExtensionNotice(messages, event.level, event.message, now);
   if (event.type === "session.error") return [...messages, textMessage("system", event.message)];
   if (event.type === "message.end") return event.message === undefined ? undefined : applyFinalMessage(messages, event.message);
   if (event.type === "pi.event" && event.eventType === "auto_retry_start") return withoutRetriedAttempt(messages);

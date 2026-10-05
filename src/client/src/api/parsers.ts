@@ -1021,6 +1021,8 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
       return parseSessionStoppedEvent(record);
     case "command.output":
       return parseCommandOutputEvent(record);
+    case "extension.ui":
+      return parseExtensionUiEvent(record);
     case "session.error":
       return { type: "session.error", message: requireString(record, "message") };
     case "session.name":
@@ -1109,6 +1111,14 @@ function parseCommandOutputEvent(record: Record<string, unknown>): Extract<Sessi
     level,
     message: requireString(record, "message"),
   };
+}
+
+/** Only `notify` travels so far; a kind this build does not know drops the frame, as an unknown type does. */
+function parseExtensionUiEvent(record: Record<string, unknown>): Extract<SessionUiEvent, { type: "extension.ui" }> {
+  if (record["kind"] !== "notify") throw new Error("Invalid extension UI kind");
+  const level = requireString(record, "level");
+  if (level !== "info" && level !== "warning" && level !== "error") throw new Error("Invalid extension notice level");
+  return { type: "extension.ui", kind: "notify", level, message: requireString(record, "message") };
 }
 
 function parseSessionNameEvent(record: Record<string, unknown>): Extract<SessionUiEvent, { type: "session.name" }> {

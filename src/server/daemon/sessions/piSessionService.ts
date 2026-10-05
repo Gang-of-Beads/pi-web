@@ -5373,17 +5373,11 @@ export class PiSessionService implements SessionRouteService {
     generation: SessionNotificationGeneration | undefined,
   ): ExtensionUIContext {
     const baseUiContext = session.extensionRunner.getUIContext();
-    // A notification is written twice on purpose: into the transcript, where a
-    // reader sees it, and into the notification store, which carries the unread
-    // state. Only the store used to be written, and nothing reads it - the
-    // client never calls `notificationInbox` - so `/goal-list` answered into a
-    // surface that is not rendered and read as "the command ignores me".
+    // A notification is written twice on purpose: to the browsers attached now,
+    // which draw it as pi's terminal does (extension-ui-counterpart.md), and into
+    // the notification store, which carries the unread state.
     const notify: ExtensionUIContext["notify"] = (message, type) => {
-      this.events.publish(session.sessionId, {
-        type: "command.output",
-        level: type === "error" ? "error" : "info",
-        message,
-      });
+      this.events.publish(session.sessionId, { type: "extension.ui", kind: "notify", level: type ?? "info", message });
       if (generation === undefined) return;
       const added = this.notificationStore.addNotification(generation, message, type);
       this.publishNotificationMutations(added.mutations);
