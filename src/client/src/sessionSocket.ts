@@ -258,6 +258,7 @@ export class RealtimeSocket {
     if (this.openedSocket === socket) this.waitingSince = now;
     closeSocketQuietly(socket);
     this.scheduleReconnect();
+    this.phaseListener?.();
   }
 
   /** Gap events counted on the global scope since this socket last opened. */
@@ -278,6 +279,7 @@ export class RealtimeSocket {
     this.onMissed = onMissed;
     this.shouldReconnect = true;
     this.waitingSince = Date.now();
+    this.reachedServer = false;
     this.open();
   }
 
