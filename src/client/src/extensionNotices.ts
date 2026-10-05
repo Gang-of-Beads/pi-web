@@ -10,6 +10,17 @@ import type { ChatLine, ChatPart } from "./components/shared";
  */
 export const NOTICE_REPEAT_WINDOW_MS = 10_000;
 
+/**
+ * Each notice line's own name, kept across its repeats, so a tap opens that line alone: keyed by
+ * arrival time, the notices of one flush opened together and a repeat folded an opened one.
+ */
+let noticeSequence = 0;
+
+function nextNoticeId(): string {
+  noticeSequence += 1;
+  return `notice-${String(noticeSequence)}`;
+}
+
 export type ExtensionNoticePart = Extract<ChatPart, { type: "extensionNotice" }>;
 
 export const NOTICE_PREFIX: Readonly<Record<ExtensionNoticeLevel, string>> = {
@@ -21,7 +32,7 @@ export const NOTICE_PREFIX: Readonly<Record<ExtensionNoticeLevel, string>> = {
 export function withExtensionNotice(messages: ChatLine[], level: ExtensionNoticeLevel, text: string, now: number): ChatLine[] {
   if (level === "info") return withStatusLine(messages, text, now);
   const repeated = lastRepeat(messages, level, text, now);
-  if (repeated === undefined) return [...messages, noticeLine({ type: "extensionNotice", level, text, count: 1, at: now })];
+  if (repeated === undefined) return [...messages, noticeLine({ type: "extensionNotice", id: nextNoticeId(), level, text, count: 1, at: now })];
   const next = [...messages];
   next[repeated.index] = noticeLine({ ...repeated.part, count: repeated.part.count + 1, at: now });
   return next;
@@ -34,7 +45,7 @@ export function extensionNoticeOf(line: ChatLine): ExtensionNoticePart | undefin
 }
 
 function withStatusLine(messages: ChatLine[], text: string, now: number): ChatLine[] {
-  const line = noticeLine({ type: "extensionNotice", level: "info", text, count: 1, at: now });
+  const line = noticeLine({ type: "extensionNotice", id: nextNoticeId(), level: "info", text, count: 1, at: now });
   const last = messages[messages.length - 1];
   const replaces = last !== undefined && extensionNoticeOf(last)?.level === "info";
   return replaces ? [...messages.slice(0, -1), line] : [...messages, line];

@@ -95,7 +95,7 @@ import type { WorkspaceActivityService } from "../activity/workspaceActivityServ
 import { createAskUserToolDefinition, type AskUserInvocation, type AskUserToolDeps } from "./askUserTool.js";
 import { PendingAskStore, renderAskUserAnswersText, type PendingAskCloseResult, type PendingAskOpenResult } from "./pendingAskStore.js";
 import { PendingExtensionDialogStore, PendingExtensionDialogValidationError, type ExtensionDialogCancelReason, type PendingExtensionDialogOpenInput } from "./pendingExtensionDialogStore.js";
-import type { PendingExtensionDialog } from "../../../shared/apiTypes.js";
+import type { ExtensionNoticeLevel, PendingExtensionDialog } from "../../../shared/apiTypes.js";
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../../config.js";
 import type { DelegationRequest, SpawnSessionInvocation, SpawnSessionResult, SpawnSubsessionInvocation, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionStatus, SubsessionSummary } from "./delegation.js";
@@ -1734,6 +1734,7 @@ export class PiSessionService implements SessionRouteService {
       await this.keepWhatThePiHolds(active.runtime.session);
       active.unsubscribe();
       active.runtime.setRebindSession(undefined);
+      this.extensionStanding.get(active.runtime.session)?.clear();
       this.workspaceActivity?.removeSession(active.runtime.session.sessionId, active.runtime.session.sessionManager.getCwd());
       try {
         await this.abortStampingCommits(active.runtime.session);
@@ -4137,6 +4138,11 @@ export class PiSessionService implements SessionRouteService {
     this.steps.delete(sessionId);
   }
 
+  /**
+   * Reload the session's extensions in place. What they left standing is cleared as the reload
+   * starts, as pi's resetExtensionUI does, and again just before the new session_start, which
+   * drops whatever the old extensions' shutdown handlers wrote.
+   */
   private async reloadSessionRuntime(session: PiAgentSession): Promise<void> {
     if (this.hasActiveWork(session)) throw new Error("Stop current session activity before reloading");
     await this.runTreeExclusiveOperation(
@@ -4144,15 +4150,17 @@ export class PiSessionService implements SessionRouteService {
       "Stop current session activity before reloading",
       async () => {
         this.publishActivity(session, "reloading resources", "active");
+        this.extensionStanding.get(session)?.clear();
         const priorGeneration = this.notificationGenerationBySession.get(session);
         let candidateGeneration: SessionNotificationGeneration | undefined;
         try {
-          await session.reload(priorGeneration === undefined ? undefined : {
+          await session.reload({
             beforeSessionStart: () => {
+              this.extensionStanding.get(session)?.clear();
+              if (priorGeneration === undefined) return;
               candidateGeneration = this.notificationStore.beginReplacement(priorGeneration, notificationIdentityForSession(session));
               this.notificationGenerationBySession.set(session, candidateGeneration);
               this.replaceSessionNotificationContext(session, candidateGeneration);
-              this.extensionStanding.get(session)?.clear();
             },
           });
           applyProviderSafeToolSchemas(session);
@@ -5285,6 +5293,7 @@ export class PiSessionService implements SessionRouteService {
           // holds for this session; settle those waits before the new
           // runtime's extensions can open fresh dialogs under the same id.
           this.endSessionExtensionDialogs(boundSession.sessionId);
+          this.extensionStanding.get(boundSession)?.clear();
           boundSession = session;
           await this.bindSessionExtensions(session, candidateGeneration);
           if (candidateGeneration !== undefined) {
@@ -5324,6 +5333,7 @@ export class PiSessionService implements SessionRouteService {
       // A session_start dialog may already be parked when a later startup
       // step fails; its waiter dies with the runtime being torn down here.
       this.endSessionExtensionDialogs(boundSession.sessionId);
+      this.extensionStanding.get(boundSession)?.clear();
       let removedActive = false;
       for (const [sessionId, candidate] of this.active.entries()) {
         if (candidate !== active) continue;
@@ -5395,7 +5405,7 @@ export class PiSessionService implements SessionRouteService {
     // which draw it as pi's terminal does (extension-ui-counterpart.md), and into
     // the notification store, which carries the unread state.
     const notify: ExtensionUIContext["notify"] = (message, type) => {
-      this.events.publish(session.sessionId, { type: "extension.ui", kind: "notify", level: type ?? "info", message });
+      this.events.publish(session.sessionId, { type: "extension.ui", kind: "notify", level: noticeLevel(type), message });
       if (generation === undefined) return;
       const added = this.notificationStore.addNotification(generation, message, type);
       this.publishNotificationMutations(added.mutations);
@@ -5451,7 +5461,8 @@ export class PiSessionService implements SessionRouteService {
   /**
    * A standing value reaches the browsers on the session's status. Writes are coalesced:
    * ponytail: a fixed 100 ms window, so an extension that animates its working words at 60 fps
-   * costs ten status frames a second; make it per-slot if a status frame ever grows expensive.
+   * costs ten status frames a second to every browser on the machine (a status frame also goes
+   * out machine-wide); make it per-slot if a status frame ever grows expensive.
    */
   private scheduleStandingPublish(session: PiAgentSession): void {
     if (this.standingPublishPending.has(session)) return;
@@ -6221,6 +6232,15 @@ export class PiSessionService implements SessionRouteService {
   private hasQueuedMessageText(session: PiAgentSession, text: string): boolean {
     return this.queuedMessages(session).some((message) => message.text === text);
   }
+}
+
+/**
+ * The level a notify is drawn at. pi draws any type other than a warning or an error as a status
+ * line, and a plain-JS extension can pass any string; an unknown level used to fail the frame and
+ * lose the line (review triage, extension UI steps 2-3).
+ */
+function noticeLevel(type: unknown): ExtensionNoticeLevel {
+  return type === "warning" || type === "error" ? type : "info";
 }
 
 function previewResponseFromPlan(plan: SessionCleanupPlan): ClientSessionCleanupPreviewResponse {

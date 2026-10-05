@@ -44,6 +44,7 @@ import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchiv
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
 import { backgroundRunCountChanged } from "../backgroundRunCountSignal";
+import { ParkedNotices } from "../parkedNotices";
 
 const MESSAGE_PAGE_SIZE = 100;
 
@@ -250,6 +251,7 @@ export class SessionController {
   /** A session the resolver opened after that locate, until its open answers with anything but the code. */
   private locatedAfterGone: string | undefined;
   private readonly transcripts: ChatTranscriptStore;
+  private readonly parkedNotices = new ParkedNotices();
   private readonly replacePromptEditorText: SessionControllerDependencies["replacePromptEditorText"];
   private readonly onSelectedSessionReady: SessionControllerDependencies["onSelectedSessionReady"];
   private readonly onSelectedSessionIdle: SessionControllerDependencies["onSelectedSessionIdle"];
@@ -657,7 +659,10 @@ export class SessionController {
     try {
       const page = await this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
       if (this.getState().selectedSession?.id !== session.id) return;
-      this.setState({ ...this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page), newerPendingCount: 0 });
+      const key = this.sessionCacheKey(session.id);
+      const merged = this.transcripts.mergeHistory(key, page);
+      const messages = this.parkedNotices.take(key).reduce((lines, event) => this.transcripts.applyLiveEvent(lines, event) ?? lines, merged.messages);
+      this.setState({ ...merged, messages, newerPendingCount: 0 });
     } catch (error) {
       this.failedFor(session, error);
     } finally {
@@ -2803,6 +2808,17 @@ export class SessionController {
    * switcher and a reselection read, so a card-level retraction has to reach
    * it too or the closed state rides the map back on the next selection.
    */
+  /**
+   * The runtime that held a session's extension values was closed (archive, delete): pi drops
+   * them with its process, so the session's status stops drawing them. The daemon cannot say so
+   * on a status, since a status built from the dying runtime would refile its warnings.
+   */
+  private forgetStandingValues(sessionId: string | undefined): void {
+    this.patchSessionStatus(sessionId, withoutStandingValues);
+    const status = this.getState().status;
+    if (status !== undefined && status.sessionId === sessionId) this.setState({ status: withoutStandingValues(status) });
+  }
+
   private patchSessionStatus(sessionId: string | undefined, patch: (status: SessionStatus) => SessionStatus): void {
     if (sessionId === undefined) return;
     const state = this.getState();
@@ -2910,7 +2926,10 @@ export class SessionController {
       this.dialogScope.observe(event, () => { this.applyOpenedAsk(event.ask); });
       return;
     }
-    if (event.type === "session.stopped") return;
+    if (event.type === "session.stopped") {
+      if (event.cause === "closed") this.forgetStandingValues(this.getState().selectedSession?.id);
+      return;
+    }
     if (event.type === "activity.changed") {
       const selected = this.getState().selectedSession;
       if (selected !== undefined) this.onBackgroundRunCountChanged?.(selected.id);
@@ -2978,6 +2997,7 @@ export class SessionController {
       if (view.messagePageEnd < view.messagePageTotal) {
         // The tail is trimmed: appending here would land new rows after an
         // invisible gap. Park the event on the "newer messages" chip instead.
+        if (view.selectedSession !== undefined) this.parkedNotices.park(this.sessionCacheKey(view.selectedSession.id), event);
         this.setState({ newerPendingCount: view.newerPendingCount + 1 });
       } else {
         this.setState({ messages: transcriptEvent });
@@ -3194,6 +3214,8 @@ export class SessionController {
       if (view.messagePageEnd < view.messagePageTotal) {
         // The tail is trimmed: batch-appending would land rows after an
         // invisible gap. Park the batch on the "load newer" chip instead.
+        const selected = view.selectedSession;
+        if (selected !== undefined) for (const event of events) this.parkedNotices.park(this.sessionCacheKey(selected.id), event);
         this.setState({ newerPendingCount: view.newerPendingCount + events.length });
       } else {
         let messages = view.messages;
@@ -3475,4 +3497,9 @@ type Settled<T> = { readonly kind: "answered"; readonly value: T } | { readonly 
 
 function settled<T>(read: Promise<T>): Promise<Settled<T>> {
   return read.then((value) => ({ kind: "answered", value }), (error: unknown) => ({ kind: "failed", error }));
+}
+
+function withoutStandingValues(status: SessionStatus): SessionStatus {
+  const { extensionUi, ...rest } = status;
+  return extensionUi === undefined ? status : rest;
 }

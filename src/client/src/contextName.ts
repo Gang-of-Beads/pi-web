@@ -16,6 +16,8 @@ export interface ContextNameInput {
   selectedProject?: Pick<Project, "name"> | undefined;
   selectedWorkspace?: Pick<Workspace, "label"> | undefined;
   selectedSession?: SessionInfo | undefined;
+  /** What the open session's extension named the tab (`ctx.ui.setTitle`), when it did. */
+  extensionTitle?: string | undefined;
 }
 
 export const PRODUCT_NAME = "PI WEB";
@@ -36,6 +38,8 @@ function workspaceName(workspace: Pick<Workspace, "label"> | undefined): string 
  */
 export function focusedContextName(input: ContextNameInput): string {
   if (input.mainView === "chat" && input.selectedSession !== undefined) {
+    const extensionTitle = input.extensionTitle?.trim();
+    if (extensionTitle !== undefined && extensionTitle !== "") return extensionTitle;
     const label = sessionLabel(input.selectedSession).trim();
     if (label !== "") return label;
   }

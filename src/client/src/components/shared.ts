@@ -94,7 +94,7 @@ export type ChatPart =
   | { type: "toolResult"; toolCallId?: string; toolName: string; text: string; isError: boolean; content?: unknown; details?: unknown }
   | { type: "custom"; tag: string; payload: unknown }
   /** An extension's notify, live only; see extensionNotices.ts. */
-  | { type: "extensionNotice"; level: ExtensionNoticeLevel; text: string; count: number; at: number }
+  | { type: "extensionNotice"; id: string; level: ExtensionNoticeLevel; text: string; count: number; at: number }
   | { type: "empty" };
 
 /**

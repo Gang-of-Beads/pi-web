@@ -18,7 +18,7 @@ export const ROW_GROUPS: Record<RowGroup, RowGroupMembership> = {
   /** Rows that draw no box: they must add the same inset the cards do. */
   bare: {
     group: "bare",
-    selectors: [".msg.event-group > summary", ".session-activity"],
+    selectors: [".msg.event-group > summary", ".session-activity", ".msg-notice"],
   },
   /**
    * Rows whose inset is already paid by what holds them or what they hold: the open

@@ -1,4 +1,4 @@
-import { css, LitElement, html, unsafeCSS } from "lit";
+import { css, LitElement, html, unsafeCSS, type PropertyValues } from "lit";
 import { renderDownIcon, renderUpIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionStatus } from "../api";
@@ -13,9 +13,10 @@ const statusBarStyles = css`${unsafeCSS(uiIconStyle)}
   .muted { color: var(--pi-muted); }
   /* Extension statuses have a line of their own above the session's numbers, as pi's footer gives
      them one (the numbers alone fill a phone's line): each is cut at STATUS_CHARS, the line ends in
-     an ellipsis, and a tap opens every status in full, one per line. */
+     an ellipsis, and a tap opens every status in full, one per line, scrolling past 40% of the
+     viewport so the conversation keeps its room. */
   .extension-statuses { -webkit-tap-highlight-color: transparent; touch-action: manipulation; box-sizing: border-box; display: block; width: 100%; min-height: var(--pi-control-height-compact, 24px); padding: 0 var(--pi-bar-inset); border: 0; border-top: 1px solid var(--pi-border); background: var(--pi-bg); color: inherit; font: inherit; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-  .extension-statuses.open { padding-block: var(--pi-space-2); white-space: normal; overflow-wrap: anywhere; }
+  .extension-statuses.open { max-height: 40dvh; overflow-y: auto; overscroll-behavior: contain; padding-block: var(--pi-space-2); white-space: normal; overflow-wrap: anywhere; }
   .status-line { display: block; }
   /* The bar draws a control now, so it owes the touch contract every other
      control-bearing component signs. */
@@ -28,7 +29,13 @@ export class StatusBar extends LitElement {
   /** Why the last read produced nothing, when it failed rather than not happening. */
   @property({ attribute: false }) failure?: string;
   @property({ attribute: false }) onRetry?: () => void;
+  /** The session the statuses belong to; the open list folds when another session is shown. */
+  @property({ attribute: false }) sessionKey = "";
   @state() private statusesOpen = false;
+
+  protected override willUpdate(changed: PropertyValues<this>): void {
+    if (changed.has("sessionKey")) this.statusesOpen = false;
+  }
 
   override render() {
     const status = this.status;
@@ -68,6 +75,10 @@ export class StatusBar extends LitElement {
 /** An extension status on the footer line: at most STATUS_CHARS characters (extension-ui-counterpart.md). */
 const STATUS_CHARS = 40;
 
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** Counted in graphemes, so the cut never splits an emoji or a joined character. */
 function clipStatus(text: string): string {
-  return text.length <= STATUS_CHARS ? text : `${text.slice(0, STATUS_CHARS - 1)}…`;
+  const characters = Array.from(graphemes.segment(text), (part) => part.segment);
+  return characters.length <= STATUS_CHARS ? text : `${characters.slice(0, STATUS_CHARS - 1).join("")}…`;
 }

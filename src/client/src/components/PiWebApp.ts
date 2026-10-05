@@ -839,18 +839,19 @@ export class PiWebApp extends LitElement {
   /**
    * The tab says which context is focused. A reader with several PI WEB tabs
    * open cannot tell them apart from the product name they all share. An
-   * extension's `ctx.ui.setTitle` takes the tab while its session is the open
-   * one, as it takes pi's terminal title; leaving the session restores ours.
+   * extension's `ctx.ui.setTitle` names the tab while its session is open in
+   * the chat view, as it names pi's terminal, with the π mark and the bound
+   * every tab title keeps; leaving the session restores ours.
    */
   private syncDocumentTitle(): void {
     const state = this.state;
-    const extensionTitle = this.openSessionStanding(state)?.title;
-    const title = extensionTitle ?? documentTitleFor({
+    const title = documentTitleFor({
       mainView: state.mainView,
       selectedMachine: state.selectedMachine,
       selectedProject: state.selectedProject,
       selectedWorkspace: state.selectedWorkspace,
       selectedSession: state.selectedSession,
+      extensionTitle: this.openSessionStanding(state)?.title,
     });
     if (document.title !== title) document.title = title;
   }
@@ -4497,6 +4498,7 @@ export class PiWebApp extends LitElement {
     return html`
       <status-bar
         .status=${state.status}
+        .sessionKey=${machineSessionKey(selectedMachineId(state), state.selectedSession?.id ?? "")}
         .failure=${state.status === undefined ? state.transcriptFailed ?? state.statusReadFailed : undefined}
         .onRetry=${() => { void this.retryAfterError(); }}
       ></status-bar>

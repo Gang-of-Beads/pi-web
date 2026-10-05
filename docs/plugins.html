@@ -202,14 +202,14 @@
                 is missing.
               </p>
               <p>
-                <code>notify</code> is a status line in the conversation: an info notice replaces the previous info line,
-                and a warning or an error is kept, counting up when it repeats within ten seconds. The standing values are
+                <code>notify</code> is a status line in the conversation: an info notice replaces the previous info line
+                while that line is still the last thing in the conversation, and a warning or an error is kept, counting up when it repeats within ten seconds. The standing values are
                 drawn and held by the daemon per session, so every open browser sees them and a reload reads them as they
                 stand: <code>setStatus</code> texts join the session footer on a line of their own, sorted by key;
                 <code>setWidget</code> blocks sit above or below the composer, up to 10 lines on a desktop and 6 on a phone
                 before "Show all"; <code>setWorkingMessage</code>, <code>setWorkingVisible</code> and
                 <code>setWorkingIndicator</code> change the working row; <code>setHiddenThinkingLabel</code> labels folded
-                thinking; and <code>setTitle</code> names the browser tab while that session is open. Reloading the
+                thinking; and <code>setTitle</code> names the browser tab while that session is open in the chat view. Reloading the
                 session's extensions clears them, as in pi. The editor methods, <code>setHeader</code>,
                 <code>setFooter</code>, <code>onTerminalInput</code>, autocomplete, themes and tool expansion remain no-ops
                 despite <code>hasUI === true</code>.

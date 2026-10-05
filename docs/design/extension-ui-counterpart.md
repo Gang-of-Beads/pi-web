@@ -135,7 +135,7 @@ value. That is pi's rule; PI WEB does not invent a stack pi does not have.
 
 | Surface | Limit | When it does not fit |
 |---|---|---|
-| Footer statuses | one line; each status at most 40 characters (ellipsis) | as many whole statuses as fit, then "+n"; tapping the footer opens a sheet that lists every status in full |
+| Footer statuses | a line of their own above the session's numbers; each status at most 40 characters (ellipsis) | the line ends in an ellipsis; tapping it lists every status in full, one per line, scrolling past 40% of the viewport |
 | Widgets | each at most 6 lines (10 on desktop); all widgets together at most a third of the viewport | a longer widget shows its first lines and "Show all"; the widget area scrolls inside itself, the transcript never moves for it |
 | Working words | one line in the activity dock | ellipsis; the full text in the dock's title |
 | Info notify line | one line in the transcript | wraps up to 3 lines, then ellipsis; the full text in its title |
@@ -164,8 +164,9 @@ using it.
   snapshot a browser reads on attach and the frame it applies live, so one
   carrier serves both. Writes are coalesced into one status frame per 100 ms.
   The daemon keeps them per session runtime (`extensionStanding.ts`); a reload
-  of the session's extensions or the runtime's end clears them, as pi's reset
-  does.
+  of the session's extensions clears them as it starts and again before the new
+  session_start (pi's reset runs before its reload); the runtime's end clears
+  them, and the browser drops them when the session's runtime is closed.
 - Statuses have a footer line of their own above the session's numbers, as
   pi's footer gives them one: measured at 393 px, the numbers alone fill a
   phone's line and left the statuses 26 px. Each status is cut at 40
@@ -173,10 +174,18 @@ using it.
   full, one per line. This replaces "+n" and a separate sheet.
 - `setWorkingIndicator` frames do not animate: no frames hides the mark, and
   otherwise the first frame stands as the mark.
-- Widget factories render through the custom-screen harness at its width (56),
-  and redraw when the component calls `tui.requestRender()`.
+- Widget factories render through the custom-screen harness at its width (56).
+  A component draws when it calls `tui.requestRender()` or when its drawing is
+  a second old, as a status is built, never on every status: pi-goal's widget
+  reads a file per render, and drawing it per status put that on the daemon's
+  per-chunk path. A request made while it draws is ignored.
+- `setWorkingVisible(false)` hides the working row's mark and words; the turn
+  clock and plugin notes stay, as pi hides only its spinner.
+- `setTitle` names the tab in the chat view, with the π mark and the 40-character
+  bound every tab title keeps.
 - Payload bounds, never refusals: a status (and the working words, label and
-  title) is cut at 1,000 characters, a widget at 100 lines, each saying so.
+  title) is cut at 1,000 characters, a widget at 100 lines of 1,000 characters,
+  each saying so.
 
 ## Order of work
 

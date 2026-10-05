@@ -185,7 +185,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); }
   /* One margin rule per group (see rowGroups.ts): a bare row adds the inset a card gets
      from its own padding, so every kind of row starts its text on the same edge. */
-  .msg.event-group > summary, .session-activity { padding-inline: var(--pi-row-inset); }
+  .msg.event-group > summary, .session-activity, .msg-notice { padding-inline: var(--pi-row-inset); }
   .waiting-slot, .group-msg { padding-inline: 0; }
   .activity-dock { overflow: hidden; flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); margin-top: calc(-1 * var(--pi-space-4)); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
@@ -262,11 +262,16 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg.tool { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
   .msg.tool-execution-shell, .msg.ask-user-record-shell { padding: 0; border: 0; background: transparent; color: var(--pi-text); }
   /* An extension's notify (extensionNotices.ts): a line, not a card, as pi's terminal draws it.
-     Three lines at most until tapped, since a phone has no hover title. */
-  .extension-notice { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; margin: 0; padding: 0 var(--pi-space-7); border: 0; background: none; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); line-height: 1.45; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; cursor: pointer; }
+     Three lines at most until tapped, since a phone has no hover title. The row keeps the
+     conversation's measure, rhythm and inset (rowGroups.ts), and the cards' 1px border as a
+     transparent one, so its text starts where theirs does; the line pads nothing itself. */
+  .msg-notice { max-width: var(--pi-chat-measure); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-row-rhythm); border-inline: 1px solid transparent; }
+  .extension-notice { -webkit-tap-highlight-color: transparent; touch-action: manipulation; box-sizing: border-box; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; width: 100%; min-height: var(--pi-control-height-compact, 24px); margin: 0; padding: 0; border: 0; background: none; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); line-height: 1.45; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; cursor: pointer; }
   .extension-notice.expanded { display: block; -webkit-line-clamp: unset; }
   .extension-notice.warning { color: var(--pi-warning); }
   .extension-notice.error { color: var(--pi-danger); }
+  /* An extension's working mark (setWorkingIndicator): a fixed slot, so a long frame cannot push the words out. */
+  .working-mark { flex: 0 0 auto; max-width: 8ch; overflow: hidden; white-space: pre; }
   .msg.ask-user-record-shell ask-user-card { margin: 0 auto; }
   .msg.ask-user-record-shell > .delivery-mark { margin-inline-end: 0; }
   /* A system line reports whatever the runtime has to say - a background task
@@ -1488,7 +1493,7 @@ export class ChatView extends LitElement {
     const activity = this.activity;
     const narrated = activity === undefined ? undefined : this.narratedStep(activity);
     const standing = this.status?.extensionUi;
-    if (category === "working" && standing?.workingHidden === true) return null;
+    if (category === "working" && standing?.workingHidden === true) return this.renderHiddenWorkingDock(notes, elapsed);
     const ownWords = activityDockWords(category, { ...(narrated === undefined ? {} : { narrated }), ...(activity === undefined ? {} : { activity }), ...(this.status === undefined ? {} : { status: this.status }), stoppable: isSessionActive(this.status, activity) });
     const words = category === "working" ? standing?.workingMessage ?? ownWords : ownWords;
     return html`
@@ -1508,6 +1513,20 @@ export class ChatView extends LitElement {
   private turnIdle(): boolean {
     const category = sessionActivityCategory(this.status, this.activity);
     return category === undefined || category === "idle" || category === "background";
+  }
+
+  /**
+   * The working row an extension hid with `setWorkingVisible(false)`: pi hides only its spinner and
+   * words, so the turn clock and the plugin notes, which live nowhere else, stay.
+   */
+  private renderHiddenWorkingDock(notes: string | undefined, elapsed: { text: string; long: boolean } | undefined) {
+    if (notes === undefined && elapsed === undefined) return null;
+    return html`
+      <div class=${`activity-dock working${elapsed?.long === true ? " long-running" : ""}`} aria-live="polite">
+        ${notes === undefined ? null : html`<span class="activity-note">${notes}</span>`}
+        ${elapsed === undefined ? null : html`<span class="activity-elapsed" aria-hidden="true">${elapsed.text}</span>`}
+      </div>
+    `;
   }
 
   /**
@@ -2155,7 +2174,7 @@ export class ChatView extends LitElement {
 
   /** One notify line; a tap shows the whole of a line cut at three lines, and a second tap folds it. */
   private renderExtensionNotice(part: ExtensionNoticePart) {
-    const key = String(part.at);
+    const key = part.id;
     const expanded = this.expandedNotices.has(key);
     const count = part.count > 1 ? ` ×${String(part.count)}` : "";
     return html`<button type="button" class=${`extension-notice ${part.level}${expanded ? " expanded" : ""}`} aria-expanded=${expanded ? "true" : "false"} title=${part.text} @click=${() => { this.toggleNotice(key); }}>${NOTICE_PREFIX[part.level]}${part.text}${count}</button>`;
