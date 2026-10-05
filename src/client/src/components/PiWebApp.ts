@@ -889,6 +889,11 @@ export class PiWebApp extends LitElement {
    * adopts new markers but never erases the ones already on screen - whether
    * a run has continued is arbitrated by the live session state, not by a
    * spent file.
+   *
+   * A failed read says nothing in the app row (owner, 2026-10-04): the next
+   * reconnect reads the record again by itself, and while the link is down the
+   * row already says it is reconnecting. Its old notice told the reader to
+   * reconnect, which is the page's job.
    */
   /* The boot read is once per page, not once per connection: a machine
      switch tears the socket down and reconnects, and that re-entry must not
@@ -906,11 +911,6 @@ export class PiWebApp extends LitElement {
       if (selectedMachineId(this.state) !== machineId) return;
       const adoptEmpty = options.adoptEmpty ?? !this.interruptedRunsBootReadByMachine.has(machineId);
       const plan = interruptedRunsReadPlan(ids, adoptEmpty);
-      // A failed read says nothing in the app row (owner, 2026-10-04): the
-      // next reconnect reads the record again by itself, and while the link
-      // is down the row already says it is reconnecting. Its old notice told
-      // the reader to reconnect, which is the page's job, and took the row
-      // from "Reconnecting…".
       if (plan.failed) return;
       this.interruptedRunsBootReadByMachine.add(machineId);
       if (plan.adoptMarkers && ids !== undefined) {
