@@ -3,7 +3,6 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { SessionInfo } from "../../api";
 import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow, type NavigateSessionState } from "../../navigateModel";
 import { switcherBreadcrumb, type BreadcrumbLevel } from "../../switcherBreadcrumb";
-import "./AppRefreshControl";
 import { createHeldRowOrder } from "../../heldRowOrder";
 import { ActivityClock, modifiedMs } from "../../sessionOrder";
 import { listFolds } from "../../listFolds";
@@ -61,23 +60,19 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onCreateSession?: () => void;
   @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onClose?: () => void;
-  /** Opens the Go to sheet; the host passes it on the phone, where Navigate is a page with no app bar. */
+  /**
+   * Opens the Go to sheet; the host passes it on the phone, where Navigate is a page with no app
+   * bar. It shows in every scope, with or without a chosen project: Go to also holds Settings and
+   * Actions, so it is how the phone reaches them (owner, 2026-10-04).
+   */
   @property({ attribute: false }) onOpenGoTo?: () => void;
   /**
-   * Settings used to hang off the navigation panel; when that panel was
-   * deleted the only way in was a page a phone could not open. Navigation is
-   * where you go to reach a place, and settings is a place.
+   * The Settings key, for the desktop overlay, where nothing else on the page reaches Settings.
+   * The phone host leaves it out: its Settings is a line in Go to, so the header is the path and
+   * the Go to key, the same shape as the chat's header (owner, 2026-10-04: the path was cut to
+   * "Lo…" behind four keys).
    */
   @property({ attribute: false }) onOpenSettings?: () => void;
-  /**
-   * Full page reload, on the board's header.
-   *
-   * The host has had an AppRefreshControl and a renderAppRefresh() with no caller
-   * since the bar was reworked: the control rendered nowhere. The board header is
-   * where the reader already finds the shell's own actions (Settings), and a hard
-   * reload is the honest escape when a surface is stale.
-   */
-  @property({ attribute: false }) onReload?: () => void;
   /** What the row menu does; the page names the action, the host performs it. */
   @property({ attribute: false }) onRowAction?: (kind: NavigateRowKind, id: string, action: NavigateRowActionId) => void;
   @property({ attribute: false }) canRenameSession = false;
@@ -139,9 +134,9 @@ export class AppNavigatePage extends LitElement {
 
   /**
    * The grid key is a two-place toggle (owner, 2026-10-04): from a page it opens Navigate, and on
-   * Navigate it returns to that page. With nowhere to return to it is only a "you are here" mark,
-   * so it never draws as a pressed key that does nothing (B46). Widening the list is the scope
-   * switch's job, not this key's.
+   * Navigate it returns to that page. With nowhere to return to it is absent: the "you are here"
+   * mark it used to draw did nothing and cost the path its width (B46; owner, 2026-10-04).
+   * Widening the list is the scope switch's job, not this key's.
    */
   private renderQuickAccess() {
     if (this.returnable) {
@@ -154,7 +149,7 @@ export class AppNavigatePage extends LitElement {
         @click=${() => { this.onClose?.(); }}
       >${renderGridIcon()}</button>`;
     }
-    return html`<span class="quick-access here" role="img" aria-label="Navigation" title="Navigation">${renderGridIcon()}</span>`;
+    return nothing;
   }
 
   /**
@@ -240,8 +235,7 @@ export class AppNavigatePage extends LitElement {
           </div>
           <div class="path-bar-actions">
             ${this.onOpenSettings === undefined ? nothing : html`<button type="button" class="settings" aria-label="Settings" title="Settings" @click=${() => { this.onOpenSettings?.(); }}>${renderGearIcon()}</button>`}
-            ${this.onReload === undefined ? nothing : html`<app-refresh-control .onReload=${this.onReload}></app-refresh-control>`}
-            ${this.pathProjectId === undefined || this.onOpenGoTo === undefined ? nothing : html`<button type="button" class="settings menu-key" aria-label="Go to a view" title="Go to a view" aria-haspopup="dialog" @click=${() => { this.onOpenGoTo?.(); }}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>`}
+            ${this.onOpenGoTo === undefined ? nothing : html`<button type="button" class="settings menu-key" aria-label="Go to a view" title="Go to a view" aria-haspopup="dialog" @click=${() => { this.onOpenGoTo?.(); }}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>`}
           </div>
         </header>
         <nav class="kinds" aria-label="What to list">
@@ -527,7 +521,6 @@ export class AppNavigatePage extends LitElement {
     .quick-access { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     .quick-access.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-accent); }
     .quick-access .ui-icon { width: 18px; height: 18px; }
-    .quick-access.here { border-color: transparent; background: transparent; color: var(--pi-accent); cursor: default; }
     .settings.menu-key svg { width: 18px; height: 18px; }
     .scope-switch { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; margin: var(--pi-space-3) var(--pi-bar-inset) 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); overflow: hidden; }
     .scope { box-sizing: border-box; min-height: var(--pi-control-height-comfort); min-width: 0; padding: 0 var(--pi-space-4); border: 0; background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }

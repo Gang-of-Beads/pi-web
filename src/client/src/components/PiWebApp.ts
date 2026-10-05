@@ -1,5 +1,5 @@
 import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
-import { uiIconStyle, renderChatIcon, renderCommandIcon, renderListIcon, renderPluginIcon } from "./uiIcons.js";
+import { uiIconStyle, renderChatIcon, renderCommandIcon, renderGearIcon, renderListIcon, renderPluginIcon } from "./uiIcons.js";
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
@@ -103,7 +103,6 @@ import { writeClipboardText } from "../clipboard";
 import type { NavigateInput, NavigateLevel } from "../navigateModel";
 import type { ShellToolTab } from "../appShell/shellToolTabs";
 import "./appShell/AppPanelEdgeControl";
-import "./appShell/AppRefreshControl";
 import { quickSwitcherSessionStates, sessionIdsIn } from "../quickSwitcher";
 import { reloadOffer } from "../versionSkew";
 import { oneRowPerIdentity } from "../transcriptInvariant";
@@ -274,6 +273,10 @@ const SOCKET_LIVENESS_CHECK_MS = 5_000;
 const INTERACTION_LIVENESS_THROTTLE_MS = 2_000;
 
 const PI_WEB_STATUS_DEFER_MS = 750;
+/** The Go to sheet's command line: opens the action palette, the touch opener ⌘K never had (B39). */
+const GO_TO_ACTIONS = "actions";
+/** Go to's Settings line: on the phone it is the way to Settings from every screen (owner, 2026-10-04). */
+const GO_TO_SETTINGS = "settings";
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
 const THEME_AUTO_ON_VALUE = "auto:on";
 const THEME_AUTO_OFF_VALUE = "auto:off";
@@ -2713,12 +2716,20 @@ export class PiWebApp extends LitElement {
       { id: "chat", label: "Chat", icon: renderChatIcon(), selected: view === "chat" },
       ...this.shellToolTabs().map((tab) => ({ id: tab.id, label: tab.label, icon: tab.icon, badge: tab.badge, badgeLabel: tab.badgeLabel, selected: tab.selected })),
       { id: GO_TO_ACTIONS, label: "Actions…", icon: renderCommandIcon(), command: true },
+      { id: GO_TO_SETTINGS, label: "Settings", icon: renderGearIcon(), command: true },
     ];
   }
 
+  /** Go to's command lines by id; a destination that is not one of them is a view. */
+  private readonly goToCommands: ReadonlyMap<string, () => void> = new Map([
+    [GO_TO_ACTIONS, () => { this.openActionPalette(); }],
+    [GO_TO_SETTINGS, () => { this.navigation.begin(); this.openSettings(); }],
+  ]);
+
   private goTo(id: string): void {
-    if (id === GO_TO_ACTIONS) {
-      this.openActionPalette();
+    const command = this.goToCommands.get(id);
+    if (command !== undefined) {
+      command();
       return;
     }
     if (id === "navigation" || id === "chat") {
@@ -2851,8 +2862,7 @@ export class PiWebApp extends LitElement {
       .onCreateSession=${() => { this.closeNavigate(); void this.startSessionAndOpenChat(); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { this.navigation.begin(); this.closeNavigate(); this.openProjectDialog(); } : undefined}
       .machineSessions=${this.quickSwitcherSessions}
-      .onOpenSettings=${() => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }}
-      .onReload=${() => { this.hardReloadApp(); }}
+      .onOpenSettings=${this.appShell.isMobileNavigationLayout ? undefined : () => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }}
       .boardAnswer=${this.quickSwitcherBoardAnswer}
       .loadingChoices=${this.state.projectsLoad !== "loaded" || this.state.isLoadingWorkspaces}
       .canRenameSession=${true}
@@ -4693,10 +4703,6 @@ export class PiWebApp extends LitElement {
     this.selectMainView(panel.id);
   }
 
-  private renderAppRefresh() {
-    return html`<app-refresh-control .onReload=${() => { this.hardReloadApp(); }}></app-refresh-control>`;
-  }
-
   /**
    * The chrome's half of a pending open (D8): a line at the top edge, visible whatever scrolled
    * away, and the one spoken announcement, which names the target in every phase.
@@ -4824,8 +4830,6 @@ export class PiWebApp extends LitElement {
   static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, appStyles];
 }
 
-/** The Go to sheet's command line: opens the action palette, the touch opener ⌘K never had (B39). */
-const GO_TO_ACTIONS = "actions";
 
 const PLUGIN_DIALOG_CLASS: Record<NonNullable<PluginDialog["presentation"]>, string> = {
   overlay: "plugin-dialog",

@@ -456,17 +456,17 @@ describe("PluginRegistry", () => {
     expect(calls).toEqual(["openModelPicker", "openThinkingLevelPicker"]);
   });
 
-  it("routes app reload and settings actions through the runtime context", () => {
+  it("routes the settings action through the runtime context, and offers no full page reload (owner, 2026-10-04)", () => {
     const registry = new PluginRegistry();
     registry.register({ id: "core", plugin: corePlugin });
     const { context, calls } = createContext();
     const actions = registry.getActions(context);
 
     expect(actions.some((candidate) => candidate.id === "core:app.refresh-data")).toBe(false);
-    void actions.find((candidate) => candidate.id === "core:app.reload-page")?.run();
+    expect(actions.some((candidate) => candidate.id === "core:app.reload-page")).toBe(false);
     void actions.find((candidate) => candidate.id === "core:settings.open")?.run();
 
-    expect(calls).toEqual(["reloadPage", "openSettings"]);
+    expect(calls).toEqual(["openSettings"]);
   });
 
   it("exposes terminal navigation as a shortcut-backed action", () => {

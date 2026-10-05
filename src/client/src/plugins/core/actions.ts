@@ -52,13 +52,6 @@ export function createCoreActions(): PluginAction[] {
       run: (context) => { context.piWebUnstable?.openSettings?.(); },
     },
     {
-      id: "app.reload-page",
-      title: "Full page reload",
-      description: "Reload the PI WEB browser page",
-      group: "General",
-      run: (context) => { context.reloadPage(); },
-    },
-    {
       id: "view.chat",
       title: "Go to chat",
       shortcut: "mod+1",

@@ -252,11 +252,10 @@ describe("the grid key (owner, 2026-10-04: a two-place toggle)", () => {
     page.remove();
   });
 
-  it("is only a you-are-here mark with nowhere to return to (B46)", async () => {
+  it("is absent with nowhere to return to (B46; owner, 2026-10-04)", async () => {
     const page = await mount({ returnable: false });
-    const key = page.renderRoot.querySelector(".quick-access");
 
-    expect({ tag: key?.tagName, label: key?.getAttribute("aria-label") }).toEqual({ tag: "SPAN", label: "Navigation" });
+    expect(page.renderRoot.querySelector(".quick-access")).toBeNull();
     page.remove();
   });
 });
