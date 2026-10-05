@@ -663,7 +663,12 @@ export class PiWebApp extends LitElement {
     );
   }
 
-  /** Close the topmost modal layer; popstate is the only caller. */
+  /**
+   * Close the topmost modal layer; popstate is the only caller. The checks follow paint order: the
+   * sheets render above the dialog stack, and plugin dialogs (a confirm among them) render above
+   * every core dialog, so a confirm opened from the cleanup dialog answers Back before the cleanup
+   * dialog does (review 1005 navigation P1-2).
+   */
   private closeModalLayer(): void {
     this.navigation.cancel();
     if (this.quickSwitcherOpen) {
@@ -678,6 +683,11 @@ export class PiWebApp extends LitElement {
       this.goToSheetOpen = false;
       return;
     }
+    if (this.pluginDialogs.length > 0) {
+      const top = this.pluginDialogs[this.pluginDialogs.length - 1];
+      if (top !== undefined) top.close();
+      return;
+    }
     const state = this.state;
     if (state.actionPaletteOpen) { this.setState({ actionPaletteOpen: false }); return; }
     if (state.commandDialog !== undefined) { this.sessions.cancelCommand(); return; }
@@ -687,11 +697,6 @@ export class PiWebApp extends LitElement {
     if (this.sessionCleanupDialog !== undefined) { this.sessionCleanupDialog = undefined; return; }
     if (this.state.treeDialog !== undefined) { this.sessions.closeTreeDialog(); return; }
     if (this.state.authDialog !== undefined) { this.auth.closeDialog(); return; }
-    if (this.pluginDialogs.length > 0) {
-      const top = this.pluginDialogs[this.pluginDialogs.length - 1];
-      if (top !== undefined) top.close();
-      return;
-    }
     // The navigation page is the outermost layer: everything above it has
     // already answered the gesture, so back leaves the page it was opened on.
     if (this.navigateOpen) this.closeNavigate();
@@ -2049,17 +2054,23 @@ export class PiWebApp extends LitElement {
     }
   }
 
-  /**
-   * A plugin turned on or off in Settings changes which code this page runs, and the page cannot
-   * load or unload a plugin in place. Owner, 2026-10-04: the page reloads itself when Settings
-   * closes, rather than asking the reader to reload; drafts, form answers and the outbox are kept
-   * in local storage across it.
-   */
   private closeSettings(): void {
     this.settingsOpen = false;
     this.settingsSection = undefined;
     this.settingsListFramePushed = false;
     writeSettingsSection(undefined);
+    this.leftSettings();
+  }
+
+  /**
+   * Every way out of Settings ends here: its close key, Escape and the back gesture (which closes
+   * it through the URL, review 1005 navigation P1-1). A plugin turned on or off in Settings changes
+   * which code this page runs, and the page cannot load or unload a plugin in place. Owner,
+   * 2026-10-04: the page reloads itself when Settings closes, rather than asking the reader to.
+   * Drafts, form answers and the outbox survive it in local storage; composer attachments and a
+   * half-typed extension input do not.
+   */
+  private leftSettings(): void {
     if (this.reloadAfterSettings) this.hardReloadApp();
   }
 
@@ -2092,6 +2103,7 @@ export class PiWebApp extends LitElement {
     this.settingsOpen = readSettingsOpen();
     this.settingsSection = readSettingsSection();
     this.settingsListFramePushed = false;
+    if (!this.settingsOpen) this.leftSettings();
   }
 
   private handleWorkspaceChange(previous: AppState, next: AppState) {
@@ -2731,7 +2743,7 @@ export class PiWebApp extends LitElement {
   /** Go to's command lines by id; a destination that is not one of them is a view. */
   private readonly goToCommands: ReadonlyMap<string, () => void> = new Map([
     [GO_TO_ACTIONS, () => { this.openActionPalette(); }],
-    [GO_TO_SETTINGS, () => { this.navigation.begin(); this.openSettings(); }],
+    [GO_TO_SETTINGS, () => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }],
   ]);
 
   private goTo(id: string): void {

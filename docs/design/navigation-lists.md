@@ -17,7 +17,7 @@ from:
 |---|---|---|
 | a chat or plugin page | - | opens Navigate and remembers this page |
 | Navigate | yes | drawn pressed; returns to that page (one back step, D8) |
-| Navigate | no (boot, a link straight to Navigate) | a "you are here" mark, not drawn as a button and not focusable |
+| Navigate | no (boot, a link straight to Navigate) | absent: the path takes the width (owner, 2026-10-04) |
 
 Widening the list to the whole machine moves off the key (section 2), so the key
 has one meaning everywhere.
