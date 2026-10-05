@@ -614,7 +614,7 @@ export class SettingsDialog extends LitElement {
 
 /** The Logs card's save. A failure is thrown back to the card, which says it in place, instead of landing in another card's message. */
   private async saveMachineLogging(config: PiWebConfigValues): Promise<void> {
-    if (this.saving) return;
+    if (this.saving) throw new Error("Another settings save is still running; save the logs again in a moment.");
     const target = this.settingsTarget();
     this.saving = true;
     this.savedMessage = "";

@@ -1,5 +1,6 @@
 import { createReadStream, createWriteStream } from "node:fs";
-import { rename, rm, stat, truncate } from "node:fs/promises";
+import { readdir, rename, rm, stat, truncate } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 
 /**
@@ -10,6 +11,8 @@ import { pipeline } from "node:stream/promises";
  * and the file is truncated in place, after which appended writes start again at the beginning.
  * Only the tail is copied because a copy holds at most `maxFileMb` anyway, and a log that grew
  * unchecked (8504's web.log reached 15.8 GB) must not need that much free disk to be trimmed.
+ * Like any copy-and-truncate rotation, lines written between the copy's end and the truncate are in
+ * neither file; at a rotation a minute at most, that is a few milliseconds of log.
  */
 export interface LogRetentionSettings {
   readonly maxFileMb: number;
@@ -32,10 +35,21 @@ export async function rotateWhenLarge(path: string, settings: LogRetentionSettin
   for (let index = keep - 1; index >= 1; index -= 1) {
     await rename(`${path}.${String(index)}`, `${path}.${String(index + 1)}`).catch(() => undefined);
   }
+  await removeCopiesBeyond(path, keep);
   const keptBytes = settings.maxFileMb * MB;
   await pipeline(createReadStream(path, { start: Math.max(0, size - keptBytes) }), createWriteStream(`${path}.1`));
   await truncate(path, 0);
   return true;
+}
+
+/** Copies numbered past `keep`, left behind when the reader lowered "Older copies kept". */
+async function removeCopiesBeyond(path: string, keep: number): Promise<void> {
+  const name = basename(path);
+  const numbered = (await readdir(dirname(path)).catch(() => [])).filter((entry) => {
+    const suffix = entry.startsWith(`${name}.`) ? entry.slice(name.length + 1) : "";
+    return /^\d+$/.test(suffix) && Number(suffix) > keep;
+  });
+  await Promise.all(numbered.map((entry) => rm(join(dirname(path), entry), { force: true })));
 }
 
 /**

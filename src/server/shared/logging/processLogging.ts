@@ -16,9 +16,17 @@ export interface ProcessLogging {
 }
 
 export function startProcessLogging(app: FastifyInstance, logName: "web.log" | "sessiond.log", readSettings: () => Required<PiWebLoggingConfig> = readLoggingSettings): ProcessLogging {
-  let settings = readSettings();
+  let settings = settingsOr(readSettings, DEFAULT_LOGGING);
+  let lastProblem = "";
   const refresh = (): void => {
-    settings = readSettings();
+    try {
+      settings = readSettings();
+      lastProblem = "";
+    } catch (error) {
+      const problem = String(error);
+      if (problem !== lastProblem) app.log.warn({ error: problem }, "logging settings could not be read; keeping the last good ones");
+      lastProblem = problem;
+    }
     app.log.level = loggerLevel(settings.level);
   };
   app.log.level = loggerLevel(settings.level);
@@ -32,11 +40,19 @@ export function startProcessLogging(app: FastifyInstance, logName: "web.log" | "
   return { level: () => settings.level };
 }
 
-/** The config file's logging settings; a config that cannot be read keeps the defaults rather than stopping the logs. */
+/**
+ * The config file's logging settings. A config edited into something unreadable while the process
+ * runs keeps the last good settings and says so once, rather than silently reverting to the
+ * defaults (review 1005).
+ */
 function readLoggingSettings(): Required<PiWebLoggingConfig> {
+  return effectivePiWebConfig().config.logging;
+}
+
+function settingsOr(read: () => Required<PiWebLoggingConfig>, fallback: Required<PiWebLoggingConfig>): Required<PiWebLoggingConfig> {
   try {
-    return effectivePiWebConfig().config.logging;
+    return read();
   } catch {
-    return DEFAULT_LOGGING;
+    return fallback;
   }
 }
