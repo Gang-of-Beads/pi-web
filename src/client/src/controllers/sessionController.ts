@@ -672,6 +672,10 @@ export class SessionController {
    * failed: a network drop on submit used to swallow the message and every
    * attachment with it, leaving the user to retype a long prompt and re-pick
    * images that may no longer be at hand.
+   *
+   * A command is one line, so it runs as it was recognised: trimmed. Sent with the newlines a
+   * phone's Enter adds, the SDK read them into the command's name, missed the command and gave
+   * the text to the model (8505, 2026-10-05).
    */
   async send(text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery: PromptAttachmentDelivery = "inline", replay?: SendReplay): Promise<boolean> {
     const session = this.getState().selectedSession;
@@ -682,14 +686,14 @@ export class SessionController {
     const trimmed = text.trim();
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     if (isClientPendingStartSessionInfo(session)) {
-      if (!hasAttachments && trimmed.startsWith("/")) { await this.runCommand(text); return true; }
+      if (!hasAttachments && trimmed.startsWith("/")) { await this.runCommand(trimmed); return true; }
       if (!hasAttachments && isShellInput(text)) this.enqueuePendingSessionSend(session, { type: "shell", text });
       else this.enqueuePendingSessionSend(session, { type: "prompt", text, streamingBehavior, attachments, delivery, sentAt: replay?.sentAt ?? new Date().toISOString() });
       // Queued against a session that is still starting: it will be delivered,
       // so the composer is right to have cleared.
       return true;
     }
-    if (!hasAttachments && trimmed.startsWith("/")) { await this.runCommand(text); return true; }
+    if (!hasAttachments && trimmed.startsWith("/")) { await this.runCommand(trimmed); return true; }
     if (!hasAttachments && isShellInput(text)) { await this.runShell(text); return true; }
 
     // Capture the originating session/machine before any await so the request
