@@ -2,10 +2,10 @@ const CACHE_PREFIX = "pi-web:chat-history:v2:";
 /**
  * How long a cached page may be used before it is re-read from scratch.
  *
- * Staleness is cheap here and absence is not: a hit is replayed forward from
- * its watermark, so an old page costs one delta request, while a miss costs
- * the whole transcript. Half an hour meant a session revisited after lunch
- * always paid the full price.
+ * Staleness is cheap here and absence is not: a hit draws the session at once
+ * while the join read confirms it (docs/design/sync-convergence.md, phase B),
+ * and a miss draws nothing until the whole tail has arrived. Half an hour meant
+ * a session revisited after lunch always opened blank.
  */
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -247,58 +247,4 @@ function isNormalizedChatLine(value: unknown): boolean {
     && !("content" in value)
     && typeof value.role === "string"
     && Array.isArray(value.parts);
-}
-
-const WATERMARK_PREFIX = "pi-web:chat-watermark:v1:";
-
-function watermarkKey(sessionId: string): string {
-  return `${WATERMARK_PREFIX}${sessionId}`;
-}
-
-/**
- * The stream seq of the snapshot a cached page was read against. The delta
- * replay path replays frames after this seq onto the cached page; the pair
- * (page, watermark) is only meaningful together, so a missing page makes the
- * watermark ignorable.
- */
-/**
- * A seq and the epoch of the seq space it belongs to. A watermark an older build stored as a
- * bare number reads back without an epoch; the daemon answers such a citation with resync, and
- * the full read that follows records one with its epoch.
- */
-export interface StreamWatermark {
-  seq: number;
-  epoch?: string;
-}
-
-export function readChatHistoryWatermark(sessionId: string, storage: HistoryStorage = browserStorage()): StreamWatermark | undefined {
-  try {
-    const raw = storage.getItem(watermarkKey(sessionId));
-    if (raw === null || raw === "") return undefined;
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed === "number") return Number.isFinite(parsed) ? { seq: parsed } : undefined;
-    if (typeof parsed !== "object" || parsed === null) return undefined;
-    const seq: unknown = Reflect.get(parsed, "seq");
-    const epoch: unknown = Reflect.get(parsed, "epoch");
-    if (typeof seq !== "number" || !Number.isFinite(seq)) return undefined;
-    return typeof epoch === "string" ? { seq, epoch } : { seq };
-  } catch {
-    return undefined;
-  }
-}
-
-export function writeChatHistoryWatermark(sessionId: string, watermark: StreamWatermark, storage: HistoryStorage = browserStorage()): void {
-  try {
-    storage.setItem(watermarkKey(sessionId), JSON.stringify(watermark));
-  } catch {
-    // A watermark the storage refuses is a lost optimization, not a failure.
-  }
-}
-
-export function removeChatHistoryWatermark(sessionId: string, storage: HistoryStorage = browserStorage()): void {
-  try {
-    storage.removeItem(watermarkKey(sessionId));
-  } catch {
-    // Ignore storage access errors; cache may simply be unavailable.
-  }
 }

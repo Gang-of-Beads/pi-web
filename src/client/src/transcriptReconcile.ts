@@ -1,21 +1,5 @@
 import type { ChatLine } from "./components/shared";
-import { carryDeliveryForward, deliveryWaiting, markDeliveryFailed, withdrawDeliveryLine } from "./messageDelivery";
-
-/** Terminal outcomes a replay carried for messages it did not commit: taken back, or refused. */
-export interface ReplayedOutcomes {
-  withdrawn: readonly string[];
-  refused: readonly string[];
-}
-
-/**
- * Apply a replay's withdrawals and refusals to a transcript. They are not transcript events, so
- * a rebuild from the cache plus a replay applied the replayed echo of a message but not its
- * withdrawal: a recalled message stood again as a plain line, and a reload kept it.
- */
-export function applyReplayedOutcomes(lines: ChatLine[], outcomes: ReplayedOutcomes): ChatLine[] {
-  const kept = outcomes.withdrawn.reduce((next, clientMessageId) => withdrawDeliveryLine(next, clientMessageId), lines);
-  return outcomes.refused.reduce((next, clientMessageId) => markDeliveryFailed(next, clientMessageId, "not-sent"), kept);
-}
+import { carryDeliveryForward, deliveryWaiting } from "./messageDelivery";
 
 /** A row a rebuild must not lose: one still waiting, and one that failed and still offers Retry. */
 function carriedAcrossRebuild(state: Parameters<typeof deliveryWaiting>[0]): boolean {

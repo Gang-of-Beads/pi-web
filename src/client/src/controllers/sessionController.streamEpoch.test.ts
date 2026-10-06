@@ -6,7 +6,7 @@ import { SessionController } from "./sessionController";
 import { defaultApi, EmitSocket, emptyPage, oldSession, runPendingAnimationFrames, sessionLookupId, status, workspace, type AppState } from "./sessionController.testSupport";
 
 describe("the stream watermark carries its epoch", () => {
-  it("cites the snapshot's epoch with its seq when a refresh asks the daemon for the frames it missed", async () => {
+  it("cites the snapshot's epoch with its seq when a catch-up asks the daemon for the frames it missed", async () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
     const cited: { sinceSeq: number; epoch: string | undefined }[] = [];
     const api: typeof defaultApi = {
@@ -22,7 +22,7 @@ describe("the stream watermark carries its epoch", () => {
     const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api, socket: new EmitSocket() });
 
     await controller.selectSession(oldSession, { updateUrl: false });
-    await controller.refreshSelectedSession();
+    await controller.catchUp();
 
     expect(cited).toEqual([{ sinceSeq: 5, epoch: "daemon-a.1" }]);
   });

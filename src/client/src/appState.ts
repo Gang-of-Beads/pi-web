@@ -3,6 +3,7 @@ import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
 import { RetiredBy } from "./notice";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
+import type { TranscriptSync } from "./transcriptSync";
 import type { QualifiedContributionId } from "./plugins/ids";
 import type { ScopedSessionTarget } from "./sessionTarget";
 import type { MessageStatusUnanswered } from "./sendVerification";
@@ -39,6 +40,8 @@ export interface AppState {
   isLoadingEarlierMessages: boolean;
   /** True while the selected session's transcript is being read for the first time. */
   isLoadingTranscript: boolean;
+  /** Whether the selected transcript is known to be in step with the daemon (transcriptSync.ts). */
+  transcriptSync: TranscriptSync | undefined;
   /** Sessions with a prompt upload in flight, keyed by sessionId (client-owned). */
   sendingPrompts: Record<string, true>;
   /** Client-side queued sends waiting for a just-created backend session, keyed by sessionId. */
@@ -259,6 +262,7 @@ export function initialAppState(): AppState {
     messagePageStart: 0,
     messagePageEnd: 0,
     messagePageTotal: 0,
+    transcriptSync: undefined,
     newerPendingCount: 0,
     isLoadingEarlierMessages: false,
     isLoadingTranscript: false,

@@ -179,6 +179,8 @@ export class SessionSocket {
     }
     const raw = await parseSocketEvent(data);
     this.seqMonitor.observe(raw);
+    const head = heartbeatHeadSeq(raw);
+    if (head !== undefined) this.seqMonitor.observeHead(head);
     const event = parseSessionSocketEvent(raw);
     if (this.socket !== socket) return;
     if (event === undefined) {

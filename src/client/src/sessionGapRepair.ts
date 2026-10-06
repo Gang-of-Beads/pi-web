@@ -38,6 +38,8 @@ export interface GapRepairOptions {
   request: (sinceSeq: number, epoch: string | undefined) => Promise<GapReplayResult>;
   /** Give up on replay and rebuild from the authoritative read, once. */
   resync: () => void;
+  /** A replay landed: every frame after the frontier it asked from is applied. */
+  caughtUp?: () => void;
   /**
    * Whether the transcript snapshot reflects this frame. Only transcript frames are: a dialog,
    * ask or inbox frame at or below the snapshot's seq still applies (its own revision scope drops
@@ -130,6 +132,18 @@ export class SessionGapRepair {
    * A gap seen elsewhere: everything after `lastSeen` is missing. Starts exactly one repair;
    * further gaps join it. Returns the repair's promise: production ignores it, tests await it.
    */
+  /**
+   * Ask for everything after the frontier, for a page that may have missed frames with nothing
+   * after them to show it (back from the background, a turn that ended, a heartbeat ahead).
+   * False before a snapshot seeded the frontier: there is no position to ask from yet.
+   */
+  catchUp(): boolean {
+    if (this.state !== "idle") return true;
+    if (this.frontier === undefined) return false;
+    void this.repair(this.frontier);
+    return true;
+  }
+
   onGap(lastSeen: number): Promise<void> {
     if (this.state !== "idle") return Promise.resolve();
     return this.repair(lastSeen);
@@ -166,6 +180,7 @@ export class SessionGapRepair {
       return;
     }
     this.applyInSeqOrder([...result.frames, ...held]);
+    this.options.caughtUp?.();
   }
 
   /**

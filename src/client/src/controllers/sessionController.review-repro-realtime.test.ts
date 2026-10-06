@@ -89,7 +89,7 @@ describe("review-repro realtime: the join window and the gap monitor", () => {
     WireSocket.instances[0]?.frame({ type: "activity.update", activity: { sessionId: oldSession.id, phase: "idle", label: "message complete", at: "2026-09-28T19:00:00.000Z" }, seq: 7 });
     await settle();
     runPendingAnimationFrames();
-    expect(syncCalls, "seq 6 (the idle status) was published before the subscription attached; nothing asks for it").toEqual([5]);
+    expect(syncCalls, "seq 6 is asked for from the snapshot's 5, then the idle turn end catches up from the frontier 7").toEqual([5, 7]);
     expect(state.status?.isStreaming).toBe(false);
   });
 
@@ -118,27 +118,5 @@ describe("review-repro realtime: the join window and the gap monitor", () => {
     await settle();
     runPendingAnimationFrames();
     expect(text(state.messages), "frames 10..12 must each apply exactly once, in seq order").toBe("ABC");
-  });
-});
-
-describe("review-repro realtime: delta replay rebuilds from the cache and drops live rows", () => {
-  it("a queued bubble the full refresh carries forward disappears on the delta path", async () => {
-    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
-    const socket = new EmitSocket();
-    let messagesCalls = 0;
-    const api: typeof defaultApi = {
-      ...defaultApi,
-      messages: () => { messagesCalls += 1; return Promise.resolve(emptyPage); },
-      status: (session) => Promise.resolve(streaming(sessionLookupId(session))),
-      streamSnapshot: () => Promise.resolve({ seq: 10, partial: null }),
-      streamSync: (_session, sinceSeq) => Promise.resolve({ kind: "replay", sinceSeq, frames: [] }),
-    };
-    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api, socket });
-    await controller.selectSession(oldSession, { updateUrl: false });
-    const queued: ChatLine = { role: "user", parts: [{ type: "text", text: "second thought" }], meta: { delivery: { clientMessageId: "c-1", state: "queued" } } };
-    state = { ...state, messages: [...state.messages, queued] };
-    await controller.refreshSelectedSession();
-    expect(messagesCalls, "the refresh took the delta-replay path, not the full fetch").toBe(1);
-    expect(state.messages.map((line) => line.meta?.delivery?.clientMessageId), "the accepted-but-queued row must survive a reconnect refresh").toContain("c-1");
   });
 });

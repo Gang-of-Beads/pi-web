@@ -137,6 +137,113 @@ Owner: "every screen should take event-based updates at all times … when no me
    - a quiet page makes one head comparison per T and no list read;
    - the list read is one request.
 
+## Phase B for the transcript: what the page knows (owner, 2026-10-06)
+
+### The case
+
+Owner, 2026-10-06 13:56 (phone, production 8504): the last row was his own message, nothing after
+it, and the dock said "idle". On disk the agent had answered (playground session `01a10fd0`):
+his message was steered in at 09:50:19, ten tool rounds followed, and the reply was written at
+09:55:45. The daemon log for the session:
+
+| UTC | The page |
+|---|---|
+| 09:50:51 | joined: tail read, stream snapshot, status, socket |
+| 09:50:56 - 09:56:00 | nothing (backgrounded: the socket and its timers froze) |
+| 09:56:00 | back in front: a delta replay from the watermark persisted at the join |
+| 09:56:36 | a full re-join |
+
+The screenshot fell between 09:56:00 and 09:56:36: a status already current next to a transcript
+from before the page went to the background, shown as one final state. Owner: "show something like
+sending until the page is in step with the server, then the real state; consider every
+intermediate state."
+
+### Three states, one owner
+
+`SessionController` owns one value per selected machine + session, `transcriptSync`, and the dock
+reads it before the session's own status (`transcriptSync.ts`, a lookup table of transitions).
+
+| State | Means | The dock says |
+|---|---|---|
+| `confirmed` | the page applied a full read and every frame after it, in seq order, without a gap | the session's real status (idle, working, waiting...) |
+| `confirming` | the page has reason to doubt it holds everything, and the check is under way | "Syncing…", with the sending dots; no status word, since it may be stale |
+| `unreachable` | the check failed | "Offline · updated HH:MM", the last time the page was confirmed; the check keeps retrying |
+
+### What puts the page in doubt
+
+| Event | Why it is doubt | The check |
+|---|---|---|
+| a session is opened or selected | nothing read yet | the join read |
+| the page becomes visible after being hidden, or is restored from the back-forward cache | a hidden page's socket and timers freeze; frames sent meanwhile may be gone | catch up from the frontier |
+| the browser reports `online` | the network came back | catch up from the frontier |
+| the socket closes, or reopens | a reopen starts a new connection with nothing carried over | the reconnect read |
+| the seq monitor or a heartbeat head shows a gap | frames are missing | the gap repair |
+| a revisioned frame fails validation | a transition was lost | the full read |
+| the selected session goes idle | the status may come over the machine socket ahead of the session socket's own frames, and a trailing loss there has no later frame to reveal it | catch up from the frontier |
+| a session socket heartbeat's head is ahead of the last frame | the frames after it were lost | catch up from the frontier |
+
+A window that only regains focus while visible is not doubt: its timers and socket kept running,
+and the liveness check covers a socket that died quietly.
+
+"Catch up from the frontier" asks the daemon's ring for the frames after the highest seq this page
+applied without a gap (the gap repair's own request). They were never applied here, so applying
+them cannot double anything. A resync verdict, another epoch or a failed request falls back to the
+full read. The check is confirmed when its replay or read is in; it fails when the read fails.
+
+### Why the end of a turn is a check
+
+The idle status reaches the page on two sockets: the session's own, in seq order after the reply,
+and the machine socket that feeds every session's row. The second can arrive first, or alone when
+the session socket lost its last frames, and a trailing loss has no later frame to reveal it. So the
+moment the selected session goes idle is a check (owner, 2026-10-06: show the syncing state until
+the page is in step, then the real one): one small request for the frames after the frontier. On a
+healthy stream it answers nothing within a round trip, and the dock moves from "Syncing…" to idle.
+
+The session socket's heartbeat head was not read (slice H1 wired it to the machine socket only),
+so a trailing loss on the session socket was never noticed. It now is, and it starts the same
+catch-up.
+
+### Every transition
+
+| From | Event | To |
+|---|---|---|
+| any | another session or machine selected | `confirming` (for the new key; the old key's check is dropped) |
+| `confirmed` | a doubt event above | `confirming` |
+| `confirmed` | a frame in order | `confirmed` |
+| `confirming` | its check landed for the same key | `confirmed` |
+| `confirming` | its check failed | `unreachable` |
+| `confirming` | another doubt event | `confirming` (one check runs; the refresh coordinator joins them) |
+| `unreachable` | a doubt event, a reconnect, `online` | `confirming` |
+| `unreachable` | a later check landed | `confirmed` |
+| any | the session is deselected | none |
+
+A session the daemon does not hold open (closed, archived) is read from its file and has no live
+stream: the read confirms it, and it stays confirmed until a doubt event. A session still being
+created has no transcript yet; its dock shows the startup progress as before.
+
+### Retired
+
+Delta replay from a watermark persisted at the join (`refreshByDeltaReplay`): it replays every frame
+after the join, including the ones the page already applied live, which is the candidate producer
+named on 2026-09-30 and was found again on 2026-10-06. Catching up from the frontier replaces it.
+
+### Cost
+
+Opening, reconnecting and returning to the front already read today. Catching up from the frontier
+is one small request that answers only the frames the page missed; it replaces the delta replay on a
+return, and adds one request per turn end.
+
+### Not yet
+
+The transcript head's `n` and `leaf` are not compared: rows applied from live frames carry no entry
+id (pi persists a message after announcing it), so the page cannot state its own head. The seq
+checks above prove the stream arrived whole; comparing `n`/`leaf` would also catch a merge bug, and
+needs the daemon to tell the page the entry id of each committed message.
+
+### Next (owner, 2026-10-06: yes)
+
+Phase C puts the session list, docked cards and plugin panels on the same three states.
+
 ## What this keeps and what it retires
 
 - **Keeps:** the phase 1 inbox and ledger, the phase 2 deadlines and dispositions, and the phase 3 gap repair as the low-latency path.

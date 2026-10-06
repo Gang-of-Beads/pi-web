@@ -111,6 +111,7 @@ import { goToScope, type GoToScope, type NavigateListScope, type ShownPageKind }
 import { quickSwitcherSessionStates, sessionIdsIn } from "../quickSwitcher";
 import { reloadOffer } from "../versionSkew";
 import { oneRowPerIdentity } from "../transcriptInvariant";
+import { transcriptSyncDock } from "../transcriptSync";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { readPinnedProjectIds, togglePinnedProjectId, writePinnedProjectIds } from "../projectPins";
 import { observeTransportRecovery } from "../api/transportHealth";
@@ -719,7 +720,10 @@ export class PiWebApp extends LitElement {
     if (this.navigateOpen) this.closeNavigate();
   }
   private readonly onPageShow = (event: PageTransitionEvent) => {
-    if (event.persisted) void this.sessionUnread.refreshAll();
+    if (event.persisted) {
+      void this.sessionUnread.refreshAll();
+      void this.sessions.recheckTranscript();
+    }
     this.appShell.repairViewportPosition();
     this.retryPendingRemoteRouteRestoreSoon();
   };
@@ -738,6 +742,7 @@ export class PiWebApp extends LitElement {
     this.realtime.reconnectNow();
     this.sessions.reconnectSocketNow();
     this.checkSocketLiveness();
+    void this.sessions.recheckTranscript();
   };
 
   /**
@@ -756,6 +761,7 @@ export class PiWebApp extends LitElement {
   private readonly onDocumentVisibilityChange = () => {
     this.updateSubagentPolling();
     if (document.visibilityState === "visible") {
+      void this.sessions.recheckTranscript();
       this.projects.wake();
       this.workspaces.wake();
       this.machines.wake();
@@ -1425,7 +1431,7 @@ export class PiWebApp extends LitElement {
     await this.sessionUnread.refreshAll();
     for (const machineId of this.pinsAdopted) this.refreshMachinePins(machineId);
     await Promise.all([
-      this.sessions.refreshSelectedSession(),
+      this.sessions.catchUp(),
       this.sessions.verifyUnansweredSends(),
       this.refreshMachineStatusSnapshots(),
       this.refreshWorkspaceDeletionRuns(),
@@ -4627,7 +4633,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .onRetryMessage=${(clientMessageId: string) => { this.promptEditor?.retryOutbox(clientMessageId); }} .onDiscardMessage=${this.handleDiscardMessage} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk}
+      <chat-view .onRetryMessage=${(clientMessageId: string) => { this.promptEditor?.retryOutbox(clientMessageId); }} .onDiscardMessage=${this.handleDiscardMessage} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .syncDock=${transcriptSyncDock(state.transcriptSync, this.selectedSessionKey())} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk}
         .onDialogKey=${this.handleDialogKey}
         .pendingAsks=${state.pendingAsks} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .machineId=${selectedMachineId(state)} .sessionCwd=${session.cwd}></chat-view>
     `;

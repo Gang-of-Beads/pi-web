@@ -4,6 +4,7 @@ import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair, type StreamFrontier } from "../sessionGapRepair";
+import { nextTranscriptSync, type TranscriptSyncEvent } from "../transcriptSync";
 import { describeError, noticeForReader } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
@@ -17,7 +18,7 @@ import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { resetWorkspaceScopedState, type AppState, type ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
-import { applyReplayedOutcomes, carryUnsettledForward } from "../transcriptReconcile";
+import { carryUnsettledForward } from "../transcriptReconcile";
 import { machineSessionKey } from "../machineKeys";
 import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessionsCache";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
@@ -47,6 +48,8 @@ import { backgroundRunCountChanged } from "../backgroundRunCountSignal";
 import { ParkedNotices } from "../parkedNotices";
 
 const MESSAGE_PAGE_SIZE = 100;
+const TRANSCRIPT_RETRY_FIRST_MS = 5_000;
+const TRANSCRIPT_RETRY_MAX_MS = 60_000;
 
 /**
  * Hard deadline for applying buffered stream updates.
@@ -318,6 +321,8 @@ export class SessionController {
   private readonly commandDialogRows = new Map<string, string>();
   private readonly suppressedCreatedSessions = new Map<string, SuppressedCreatedSession>();
   private readonly selectedSessionRefreshes = new TrailingRefreshCoordinator<string>();
+  /** The pending retry of an unreachable transcript, with the delay it waited (scheduleTranscriptRetry). */
+  private transcriptRetry: { key: string; delayMs: number; timer: ReturnType<typeof setTimeout> | undefined } | undefined;
   private readonly sendVerificationTimers = new Map<string, ReturnType<typeof setTimeout>[]>();
   // The daemon instance each machine's last status catalog came from. Session
   // ids are the daemon's runtime handles, so a changed id means the entries in
@@ -388,12 +393,14 @@ export class SessionController {
     this.selectionSeq += 1;
     this.socket.close();
     this.streamWatermark = undefined;
+    this.gapRepair = undefined;
+    this.cancelTranscriptRetry();
     this.clearPendingUpdates();
     // Note: sendingPrompts is intentionally NOT cleared here. Deselecting a
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
     // finally block when the request settles.
-    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, ...openAsksIn(undefined), pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
+    this.setState({ selectedSession: undefined, transcriptSync: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, ...openAsksIn(undefined), pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {
@@ -575,18 +582,33 @@ export class SessionController {
           return { ok: true, frames };
         },
         resync: () => { if (this.gapRepair === repair) void this.refreshSelectedSession(session.id); },
+        caughtUp: () => {
+          if (this.gapRepair !== repair) return;
+          // The replay's status frames wait for the next animation frame; confirming first showed
+          // the replay's older status for one frame after "Syncing…".
+          this.flushPendingUpdates();
+          this.syncTranscript({ type: "checked", key: transcriptKey, at: Date.now() });
+        },
       });
       this.gapRepair = repair;
+      this.syncTranscript({ type: "doubt", key: transcriptKey });
       this.socket.connect(session, machineId, {
         onEvent: (event) => socketBuffer.push(event),
         onReconnect: () => {
           // Ask, do not resend. Every row the link left unverifiable is an
           // identity the daemon can answer for; sending again without asking is
           // how one message becomes two.
-          void this.refreshSelectedSession(session.id).then(() => this.askLedgerAbout(session, machineId));
+          // The frames after the frontier were never applied here, so they replay safely and
+          // carry what happened meanwhile in order - a message taken back included; a resync
+          // falls back to the full read.
+          this.syncTranscript({ type: "doubt", key: transcriptKey });
+          void this.catchUp().then(() => this.askLedgerAbout(session, machineId));
         },
-        onMalformed: () => { this.dialogScope.requestResync(); },
-        onGap: gapsSeenByTheRepair,
+        onMalformed: () => {
+          this.syncTranscript({ type: "doubt", key: transcriptKey });
+          this.dialogScope.requestResync();
+        },
+        onGap: () => { if (this.gapRepair === repair) this.catchUpFromFrontier(repair, transcriptKey); },
       });
       await this.requestSelectedSessionRefresh({ session, machineId, selectionSeq: seq });
       if (!this.isCurrentRefreshTarget({ session, machineId, selectionSeq: seq })) return;
@@ -1809,6 +1831,74 @@ export class SessionController {
     }
   }
 
+  /**
+   * The page may have missed frames of the selected session: it came back from the background, the
+   * browser is online again. Says so (the dock shows "Syncing…") and catches up.
+   */
+  recheckTranscript(): Promise<void> {
+    const key = this.liveTranscriptKey();
+    if (key === undefined) return Promise.resolve();
+    this.syncTranscript({ type: "doubt", key });
+    return this.catchUp();
+  }
+
+  /**
+   * Bring the selected transcript level with the daemon: the frames after the highest seq applied in
+   * order, which this page never applied, so nothing can be applied twice. Without a frontier yet,
+   * the full read. A catch-up under way already answers it.
+   */
+  catchUp(): Promise<void> {
+    const key = this.liveTranscriptKey();
+    const repair = this.gapRepair;
+    if (key !== undefined && repair?.catchUp() === true) return Promise.resolve();
+    return this.refreshSelectedSession();
+  }
+
+  /**
+   * A gap the socket saw, a heartbeat's head among them: the frames after the frontier are owed.
+   * Before the join seeded a frontier the join's own read is under way and answers it.
+   */
+  private catchUpFromFrontier(repair: SessionGapRepair, key: string): void {
+    if (!repair.catchUp()) return;
+    this.syncTranscript({ type: "doubt", key });
+  }
+
+  /** The selected session's key when it has a live transcript to fall behind on. */
+  private liveTranscriptKey(): string | undefined {
+    const session = this.getState().selectedSession;
+    if (session === undefined || session.archived === true || isClientPendingStartSessionInfo(session)) return undefined;
+    return this.sessionCacheKey(session.id);
+  }
+
+  /** Feed the page's hold on the selected transcript one event (transcriptSync.ts). */
+  private syncTranscript(event: TranscriptSyncEvent): void {
+    const current = this.getState().transcriptSync;
+    const next = nextTranscriptSync(current, event);
+    if (next !== current) this.setState({ transcriptSync: next });
+    if (next?.kind === "unreachable") this.scheduleTranscriptRetry(next.key);
+    else if (next?.kind !== "confirming") this.cancelTranscriptRetry();
+  }
+
+  /**
+   * An unreachable transcript keeps being checked (owner: keep retrying), backing off from 5 s to a
+   * minute so a page left offline does not ask every few seconds. Only the same key is retried.
+   */
+  private scheduleTranscriptRetry(key: string): void {
+    if (this.transcriptRetry?.key === key && this.transcriptRetry.timer !== undefined) return;
+    const delayMs = this.transcriptRetry?.key === key ? Math.min(this.transcriptRetry.delayMs * 2, TRANSCRIPT_RETRY_MAX_MS) : TRANSCRIPT_RETRY_FIRST_MS;
+    const timer = setTimeout(() => {
+      if (this.transcriptRetry?.key !== key) return;
+      this.transcriptRetry = { key, delayMs, timer: undefined };
+      if (this.getState().transcriptSync?.kind === "unreachable" && this.liveTranscriptKey() === key) void this.recheckTranscript();
+    }, delayMs);
+    this.transcriptRetry = { key, delayMs, timer };
+  }
+
+  private cancelTranscriptRetry(): void {
+    if (this.transcriptRetry?.timer !== undefined) clearTimeout(this.transcriptRetry.timer);
+    this.transcriptRetry = undefined;
+  }
+
   refreshSelectedSession(sessionId = this.getState().selectedSession?.id): Promise<void> {
     const session = this.getState().selectedSession;
     if (sessionId === undefined || session?.id !== sessionId || session.archived === true || isClientPendingStartSessionInfo(session)) return Promise.resolve();
@@ -1861,72 +1951,11 @@ export class SessionController {
     await following;
   }
 
-  /**
-   * Reload by replaying committed history from the persisted watermark: the
-   * client cites the seq its cached page is current through and the daemon's
-   * ring answers with just the frames after it. A watermark older than the
-   * ring, a missing cached page, or any replay failure falls back to the full
-   * fetch, which restamps a fresh watermark. Only offered when the cached span
-   * reaches the transcript bottom - a trimmed tail replays into a gap.
-   */
-  private async refreshByDeltaReplay(target: SelectedSessionRefreshTarget, key: string): Promise<boolean> {
-    const watermark = this.transcripts.watermark(key);
-    if (watermark === undefined) return false;
-    const cached = this.transcripts.cachedView(key);
-    if (cached.messagePageEnd < cached.messagePageTotal) return false;
-    try {
-      // Status rides along only once the verdict is replay: a resync or a
-      // failed sync falls through to the full fetch, which reads status
-      // anyway, and an extra read here would double-count against repair
-      // flows that assert exactly one authoritative read.
-      const sync = await this.api.streamSync(target.session, watermark.seq, target.machineId, watermark.epoch).catch(() => undefined);
-      if (!this.isCurrentRefreshTarget(target)) return true;
-      if (sync?.kind !== "replay") return false;
-      const framesAtRequest = this.frameClock;
-      const status = await this.api.status(target.session, target.machineId);
-      if (!this.isCurrentRefreshTarget(target)) return true;
-      const statusIsFresh = !this.statusReadIsStale(status, framesAtRequest);
-      let messages = cached.messages;
-      let lastSeq = watermark.seq;
-      const outcomes: { withdrawn: string[]; refused: string[] } = { withdrawn: [], refused: [] };
-      for (const raw of sync.frames) {
-        let parsedFrame: unknown;
-        try {
-          parsedFrame = JSON.parse(raw);
-        } catch {
-          continue;
-        }
-        const frame = parseSessionSocketEvent(parsedFrame);
-        if (frame === undefined) continue;
-        if (frame.type === "prompt.withdrawn") outcomes.withdrawn.push(frame.clientMessageId);
-        if (frame.type === "prompt.refused") outcomes.refused.push(frame.clientMessageId);
-        const next = this.transcripts.applyLiveEvent(messages, frame);
-        if (next !== undefined) messages = next;
-        if (frame.seq !== undefined) lastSeq = Math.max(lastSeq, frame.seq);
-      }
-      for (const clientMessageId of outcomes.withdrawn) forgetPendingPrompt(key, clientMessageId);
-      this.streamWatermark = { sessionId: target.session.id, seq: lastSeq, ...(watermark.epoch === undefined ? {} : { epoch: watermark.epoch }) };
-      this.reseedLiveStream(this.streamWatermark);
-      this.setState({
-        messages: carryUnsettledForward(applyReplayedOutcomes(this.getState().messages, outcomes), applyReplayedOutcomes(messages, outcomes)),
-        ...(statusIsFresh ? { status } : {}),
-        activity: this.getState().sessionActivities[target.session.id],
-        newerPendingCount: 0,
-      });
-      if (statusIsFresh) this.applyStatusRead(status);
-      else this.dialogScope.readFailed();
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   private requestSelectedSessionRefresh(target: SelectedSessionRefreshTarget): Promise<void> {
     const key = machineSessionKey(target.machineId, target.session.id);
     return this.selectedSessionRefreshes.request(key, async () => {
       if (!this.isCurrentRefreshTarget(target)) return;
       this.flushPendingUpdates();
-      if (this.transcripts.watermark(key) !== undefined && await this.refreshByDeltaReplay(target, key)) return;
       const framesAtRequest = this.frameClock;
       const tailRead = this.readTranscriptTail(target);
       const statusRead = settled(this.api.status(target.session, target.machineId));
@@ -1935,6 +1964,7 @@ export class SessionController {
         tail = await tailRead;
       } catch (error) {
         void statusRead.then((status) => { this.settleDialogSurface(target, status, framesAtRequest); });
+        if (this.isCurrentRefreshTarget(target)) this.syncTranscript({ type: "checkFailed", key });
         throw error;
       }
       const { page, stream: streamSnapshot } = tail;
@@ -1953,9 +1983,6 @@ export class SessionController {
       const snapshotWatermark = { seq: streamSnapshot.seq, ...(streamSnapshot.epoch === undefined ? {} : { epoch: streamSnapshot.epoch }) };
       this.streamWatermark = { sessionId: target.session.id, ...snapshotWatermark };
       this.reseedLiveStream(snapshotWatermark);
-      // The page just read is current through this seq: a later reload can
-      // replay frames after it instead of re-fetching the page.
-      this.transcripts.setWatermark(key, snapshotWatermark);
       this.setState({
         ...history,
         messages,
@@ -1963,6 +1990,7 @@ export class SessionController {
         isLoadingTranscript: transcriptLoadingAfter({ event: "readSettled", readSeq: target.selectionSeq, currentSeq: this.selectionSeq }),
       });
       this.settleStatusRead(target, await statusRead, framesAtRequest);
+      if (this.isCurrentRefreshTarget(target)) this.syncTranscript({ type: "checked", key, at: Date.now() });
     });
   }
 
@@ -2493,7 +2521,10 @@ export class SessionController {
     // its counter again. Statuses without the field say nothing about the
     // surface and must not touch the gate (older daemon fails open).
     if (isSelected && status.pendingDialogsRevision !== undefined) this.dialogScope.markFresh(status.pendingDialogsRevision, status.daemonInstanceId);
-    if (becameIdle) this.onSelectedSessionIdle?.();
+    if (becameIdle) {
+      this.onSelectedSessionIdle?.();
+      void this.recheckTranscript();
+    }
   }
 
   /** Advance one tracked message's delivery mark in the visible transcript. */
@@ -3475,15 +3506,6 @@ function isHighFrequencyTranscriptEvent(event: SessionUiEvent): boolean {
   return event.type === "assistant.delta" || event.type === "assistant.thinking.delta" || event.type === "shell.chunk";
 }
 
-/**
- * The selected session's socket reports gaps to nobody: the gap repair, seeded with the
- * snapshot's watermark, sees every jump itself - including one before the first live frame,
- * which the socket's own monitor cannot see - and a report from the socket during the join
- * would start a repair before the repair knows where the stream stands.
- */
-function gapsSeenByTheRepair(): void {
-  return undefined;
-}
 
 /**
  * The rows whose fate the daemon's ledger is asked about: one nobody answered for, and one a

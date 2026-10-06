@@ -124,8 +124,6 @@ describe("SessionController session tree navigation", () => {
     socket.emit({ type: "message.append", message: { role: "assistant", content: "stale live event" }, seq: 1 });
 
     const oldRefresh = controller.refreshSelectedSession();
-    // The refresh first offers the cached watermark to the delta replay
-    // (answered resync here) before falling back to the full fetch.
     await new Promise((resolve) => { setTimeout(resolve, 0); });
     expect(messageCalls).toBe(2);
 

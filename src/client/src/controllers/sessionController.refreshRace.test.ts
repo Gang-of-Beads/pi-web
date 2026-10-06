@@ -30,7 +30,7 @@ function refreshRace() {
     streamSnapshot: () => Promise.resolve({ seq: 10, epoch: "e.1", partial: null }),
     streamSync: (_session, sinceSeq) => {
       syncCalls.push(sinceSeq);
-      const replayAfterTheRefresh = armed && syncCalls.length > 1 && sinceSeq === 10;
+      const replayAfterTheRefresh = armed && sinceSeq === 10;
       return Promise.resolve(replayAfterTheRefresh
         ? { kind: "replay" as const, sinceSeq, epoch: "e.1", frames: [JSON.stringify({ type: "assistant.delta", text: "A", seq: 11, epoch: "e.1" })] }
         : { kind: "resync" as const, sinceSeq });
@@ -165,7 +165,7 @@ describe("a gap repair that outlives its selection", () => {
 });
 
 describe("a message recalled while the link was down", () => {
-  it("stays gone after the reconnect refresh replays its echo and its withdrawal", async () => {
+  it("stays gone after the catch-up replays its echo and its withdrawal", async () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
     const id = "recalled-1a";
     const text = "never mind";
@@ -187,7 +187,8 @@ describe("a message recalled while the link was down", () => {
     await controller.selectSession(oldSession, { updateUrl: false });
     state = { ...state, messages: [...state.messages, { role: "user", parts: [{ type: "text", text }], meta: { delivery: { clientMessageId: id, state: "queued", kind: "steer" } } }] };
 
-    await controller.refreshSelectedSession();
+    await controller.catchUp();
+    await settle();
     runPendingAnimationFrames();
 
     expect(state.messages.filter((line) => line.parts.some((part) => "text" in part && part.text === text))).toEqual([]);
@@ -208,7 +209,7 @@ describe("a live frame applied while a reconnect refresh is in flight", () => {
     await settle();
     runPendingAnimationFrames();
 
-    expect({ shown: race.shown(), syncCalls: race.syncCalls }).toEqual({ shown: "A", syncCalls: [10, 10] });
+    expect({ shown: race.shown(), syncCalls: race.syncCalls }).toEqual({ shown: "A", syncCalls: [10] });
   });
 
   it("applies once when it was still waiting for the next render as the refresh landed", async () => {
