@@ -680,6 +680,7 @@ The workspace-related contribution arrays returned by `activate()` are:
 interface PluginContributions {
   actions?: PluginAction[];
   workspacePanels?: WorkspacePanelContribution[];
+  globalPanels?: GlobalPanelContribution[];
   workspaceLabels?: WorkspaceLabelContribution[];
 }
 ```
@@ -922,6 +923,30 @@ A panel that declares `fullscreen: true` may take the whole app canvas on a desk
 - an exit control, shown whenever `host.workspacePanelFullscreen()` is true, that calls `host.setWorkspacePanelFullscreen(false)`.
 
 PI WEB ignores the request from a panel that did not declare `fullscreen`, never restores such a panel onto the whole canvas from a link, and gives the canvas back itself when the reader opens another panel, Chat or Sessions. On a window too narrow to show the canvas, or while the reader has folded the workspace panel away, `host.workspacePanelFullscreen()` is false; the request is kept, and the panel returns to the canvas when the window widens or the panel opens. Declare `fullscreen` in the plugin that draws the controls: a page from an older plugin that does not declare it is never given the canvas, whatever its own route says. `workspacePanelFullscreenAvailable` is optional because older hosts lack it; when it is absent, offer no enter control. The bundled Git panel is the reference: its Expand key opens a review layout of every changed file, and reads "Exit expanded" there.
+
+### Global pages
+
+A workspace panel is a project page: it needs a selected workspace. A global page is about the machine on screen and needs no project. Contribute it under `globalPanels`; a plugin may bring both kinds.
+
+Go to lists the pages of the scope the reader is looking at. On the Navigate page, its switch decides: `<project>` offers that project's pages, `All projects` offers the global pages. Anywhere else Go to follows what is open: a project's session or page offers its project pages, and nothing open, or a global page, offers the global pages. In a project's scope, a global page also appears when its plugin brings no project page; a plugin with both kinds shows its project page there. On a desktop the chosen page fills the right-hand column, which also opens with no workspace selected when a global page is chosen.
+
+```js
+globalPanels: [
+  {
+    id: "global.updates",
+    title: "Updates",
+    order: 100,
+    routeAliases: ["updates:workspace.updates"],
+    visible: ({ state }) => state?.piWebStatus !== undefined,
+    render: ({ machine, terminal }) => html`
+      <p>${machine.name}</p>
+      <button @click=${() => { void terminal.runInNewTerminal({ title: "Update", command: "pi-web update" }); }}>Run</button>
+    `,
+  },
+]
+```
+
+A global page's context carries the machine, the host, the plugin state and a terminal capability; it has no workspace, files or prompt editor, so it cannot reach a project by accident. Its terminals are the machine's own, in the home folder of the machine on screen: `terminal.sessions` lists, starts and closes them, `terminal.open()` shows the global Terminal page, and `terminal.runInNewTerminal({ title, command })` starts a shell there, types the command once the shell has drawn its prompt, and shows it. Machine terminals keep no command runs (a run's record names a project and a workspace), so `runInNewTerminal` returns once the command is typed, not when it finishes. `routeAliases` lets an old link or a host slot reach the page; the host opens the bundled global Terminal through the `core:global.terminal` slot, never by plugin id. Global pages are not drawn on the whole canvas.
 
 ### Workspace labels
 

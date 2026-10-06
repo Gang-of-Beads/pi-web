@@ -89,19 +89,13 @@ desktop's right-hand column shows the page Go to chose.
 - Desktop: the right-hand column shows the chosen page, global or project; with no workspace
   selected it shows a chosen global page, where today it hides.
 
-### Open: the desktop's default scope
+### The desktop's default scope (owner, ask `79cb2bc6`)
 
-The navigation page opens on "All projects" (owner, 2026-10-04: the list on opening is what the
-machine runs). Read literally, the desktop's Go to would then offer only global pages until the
-reader narrows the left page to a project, even with a project's session open in the middle.
-Three readings, for the owner:
-
-1. Literal: the switch alone decides; narrow to the project to reach its pages.
-2. Entering a project's session or page narrows the switch to that project; "All projects" widens
-   again.
-3. The switch decides what the list shows; Go to follows what is open: a project's session or page
-   offers its project pages, nothing open (or a global page) offers global pages. This is the
-   phone's step-1 rule for a page opened full-screen, applied to the desktop.
+The navigation page opens on "All projects". Its switch only decides what the list shows; Go to
+follows what is open: a project's session or page offers its project pages, nothing open (or a
+global page) offers the global pages. On the phone, Go to opened from the Navigate page still
+follows the switch. With a session open, the session decides, so a global page beside it on the
+desktop does not narrow Go to to the machine.
 
 ## Built-in plugins
 

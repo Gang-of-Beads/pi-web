@@ -385,6 +385,7 @@ export interface PluginContributions {
   navSections?: NavSectionContribution[];
   machineSections?: MachineSectionContribution[];
   workspacePanels?: WorkspacePanelContribution[];
+  globalPanels?: GlobalPanelContribution[];
   workspaceLabels?: WorkspaceLabelContribution[];
   themes?: ThemeContribution[];
   themePairs?: ThemePairContribution[];
@@ -690,6 +691,61 @@ export interface WorkspaceTerminalSessions {
   /** Command runs belonging to this workspace, and the ability to stop one. */
   listCommandRuns(): Promise<TerminalCommandRun[]>;
   cancelCommandRun(runId: string): Promise<TerminalCommandRun>;
+}
+
+/**
+ * The machine's own terminals, in its home folder (docs/design/go-to-scopes.md): sessions without
+ * command runs, whose records stay project-scoped.
+ */
+export type MachineTerminalSessions = Omit<WorkspaceTerminalSessions, "listCommandRuns" | "cancelCommandRun">;
+
+/** The terminal capability a global page is handed: the machine's home folder, never a project's. */
+export interface GlobalPanelTerminal {
+  sessions: MachineTerminalSessions;
+  selectedId: string | undefined;
+  autoStart: boolean;
+  select: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => void;
+  /** Show the global Terminal page, on `terminalId` when given. */
+  open(options?: { terminalId?: string | undefined }): void;
+  /** Start a shell in the home folder, type `command` into it, and show it on the global Terminal page. */
+  runInNewTerminal(input: { title: string; command: string }): Promise<void>;
+}
+
+/**
+ * What a global page is handed: the machine on screen, never a project. It has no workspace, no
+ * files and no prompt editor, so a global page cannot reach a project by accident.
+ */
+export interface GlobalPanelContext {
+  machine: PluginMachine;
+  state: AppState;
+  host: WorkspaceHost;
+  terminal: GlobalPanelTerminal;
+}
+
+/**
+ * A page about the machine on screen, which needs no project (docs/design/go-to-scopes.md, owner
+ * 2026-10-05). Go to lists it while no project is in scope, and in a project's scope when its
+ * plugin brings no project page of its own.
+ */
+export interface GlobalPanelContribution {
+  id: LocalContributionId;
+  title: string;
+  icon?: WorkspacePanelIcon;
+  order?: number;
+  /** Slots the host opens by name, e.g. `core:global.terminal`; the host never names a plugin. */
+  routeAliases?: string[];
+  visible?: (context: GlobalPanelContext) => boolean;
+  badge?: (context: GlobalPanelContext) => string | number | TemplateResult | undefined;
+  toolbar?: (context: GlobalPanelContext) => TemplateResult;
+  render: (context: GlobalPanelContext) => TemplateResult;
+}
+
+export interface QualifiedGlobalPanelContribution extends GlobalPanelContribution {
+  id: QualifiedContributionId;
+  pluginId: PluginId;
+  localId: LocalContributionId;
+  machineId?: string;
+  sourcePluginId?: PluginId;
 }
 
 export interface PiWebUnstableRuntimeContext {

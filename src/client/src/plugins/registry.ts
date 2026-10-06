@@ -1,7 +1,7 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
 import { pluginsPath } from "../api/clients";
-import type { ActivityNoteContribution, QualifiedActivityNoteContribution, SessionSectionContribution, QualifiedSessionSectionContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, MachineSectionContribution, QualifiedMachineSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ActivityNoteContribution, QualifiedActivityNoteContribution, SessionSectionContribution, QualifiedSessionSectionContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, MachineSectionContribution, QualifiedMachineSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -26,6 +26,7 @@ type RegisteredPluginAction = Omit<PluginAction, "id"> & {
 export class PluginRegistry {
   private actions: RegisteredPluginAction[] = [];
   private workspacePanels: QualifiedWorkspacePanelContribution[] = [];
+  private globalPanels: QualifiedGlobalPanelContribution[] = [];
   private workspaceLabels: QualifiedWorkspaceLabelContribution[] = [];
   private themes: QualifiedThemeContribution[] = [];
   private themePairs: QualifiedThemePairContribution[] = [];
@@ -96,6 +97,7 @@ export class PluginRegistry {
       const contributionIds = new Set<QualifiedContributionId>();
       const actions = (contributions.actions ?? []).map((action) => this.qualifyAction(runtimePluginId, action, registration.machineId, registration.sourcePluginId, contributionIds));
       const workspacePanels = (contributions.workspacePanels ?? []).map((panel) => this.qualifyWorkspacePanel(runtimePluginId, panel, registration.machineId, registration.sourcePluginId, backendRevision, contributionIds));
+      const globalPanels = (contributions.globalPanels ?? []).map((panel) => this.qualifyGlobalPanel(runtimePluginId, panel, registration.machineId, registration.sourcePluginId, contributionIds));
       const workspaceLabels = (contributions.workspaceLabels ?? []).map((contribution) => this.qualifyWorkspaceLabelContribution(runtimePluginId, contribution, registration.machineId, registration.sourcePluginId, backendRevision, contributionIds));
       const themes = registration.machineId === undefined
         ? (contributions.themes ?? []).map((theme) => this.qualifyTheme(runtimePluginId, theme, contributionIds))
@@ -118,6 +120,7 @@ export class PluginRegistry {
       for (const contributionId of contributionIds) this.contributionIds.add(contributionId);
       this.actions.push(...actions);
       this.workspacePanels.push(...workspacePanels);
+      this.globalPanels.push(...globalPanels);
       this.workspaceLabels.push(...workspaceLabels);
       this.themes.push(...themes);
       this.themePairs.push(...themePairs);
@@ -308,6 +311,7 @@ export class PluginRegistry {
     this.releasePluginResources(runtimePluginId);
     this.actions = this.actions.filter((entry) => entry.pluginId !== runtimePluginId);
     this.workspacePanels = this.workspacePanels.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.globalPanels = this.globalPanels.filter((entry) => entry.pluginId !== runtimePluginId);
     this.workspaceLabels = this.workspaceLabels.filter((entry) => entry.pluginId !== runtimePluginId);
     this.themes = this.themes.filter((entry) => entry.pluginId !== runtimePluginId);
     this.themePairs = this.themePairs.filter((entry) => entry.pluginId !== runtimePluginId);
@@ -464,6 +468,17 @@ export class PluginRegistry {
     return [...this.workspacePanels].sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
   }
 
+  /** Global pages, in the order Go to lists them (docs/design/go-to-scopes.md). */
+  getGlobalPanels(): QualifiedGlobalPanelContribution[] {
+    return [...this.globalPanels].sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
+  }
+
+  /** A route's page id when it names an active global page on the selected machine. */
+  resolveGlobalPanelRouteId(value: string, selectedMachineId: string): QualifiedContributionId | undefined {
+    const active = this.globalPanels.filter((panel) => this.isContributionActive(panel.pluginId, panel.machineId, selectedMachineId, panel.sourcePluginId));
+    return (active.find((panel) => panel.id === value) ?? active.find((panel) => panel.routeAliases?.includes(value) === true))?.id;
+  }
+
   resolveWorkspacePanelRouteId(value: string, selectedMachineId: string): QualifiedContributionId | undefined {
     const activePanels = this.workspacePanels.filter((panel) => this.isContributionActive(panel.pluginId, panel.machineId, selectedMachineId, panel.sourcePluginId));
     const exact = activePanels.find((panel) => panel.id === value);
@@ -551,6 +566,28 @@ export class PluginRegistry {
       ...(onInvalidate === undefined ? {} : { onInvalidate: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? onInvalidate(workspacePanelContextFor(context, binding)) : undefined }),
       ...(panel.toolbar === undefined ? {} : { toolbar: (context: WorkspacePanelContext) => panel.toolbar?.(workspacePanelContextFor(context, binding)) ?? html`` }),
       render: (context: WorkspacePanelContext) => panel.render(workspacePanelContextFor(context, binding)),
+    };
+  }
+
+  private qualifyGlobalPanel(
+    pluginId: string,
+    panel: GlobalPanelContribution,
+    machineId: string | undefined,
+    sourcePluginId: string | undefined,
+    contributionIds: Set<QualifiedContributionId>,
+  ): QualifiedGlobalPanelContribution {
+    const id = this.qualify(pluginId, panel.id, contributionIds);
+    const visible = panel.visible;
+    const badge = panel.badge;
+    return {
+      ...panel,
+      id,
+      pluginId,
+      localId: panel.id,
+      ...(machineId === undefined ? {} : { machineId }),
+      ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
+      visible: (context: GlobalPanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) && (visible?.(context) ?? true),
+      ...(badge === undefined ? {} : { badge: (context: GlobalPanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? badge(context) : undefined }),
     };
   }
 

@@ -1,7 +1,7 @@
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { Workspace } from "../api";
-import type { QualifiedContributionId, QualifiedWorkspacePanelContribution, WorkspacePanelContext } from "../plugins/types";
+import type { GlobalPanelContext, QualifiedContributionId, QualifiedGlobalPanelContribution, QualifiedWorkspacePanelContribution, WorkspacePanelContext } from "../plugins/types";
 import { shownWorkspacePanel } from "../workspacePanelCanvas";
 import { interactiveSurfaceStyles, workspacePanelStyles } from "./shared";
 
@@ -19,7 +19,8 @@ export type WorkspacePanelEmptyState = { kind: "unknown" } | { kind: "message"; 
  * (Files: Upload, Refresh) show at the top of its page as they did inside the
  * old fold; a tool without buttons starts with its content. The content is a
  * region named for the tool: the row that carried its heading is gone, and
- * on the whole canvas the app bar that names it is hidden too.
+ * on the whole canvas the app bar that names it is hidden too. A global page
+ * (docs/design/go-to-scopes.md) is drawn here as well and needs no workspace.
  */
 @customElement("workspace-panel")
 export class WorkspacePanel extends LitElement {
@@ -28,8 +29,13 @@ export class WorkspacePanel extends LitElement {
   @property({ attribute: false }) emptyState: WorkspacePanelEmptyState | undefined;
   @property() tool: QualifiedContributionId = "core:workspace.files";
   @property({ attribute: false }) panels: QualifiedWorkspacePanelContribution[] = [];
+  @property({ attribute: false }) globalPanels: QualifiedGlobalPanelContribution[] = [];
+  @property({ attribute: false }) globalContext: GlobalPanelContext | undefined;
 
   override render() {
+    const globalPanel = this.globalPanels.find((panel) => panel.id === this.tool);
+    const globalContext = this.globalContext;
+    if (globalPanel !== undefined && globalContext !== undefined) return this.renderGlobalPanel(globalContext, globalPanel);
     const workspace = this.workspace;
     if (workspace === undefined) return this.renderEmptyState(this.emptyState ?? {
       kind: "message",
@@ -54,6 +60,13 @@ export class WorkspacePanel extends LitElement {
           ${selectedPanel.render(context)}
         </div>
       `}
+    `;
+  }
+
+  private renderGlobalPanel(context: GlobalPanelContext, panel: QualifiedGlobalPanelContribution): TemplateResult {
+    return html`
+      ${panel.toolbar === undefined ? null : html`<div class="workspace-tool-toolbar" role="toolbar" aria-label=${`${panel.title} controls`}>${panel.toolbar(context)}</div>`}
+      <div class="panel-content" role="region" aria-label=${panel.title}>${panel.render(context)}</div>
     `;
   }
 

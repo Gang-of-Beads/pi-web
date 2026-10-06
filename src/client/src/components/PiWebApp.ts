@@ -7,6 +7,8 @@ import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { request } from "../api/http";
 import { sessionPinsApi } from "../api/clients";
 import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
+import { machineTerminalSessions, typeCommand } from "../plugins/machineTerminalSessions";
+import { scopePages } from "../scopePages";
 import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
 import { describeError, noticeForReader, noticeFromTransport, RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame, placeholderFrameOutstanding } from "../historyWrites";
@@ -59,7 +61,7 @@ import { SessionUnreadController } from "../sessionUnread";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
-import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, MachineSectionContext } from "../plugins/types";
+import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, MachineSectionContext } from "../plugins/types";
 import { CORE_PRO_LIGHT_THEME_ID, isNativeThemeId, applyNativeProLightTheme, CORE_PRO_THEME_ID, CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyNativeProTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
@@ -104,7 +106,7 @@ import type { NavigateInput, NavigateLevel } from "../navigateModel";
 import type { ShellToolTab } from "../appShell/shellToolTabs";
 import "./appShell/AppPanelEdgeControl";
 import "./ExtensionWidgets";
-import { goToScope, type NavigateListScope } from "../goToScope";
+import { goToScope, type GoToScope, type NavigateListScope, type ShownPageKind } from "../goToScope";
 import { quickSwitcherSessionStates, sessionIdsIn } from "../quickSwitcher";
 import { reloadOffer } from "../versionSkew";
 import { oneRowPerIdentity } from "../transcriptInvariant";
@@ -279,6 +281,8 @@ const PI_WEB_STATUS_DEFER_MS = 750;
 const GO_TO_ACTIONS = "actions";
 /** Go to's Settings line: on the phone it is the way to Settings from every screen (owner, 2026-10-04). */
 const GO_TO_SETTINGS = "settings";
+/** The slot the global Terminal page answers to (a route alias); core never names the plugin. */
+const GLOBAL_TERMINAL_SLOT = "core:global.terminal";
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
 const THEME_AUTO_ON_VALUE = "auto:on";
 const THEME_AUTO_OFF_VALUE = "auto:off";
@@ -428,6 +432,8 @@ export class PiWebApp extends LitElement {
   private readonly panelResize = new PanelResizeController(this);
   private readonly systemLightThemeMedia = typeof window !== "undefined" && "matchMedia" in window ? window.matchMedia("(prefers-color-scheme: light)") : undefined;
   private terminalAutoStartWorkspaceId: string | undefined;
+  /** The machine terminal the global Terminal page shows; kept in the tab, as a global page has no workspace route. */
+  @state() private selectedMachineTerminalId: string | undefined;
   private piWebStatusTimer: number | undefined;
   private piWebStatusDeferredTimer: number | undefined;
   private workspaceDeletionPollTimer: number | undefined;
@@ -1527,7 +1533,7 @@ export class PiWebApp extends LitElement {
       await this.restoreRouteMachine(parsedRoute);
       await this.loadPluginsForSelectedMachine();
       if (!this.isCurrentRouteRestore(restoreSeq, intent)) return;
-      const route = resolveAppRoute(parsedRoute, (value) => this.plugins.resolveWorkspacePanelRouteId(value, selectedMachineId(this.state)));
+      const route = resolveAppRoute(parsedRoute, (value) => this.resolvePageRouteId(value));
       const mainView = this.resolveRestoredMainView(restoredMainView) ?? route.view ?? this.defaultRouteView(route);
       this.workspacePanelFullscreen = false;
       this.setState({
@@ -1801,7 +1807,13 @@ export class PiWebApp extends LitElement {
 
   private resolveRestoredMainView(view: AppState["mainView"] | undefined): AppState["mainView"] | undefined {
     if (view === undefined || view === "chat" || view === "navigation") return view;
-    return resolveWorkspacePanelRouteValue(view, (value) => this.plugins.resolveWorkspacePanelRouteId(value, selectedMachineId(this.state)));
+    return resolveWorkspacePanelRouteValue(view, (value) => this.resolvePageRouteId(value));
+  }
+
+  /** A route's page: a project page, else a global page, on the selected machine. */
+  private resolvePageRouteId(value: string): QualifiedContributionId | undefined {
+    const machineId = selectedMachineId(this.state);
+    return this.plugins.resolveWorkspacePanelRouteId(value, machineId) ?? this.plugins.resolveGlobalPanelRouteId(value, machineId);
   }
 
   private async withChatScrollTransition(action: () => Promise<void>, shouldComplete: () => boolean = () => true) {
@@ -1840,7 +1852,7 @@ export class PiWebApp extends LitElement {
       projectId: this.state.selectedProject?.id,
       workspaceId: this.state.selectedWorkspace?.id,
       sessionId: placeSessionId(this.state),
-      tool: this.state.selectedWorkspace === undefined ? undefined : this.state.workspaceTool,
+      tool: this.state.selectedWorkspace === undefined && !this.isGlobalPage(this.state.workspaceTool) ? undefined : this.state.workspaceTool,
       view: this.state.mainView === "navigation" ? undefined : this.state.mainView,
     }, options);
     this.syncWorkspaceRouteSurfaceToUrl();
@@ -2424,6 +2436,8 @@ export class PiWebApp extends LitElement {
         .emptyState=${emptyState}
         .tool=${this.state.workspaceTool}
         .panels=${this.visibleWorkspacePanels()}
+        .globalPanels=${this.visibleGlobalPanels()}
+        .globalContext=${this.createGlobalPanelContext()}
       ></workspace-panel>
     `;
   }
@@ -2742,8 +2756,7 @@ export class PiWebApp extends LitElement {
    */
   private goToDestinations(): GoToDestination[] {
     const view = this.displayMainView();
-    const scope = goToScope({ hasWorkspace: this.state.selectedWorkspace !== undefined, openedFrom: this.goToOpenedFrom });
-    const pages = scope === "workspace" ? this.shellToolTabs() : [];
+    const pages = this.shellToolTabs(this.currentGoToScope());
     return [
       { id: "navigation", label: "Sessions", icon: renderListIcon(), selected: view === "navigation" },
       { id: "chat", label: "Chat", icon: renderChatIcon(), selected: view === "chat" },
@@ -3375,6 +3388,71 @@ export class PiWebApp extends LitElement {
     });
   }
 
+  /** Global pages the machine on screen shows (docs/design/go-to-scopes.md). */
+  private visibleGlobalPanels(): QualifiedGlobalPanelContribution[] {
+    const context = this.createGlobalPanelContext();
+    return this.plugins.getGlobalPanels().filter((panel) => panel.visible?.(context) ?? true);
+  }
+
+  private isGlobalPage(id: string): boolean {
+    return this.plugins.getGlobalPanels().some((panel) => panel.id === id);
+  }
+
+  /**
+   * What a global page is handed: the machine, never a project. Its terminals are the machine's,
+   * in the home folder; the one on screen is kept in the tab.
+   */
+  private createGlobalPanelContext(): GlobalPanelContext {
+    const machine = pluginMachineFromState(this.state);
+    const sessions = machineTerminalSessions(machine.id);
+    return {
+      machine,
+      state: this.state,
+      host: this.createWorkspaceHost(),
+      terminal: {
+        sessions,
+        selectedId: this.selectedMachineTerminalId,
+        autoStart: true,
+        select: (terminalId) => { this.selectedMachineTerminalId = terminalId; },
+        open: (options) => { this.openGlobalTerminal(options?.terminalId); },
+        runInNewTerminal: async (input) => {
+          const terminal = await sessions.start({ name: input.title });
+          await typeCommand(sessions.connect(terminal.id), input.command);
+          this.openGlobalTerminal(terminal.id);
+        },
+      },
+    };
+  }
+
+  /** The global Terminal page, on `terminalId` when given; reached by its slot name, never a plugin id. */
+  private openGlobalTerminal(terminalId: string | undefined): void {
+    if (terminalId !== undefined) this.selectedMachineTerminalId = terminalId;
+    const page = this.plugins.resolveGlobalPanelRouteId(GLOBAL_TERMINAL_SLOT, selectedMachineId(this.state));
+    if (page !== undefined) this.selectMainView(page);
+  }
+
+  /**
+   * Go to's scope now (goToScope): the Navigate page's switch when one opened it, else what is
+   * open - a project's session or page, or a global page, or nothing.
+   */
+  private currentGoToScope(): GoToScope {
+    const mobile = this.appShell.isMobileNavigationLayout;
+    const view = this.displayMainView();
+    const shownPageId = mobile ? (view === "chat" || view === "navigation" ? undefined : view) : this.state.workspaceTool;
+    return goToScope({
+      hasWorkspace: this.state.selectedWorkspace !== undefined,
+      openedFrom: this.goToOpenedFrom,
+      sessionOnScreen: this.hasChatSubject() && (!mobile || view === "chat"),
+      shownPage: this.shownPageKind(shownPageId),
+    });
+  }
+
+  private shownPageKind(id: string | undefined): ShownPageKind {
+    if (id === undefined) return undefined;
+    if (this.isGlobalPage(id)) return "global";
+    return this.state.selectedWorkspace === undefined ? undefined : "project";
+  }
+
   private visibleWorkspacePanels(): QualifiedWorkspacePanelContribution[] {
     const workspace = this.state.selectedWorkspace;
     if (workspace === undefined) return [];
@@ -3464,13 +3542,21 @@ export class PiWebApp extends LitElement {
     this.openNavigateOn("project");
   }
 
-  /** Text-safe badge for the panel row; rich badges stay in list rows. */
-  private mobilePanelBadge(panel: QualifiedWorkspacePanelContribution): string | number | undefined {
-    const workspace = this.state.selectedWorkspace;
-    if (workspace === undefined) return undefined;
-    const badge: unknown = panel.badge?.(this.createWorkspacePanelContext(workspace));
+  /** Text-safe badge for a page line; rich badges stay in list rows. */
+  private pageBadge(panel: QualifiedWorkspacePanelContribution | QualifiedGlobalPanelContribution): string | number | undefined {
+    const badge: unknown = this.isGlobalPage(panel.id) ? this.globalPageBadge(panel.id) : this.projectPageBadge(panel.id);
     if (typeof badge === "number") return badge;
     return typeof badge === "string" ? badge : undefined;
+  }
+
+  private globalPageBadge(id: QualifiedContributionId): unknown {
+    return this.plugins.getGlobalPanels().find((panel) => panel.id === id)?.badge?.(this.createGlobalPanelContext());
+  }
+
+  private projectPageBadge(id: QualifiedContributionId): unknown {
+    const workspace = this.state.selectedWorkspace;
+    if (workspace === undefined) return undefined;
+    return this.plugins.getWorkspacePanels().find((panel) => panel.id === id)?.badge?.(this.createWorkspacePanelContext(workspace));
   }
 
   private workspaceLabelItems(workspace: Workspace): WorkspaceLabelItem[] {
@@ -4737,12 +4823,13 @@ export class PiWebApp extends LitElement {
   private activeSurfaceLabel(): string {
     const view = this.displayMainView();
     if (view === "chat" || view === "navigation") return "";
-    return this.shellToolTabs().find((tab) => tab.id === view)?.label ?? "";
+    return [...this.visibleWorkspacePanels(), ...this.visibleGlobalPanels()].find((panel) => panel.id === view)?.title ?? "";
   }
 
-  private shellToolTabs(): ShellToolTab[] {
-    return this.visibleWorkspacePanels().map((panel) => {
-      const badge = this.mobilePanelBadge(panel);
+  /** The pages a scope offers, as Go to's lines (scopePages). */
+  private shellToolTabs(scope: GoToScope): ShellToolTab[] {
+    return scopePages(scope, this.visibleWorkspacePanels(), this.visibleGlobalPanels()).map((panel) => {
+      const badge = this.pageBadge(panel);
       const usableBadge = badge === "" ? undefined : badge;
       return {
         id: panel.id,
@@ -4756,7 +4843,7 @@ export class PiWebApp extends LitElement {
 
   /** Resolve the row id back to its typed view; unknown ids are ignored. */
   private openShellToolTab(id: string): void {
-    const panel = this.visibleWorkspacePanels().find((candidate) => candidate.id === id);
+    const panel = [...this.visibleWorkspacePanels(), ...this.visibleGlobalPanels()].find((candidate) => candidate.id === id);
     if (panel === undefined) return;
     this.selectMainView(panel.id);
   }
@@ -4782,7 +4869,7 @@ export class PiWebApp extends LitElement {
     // on screen.
     const displayView = this.displayMainView();
     return html`
-      <div class=${`${this.panelCollapse.shellClass(displayView, state.selectedWorkspace !== undefined)}${this.workspacePanelHoldsCanvas() ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
+      <div class=${`${this.panelCollapse.shellClass(displayView, state.selectedWorkspace !== undefined || this.isGlobalPage(state.workspaceTool))}${this.workspacePanelHoldsCanvas() ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
         ${this.renderNavigationProgress()}
         <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigatePage(false)}</aside>
         ${this.contextSheetOpen ? null : this.renderNavigationPanelEdgeControl()}

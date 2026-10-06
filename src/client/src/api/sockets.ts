@@ -15,6 +15,12 @@ export function terminalSocket(projectId: string, workspaceId: string, terminalI
   return new WebSocket(resolveAppWebSocketUrl(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(terminalId)}/socket${sizeQuery}`));
 }
 
+/** A machine terminal's stream (machineTerminalRoutes.ts): the shell in the machine's home folder. */
+export function machineTerminalSocket(terminalId: string, initialSize?: { cols: number; rows: number }, machineId = "local"): WebSocket {
+  const sizeQuery = initialSize === undefined ? "" : `?${new URLSearchParams({ cols: String(initialSize.cols), rows: String(initialSize.rows) }).toString()}`;
+  return new WebSocket(resolveAppWebSocketUrl(`${machinePrefix(machineId)}/terminals/${encodeURIComponent(terminalId)}/socket${sizeQuery}`));
+}
+
 export function realtimeEvents(machineId = "local"): WebSocket {
   return new WebSocket(resolveAppWebSocketUrl(`${machinePrefix(machineId)}/events`));
 }
