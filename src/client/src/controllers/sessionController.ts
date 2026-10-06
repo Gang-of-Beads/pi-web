@@ -586,21 +586,22 @@ export class SessionController {
         },
         resync: () => { if (this.gapRepair === repair) void this.refreshSelectedSession(session.id); },
         caughtUp: () => { if (this.gapRepair === repair) this.confirmCaughtUp(repair, transcriptKey); },
+        fellBehind: () => { if (this.gapRepair === repair) this.syncTranscript({ type: "missing", key: transcriptKey }); },
       });
       this.gapRepair = repair;
-      this.syncTranscript({ type: "doubt", key: transcriptKey });
+      this.syncTranscript({ type: "check", key: transcriptKey });
       this.socket.connect(session, machineId, {
         onEvent: (event) => socketBuffer.push(event),
         onReconnect: () => {
           // Ask, do not resend. Every row the link left unverifiable is an
           // identity the daemon can answer for; sending again without asking is
           // how one message becomes two.
-          this.syncTranscript({ type: "doubt", key: transcriptKey });
+          this.syncTranscript({ type: "check", key: transcriptKey });
           void this.catchUp().then(() => this.askLedgerAbout(session, machineId));
         },
         onDisconnect: () => { if (this.gapRepair === repair) void this.recheckTranscript(); },
         onMalformed: () => {
-          this.syncTranscript({ type: "doubt", key: transcriptKey });
+          this.syncTranscript({ type: "missing", key: transcriptKey });
           this.dialogScope.requestResync();
         },
         onGap: () => { if (this.gapRepair === repair) this.catchUpFromFrontier(repair, transcriptKey); },
@@ -1828,12 +1829,13 @@ export class SessionController {
 
   /**
    * The page may have missed frames of the selected session: it came back from the background, the
-   * browser is online again. Says so (the dock shows "Syncing…") and catches up.
+   * browser is online again, a connection was lost, a turn ended. Checks quietly: the dock says
+   * "Syncing…" only if the check finds frames missing or cannot confirm.
    */
   recheckTranscript(): Promise<void> {
     const key = this.liveTranscriptKey();
     if (key === undefined) return Promise.resolve();
-    this.syncTranscript({ type: "doubt", key });
+    this.syncTranscript({ type: "check", key });
     return this.catchUp();
   }
 
@@ -1858,7 +1860,7 @@ export class SessionController {
   private catchUpFromFrontier(repair: SessionGapRepair, key: string): void {
     const pending = repair.catchUp();
     if (pending === undefined) return;
-    this.syncTranscript({ type: "doubt", key });
+    this.syncTranscript({ type: "missing", key });
   }
 
   /**
@@ -1870,7 +1872,7 @@ export class SessionController {
     this.flushPendingUpdates();
     const position = repair.position;
     if (position !== undefined) this.socket.noteApplied?.(position);
-    this.syncTranscript({ type: "checked", key, at: Date.now() });
+    this.syncTranscript({ type: "checked", key });
   }
 
   /** The selected session's key when it has a live transcript to fall behind on. */
@@ -1887,11 +1889,11 @@ export class SessionController {
     if (next !== current) this.setState({ transcriptSync: next });
     const action = transcriptRetryAction(next, this.transcriptRetry?.key);
     if (action === "cancel") this.cancelTranscriptRetry();
-    if (action === "arm" && next !== undefined) this.scheduleTranscriptRetry(next.key);
+    if (action === "arm") this.scheduleTranscriptRetry(next.key);
   }
 
   /**
-   * An unreachable transcript keeps being checked (owner: keep retrying), backing off from 5 s to a
+   * A check that failed keeps being retried (owner: keep trying), backing off from 5 s to a
    * minute so a page left offline does not ask every few seconds. Only the same key is retried.
    */
   private scheduleTranscriptRetry(key: string): void {
@@ -1902,7 +1904,7 @@ export class SessionController {
     const timer = setTimeout(() => {
       if (this.transcriptRetry?.key !== key) return;
       this.transcriptRetry = { key, delayMs, timer: undefined };
-      if (this.getState().transcriptSync?.kind === "unreachable" && this.liveTranscriptKey() === key) void this.recheckTranscript();
+      if (this.getState().transcriptSync?.kind === "retrying" && this.liveTranscriptKey() === key) void this.recheckTranscript();
     }, delayMs);
     this.transcriptRetry = { key, delayMs, timer };
   }
@@ -2003,7 +2005,7 @@ export class SessionController {
         isLoadingTranscript: transcriptLoadingAfter({ event: "readSettled", readSeq: target.selectionSeq, currentSeq: this.selectionSeq }),
       });
       this.settleStatusRead(target, await statusRead, framesAtRequest);
-      if (this.isCurrentRefreshTarget(target) && this.gapRepair?.holding !== true) this.syncTranscript({ type: "checked", key, at: Date.now() });
+      if (this.isCurrentRefreshTarget(target) && this.gapRepair?.holding !== true) this.syncTranscript({ type: "checked", key });
     });
   }
 

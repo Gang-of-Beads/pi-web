@@ -80,7 +80,7 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
 - **Socket watchdog.** No frame, keepalive included, for 2 × 20 s means the socket is closed and reopened. The first thing after a reconnect is a head comparison.
 - **Honest labels.**
   - After 2 s behind, a surface shows a thin "Catching up…" line.
-  - When unknown, it shows "Offline · updated 00:51" instead of stale rows as if they were current.
+  - When unknown, it says so instead of showing stale rows as if they were current. (Superseded 2026-10-06: the word is "Syncing…", never "Offline"; see phase B.)
   - The status line never claims a live state that the transcript head contradicts.
 - **No refresh storms.** The watcher drops git's own churn, dependency folders and pi's runtime state, and coalesces a burst into one `workspace.changed` per window: 250 ms for git state, 2.5 s for the tree (object model §1.16). The web log showed about two a second before it.
 
@@ -96,7 +96,7 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
    - Any frame resets the page's quiet timer. A page pulls `/api/heads` only when *T* passes with nothing received, and on `visibilitychange`, `online` and `pageshow`.
    - **The heartbeat is that frame, and it stays tiny.** The daemon sends it only on a socket that has been quiet, at an interval below *T* (the page names its *T* when it subscribes), so a healthy idle session never triggers a pull. It carries only the compact heads, a few tens of bytes. Measured today: an idle socket carries one 20-byte keepalive per 20 s. The status frames sent while streaming (284 in 45 s on playria) are the real traffic; phase A measures them and sends deltas.
    - *T* is per device (phone and desktop may want different values), stored with the browser's other preferences.
-3. **Behind label: only when stuck.** Nothing is shown while a page catches up within *T*. After *T*, still behind shows "Catching up…", and no head shows "Offline · updated HH:MM".
+3. **Behind label: only when stuck.** Nothing is shown while a page catches up within *T*. After *T*, still behind shows "Catching up…", and no head shows "Offline · updated HH:MM". (Refined 2026-10-06, phase B: the word is "Syncing…" for both, shown when frames are known missing or a check failed, and never "Offline".)
 4. **Order: sync first**, before `ask_user`. Two user-reported bugs go ahead of phase A: Enter picking a Chinese IME candidate sends the message, and sessions missing Archive and Delete.
 5. **Restart the daemon now**, and remove the restart-when-idle watcher.
 
@@ -158,30 +158,45 @@ from before the page went to the background, shown as one final state. Owner: "s
 sending until the page is in step with the server, then the real state; consider every
 intermediate state."
 
-### Three states, one owner
+Owner, later the same day, on when to say it (answers to ask `c4825c84`):
+
+- "Syncing…" shows only when the page knows the browser and the server disagree, or a check could
+  not confirm they agree. Never for every check: on a poor network every turn would flash it.
+- Never "offline": the page is always trying to sync, and a warning the reader cannot act on is not
+  shown (the standing rule for alerts). The reader is told the page is syncing, as a message is
+  "sending".
+- The sync state belongs to the transcript, not to the ask card: an open card does not hide it.
+
+This matches the 2026-09-30 decision that the catching-up word shows only when the page is stuck,
+not while it routinely checks.
+
+### Four states, one owner
 
 `SessionController` owns one value per selected machine + session, `transcriptSync`, and the dock
-reads it before the session's own status (`transcriptSync.ts`, a lookup table of transitions).
+reads it before anything else it would say (`transcriptSync.ts`, lookup tables for the
+transitions, the dock and the retry).
 
 | State | Means | The dock says |
 |---|---|---|
 | `confirmed` | the page applied a full read and every frame after it, in seq order, without a gap | the session's real status (idle, working, waiting...) |
-| `confirming` | the page has reason to doubt it holds everything, and the check is under way | "Syncing…", with the sending dots; no status word, since it may be stale |
-| `unreachable` | the check failed | "Offline · updated HH:MM", the last time the page was confirmed; the check keeps retrying |
+| `checking` | a routine reason to look; nothing is known to be missing, and the check is under way | the session's status, unchanged: checking is quiet |
+| `behind` | the page knows frames are missing (a seq gap, a heartbeat ahead, a frame it could not read, another seq space) and is fetching them | "Syncing…", with the sending dots, over the status word, the ask card's notes dock and the sending line alike; plugin notes kept |
+| `retrying` | a check failed (an error, or the 30 s request deadline) | "Syncing…"; the check is retried from 5 s, doubling to a minute, for as long as it takes |
 
-### What puts the page in doubt
+### What starts a check
 
-| Event | Why it is doubt | The check |
+| Event | Why | The check | Marks |
+|---|---|---|---|
 |---|---|---|
-| a session is opened or selected | nothing read yet | the join read |
-| the page becomes visible after being hidden, or is restored from the back-forward cache | a hidden page's socket and timers freeze; frames sent meanwhile may be gone | catch up from the frontier |
-| the browser reports `online` | the network came back | catch up from the frontier |
-| the socket loses an open connection | frames published until it reopens reach nobody here | catch up from the frontier (a failed reconnect attempt is not news: a daemon that stays down would flip the dock on every try) |
-| the socket reopens | the new connection carries nothing over | catch up from the frontier; the ledger ask waits for it |
-| the seq monitor or a heartbeat head shows a gap | frames are missing | the gap repair |
-| a revisioned frame fails validation | a transition was lost | the full read |
-| the selected session goes idle | the status may come over the machine socket ahead of the session socket's own frames, and a trailing loss there has no later frame to reveal it | catch up from the frontier |
-| a session socket heartbeat's head is ahead of the last frame | the frames after it were lost | catch up from the frontier |
+| a session is opened or selected | nothing read yet | the join read | `checking` |
+| the page becomes visible after being hidden, or is restored from the back-forward cache | a hidden page's socket and timers freeze; frames sent meanwhile may be gone | catch up from the frontier | `checking` |
+| the browser reports `online` | the network came back | catch up from the frontier | `checking` |
+| the socket loses an open connection, including the liveness check dropping one silent past 42 s (checked every 5 s while visible: the probe after silence) | frames published until it reopens reach nobody here | catch up from the frontier (a failed reconnect attempt is not news: a daemon that stays down would repeat it on every try) | `checking` |
+| the socket reopens | the new connection carries nothing over | catch up from the frontier; the ledger ask waits for it | `checking` |
+| the selected session goes idle | the status may come over the machine socket ahead of the session socket's own frames, and a trailing loss there has no later frame to reveal it | catch up from the frontier | `checking` |
+| the seq monitor, the gap repair or a heartbeat head shows a gap, or a frame from another seq space arrives | frames are missing | the gap repair, or the full read | `behind` |
+| a revisioned frame fails validation | a transition was lost | the full read | `behind` |
+| any check fails | it could not confirm | the retry | `retrying` |
 
 A window that only regains focus while visible is not doubt: its timers and socket kept running,
 and the liveness check covers a socket that died quietly.
@@ -206,9 +221,9 @@ repair still holds frames: the repair's landing confirms. It fails when the read
 The idle status reaches the page on two sockets: the session's own, in seq order after the reply,
 and the machine socket that feeds every session's row. The second can arrive first, or alone when
 the session socket lost its last frames, and a trailing loss has no later frame to reveal it. So the
-moment the selected session goes idle is a check (owner, 2026-10-06: show the syncing state until
-the page is in step, then the real one): one small request for the frames after the frontier. On a
-healthy stream it answers nothing within a round trip, and the dock moves from "Syncing…" to idle.
+moment the selected session goes idle is a quiet check: one small request for the frames after the
+frontier. On a healthy stream it answers nothing within a round trip and nothing changes on screen;
+when it finds the frames, they apply in that round trip; only a failure shows "Syncing…".
 The join read's own idle status counts too: its status read is separate from its transcript read
 and can be newer, and the frames between them are exactly the ones a quiet session never reveals.
 
@@ -220,14 +235,13 @@ catch-up.
 
 | From | Event | To |
 |---|---|---|
-| any | another session or machine selected | `confirming` (for the new key; the old key's repair and retry are dropped) |
-| `confirmed` | a doubt event above | `confirming` |
-| `confirmed` | a frame in order | `confirmed` |
-| `confirming` | its check landed for the same key | `confirmed` |
-| `confirming` | its check failed | `unreachable` |
-| `confirming` | another doubt event | `confirming` (one check runs: a catch-up under way asks again once it lands, since its reply may predate the doubt; full reads join in the refresh coordinator) |
-| `unreachable` | a doubt event, a reconnect, `online` | `confirming` |
-| `unreachable` | a later check landed | `confirmed` |
+| any | another session or machine selected | `checking` for the new key; the old key's repair and retry are dropped |
+| `confirmed`, `checking` | a routine reason | `checking` (one check runs: a catch-up under way asks again once it lands, since its reply may predate the reason; full reads join in the refresh coordinator) |
+| `confirmed`, `checking` | frames known missing | `behind` |
+| `behind` | a routine reason, or more frames missing | `behind` |
+| `retrying` | a routine reason, or frames missing | `retrying` (the retry stays armed) |
+| any | a check landed for the same key, and the gap repair holds nothing | `confirmed` |
+| any | a check failed | `retrying` |
 | any | the session is deselected | none |
 
 An archived session has no live stream and carries no sync state: its read shows it or fails as
@@ -256,7 +270,8 @@ needs the daemon to tell the page the entry id of each committed message.
 
 ### Next (owner, 2026-10-06: yes)
 
-Phase C puts the session list, docked cards and plugin panels on the same three states.
+Phase C puts the session list, docked cards and plugin panels on the same states. The owner asked
+for the ablation batch first (2026-10-06).
 
 ## What this keeps and what it retires
 
