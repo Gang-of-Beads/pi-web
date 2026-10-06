@@ -586,6 +586,9 @@ export interface PiAgentSession {
     setWarnings(warnings: { anthropicExtraUsage?: boolean }): void;
     getEnabledModels(): string[] | undefined;
     setEnabledModels(patterns: string[] | undefined): void;
+    reload(): Promise<void>;
+    flush(): Promise<void>;
+    drainErrors(): readonly { scope: "global" | "project"; error: Error }[];
   };
   sessionManager: PiSessionManager;
   scopedModels: readonly { model: AgentModel; thinkingLevel?: ClientThinkingLevel }[];
@@ -3023,17 +3026,43 @@ export class PiSessionService implements SessionRouteService {
     const model = candidates.find((candidate) => candidate.provider === provider && candidate.id === modelId)
       ?? session.modelRuntime.getModel(provider, modelId);
     if (model === undefined) throw new Error(`Model not found: ${provider}/${modelId}`);
-    await this.runSessionEntryMutation(session, "change models", () => session.setModel(model, { persist: true }));
+    await this.runSessionEntryMutation(session, "change models", async () => {
+      await session.settingsManager.reload();
+      await session.setModel(model, { persist: true });
+    });
+    await this.reportDefaultModelUnsaved(session);
     this.publishActivity(session, `model: ${model.id}`, "idle", model.provider);
     this.publishStatus(session);
     return this.statusFromSession(session);
+  }
+
+  /**
+   * The settings this session read when it opened may be older than the file: another session's
+   * switch or a scope edit since. pi saves the default by merging the keys it changed, but writes
+   * `enabledModels` whole, so a stale list would undo the other edit; the switch reads the file
+   * first (review triage, model default).
+   *
+   * pi writes in the background and keeps a failed write, or a settings file it could not read (it
+   * then writes nothing), to itself: the route answered that the switch worked, and the next new
+   * session started on the old model with nothing said. The session's own switch stands, so the
+   * reader is told that the default did not.
+   */
+  private async reportDefaultModelUnsaved(session: PiAgentSession): Promise<void> {
+    await session.settingsManager.flush();
+    const reasons = session.settingsManager.drainErrors().filter((entry) => entry.scope === "global").map((entry) => entry.error.message);
+    if (reasons.length === 0) return;
+    this.events.publish(session.sessionId, { type: "session.error", message: `This session switched models, but the model was not saved as the default for new sessions: ${reasons.join("; ")}` });
   }
 
   /** A cycle is a switch too: the model it lands on becomes the default, as setModel's does. */
   async cycleModel(ref: PiSessionRef, direction: "forward" | "backward"): Promise<ClientSessionStatus> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
-    const result = await this.runSessionEntryMutation(session, "change models", () => session.cycleModel(direction, { persist: true }));
+    const result = await this.runSessionEntryMutation(session, "change models", async () => {
+      await session.settingsManager.reload();
+      return session.cycleModel(direction, { persist: true });
+    });
+    await this.reportDefaultModelUnsaved(session);
     if (result === undefined) throw new Error(session.scopedModels.length > 0 ? "Only one model in scope" : "Only one model available");
     this.publishActivity(session, `model: ${result.model.id}`, "idle", result.model.provider);
     this.publishStatus(session);

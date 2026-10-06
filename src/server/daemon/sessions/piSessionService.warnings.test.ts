@@ -105,7 +105,7 @@ function subscriptionSession(options: {
       getWarnings: () => (options.anthropicExtraUsage === undefined ? {} : { anthropicExtraUsage: options.anthropicExtraUsage }),
       setWarnings: () => undefined,
       getEnabledModels: () => undefined,
-      setEnabledModels: () => undefined,
+      setEnabledModels: () => undefined, reload: () => Promise.resolve(), flush: () => Promise.resolve(), drainErrors: () => [],
     },
   };
 }
@@ -210,7 +210,7 @@ describe("dismissSessionWarning", () => {
         getWarnings: () => ({}),
         setWarnings: (warnings) => { calls.push(warnings); },
         getEnabledModels: () => undefined,
-        setEnabledModels: () => undefined,
+        setEnabledModels: () => undefined, reload: () => Promise.resolve(), flush: () => Promise.resolve(), drainErrors: () => [],
       },
     }, "anthropicExtraUsage");
 
@@ -224,7 +224,7 @@ describe("dismissSessionWarning", () => {
         getWarnings: () => ({ anthropicExtraUsage: true }),
         setWarnings: (warnings) => { calls.push(warnings); },
         getEnabledModels: () => undefined,
-        setEnabledModels: () => undefined,
+        setEnabledModels: () => undefined, reload: () => Promise.resolve(), flush: () => Promise.resolve(), drainErrors: () => [],
       },
     }, "anthropicExtraUsage");
 
@@ -238,7 +238,7 @@ describe("dismissSessionWarning", () => {
         getWarnings: () => ({}),
         setWarnings: () => { called = true; },
         getEnabledModels: () => undefined,
-        setEnabledModels: () => undefined,
+        setEnabledModels: () => undefined, reload: () => Promise.resolve(), flush: () => Promise.resolve(), drainErrors: () => [],
       },
     }, "somethingElse"); }).toThrow("Unknown session warning dismiss id: somethingElse");
     expect(called).toBe(false);

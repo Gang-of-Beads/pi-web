@@ -608,7 +608,7 @@ export class PiWebApp extends LitElement {
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private pluginDialogs: readonly PluginDialogEntry[] = [];
   private pluginDialogSeq = 0;
-  /** The last composer picker asked for; an older one's late read opens nothing (pickerStillWanted). */
+  /** The last composer picker asked for; an older one's late read opens nothing (beginPickerRequest). */
   private pickerRequestSeq = 0;
   @state() private settingsOpen = readSettingsOpen();
   @state() private reloadAfterSettings = false;
@@ -4297,7 +4297,7 @@ export class PiWebApp extends LitElement {
    * opened over what came next, with another session's list (owner report 2026-10-06): a newer
    * picker, a navigation, another session or another view since the tap drops it.
    */
-  private pickerStillWanted(): () => boolean {
+  private beginPickerRequest(): () => boolean {
     const request = ++this.pickerRequestSeq;
     const intent = this.navigation.latest();
     const view = this.displayMainView();
@@ -4314,10 +4314,11 @@ export class PiWebApp extends LitElement {
   }
 
   private async openModelDialog() {
-    const stillWanted = this.pickerStillWanted();
+    const stillWanted = this.beginPickerRequest();
     const [models, catalog] = await Promise.all([this.sessions.listModels(), this.sessions.listModelCatalog()]);
     if (!stillWanted()) return;
     const selectedValue = this.currentModelValue();
+    this.pushModalLayerFrame();
     this.setState({
       modelDialog: {
         title: "Select model",
@@ -4485,7 +4486,7 @@ export class PiWebApp extends LitElement {
   }
 
   private async openThinkingDialog() {
-    const stillWanted = this.pickerStillWanted();
+    const stillWanted = this.beginPickerRequest();
     const levels = await this.sessions.listThinkingLevels();
     if (!stillWanted()) return;
     const current = this.state.status?.thinkingLevel ?? "off";
@@ -4603,10 +4604,16 @@ export class PiWebApp extends LitElement {
     void this.openModelDialog();
   };
 
+  /**
+   * The answer is the toggled session's catalog, so it lands only in a picker still showing that
+   * session: one reopened for another session meanwhile kept the other's list (review triage,
+   * model default).
+   */
   private readonly handleToggleModelEnabled = async (provider: string, modelId: string, enabled: boolean): Promise<void> => {
+    const sessionKey = this.selectedSessionKey();
     const catalog = await this.sessions.setModelEnabled(provider, modelId, enabled);
     const dialog = this.state.modelDialog;
-    if (catalog === undefined || dialog === undefined) return;
+    if (catalog === undefined || dialog === undefined || this.selectedSessionKey() !== sessionKey) return;
     // The fresh catalog's enabled rows are the session's Enabled list in
     // order, so rebuilding both data sets keeps the dialog's modes and pi's
     // persisted scope consistent without another round trip.

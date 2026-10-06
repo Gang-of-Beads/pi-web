@@ -175,7 +175,7 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
     sessionManager: fakeSessionManager("/workspace", {
       getBranch: () => session.messages.map((message) => ({ type: "message", message })),
     }),
-    settingsManager: { getWarnings: () => ({}), setWarnings: () => undefined, getEnabledModels: () => undefined, setEnabledModels: () => undefined },
+    settingsManager: { getWarnings: () => ({}), setWarnings: () => undefined, getEnabledModels: () => undefined, setEnabledModels: () => undefined, reload: () => Promise.resolve(), flush: () => Promise.resolve(), drainErrors: () => [], },
     modelRuntime: testModelRuntime,
     scopedModels: [],
     setScopedModels: () => undefined,

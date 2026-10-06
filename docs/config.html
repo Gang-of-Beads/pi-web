@@ -101,6 +101,7 @@
             <a href="#manual-uploads">Manual uploads</a>
             <a href="#logs">Logs</a>
             <a href="#lists">Lists</a>
+            <a href="#model-for-new-sessions">Model for new sessions</a>
             <a href="#agent-runtime">Agent state directory</a>
             <a href="#pi-extension-provider-baseline">Pi extension providers</a>
             <a href="#catalog-refresh">Model catalog refresh</a>
@@ -701,6 +702,17 @@ worktree_path="$1"
                 config, where it applies after a browser reload. A layout without a value fits the width, as before. The
                 choice lives in the config, so clearing a browser's data keeps it; it is kept per layout, not per device. PI WEB
                 uses its phone layout on a touch screen or in a window under 760 px wide.
+              </p>
+            </section>
+
+            <section id="model-for-new-sessions">
+              <h2>Model for new sessions</h2>
+              <p>
+                Switching a session's model in PI WEB's model picker also makes that model pi's default on that machine, as pi's own "set as default" does: <code>defaultProvider</code> and <code>defaultModel</code> in <code>settings.json</code> in the machine's Pi agent state directory (<code>~/.pi/agent</code> unless <code>PI_CODING_AGENT_DIR</code> moves it; see <a href="#agent-runtime">Agent state directory</a>).
+                The next session you start on that machine starts on it. A session that already has a conversation keeps the model its history records; one that was never sent a message has no history yet, so it follows the default when it is opened again.
+                Forks and clones keep the model of the conversation they copy, and a session an agent spawns starts on the model it is given or on its parent's.
+                Because it is pi's setting, the <code>pi</code> terminal on that machine opens on the same model, and a trusted project's own <code>.pi/settings.json</code> default still wins inside that project.
+                If the default cannot be saved (a settings file pi cannot read or write), the session still switches, and its conversation says that the default was not saved.
               </p>
             </section>
 
