@@ -2,7 +2,6 @@ import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { CommandOption } from "../api";
-import { fuzzyRank } from "../fuzzyMatch";
 import { keyBelongsToInputMethod, keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
@@ -11,20 +10,18 @@ import { interactiveSurfaceStyles } from "./shared";
 @customElement("command-picker")
 export class CommandPicker extends LitElement {
   @property() override title = "Select";
-  @property({ type: Boolean }) searchable = false;
   @property({ attribute: false }) options: CommandOption[] = [];
   @property({ attribute: false }) selectedValue?: string;
   @property({ attribute: false }) onPick?: (value: string) => void;
   @property({ attribute: false }) onCancel?: () => void;
   @state() private selectedIndex = 0;
-  @state() private query = "";
 
   override render() {
-    const options = this.filteredOptions();
+    const options = this.options;
     return html`
       <modal-surface
         .onClose=${() => this.onCancel?.()}
-        .initialFocus=${this.searchable ? "input" : ".options"}
+        .initialFocus=${".options"}
         .label=${this.title}
         @keydown=${(event: KeyboardEvent) => { this.handleKeyDown(event); }}
       >
@@ -32,7 +29,6 @@ export class CommandPicker extends LitElement {
           <strong>${this.title}</strong>
           <button aria-label="Close" @click=${() => this.onCancel?.()}>${renderCrossIcon()}</button>
         </header>
-        ${this.searchable ? html`<input placeholder="Search" .value=${this.query} @input=${(event: Event) => { this.handleSearchInput(event); }}>` : null}
         <div class="options" tabindex="0">
           ${options.map((option, index) => html`
             <button
@@ -58,30 +54,16 @@ export class CommandPicker extends LitElement {
 
   private selectInitialValue(): void {
     if (this.selectedValue === undefined) return;
-    const index = this.filteredOptions().findIndex((option) => option.value === this.selectedValue);
+    const index = this.options.findIndex((option) => option.value === this.selectedValue);
     if (index >= 0) this.selectedIndex = index;
   }
 
-  private handleSearchInput(event: Event): void {
-    if (event.target instanceof HTMLInputElement) {
-      this.query = event.target.value;
-      this.selectedIndex = 0;
-    }
-  }
-
-  private filteredOptions(): CommandOption[] {
-    // Ranked rather than merely filtered: an option's searchable text spans its
-    // label, description, and value, so a forgiving match admits weak hits that
-    // would otherwise bury the obvious answer. Ties keep the caller's order.
-    return fuzzyRank(this.options, this.query, (option) => `${option.label} ${option.description ?? ""} ${option.value}`);
-  }
-
   // Escape and backdrop presses are owned by the modal surface (routed to
-  // `onCancel`). Search and list-container keys retain the broadened option
-  // navigation idiom, while focused native buttons keep their own semantics.
+  // `onCancel`). List-container keys retain the broadened option navigation
+  // idiom, while focused native buttons keep their own semantics.
   private handleKeyDown(event: KeyboardEvent) {
     if (keyBelongsToInputMethod(event) || keyboardEventOriginatesFromNativeActivationControl(event)) return;
-    const options = this.filteredOptions();
+    const options = this.options;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       if (options.length > 0) this.selectedIndex = (this.selectedIndex + 1) % options.length;

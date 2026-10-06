@@ -2,34 +2,7 @@ import { describe, expect, it } from "vitest";
 import { initialAppState, type AppState } from "../appState";
 import type { Machine, Project, SessionInfo, Workspace } from "../api";
 import type { KeyValueStorage } from "./sessionStorageMemory";
-import { emptyMachineNavigationSnapshot, InMemoryMachineNavigationMemory, machineNavigationSnapshotFromState, routeFromMachineNavigationSnapshot, SessionStorageMachineNavigationMemory } from "./machineNavigationMemory";
-
-describe("InMemoryMachineNavigationMemory", () => {
-  it("remembers independent navigation snapshots per machine", () => {
-    const memory = new InMemoryMachineNavigationMemory();
-
-    memory.remember({ machineId: "local", projectId: "local-project", surface: { selectedFilePath: "README.md" } });
-    memory.remember({ machineId: "remote", projectId: "remote-project", workspaceId: "remote-workspace", sessionId: "remote-session", surface: {} });
-
-    expect(memory.latest("local")?.projectId).toBe("local-project");
-    expect(memory.latest("remote")?.workspaceId).toBe("remote-workspace");
-
-    memory.forget("local");
-
-    expect(memory.latest("local")).toBeUndefined();
-    expect(memory.latest("remote")?.projectId).toBe("remote-project");
-  });
-
-  it("returns cloned snapshots so callers cannot mutate memory", () => {
-    const memory = new InMemoryMachineNavigationMemory();
-
-    memory.remember({ machineId: "local", surface: { selectedFilePath: "README.md" } });
-    const snapshot = memory.latest("local");
-    if (snapshot !== undefined) snapshot.surface.selectedFilePath = "changed.ts";
-
-    expect(memory.latest("local")?.surface.selectedFilePath).toBe("README.md");
-  });
-});
+import { emptyMachineNavigationSnapshot, machineNavigationSnapshotFromState, routeFromMachineNavigationSnapshot, SessionStorageMachineNavigationMemory } from "./machineNavigationMemory";
 
 describe("SessionStorageMachineNavigationMemory", () => {
   it("persists independent navigation snapshots in per-tab storage", () => {

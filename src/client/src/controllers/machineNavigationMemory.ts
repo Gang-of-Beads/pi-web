@@ -26,23 +26,6 @@ export interface MachineNavigationMemory {
   forget(machineId: string): void;
 }
 
-export class InMemoryMachineNavigationMemory implements MachineNavigationMemory {
-  private readonly snapshotsByMachine = new Map<string, MachineNavigationSnapshot>();
-
-  latest(machineId: string): MachineNavigationSnapshot | undefined {
-    const snapshot = this.snapshotsByMachine.get(machineId);
-    return snapshot === undefined ? undefined : cloneSnapshot(snapshot);
-  }
-
-  remember(snapshot: MachineNavigationSnapshot): void {
-    this.snapshotsByMachine.set(snapshot.machineId, cloneSnapshot(snapshot));
-  }
-
-  forget(machineId: string): void {
-    this.snapshotsByMachine.delete(machineId);
-  }
-}
-
 const machineNavigationStorageKey = "pi-web:machine-navigation:v1";
 
 export class SessionStorageMachineNavigationMemory implements MachineNavigationMemory {

@@ -1,7 +1,7 @@
 import type { AskUserSubmission, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse } from "../../../shared/apiTypes";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
-import { errorCode, HttpError, request } from "./http";
+import { apiErrorMessage, errorCode, HttpError, request } from "./http";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { fetchWithDeadline, isTransportFailure } from "./requestDeadline";
 import {
@@ -515,12 +515,6 @@ function terminalCommandRunFilterQuery(filter: TerminalCommandRunFilter | undefi
   if (filter.metadata !== undefined && Object.keys(filter.metadata).length > 0) params.set("metadata", JSON.stringify(filter.metadata));
   const query = params.toString();
   return query === "" ? "" : `?${query}`;
-}
-
-function apiErrorMessage(value: unknown): string | undefined {
-  if (!isRecord(value)) return undefined;
-  const error = value["error"];
-  return typeof error === "string" ? error : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

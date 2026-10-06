@@ -115,7 +115,7 @@ import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSu
 import { branchFromFileEntries, isCurrentVersionFile } from "./fileBranch.js";
 import { applyProviderSafeToolSchemas } from "./providerSafeToolSchema.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
-import { planSessionCleanup, summarizeSessionCleanupExecution, type NormalizedSessionCleanupRequest, type SessionCleanupPlan } from "./sessionCleanup.js";
+import { archiveInputFromListEntry, planSessionCleanup, summarizeSessionCleanupExecution, type NormalizedSessionCleanupRequest, type SessionCleanupPlan } from "./sessionCleanup.js";
 import type { SpawnTargetDecision, SpawnTargetResolver } from "./spawnTargetResolver.js";
 import {
   SessionNotificationStore,
@@ -6406,20 +6406,6 @@ function clientSessionFromListEntry(session: PiSessionListEntry): ClientSession 
     modified: session.modified.toISOString(),
     messageCount: session.messageCount,
     firstMessage: session.firstMessage,
-    ...(session.parentSessionPath === undefined ? {} : { parentSessionPath: session.parentSessionPath }),
-  };
-}
-
-function archiveInputFromListEntry(session: PiSessionListEntry): ArchiveSessionInput {
-  return {
-    sessionId: session.id,
-    cwd: session.cwd,
-    path: session.path,
-    created: session.created.toISOString(),
-    modified: session.modified.toISOString(),
-    messageCount: session.messageCount,
-    firstMessage: session.firstMessage,
-    ...(session.name === undefined ? {} : { name: session.name }),
     ...(session.parentSessionPath === undefined ? {} : { parentSessionPath: session.parentSessionPath }),
   };
 }

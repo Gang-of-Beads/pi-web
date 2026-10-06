@@ -3,9 +3,9 @@ import type { TemplateResult } from "lit";
 import type { PiPackageInfo } from "../../api";
 import { SettingsPackagesPanel } from "./SettingsPackagesPanel";
 import type { SettingsNotice } from "./SettingsPanelFrame";
-import type { PiPackageTargetContext } from "./piPackageSettings";
+import type { SettingsMachineTarget } from "./settingsMachineTarget";
 
-const remoteTarget: PiPackageTargetContext = { id: "lab-mac", name: "Lab Mac", kind: "remote" };
+const remoteTarget: SettingsMachineTarget = { id: "lab-mac", name: "Lab Mac", kind: "remote" };
 
 describe("settings-packages-panel layout", () => {
   it("shows a load-unavailable state instead of an empty package state when no response loaded", () => {

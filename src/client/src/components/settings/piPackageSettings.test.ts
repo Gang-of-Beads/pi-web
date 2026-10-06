@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { PiPackageInfo } from "../../api";
-import { canUpdateAllPiPackages, friendlyPiPackageErrorMessage, isPiPackageOperationPending, normalizePiPackageSource, piPackageFilteredLabel, piPackageMutationFollowUpMessage, piPackageScopeLabel, piPackageSourceValidationMessage, piPackageTargetContext, piPackageTargetLabel, piPackageUpdateDisabledReason, shouldRefreshGatewayPluginsAfterPiPackageMutation, updateAllPiPackagesDisabledReason, type PiPackageTargetContext } from "./piPackageSettings";
+import { canUpdateAllPiPackages, friendlyPiPackageErrorMessage, isPiPackageOperationPending, normalizePiPackageSource, piPackageFilteredLabel, piPackageMutationFollowUpMessage, piPackageScopeLabel, piPackageSourceValidationMessage, piPackageUpdateDisabledReason, shouldRefreshGatewayPluginsAfterPiPackageMutation, updateAllPiPackagesDisabledReason } from "./piPackageSettings";
+import { settingsMachineTarget, settingsMachineTargetLabel, type SettingsMachineTarget } from "./settingsMachineTarget";
 
 const userPackage: PiPackageInfo = { source: "npm:@acme/tools", scope: "user", filtered: false, installedPath: "/home/test/.pi/packages/tools" };
 const projectPackage: PiPackageInfo = { source: "../project-tools", scope: "project", filtered: true };
-const localTarget: PiPackageTargetContext = { id: "local", name: "local", kind: "local" };
-const remoteTarget: PiPackageTargetContext = { id: "remote-a", name: "Lab Mac", kind: "remote" };
+const localTarget: SettingsMachineTarget = { id: "local", name: "local", kind: "local" };
+const remoteTarget: SettingsMachineTarget = { id: "remote-a", name: "Lab Mac", kind: "remote" };
 
 describe("Pi package settings helpers", () => {
   it("normalizes and validates install sources without adding location choices", () => {
@@ -37,9 +38,9 @@ describe("Pi package settings helpers", () => {
   });
 
   it("labels package targets and gateway plugin refresh scope", () => {
-    expect(piPackageTargetContext(undefined)).toEqual(localTarget);
-    expect(piPackageTargetLabel(localTarget)).toBe("local (local gateway)");
-    expect(piPackageTargetLabel(remoteTarget)).toBe("Lab Mac (remote machine)");
+    expect(settingsMachineTarget(undefined)).toEqual(localTarget);
+    expect(settingsMachineTargetLabel(localTarget)).toBe("local (local gateway)");
+    expect(settingsMachineTargetLabel(remoteTarget)).toBe("Lab Mac (remote machine)");
     expect(shouldRefreshGatewayPluginsAfterPiPackageMutation(localTarget)).toBe(true);
     expect(shouldRefreshGatewayPluginsAfterPiPackageMutation(remoteTarget)).toBe(false);
   });

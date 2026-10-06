@@ -18,19 +18,6 @@ export function searchTokens(query: string): string[] {
 }
 
 /**
- * Whether `haystack` satisfies every token of `query`.
- *
- * An empty query matches everything: a search box that has not been typed into
- * is not a filter.
- */
-export function fuzzyMatches(haystack: string, query: string): boolean {
-  const tokens = searchTokens(query);
-  if (tokens.length === 0) return true;
-  const target = haystack.toLowerCase();
-  return tokens.every((token) => tokenMatches(target, token));
-}
-
-/**
  * Relevance of `haystack` for `query`, higher being better, or `undefined`
  * when it does not match at all.
  *
@@ -78,10 +65,6 @@ export function fuzzyRank<T>(items: readonly T[], query: string, haystackOf: (it
   });
   scored.sort((left, right) => right.score - left.score || left.index - right.index);
   return scored.map((entry) => entry.item);
-}
-
-function tokenMatches(target: string, token: string): boolean {
-  return target.includes(token) || isAbbreviation(token, target);
 }
 
 /**

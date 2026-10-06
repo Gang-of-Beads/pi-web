@@ -41,7 +41,7 @@ import type { DeliveryFailureCause } from "../deliveryWords";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
 import type { ExtensionEditorTextMode, PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
-import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory, isOpenableSession } from "./sessionSelection"
+import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, type SessionSelectionMemory, isOpenableSession } from "./sessionSelection"
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
 import { backgroundRunCountChanged } from "../backgroundRunCountSignal";
@@ -420,12 +420,6 @@ export class SessionController {
     if (options?.forgetRememberedSelection === true && cwd !== undefined) this.sessionSelection.forgetWorkspace(this.workspaceSelectionKey(cwd));
     this.clearActiveSession();
     if (options?.updateUrl !== false) this.updateUrl();
-  }
-
-  clearSelectionAfterArchivedCollapse(): void {
-    const state = this.getState();
-    if (!shouldDeselectAfterArchivedCollapse(state.sessions, state.selectedSession)) return;
-    this.deselectSession({ forgetRememberedSelection: true });
   }
 
   async startSession() {
@@ -1112,23 +1106,6 @@ export class SessionController {
     }
   }
 
-  async archiveSessionWithDescendants(session = this.getState().selectedSession) {
-    if (session === undefined || !isArchivableSessionInfo(session, this.statusForSession(session))) return;
-    try {
-      const response = await this.api.archiveWithDescendants(session, selectedMachineId(this.getState()));
-      const archivedIds = response.sessionIds !== undefined && response.sessionIds.length > 0 ? response.sessionIds : [session.id];
-      const state = this.getState();
-      const sessions = markSessionsArchived(state.sessions, archivedIds, new Date().toISOString());
-      const selectionChange = selectionAfterArchivingSessions(sessions, state.selectedSession?.id, archivedIds);
-      this.setState({ sessions });
-
-      if (selectionChange.type === "select") await this.selectSession(selectionChange.session);
-      else if (selectionChange.type === "clear") this.deselectSession({ forgetRememberedSelection: true });
-    } catch (error) {
-      if (this.getState().selectedSession?.id === session.id) this.failedFor(session, error);
-    }
-  }
-
   async archiveSessions(sessions: readonly SessionInfo[]): Promise<void> {
     const candidates = uniqueSessionsById(sessions).filter((session) => isArchivableSessionInfo(session, this.statusForSession(session)));
     if (candidates.length === 0) return;
@@ -1462,18 +1439,6 @@ export class SessionController {
     }
   }
 
-  async detachParent(session = this.getState().selectedSession) {
-    if (session?.parentSessionPath === undefined) return;
-    try {
-      await this.api.detachParent(session, selectedMachineId(this.getState()));
-      const detached = { ...session };
-      delete detached.parentSessionPath;
-      this.replaceSession(detached);
-    } catch (error) {
-      this.failedFor(session, error);
-    }
-  }
-
   async listModels() {
     const session = this.getState().selectedSession;
     if (!session || session.archived === true) return [];
@@ -1523,17 +1488,6 @@ export class SessionController {
     }
   }
 
-  async cycleModel(direction: "forward" | "backward") {
-    const session = this.getState().selectedSession;
-    if (!session || session.archived === true) return;
-    try {
-      this.applyStatus(await this.api.cycleModel(session, direction, selectedMachineId(this.getState())));
-      await this.refreshAvailableThinkingLevels();
-    } catch (error) {
-      this.failedFor(session, error);
-    }
-  }
-
   async listThinkingLevels() {
     const session = this.getState().selectedSession;
     if (!session || session.archived === true) return [];
@@ -1562,16 +1516,6 @@ export class SessionController {
     if (!session || session.archived === true) return;
     try {
       this.applyStatus(await this.api.setThinkingLevel(session, level, selectedMachineId(this.getState())));
-    } catch (error) {
-      this.failedFor(session, error);
-    }
-  }
-
-  async cycleThinkingLevel() {
-    const session = this.getState().selectedSession;
-    if (!session || session.archived === true) return;
-    try {
-      this.applyStatus(await this.api.cycleThinkingLevel(session, selectedMachineId(this.getState())));
     } catch (error) {
       this.failedFor(session, error);
     }
@@ -1629,36 +1573,6 @@ export class SessionController {
     } catch (error) {
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
       return false;
-    }
-  }
-
-  /**
-   * Open a subagent run's conversation.
-   *
-   * A subsession row opens the session it names, while an agent-run row only
-   * ever offered a block of text - the same work, told two different ways. The
-   * run does have a conversation: its transcript is a session file for a
-   * fresh-context child and the subagent tool's event log for a fork-context
-   * one, and the server projects either into the messages the chat view
-   * renders.
-   *
-   * It opens for reading only. Steering, resuming or interrupting a live child
-   * travels over the subagent extension's RPC, which rides the in-process Pi
-   * event bus (`pi.events`); the web server does not hold it, so those
-   * operations cannot be offered from this surface and the view says so rather
-   * than showing a control that would do nothing.
-   */
-  async dismissWarning(dismissId: string) {
-    const state = this.getState();
-    const session = state.selectedSession;
-    if (session === undefined || isClientPendingStartSessionInfo(session)) return;
-    const machineId = selectedMachineId(state);
-    const selectionSeq = this.selectionSeq;
-    try {
-      const status = await this.api.dismissWarning(session, dismissId, machineId);
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(status);
-    } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
     }
   }
 

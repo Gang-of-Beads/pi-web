@@ -28,8 +28,6 @@ import { commandDeliveryPresentation, commandResultLine, type CommandLedgerEntry
 import { placeCommands } from "../commandPlacement";
 import { IDENTITY_ZOOM, pinchZoom, panZoom, wheelZoom, type PinchPoint, type PinchStart, type ZoomTransform } from "../imageZoomGesture";
 
-/** Movement under this is still a tap, so a stray pixel does not swallow the close. */
-const ZOOM_TAP_SLOP_PX = 8;
 /** One wheel notch, as a scale factor: exp(-deltaY / this). */
 const WHEEL_ZOOM_STEP = 300;
 import type { ClosedExtensionDialog } from "../appState";
@@ -464,7 +462,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .part.thinking > summary { color: var(--pi-dim); }
   .part.thinking > formatted-text { color: var(--pi-muted); }
   pre { margin: var(--pi-space-3) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; direction: ltr; text-align: left; unicode-bidi: isolate; }
-  .shell-output { color: var(--pi-text); font: var(--pi-text-sm) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: inherit; line-height: 1.45; direction: ltr; text-align: left; unicode-bidi: isolate; }
+  .shell-output { color: var(--pi-text); font: var(--pi-text-sm) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: 1.45; direction: ltr; text-align: left; unicode-bidi: isolate; }
   @keyframes pulse { 0%, 100% { transform: scale(.75); opacity: .55; } 50% { transform: scale(1.2); opacity: 1; } }
 `;
 
@@ -489,15 +487,6 @@ function recordWithQueuedMessages(value: unknown): { queuedMessages?: readonly Q
  */
 function sameQueue(known: readonly unknown[] | undefined, now: readonly unknown[] | undefined): boolean {
   return known === now || ((known?.length ?? 0) === 0 && (now?.length ?? 0) === 0);
-}
-
-function clampPercent(value: number): number {
-  return clampNumber(value, 0, 100);
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.min(max, Math.max(min, value));
 }
 
 
@@ -725,7 +714,6 @@ export class ChatView extends LitElement {
   @state() private zoomTransform: ZoomTransform = IDENTITY_ZOOM;
   @state() private expandedMetaKey: string | undefined;
   @state() private copiedMessageKey: string | undefined;
-  @state() private currentConversationIndex: number | undefined;
   @property() machineId = "local";
   @property() sessionCwd?: string;
   /** When this browser first saw the current turn working, and a clock to age it. */
@@ -748,7 +736,6 @@ export class ChatView extends LitElement {
   private drawnWaiting: WaitingCards | undefined;
   private drawnWaitingClearTimer: ReturnType<typeof setTimeout> | undefined;
   /** Which open card's alignment a press deferred, so the release can replay it. */
-  private conversationRailFrame: number | undefined;
   private groupedMessagesInput?: ChatLine[];
   private groupedMessagesStart = 0;
   private groupedMessagesCache: ChatGroup[] = [];
@@ -877,7 +864,6 @@ export class ChatView extends LitElement {
   private readonly zoomPointers = new Map<number, { x: number; y: number }>();
   private zoomPinch: PinchStart | undefined;
   private zoomPan: { from: { x: number; y: number }; transform: ZoomTransform } | undefined;
-  private zoomMoved = false;
 
   private zoomPoint(event: { clientX: number; clientY: number }): { x: number; y: number } {
     const box = this.imageZoomDialog?.getBoundingClientRect();
@@ -901,11 +887,9 @@ export class ChatView extends LitElement {
       const pinch = this.pinchPoint();
       this.zoomPinch = pinch === undefined ? undefined : { ...pinch, transform: this.zoomTransform };
       this.zoomPan = undefined;
-      this.zoomMoved = true;
       return;
     }
     this.zoomPan = { from: this.zoomPoint(event), transform: this.zoomTransform };
-    this.zoomMoved = false;
   };
 
   private readonly onImageZoomPointerMove = (event: PointerEvent): void => {
@@ -919,7 +903,6 @@ export class ChatView extends LitElement {
     }
     const pan = this.zoomPan;
     if (pan === undefined || this.zoomPointers.size !== 1) return;
-    if (Math.hypot(point.x - pan.from.x, point.y - pan.from.y) > ZOOM_TAP_SLOP_PX) this.zoomMoved = true;
     this.zoomTransform = panZoom(pan.from, point, pan.transform);
   };
 
@@ -979,7 +962,6 @@ export class ChatView extends LitElement {
     if (this.loadMoreCheckFrame !== undefined) cancelAnimationFrame(this.loadMoreCheckFrame);
     if (this.scrollToBottomFrame !== undefined) cancelAnimationFrame(this.scrollToBottomFrame);
     this.stopWatchingStreamingGrowth();
-    if (this.conversationRailFrame !== undefined) cancelAnimationFrame(this.conversationRailFrame);
     if (this.catchUpFollowTimer !== undefined) {
       clearTimeout(this.catchUpFollowTimer);
       this.catchUpFollowTimer = undefined;
@@ -1094,7 +1076,6 @@ export class ChatView extends LitElement {
       this.openPages();
       this.restoreScrollPosition();
     } else if (!changed.has("sessionId") && (changed.has("messages") || this.queueGrew(changed.get("status")) || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) && this.pinnedToBottom) this.scrollToBottom();
-    if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestPages(false);
     if (changed.has("messages") || changed.has("messageEnd") || changed.has("hasNewer")) this.newerRequested = false;
@@ -1815,18 +1796,6 @@ export class ChatView extends LitElement {
   }
 
 
-  private conversationDisplayTotal(): number {
-    if (!this.hasMore && this.messageStart === 0) return Math.max(1, this.messages.length);
-    return Math.max(1, this.messageTotal, this.messageStart + this.messages.length);
-  }
-
-  private conversationPositionPercent(total = this.conversationDisplayTotal()): number {
-    if (total <= 1) return 100;
-    const fallbackIndex = this.pinnedToBottom ? this.messageStart + this.messages.length - 1 : this.messageStart;
-    const index = clampNumber(this.currentConversationIndex ?? fallbackIndex, 0, total - 1);
-    return clampPercent((index / (total - 1)) * 100);
-  }
-
   /**
    * The transcript loads itself at both ends. It used to stop at a button the
    * reader had to find and press; the reader asked for scrolling to be the
@@ -2270,7 +2239,6 @@ export class ChatView extends LitElement {
     if (this.quoteChip !== undefined) { this.quoteChip = undefined; this.requestUpdate(); }
     this.updatePinnedToBottomFromScroll();
     this.requestPages(true);
-    this.scheduleConversationRailUpdate();
     if (!this.suppressScrollSave) this.scheduleScrollPositionSave();
   }
 
@@ -2809,29 +2777,6 @@ export class ChatView extends LitElement {
     this.scrollController.scheduleSave(scopeKey, (scheduledKey) => {
       if (this.scrollScopeKey === scheduledKey) this.saveScrollPosition(scheduledKey);
     });
-  }
-
-  private scheduleConversationRailUpdate(): void {
-    if (this.conversationRailFrame !== undefined) return;
-    this.conversationRailFrame = requestAnimationFrame(() => {
-      this.conversationRailFrame = undefined;
-      this.updateConversationRailPosition();
-    });
-  }
-
-  private updateConversationRailPosition(): void {
-    if (!this.messages.length || this.messageTotal <= 0) {
-      this.currentConversationIndex = undefined;
-      return;
-    }
-    const total = this.conversationDisplayTotal();
-    const article = this.firstVisibleArticle();
-    const index = Number(article?.dataset["index"]);
-    if (Number.isFinite(index)) {
-      this.currentConversationIndex = clampNumber(index, 0, Math.max(0, total - 1));
-      return;
-    }
-    this.currentConversationIndex = clampNumber(this.pinnedToBottom ? this.messageStart + this.messages.length - 1 : this.messageStart, 0, Math.max(0, total - 1));
   }
 
   private scrollMarkers(): HTMLElement[] {

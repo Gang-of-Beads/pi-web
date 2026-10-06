@@ -19,7 +19,7 @@ import "./settings/SettingsSessiondPanel";
 import "./settings/SettingsPackagesPanel";
 import "./settings/SettingsPluginsPanel";
 import "./settings/SettingsShortcutsPanel";
-import { friendlyPiPackageErrorMessage, piPackageMutationFollowUpMessage, piPackageTargetLabel, shouldRefreshGatewayPluginsAfterPiPackageMutation, type PiPackageOperationState, type PiPackageTargetContext } from "./settings/piPackageSettings";
+import { friendlyPiPackageErrorMessage, piPackageMutationFollowUpMessage, shouldRefreshGatewayPluginsAfterPiPackageMutation, type PiPackageOperationState } from "./settings/piPackageSettings";
 import { loadGatewaySettingsData, loadPiPackagesData } from "./settings/settingsDataLoading";
 import { mergeSelectedMachineAccessConfig } from "./settings/settingsMachineAccessConfig";
 import { friendlySelectedMachineSettingsErrorMessage, isSelectedMachineSettingsUnsupported, pluginLifecycleSupport, selectedMachineSettingsSupportKey, settingsMachineTarget, settingsMachineTargetLabel, type PluginLifecycleSupport, type SettingsMachineTarget } from "./settings/settingsMachineTarget";
@@ -697,7 +697,7 @@ export class SettingsDialog extends LitElement {
     await this.runPiPackageMutation(source === undefined ? { kind: "update-all" } : { kind: "update", source }, "update Pi packages", target, () => piPackagesApi.update(source, target.id));
   }
 
-  private async runPiPackageMutation(operation: PiPackageOperationState, label: string, target: PiPackageTargetContext, mutate: () => Promise<PiPackageMutationResponse>): Promise<void> {
+  private async runPiPackageMutation(operation: PiPackageOperationState, label: string, target: SettingsMachineTarget, mutate: () => Promise<PiPackageMutationResponse>): Promise<void> {
     if (this.saving) throw new Error("A settings operation is already running.");
     const requestSeq = ++this.packageMutationSeq;
     this.packageLoadRequestSeq += 1;
@@ -715,7 +715,7 @@ export class SettingsDialog extends LitElement {
       if (pluginRefreshError !== undefined) this.packageError = pluginRefreshError;
       this.packageMessage = piPackageMutationFollowUpMessage(response.action, target);
     } catch (error) {
-      if (this.isCurrentPackageMutation(requestSeq, target)) this.packageError = `Failed to ${label} on ${piPackageTargetLabel(target)}: ${friendlyPiPackageErrorMessage(describeError(error), target)}`;
+      if (this.isCurrentPackageMutation(requestSeq, target)) this.packageError = `Failed to ${label} on ${settingsMachineTargetLabel(target)}: ${friendlyPiPackageErrorMessage(describeError(error), target)}`;
       throw error;
     } finally {
       if (this.packageMutationSeq === requestSeq) {
@@ -749,7 +749,7 @@ export class SettingsDialog extends LitElement {
     return settingsMachineTarget(this.machine);
   }
 
-  private packageTarget(): PiPackageTargetContext {
+  private packageTarget(): SettingsMachineTarget {
     return this.settingsTarget();
   }
 
@@ -779,15 +779,15 @@ export class SettingsDialog extends LitElement {
     return requestSeq === this.pluginLoadRequestSeq && this.isCurrentSettingsTarget(target);
   }
 
-  private isCurrentPackageLoad(requestSeq: number, target: PiPackageTargetContext): boolean {
+  private isCurrentPackageLoad(requestSeq: number, target: SettingsMachineTarget): boolean {
     return requestSeq === this.packageLoadRequestSeq && this.isCurrentPackageTarget(target);
   }
 
-  private isCurrentPackageMutation(requestSeq: number, target: PiPackageTargetContext): boolean {
+  private isCurrentPackageMutation(requestSeq: number, target: SettingsMachineTarget): boolean {
     return requestSeq === this.packageMutationSeq && this.isCurrentPackageTarget(target);
   }
 
-  private isCurrentPackageTarget(target: PiPackageTargetContext): boolean {
+  private isCurrentPackageTarget(target: SettingsMachineTarget): boolean {
     return this.packageTarget().id === target.id;
   }
 

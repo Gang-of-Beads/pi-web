@@ -199,7 +199,6 @@ export class WorkspaceFileViewer extends LitElement {
 
   private renderRawSource(file: FileContentResponse): TemplateResult {
     if (file.size === 0) return this.renderStatus("This file is empty.");
-    loadCodeViewer();
     return html`
       ${file.truncated ? html`<p class="preview-note" role="status">Raw source is truncated. Use Download for the complete file.</p>` : null}
       <pi-code-viewer .path=${file.path} .content=${file.content} .language=${file.language}></pi-code-viewer>
@@ -484,10 +483,6 @@ function metadataForFile(file: FileContentResponse, kind: WorkspaceFilePreviewKi
         ? "markdown"
         : file.mimeType ?? kind;
   return `${format} · ${formatFileSize(file.size)}${file.truncated ? " · truncated" : ""}`;
-}
-
-function loadCodeViewer(): void {
-  void import("./codeViewerElement");
 }
 
 if (customElements.get("pi-files-viewer") === undefined) customElements.define("pi-files-viewer", WorkspaceFileViewer);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fuzzyMatches, fuzzyRank, fuzzyScore, isAbbreviation, searchTokens } from "./fuzzyMatch";
+import { fuzzyRank, fuzzyScore, isAbbreviation, searchTokens } from "./fuzzyMatch";
 
 describe("searchTokens", () => {
   it("splits on whitespace and lowercases", () => {
@@ -8,53 +8,6 @@ describe("searchTokens", () => {
 
   it("returns nothing for a blank query", () => {
     expect(searchTokens("   ")).toEqual([]);
-  });
-});
-
-describe("fuzzyMatches", () => {
-  const model = "claude-opus-5 anthropic-work anthropic-work/claude-opus-5";
-
-  it("matches remembered fragments in any order", () => {
-    // The motivating case: neither "opus-5 work" nor "work opus-5" is a
-    // contiguous substring of the model's searchable text.
-    expect(fuzzyMatches(model, "opus-5 work")).toBe(true);
-    expect(fuzzyMatches(model, "work opus-5")).toBe(true);
-  });
-
-  it("matches a single fragment", () => {
-    expect(fuzzyMatches(model, "opus")).toBe(true);
-    expect(fuzzyMatches(model, "work")).toBe(true);
-  });
-
-  it("matches an abbreviation", () => {
-    // Prefix run inside one word, then a new word.
-    expect(fuzzyMatches(model, "opus5")).toBe(true);
-    // Pure word initials.
-    expect(fuzzyMatches("claude-haiku-4-5", "ch45")).toBe(true);
-  });
-
-  it("does not spell a query out of scattered mid-word letters", () => {
-    // "opus-4" can be assembled from anthropic/claude-sonnet-4-5 as a plain
-    // subsequence; treating that as a hit returns the wrong model for a query
-    // the user was confident about.
-    expect(fuzzyMatches("anthropic/claude-sonnet-4-5 claude-sonnet-4-5 Claude Sonnet 4.5", "opus-4")).toBe(false);
-  });
-
-  it("is case insensitive", () => {
-    expect(fuzzyMatches(model, "OPUS-5 Work")).toBe(true);
-  });
-
-  it("requires every token to match", () => {
-    expect(fuzzyMatches(model, "opus-5 personal")).toBe(false);
-  });
-
-  it("treats an empty query as no filter", () => {
-    expect(fuzzyMatches(model, "")).toBe(true);
-    expect(fuzzyMatches(model, "   ")).toBe(true);
-  });
-
-  it("rejects a token whose characters are not all present", () => {
-    expect(fuzzyMatches("claude-opus-5", "zzz")).toBe(false);
   });
 });
 

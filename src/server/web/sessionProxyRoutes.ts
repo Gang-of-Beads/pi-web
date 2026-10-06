@@ -1,10 +1,11 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { WebSocket, type RawData } from "ws";
+import type { WebSocket } from "ws";
 import {
   SessionDaemonClient,
   type SessionDaemonRequestOptions,
 } from "../shared/sessiondClient/sessionDaemonClient.js";
 import { boundDaemonRequest, SESSION_PROXY_DEADLINE_MS } from "./boundedDaemonRequest.js";
+import { bridgeSockets } from "./webSocketBridge.js";
 
 interface DaemonAnswer { statusCode: number; headers: Record<string, string>; body: string }
 
@@ -123,21 +124,6 @@ function parseJson(text: string): unknown {
 
 function requestFailed(reply: FastifyReply, error: unknown): void {
   reply.code(502).send({ error: `Session daemon unavailable: ${error instanceof Error ? error.message : String(error)}` });
-}
-
-function bridgeSockets(client: WebSocket, upstream: WebSocket): void {
-  client.on("message", (data) => { sendIfOpen(upstream, data); });
-  upstream.on("message", (data) => { sendIfOpen(client, data); });
-  client.on("close", () => { upstream.close(); });
-  upstream.on("close", () => { client.close(); });
-  upstream.on("error", () => { client.close(); });
-  client.on("error", () => { upstream.close(); });
-}
-
-function sendIfOpen(socket: WebSocket, data: RawData): void {
-  if (socket.readyState === WebSocket.OPEN) {
-    socket.send(data);
-  }
 }
 
 function toolResultImageBlock(value: unknown): { mimeType: string; data: string } | undefined {

@@ -3,7 +3,7 @@ import { initialAppState } from "../appState";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { SessionController } from "./sessionController";
 import { InMemorySessionSelectionMemory } from "./sessionSelection";
-import { defaultApi, emptyPage, FakeSocket, oldSession, sessionKey, sessionLookupId, status, workspace, type AppState, type MessagePage } from "./sessionController.testSupport";
+import { defaultApi, FakeSocket, oldSession, sessionKey, sessionLookupId, status, workspace, type AppState, type MessagePage } from "./sessionController.testSupport";
 
 describe("SessionController reload and selection", () => {
   it("reloads the selected session from disk, discards the cached transcript, and re-fetches history", async () => {
@@ -89,29 +89,4 @@ describe("SessionController reload and selection", () => {
     expect(state.error).toBe("");
   });
 
-  it("forgets archived selections when the archived section collapse clears selection", async () => {
-    const archivedSession = { ...oldSession, archived: true, archivedAt: "later" };
-    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [archivedSession] };
-    const urlUpdates: ({ replace?: boolean | undefined } | undefined)[] = [];
-    const api: typeof defaultApi = {
-      ...defaultApi,
-      messages: () => Promise.resolve(emptyPage),
-    };
-    const controller = new SessionController(
-      () => state,
-      (patch) => { state = { ...state, ...patch }; },
-      (options) => { urlUpdates.push(options); },
-      new InMemorySessionSelectionMemory(),
-      { api, socket: new FakeSocket() },
-    );
-
-    await controller.selectSession(archivedSession, { updateUrl: false });
-    expect(controller.preferredSession(workspace.path, state.sessions)).toBe(archivedSession);
-
-    controller.clearSelectionAfterArchivedCollapse();
-
-    expect(state.selectedSession).toBeUndefined();
-    expect(controller.preferredSession(workspace.path, state.sessions)).toBeUndefined();
-    expect(urlUpdates).toEqual([undefined]);
-  });
 });

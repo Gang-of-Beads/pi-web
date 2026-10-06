@@ -207,7 +207,8 @@ async function listed<T>(read: Promise<readonly T[]>, source: UnknownSource): Pr
   }
 }
 
-function dedupeById<T extends { id: string }>(items: readonly T[]): T[] {
+/** The first of each id, in order. */
+export function dedupeById<T extends { id: string }>(items: readonly T[]): T[] {
   const seen = new Set<string>();
   return items.filter((item) => {
     if (seen.has(item.id)) return false;

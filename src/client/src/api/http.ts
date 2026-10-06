@@ -78,7 +78,7 @@ async function readResponse(url: string, response: Response): Promise<unknown> {
     const namedMachineId = typeof fields["machineId"] === "string" ? fields["machineId"] : undefined;
     const machineId = namedMachineId ?? machineIdFromUrl(url);
     const text = detail === undefined || detail === "" ? label : `${label} (${detail})`;
-    throw new HttpError(errorMessage({ error: text }) ?? text, response.status, machineId, namedMachineId === undefined ? undefined : "gateway", errorCode(body));
+    throw new HttpError(apiErrorMessage({ error: text }) ?? text, response.status, machineId, namedMachineId === undefined ? undefined : "gateway", errorCode(body));
   }
   const body: unknown = await response.json();
   return body;
@@ -91,7 +91,8 @@ export function errorCode(value: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
-function errorMessage(value: unknown): string | undefined {
+/** The `error` text of an API failure body, when it carries one. */
+export function apiErrorMessage(value: unknown): string | undefined {
   if (!isRecord(value)) return undefined;
   return typeof value["error"] === "string" ? value["error"] : undefined;
 }

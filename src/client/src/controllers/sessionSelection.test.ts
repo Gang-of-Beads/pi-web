@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo } from "../api";
 import type { KeyValueStorage } from "./sessionStorageMemory";
-import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, SessionStorageSessionSelectionMemory, shouldDeselectAfterArchivedCollapse } from "./sessionSelection";
+import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, SessionStorageSessionSelectionMemory } from "./sessionSelection";
 
 describe("selectPreferredSession", () => {
   it("remembers the latest selected session when no explicit target is provided", () => {
@@ -91,18 +91,6 @@ describe("markSessionArchived", () => {
     const next = markSessionsArchived(sessions, ["s1", "s3"], "later");
 
     expect(next).toEqual([{ ...sessions[0], archived: true, archivedAt: "later" }, sessions[1], { ...sessions[2], archived: true, archivedAt: "later" }]);
-  });
-});
-
-describe("shouldDeselectAfterArchivedCollapse", () => {
-  it("deselects archived selections only when no active sessions remain", () => {
-    const archived = { ...testSession("archived"), archived: true };
-    const active = testSession("active");
-
-    expect(shouldDeselectAfterArchivedCollapse([archived], archived)).toBe(true);
-    expect(shouldDeselectAfterArchivedCollapse([archived, active], archived)).toBe(false);
-    expect(shouldDeselectAfterArchivedCollapse([archived], undefined)).toBe(false);
-    expect(shouldDeselectAfterArchivedCollapse([archived], active)).toBe(false);
   });
 });
 

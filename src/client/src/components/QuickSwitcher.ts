@@ -1,6 +1,5 @@
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { renderCheckIcon, renderChevronRightIcon, renderCrossIcon, renderPinIcon, uiIconStyle } from "./uiIcons.js";
-import { quickSwitcherFilterProjects } from "../quickSwitcher";
 import { reconcileBreadcrumbFilter, switcherBreadcrumb, type BreadcrumbLevel } from "../switcherBreadcrumb";
 import { switcherEmptyMeaning, switcherScopeNotice } from "../switcherEmptyMeaning";
 import type { BoardAnswer } from "../sync/sessionBoard";
@@ -186,11 +185,17 @@ export class QuickSwitcher extends LitElement {
     root.querySelector<HTMLButtonElement>(".crumb")?.focus();
   }
 
+  /**
+   * The breadcrumb's project chips list every project. They used to list only the projects whose
+   * workspaces had already arrived; workspaces load per project, one request each, so the row grew
+   * as the responses came back, and a project the reader was about to pick could appear or vanish
+   * under their finger. Which projects exist is not a function of what has loaded.
+   */
   private renderBreadcrumb() {
     const input = {
       machines: this.machines,
       machineId: this.browseMachineId,
-      projects: quickSwitcherFilterProjects(this.projects),
+      projects: this.projects,
       projectId: this.filter.projectId,
       folders: this.workspaces.map((workspace) => ({ id: workspace.id, label: workspace.label, path: workspace.path, projectId: workspace.projectId })),
       folderPath: this.filter.workspacePath,

@@ -1,7 +1,7 @@
 import { html, type TemplateResult } from "lit";
 import type { GlobalPanelContext, PiWebPlugin, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { rememberTerminalHostUi } from "./hostUi.js";
-import { defineTerminalPanel } from "./defineTerminalPanel.js";
+import "./TerminalPanel.js";
 
 /**
  * Terminals as a plugin.
@@ -23,7 +23,6 @@ const plugin: PiWebPlugin = {
   name: "Terminal",
   activate: (context) => {
     rememberTerminalHostUi(context.ui);
-    defineTerminalPanel();
     const icon = context.svg`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16v12H4z"/><path d="m8 10 2 2-2 2"/><path d="M13 14h3"/></svg>`;
     return {
       contributions: {

@@ -32,7 +32,7 @@ import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { AuthController } from "../controllers/authController";
 import { MachineController, remoteReportedDown } from "../controllers/machineController";
 import { SessionBoardController } from "../controllers/sessionBoardController";
-import type { BoardAnswer } from "../sync/sessionBoard";
+import { dedupeById, type BoardAnswer } from "../sync/sessionBoard";
 import { MachineStatusController } from "../controllers/machineStatusController";
 import { ProjectController } from "../controllers/projectController";
 import { PiWebStatusController } from "../controllers/piWebStatusController";
@@ -2343,7 +2343,7 @@ export class PiWebApp extends LitElement {
     const selected = selectedMachineId(this.state);
     return new Set(this.state.machines
       .filter((machine) => machine.id !== selected)
-      .filter((machine) => shouldSubscribeToMachineActivity(machine, this.state.machineStatuses[machine.id]))
+      .filter((machine) => shouldRefreshMachineActivity(machine, this.state.machineStatuses[machine.id]))
       .map((machine) => machine.id));
   }
 
@@ -4256,10 +4256,6 @@ export class PiWebApp extends LitElement {
   }
 
   /** Give the restored composer the caret it was tapped for. */
-  private async focusPromptEditorSoon(): Promise<void> {
-    await this.updateComplete;
-    if (this.shouldAutoFocusPrompt()) this.promptEditor?.focusInput();
-  }
 
   /**
    * The add-machine dialog is the machines plugin's, opened through the
@@ -5121,10 +5117,6 @@ function machineActivitySubscriptionInputsChanged(previous: AppState, next: AppS
     || (previous.selectedMachine?.id ?? "local") !== (next.selectedMachine?.id ?? "local");
 }
 
-function shouldSubscribeToMachineActivity(machine: Machine, health: MachineHealth | undefined): boolean {
-  return shouldRefreshMachineActivity(machine, health);
-}
-
 function shouldRefreshMachineActivity(machine: Machine, health: MachineHealth | undefined): boolean {
   if (machine.kind === "local") return true;
   const status = health?.status ?? machine.status;
@@ -5177,17 +5169,6 @@ export function sameBackgroundTasks(left: readonly SessionBackgroundTaskInfo[], 
 
 function sameStringSet(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
   return left.size === right.size && [...left].every((value) => right.has(value));
-}
-
-function dedupeById<T extends { id: string }>(items: readonly T[]): T[] {
-  const seen = new Set<string>();
-  const deduped: T[] = [];
-  for (const item of items) {
-    if (seen.has(item.id)) continue;
-    seen.add(item.id);
-    deduped.push(item);
-  }
-  return deduped;
 }
 
 function isTerminalEvent(event: BrowserRealtimeEvent): event is TerminalUiEvent {

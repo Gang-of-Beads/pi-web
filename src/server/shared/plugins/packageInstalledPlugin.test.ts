@@ -1,4 +1,3 @@
-import { npmInvocation } from "../../../npmCommand";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,7 +6,7 @@ import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 import { PiWebPluginCatalog } from "../piWebPluginCatalog";
 
-const npm = npmInvocation();
+const npm = process.platform === "win32" ? { command: "npm.cmd", shell: true } : { command: "npm", shell: false };
 
 /**
  * A plugin has to be installable as a package, not only readable from this

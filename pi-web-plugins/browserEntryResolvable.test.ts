@@ -1,11 +1,10 @@
-import { npmInvocation } from "../src/npmCommand";
 import { execFileSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { isRelativeSpecifier, moduleSpecifiers, staticModuleSpecifiers } from "../scripts/pluginModuleSpecifiers.mjs";
 
-const npm = npmInvocation();
+const npm = process.platform === "win32" ? { command: "npm.cmd", shell: true } : { command: "npm", shell: false };
 
 /**
  * A browser plugin entry is served raw and loaded by the page. There is no

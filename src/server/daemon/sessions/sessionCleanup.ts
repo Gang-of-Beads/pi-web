@@ -181,7 +181,8 @@ function uniqueSessionsById(sessions: readonly PiSessionListEntry[]): PiSessionL
   return [...sessionsById.values()];
 }
 
-function archiveInputFromListEntry(session: PiSessionListEntry): ArchiveSessionInput {
+/** The archive record for a session known from a listing rather than a live runtime. */
+export function archiveInputFromListEntry(session: PiSessionListEntry): ArchiveSessionInput {
   return {
     sessionId: session.id,
     cwd: session.cwd,

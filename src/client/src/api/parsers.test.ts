@@ -593,30 +593,6 @@ describe("API parsers", () => {
     });
   });
 
-  it("parses live session warnings including optional source and path", () => {
-    const parsed = parseSessionStatus({
-      sessionId: "s1",
-      isStreaming: false,
-      isCompacting: false,
-      isBashRunning: false,
-      pendingMessageCount: 0,
-      queuedMessages: [],
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      cost: 0,
-      warnings: [
-        { severity: "error", message: "bad skill", source: "skill", path: "/skills/a.md" },
-        { severity: "warning", message: "subscription active", source: "anthropic", dismiss: { id: "anthropicExtraUsage" } },
-        { severity: "info", message: "heads up", source: "runtime" },
-      ],
-    });
-
-    expect(parsed.warnings).toEqual([
-      { severity: "error", message: "bad skill", source: "skill", path: "/skills/a.md" },
-      { severity: "warning", message: "subscription active", source: "anthropic", dismiss: { id: "anthropicExtraUsage" } },
-      { severity: "info", message: "heads up", source: "runtime" },
-    ]);
-  });
-
   it("parses the answers the agent has not read yet, and keeps them absent when none wait (B26)", () => {
     const base = {
       sessionId: "s1",
@@ -643,35 +619,6 @@ describe("API parsers", () => {
       queued: parseSessionStatus({ ...base, queuedAnswers: [outcome] }).queuedAnswers?.map((answer) => answer.askId),
       none: "queuedAnswers" in parseSessionStatus(base),
     }).toEqual({ queued: ["ask-1"], none: false });
-  });
-
-  it("omits warnings entirely when the field is absent", () => {
-    const parsed = parseSessionStatus({
-      sessionId: "s1",
-      isStreaming: false,
-      isCompacting: false,
-      isBashRunning: false,
-      pendingMessageCount: 0,
-      queuedMessages: [],
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      cost: 0,
-    });
-
-    expect(parsed.warnings).toBeUndefined();
-  });
-
-  it("rejects a warning with an invalid severity", () => {
-    expect(() => parseSessionStatus({
-      sessionId: "s1",
-      isStreaming: false,
-      isCompacting: false,
-      isBashRunning: false,
-      pendingMessageCount: 0,
-      queuedMessages: [],
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      cost: 0,
-      warnings: [{ severity: "fatal", message: "nope" }],
-    })).toThrow("Invalid session warning severity");
   });
 
   it("parses workspace effective upload config without retaining the removed top-level branch alias", () => {

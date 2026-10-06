@@ -203,7 +203,7 @@ export const workspacePanelStyles = css`
   .summary { margin: var(--pi-space-2) var(--pi-space-3) var(--pi-space-4); color: var(--pi-muted); }
   /* File preview presentation lives in <workspace-file-viewer>'s own shadow root. */
   .viewer { min-height: 0; overflow: auto; display: flex; flex-direction: column; }
-  pre { margin: 0; padding: var(--pi-space-5); overflow: auto; font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: inherit; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+  pre { margin: 0; padding: var(--pi-space-5); overflow: auto; font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
   p { margin: var(--pi-space-5); }
 `;
 
@@ -550,7 +550,7 @@ export const formattedTextStyles = css`
   .code-block-wrapper pre { margin: 0; padding-right: calc(var(--pi-space-3) * 2 + var(--pi-control-height-touch) / 2 + var(--pi-space-4)); }
   pre { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: var(--pi-space-5); overflow-x: auto; overflow-y: hidden; direction: ltr; text-align: left; unicode-bidi: isolate; }
   pre code { border: 0; padding: 0; background: transparent; }
-  .code-copy-button { box-sizing: border-box; position: absolute; top: var(--pi-space-3); right: var(--pi-space-3); z-index: 1; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; line-height: 1; cursor: pointer; }
+  .code-copy-button { box-sizing: border-box; position: absolute; top: var(--pi-space-3); right: var(--pi-space-3); z-index: 1; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: 1; cursor: pointer; }
   /* The icon carries the class the shared icon sheet sizes, and that sheet is
      not adopted here: without a size of its own the mark drew nothing and the
      button read as an empty square on the phone. */

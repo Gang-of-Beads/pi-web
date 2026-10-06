@@ -1,4 +1,5 @@
-import type { Machine, MachineKind, PiPackageInfo, PiPackageMutationAction } from "../../api";
+import type { PiPackageInfo, PiPackageMutationAction } from "../../api";
+import { settingsMachineTarget, type SettingsMachineTarget } from "./settingsMachineTarget";
 
 export type PiPackageOperationKind = PiPackageMutationAction | "update-all";
 
@@ -7,22 +8,7 @@ export interface PiPackageOperationState {
   source?: string;
 }
 
-export interface PiPackageTargetContext {
-  id: string;
-  name: string;
-  kind: MachineKind;
-}
-
-export function piPackageTargetContext(machine: Pick<Machine, "id" | "name" | "kind"> | undefined): PiPackageTargetContext {
-  if (machine !== undefined) return { id: machine.id, name: machine.name, kind: machine.kind };
-  return { id: "local", name: "local", kind: "local" };
-}
-
-export function piPackageTargetLabel(target: PiPackageTargetContext): string {
-  return target.kind === "local" ? `${target.name} (local gateway)` : `${target.name} (remote machine)`;
-}
-
-export function shouldRefreshGatewayPluginsAfterPiPackageMutation(target: PiPackageTargetContext): boolean {
+export function shouldRefreshGatewayPluginsAfterPiPackageMutation(target: SettingsMachineTarget): boolean {
   return target.kind === "local";
 }
 
@@ -71,7 +57,7 @@ export function isPiPackageOperationPending(operation: PiPackageOperationState |
   return source === undefined || operation.source === source;
 }
 
-export function piPackageMutationFollowUpMessage(action: PiPackageMutationAction, target = piPackageTargetContext(undefined)): string {
+export function piPackageMutationFollowUpMessage(action: PiPackageMutationAction, target = settingsMachineTarget(undefined)): string {
   const verb = action === "install" ? "installed" : action === "remove" ? "removed" : "updated";
   const targetSuffix = target.kind === "local" ? "" : ` on ${target.name}`;
   const sessionScope = target.kind === "local" ? "each idle PI WEB session" : `each idle PI WEB session on ${target.name}`;
@@ -79,7 +65,7 @@ export function piPackageMutationFollowUpMessage(action: PiPackageMutationAction
   return `Pi package ${verb}${targetSuffix}. Type /reload in ${sessionScope} to rediscover Pi runtime resources: extensions, skills, prompt templates, themes, and context/system prompt files. Reload the browser page separately for ${pluginScope}.`;
 }
 
-export function friendlyPiPackageErrorMessage(message: string, target: PiPackageTargetContext): string {
+export function friendlyPiPackageErrorMessage(message: string, target: SettingsMachineTarget): string {
   const normalized = message.trim();
   if (target.kind !== "remote") return normalized;
   if (normalized === "Remote machine timeout") {

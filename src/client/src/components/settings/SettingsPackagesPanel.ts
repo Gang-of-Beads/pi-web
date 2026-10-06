@@ -4,7 +4,8 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { PiPackageInfo, PiPackageScope, PiPackagesResponse } from "../../api";
 import "./SettingsPanelFrame";
 import type { SettingsNotice } from "./SettingsPanelFrame";
-import { isPiPackageOperationPending, normalizePiPackageSource, piPackageFilteredLabel, piPackageInstalledPathLabel, piPackageScopeLabel, piPackageSourceValidationMessage, piPackageTargetContext, piPackageTargetLabel, piPackageUpdateDisabledReason, updateAllPiPackagesDisabledReason, type PiPackageOperationState, type PiPackageTargetContext } from "./piPackageSettings";
+import { isPiPackageOperationPending, normalizePiPackageSource, piPackageFilteredLabel, piPackageInstalledPathLabel, piPackageScopeLabel, piPackageSourceValidationMessage, piPackageUpdateDisabledReason, updateAllPiPackagesDisabledReason, type PiPackageOperationState } from "./piPackageSettings";
+import { settingsMachineTarget, settingsMachineTargetLabel, type SettingsMachineTarget } from "./settingsMachineTarget";
 import { interactiveSurfaceStyles } from "../shared";
 
 @customElement("settings-packages-panel")
@@ -12,7 +13,7 @@ export class SettingsPackagesPanel extends LitElement {
   @property({ attribute: false }) packagesResponse: PiPackagesResponse | undefined;
   @property({ type: Boolean }) loading = false;
   @property({ attribute: false }) operation: PiPackageOperationState | undefined;
-  @property({ attribute: false }) targetMachine: PiPackageTargetContext | undefined;
+  @property({ attribute: false }) targetMachine: SettingsMachineTarget | undefined;
   @property() error = "";
   @property() operationMessage = "";
   @property({ attribute: false }) onReload?: () => void | Promise<void>;
@@ -25,7 +26,7 @@ export class SettingsPackagesPanel extends LitElement {
   override render(): TemplateResult {
     const packages = this.packagesResponse?.packages ?? [];
     const target = this.packageTarget;
-    const targetLabel = piPackageTargetLabel(target);
+    const targetLabel = settingsMachineTargetLabel(target);
     const showPackageControls = this.packagesResponse !== undefined;
     return html`
       <settings-panel-frame
@@ -57,7 +58,7 @@ export class SettingsPackagesPanel extends LitElement {
     return notices;
   }
 
-  private renderPanelContent(packages: PiPackageInfo[], target: PiPackageTargetContext, targetLabel: string): TemplateResult | null {
+  private renderPanelContent(packages: PiPackageInfo[], target: SettingsMachineTarget, targetLabel: string): TemplateResult | null {
     if (this.packagesResponse === undefined) {
       return html`<div class="loading-card">${this.loading ? `Loading Pi packages from ${targetLabel}…` : `Pi package list unavailable for ${targetLabel}. Use Reload to try again.`}</div>`;
     }
@@ -81,8 +82,8 @@ export class SettingsPackagesPanel extends LitElement {
     `;
   }
 
-  private renderPackageList(packages: PiPackageInfo[], target: PiPackageTargetContext): TemplateResult {
-    const targetLabel = piPackageTargetLabel(target);
+  private renderPackageList(packages: PiPackageInfo[], target: SettingsMachineTarget): TemplateResult {
+    const targetLabel = settingsMachineTargetLabel(target);
     const updateAllReason = updateAllPiPackagesDisabledReason(packages);
     const showUpdateAllReason = updateAllReason !== undefined && packages.length > 0;
     const updateAllTitle = updateAllReason ?? "Update all user-scope Pi packages";
@@ -173,8 +174,8 @@ export class SettingsPackagesPanel extends LitElement {
     }
   }
 
-  private get packageTarget(): PiPackageTargetContext {
-    return this.targetMachine ?? piPackageTargetContext(undefined);
+  private get packageTarget(): SettingsMachineTarget {
+    return this.targetMachine ?? settingsMachineTarget(undefined);
   }
 
   private get isOperating(): boolean {
