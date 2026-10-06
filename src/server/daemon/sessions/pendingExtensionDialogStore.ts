@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  EXTENSION_DIALOG_EDITOR_MAX_LENGTH,
   EXTENSION_DIALOG_ID_MAX_LENGTH,
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   EXTENSION_DIALOG_SCREEN_MAX_LINES,
@@ -36,6 +37,8 @@ export interface PendingExtensionDialogOpenInput {
   message?: string | undefined;
   options?: string[] | undefined;
   placeholder?: string | undefined;
+  /** The text an `editor` dialog opens with. */
+  prefill?: string | undefined;
   /** Effective timeout in milliseconds; omit (or have the caller resolve `0`) to wait forever. */
   timeoutMs?: number | undefined;
   /** True when opened while a run is in flight; run-scoped dialogs are settled on `agent_end`. */
@@ -202,19 +205,23 @@ function validateAnswer(dialog: PendingExtensionDialog, value: ExtensionDialogAn
     case "custom":
       return validateCustomAnswer(dialog, value);
     case "input":
-      if (typeof value !== "string") throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} expects a text answer`);
-      if (value.length > EXTENSION_DIALOG_INPUT_MAX_LENGTH) {
-        throw new PendingExtensionDialogValidationError(`Answer of dialog ${dialog.dialogId} exceeds its length limit`);
-      }
-      return value;
+      return validateText(dialog, value, EXTENSION_DIALOG_INPUT_MAX_LENGTH);
+    case "editor":
+      return validateText(dialog, value, EXTENSION_DIALOG_EDITOR_MAX_LENGTH);
   }
+}
+
+function validateText(dialog: PendingExtensionDialog, value: ExtensionDialogAnswer, maxLength: number): string {
+  if (typeof value !== "string") throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} expects a text answer`);
+  if (value.length > maxLength) throw new PendingExtensionDialogValidationError(`Answer of dialog ${dialog.dialogId} exceeds its length limit`);
+  return value;
 }
 
 /** Kind-specific fields of a validated record; irrelevant fields are dropped rather than rejected. */
 function kindFields(
   kind: ExtensionDialogKind,
   input: PendingExtensionDialogOpenInput,
-): Pick<PendingExtensionDialog, "message" | "options" | "placeholder" | "lines" | "screen"> {
+): Pick<PendingExtensionDialog, "message" | "options" | "placeholder" | "prefill" | "prefillCut" | "lines" | "screen"> {
   switch (kind) {
     case "confirm": {
       const message = optionalShownText(input.message, EXTENSION_DIALOG_PROSE_MAX_LENGTH);
@@ -226,9 +233,21 @@ function kindFields(
       const placeholder = optionalShownText(input.placeholder, EXTENSION_DIALOG_TEXT_MAX_LENGTH);
       return placeholder === undefined ? {} : { placeholder };
     }
+    case "editor":
+      return editorPrefill(input.prefill);
     case "custom":
       return { lines: validateLines(input.lines), ...(input.screen === undefined ? {} : { screen: input.screen }) };
   }
+}
+
+/**
+ * An editor's opening text, its start kept when it is past the bound. The cut is counted beside
+ * the text rather than written into it: the reader edits this text and sends it back.
+ */
+function editorPrefill(prefill: unknown): Pick<PendingExtensionDialog, "prefill" | "prefillCut"> {
+  if (typeof prefill !== "string" || prefill === "") return {};
+  if (prefill.length <= EXTENSION_DIALOG_EDITOR_MAX_LENGTH) return { prefill };
+  return { prefill: prefill.slice(0, EXTENSION_DIALOG_EDITOR_MAX_LENGTH), prefillCut: prefill.length - EXTENSION_DIALOG_EDITOR_MAX_LENGTH };
 }
 
 /** A declared questions screen takes the Questions card's submission; a drawn screen takes text. */
@@ -280,7 +299,7 @@ function requireSessionId(sessionId: string): string {
 
 /** Runtime guard: the input crosses extension code, so the declared kind is checked despite its type. */
 function requireKind(kind: string): ExtensionDialogKind {
-  if (kind === "confirm" || kind === "select" || kind === "input" || kind === "custom") return kind;
+  if (kind === "confirm" || kind === "select" || kind === "input" || kind === "editor" || kind === "custom") return kind;
   throw new PendingExtensionDialogValidationError(`Unknown dialog kind ${kind}`);
 }
 

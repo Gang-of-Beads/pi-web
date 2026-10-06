@@ -39,7 +39,7 @@ import { classifySubmission, deliveryAfterUnanswered, handleOutcome, transportFa
 import type { DeliveryFailureCause } from "../deliveryWords";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
-import type { PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
+import type { ExtensionEditorTextMode, PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory, isOpenableSession } from "./sessionSelection"
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
@@ -93,6 +93,11 @@ export interface PromptEditorTextReplacement {
   machineId: string;
   sessionId: string;
   text: string;
+  /**
+   * `paste` puts the text in at the caret instead of replacing the draft: an extension's
+   * `pasteToEditor` (extension-ui-counterpart.md, Composer). Absent means replace.
+   */
+  mode?: ExtensionEditorTextMode;
 }
 
 export interface SelectedSessionReady {
@@ -2928,6 +2933,12 @@ export class SessionController {
     }
     if (event.type === "session.stopped") {
       if (event.cause === "closed") this.forgetStandingValues(this.getState().selectedSession?.id);
+      return;
+    }
+    if (event.type === "extension.ui" && event.kind === "editorText") {
+      const current = this.getState();
+      const selected = current.selectedSession;
+      if (selected !== undefined) void this.replacePromptEditorText?.({ machineId: selectedMachineId(current), sessionId: selected.id, text: event.text, mode: event.mode });
       return;
     }
     if (event.type === "activity.changed") {

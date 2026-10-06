@@ -366,10 +366,11 @@ export class PiWebApp extends LitElement {
         void this.commitReadyChatAfterRender(machineId, session);
         void this.refreshSelfUpdate();
       },
-      replacePromptEditorText: async ({ machineId, sessionId, text }) => {
+      replacePromptEditorText: async ({ machineId, sessionId, text, mode }) => {
         await this.updateComplete;
         if (selectedMachineId(this.state) !== machineId || this.state.selectedSession?.id !== sessionId) return;
-        this.promptEditor?.replaceText(text);
+        if (mode === "paste") this.promptEditor?.pasteText(text);
+        else this.promptEditor?.replaceText(text);
       },
       catalogue: {
         projects: (machineId, wanted) => this.projects.answeredProjects(machineId, wanted),

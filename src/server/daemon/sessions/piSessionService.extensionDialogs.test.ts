@@ -197,7 +197,7 @@ describe("PiSessionService extension dialog UI context", () => {
     const { service, fake } = dialogService();
     const ui = await boundUiContext(service, fake);
 
-    await expect(ui.editor("title")).resolves.toBeUndefined();
+    expect(ui.getToolsExpanded()).toBe(false);
     await service.dispose();
   });
 });

@@ -65,6 +65,7 @@ import type {
   ExtensionDialogCloseResponse,
   ExtensionDialogKind,
   ExtensionDialogScreen,
+  ExtensionEditorTextMode,
   ExtensionDialogOutcome,
   QueuedSessionMessage,
   SavedPromptAttachment,
@@ -1468,6 +1469,8 @@ export class PiSessionService implements SessionRouteService {
   private readonly customScreens = new Map<string, (key: string) => void>();
   /** Per runtime, so a disposed or rebound runtime takes its values with it; see extensionStanding.ts. */
   private readonly extensionStanding = new WeakMap<PiAgentSession, ExtensionStanding>();
+  /** What each session's extensions last wrote to its composer, for `getEditorText` (writeComposer). */
+  private readonly extensionEditorText = new WeakMap<PiAgentSession, string>();
   private readonly standingPublishPending = new WeakSet<PiAgentSession>();
   /** Sessions whose running turn the reader stopped, with the moment recorded; settled once, at the latest when that turn ends. */
   private readonly stoppedByReader = new Map<string, string>();
@@ -2125,7 +2128,7 @@ export class PiSessionService implements SessionRouteService {
    */
   private async openExtensionDialog(
     session: PiAgentSession,
-    request: { kind: ExtensionDialogKind; title: string; message?: string | undefined; options?: string[] | undefined; placeholder?: string | undefined },
+    request: { kind: ExtensionDialogKind; title: string; message?: string | undefined; options?: string[] | undefined; placeholder?: string | undefined; prefill?: string | undefined },
     opts: ExtensionUIDialogOptions | undefined,
   ): Promise<ExtensionDialogAnswer | undefined> {
     const signal = opts?.signal;
@@ -2139,6 +2142,7 @@ export class PiSessionService implements SessionRouteService {
       ...(request.message === undefined ? {} : { message: request.message }),
       ...(request.options === undefined ? {} : { options: request.options }),
       ...(request.placeholder === undefined ? {} : { placeholder: request.placeholder }),
+      ...(request.prefill === undefined ? {} : { prefill: request.prefill }),
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
       runScoped: this.dialogRunScoped(session),
     });
@@ -5437,6 +5441,11 @@ export class PiSessionService implements SessionRouteService {
       setHiddenThinkingLabel: (label?: string) => { standing.setHiddenThinkingLabel(label); },
       setTitle: (title: string) => { standing.setTitle(title); },
     };
+    const composerMembers: Readonly<Record<string, unknown>> = {
+      setEditorText: (text: unknown) => { this.writeComposer(session, "set", text); },
+      pasteToEditor: (text: unknown) => { this.writeComposer(session, "paste", text); },
+      getEditorText: () => this.extensionEditorText.get(session) ?? "",
+    };
     // A notification is written twice on purpose: to the browsers attached now,
     // which draw it as pi's terminal does (extension-ui-counterpart.md), and into
     // the notification store, which carries the unread state.
@@ -5455,6 +5464,7 @@ export class PiSessionService implements SessionRouteService {
       get: (target, property, receiver): unknown => {
         if (property === "notify") return notify;
         if (typeof property === "string" && Object.hasOwn(standingMembers, property)) return standingMembers[property];
+        if (typeof property === "string" && Object.hasOwn(composerMembers, property)) return composerMembers[property];
         if (property === "theme") return plainTextTheme;
         if (property === "piWebScreens") return DECLARABLE_SCREENS;
         // The headless default resolves `custom` to undefined without a word,
@@ -5480,10 +5490,28 @@ export class PiSessionService implements SessionRouteService {
           return (title: string, placeholder: string | undefined, opts?: ExtensionUIDialogOptions) =>
             this.openExtensionDialog(session, { kind: "input", title, placeholder }, opts);
         }
+        if (property === "editor") {
+          return (title: string, prefill?: string) =>
+            this.openExtensionDialog(session, { kind: "editor", title, prefill }, undefined);
+        }
         const value: unknown = Reflect.get(target, property, receiver);
         return value;
       },
     });
+  }
+
+  /**
+   * An extension's `setEditorText` / `pasteToEditor`: every browser showing the session writes
+   * its composer (extension-ui-counterpart.md, Composer). pi's `getEditorText` is synchronous and
+   * the daemon cannot read a browser's draft, so it answers with what this session's extensions
+   * wrote, a paste joining the end, as pi's RPC host answers `""` for want of one. A value that is
+   * not text writes nothing: pi's types say string, and the composer would show "[object Object]".
+   */
+  private writeComposer(session: PiAgentSession, mode: ExtensionEditorTextMode, text: unknown): void {
+    if (typeof text !== "string") return;
+    const written = mode === "set" ? text : `${this.extensionEditorText.get(session) ?? ""}${text}`;
+    this.extensionEditorText.set(session, written);
+    this.events.publish(session.sessionId, { type: "extension.ui", kind: "editorText", mode, text });
   }
 
   private standingFor(session: PiAgentSession): ExtensionStanding {

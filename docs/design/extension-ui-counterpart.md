@@ -187,6 +187,16 @@ using it.
   title) is cut at 1,000 characters, a widget at 100 lines of 1,000 characters,
   each saying so.
 
+- Step 4 (`editor`, `setEditorText`, `pasteToEditor`, `getEditorText`): `editor` is a fifth dialog
+  kind in the dialog store, so it docks, survives a reload, times out and settles like the others.
+  Its opening text rides the status, bounded at 32,000 characters; a longer one keeps its start and
+  the record counts the cut (`prefillCut`) beside the text, never in it, because the reader sends
+  that text back. The card's Enter follows the composer's rule, as pi's editor follows its main
+  editor's. `setEditorText` / `pasteToEditor` travel as the `extension.ui` `editorText` frame and
+  write the composer of each browser showing the session through the same machine+session-checked
+  path the "put it back" flows use; a paste goes in at the caret, or at the end before the editor
+  is drawn. `getEditorText` answers with what the session's extensions wrote.
+
 ## Order of work
 
 1. Theme fix (daemon only; daemon restart).

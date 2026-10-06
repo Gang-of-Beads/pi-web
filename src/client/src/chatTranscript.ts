@@ -70,7 +70,7 @@ export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent
   // A command's answer is the point of running it, so it is its own visible
   // row rather than a tool line folded into a collapsed event group.
   if (event.type === "command.output") return [...messages, textMessage("system", event.message)];
-  if (event.type === "extension.ui") return withExtensionNotice(messages, event.level, event.message, now);
+  if (event.type === "extension.ui" && event.kind === "notify") return withExtensionNotice(messages, event.level, event.message, now);
   if (event.type === "session.error") return [...messages, textMessage("system", event.message)];
   if (event.type === "message.end") return event.message === undefined ? undefined : applyFinalMessage(messages, event.message);
   if (event.type === "pi.event" && event.eventType === "auto_retry_start") return withoutRetriedAttempt(messages);

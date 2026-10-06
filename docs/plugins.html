@@ -181,8 +181,8 @@
               <h2>Pi extension dialogs in PI WEB</h2>
               <p>
                 Pi extensions running under PI WEB's session daemon can ask the user questions with
-                <code>ctx.ui.confirm()</code>, <code>ctx.ui.select()</code>, and <code>ctx.ui.input()</code>. For these
-                three methods <code>ctx.hasUI</code> is true in fact: the call renders a dialog card inline in the
+                <code>ctx.ui.confirm()</code>, <code>ctx.ui.select()</code>, <code>ctx.ui.input()</code>, and
+                <code>ctx.ui.editor()</code>. For these methods <code>ctx.hasUI</code> is true in fact: the call renders a dialog card inline in the
                 session transcript — including from <code>session_start</code> hooks while the session is still starting
                 and from in-flight <code>tool_call</code> hooks — and resolves with the user's actual answer.
               </p>
@@ -191,7 +191,7 @@
                 <code>tool_call</code> hook cannot deadlock the run. Open dialogs survive browser reloads, the first
                 answer wins across tabs, and unanswered dialogs settle safely: aborting the run or replacing the runtime
                 resolves them immediately with the kind's cancel value (<code>false</code> for confirm,
-                <code>undefined</code> for select and input), and the effective deadline — the sooner of the extension's
+                <code>undefined</code> for select, input and editor), and the effective deadline — the sooner of the extension's
                 own <code>timeout</code> and the daemon's <code>extensionDialogsTimeoutMs</code> safety valve (default 5
                 minutes, <code>0</code> waits forever) — does the same when no one answers. <code>custom</code> draws its
                 screen as a card: a menu as choices with Confirm, anything else as its text, and a screen declared
@@ -210,9 +210,14 @@
                 before "Show all"; <code>setWorkingMessage</code>, <code>setWorkingVisible</code> and
                 <code>setWorkingIndicator</code> change the working row; <code>setHiddenThinkingLabel</code> labels folded
                 thinking; and <code>setTitle</code> names the browser tab while that session is open in the chat view. Reloading the
-                session's extensions clears them, as in pi. The editor methods, <code>setHeader</code>,
-                <code>setFooter</code>, <code>onTerminalInput</code>, autocomplete, themes and tool expansion remain no-ops
-                despite <code>hasUI === true</code>.
+                session's extensions clears them, as in pi. <code>editor(title, prefill)</code> opens a card with a
+                multi-line text area holding <code>prefill</code>, and Enter follows the composer's Enter setting; an
+                opening text past 32,000 characters is cut and the card says how much. <code>setEditorText</code> replaces
+                the session's composer text and <code>pasteToEditor</code> inserts at the caret, in every browser showing the
+                session at that moment; <code>getEditorText</code> returns what the session's extensions wrote, or
+                <code>""</code>, since it cannot read a browser's draft. <code>setEditorComponent</code>,
+                <code>setHeader</code>, <code>setFooter</code>, <code>onTerminalInput</code>, autocomplete, themes and tool
+                expansion remain no-ops despite <code>hasUI === true</code>.
               </p>
               <p>
                 For the full behavior notes and author guidance, read <a href="plugins.md">plugins.md</a>; for the

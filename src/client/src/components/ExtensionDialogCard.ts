@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { dialogCardNeedsRender } from "../askCardIdentity";
 import { ifDefined } from "lit/directives/if-defined.js";
 import {
+  EXTENSION_DIALOG_EDITOR_MAX_LENGTH,
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   type ExtensionDialogAnswer,
   type ExtensionDialogCloseReason,
@@ -16,6 +17,8 @@ import type { ClosedExtensionDialog } from "../appState";
 import { dialogScreenKey } from "../dialogScreenKey.js";
 import { isSelectableLine, keysForLineTap, screenIsTappable } from "../dialogScreenKeys.js";
 import { classifyScreen, type ScreenShape } from "../dialogScreenShape.js";
+import { shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
+import { keyBelongsToInputMethod } from "./keyboardEventTarget";
 import "./AskUserCard";
 
 export type ExtensionDialogAnswerCallback = (dialogId: string, value: ExtensionDialogAnswer) => void | Promise<void>;
@@ -149,6 +152,11 @@ export function extensionDialogCountdownText(timeoutAt: string | undefined, nowM
  * settled outcome — a browser-local record that stays until dismissed — for a
  * browser that saw the dialog open.
  */
+/** Says what the daemon cut from an editor's opening text, so the reader knows Send returns only what is shown. */
+function editorCutText(cut: number): string {
+  return `The extension's text was longer: the last ${cut.toLocaleString()} characters are not here, and Send returns only what is.`;
+}
+
 /** A terminal screen that reads as a menu is headed by its own first line, not "Extension screen". */
 function screenHeading(shape: ScreenShape | undefined): string | undefined {
   return shape?.kind === "menu" ? shape.title : undefined;
@@ -200,7 +208,7 @@ export class ExtensionDialogCard extends LitElement {
     const identity = this.currentIdentity();
     if (identity !== this.dialogIdentity) {
       this.dialogIdentity = identity;
-      this.inputValue = "";
+      this.inputValue = this.outcome === undefined && this.dialog?.kind === "editor" ? this.dialog.prefill ?? "" : "";
       this.closing = false;
     }
     this.syncCountdownTimer();
@@ -259,6 +267,7 @@ export class ExtensionDialogCard extends LitElement {
     if (shape !== undefined) return this.renderScreenText(dialog, shape);
     if (dialog.kind === "select") return this.renderSelectBody(dialog);
     if (dialog.kind === "input") return this.renderInputBody(dialog);
+    if (dialog.kind === "editor") return this.renderEditorBody(dialog);
     return this.renderConfirmBody(dialog);
   }
 
@@ -409,6 +418,42 @@ export class ExtensionDialogCard extends LitElement {
     `;
   }
 
+  /**
+   * pi's `ctx.ui.editor(title, prefill)`: a multi-line text the reader edits and sends back. Enter
+   * follows the composer's rule, as pi's editor follows its main editor's (Enter sends on a
+   * keyboard, a new line on a touch screen, the reader's Enter setting either way); while an input
+   * method is composing, Enter picks the word.
+   */
+  private renderEditorBody(dialog: PendingExtensionDialog): TemplateResult {
+    return html`
+      <form class="dialog-input-form dialog-editor-form" @submit=${(event: SubmitEvent) => { this.submitInput(event, dialog); }}>
+        ${dialog.prefillCut === undefined ? null : html`<p class="dialog-editor-cut">${editorCutText(dialog.prefillCut)}</p>`}
+        <textarea
+          class="dialog-input dialog-editor"
+          name="dialog-answer"
+          aria-label="Your text"
+          maxlength=${String(EXTENSION_DIALOG_EDITOR_MAX_LENGTH)}
+          .value=${this.inputValue}
+          ?disabled=${this.closing}
+          @input=${(event: Event) => { this.changeInput(event); }}
+          @keydown=${(event: KeyboardEvent) => { this.editorKeydown(event, dialog); }}
+        ></textarea>
+        <footer class="dialog-footer">
+          <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Cancel</button>
+          <button class="primary-action" type="submit" ?disabled=${this.closing}>${this.closing ? "Sending…" : "Send"}</button>
+        </footer>
+      </form>
+    `;
+  }
+
+  private editorKeydown(event: KeyboardEvent, dialog: PendingExtensionDialog): void {
+    if (event.key !== "Enter" || keyBelongsToInputMethod(event)) return;
+    const shiftKey = shouldUsePromptEnterShiftShortcut(event.shiftKey, false);
+    if (!shouldSendPromptOnEnterShortcut(shiftKey)) return;
+    event.preventDefault();
+    this.answerDialog(dialog, this.inputValue);
+  }
+
   private renderClosed(closed: ClosedExtensionDialog): TemplateResult {
     // A settled dialog needs nothing further from the reader, whatever the
     // reason it settled: the outcome is one quiet row the transcript keeps,
@@ -461,7 +506,7 @@ export class ExtensionDialogCard extends LitElement {
 
   private changeInput(event: Event): void {
     const input = event.currentTarget;
-    if (!(input instanceof HTMLInputElement)) return;
+    if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLTextAreaElement)) return;
     this.inputValue = input.value;
   }
 
@@ -592,6 +637,11 @@ export class ExtensionDialogCard extends LitElement {
        click. */
     .option-button:active:not(:disabled) { border-color: var(--pi-accent); background: var(--pi-surface-active); }
     .dialog-input-form { display: grid; }
+    /* The editor's text area is the card's one scroller, as the detail is for prose: the slot's
+       height budget lands on it and the actions stay on screen. */
+    .dialog-editor-form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+    .dialog-input.dialog-editor { flex: 1 1 auto; min-height: calc(6lh + 2 * var(--pi-space-4)); resize: vertical; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .dialog-editor-cut { margin: var(--pi-space-6) var(--pi-space-7) 0; color: var(--pi-warning); font-size: var(--pi-text-xs); }
     /* A terminal the reader can recognise: mono, its own darker pane, room for a
      tall menu, and a hint above it saying who is asking and where keys go. */
   .dialog-screen { box-sizing: border-box; margin: 0; padding: var(--pi-space-4) var(--pi-space-5); max-height: 46vh; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font-family: var(--pi-font-mono); font-size: var(--pi-text-xs); line-height: 1.5; tab-size: 2; }

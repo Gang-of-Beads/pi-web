@@ -807,6 +807,15 @@ export declare const EXTENSION_SCREEN_DETAIL_MAX_LENGTH = 32000;
 export declare const EXTENSION_DIALOG_OPTION_LIMIT = 24;
 /** Length bound for the text a user types into an `input` dialog. */
 export declare const EXTENSION_DIALOG_INPUT_MAX_LENGTH = 4000;
+/**
+ * Length bound for an `editor` dialog's text, both the text it opens with and the text sent back.
+ * The opening text rides every status read while the dialog is open, as a dialog's prose does, so
+ * it shares the prose bound; past it the daemon keeps the start and the card says how much it cut,
+ * outside the text, so the cut never becomes part of the answer.
+ */
+export declare const EXTENSION_DIALOG_EDITOR_MAX_LENGTH = 32000;
+/** How an extension's `setEditorText` / `pasteToEditor` writes a session's composer. */
+export type ExtensionEditorTextMode = "set" | "paste";
 /** Where an extension widget sits: pi's `WidgetPlacement`. */
 export type ExtensionWidgetPlacement = "aboveEditor" | "belowEditor";
 /**
@@ -835,7 +844,7 @@ export interface ExtensionUiStanding {
 /** The level of an extension's `ctx.ui.notify`, as pi's terminal draws it. */
 export type ExtensionNoticeLevel = "info" | "warning" | "error";
 /** Which extension UI dialog primitive a pending dialog belongs to. */
-export type ExtensionDialogKind = "confirm" | "select" | "input" | "custom";
+export type ExtensionDialogKind = "confirm" | "select" | "input" | "editor" | "custom";
 /**
  * How many lines of a `custom` screen are kept.
  *
@@ -848,7 +857,7 @@ export declare const EXTENSION_DIALOG_SCREEN_MAX_LINES = 200;
 export declare const EXTENSION_DIALOG_KEY_MAX_LENGTH = 32;
 /**
  * The value a user gave in an extension dialog: a boolean for `confirm`, the
- * chosen option for `select`, the typed text for `input`, the answers of a
+ * chosen option for `select`, the typed text for `input` and `editor`, the answers of a
  * `custom` screen declared as questions. Absent when the dialog closed without
  * an answer.
  */
@@ -883,6 +892,13 @@ export interface PendingExtensionDialog {
     options?: string[];
     /** Placeholder text of an `input` dialog. */
     placeholder?: string;
+    /** The text an `editor` dialog opens with (pi's `ctx.ui.editor(title, prefill)`). */
+    prefill?: string;
+    /**
+     * How many characters at the end of an `editor` dialog's opening text the daemon cut to keep
+     * it within {@link EXTENSION_DIALOG_EDITOR_MAX_LENGTH}. Absent when nothing was cut.
+     */
+    prefillCut?: number;
     /**
      * The rendered screen of a `custom` dialog: what the extension's TUI component
      * drew, at the width the daemon asked it to draw for. Plain text, because the
@@ -1560,6 +1576,17 @@ type SessionUiEventBody =
     kind: "notify";
     level: ExtensionNoticeLevel;
     message: string;
+}
+/**
+ * An extension's `setEditorText` (`set`: the composer becomes the text) or `pasteToEditor`
+ * (`paste`: the text goes in at the caret) for the session's composer in every browser showing
+ * it. Momentary, like `notify`: a browser that opens the session later does not get it.
+ */
+ | {
+    type: "extension.ui";
+    kind: "editorText";
+    mode: ExtensionEditorTextMode;
+    text: string;
 }
 /**
  * A turn was stopped deliberately, and by what. An abort otherwise travels as

@@ -537,6 +537,21 @@ export class PromptEditor extends LitElement {
       });
   }
 
+  /**
+   * An extension's `pasteToEditor`: the text goes in at the caret, over a selection, as a paste
+   * does. Before the editor is drawn there is no caret, so the text joins the end of the draft.
+   */
+  pasteText(text: string): void {
+    const editor = this.editor;
+    const cm = this.cm;
+    if (editor === undefined || cm === undefined) {
+      this.replaceText(`${this.draft}${text}`);
+      return;
+    }
+    const { from, to } = editor.state.selection.main;
+    editor.dispatch({ changes: { from, to, insert: text }, selection: cm.cursorAt(from + text.length) });
+  }
+
   replaceText(text: string): void {
     this.draft = text;
     const key = draftStorageKey(this.machineId, this.sessionId);

@@ -13,7 +13,7 @@ export class ParkedNotices {
 
   /** Holds `event` when it is a notice; anything else is the chip's business. */
   park(sessionKey: string, event: SessionUiEvent): void {
-    if (event.type !== "extension.ui") return;
+    if (event.type !== "extension.ui" || event.kind !== "notify") return;
     if (sessionKey !== this.sessionKey) {
       this.sessionKey = sessionKey;
       this.events = [];
