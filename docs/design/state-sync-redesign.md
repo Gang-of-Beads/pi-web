@@ -585,7 +585,7 @@ It also takes the status revision and join frame moved from phase 1, and the thr
 **Epochs (3a).** The session event hub mints an epoch whenever a session's seq space starts: at the first publish or snapshot, and after an eviction, from a per-instance id.
 - Live and replayed frames carry the epoch, and the stream snapshot returns it.
 - `replaySince` answers a watermark cited with any other epoch, or none, with resync.
-- The client persists its watermark as `{seq, epoch}` and cites both. A bare number stored by an older build reads back without an epoch, gets resync, and is replaced.
+- The client persisted its watermark as `{seq, epoch}` and cited both (retired 2026-10-06, sync-convergence.md phase B: the page catches up from its gap repair's frontier instead, and the old keys are swept).
 
 **Ordered application (3b).** `SessionGapRepair` is seeded with the snapshot's watermark.
 - It sees gaps itself, including one before the first live frame.

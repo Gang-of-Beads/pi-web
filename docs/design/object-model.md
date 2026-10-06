@@ -186,7 +186,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 - **Owner**: daemon `daemon/realtime/sessionEventHub.ts`; client `sessionGapRepair.ts`.
 - **Head**: `{seq, epoch}` on the keepalive and in `status.streamPosition`. `seq` advances on every publish, even with no listener.
 - **Read**: `GET /sessions/:id/stream-snapshot?sinceSeq&epoch`, which is no longer on the open path (the socket subscribes with `sinceSeq` from the reply).
-- **Cache**: the watermark `pi-web:chat-watermark:v1:` is retired as a replay basis and deleted in P6.
+- **Cache**: the watermark `pi-web:chat-watermark:v1:` is retired (sync-convergence.md phase B) and swept from browser storage on the page's first cache write.
 - **Retention**: an epoch change means diverged, followed by a tail reload.
 
 ### 1.9 Socket (realtime hub connection)

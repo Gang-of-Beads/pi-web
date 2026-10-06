@@ -103,7 +103,23 @@ export function readChatHistoryCache(sessionId: string, storage: HistoryStorage 
   }
 }
 
+/** Keys an older build wrote for the retired delta replay (sync-convergence phase B); nothing reads them. */
+const RETIRED_PREFIXES = ["pi-web:chat-watermark:v1:"];
+let retiredKeysSwept = false;
+
+/** Remove the retired keys once per page, so they stop taking room the page cache competes for. */
+function sweepRetiredKeys(storage: HistoryStorage): void {
+  if (retiredKeysSwept) return;
+  retiredKeysSwept = true;
+  try {
+    for (const key of storage.keys()) if (RETIRED_PREFIXES.some((prefix) => key.startsWith(prefix))) storage.removeItem(key);
+  } catch {
+    return;
+  }
+}
+
 export function writeChatHistoryCache(sessionId: string, page: RawMessagePage, storage: HistoryStorage = browserStorage()): void {
+  sweepRetiredKeys(storage);
   const payload = JSON.stringify({ ...page, savedAt: Date.now() });
   // A page too large for one entry is trimmed to its tail, which is the part a
   // reader lands on. Caching nothing was the old answer and it made the biggest

@@ -53,6 +53,9 @@ export class SessionSocket {
   private onReconnect: (() => void) | undefined;
   private onInitialOpen: (() => void) | undefined;
   private onMalformed: ((frameType: string) => void) | undefined;
+  private onDisconnect: (() => void) | undefined;
+  /** The connection that opened, so losing it is told apart from an attempt that never connected. */
+  private openedSocket: WebSocket | undefined;
   private machineId = "local";
   private lastFrameAt = 0;
   private connectStartedAt = 0;
@@ -84,6 +87,22 @@ export class SessionSocket {
     this.socket = undefined;
     closeSocketQuietly(socket);
     this.scheduleReconnect();
+    this.lost(socket);
+  }
+
+  /**
+   * Where the page stands on this session's stream after a read or a replay that did not come
+   * over the socket: a heartbeat head ahead of it is a loss with nothing after it to show it.
+   */
+  noteApplied(seq: number): void {
+    this.seqMonitor.noteApplied(seq);
+  }
+
+  /** An open connection went away; a failed attempt is not news, or a down daemon would repeat it. */
+  private lost(socket: WebSocket): void {
+    if (this.openedSocket !== socket) return;
+    this.openedSocket = undefined;
+    this.onDisconnect?.();
   }
 
   /** Gap events counted on this socket's per-session scope since connect(). */
@@ -99,6 +118,7 @@ export class SessionSocket {
     this.onReconnect = handlers.onReconnect;
     this.onInitialOpen = handlers.onInitialOpen;
     this.onMalformed = handlers.onMalformed;
+    this.onDisconnect = handlers.onDisconnect;
     this.seqMonitor = new ScopeSeqMonitor("session", handlers.onGap);
     this.shouldReconnect = true;
     this.open();
@@ -118,6 +138,8 @@ export class SessionSocket {
     this.onReconnect = undefined;
     this.onInitialOpen = undefined;
     this.onMalformed = undefined;
+    this.onDisconnect = undefined;
+    this.openedSocket = undefined;
     this.hasOpened = false;
     this.machineId = "local";
   }
@@ -134,6 +156,7 @@ export class SessionSocket {
       // Reconnect refetches everything, and a daemon restart resets the hub's
       // counter, so the first frame after an open says nothing about loss.
       this.seqMonitor.reset();
+      this.openedSocket = socket;
       const isReconnect = this.hasOpened;
       this.hasOpened = true;
       if (isReconnect) this.onReconnect?.();
@@ -145,6 +168,7 @@ export class SessionSocket {
       if (this.socket !== socket) return;
       this.socket = undefined;
       this.scheduleReconnect();
+      this.lost(socket);
     };
   }
 
@@ -455,6 +479,15 @@ export class ScopeSeqMonitor {
    *  refetches the surface and a daemon restart restarts the counter. */
   reset(): void {
     this.lastSeen = undefined;
+  }
+
+  /**
+   * The position the page reached without this socket (a read's snapshot, a replay). Without it the
+   * first heartbeat after a join became the baseline, and frames published between the read and
+   * the subscription were never asked for on a session that then went quiet.
+   */
+  noteApplied(seq: number): void {
+    if (this.lastSeen === undefined || seq > this.lastSeen) this.lastSeen = seq;
   }
 
   /**

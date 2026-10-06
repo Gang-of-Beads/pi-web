@@ -67,14 +67,24 @@ export class SessionGapRepair {
   /** The highest seq applied here in the current space; a revisioned frame below the snapshot can be applied without moving the frontier. */
   private highestApplied: number | undefined;
   private epoch: string | undefined;
-  /** A seed during a repair moved the start back: the repair in flight asked from too late. */
+  /**
+   * The pass in flight asked too early or from too late: a seed moved the start back, or a doubt
+   * arrived after its request went out, so its reply may predate what the doubt is about.
+   */
   private repairAgainSince: number | undefined;
+  /** The repair under way, so a catch-up that joins it can wait for it. */
+  private inFlight: Promise<void> | undefined;
 
   constructor(private readonly options: GapRepairOptions) {}
 
   /** Whether live frames are currently being held instead of applied. */
   get holding(): boolean {
     return this.state !== "idle";
+  }
+
+  /** The highest seq reflected or applied in the current space: where the page stands. */
+  get position(): number | undefined {
+    return this.frontier;
   }
 
   /**
@@ -129,21 +139,26 @@ export class SessionGapRepair {
   }
 
   /**
-   * A gap seen elsewhere: everything after `lastSeen` is missing. Starts exactly one repair;
-   * further gaps join it. Returns the repair's promise: production ignores it, tests await it.
-   */
-  /**
    * Ask for everything after the frontier, for a page that may have missed frames with nothing
-   * after them to show it (back from the background, a turn that ended, a heartbeat ahead).
-   * False before a snapshot seeded the frontier: there is no position to ask from yet.
+   * after them to show it (back from the background, a turn that ended, a heartbeat ahead), and
+   * settle once they are applied. During a repair the pass asks again when it lands: its reply
+   * may have been taken before what prompted this. Undefined before a snapshot seeded the
+   * frontier: there is no position to ask from yet.
    */
-  catchUp(): boolean {
-    if (this.state !== "idle") return true;
-    if (this.frontier === undefined) return false;
-    void this.repair(this.frontier);
-    return true;
+  catchUp(): Promise<void> | undefined {
+    if (this.state !== "idle") {
+      if (this.frontier !== undefined) this.repairAgainSince = Math.min(this.repairAgainSince ?? this.frontier, this.frontier);
+      return this.inFlight;
+    }
+    if (this.frontier === undefined) return undefined;
+    return this.repair(this.frontier);
   }
 
+  /**
+   * A gap seen elsewhere: everything after `lastSeen` is missing. Starts exactly one repair;
+   * further gaps join it. Production asks through {@link catchUp}, from the frontier, which knows
+   * what was applied rather than what arrived; this entry stays for the machine's own tests.
+   */
   onGap(lastSeen: number): Promise<void> {
     if (this.state !== "idle") return Promise.resolve();
     return this.repair(lastSeen);
@@ -151,7 +166,8 @@ export class SessionGapRepair {
 
   private repair(sinceSeq: number): Promise<void> {
     this.state = "repairing";
-    return this.runRepair(sinceSeq);
+    this.inFlight = this.runRepair(sinceSeq);
+    return this.inFlight;
   }
 
   private async runRepair(sinceSeq: number): Promise<void> {

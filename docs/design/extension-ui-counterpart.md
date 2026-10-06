@@ -199,8 +199,9 @@ using it.
   runtime (`extensionComposer.ts`), outliving a reload of the extensions as pi's composer does.
   The frame is momentary: it reaches the browsers showing the session and the pending-start row,
   and one that lands while a browser is still opening the session can be missed (the join
-  watermark drops frames at or below the snapshot, and the delta replay re-serves frames already
-  applied, so neither may re-apply a write over the reader's newer typing).
+  watermark drops frames at or below the snapshot, and a write that reaches the page by replay -
+  the catch-up after a reconnect, a return to the front or a gap - missed its moment and is not
+  applied, so it cannot land over the reader's newer typing).
 
 ## Order of work
 

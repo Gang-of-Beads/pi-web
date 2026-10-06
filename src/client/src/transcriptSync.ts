@@ -13,30 +13,57 @@ export type TranscriptSync =
   | { readonly kind: "confirming"; readonly key: string; readonly lastConfirmedAt?: number }
   | { readonly kind: "unreachable"; readonly key: string; readonly lastConfirmedAt?: number };
 
+interface TranscriptSyncEvents {
+  readonly doubt: { readonly key: string };
+  readonly checked: { readonly key: string; readonly at: number };
+  readonly checkFailed: { readonly key: string };
+}
+
+type TranscriptSyncEventType = keyof TranscriptSyncEvents;
+
 /** What happened to the page's hold on the transcript. */
-export type TranscriptSyncEvent =
-  | { readonly type: "doubt"; readonly key: string }
-  | { readonly type: "checked"; readonly key: string; readonly at: number }
-  | { readonly type: "checkFailed"; readonly key: string };
+export type TranscriptSyncEvent<T extends TranscriptSyncEventType = TranscriptSyncEventType> = { [K in T]: { readonly type: K } & TranscriptSyncEvents[K] }[T];
 
-type Transition = (current: TranscriptSync | undefined, event: TranscriptSyncEvent) => TranscriptSync | undefined;
-
-const TRANSITIONS: Readonly<Record<TranscriptSyncEvent["type"], Transition>> = {
+const TRANSITIONS: { readonly [K in TranscriptSyncEventType]: (current: TranscriptSync | undefined, event: TranscriptSyncEvent<K>) => TranscriptSync } = {
   doubt: (current, event) => ({ kind: "confirming", key: event.key, ...lastConfirmed(current, event.key) }),
-  checked: (_current, event) => event.type === "checked" ? { kind: "confirmed", key: event.key, at: event.at } : undefined,
-  checkFailed: (current, event) => current?.key === event.key ? { kind: "unreachable", key: event.key, ...lastConfirmed(current, event.key) } : current,
+  checked: (_current, event) => ({ kind: "confirmed", key: event.key, at: event.at }),
+  checkFailed: (current, event) => ({ kind: "unreachable", key: event.key, ...lastConfirmed(current, event.key) }),
 };
 
 /** The next state. A check that lands for another key than the one doubted is not this page's answer. */
-export function nextTranscriptSync(current: TranscriptSync | undefined, event: TranscriptSyncEvent): TranscriptSync | undefined {
+export function nextTranscriptSync<T extends TranscriptSyncEventType>(current: TranscriptSync | undefined, event: TranscriptSyncEvent<T>): TranscriptSync | undefined {
   if (event.type !== "doubt" && current !== undefined && current.key !== event.key) return current;
   return TRANSITIONS[event.type](current, event);
 }
 
 function lastConfirmed(current: TranscriptSync | undefined, key: string): { lastConfirmedAt?: number } {
   if (current?.key !== key) return {};
-  const at = current.kind === "confirmed" ? current.at : current.lastConfirmedAt;
+  const at = lastConfirmedAt(current);
   return at === undefined ? {} : { lastConfirmedAt: at };
+}
+
+function lastConfirmedAt(sync: TranscriptSync): number | undefined {
+  return sync.kind === "confirmed" ? sync.at : sync.lastConfirmedAt;
+}
+
+/** What the retry of an unreachable transcript does after a transition (owner: keep retrying). */
+export type TranscriptRetryAction = "arm" | "keep" | "cancel";
+
+const RETRY_ACTION: Readonly<Record<TranscriptSync["kind"], TranscriptRetryAction>> = {
+  confirmed: "cancel",
+  confirming: "keep",
+  unreachable: "arm",
+};
+
+/**
+ * Whether to arm, keep or cancel the retry armed for `armedKey`. A check a retry started keeps the
+ * backoff it grew; the same state for another key starts over, so one session's outage does not
+ * lengthen the next one's first retry.
+ */
+export function transcriptRetryAction(next: TranscriptSync | undefined, armedKey: string | undefined): TranscriptRetryAction {
+  if (next === undefined) return "cancel";
+  const action = RETRY_ACTION[next.kind];
+  return action === "keep" && armedKey !== next.key ? "cancel" : action;
 }
 
 /** What the dock says instead of the session's status, or undefined when the status can be trusted. */
@@ -46,7 +73,7 @@ const DOCK: Readonly<Record<TranscriptSync["kind"], (sync: TranscriptSync, clock
   confirmed: () => undefined,
   confirming: () => ({ kind: "syncing", words: "Syncing…" }),
   unreachable: (sync, clock) => {
-    const at = sync.kind === "unreachable" ? sync.lastConfirmedAt : undefined;
+    const at = lastConfirmedAt(sync);
     return { kind: "offline", words: at === undefined ? "Offline" : `Offline · updated ${clock(at)}` };
   },
 };

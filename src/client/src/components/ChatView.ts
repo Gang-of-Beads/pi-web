@@ -1524,6 +1524,7 @@ export class ChatView extends LitElement {
           ? html`<span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>`
           : html`<span class="dot"></span>`}
         <span class="activity-text" title=${sync.words}>${sync.words}</span>
+        ${renderActivityNote(this.contributedActivityNote(this.turnIdle()))}
       </div>
     `;
   }

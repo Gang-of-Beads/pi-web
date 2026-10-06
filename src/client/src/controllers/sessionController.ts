@@ -3,8 +3,8 @@ import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
-import { SessionGapRepair, type StreamFrontier } from "../sessionGapRepair";
-import { nextTranscriptSync, type TranscriptSyncEvent } from "../transcriptSync";
+import { SessionGapRepair, type GapReplayResult, type StreamFrontier } from "../sessionGapRepair";
+import { nextTranscriptSync, transcriptRetryAction, type TranscriptSyncEvent } from "../transcriptSync";
 import { describeError, noticeForReader } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
@@ -81,12 +81,16 @@ export interface SessionSocketHandlers {
   onMalformed: (frameType: string) => void;
   /** The seq monitor saw a jump; `lastSeen` is the watermark before it. */
   onGap: (lastSeen: number) => void;
+  /** An open connection went away; frames published until it reopens reach nobody here. */
+  onDisconnect?: () => void;
 }
 
 export interface SessionEventSocket {
   /** Optional: implementations that own a real connection verify it here. */
   checkLiveness?(): void;
   reconnectNow?(): void;
+  /** Optional: the position the page reached without the socket, which its heartbeat compares against. */
+  noteApplied?(seq: number): void;
   connect(session: SessionRef, machineId: string, handlers: SessionSocketHandlers): void;
   setHandler(onEvent: (event: SessionUiEvent) => void): void;
   close(): void;
@@ -321,6 +325,12 @@ export class SessionController {
   private readonly commandDialogRows = new Map<string, string>();
   private readonly suppressedCreatedSessions = new Map<string, SuppressedCreatedSession>();
   private readonly selectedSessionRefreshes = new TrailingRefreshCoordinator<string>();
+  /**
+   * Frames that reached the page by replay rather than live. A composer write among them missed its
+   * moment: applied late it could land over what the reader typed since (extension-ui-counterpart.md,
+   * "the frame is momentary"), so it keeps its place in seq order and is not applied.
+   */
+  private readonly framesFromReplay = new WeakSet<SessionUiEvent>();
   /** The pending retry of an unreachable transcript, with the delay it waited (scheduleTranscriptRetry). */
   private transcriptRetry: { key: string; delayMs: number; timer: ReturnType<typeof setTimeout> | undefined } | undefined;
   private readonly sendVerificationTimers = new Map<string, ReturnType<typeof setTimeout>[]>();
@@ -386,6 +396,7 @@ export class SessionController {
     this.verificationRetries.clear();
     for (const timers of this.sendVerificationTimers.values()) for (const timer of timers) clearTimeout(timer);
     this.sendVerificationTimers.clear();
+    this.cancelTranscriptRetry();
   }
 
   clearActiveSession() {
@@ -492,6 +503,8 @@ export class SessionController {
     this.selectionUrl = { seq, sessionId: session.id, settled: false, placed: options?.correctsUrl === true, write: options?.updateUrl !== false };
     this.socket.close();
     this.streamWatermark = undefined;
+    this.gapRepair = undefined;
+    this.cancelTranscriptRetry();
     // A new selection is a new dialog surface with its own revision space; the
     // previous scope's counter must not judge it, and its freshness must not
     // vouch for it.
@@ -546,6 +559,7 @@ export class SessionController {
     let buffered: SessionUiEvent[] | undefined;
     try {
       if (session.archived === true) {
+        this.setState({ transcriptSync: undefined });
         const page = await this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
         if (seq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) return;
         const history = this.transcripts.mergeHistory(transcriptKey, page);
@@ -566,29 +580,12 @@ export class SessionController {
         apply: (event) => { if (this.gapRepair === repair) this.applyEvent(event); },
         reflectedBySnapshot: (event) => revisionedFrameType(event) === undefined,
         request: async (sinceSeq, epoch) => {
-          const sync = await this.api.streamSync(session, sinceSeq, machineId, epoch ?? this.streamWatermark?.epoch);
-          if (sync.kind !== "replay") return { ok: false };
-          const frames: SessionUiEvent[] = [];
-          for (const raw of sync.frames) {
-            let parsedFrame: unknown;
-            try {
-              parsedFrame = JSON.parse(raw);
-            } catch {
-              continue;
-            }
-            const event = parseSessionSocketEvent(parsedFrame);
-            if (event !== undefined) frames.push(event);
-          }
-          return { ok: true, frames };
+          const replay = replayedFrames(await this.api.streamSync(session, sinceSeq, machineId, epoch ?? this.streamWatermark?.epoch));
+          if (replay.ok) for (const frame of replay.frames) this.framesFromReplay.add(frame);
+          return replay;
         },
         resync: () => { if (this.gapRepair === repair) void this.refreshSelectedSession(session.id); },
-        caughtUp: () => {
-          if (this.gapRepair !== repair) return;
-          // The replay's status frames wait for the next animation frame; confirming first showed
-          // the replay's older status for one frame after "Syncing…".
-          this.flushPendingUpdates();
-          this.syncTranscript({ type: "checked", key: transcriptKey, at: Date.now() });
-        },
+        caughtUp: () => { if (this.gapRepair === repair) this.confirmCaughtUp(repair, transcriptKey); },
       });
       this.gapRepair = repair;
       this.syncTranscript({ type: "doubt", key: transcriptKey });
@@ -598,12 +595,10 @@ export class SessionController {
           // Ask, do not resend. Every row the link left unverifiable is an
           // identity the daemon can answer for; sending again without asking is
           // how one message becomes two.
-          // The frames after the frontier were never applied here, so they replay safely and
-          // carry what happened meanwhile in order - a message taken back included; a resync
-          // falls back to the full read.
           this.syncTranscript({ type: "doubt", key: transcriptKey });
           void this.catchUp().then(() => this.askLedgerAbout(session, machineId));
         },
+        onDisconnect: () => { if (this.gapRepair === repair) void this.recheckTranscript(); },
         onMalformed: () => {
           this.syncTranscript({ type: "doubt", key: transcriptKey });
           this.dialogScope.requestResync();
@@ -1844,14 +1839,16 @@ export class SessionController {
 
   /**
    * Bring the selected transcript level with the daemon: the frames after the highest seq applied in
-   * order, which this page never applied, so nothing can be applied twice. Without a frontier yet,
-   * the full read. A catch-up under way already answers it.
+   * order, which this page never applied, so nothing can be applied twice, and they carry what
+   * happened meanwhile in order, a message taken back included. Without a frontier yet, the full
+   * read; a resync verdict falls back to it too. Settles once the frames are applied or the read
+   * that replaced them is registered, so a ledger ask after a reconnect waits for it: asked before
+   * the daemon reopened the session, a waiting message read "not received".
    */
   catchUp(): Promise<void> {
     const key = this.liveTranscriptKey();
-    const repair = this.gapRepair;
-    if (key !== undefined && repair?.catchUp() === true) return Promise.resolve();
-    return this.refreshSelectedSession();
+    const pending = key === undefined ? undefined : this.gapRepair?.catchUp();
+    return pending ?? this.refreshSelectedSession();
   }
 
   /**
@@ -1859,8 +1856,21 @@ export class SessionController {
    * Before the join seeded a frontier the join's own read is under way and answers it.
    */
   private catchUpFromFrontier(repair: SessionGapRepair, key: string): void {
-    if (!repair.catchUp()) return;
+    const pending = repair.catchUp();
+    if (pending === undefined) return;
     this.syncTranscript({ type: "doubt", key });
+  }
+
+  /**
+   * A replay landed. Its status frames wait for the next animation frame, so they are applied
+   * first: confirming before them showed the replay's older status for one frame after "Syncing…".
+   * The socket learns the position, so its next heartbeat is compared with what the page holds.
+   */
+  private confirmCaughtUp(repair: SessionGapRepair, key: string): void {
+    this.flushPendingUpdates();
+    const position = repair.position;
+    if (position !== undefined) this.socket.noteApplied?.(position);
+    this.syncTranscript({ type: "checked", key, at: Date.now() });
   }
 
   /** The selected session's key when it has a live transcript to fall behind on. */
@@ -1875,8 +1885,9 @@ export class SessionController {
     const current = this.getState().transcriptSync;
     const next = nextTranscriptSync(current, event);
     if (next !== current) this.setState({ transcriptSync: next });
-    if (next?.kind === "unreachable") this.scheduleTranscriptRetry(next.key);
-    else if (next?.kind !== "confirming") this.cancelTranscriptRetry();
+    const action = transcriptRetryAction(next, this.transcriptRetry?.key);
+    if (action === "cancel") this.cancelTranscriptRetry();
+    if (action === "arm" && next !== undefined) this.scheduleTranscriptRetry(next.key);
   }
 
   /**
@@ -1884,8 +1895,10 @@ export class SessionController {
    * minute so a page left offline does not ask every few seconds. Only the same key is retried.
    */
   private scheduleTranscriptRetry(key: string): void {
-    if (this.transcriptRetry?.key === key && this.transcriptRetry.timer !== undefined) return;
-    const delayMs = this.transcriptRetry?.key === key ? Math.min(this.transcriptRetry.delayMs * 2, TRANSCRIPT_RETRY_MAX_MS) : TRANSCRIPT_RETRY_FIRST_MS;
+    const armed = this.transcriptRetry;
+    if (armed?.key === key && armed.timer !== undefined) return;
+    if (armed?.key !== key) this.cancelTranscriptRetry();
+    const delayMs = armed?.key === key ? Math.min(armed.delayMs * 2, TRANSCRIPT_RETRY_MAX_MS) : TRANSCRIPT_RETRY_FIRST_MS;
     const timer = setTimeout(() => {
       if (this.transcriptRetry?.key !== key) return;
       this.transcriptRetry = { key, delayMs, timer: undefined };
@@ -1990,7 +2003,7 @@ export class SessionController {
         isLoadingTranscript: transcriptLoadingAfter({ event: "readSettled", readSeq: target.selectionSeq, currentSeq: this.selectionSeq }),
       });
       this.settleStatusRead(target, await statusRead, framesAtRequest);
-      if (this.isCurrentRefreshTarget(target)) this.syncTranscript({ type: "checked", key, at: Date.now() });
+      if (this.isCurrentRefreshTarget(target) && this.gapRepair?.holding !== true) this.syncTranscript({ type: "checked", key, at: Date.now() });
     });
   }
 
@@ -2923,6 +2936,7 @@ export class SessionController {
     if (this.gapRepair === undefined) return;
     this.pendingTranscriptEvents = this.pendingTranscriptEvents.filter((event) => Reflect.get(event, "seq") === undefined);
     this.gapRepair.seed(watermark);
+    this.socket.noteApplied?.(watermark.seq);
   }
 
   private routeLiveEvent(event: SessionUiEvent): void {
@@ -2967,6 +2981,7 @@ export class SessionController {
       return;
     }
     if (event.type === "extension.ui" && event.kind === "editorText") {
+      if (this.framesFromReplay.has(event)) return;
       const current = this.getState();
       const selected = current.selectedSession;
       if (selected !== undefined) void this.replacePromptEditorText?.({ machineId: selectedMachineId(current), sessionId: selected.id, text: event.text, mode: event.mode });
@@ -3506,6 +3521,33 @@ function isHighFrequencyTranscriptEvent(event: SessionUiEvent): boolean {
   return event.type === "assistant.delta" || event.type === "assistant.thinking.delta" || event.type === "shell.chunk";
 }
 
+/**
+ * A replay as the gap repair takes it. A frame that does not parse, or a revisioned frame that
+ * fails validation, answers like a resync: skipped, the frontier passed it and the catch-up called
+ * the page in step without it, so the full read repairs it instead. The live path drops the same
+ * frames the same way, so a replay is never trusted more than the socket.
+ */
+function replayedFrames(sync: Awaited<ReturnType<typeof defaultApi.streamSync>>): GapReplayResult {
+  if (sync.kind !== "replay") return { ok: false };
+  const frames: SessionUiEvent[] = [];
+  for (const raw of sync.frames) {
+    const parsed = parsedJson(raw);
+    if (parsed === undefined) return { ok: false };
+    const event = parseSessionSocketEvent(parsed);
+    if (event !== undefined) frames.push(event);
+    else if (revisionedFrameType(parsed) !== undefined) return { ok: false };
+  }
+  return { ok: true, frames };
+}
+
+function parsedJson(raw: string): unknown {
+  try {
+    const value: unknown = JSON.parse(raw);
+    return value;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * The rows whose fate the daemon's ledger is asked about: one nobody answered for, and one a

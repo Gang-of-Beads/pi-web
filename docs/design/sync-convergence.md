@@ -176,7 +176,8 @@ reads it before the session's own status (`transcriptSync.ts`, a lookup table of
 | a session is opened or selected | nothing read yet | the join read |
 | the page becomes visible after being hidden, or is restored from the back-forward cache | a hidden page's socket and timers freeze; frames sent meanwhile may be gone | catch up from the frontier |
 | the browser reports `online` | the network came back | catch up from the frontier |
-| the socket closes, or reopens | a reopen starts a new connection with nothing carried over | the reconnect read |
+| the socket loses an open connection | frames published until it reopens reach nobody here | catch up from the frontier (a failed reconnect attempt is not news: a daemon that stays down would flip the dock on every try) |
+| the socket reopens | the new connection carries nothing over | catch up from the frontier; the ledger ask waits for it |
 | the seq monitor or a heartbeat head shows a gap | frames are missing | the gap repair |
 | a revisioned frame fails validation | a transition was lost | the full read |
 | the selected session goes idle | the status may come over the machine socket ahead of the session socket's own frames, and a trailing loss there has no later frame to reveal it | catch up from the frontier |
@@ -185,10 +186,20 @@ reads it before the session's own status (`transcriptSync.ts`, a lookup table of
 A window that only regains focus while visible is not doubt: its timers and socket kept running,
 and the liveness check covers a socket that died quietly.
 
+The seq monitor learns where the page stands from the read's snapshot and from each replay, not only
+from frames on the wire. Before, the first heartbeat after a join became its baseline, so frames
+published between the read and the subscription were never asked for on a session that then went
+quiet.
+
 "Catch up from the frontier" asks the daemon's ring for the frames after the highest seq this page
 applied without a gap (the gap repair's own request). They were never applied here, so applying
 them cannot double anything. A resync verdict, another epoch or a failed request falls back to the
-full read. The check is confirmed when its replay or read is in; it fails when the read fails.
+full read, and so does a replayed frame that does not parse or a revisioned one that fails
+validation: skipped, the frontier would pass it and the page would be called in step without it.
+A composer write among replayed frames keeps its place in seq order and is not applied: it
+missed its moment, and applied late it could land over the reader's newer typing.
+The check is confirmed when its replay or read is in, and a read does not confirm while the gap
+repair still holds frames: the repair's landing confirms. It fails when the read fails.
 
 ### Why the end of a turn is a check
 
@@ -198,6 +209,8 @@ the session socket lost its last frames, and a trailing loss has no later frame 
 moment the selected session goes idle is a check (owner, 2026-10-06: show the syncing state until
 the page is in step, then the real one): one small request for the frames after the frontier. On a
 healthy stream it answers nothing within a round trip, and the dock moves from "Syncing…" to idle.
+The join read's own idle status counts too: its status read is separate from its transcript read
+and can be newer, and the frames between them are exactly the ones a quiet session never reveals.
 
 The session socket's heartbeat head was not read (slice H1 wired it to the machine socket only),
 so a trailing loss on the session socket was never noticed. It now is, and it starts the same
@@ -207,18 +220,18 @@ catch-up.
 
 | From | Event | To |
 |---|---|---|
-| any | another session or machine selected | `confirming` (for the new key; the old key's check is dropped) |
+| any | another session or machine selected | `confirming` (for the new key; the old key's repair and retry are dropped) |
 | `confirmed` | a doubt event above | `confirming` |
 | `confirmed` | a frame in order | `confirmed` |
 | `confirming` | its check landed for the same key | `confirmed` |
 | `confirming` | its check failed | `unreachable` |
-| `confirming` | another doubt event | `confirming` (one check runs; the refresh coordinator joins them) |
+| `confirming` | another doubt event | `confirming` (one check runs: a catch-up under way asks again once it lands, since its reply may predate the doubt; full reads join in the refresh coordinator) |
 | `unreachable` | a doubt event, a reconnect, `online` | `confirming` |
 | `unreachable` | a later check landed | `confirmed` |
 | any | the session is deselected | none |
 
-A session the daemon does not hold open (closed, archived) is read from its file and has no live
-stream: the read confirms it, and it stays confirmed until a doubt event. A session still being
+An archived session has no live stream and carries no sync state: its read shows it or fails as
+before. A closed session the daemon does not hold open joins like any other. A session still being
 created has no transcript yet; its dock shows the startup progress as before.
 
 ### Retired
@@ -226,6 +239,7 @@ created has no transcript yet; its dock shows the startup progress as before.
 Delta replay from a watermark persisted at the join (`refreshByDeltaReplay`): it replays every frame
 after the join, including the ones the page already applied live, which is the candidate producer
 named on 2026-09-30 and was found again on 2026-10-06. Catching up from the frontier replaces it.
+The persisted watermark keys an older build wrote are swept on the page's first cache write.
 
 ### Cost
 
