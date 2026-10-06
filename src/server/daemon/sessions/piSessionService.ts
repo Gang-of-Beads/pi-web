@@ -652,8 +652,8 @@ export interface PiAgentSession {
   clearQueue(): { steering: string[]; followUp: string[] };
   getSteeringMessages(): readonly string[];
   getFollowUpMessages(): readonly string[];
-  setModel(model: AgentModel): Promise<void>;
-  cycleModel(direction?: "forward" | "backward"): Promise<{ model: AgentModel } | undefined>;
+  setModel(model: AgentModel, options?: { persist?: boolean }): Promise<void>;
+  cycleModel(direction?: "forward" | "backward", options?: { persist?: boolean }): Promise<{ model: AgentModel } | undefined>;
   getAvailableThinkingLevels(): ClientThinkingLevel[];
   setThinkingLevel(level: ClientThinkingLevel): void;
   cycleThinkingLevel(): ClientThinkingLevel | undefined;
@@ -2999,6 +2999,12 @@ export class PiSessionService implements SessionRouteService {
     return (await this.enabledModelCatalog(session)).map(catalogEntryToClientModel);
   }
 
+  /**
+   * The reader's switch, saved as pi's default model (owner, 2026-10-06): the next new session
+   * starts on the model last switched to, and existing sessions keep the model their own file
+   * records. pi's "set as default" does the same, and with an enabled-model scope adds the model
+   * to it, since a new session only starts on a default inside its scope.
+   */
   async setModel(ref: PiSessionRef, provider: string, modelId: string): Promise<ClientSessionStatus> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
@@ -3017,16 +3023,17 @@ export class PiSessionService implements SessionRouteService {
     const model = candidates.find((candidate) => candidate.provider === provider && candidate.id === modelId)
       ?? session.modelRuntime.getModel(provider, modelId);
     if (model === undefined) throw new Error(`Model not found: ${provider}/${modelId}`);
-    await this.runSessionEntryMutation(session, "change models", () => session.setModel(model));
+    await this.runSessionEntryMutation(session, "change models", () => session.setModel(model, { persist: true }));
     this.publishActivity(session, `model: ${model.id}`, "idle", model.provider);
     this.publishStatus(session);
     return this.statusFromSession(session);
   }
 
+  /** A cycle is a switch too: the model it lands on becomes the default, as setModel's does. */
   async cycleModel(ref: PiSessionRef, direction: "forward" | "backward"): Promise<ClientSessionStatus> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
-    const result = await this.runSessionEntryMutation(session, "change models", () => session.cycleModel(direction));
+    const result = await this.runSessionEntryMutation(session, "change models", () => session.cycleModel(direction, { persist: true }));
     if (result === undefined) throw new Error(session.scopedModels.length > 0 ? "Only one model in scope" : "Only one model available");
     this.publishActivity(session, `model: ${result.model.id}`, "idle", result.model.provider);
     this.publishStatus(session);

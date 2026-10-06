@@ -274,6 +274,10 @@ Both processes check the setting and the file sizes once a minute. Retention app
 
 A layout without a value fits the width, as before: two per row on a phone, one in the desktop sidebar, and as many as fit on the desktop's full-width Navigate page. The choice lives in the config rather than the browser, so clearing a browser's data keeps it; a phone and a desktop still differ because the choice is kept per layout, not per device. The phone layout is PI WEB's narrow layout, so a phone turned on its side uses the desktop layout.
 
+### Model for new sessions
+
+Switching a session's model in PI WEB (the model picker, or cycling models) also makes that model pi's default: `defaultProvider` and `defaultModel` in `~/.pi/agent/settings.json` on that machine, as pi's own "set as default" does. The next new session on that machine starts on it; existing sessions keep the model their own history records. Because it is pi's setting, the `pi` terminal on that machine opens on the same model, and when `enabledModels` limits the models in scope, the chosen model is added to that list. A trusted project's own `.pi/settings.json` default still wins inside that project.
+
 ### Agent state directory
 
 PI WEB runs every session on its bundled Pi SDK. `pi-web doctor` and the status/update flow probe the `pi` command on the machine's `PATH`.

@@ -732,7 +732,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
         expect(setSessionModel).toHaveBeenCalledWith(expect.objectContaining({
           provider: "test-local",
           id: "selected-model",
-        }));
+        }), { persist: true });
       } finally {
         await service.dispose();
       }
