@@ -121,7 +121,7 @@ export class SessionBoardController {
 
   /** Take what a machine announced about its sessions, so the board stays live between reads (D5). */
   applyEvent(machineId: string, event: SessionBoardEvent): void {
-    const remembered = this.remembered.get(machineId);
+    const remembered = this.recall(machineId);
     if (remembered !== undefined) this.remembered.set(machineId, boardWithEvent(remembered, event));
     this.boards.update(machineId, (board) => boardWithEvent(board, event));
   }

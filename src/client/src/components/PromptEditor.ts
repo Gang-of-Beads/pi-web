@@ -403,11 +403,6 @@ export class PromptEditor extends LitElement {
   }
 
   protected override updated(changed: PropertyValues) {
-    // Collapsing removes the editor's host from the DOM, which detaches the
-    // CodeMirror view; expanding renders a fresh, empty host. Without tearing
-    // the old view down here, `createEditor` sees a live `this.editor` and
-    // declines to rebuild, so the composer came back as an empty strip with no
-    // way to type and no visible draft. The rebuilt view is seeded from
     if (changed.has("disabled")) this.updateEditorDisabledState();
     if (changed.has("sessionId") || changed.has("machineId")) {
       this.syncEditorDoc();

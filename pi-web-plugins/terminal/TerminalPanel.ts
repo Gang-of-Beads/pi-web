@@ -15,7 +15,7 @@ import type { TerminalSoftKeyInputOptions } from "./TerminalSoftKeys.js";
 import { clampTerminalFontSize, pinchDistance, pinchFontSize, type PinchState } from "./pinchZoom.js";
 import { describeTerminalError } from "./hostUi.js";
 import { adoptTerminalHostStyles } from "./hostUi.js";
-import { NO_MODIFIERS, toggledModifier, typedInput, type TerminalModifier, type TerminalModifiers } from "./terminalExtraKeys.js";
+import { anyModifier, NO_MODIFIERS, toggledModifier, typedInput, type TerminalModifier, type TerminalModifiers } from "./terminalExtraKeys.js";
 
 const TERMINAL_OPTIONS_BASE: ITerminalOptions = {
   cursorBlink: true,
@@ -129,6 +129,7 @@ export class TerminalPanel extends LitElement {
   }
 
   override willUpdate(changed: PropertyValues<this>): void {
+    if (!this.shouldShowSoftKeys() && anyModifier(this.modifiers)) this.modifiers = NO_MODIFIERS;
     const folder = this.folder();
     const workspaceScope = folder === undefined ? undefined : JSON.stringify([this.machineId, folder]);
     if (workspaceScope !== this.observedWorkspaceScope) {
@@ -227,6 +228,7 @@ export class TerminalPanel extends LitElement {
   private selectTerminalIdInView(id: string | undefined): void {
     if (this.selectedId === id) return;
     this.selectedId = id;
+    this.modifiers = NO_MODIFIERS;
     this.disposeTerminalView();
   }
 
@@ -515,7 +517,7 @@ export class TerminalPanel extends LitElement {
 
   private sendSoftKeyInput(data: string, options: TerminalSoftKeyInputOptions): void {
     if (this.copySnapshot !== undefined) return;
-    this.modifiers = NO_MODIFIERS;
+    if (!options.repeat) this.modifiers = NO_MODIFIERS;
     this.sendTerminalInput(data);
     if (options.refocus) this.focusTerminal();
   }

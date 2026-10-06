@@ -116,9 +116,16 @@ const ROW_SIDE: Readonly<Record<TaskTone, (row: TaskRow) => RowSide>> = {
 
 export type ClockTime = (iso: string) => string | undefined;
 
+const dayNumber = (date: Date): number => date.getFullYear() * 10_000 + date.getMonth() * 100 + date.getDate();
+
+/** A time of day when it is today, else the date with it: a release check is cached for hours and a run may be yesterday's. */
 export const localClockTime: ClockTime = (iso) => {
   const time = Date.parse(iso);
-  return Number.isNaN(time) ? undefined : new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (Number.isNaN(time)) return undefined;
+  const at = new Date(time);
+  return dayNumber(at) === dayNumber(new Date())
+    ? at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : at.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
 function rowDetail(row: TaskRow, clock: ClockTime, startedWord: string): string {

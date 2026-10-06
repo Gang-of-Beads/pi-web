@@ -1,5 +1,6 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { property } from "lit/decorators.js";
+import { repeat } from "lit/directives/repeat.js";
 import { interactiveSurfaceStyles } from "../shared";
 import type { PluginListAction, PluginListGroup, PluginListModel, PluginListRow } from "../../../../shared/pluginApiTypes";
 import { pluginListView } from "./pluginListView";
@@ -25,7 +26,7 @@ export class PluginList extends LitElement {
     h3 { margin: 0 var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); }
     .group { margin: 0; padding: 0; list-style: none; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overflow: hidden; }
     .row { box-sizing: border-box; display: grid; grid-template-columns: minmax(40%, 1fr) minmax(0, max-content); align-items: center; gap: var(--pi-space-1) var(--pi-space-5); min-height: var(--pi-control-height-touch); padding: var(--pi-space-4) var(--pi-space-5); }
-    .row + .row, .actions { border-top: 1px solid var(--pi-border-muted); }
+    .row + .row, .row + .actions { border-top: 1px solid var(--pi-border-muted); }
     .title { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; font-weight: var(--pi-weight-semibold); }
     .value { color: var(--pi-muted); text-align: right; overflow-wrap: anywhere; }
     .status { display: inline-flex; align-items: center; gap: var(--pi-space-3); font-size: var(--pi-text-xs); white-space: nowrap; }
@@ -51,7 +52,7 @@ export class PluginList extends LitElement {
     return html`
       <div class="page">
         ${view.banner === undefined ? nothing : html`<p class="banner" role="status">${view.banner}</p>`}
-        ${view.groups.map((group) => this.renderGroup(group))}
+        ${repeat(view.groups, (group) => group.id, (group) => this.renderGroup(group))}
         ${notes.length === 0 ? nothing : html`<ul class="notes">${notes.map((note) => html`<li>${note}</li>`)}</ul>`}
       </div>
     `;
@@ -63,8 +64,8 @@ export class PluginList extends LitElement {
       <section>
         ${group.heading === undefined ? nothing : html`<h3>${group.heading}</h3>`}
         <ul class="group">
-          ${group.rows.map((row) => this.renderRow(row))}
-          ${actions.length === 0 ? nothing : html`<li class="actions">${actions.map((action) => this.renderAction(action))}</li>`}
+          ${repeat(group.rows, (row) => row.id, (row) => this.renderRow(row))}
+          ${actions.length === 0 ? nothing : html`<li class="actions">${repeat(actions, (action) => action.id, (action) => this.renderAction(action))}</li>`}
         </ul>
       </section>
     `;

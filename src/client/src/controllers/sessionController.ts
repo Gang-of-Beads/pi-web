@@ -1779,7 +1779,7 @@ export class SessionController {
 
   /**
    * A replay landed. Its status frames wait for the next animation frame, so they are applied
-   * first: confirming before them showed the replay's older status for one frame after "Syncing…".
+   * first: confirming before them showed the replay's older status for one frame after the catch-up.
    * The socket learns the position, so its next heartbeat is compared with what the page holds.
    */
   private confirmCaughtUp(repair: SessionGapRepair, key: string): void {
@@ -1791,7 +1791,7 @@ export class SessionController {
 
   /**
    * The selection stopped having a live stream (archived from another device while open): its repair,
-   * retry and sync state go, so nothing keeps saying "Syncing…" about a stream that is not there.
+   * retry and sync state go, so nothing keeps checking a stream that is not there.
    */
   private dropLiveTranscript(): void {
     this.gapRepair = undefined;

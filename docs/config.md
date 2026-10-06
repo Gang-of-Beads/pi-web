@@ -294,7 +294,7 @@ The directory must use the data layout supported by the bundled Pi SDK; PI WEB d
 
 The session daemon resolves the directory once at startup and exports the resolved values to everything it starts, so sessions, terminals, the bash tool, and subsessions all observe the same `PI_CODING_AGENT_DIR` / `PI_CODING_AGENT_SESSION_DIR`. That resolved active directory stays fixed for the daemon lifetime: changing the environment takes effect on the next session-daemon restart on that machine, and until then sessions, Pi package operations, Pi-package-backed PI WEB plugin discovery, status/install detection, and update planning continue to use the daemon-owned active directory; a web/API restart recovers that same active directory instead of applying the new value.
 
-If the session daemon cannot report a valid active directory, profile-dependent Pi package and PI WEB plugin operations report unavailable instead of falling back to independently resolved values. A package-managed update command is shown only when the daemon reports a valid active directory and the `pi` command is on `PATH`, and the command pins that directory for the update. Restart the session daemon on the selected machine to establish the next active directory.
+If the session daemon cannot report a valid active directory, profile-dependent Pi package and PI WEB plugin operations report unavailable instead of falling back to independently resolved values. The Updates page offers an update for a Pi-package install only when the daemon reports a valid active directory and the `pi` command is on `PATH`, and the update pins that directory. Restart the session daemon on the selected machine to establish the next active directory.
 
 ### Pi extension provider baseline
 

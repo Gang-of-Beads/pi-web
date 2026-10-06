@@ -11,6 +11,8 @@ const SYNTHETIC_CLICK_SUPPRESSION_MS = 500;
 
 export interface TerminalSoftKeyInputOptions {
   refocus: boolean;
+  /** A held key's repeat: its bytes were fixed at the press, so it spends no modifier armed since. */
+  repeat: boolean;
 }
 
 interface HeldKey {
@@ -58,7 +60,7 @@ export class TerminalSoftKeys extends LitElement {
     event.preventDefault();
     this.release();
     this.lastPointerAt = Date.now();
-    const repeated = this.press(key, { refocus: event.pointerType === "mouse" });
+    const repeated = this.press(key, { refocus: event.pointerType === "mouse", repeat: false });
     if (repeated !== undefined) this.holdFor(event.pointerId, repeated, REPEAT_DELAY_MS);
   }
 
@@ -66,7 +68,7 @@ export class TerminalSoftKeys extends LitElement {
     this.held = {
       pointerId,
       timer: globalThis.setTimeout(() => {
-        this.onInput(data, { refocus: false });
+        this.onInput(data, { refocus: false, repeat: true });
         this.holdFor(pointerId, data, REPEAT_INTERVAL_MS);
       }, delay),
     };
@@ -87,7 +89,7 @@ export class TerminalSoftKeys extends LitElement {
       event.preventDefault();
       return;
     }
-    this.press(key, { refocus: this.refocusOnClick });
+    this.press(key, { refocus: this.refocusOnClick, repeat: false });
   }
 
   private renderKey(key: TerminalExtraKey) {

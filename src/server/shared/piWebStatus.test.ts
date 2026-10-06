@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VERSION as PI_CODING_AGENT_VERSION } from "@earendil-works/pi-coding-agent";
 import { comparePackageVersions, getPiWebRuntime, getPiWebStatus, getPiWebVersionStatus, updateCommandFor } from "./piWebStatus.js";
 import { SessionDaemonClient } from "./sessiondClient/sessionDaemonClient.js";
@@ -22,6 +22,11 @@ const originalDockerMode = process.env["PI_WEB_DOCKER_MODE"];
 const originalDockerInstallDir = process.env["PI_WEB_DOCKER_INSTALL_DIR"];
 const originalDockerDevRepoRoot = process.env["PI_WEB_DOCKER_DEV_REPO_ROOT"];
 const originalAgentDir = process.env["PI_WEB_AGENT_DIR"];
+const originalUpdateCommand = process.env["PI_WEB_UPDATE_COMMAND"];
+
+beforeEach(() => {
+  delete process.env["PI_WEB_UPDATE_COMMAND"];
+});
 
 afterEach(() => {
   for (const [key, value] of originalSkipVersionChecks) restoreEnv(key, value);
@@ -33,6 +38,7 @@ afterEach(() => {
   restoreEnv("PI_WEB_DOCKER_INSTALL_DIR", originalDockerInstallDir);
   restoreEnv("PI_WEB_DOCKER_DEV_REPO_ROOT", originalDockerDevRepoRoot);
   restoreEnv("PI_WEB_AGENT_DIR", originalAgentDir);
+  restoreEnv("PI_WEB_UPDATE_COMMAND", originalUpdateCommand);
   vi.restoreAllMocks();
 });
 

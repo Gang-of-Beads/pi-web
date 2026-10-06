@@ -18,6 +18,12 @@ import type { Unanswered } from "./scopedResource";
  * same grace as every transport claim - a single miss that the next retry
  * recovers shows nothing - and once shown it stays for the minimum visible
  * time, with the last reason shown, so it never flashes.
+ *
+ * A row on screen keeps showing only for a claim that was already outstanding
+ * when it appeared. A request sent after that waits out its own grace: once
+ * the ack watch counted every in-flight request, "something is unanswered"
+ * was true for every healthy read in flight, and waiving the grace for it let
+ * the row stay up while the server answered everything (review 2026-10-07).
  */
 export type RowClaim = { readonly kind: "none" } | { readonly kind: "notice" } | { readonly kind: "unanswered"; readonly miss: ReadMiss };
 
@@ -47,15 +53,14 @@ const NONE: RowClaim = { kind: "none" };
 
 export function rowDecision(input: RowInput): RowDecision {
   if (input.notice) return { claim: { kind: "notice" } };
-  if (input.unanswered !== undefined) return unansweredRow(input.unanswered, input.now, input.shown !== undefined);
-  if (input.shown === undefined) return { claim: NONE };
-  const shownFor = input.now - input.shown.at;
-  if (shownFor >= BANNER_MIN_VISIBLE_MS) return { claim: NONE };
-  return { claim: { kind: "unanswered", miss: input.shown.miss }, recheckInMs: BANNER_MIN_VISIBLE_MS - shownFor };
+  const { unanswered, shown, now } = input;
+  if (unanswered !== undefined && earnsRow(unanswered, shown, now)) return { claim: { kind: "unanswered", miss: unanswered.miss } };
+  const graceLeft = unanswered === undefined ? undefined : TRANSIENT_GRACE_MS - (now - unanswered.since);
+  const holdLeft = shown === undefined ? 0 : BANNER_MIN_VISIBLE_MS - (now - shown.at);
+  if (shown !== undefined && holdLeft > 0) return { claim: { kind: "unanswered", miss: shown.miss }, recheckInMs: Math.min(holdLeft, graceLeft ?? holdLeft) };
+  return graceLeft === undefined ? { claim: NONE } : { claim: NONE, recheckInMs: graceLeft };
 }
 
-function unansweredRow(unanswered: Unanswered, now: number, alreadyShown: boolean): RowDecision {
-  const waited = now - unanswered.since;
-  if (alreadyShown || waited >= TRANSIENT_GRACE_MS) return { claim: { kind: "unanswered", miss: unanswered.miss } };
-  return { claim: NONE, recheckInMs: TRANSIENT_GRACE_MS - waited };
+function earnsRow(unanswered: Unanswered, shown: ShownUnanswered | undefined, now: number): boolean {
+  return now - unanswered.since >= TRANSIENT_GRACE_MS || (shown !== undefined && unanswered.since <= shown.at);
 }

@@ -17,7 +17,7 @@ stdenv.mkDerivation (finalAttrs: {
     # *.json in the store and fails on the first commented tsconfig.json there
     # (outdent, openai, @anthropic-ai/sdk ...), so links/ goes before it, as the
     # fetcher already drops projects/.
-    preFixup = "rm -rf $storePath/v11/links";
+    preFixup = "rm -rf \"$storePath\"/v*/links";
     hash = "sha256-ZM/YfGEuRsJTrxfP9DBA6tRq0MWCHk4vwy83BTJv67Y=";
   };
 

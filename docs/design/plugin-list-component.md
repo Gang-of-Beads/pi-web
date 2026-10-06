@@ -23,7 +23,14 @@ drift:
 
 Shared CSS cannot fix this, because the drift is in the markup.
 
-## Proposal
+## Proposal (superseded by "Decided" and the shipped model)
+
+The shipped model is `PluginListModel` in `src/shared/pluginApiTypes.ts`, documented for plugin
+authors in `docs/plugins.md` ("Drawing a status page's list"): `read`, `words` (empty, reading,
+failed, stale), `groups` of rows with `status` or `value` and `detail`, group `actions`, and
+`notes`; tones are `good | attention | problem | neutral`; rows take no tap action yet. The contract
+test and producer guard below were not built (no new unit tests, owner 2026-10-03). The proposal is
+kept as it was asked.
 
 The host renders the list; the plugin supplies data.
 

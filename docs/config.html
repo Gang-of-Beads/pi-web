@@ -748,9 +748,9 @@ PI_CODING_AGENT_SESSION_DIR=/opt/pi-profiles/lab-sessions</code></pre>
               </p>
               <div class="callout warning">
                 If the session daemon cannot report a valid active directory, profile-dependent Pi package and PI WEB
-                plugin operations report unavailable instead of falling back to independently resolved values. A
-                package-managed update command is shown only when the daemon reports a valid active directory and the
-                <code>pi</code> command is on <code>PATH</code>, and the command pins that directory for the update.
+                plugin operations report unavailable instead of falling back to independently resolved values. The
+                Updates page offers an update for a Pi-package install only when the daemon reports a valid active
+                directory and the <code>pi</code> command is on <code>PATH</code>, and the update pins that directory.
                 Restart the session daemon on the selected machine to establish the next active directory.
               </div>
             </section>

@@ -23,9 +23,16 @@ function updatesRuntimeHintFromModuleUrl(moduleUrl: string): UpdatesRuntimeHint 
 
 const runtimeHint = updatesRuntimeHintFromModuleUrl(import.meta.url);
 
+const dayNumber = (date: Date): number => date.getFullYear() * 10_000 + date.getMonth() * 100 + date.getDate();
+
+/** A time of day when it is today, else the date with it: a release check is cached for hours and a run may be yesterday's. */
 const localClockTime: ClockTime = (iso) => {
   const time = Date.parse(iso);
-  return Number.isNaN(time) ? undefined : new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (Number.isNaN(time)) return undefined;
+  const at = new Date(time);
+  return dayNumber(at) === dayNumber(new Date())
+    ? at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : at.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
 /** What each restart asks before it runs: both take the page's connection down for a moment, and the daemon's stops running sessions. */

@@ -43,12 +43,17 @@ export function browserBoardMemory(deps: BoardMemoryDependencies = {}): BoardMem
   const setTimer = deps.setTimer ?? ((callback, delayMs) => { globalThis.setTimeout(callback, delayMs); });
   const pending = new Map<string, SessionBoard>();
   const lastWriteAt = new Map<string, number>();
+  let swept = false;
 
   const write = (machineId: string): void => {
     const board = pending.get(machineId);
     pending.delete(machineId);
     if (board === undefined) return;
     lastWriteAt.set(machineId, now());
+    if (!swept) {
+      swept = true;
+      sweepExpired(storage(), now());
+    }
     storeBoard(storage(), makeRoom, keyOf(machineId), JSON.stringify({ savedAt: now(), board }));
   };
 
@@ -130,6 +135,22 @@ function storeBoard(storage: HistoryStorage, makeRoom: (storage: HistoryStorage)
     } catch {
       if (!makeRoom(storage)) return;
     }
+  }
+}
+
+/**
+ * Drop every remembered board past its age, once a page. An expired board is
+ * otherwise dropped only when its own machine is browsed again, so a machine
+ * browsed once and never since kept its board in the shared store for good,
+ * where the transcript cache's eviction cannot reach it (review 2026-10-07).
+ */
+function sweepExpired(storage: HistoryStorage, now: number): void {
+  try {
+    for (const key of storage.keys()) {
+      if (key.startsWith(KEY_PREFIX)) recallBoard(storage, key, now);
+    }
+  } catch {
+    return;
   }
 }
 

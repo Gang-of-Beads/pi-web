@@ -105,14 +105,17 @@ function withModifiers(data: string, modifiers: TerminalModifiers): string {
   return `${modifiers.alt ? "\x1b" : ""}${modifiers.ctrl ? controlCharacter(character) : character}${rest}`;
 }
 
-const CONTROL_SPECIALS: ReadonlyMap<string, string> = new Map([[" ", "\x00"], ["?", "\x7f"]]);
+/** xterm's aliases outside `@` to `~`: space and 2 are NUL, 3 to 7 are ESC and FS to US, `/` is US, 8 and `?` are DEL. */
+const CONTROL_SPECIALS: ReadonlyMap<string, string> = new Map([
+  [" ", "\x00"], ["2", "\x00"], ["3", "\x1b"], ["4", "\x1c"], ["5", "\x1d"], ["6", "\x1e"], ["7", "\x1f"], ["/", "\x1f"], ["8", "\x7f"], ["?", "\x7f"],
+]);
 
-/** Ctrl maps `@` through `_` and the letters to 0x00-0x1f as a terminal does; space is NUL and `?` is DEL. */
+/** Ctrl keeps the low five bits of `@` through `~` (the letters in either case, `[`, `|`, `{` ...) as a terminal does. */
 function controlCharacter(character: string): string {
   const special = CONTROL_SPECIALS.get(character);
   if (special !== undefined) return special;
-  const code = character.toUpperCase().charCodeAt(0);
-  return code >= 0x40 && code <= 0x5f ? String.fromCharCode(code - 0x40) : character;
+  const code = character.charCodeAt(0);
+  return code >= 0x40 && code <= 0x7e ? String.fromCharCode(code & 0x1f) : character;
 }
 
 export function anyModifier(modifiers: TerminalModifiers): boolean {

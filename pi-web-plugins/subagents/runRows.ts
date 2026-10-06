@@ -75,6 +75,9 @@ function listRow(row: SubagentRunRow): PluginListRow {
   return { id: row.runId, title: row.task === undefined ? row.agent : `${row.agent}: ${row.task}`, ...ROW_SIDE[presentation.tone](presentation), detail: presentation.detail };
 }
 
+/** The last read said "none" and the refresh after it failed: both facts, in the one box. */
+const STALE_EMPTY = "Could not refresh. The last read found no subagents in this session.";
+
 const LIST_WORDS = {
   empty: "This session has started no subagents.",
   reading: "Reading this session's subagents…",
@@ -91,6 +94,7 @@ const LIST_WORDS = {
 export function subagentListModel(state: SubagentListState | undefined, refreshFailed: boolean): PluginListModel {
   if (state === undefined) return { read: "reading", groups: [], words: LIST_WORDS };
   if (state.kind === "unknown") return { read: "failed", groups: [], words: { ...LIST_WORDS, failed: state.reason } };
+  if (state.kind === "empty" && refreshFailed) return { read: "failed", groups: [], words: { ...LIST_WORDS, failed: STALE_EMPTY } };
   const rows = state.kind === "rows" ? state.rows : [];
   return {
     read: refreshFailed ? "failed" : "ready",

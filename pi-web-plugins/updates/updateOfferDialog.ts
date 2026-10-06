@@ -80,11 +80,11 @@ export function showPiWebUpdateOffer(facts: PiWebUpdateOfferFacts, ports: PiWebU
                   ports.notify(
                     copied
                       ? "Update command copied. Run it in a terminal on this machine."
-                      : "This browser would not let the page copy; the command is in the Updates panel.",
+                      : "This browser would not let the page copy. Update from the Updates page instead.",
                     copied ? "info" : "error",
                   );
                 })
-                .catch(() => { ports.notify("The command could not be copied; it is in the Updates panel.", "error"); });
+                .catch(() => { ports.notify("The command could not be copied. Update from the Updates page instead.", "error"); });
             }}
           >Copy update command</button>`}
           <button type="button" @click=${() => { record(); handle.close(); }}>Not this version</button>

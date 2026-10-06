@@ -98,8 +98,15 @@ page has two groups drawn by the host list (`plugin-list-component.md`):
 - **Services**: Web / UI and Session daemon, each with the version it runs and whether a
   restart is needed. Buttons: Restart web, Restart session daemon, each asking first.
 
-A nix install with no saved command shows, under Latest, that the install is managed by its
-nix configuration, and links to the Settings field where an update command can be saved.
+A nix install shows "nix" as Installed from. With a deployment update command (`PI_WEB_UPDATE_COMMAND`,
+which the owner's nix-config sets on the services) the detail says Update runs it; without one it says
+the install is managed by its nix configuration. The link to a Settings field for the command waits for
+that field: it does not exist yet (step 1 below).
+
+Built 2026-10-07: a package under `/nix/store` is reported as `{ kind: "unknown", manager: "nix" }`
+rather than a new kind, because older browsers' status parsers reject an unknown kind and would drop
+the whole status. `PI_WEB_UPDATE_COMMAND`, when set, is the status's update command for every install
+kind, the same command the self-update route runs.
 
 
 - **Settings -> Updates** (per machine): one row per thing above: current,

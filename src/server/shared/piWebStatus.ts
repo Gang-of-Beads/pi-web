@@ -452,7 +452,7 @@ async function commandsFor(components: PiWebStatusResponse["components"], option
   hasCommand: (command: string) => Promise<boolean>;
 }): Promise<PiWebStatusResponse["commands"]> {
   const installation = preferredInstallation(components);
-  if (installation?.kind === "docker") return dockerCommands(installation);
+  if (installation?.kind === "docker") return dockerCommands(installation, deploymentUpdateCommand());
 
   const [serviceCommands, cliCommands] = await Promise.all([
     nativeServiceCommands(),
@@ -481,9 +481,9 @@ function preferredInstallation(components: PiWebStatusResponse["components"]): P
   return web ?? sessiond;
 }
 
-function dockerCommands(installation: PiWebInstallationInfo): PiWebStatusResponse["commands"] {
+function dockerCommands(installation: PiWebInstallationInfo, declaredUpdate: string | undefined): PiWebStatusResponse["commands"] {
   return {
-    update: piWebDockerCommand(installation.dockerMode, "update"),
+    update: declaredUpdate ?? piWebDockerCommand(installation.dockerMode, "update"),
     restart: piWebDockerCommand(installation.dockerMode, "restart"),
     restartWeb: piWebDockerCommand(installation.dockerMode, "restart-web"),
     restartSessiond: piWebDockerCommand(installation.dockerMode, "restart-sessiond"),
