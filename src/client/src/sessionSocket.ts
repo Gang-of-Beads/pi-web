@@ -1,4 +1,5 @@
 import { realtimeEvents, sessionEvents } from "./api";
+import { ackWatch } from "./api/ackWatch";
 import { parseRealtimeStreamEvent, parseSessionAskClosedEvent, parseSessionAskOpenedEvent, parseSessionDialogClosedEvent, parseSessionDialogOpenedEvent, parseSessionNotificationInboxEvent, parseSessionStartupProgressEvent, parseSessionStreamEvent, parseSessionUnreadEvent } from "./api/parsers";
 import type { RealtimeEvent, SessionRef, SessionUiEvent } from "../../shared/apiTypes";
 import { socketLivenessVerdict, type SocketReadyState } from "./socketLiveness";
@@ -153,6 +154,7 @@ export class SessionSocket {
     socket.onopen = () => {
       if (this.socket !== socket) return;
       this.lastFrameAt = Date.now();
+      ackWatch.heard();
       // Reconnect refetches everything, and a daemon restart resets the hub's
       // counter, so the first frame after an open says nothing about loss.
       this.seqMonitor.reset();
@@ -200,6 +202,7 @@ export class SessionSocket {
     if (this.socket === socket) {
       this.lastFrameAt = Date.now();
       this.reconnectDelay = 500;
+      ackWatch.heard();
     }
     const raw = await parseSocketEvent(data);
     this.seqMonitor.observe(raw);
@@ -331,6 +334,7 @@ export class RealtimeSocket {
       reached = true;
       this.reachedServer = true;
       this.lastFrameAt = Date.now();
+      ackWatch.heard();
     };
     socket.onmessage = (message) => void this.handleMessage(message.data, socket);
     socket.onerror = () => { socket.close(); };
@@ -364,7 +368,10 @@ export class RealtimeSocket {
   }
 
   private async handleMessage(data: MessageEvent["data"], socket: WebSocket): Promise<void> {
-    if (this.socket === socket) this.lastFrameAt = Date.now();
+    if (this.socket === socket) {
+      this.lastFrameAt = Date.now();
+      ackWatch.heard();
+    }
     const raw = await parseSocketEvent(data);
     // Observed on the raw frame, before validation: a notifications.summary is
     // dropped from the typed event stream, but its stamp still costs a number

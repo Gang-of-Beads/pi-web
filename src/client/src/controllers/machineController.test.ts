@@ -157,7 +157,7 @@ describe("MachineController", () => {
 
     expect(state.selectedMachine).toEqual(remoteMachine);
     expect(state.machineStatuses[remoteMachine.id]).toEqual(offlineHealth);
-    expect(state.error).toContain("Remote is unavailable");
+    expect(state.error).toContain("Trying to sync with Remote");
   });
 
   /**
@@ -535,7 +535,7 @@ describe("MachineController says what a failed health or runtime read means", ()
     vi.spyOn(api, "health").mockRejectedValueOnce(new HttpError("Remote machine unavailable (connect ECONNREFUSED)", 502, remoteMachine.id, "gateway"));
     const { controller, read } = selectedRemote();
     await controller.refreshMachineHealth(remoteMachine.id);
-    expect(read().error).toBe("Remote is unavailable; reconnecting… connect ECONNREFUSED");
+    expect(read().error).toBe("Trying to sync with Remote… connect ECONNREFUSED");
     controller.dispose();
   });
 

@@ -184,7 +184,7 @@ describe("PiWebApp remote route restore while the machine does not answer", () =
     const state: unknown = Reflect.get(app, "state");
     const error: unknown = typeof state === "object" && state !== null ? Reflect.get(state, "error") : undefined;
     expect(String(error)).not.toContain("still unavailable");
-    expect(String(error)).toContain("Remote one is unavailable; reconnecting");
+    expect(String(error)).toContain("Trying to sync with Remote one");
   });
 
   /** Review 6088e664: a notice the ladder raises again on every try brought a dismissed banner back every 15 s, for as long as the reader stayed. */
@@ -205,7 +205,7 @@ describe("PiWebApp remote route restore while the machine does not answer", () =
     const retry = unknownFunction(Reflect.get(app, "retryPendingRemoteRouteRestore"), "PiWebApp.retryPendingRemoteRouteRestore");
     await retry.call(app);
     const errorNow = () => { const state: unknown = Reflect.get(app, "state"); return typeof state === "object" && state !== null ? String(Reflect.get(state, "error")) : ""; };
-    expect(errorNow()).toContain("Remote one is unavailable; reconnecting");
+    expect(errorNow()).toContain("Trying to sync with Remote one");
 
     setState.call(app, { error: "", errorRetiredBy: undefined, errorMachineId: undefined });
     await retry.call(app);

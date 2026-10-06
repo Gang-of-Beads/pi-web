@@ -2,6 +2,7 @@ import { resolveAppUrl } from "../appUrl";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { deadlineSignal, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
 import { dedupeKey, shareInFlight } from "./inFlight";
+import { watchedFetch } from "./ackWatch";
 
 /**
  * Who answered with the error, when it is known. Only PI WEB's gateway names
@@ -46,7 +47,8 @@ async function fetchBody(url: string, init?: RequestInit): Promise<unknown> {
   const timeoutMs = timeoutForBody(init?.body);
   const deadline = deadlineSignal(timeoutMs, init?.signal);
   try {
-    return await readResponse(url, await fetch(resolveAppUrl(url), { ...init, headers, signal: deadline.signal }));
+    const response = await watchedFetch(() => fetch(resolveAppUrl(url), { ...init, headers, signal: deadline.signal }), { upload: init?.body instanceof FormData, callerAborted: () => init?.signal?.aborted === true });
+    return await readResponse(url, response);
   } catch (error) {
     // An abort that was ours is a deadline, and says so. An abort the caller
     // asked for is theirs and is passed through unchanged, and so is a status

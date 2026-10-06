@@ -282,7 +282,7 @@ export class MachineController {
   private machineDownNotice(machineId: string, error: unknown): NoticePatch {
     const machine = this.getState().machines.find((candidate) => candidate.id === machineId);
     const detail = error instanceof Error ? /\((.*)\)/.exec(error.message)?.[1] : undefined;
-    const text = `${machine?.name ?? machineId} is unavailable; reconnecting…${detail === undefined ? "" : ` ${detail}`}`;
+    const text = `Trying to sync with ${machine?.name ?? machineId}…${detail === undefined ? "" : ` ${detail}`}`;
     return noticePatch(noticeFromTransport(text, machineId));
   }
 
@@ -350,7 +350,7 @@ export class MachineController {
       // Reply-retired and machine-scoped: the claim is that this machine's
       // link is down, so only a success from that machine disproves it - a
       // poll from anywhere else may not speak for it.
-      ...(remoteReportedDown(health) ? noticePatch(noticeFromTransport(`${requestedMachine.name} is unavailable; reconnecting…`, requestedMachine.id)) : {}),
+      ...(remoteReportedDown(health) ? noticePatch(noticeFromTransport(`Trying to sync with ${requestedMachine.name}…`, requestedMachine.id)) : {}),
     });
     return requestedMachine;
   }

@@ -45,8 +45,8 @@ type MachineName = (machineId: string) => string;
 
 /** The row's words for each miss (object model §2.3); a machine is named, and a server error keeps its own words (owner Q9). */
 const UNANSWERED_WORDS: { readonly [K in MissKind]: (miss: MissOf<K>, nameOf: MachineName) => string } = {
-  "link-down": () => "Reconnecting…",
-  "machine-unanswering": (miss, nameOf) => `${nameOf(miss.machineId)} is unavailable; reconnecting…`,
+  "link-down": () => "Trying to sync with the server…",
+  "machine-unanswering": (miss, nameOf) => `Trying to sync with ${nameOf(miss.machineId)}…`,
   "server-error": (miss, nameOf) => `${nameOf(miss.machineId)}: ${miss.reason}`,
 };
 
@@ -117,12 +117,12 @@ export function normalizeTransientError(error: string): string | undefined {
   // prefix today - machineDownNotice and the explicit-selection path in the
   // machine controller, and the restore ladder's retry sentence in
   // PiWebApp - keep that count true when adding a fourth.
-  const composed = /is unavailable; reconnecting/i.test(error);
+  const composed = /^trying to sync with /i.test(error);
   // A TCP-endpoint deployment has no socket path in the error text, so the
   // socket-path requirement missed the same outage there; the daemon's own
   // phrase ("session daemon") carries the identification instead.
   if (!composed && /unavailable: connect (enoent|econnrefused)/i.test(error) && (/sessiond\.sock/i.test(error) || /session daemon/i.test(error))) {
-    return "Reconnecting to the session daemon…";
+    return "Trying to sync with the server…";
   }
   // Matches the DOMException text a cancelled fetch stringifies to. The
   // earlier rule required "model response failed:", which only ever prefixes
@@ -138,7 +138,7 @@ export function normalizeTransientError(error: string): string | undefined {
   // re-issue themselves and a session that was streaming goes on replying, so
   // this heals like a reconnect, not like a failed action.
   if (!composed && /did not answer within/i.test(error)) {
-    return "A request timed out. Polls retry on their own.";
+    return "Trying to sync with the server…";
   }
   // What a dropped connection looks like from `fetch`: Chrome says "Failed to
   // fetch", Safari "Load failed", Firefox "NetworkError when attempting to
@@ -149,13 +149,13 @@ export function normalizeTransientError(error: string): string | undefined {
   // appear as the detail of a composed message ("X is unavailable; reconnecting…
   // Failed to fetch"), and rewriting that would erase the machine's name.
   if (/^(failed to fetch|load failed|networkerror when attempting to fetch resource)[.!]?$/i.test(error)) {
-    return "Lost connection to PI WEB. Reconnecting…";
+    return "Trying to sync with the server…";
   }
   // The gateway's own two labels, whole-message (its detail arrives inside
   // parentheses). Same claim as the local daemon's: the hop in between is
   // down, and it heals.
   if (/^remote machine (unavailable|timeout)/i.test(error)) {
-    return "Reconnecting to the machine…";
+    return "Trying to sync with the machine…";
   }
   // An HTTP 5xx from the web process (a proxy answering while the daemon or
   // upstream is mid-restart) heals like a dropped socket: the polls re-issue

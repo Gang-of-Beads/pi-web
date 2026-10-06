@@ -45,7 +45,6 @@ import { isQueuedAnswer, withQueuedAnswers } from "../queuedAnswerRows";
 import { placeUserRows } from "../userRowPlacement";
 import { stepStatusText, stepWaitingText } from "../sessionStepWords";
 import { activityDockWords } from "../activityDockWords";
-import type { TranscriptSyncDock } from "../transcriptSync";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./FormattedText";
 import "./ToolExecutionView";
@@ -199,7 +198,6 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   /* Quiet through colour, not opacity: the .75 layer put 12px muted text at
      3.96:1 on the dock, under the AA floor it reads at full strength. */
   .activity-dock.idle { width: fit-content; max-width: min(60%, 240px); padding: var(--pi-space-2) var(--pi-space-5); font-size: var(--pi-text-xs); }
-  .activity-dock.syncing { width: fit-content; max-width: min(60%, 240px); padding: var(--pi-space-2) var(--pi-space-5); font-size: var(--pi-text-xs); }
   /* Waiting on an answer is one short phrase too, and a phrase stretched over
      1223px of empty bar is the same empty card in a different colour. Only the
      working state keeps the full row, because it carries the elapsed clock at
@@ -661,7 +659,6 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) findCodeFenceRenderer?: (language: string) => QualifiedCodeFenceRendererContribution | undefined;
   @property({ type: Boolean }) isSendingPrompt = false;
   /** Set while the page is not known to hold the whole transcript: the dock says so instead of the status. */
-  @property({ attribute: false }) syncDock: TranscriptSyncDock | undefined;
   @property({ type: Boolean }) isCompacting = false;
   @property({ type: Number }) pendingMessageCount = 0;
   @property({ attribute: false }) clientQueuedMessages: QueuedSessionMessage[] = [];
@@ -1460,7 +1457,6 @@ export class ChatView extends LitElement {
   }
 
   private renderActivityDock() {
-    if (this.syncDock !== undefined) return this.renderSyncDock(this.syncDock);
     if (this.pendingAsk !== undefined) return this.renderNotesDock(this.contributedActivityNote(this.turnIdle()));
     if (this.isSendingPrompt) {
       return html`
@@ -1487,23 +1483,6 @@ export class ChatView extends LitElement {
         <span class="activity-text" title=${words}>${words}</span>
         ${renderActivityNote(notes)}
         ${elapsed === undefined ? null : html`<span class="activity-elapsed" aria-hidden="true">${elapsed.text}</span>`}
-      </div>
-    `;
-  }
-
-  /**
-   * The page knows it is out of step with the daemon (docs/design/sync-convergence.md, phase B):
-   * frames it knows are missing, or a check that could not confirm. The session's status word may
-   * be newer than its transcript here, so the dock says syncing, as it says sending for a message
-   * on its way. A state of the transcript, independent of what else the dock would say: it shows
-   * over an open ask card and a message being sent alike, with the plugin notes kept.
-   */
-  private renderSyncDock(sync: TranscriptSyncDock): TemplateResult {
-    return html`
-      <div class="activity-dock syncing" aria-live="polite">
-        <span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>
-        <span class="activity-text" title=${sync.words}>${sync.words}</span>
-        ${renderActivityNote(this.contributedActivityNote(this.turnIdle()))}
       </div>
     `;
   }

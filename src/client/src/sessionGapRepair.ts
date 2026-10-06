@@ -41,11 +41,6 @@ export interface GapRepairOptions {
   /** A replay landed: every frame after the frontier it asked from is applied. */
   caughtUp?: () => void;
   /**
-   * The machine knows frames are missing: a seq jump, another seq space, or a pass that could not
-   * replay what was missed and falls back to the full read.
-   */
-  fellBehind?: () => void;
-  /**
    * Whether the transcript snapshot reflects this frame. Only transcript frames are: a dialog,
    * ask or inbox frame at or below the snapshot's seq still applies (its own revision scope drops
    * an old one), and its seq orders it and moves the frontier. Absent, every frame is.
@@ -130,7 +125,6 @@ export class SessionGapRepair {
     if (this.startsNewSpace(event, seq)) {
       this.enterSpace(frameEpoch(event));
       this.applyFrame(event, seq);
-      this.options.fellBehind?.();
       this.options.resync();
       return;
     }
@@ -138,7 +132,6 @@ export class SessionGapRepair {
     const frontier = this.frontier;
     if (frontier !== undefined && seq > frontier + 1) {
       this.buffer.push(event);
-      this.options.fellBehind?.();
       void this.repair(frontier);
       return;
     }
@@ -194,13 +187,11 @@ export class SessionGapRepair {
     if (newSpace !== undefined) {
       this.enterSpace(newSpace);
       this.applyInSeqOrder(held.filter((frame) => frameEpoch(frame) === newSpace));
-      this.options.fellBehind?.();
       this.options.resync();
       return;
     }
     if (!result.ok) {
       this.applyInSeqOrder(held);
-      this.options.fellBehind?.();
       this.options.resync();
       return;
     }

@@ -80,7 +80,7 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
 - **Socket watchdog.** No frame, keepalive included, for 2 × 20 s means the socket is closed and reopened. The first thing after a reconnect is a head comparison.
 - **Honest labels.**
   - After 2 s behind, a surface shows a thin "Catching up…" line.
-  - When unknown, it says so instead of showing stale rows as if they were current. (Superseded 2026-10-06: the word is "Syncing…", never "Offline"; see phase B.)
+  - When unknown, it says so instead of showing stale rows as if they were current. (Superseded 2026-10-06: the top row says "Trying to sync with the server…" once a request has gone unanswered for the ack timeout; never "Offline"; see phase B and phase C.)
   - The status line never claims a live state that the transcript head contradicts.
 - **No refresh storms.** The watcher drops git's own churn, dependency folders and pi's runtime state, and coalesces a burst into one `workspace.changed` per window: 250 ms for git state, 2.5 s for the tree (object model §1.16). The web log showed about two a second before it.
 
@@ -96,7 +96,7 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
    - Any frame resets the page's quiet timer. A page pulls `/api/heads` only when *T* passes with nothing received, and on `visibilitychange`, `online` and `pageshow`.
    - **The heartbeat is that frame, and it stays tiny.** The daemon sends it only on a socket that has been quiet, at an interval below *T* (the page names its *T* when it subscribes), so a healthy idle session never triggers a pull. It carries only the compact heads, a few tens of bytes. Measured today: an idle socket carries one 20-byte keepalive per 20 s. The status frames sent while streaming (284 in 45 s on playria) are the real traffic; phase A measures them and sends deltas.
    - *T* is per device (phone and desktop may want different values), stored with the browser's other preferences.
-3. **Behind label: only when stuck.** Nothing is shown while a page catches up within *T*. After *T*, still behind shows "Catching up…", and no head shows "Offline · updated HH:MM". (Refined 2026-10-06, phase B: the word is "Syncing…" for both, shown when frames are known missing or a check failed, and never "Offline".)
+3. **Behind label: only when stuck.** Nothing is shown while a page catches up within *T*. After *T*, still behind shows "Catching up…", and no head shows "Offline · updated HH:MM". (Refined 2026-10-06: one top-row signal, "Trying to sync with the server…", once a request has gone unanswered for the ack timeout; never "Offline"; see phase C.)
 4. **Order: sync first**, before `ask_user`. Two user-reported bugs go ahead of phase A: Enter picking a Chinese IME candidate sends the message, and sessions missing Archive and Delete.
 5. **Restart the daemon now**, and remove the restart-when-idle watcher.
 
@@ -170,18 +170,39 @@ Owner, later the same day, on when to say it (answers to ask `c4825c84`):
 This matches the 2026-09-30 decision that the catching-up word shows only when the page is stuck,
 not while it routinely checks.
 
-### Four states, one owner
+Owner, the same evening (answers to asks `0b1994a8` and `a1317abd`), settling where it shows:
 
-`SessionController` owns one value per selected machine + session, `transcriptSync`, and the dock
-reads it before anything else it would say (`transcriptSync.ts`, lookup tables for the
-transitions, the dock and the retry).
+- The page says it is trying to sync only when it can no longer confirm it is in step: it sent
+  something and no answer of any kind came back within the ack timeout. Any answer resets the
+  timer; the page keeps retrying whatever is shown. The words are "Trying to sync with the
+  server…", in the top notification row.
+- The ack timeout is its own value, not the quiet window: the quiet window probes when nothing has
+  arrived for a while (active sync); the ack timeout is a request the page made that got no ack.
+- The timer is the page's, about its own server. A remote machine that does not answer is the
+  server's answer, and keeps its own words ("Trying to sync with <machine>…"); the Machines page
+  alone says a machine is offline.
+- The session's own line below shows message and session state (sending, working, idle). It can
+  show at the same time as the top row; the two are managed apart. So the transcript's sync value
+  is not drawn: the dock's "Syncing…" of the first cut is gone.
+- A server that answered with an error keeps showing its reason (owner Q9, 2026-09-30), and the
+  read is retried.
 
-| State | Means | The dock says |
-|---|---|---|
-| `confirmed` | the page applied a full read and every frame after it, in seq order, without a gap | the session's real status (idle, working, waiting...) |
-| `checking` | a routine reason to look; nothing is known to be missing, and the check is under way | the session's status, unchanged: checking is quiet |
-| `behind` | the page knows frames are missing (a seq gap, a heartbeat ahead, a frame it could not read, another seq space) and is fetching them | "Syncing…", with the sending dots, over the status word, the ask card's notes dock and the sending line alike; plugin notes kept |
-| `retrying` | a check failed (an error, or the 30 s request deadline) | "Syncing…"; the check is retried from 5 s, doubling to a minute, for as long as it takes |
+### Three states, one owner, not drawn
+
+`SessionController` owns one value per selected machine + session, `transcriptSync`
+(`transcriptSync.ts`, lookup tables for the transitions and the retry). It owns the checks and the
+retry of a check that failed; nothing draws it.
+
+| State | Means |
+|---|---|
+| `confirmed` | the page applied a full read and every frame after it, in seq order, without a gap |
+| `checking` | a reason to look; the check (a catch-up from the frontier, or the full read) is under way |
+| `retrying` | a check failed (an error, or the 30 s request deadline); it is retried from 5 s, doubling to a minute, for as long as it takes |
+
+What the reader sees comes from elsewhere: the session's line keeps its status, and the top row says
+"Trying to sync with the server…" once a request has gone without an answer for the ack timeout
+(`api/ackWatch.ts`: any response, stated error or socket frame is an answer; an upload is not
+watched; a request the caller cancelled says nothing).
 
 ### What starts a check
 
@@ -193,8 +214,8 @@ transitions, the dock and the retry).
 | the socket loses an open connection, including the liveness check dropping one silent past 42 s (checked every 5 s while visible: the probe after silence) | frames published until it reopens reach nobody here | catch up from the frontier (a failed reconnect attempt is not news: a daemon that stays down would repeat it on every try) | `checking` |
 | the socket reopens | the new connection carries nothing over | catch up from the frontier; the ledger ask waits for it | `checking` |
 | the selected session goes idle | the status may come over the machine socket ahead of the session socket's own frames, and a trailing loss there has no later frame to reveal it | catch up from the frontier | `checking` |
-| the seq monitor, the gap repair or a heartbeat head shows a gap, or a frame from another seq space arrives | frames are missing | the gap repair, or the full read | `behind` |
-| a revisioned frame fails validation | a transition was lost | the full read | `behind` |
+| the seq monitor, the gap repair or a heartbeat head shows a gap, or a frame from another seq space arrives | frames are missing | the gap repair, or the full read | `checking` |
+| a revisioned frame fails validation | a transition was lost | the full read | `checking` |
 | any check fails | it could not confirm | the retry | `retrying` |
 
 A window that only regains focus while visible is not doubt: its timers and socket kept running,
@@ -222,7 +243,8 @@ and the machine socket that feeds every session's row. The second can arrive fir
 the session socket lost its last frames, and a trailing loss has no later frame to reveal it. So the
 moment the selected session goes idle is a quiet check: one small request for the frames after the
 frontier. On a healthy stream it answers nothing within a round trip and nothing changes on screen;
-when it finds the frames, they apply in that round trip; only a failure shows "Syncing…".
+when it finds the frames, they apply in that round trip; a failure is retried, and a link that does
+not answer is the top row's to say.
 The join read's own idle status counts too: its status read is separate from its transcript read
 and can be newer, and the frames between them are exactly the ones a quiet session never reveals.
 
@@ -235,10 +257,8 @@ catch-up.
 | From | Event | To |
 |---|---|---|
 | any | another session or machine selected | `checking` for the new key; the old key's repair and retry are dropped |
-| `confirmed`, `checking` | a routine reason | `checking` (one check runs: a catch-up under way asks again once it lands, since its reply may predate the reason; full reads join in the refresh coordinator) |
-| `confirmed`, `checking` | frames known missing | `behind` |
-| `behind` | a routine reason, or more frames missing | `behind` |
-| `retrying` | a routine reason, or frames missing | `retrying` (the retry stays armed) |
+| `confirmed`, `checking` | a reason to look | `checking` (one check runs: a catch-up under way asks again once it lands, since its reply may predate the reason; full reads join in the refresh coordinator) |
+| `retrying` | a reason to look | `retrying` (the retry stays armed) |
 | any | a check landed for the same key, and the gap repair holds nothing | `confirmed` |
 | any | a check failed | `retrying` |
 | any | the session is deselected | none |
@@ -290,34 +310,41 @@ asked for the ablation batch first (2026-10-06); it is done.
 | Surface | Kept current by | Knows it is out of step when | Says today |
 |---|---|---|---|
 | Session list (Navigate, Go to, quick switcher) | one board read per machine, `session.name`/`session.created` and status frames on the machine socket, a re-read after a missed announcement, a whole re-read after 30 s when browsed | the machine socket's seq monitor sees a gap (`missedAnnouncements`); a project or workspace listing did not answer (an unknown source, retried on the shared backoff) | nothing: the rows that did answer show, the rest are read again silently (owner Q4, 2026-09-30: the board is not an app-row cause) |
-| Docked cards (ask, extension dialogs, waiting cards) | the session's status frames on both sockets; the dialog surface's revision (`RevisionScope`) resyncs on a revision gap or a malformed frame | a dialog revision gap; the transcript is `behind` or `retrying` (they ride the same session stream) | nothing on the card; since phase B the dock says "Syncing…" while the session stream is behind |
+| Docked cards (ask, extension dialogs, waiting cards) | the session's status frames on both sockets; the dialog surface's revision (`RevisionScope`) resyncs on a revision gap or a malformed frame | a dialog revision gap; the transcript's check failed (they ride the same session stream) | nothing on the card |
 | Plugin panels (files, git, goals, tasks, relays, subagents, background runs) | each plugin's own reads, `workspace.changed` nudges, a few polls | a read failed; the plugin decides | the plugin's own words: "Couldn't read this workspace's files: …", "Status unavailable.", "Could not load workspace tasks.", "Could not scan workspace relays." (some with a Retry button) |
 | Composer, a message that could not send | the outbox, retried when the network returns | the browser is offline | "You are offline - this message sends itself when the connection is back." |
 | App row | the machine and session sockets, every read's outcome | a link is down, a machine does not answer, a server error | "Reconnecting…", "X is unavailable; reconnecting…", the server's own reason |
 
-### Proposal
+### Decisions (owner, 2026-10-06, asks `0b1994a8` and `a1317abd`)
 
-- **Session list:** one sync value per machine, the same four states. `checking` for the routine
-  re-reads; `behind` when the machine socket missed an announcement or a source did not answer;
-  `retrying` when the whole read failed. While `behind` or `retrying`, the list's header says
-  "Syncing…" (quiet otherwise), and rows from a source that did not answer stay as they were rather
-  than vanish. The app row stays out of it, as ruled.
-- **Docked cards:** no state of their own. They ride the session's transcript sync (the same key),
-  which already says "Syncing…" in the dock; a dialog revision gap marks that key `behind`. A card
-  keeps working while syncing: an answer to a card closed elsewhere is refused by the daemon and the
-  card says so (already shipped).
-- **Plugin panels:** the host offers each panel the same four states through the plugin API (an
-  additive field on the panel context: `sync` plus a `report(outcome)` a panel calls after a read).
-  The host draws "Syncing…" in the panel's header while `behind` or `retrying`; a plugin keeps its
-  own words only for an error the reader can act on (with its Retry button or setting). Plugins
-  move one at a time; the API change comes first.
-- **Composer:** "You are offline - …" becomes "Waiting for the connection - this message sends
-  itself when it is back."
-- **App row:** unchanged ("Reconnecting…" is already "we are trying").
+- **One signal for the link, in the top row.** "Trying to sync with the server…" shows only when a
+  request the page sent has had no answer of any kind for the ack timeout; any answer resets it;
+  the page keeps retrying underneath. No surface draws its own sync word: the list, the docked
+  cards and the panels keep what they last knew and read again on their own. (Supersedes the
+  per-surface "Syncing…" of the draft.)
+- **The ack timeout is its own value**, not the quiet window *T* (which probes after silence). It is
+  the row's grace, 4 s, kept in one place (`TRANSIENT_GRACE_MS`).
+- **Per page, not per machine**: the timer is about the page's own server. A remote machine that
+  does not answer is the server's answer: the row names it ("Trying to sync with <machine>…").
+  "Offline" for a machine appears on the Machines page only.
+- **A server that answered with an error keeps its reason** in the row, and the read is retried.
+- **Plugin panels:** the host draws a panel's state uniformly and retries its reads; a plugin keeps
+  its own words only for an error the reader can act on. Retry buttons on errors that are retried
+  anyway go (the git panel's "Diff unavailable … Retry" among them).
+- **A message that could not send** stays in the queue as "sending", and can be taken back: taking
+  back sends a withdrawal, which fails, and says so, if the daemon answers that the message was
+  already consumed. No "you are offline" line.
+- **Composer writes from extensions:** a late "set" (`setEditorText`) replayed after the page
+  missed it is not applied; an append (pi's `pasteToEditor`, the frame's `paste` mode) adds and
+  removes nothing, so a replayed append is applied.
 
-### Open questions (owner)
+### Built
 
-See the ask that accompanies this draft; nothing here is built until it is answered.
+- Step 1 (this commit): the top row's words and the ack watch (`api/ackWatch.ts`, fed by every
+  JSON request, `fetchWithDeadline` and every socket frame); the dock's "Syncing…" removed and the
+  transcript's sync value reduced to the checks and their retry.
+- Next: the panel state through the plugin API; the git panel's automatic retry; the queued
+  "sending" row in place of the offline line; Machines-only "offline"; the replayed-append rule.
 
 ## What this keeps and what it retires
 

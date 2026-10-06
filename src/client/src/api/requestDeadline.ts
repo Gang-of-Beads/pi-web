@@ -17,6 +17,8 @@
  * reader can act on, and it is indistinguishable from working.
  */
 
+import { watchedFetch } from "./ackWatch";
+
 /** How long a request may take before it is reported as unanswered. */
 export const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -77,7 +79,7 @@ export function timeoutForBody(body: BodyInit | null | undefined): number {
 export async function fetchWithDeadline<T>(url: string, init: RequestInit | undefined, read: (response: Response) => Promise<T>, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const deadline = deadlineSignal(timeoutMs, init?.signal);
   try {
-    const response = await fetch(url, { ...init, signal: deadline.signal });
+    const response = await watchedFetch(() => fetch(url, { ...init, signal: deadline.signal }), { upload: init?.body instanceof FormData, callerAborted: () => init?.signal?.aborted === true });
     return await read(response);
   } catch (error) {
     if (deadline.signal.aborted && init?.signal?.aborted !== true) throw new RequestTimeoutError(url, timeoutMs);

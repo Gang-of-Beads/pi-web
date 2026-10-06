@@ -580,7 +580,6 @@ export class SessionController {
         },
         resync: () => { if (this.gapRepair === repair) void this.refreshSelectedSession(session.id); },
         caughtUp: () => { if (this.gapRepair === repair) this.confirmCaughtUp(repair, transcriptKey); },
-        fellBehind: () => { if (this.gapRepair === repair) this.syncTranscript({ type: "missing", key: transcriptKey }); },
       });
       this.gapRepair = repair;
       this.syncTranscript({ type: "check", key: transcriptKey });
@@ -595,7 +594,7 @@ export class SessionController {
         },
         onDisconnect: () => { if (this.gapRepair === repair) void this.recheckTranscript(); },
         onMalformed: () => {
-          this.syncTranscript({ type: "missing", key: transcriptKey });
+          this.syncTranscript({ type: "check", key: transcriptKey });
           this.dialogScope.requestResync();
         },
         onGap: () => { if (this.gapRepair === repair) this.catchUpFromFrontier(repair, transcriptKey); },
@@ -1744,8 +1743,8 @@ export class SessionController {
 
   /**
    * The page may have missed frames of the selected session: it came back from the background, the
-   * browser is online again, a connection was lost, a turn ended. Checks quietly: the dock says
-   * "Syncing…" only if the check finds frames missing or cannot confirm.
+   * browser is online again, a connection was lost, a turn ended. Checks quietly; a check that
+   * fails is retried, and a link that does not answer is the top row's to say.
    */
   recheckTranscript(): Promise<void> {
     const key = this.liveTranscriptKey();
@@ -1775,7 +1774,7 @@ export class SessionController {
   private catchUpFromFrontier(repair: SessionGapRepair, key: string): void {
     const pending = repair.catchUp();
     if (pending === undefined) return;
-    this.syncTranscript({ type: "missing", key });
+    this.syncTranscript({ type: "check", key });
   }
 
   /**

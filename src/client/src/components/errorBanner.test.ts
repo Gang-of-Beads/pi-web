@@ -108,7 +108,7 @@ describe("dropped-connection failures", () => {
       expect(isTransientError(raw)).toBe(true);
       const { host } = renderBanner(raw);
       expect(host.querySelector(".error")?.getAttribute("role")).toBe("status");
-      expect(host.querySelector(".error-text")?.textContent).toContain("Lost connection to PI WEB");
+      expect(host.querySelector(".error-text")?.textContent).toContain("Trying to sync with the server");
     }
   });
 
@@ -191,8 +191,8 @@ describe("what the app row says while a read goes unanswered", () => {
       "server-error": unansweredRowText({ kind: "server-error", machineId: "local", reason: "Project store is locked" }, nameOf),
       "server-error, unknown machine": unansweredRowText({ kind: "server-error", machineId: "gone-1", reason: "Internal Server Error" }, nameOf),
     }).toEqual({
-      "link-down": "Reconnecting…",
-      "machine-unanswering": "hxd-pc-ubuntu is unavailable; reconnecting…",
+      "link-down": "Trying to sync with the server…",
+      "machine-unanswering": "Trying to sync with hxd-pc-ubuntu…",
       "server-error": "hxd-work-mbp: Project store is locked",
       "server-error, unknown machine": "gone-1: Internal Server Error",
     });

@@ -111,10 +111,10 @@ import { goToScope, type GoToScope, type NavigateListScope, type ShownPageKind }
 import { quickSwitcherSessionStates, sessionIdsIn } from "../quickSwitcher";
 import { reloadOffer } from "../versionSkew";
 import { oneRowPerIdentity } from "../transcriptInvariant";
-import { transcriptSyncDock } from "../transcriptSync";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { readPinnedProjectIds, togglePinnedProjectId, writePinnedProjectIds } from "../projectPins";
 import { observeTransportRecovery } from "../api/transportHealth";
+import { ackWatch } from "../api/ackWatch";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
 import { errorBanner, noticeExpiryMs, normalizeTransientError, unansweredRow } from "./errorBanner";
 import { rowDecision, type ShownUnanswered } from "../sync/connectionSummary";
@@ -448,7 +448,7 @@ export class PiWebApp extends LitElement {
   private livenessTimer: number | undefined;
   private unansweredShown: ShownUnanswered | undefined;
   private workspaceChangedWhileHidden: WorkspaceScope | undefined;
-  private reconnectingRecheck: number | undefined;
+  private reconnectingRecheck: ReturnType<typeof setTimeout> | undefined;
   private lastInteractionLivenessAt = 0;
   private readonly workspaceDeletionRunReads = new TrailingRefreshCoordinator<string>();
   private readonly firstOpenFallbacks = new Map<string, number>();
@@ -1154,6 +1154,7 @@ export class PiWebApp extends LitElement {
     // not the one that failed; the realtime socket alone was leaving a banner
     // on screen until the page was reloaded by hand.
     observeTransportRecovery((machineId) => { this.clearTransientError(machineId); });
+    ackWatch.watch(() => { this.requestUpdate(); });
     this.realtime.watchPhase(() => { this.requestUpdate(); });
     // A failed send is a fact about a session the reader may not be looking at, so the
     // list must learn about it from the outbox rather than from a visit.
@@ -1270,6 +1271,7 @@ export class PiWebApp extends LitElement {
     if (this.appRowInset !== 0) this.ownerDocument.documentElement.style.removeProperty("--pi-app-row-inset");
     this.appRowInset = 0;
     observeTransportRecovery(undefined);
+    ackWatch.watch(undefined);
     this.realtime.watchPhase(undefined);
     this.navigation.dispose();
     if (this.transientErrorTimer !== undefined) window.clearTimeout(this.transientErrorTimer);
@@ -1302,7 +1304,7 @@ export class PiWebApp extends LitElement {
     this.clearScheduledPiWebStatusRefresh();
     if (this.workspaceDeletionPollTimer !== undefined) window.clearInterval(this.workspaceDeletionPollTimer);
     this.workspaceDeletionPollTimer = undefined;
-    if (this.reconnectingRecheck !== undefined) window.clearTimeout(this.reconnectingRecheck);
+    if (this.reconnectingRecheck !== undefined) globalThis.clearTimeout(this.reconnectingRecheck);
     this.reconnectingRecheck = undefined;
     this.projects.dispose();
     this.workspaces.dispose();
@@ -1757,7 +1759,7 @@ export class PiWebApp extends LitElement {
     // previous text, which the retry ladder would otherwise paste into itself
     // once per attempt.
     const detail = health?.error;
-    const text = `${machineName} is unavailable; reconnecting…${detail === undefined ? "" : ` ${detail}`}`;
+    const text = `Trying to sync with ${machineName}…${detail === undefined ? "" : ` ${detail}`}`;
     if (text === this.remoteRouteRestoreNotice) return;
     this.remoteRouteRestoreNotice = text;
     this.setState(noticePatch(noticeFromTransport(text, machineId)));
@@ -4627,7 +4629,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .onRetryMessage=${(clientMessageId: string) => { this.promptEditor?.retryOutbox(clientMessageId); }} .onDiscardMessage=${this.handleDiscardMessage} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .syncDock=${transcriptSyncDock(state.transcriptSync, this.selectedSessionKey())} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk}
+      <chat-view .onRetryMessage=${(clientMessageId: string) => { this.promptEditor?.retryOutbox(clientMessageId); }} .onDiscardMessage=${this.handleDiscardMessage} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk}
         .onDialogKey=${this.handleDialogKey}
         .pendingAsks=${state.pendingAsks} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .machineId=${selectedMachineId(state)} .sessionCwd=${session.cwd}></chat-view>
     `;
@@ -4714,10 +4716,10 @@ export class PiWebApp extends LitElement {
 
   private renderUnansweredRow(noticeShown: boolean) {
     const messageStatus = messageStatusUnanswered(this.state.messageStatusUnanswered, { machineId: selectedMachineId(this.state), sessionId: this.state.selectedSession?.id });
-    const unanswered = [this.machines.unanswered(), targetUnanswered(this.namedTargetInScope()), messageStatus, this.realtime.unanswered(selectedMachineId(this.state))].reduce(earliestUnanswered, this.projects.unanswered());
+    const unanswered = [this.machines.unanswered(), targetUnanswered(this.namedTargetInScope()), messageStatus, this.realtime.unanswered(selectedMachineId(this.state)), ackWatch.waiting()].reduce(earliestUnanswered, this.projects.unanswered());
     const decision = rowDecision({ notice: noticeShown, unanswered, shown: this.unansweredShown, now: Date.now() });
-    if (this.reconnectingRecheck !== undefined) window.clearTimeout(this.reconnectingRecheck);
-    this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : window.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
+    if (this.reconnectingRecheck !== undefined) globalThis.clearTimeout(this.reconnectingRecheck);
+    this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : globalThis.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
     if (decision.claim.kind !== "unanswered") {
       this.unansweredShown = undefined;
       return null;
