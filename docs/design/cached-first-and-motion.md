@@ -1,6 +1,7 @@
 # Show what is known at once, then move it into place
 
-Status: design draft for the owner (2026-10-06). Nothing here is built yet.
+Status: design draft for the owner (2026-10-06), revised after research the same day. Nothing
+here is built yet.
 
 ## The request
 
@@ -27,7 +28,8 @@ the page, to stand in for a phone's round trip.
 The pickers wait for their reads before they open (`openModelDialog` reads the model list and the
 catalog, `openThinkingDialog` the levels), so a phone pays a round trip on every tap. The session
 list keeps its last answer in memory only (`workspaceSessionsCache.ts`, the board's 30 s freshness),
-so a reload or a cold start shows nothing until the board read lands.
+so a reload or a cold start shows nothing until the board read lands. The board answer for those
+166 sessions is 172 KB of JSON (about 1 KB a row, 20 KB gzipped on the wire).
 
 ## Can it be animated? (feasibility)
 
@@ -47,6 +49,76 @@ so a reload or a cold start shows nothing until the board read lands.
 - **Lit's own `@lit-labs/motion`** implements the same technique as a directive, but it is a labs
   package and a dependency; a helper of about 80 lines does what is needed below.
 
+## What others do (research, 2026-10-06)
+
+### Showing cached content first
+
+- **Stale-while-revalidate** is the standard shape: answer from the cache at once, fetch a fresh
+  copy in the background, replace in place (RFC 5861; web.dev "Keeping things fresh with
+  stale-while-revalidate"). It trades bounded staleness for no waiting.
+- **Linear** keeps its data in IndexedDB and boots from it: "the client trusts what's local, the
+  server is the source of truth for correctness, and the two reconcile asynchronously". An inline
+  script reads `localStorage` before the bundle loads so the first paint already has the right
+  shell; the first request that fails (an expired session) is what redirects, nothing is checked up
+  front. Updates arrive as small deltas and re-render only the cells that changed
+  (performance.dev, "How's Linear so fast?", 2026-05).
+- **TanStack Query's persister** (the common library form of the same idea) restores the cache on
+  start, discards it when it is older than `maxAge` (24 h by default), when its `buster` string
+  (the app version) differs, or when it is empty or unreadable, and throttles writes to at most one
+  a second.
+
+What this design takes from them: render from the cache for the current scope, revalidate at the
+same time, drop the cache on version change or age, throttle writes, and let the existing paths
+(session gone, top row) handle the case where the cache was wrong.
+
+### Motion for lists
+
+Two credible positions exist, and both come from people who build list-heavy tools:
+
+- **No list motion.** Linear puts "no transitions on list items to keep things snappy"; its
+  durations are 100, 250 and 350 ms elsewhere, and things appear instantly and fade out over
+  150 ms. Emil Kowalski (Linear's design engineer, "You don't need animations"): the more often a
+  user sees an animation, the less it should animate; keyboard-initiated actions should never
+  animate; UI animations should stay under 300 ms.
+- **Short motion for changes the user did not cause.** web.dev's CLS guidance counts a layout
+  shift as bad when it is not within 500 ms of the user's own input, and says content that "moves
+  gradually and naturally from one position to the next can often help the user understand what's
+  going on"; use `transform`, and respect `prefers-reduced-motion`. WCAG 2.3.3 asks that motion be
+  avoidable. The platform defaults are short: Android's RecyclerView (the default list animator on
+  Android) adds and removes in 120 ms and moves in 250 ms; AutoAnimate moves in 250 ms, skips rows
+  off screen, and turns itself off under reduced motion.
+
+Timing references: Material 3 tokens put short motion at 50-200 ms and medium at 250-400 ms, with
+the standard easing `cubic-bezier(0.2, 0, 0, 1)`, entering on a decelerating curve and leaving on
+an accelerating one. NN/g: 100 ms for feedback, 200-300 ms for larger changes, 400 ms only for big
+moves; entering slightly longer than leaving; the more frequent, the shorter and subtler.
+
+What this means here: the session list changes mostly because of the server (a session started
+asking, finished, appeared on another device), not because of the reader, so it is the case CLS
+warns about and the case where motion explains what happened. The reader's own actions are the
+case where motion only slows them down. The list is seen many times a day, so the motion must be
+short and quiet. PI WEB already holds row order under a finger for 600 ms after release
+(`heldRowOrder.ts`), the same idea as CLS's 500 ms input window.
+
+### Where a cache can live (browser storage)
+
+"Local" here always means the browser on that device: nothing is shared between the phone and the
+desktop, and nothing is stored on the server.
+
+| | In memory | `localStorage` | IndexedDB |
+|---|---|---|---|
+| Survives a reload or a closed tab | no | yes | yes |
+| Read before the first paint | yes | yes (synchronous) | no (asynchronous, after the page starts) |
+| Size | page memory | about 5 MiB per origin, shared with the transcript cache already there | a large share of the disk |
+| Used by | today's lists | PI WEB's transcript cache, Linear's boot script | Linear's data, TanStack's async persister |
+
+Both persistent stores follow the same deletion rules (MDN "Storage quotas and eviction criteria",
+WebKit "Updates to Storage Policy"): data is best-effort and is dropped when the device runs out of
+space, oldest site first; Safari also deletes all script-written storage after seven days of Safari
+use without interacting with the site, but a site added to the Home Screen counts its own days of
+use and is not expected to lose its data. `navigator.storage.persist()` can protect it, but a cache
+does not need protecting: losing it costs one cold load, the same as today.
+
 ## Design
 
 ### 1. Show from a scoped cache, sync in place
@@ -64,9 +136,11 @@ so a reload or a cold start shows nothing until the board read lands.
 - A value is drawn and actionable only for its own key, never for another machine, project or model.
   Tapping a cached row does what it always does; a session that is gone by then follows the
   existing "session gone" path.
-- Persisted entries carry `{ version, key, savedAt, data }`, live at most 7 days, are capped per
-  surface (the 200 most recent sessions per machine), and are dropped when their version changes.
-  They share the browser's storage budget with the transcript cache, which already evicts by age.
+- Persisted entries carry `{ version, key, savedAt, data }`, keep only the fields a row draws, live
+  at most 7 days, are capped per surface (the 200 most recent sessions per machine), are written at
+  most once a second, and are dropped when their version changes or they do not parse. Where they
+  live is the owner's choice (see the table above); `localStorage` would share the transcript
+  cache's budget and eviction.
 
 ### 2. Rows keep their identity across updates
 
@@ -76,15 +150,21 @@ movement impossible to show and also moves focus and hover from one session to a
 
 ### 3. One motion helper for every list
 
-A small Lit directive, `listMotion`, around a keyed list:
+A small Lit directive, `listMotion`, around a keyed list. The proposed "quiet" setting, from the
+research above:
 
-- **Move:** rows whose box changed slide from the old place to the new one (200 ms, ease-out).
-- **Enter:** a new row fades and slides in (160 ms).
-- **Leave:** a removed row fades out from where it was, drawn from a short-lived copy, so the rows
-  below close the gap with the same slide.
+- **Move:** rows whose box changed slide from the old place to the new one, 200 ms,
+  `cubic-bezier(0.2, 0, 0, 1)`, `transform` only.
+- **Enter:** a new row fades in, 150 ms, opacity only; the rows below make room with the move.
+- **Leave:** a removed row fades out where it was, 120 ms, drawn from a short-lived copy; the rows
+  below then close the gap with the move.
+- No scale, bounce, spring or stagger.
+- Only changes that came from the server animate. The reader's own actions (archive, rename, a
+  keyboard command) apply at once.
 - Only rows on screen (plus a margin) are measured and animated; the rest just appear in place.
-- No motion on the first paint from the cache, under `prefers-reduced-motion`, or while the reader's
-  finger is down or the list is scrolling (the update waits for the release).
+- No motion on the first paint from the cache or under `prefers-reduced-motion`.
+- While the reader's finger is down, and for `TAP_SETTLE_MS` after it lifts, the order holds
+  (today's `heldRowOrder`); when the hold ends the new order animates in.
 - The row the reader is looking at stays put: if an insertion above it would push it down, the
   scroll position follows, as the transcript's reading anchor already does.
 
@@ -93,8 +173,8 @@ A small Lit directive, `listMotion`, around a keyed list:
 - The model and thinking-level pickers open on the tap with the cached list and the current
   selection (the selection comes from the session's status, which is live), then fill in place
   when the read lands; a model added or removed animates like a list row.
-- The first open on a machine, with nothing cached, opens at once with the current choice and a
-  short placeholder, filled when the read lands.
+- The first open on a machine, with nothing cached, waits for the read as it does today (owner,
+  2026-10-06).
 
 ## Plan
 
@@ -103,6 +183,12 @@ A small Lit directive, `listMotion`, around a keyed list:
 3. Projects, workspaces, machines, the quick switcher.
 4. Plugin lists through the plugin API (an optional keyed-list helper), the files tree first.
 
+## Decided
+
+- 2026-10-06: the first picker open with nothing cached waits, as today.
+- 2026-10-06: the unreachable fzf ranking for `@` completions is deleted, not revived.
+
 ## Questions for the owner
 
-Listed in the ask that accompanies this draft.
+Listed in the ask that accompanies this draft: whether to start, the motion setting (none, quiet,
+or the first draft's), and where the cache lives.
