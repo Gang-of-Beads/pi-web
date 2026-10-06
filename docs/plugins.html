@@ -221,6 +221,75 @@
                 <code>setHeader</code>, <code>setFooter</code>, <code>onTerminalInput</code>, autocomplete, themes and tool
                 expansion remain no-ops despite <code>hasUI === true</code>.
               </p>
+              <div class="table-scroll" role="region" aria-label="ctx.ui members in PI WEB" tabindex="0">
+                <table class="narrow-table">
+                  <thead>
+                    <tr><th>Member</th><th>In PI WEB</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><code>confirm</code>, <code>select</code>, <code>input</code></td>
+                      <td>A docked card in the conversation; resolves with the answer, or the kind's cancel value.</td>
+                    </tr>
+                    <tr>
+                      <td><code>editor</code></td>
+                      <td>A card with a multi-line text box holding the extension's text; resolves with the edited text, or <code>undefined</code>.</td>
+                    </tr>
+                    <tr>
+                      <td><code>custom</code></td>
+                      <td>A card: a menu as choices with Confirm, anything else as text; a screen declared with <code>web: { kind: "questions" }</code> as the Questions card.</td>
+                    </tr>
+                    <tr>
+                      <td><code>notify</code></td>
+                      <td>One line in the conversation; info replaces the previous info line, warnings and errors are kept.</td>
+                    </tr>
+                    <tr>
+                      <td><code>setStatus</code></td>
+                      <td>The session footer, on a line of its own, sorted by key.</td>
+                    </tr>
+                    <tr>
+                      <td><code>setWidget</code></td>
+                      <td>A block above or below the composer.</td>
+                    </tr>
+                    <tr>
+                      <td><code>setWorkingMessage</code>, <code>setWorkingVisible</code>, <code>setWorkingIndicator</code></td>
+                      <td>The working row's words and mark while the agent runs.</td>
+                    </tr>
+                    <tr>
+                      <td><code>setHiddenThinkingLabel</code></td>
+                      <td>The label of a folded thinking block.</td>
+                    </tr>
+                    <tr>
+                      <td><code>setTitle</code></td>
+                      <td>The browser tab title while the session is open in the chat view.</td>
+                    </tr>
+                    <tr>
+                      <td><code>setEditorText</code>, <code>pasteToEditor</code></td>
+                      <td>The session's composer, in every browser showing it.</td>
+                    </tr>
+                    <tr>
+                      <td><code>getEditorText</code></td>
+                      <td>What the session's extensions wrote, or <code>""</code>; a browser's own draft cannot be read.</td>
+                    </tr>
+                    <tr>
+                      <td><code>theme</code></td>
+                      <td>A plain-text theme: no colour codes reach the browser. pi's own components that read the global theme render.</td>
+                    </tr>
+                    <tr>
+                      <td><code>onTerminalInput</code>, <code>setFooter</code>, <code>setHeader</code>, <code>setEditorComponent</code>, <code>getEditorComponent</code>, <code>addAutocompleteProvider</code></td>
+                      <td>No effect: they replace pi's terminal chrome, and PI WEB draws its own.</td>
+                    </tr>
+                    <tr>
+                      <td><code>getAllThemes</code>, <code>getTheme</code>, <code>setTheme</code></td>
+                      <td>pi's headless defaults: PI WEB's look is chosen in Settings.</td>
+                    </tr>
+                    <tr>
+                      <td><code>getToolsExpanded</code>, <code>setToolsExpanded</code></td>
+                      <td>pi's headless defaults.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
               <p>
                 For the full behavior notes and author guidance, read <a href="plugins.md">plugins.md</a>; for the
                 timeout key, see <a href="config#extension-dialogs">Extension dialogs</a> in the configuration reference.

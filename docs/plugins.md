@@ -47,6 +47,26 @@ Pi extensions running under PI WEB's session daemon can ask the user questions w
 - **`editor` is a text card, and the composer methods write the composer.** `editor(title, prefill)` opens a card with a multi-line text area holding `prefill`; Send returns the text and Cancel `undefined`, and Enter follows the composer's Enter setting (it sends on a keyboard and starts a new line on a touch screen unless the reader chose otherwise). An opening text longer than 32,000 characters is cut, and the card says how many characters it cut. `setEditorText` replaces the session's composer text and `pasteToEditor` puts its text in at the caret, in every browser showing the session at that moment; like `notify`, a browser that opens the session later does not get it. A write that lands while a browser is still opening the session can be missed there. `getEditorText` cannot read a browser's draft: it returns what the session's extensions wrote (a paste joins the end), or `""`; like pi's composer, that text outlives a reload of the session's extensions. A browser loaded before PI WEB knew `editor` draws no card for it: reload the page, or the dialog waits until `extensionDialogsTimeoutMs` ends it.
 - **Other UI surfaces are still no-ops.** `setEditorComponent`, `setHeader`, `setFooter`, `onTerminalInput`, autocomplete providers, themes and tool expansion remain unimplemented under PI WEB even though `hasUI` is `true`; do not rely on `hasUI` alone to detect them.
 
+### `ctx.ui` at a glance
+
+| Member | In PI WEB |
+| --- | --- |
+| `confirm`, `select`, `input` | A docked card in the conversation; resolves with the answer, or the kind's cancel value. |
+| `editor` | A card with a multi-line text box holding the extension's text; resolves with the edited text, or `undefined`. |
+| `custom` | A card: a menu as choices with Confirm, anything else as text; a screen declared with `web: { kind: "questions" }` as the Questions card. |
+| `notify` | One line in the conversation; info replaces the previous info line, warnings and errors are kept. |
+| `setStatus` | The session footer, on a line of its own, sorted by key. |
+| `setWidget` | A block above or below the composer. |
+| `setWorkingMessage`, `setWorkingVisible`, `setWorkingIndicator` | The working row's words and mark while the agent runs. |
+| `setHiddenThinkingLabel` | The label of a folded thinking block. |
+| `setTitle` | The browser tab title while the session is open in the chat view. |
+| `setEditorText`, `pasteToEditor` | The session's composer, in every browser showing it. |
+| `getEditorText` | What the session's extensions wrote, or `""`; a browser's own draft cannot be read. |
+| `theme` | A plain-text theme: no colour codes reach the browser. pi's own components that read the global theme render. |
+| `onTerminalInput`, `setFooter`, `setHeader`, `setEditorComponent`, `getEditorComponent`, `addAutocompleteProvider` | No effect: they replace pi's terminal chrome, and PI WEB draws its own. |
+| `getAllThemes`, `getTheme`, `setTheme` | pi's headless defaults: PI WEB's look is chosen in Settings. |
+| `getToolsExpanded`, `setToolsExpanded` | pi's headless defaults. |
+
 One browser-local caveat: reloading the browser while a new session is still being created loses the browser-local pending-start row, so the dialog card disappears from view. The daemon-side dialog still settles at its deadline and the session appears in the sidebar once creation completes.
 
 ## Trust model

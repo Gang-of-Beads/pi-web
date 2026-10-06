@@ -1120,9 +1120,11 @@ code .comment,
   border-bottom: 0;
 }
 
-/* The session-row marks table is three narrow columns; the shared 860px table
-   floor is for wide matrices and would only add dead horizontal scroll here. */
-.doc-content table.marks-table {
+/* Narrow tables (the session-row marks, the ctx.ui members) have a few short
+   columns; the shared 860px table floor is for wide matrices and would only add
+   dead horizontal scroll here. */
+.doc-content table.marks-table,
+.doc-content table.narrow-table {
   min-width: 0;
 }
 

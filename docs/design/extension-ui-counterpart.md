@@ -209,4 +209,5 @@ using it.
 3. Standing values: `setStatus`, `setWorking*`, `setHiddenThinkingLabel`,
    `setTitle`, then `setWidget` lines, then widget factories.
 4. `editor` card; `setEditorText` / `pasteToEditor`.
-5. `docs/plugins.md` / extension docs: the table above.
+5. `docs/plugins.md` / extension docs: the table above (`ctx.ui` at a glance, in `plugins.md` and
+   `plugins.html`).
