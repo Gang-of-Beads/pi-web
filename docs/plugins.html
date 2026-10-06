@@ -205,12 +205,12 @@
                 <code>notify</code> is a status line in the conversation: an info notice replaces the previous info line
                 while that line is still the last thing in the conversation, and a warning or an error is kept, counting up when it repeats within ten seconds. The standing values are
                 drawn and held by the daemon per session, so every open browser sees them and a reload reads them as they
-                stand: <code>setStatus</code> texts join the session footer on a line of their own, sorted by key;
-                <code>setWidget</code> blocks sit above or below the composer, up to 10 lines on a desktop and 6 on a phone
-                before "Show all"; <code>setWorkingMessage</code>, <code>setWorkingVisible</code> and
+                stand: <code>setWorkingMessage</code>, <code>setWorkingVisible</code> and
                 <code>setWorkingIndicator</code> change the working row; <code>setHiddenThinkingLabel</code> labels folded
                 thinking; and <code>setTitle</code> names the browser tab while that session is open in the chat view. Reloading the
-                session's extensions clears them, as in pi. <code>editor(title, prefill)</code> opens a card with a
+                session's extensions clears them, as in pi. <code>setStatus</code> and <code>setWidget</code> draw nothing:
+                PI WEB has no extension status line and no extension box around the composer, and a plugin's own surface is
+                a page reached from Go to. <code>editor(title, prefill)</code> opens a card with a
                 multi-line text area holding <code>prefill</code>, and Enter follows the composer's Enter setting; an
                 opening text past 32,000 characters is cut and the card says how much. <code>setEditorText</code> replaces
                 the session's composer text and <code>pasteToEditor</code> inserts at the caret, in every browser showing the
@@ -244,12 +244,8 @@
                       <td>One line in the conversation; info replaces the previous info line, warnings and errors are kept.</td>
                     </tr>
                     <tr>
-                      <td><code>setStatus</code></td>
-                      <td>The session footer, on a line of its own, sorted by key.</td>
-                    </tr>
-                    <tr>
-                      <td><code>setWidget</code></td>
-                      <td>A block above or below the composer.</td>
+                      <td><code>setStatus</code>, <code>setWidget</code></td>
+                      <td>No effect: PI WEB has no extension status line and no extension box around the composer; a plugin's own surface is a page reached from Go to.</td>
                     </tr>
                     <tr>
                       <td><code>setWorkingMessage</code>, <code>setWorkingVisible</code>, <code>setWorkingIndicator</code></td>

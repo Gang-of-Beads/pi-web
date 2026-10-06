@@ -30,12 +30,11 @@ export const CUSTOM_SCREEN_WIDTH = 56;
  * Any method call answers with its own last argument (`theme.fg("accent", text)`
  * style calls) and any property read that is not a method answers `undefined`
  * rather than throwing, so a component that pokes the terminal does not crash the
- * session over a detail nobody renders. `requestRender`, when given, is what the
- * component's `tui.requestRender()` calls, so a widget that redraws itself is redrawn.
+ * session over a detail nobody renders.
  */
-export function customScreenHarness(hooks: { readonly requestRender?: () => void } = {}): { tui: object; keybindings: object } {
-  const make = (own: Record<string, unknown> = {}): object => {
-    const members: Record<string, unknown> = { ...own };
+export function customScreenHarness(): { tui: object; keybindings: object } {
+  const make = (): object => {
+    const members: Record<string, unknown> = {};
     return new Proxy(members, {
       get: (target, property): unknown => {
         if (property === "then") return undefined;
@@ -46,8 +45,7 @@ export function customScreenHarness(hooks: { readonly requestRender?: () => void
       has: () => true,
     });
   };
-  const requestRender = hooks.requestRender;
-  return { tui: make(requestRender === undefined ? {} : { requestRender: () => { requestRender(); } }), keybindings: make() };
+  return { tui: make(), keybindings: make() };
 }
 
 /** Render, bounded and free of a trailing blank tail. */

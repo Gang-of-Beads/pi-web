@@ -5434,8 +5434,6 @@ export class PiSessionService implements SessionRouteService {
     const baseUiContext = session.extensionRunner.getUIContext();
     const standing = this.standingFor(session);
     const standingMembers: Readonly<Record<string, unknown>> = {
-      setStatus: (key: string, text: string | undefined) => { standing.setStatus(key, text); },
-      setWidget: (key: string, content: unknown, options?: { placement?: "aboveEditor" | "belowEditor" }) => { standing.setWidget(key, content, options); },
       setWorkingMessage: (message?: string) => { standing.setWorkingMessage(message); },
       setWorkingVisible: (visible: boolean) => { standing.setWorkingVisible(visible); },
       setWorkingIndicator: (options?: { frames?: string[] }) => { standing.setWorkingIndicator(options); },
@@ -5515,7 +5513,7 @@ export class PiSessionService implements SessionRouteService {
   private standingFor(session: PiAgentSession): ExtensionStanding {
     const existing = this.extensionStanding.get(session);
     if (existing !== undefined) return existing;
-    const standing = new ExtensionStanding(() => { this.scheduleStandingPublish(session); }, plainTextTheme);
+    const standing = new ExtensionStanding(() => { this.scheduleStandingPublish(session); });
     this.extensionStanding.set(session, standing);
     return standing;
   }

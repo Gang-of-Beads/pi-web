@@ -820,15 +820,17 @@ export type ExtensionEditorTextMode = "set" | "paste";
 export type ExtensionWidgetPlacement = "aboveEditor" | "belowEditor";
 /**
  * What a session's extensions left standing through `ctx.ui` (extension-ui-counterpart.md):
- * footer statuses sorted by key, widgets, the working row's words, mark and visibility, the
- * hidden-thinking label and the tab title. Absent when nothing stands, and from a daemon that
+ * the working row's words, mark and visibility, the hidden-thinking label and the tab title.
+ * Statuses and widgets are not carried (owner, 2026-10-06). Absent when nothing stands, and from a daemon that
  * predates the field. Every field is the extension's; PI WEB's own default applies when absent.
  */
 export interface ExtensionUiStanding {
+    /** Never set since 2026-10-06: PI WEB draws no extension status line; kept so older readers still compile. */
     statuses?: {
         key: string;
         text: string;
     }[];
+    /** Never set since 2026-10-06: PI WEB draws no extension widget; kept so older readers still compile. */
     widgets?: {
         key: string;
         placement: ExtensionWidgetPlacement;

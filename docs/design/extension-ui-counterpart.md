@@ -4,6 +4,15 @@ Status: approved by the owner (2026-10-04), with two additions: several
 extensions writing at once, and what happens when a surface has no room. Both
 are the section "Many writers, little room".
 
+**Withdrawn 2026-10-06: `setStatus` and `setWidget`.** The owner never asked
+for an extension box around the composer or an extension status line; the
+10-04 approval was of a list of API names, not of what they draw. His words:
+plugins belong in Go to, as a key that opens their own page; "status" in PI
+WEB means runtime state, such as subagents or background tasks running, shown
+as small extra states. Both are pi's headless no-ops again, as in
+v2.202609.28, and the sections below that describe them are history. The
+working row, the thinking label and the tab title stand.
+
 ## Why
 
 An extension talks to its user through `ctx.ui` (`ExtensionUIContext`, pi

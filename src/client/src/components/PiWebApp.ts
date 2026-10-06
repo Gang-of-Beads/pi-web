@@ -20,7 +20,7 @@ import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
 import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
-import type { BackgroundTasksRead, ExtensionUiStanding, ExtensionWidgetPlacement, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig } from "../../../shared/apiTypes";
+import type { BackgroundTasksRead, ExtensionUiStanding, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig } from "../../../shared/apiTypes";
 import type { AppAction } from "../actions";
 import { composerCwd, initialAppState, type AppState } from "../appState";
 import { isSessionNotFoundError } from "../sessionNotFound";
@@ -107,7 +107,6 @@ import { writeClipboardText } from "../clipboard";
 import type { NavigateInput, NavigateLevel } from "../navigateModel";
 import type { ShellToolTab } from "../appShell/shellToolTabs";
 import "./appShell/AppPanelEdgeControl";
-import "./ExtensionWidgets";
 import { goToScope, type GoToScope, type NavigateListScope, type ShownPageKind } from "../goToScope";
 import { quickSwitcherSessionStates, sessionIdsIn } from "../quickSwitcher";
 import { reloadOffer } from "../versionSkew";
@@ -200,7 +199,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
     .shell.workspace-view main { grid-row: 1; min-height: auto; }
     .shell.workspace-view > workspace-panel { grid-column: 3; grid-row: 2; display: flex; border-left: 0; }
     .shell:not(.workspace-view) > workspace-panel { display: none; }
-    main.workspace-view chat-view, main.workspace-view prompt-editor, main.workspace-view status-bar, main.workspace-view extension-widgets,
+    main.workspace-view chat-view, main.workspace-view prompt-editor, main.workspace-view status-bar,
     main.workspace-view .empty { display: none; }
     main.workspace-view { overflow: hidden; }
   }
@@ -208,7 +207,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
     .shell { grid-template-columns: minmax(0, 1fr); }
     aside { display: none; }
     main, .shell.workspace-view > workspace-panel { grid-column: 1; }
-    main.navigation-view chat-view, main.navigation-view prompt-editor, main.navigation-view status-bar, main.navigation-view extension-widgets,
+    main.navigation-view chat-view, main.navigation-view prompt-editor, main.navigation-view status-bar,
     main.navigation-view .empty { display: none; }
     /* One place at a time: a div shows by default, so without this the session
        list sat above the conversation and left it a strip at the bottom. */
@@ -216,7 +215,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
     main.navigation-view .mobile-navigation-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
     main.navigation-view .mobile-navigation-panel app-navigation-panel { flex: 1 1 auto; min-height: 0; }
   }
-  status-bar, extension-widgets { flex: 0 0 auto; }
+  status-bar { flex: 0 0 auto; }
   chat-view { flex: 1 1 auto; min-height: 0; overflow: hidden; }
   prompt-editor { flex: 0 0 auto; }
   button { font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
@@ -4683,20 +4682,10 @@ export class PiWebApp extends LitElement {
     return state.status.extensionUi;
   }
 
-  /** An extension's widgets at one placement around the composer; see ExtensionWidgets. */
-  private renderExtensionWidgets(state: AppState, placement: ExtensionWidgetPlacement) {
-    const widgets = this.openSessionStanding(state)?.widgets ?? [];
-    const here = widgets.filter((widget) => widget.placement === placement);
-    if (here.length === 0) return null;
-    const share = here.length === widgets.length ? 1 : 0.5;
-    return html`<extension-widgets .widgets=${here} .sessionKey=${machineSessionKey(selectedMachineId(state), state.selectedSession?.id ?? "")} ?compact=${this.appShell.isMobileNavigationLayout} .share=${share}></extension-widgets>`;
-  }
-
   private renderStatusBar(state: AppState) {
     return html`
       <status-bar
         .status=${state.status}
-        .sessionKey=${machineSessionKey(selectedMachineId(state), state.selectedSession?.id ?? "")}
         .failure=${state.status === undefined ? state.transcriptFailed ?? state.statusReadFailed : undefined}
         .onRetry=${() => { void this.retryAfterError(); }}
       ></status-bar>
@@ -4982,9 +4971,7 @@ export class PiWebApp extends LitElement {
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigatePage(false) : null}</div>
           ${state.selectedSession ? html`
             ${this.renderChatView(state, state.selectedSession)}
-            ${this.renderExtensionWidgets(state, "aboveEditor")}
             ${state.selectedSession.archived === true ? this.renderArchivedComposerSlot(state.selectedSession) : html`<prompt-editor .rowedMessageIds=${rowedClientMessageIds(state.messages, [...(state.status?.queuedMessages ?? []), ...(state.clientQueuedSessionMessages[state.selectedSession.id] ?? [])])} .sessionId=${state.selectedSession.id} .cwd=${composerCwd(state)} .sessionPrompts=${this.sessionPromptsFor(state)} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true}  .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .composerContributions=${this.plugins.getComposerContributions(selectedMachineId(state))} .onPluginNotice=${(message: string) => { this.setState(noticePatch(noticeForReader(message))); }}></prompt-editor>`}
-            ${this.renderExtensionWidgets(state, "belowEditor")}
             ${this.renderStatusBar(state)}
             ${state.commandDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} .title=${state.commandDialog.title} .options=${state.commandDialog.options} .onPick=${(value: string) => this.sessions.respondToCommand(state.commandDialog?.requestId ?? "", value)} .onCancel=${() => { this.sessions.cancelCommand(); }}></command-picker>` : null}
             ${state.modelDialog !== undefined ? html`<model-picker ?abovedialog=${this.settingsOpen} title=${state.modelDialog.title} .options=${state.modelDialog.options} .catalog=${state.modelDialog.catalog} .selectedValue=${state.modelDialog.selectedValue} .onPick=${(value: string) => { void this.pickModel(value); }} .onToggleEnabled=${this.handleToggleModelEnabled} .onCancel=${() => { this.setState({ modelDialog: undefined }); }}></model-picker>` : null}
