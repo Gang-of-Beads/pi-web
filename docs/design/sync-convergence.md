@@ -270,8 +270,54 @@ needs the daemon to tell the page the entry id of each committed message.
 
 ### Next (owner, 2026-10-06: yes)
 
-Phase C puts the session list, docked cards and plugin panels on the same states. The owner asked
-for the ablation batch first (2026-10-06).
+Phase C puts the session list, docked cards and plugin panels on the same states (below). The owner
+asked for the ablation batch first (2026-10-06); it is done.
+
+## Phase C: the session list, docked cards and plugin panels (draft for the owner, 2026-10-06)
+
+### The rules, carried from phase B
+
+1. A routine check is quiet: coming back to the front, the network or a connection returning, a
+   periodic re-read.
+2. A surface says it is syncing only when it knows it is out of step (an announcement it missed, a
+   source that did not answer) or a check failed, and it keeps trying until it is in step.
+3. Never "offline", never a final "failed" for something the page retries. A warning stays only when
+   the reader can act on it: a Retry button, a setting to change, a permission to grant.
+4. The state belongs to the data, not to the card or panel that shows it.
+
+### What each surface does today
+
+| Surface | Kept current by | Knows it is out of step when | Says today |
+|---|---|---|---|
+| Session list (Navigate, Go to, quick switcher) | one board read per machine, `session.name`/`session.created` and status frames on the machine socket, a re-read after a missed announcement, a whole re-read after 30 s when browsed | the machine socket's seq monitor sees a gap (`missedAnnouncements`); a project or workspace listing did not answer (an unknown source, retried on the shared backoff) | nothing: the rows that did answer show, the rest are read again silently (owner Q4, 2026-09-30: the board is not an app-row cause) |
+| Docked cards (ask, extension dialogs, waiting cards) | the session's status frames on both sockets; the dialog surface's revision (`RevisionScope`) resyncs on a revision gap or a malformed frame | a dialog revision gap; the transcript is `behind` or `retrying` (they ride the same session stream) | nothing on the card; since phase B the dock says "Syncing…" while the session stream is behind |
+| Plugin panels (files, git, goals, tasks, relays, subagents, background runs) | each plugin's own reads, `workspace.changed` nudges, a few polls | a read failed; the plugin decides | the plugin's own words: "Couldn't read this workspace's files: …", "Status unavailable.", "Could not load workspace tasks.", "Could not scan workspace relays." (some with a Retry button) |
+| Composer, a message that could not send | the outbox, retried when the network returns | the browser is offline | "You are offline - this message sends itself when the connection is back." |
+| App row | the machine and session sockets, every read's outcome | a link is down, a machine does not answer, a server error | "Reconnecting…", "X is unavailable; reconnecting…", the server's own reason |
+
+### Proposal
+
+- **Session list:** one sync value per machine, the same four states. `checking` for the routine
+  re-reads; `behind` when the machine socket missed an announcement or a source did not answer;
+  `retrying` when the whole read failed. While `behind` or `retrying`, the list's header says
+  "Syncing…" (quiet otherwise), and rows from a source that did not answer stay as they were rather
+  than vanish. The app row stays out of it, as ruled.
+- **Docked cards:** no state of their own. They ride the session's transcript sync (the same key),
+  which already says "Syncing…" in the dock; a dialog revision gap marks that key `behind`. A card
+  keeps working while syncing: an answer to a card closed elsewhere is refused by the daemon and the
+  card says so (already shipped).
+- **Plugin panels:** the host offers each panel the same four states through the plugin API (an
+  additive field on the panel context: `sync` plus a `report(outcome)` a panel calls after a read).
+  The host draws "Syncing…" in the panel's header while `behind` or `retrying`; a plugin keeps its
+  own words only for an error the reader can act on (with its Retry button or setting). Plugins
+  move one at a time; the API change comes first.
+- **Composer:** "You are offline - …" becomes "Waiting for the connection - this message sends
+  itself when it is back."
+- **App row:** unchanged ("Reconnecting…" is already "we are trying").
+
+### Open questions (owner)
+
+See the ask that accompanies this draft; nothing here is built until it is answered.
 
 ## What this keeps and what it retires
 
