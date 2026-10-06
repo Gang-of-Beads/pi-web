@@ -1,6 +1,6 @@
 # Go to scopes: global pages and project pages
 
-Status: owner ruling 2026-10-05 (ask `fed78182`), design for review.
+Status: owner rulings 2026-10-05 (asks `fed78182`, `7aba00fa`); step 1 shipped (`ddd27d0b`), step 2 designed, one point open (below).
 
 ## The report
 
@@ -78,22 +78,43 @@ interface GlobalPanelContribution {
 prompt editor and no terminal, so a global page cannot reach a project by accident. Existing
 `workspacePanels` are project pages, unchanged: no published plugin changes behaviour.
 
-## Placement
+## Placement (owner, ask `7aba00fa`: the desktop runs the phone's logic)
+
+The navigation page picks global or project with its switch (`<project> | All projects`); Go to
+follows it, on the phone and on the desktop (whose app bar has the same Go to key), and the
+desktop's right-hand column shows the page Go to chose.
 
 - Phone: a global page is a main view like a project page; the app bar names it. Its URL carries
   `tool=<id>` and no project or workspace.
-- Desktop (no Go to sheet): the right-hand page column lists global pages beside the project
-  pages; with no workspace selected it shows the global pages alone, where today it hides.
+- Desktop: the right-hand column shows the chosen page, global or project; with no workspace
+  selected it shows a chosen global page, where today it hides.
+
+### Open: the desktop's default scope
+
+The navigation page opens on "All projects" (owner, 2026-10-04: the list on opening is what the
+machine runs). Read literally, the desktop's Go to would then offer only global pages until the
+reader narrows the left page to a project, even with a project's session open in the middle.
+Three readings, for the owner:
+
+1. Literal: the switch alone decides; narrow to the project to reach its pages.
+2. Entering a project's session or page narrows the switch to that project; "All projects" widens
+   again.
+3. The switch decides what the list shows; Go to follows what is open: a project's session or page
+   offers its project pages, nothing open (or a global page) offers global pages. This is the
+   phone's step-1 rule for a page opened full-screen, applied to the desktop.
 
 ## Built-in plugins
 
 | Plugin | Kind |
 | --- | --- |
 | Updates (PI WEB updates for the shown machine) | global |
-| Files, Git, Terminal, Goals, Tasks, Relays, Info | project |
+| Terminal | both: the project page as today, and a global page with a shell in the machine's home folder (owner, ask `7aba00fa`) |
+| Files, Git, Goals, Tasks, Relays, Info | project |
 | Subagents, Background (per session, inside a project) | project |
 
-A global Terminal (a shell in the machine's home folder) would be new behaviour; it is not built.
+The global Terminal needs machine-level terminal routes in the web process and the session daemon
+(today every terminal route is under a project and a workspace), so it is its own step and needs a
+session daemon restart.
 
 ## Steps
 
@@ -101,5 +122,7 @@ A global Terminal (a shell in the machine's home folder) would be new behaviour;
    the workspace scope (the classifier above). No API change; until step 2 no plugin has a global
    page, so the machine scope lists Sessions, Chat, Actions… and Settings, and Updates is reached
    from a workspace.
-2. `globalPanels` in the plugin API, the host placement on phone and desktop, and Updates as a
-   global page; the plugin docs and the API baseline follow.
+2. `globalPanels` in the plugin API, the host placement on phone and desktop, the desktop's Go to
+   following the navigation page (once the open point is decided), and Updates as a global page;
+   the plugin docs and the API baseline follow.
+3. Machine-level terminals in the daemon and the web routes, and the Terminal plugin's global page.
