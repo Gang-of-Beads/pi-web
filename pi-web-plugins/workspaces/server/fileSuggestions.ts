@@ -13,21 +13,9 @@ interface CommandRunnerOptions {
   cwd: string;
   maxBuffer: number;
   env?: NodeJS.ProcessEnv;
-  input?: string | Buffer;
 }
 
 type CommandRunner = (file: string, args: string[], options: CommandRunnerOptions) => Promise<{ stdout: string }>;
-
-class CommandExitError extends Error {
-  readonly exitCode?: number;
-
-  constructor(file: string, code: number | null, stderr: string) {
-    const codeText = code === null ? "unknown" : String(code);
-    super(`${file} exited with code ${codeText}${stderr === "" ? "" : `: ${stderr}`}`);
-    this.name = "CommandExitError";
-    if (code !== null) this.exitCode = code;
-  }
-}
 
 export type FileSuggestionScope = "tracked" | "all";
 
@@ -40,7 +28,6 @@ export interface FileSuggestionOptions {
 export interface FileSuggestionDependencies {
   /** The host-bounded command runner; absent means no scope listing. */
   execFile?: CommandRunner;
-  fzf?: CommandRunner;
 }
 
 export function isAbsoluteishFileSuggestionQuery(query = ""): boolean {
@@ -50,7 +37,7 @@ export function isAbsoluteishFileSuggestionQuery(query = ""): boolean {
 export async function listFileSuggestions(cwd: string, query = "", options: FileSuggestionOptions = {}, deps: FileSuggestionDependencies = {}): Promise<FileSuggestion[]> {
   const queryText = fileQueryText(query);
   if (isAbsoluteishFileSuggestionQuery(query)) {
-    return (await listPathSuggestions(cwd, queryText, options.pathAccess, deps))
+    return (await listPathSuggestions(cwd, queryText, options.pathAccess))
       .filter((file) => options.kind === undefined || file.kind === options.kind)
       .slice(0, maxFileSuggestions);
   }
@@ -59,30 +46,21 @@ export async function listFileSuggestions(cwd: string, query = "", options: File
   const command = deps.execFile;
   if (command === undefined) throw new Error("The suggestions service requires a bounded command runner");
   const files = await listFilesForScope(cwd, options.scope, command);
-  return (await rankFileSuggestionsWithOptionalFzf(
-    cwd,
+  return rankFileSuggestions(
     files.filter((file) => options.kind === undefined || file.kind === options.kind),
     normalizedQuery,
-    fzfRunnerForDependencies(deps),
-  )).slice(0, maxFileSuggestions);
+  ).slice(0, maxFileSuggestions);
 }
 
-export async function listPathSuggestions(cwd: string, prefix = "", pathAccess?: PluginPathAccessConfig, deps: FileSuggestionDependencies = {}): Promise<FileSuggestion[]> {
+export async function listPathSuggestions(cwd: string, prefix = "", pathAccess?: PluginPathAccessConfig): Promise<FileSuggestion[]> {
   const query = fileQueryText(prefix);
-  const fzf = fzfRunnerForDependencies(deps);
-  if (isAbsoluteishPath(query)) return listAllowedPathSuggestions(cwd, query, pathAccess, fzf);
+  if (isAbsoluteishPath(query)) return listAllowedPathSuggestions(cwd, query, pathAccess);
 
   const normalizedPrefix = query.replace(/\\/g, "/");
   const directoryPrefix = normalizedPrefix.endsWith("/") ? normalizedPrefix : dirname(normalizedPrefix) === "." ? "" : `${dirname(normalizedPrefix)}/`;
   const searchPrefix = normalizedPrefix.endsWith("/") ? "" : basename(normalizedPrefix);
   const candidates = await listDirectoryEntrySuggestions(cwd, directoryPrefix);
-  return (await rankPathSuggestionsWithOptionalFzf(
-    cwd,
-    candidates,
-    searchPrefix,
-    () => prefixPathSuggestions(candidates, searchPrefix),
-    fzf,
-  )).slice(0, maxFileSuggestions);
+  return prefixPathSuggestions(candidates, searchPrefix).slice(0, maxFileSuggestions);
 }
 
 async function listDirectoryEntrySuggestions(cwd: string, directoryPrefix: string): Promise<FileSuggestion[]> {
@@ -111,18 +89,13 @@ async function resolveWorkspaceSuggestionDirectory(policy: PathAccessPolicy, dir
   }
 }
 
-async function listAllowedPathSuggestions(cwd: string, query: string, pathAccess: PluginPathAccessConfig | undefined, fzf: CommandRunner | undefined): Promise<FileSuggestion[]> {
+async function listAllowedPathSuggestions(cwd: string, query: string, pathAccess: PluginPathAccessConfig | undefined): Promise<FileSuggestion[]> {
   const policy = await createPathAccessPolicy(cwd, pathAccess);
   if (policy.allowedRoots.length === 0) throw new Error("Absolute paths are not allowed");
-  const rootCandidates = allowedRootSuggestionCandidates(policy, query);
   const directoryCandidates = await listAllowedDirectoryEntryCandidates(policy, query);
-  return (await rankPathSuggestionsWithOptionalFzf(
-    cwd,
-    mergeSuggestions(rootCandidates, directoryCandidates),
-    query,
-    () => mergeSuggestions(allowedRootPrefixSuggestions(policy, query), prefixPathSuggestions(directoryCandidates, pathSuggestionPrefix(query).searchPrefix)).sort(compareFileSuggestions),
-    fzf,
-  )).slice(0, maxFileSuggestions);
+  return mergeSuggestions(allowedRootPrefixSuggestions(policy, query), prefixPathSuggestions(directoryCandidates, pathSuggestionPrefix(query).searchPrefix))
+    .sort(compareFileSuggestions)
+    .slice(0, maxFileSuggestions);
 }
 
 function allowedRootPrefixSuggestions(policy: PathAccessPolicy, query: string): FileSuggestion[] {
@@ -334,52 +307,6 @@ function fileQueryText(query: string): string {
   return query.replace(/^!@/, "").replace(/^@\s?/, "").replace(/^"/, "");
 }
 
-function fzfRunnerForDependencies(deps: FileSuggestionDependencies): CommandRunner | undefined {
-  return deps.fzf;
-}
-
-async function rankFileSuggestionsWithOptionalFzf(cwd: string, files: FileSuggestion[], normalizedQuery: string, fzf: CommandRunner | undefined): Promise<FileSuggestion[]> {
-  return rankSuggestionsWithOptionalFzf(cwd, files, normalizedQuery, () => rankFileSuggestions(files, normalizedQuery), fzf);
-}
-
-async function rankPathSuggestionsWithOptionalFzf(cwd: string, candidates: FileSuggestion[], query: string, fallback: () => FileSuggestion[], fzf: CommandRunner | undefined): Promise<FileSuggestion[]> {
-  return rankSuggestionsWithOptionalFzf(cwd, candidates, query, fallback, fzf);
-}
-
-async function rankSuggestionsWithOptionalFzf(cwd: string, candidates: FileSuggestion[], query: string, fallback: () => FileSuggestion[], fzf: CommandRunner | undefined): Promise<FileSuggestion[]> {
-  if (fzf === undefined || query === "" || candidates.length === 0) return fallback();
-
-  try {
-    return await fzfFilterSuggestions(cwd, candidates, query, fzf);
-  } catch {
-    return fallback();
-  }
-}
-
-async function fzfFilterSuggestions(cwd: string, candidates: FileSuggestion[], query: string, fzf: CommandRunner): Promise<FileSuggestion[]> {
-  const byPath = new Map(candidates.map((suggestion) => [suggestion.path, suggestion]));
-  const { stdout } = await runFzf(cwd, [...byPath.keys()], query, fzf);
-  const suggestions: FileSuggestion[] = [];
-  const seen = new Set<string>();
-  for (const path of nulRecords(stdout)) {
-    const suggestion = byPath.get(path);
-    if (suggestion === undefined || seen.has(suggestion.path)) continue;
-    seen.add(suggestion.path);
-    suggestions.push(suggestion);
-  }
-  if (suggestions.length === 0 && stdout !== "") throw new Error("fzf returned paths outside the gathered suggestions");
-  return suggestions;
-}
-
-async function runFzf(cwd: string, candidates: string[], query: string, fzf: CommandRunner): Promise<{ stdout: string }> {
-  try {
-    return await fzf("fzf", ["--filter", query, "--read0", "--print0"], { cwd, maxBuffer: commandMaxBuffer, input: `${candidates.join("\0")}\0` });
-  } catch (error) {
-    if (errorExitCode(error) === 1) return { stdout: "" };
-    throw error;
-  }
-}
-
 function prefixPathSuggestions(candidates: FileSuggestion[], searchPrefix: string): FileSuggestion[] {
   const normalizedSearchPrefix = searchPrefix.toLowerCase();
   return candidates
@@ -456,14 +383,6 @@ function kindRank(kind: FileSuggestion["kind"]): number {
 
 function pathDepth(path: string): number {
   return path.split("/").filter(Boolean).length;
-}
-
-function errorExitCode(error: unknown): number | undefined {
-  if (error instanceof CommandExitError) return error.exitCode;
-  if (!(error instanceof Error)) return undefined;
-  if ("exitCode" in error && typeof error.exitCode === "number") return error.exitCode;
-  if ("code" in error && typeof error.code === "number") return error.code;
-  return undefined;
 }
 
 function textLines(text: string): string[] {

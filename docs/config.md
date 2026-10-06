@@ -474,7 +474,3 @@ The chat composer opens completion menus on three trigger characters:
 - `/` at the very start of the draft completes session commands.
 - `@` completes file paths: `@` for tracked files, `@ ` (at, then space) or `!@` for all files. Picking one inserts an `@path` reference into the draft, quoted automatically when the path contains spaces.
 - `#` completes the models available to the session, filtered case-insensitively as you type (at most 12 entries). Picking one inserts a `#provider/model-id` reference into the draft, which tells agents the request should run on that model — for example as the `model` of a spawn route (see [Delegation routes](#delegation-routes)).
-
-## Optional completion tools
-
-File and path `@` completions work without extra tools. If `fzf` is available on the PI WEB server's `PATH`, PI WEB uses it to improve completion filtering/ranking; otherwise it falls back to built-in ranking.

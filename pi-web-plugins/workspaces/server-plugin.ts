@@ -219,7 +219,7 @@ const plugin: PiWebServerPlugin = {
           const pathAccess = isAbsoluteishFileSuggestionQuery(query) ? await pathAccessFor(resolved) : undefined;
           const execFile = suggestionRunner(context, routeContext.signal);
           const files = request.query["mode"] === "path"
-            ? await listPathSuggestions(resolved.root, query, pathAccess, { execFile })
+            ? await listPathSuggestions(resolved.root, query, pathAccess)
             : await listFileSuggestions(resolved.root, query, { kind: parseSuggestionKind(request.query["kind"]), scope: parseSuggestionScope(request.query["scope"]), pathAccess }, { execFile });
           await sendJson(reply, files);
         } catch (error) {
@@ -254,8 +254,7 @@ type SuggestionRunner = (file: string, args: string[], options: SuggestionRunner
 /**
  * The suggestions service shells out to git through the contract's execFile
  * port. The route's cancellation signal and the service's sanitized
- * environment ride along; ranking stays the service's JS fallback because the
- * port cannot feed fzf's stdin, and the host owns the output bound - a
+ * environment ride along, and the host owns the output bound - a
  * truncated listing fails the run so the service falls back to the plain
  * filesystem walk instead of ranking a mangled record.
  */

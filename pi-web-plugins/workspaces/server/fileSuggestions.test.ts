@@ -12,12 +12,6 @@ async function tempWorkspace(): Promise<string> {
   return root;
 }
 
-function fzfRecords(input: string | Buffer | undefined): string[] {
-  if (typeof input === "string") return input.split("\0").filter(Boolean);
-  if (Buffer.isBuffer(input)) return input.toString("utf8").split("\0").filter(Boolean);
-  return [];
-}
-
 async function trySymlink(target: string, path: string): Promise<boolean> {
   try {
     await symlink(target, path, "dir");
@@ -137,65 +131,17 @@ describe("file suggestions", () => {
     expect(suggestions[0]).toEqual({ path: "MD PRojects here.md", kind: "tracked" });
   });
 
-  it("uses fzf to filter and rank file suggestions after candidates are gathered", async () => {
-    const fzfInputs: string[][] = [];
-    const deps: FileSuggestionDependencies = {
-      execFile: (file, args) => {
-        if (file === "git" && args.join(" ") === "ls-files -z") return Promise.resolve({ stdout: "src/server/app.ts\0scripts/start.ts\0docs/reference.md\0" });
-        return Promise.reject(new Error(`unexpected command: ${file} ${args.join(" ")}`));
-      },
-      fzf: (file, args, options) => {
-        expect(file).toBe("fzf");
-        expect(args).toEqual(["--filter", "st", "--read0", "--print0"]);
-        fzfInputs.push(fzfRecords(options.input));
-        return Promise.resolve({ stdout: "scripts/start.ts\0src/server/app.ts\0" });
-      },
-    };
-
-    await expect(listFileSuggestions("/repo", "st", { scope: "tracked" }, deps)).resolves.toEqual([
-      { path: "scripts/start.ts", kind: "tracked" },
-      { path: "src/server/app.ts", kind: "tracked" },
-    ]);
-    expect(fzfInputs).toEqual([[
-      "src/",
-      "src/server/",
-      "src/server/app.ts",
-      "scripts/",
-      "scripts/start.ts",
-      "docs/",
-      "docs/reference.md",
-    ]]);
-  });
-
-  it("falls back to TypeScript file ranking when fzf fails", async () => {
-    let fzfCalls = 0;
+  it("ranks file suggestions case-insensitively", async () => {
     const deps: FileSuggestionDependencies = {
       execFile: (file, args) => {
         if (file === "git" && args.join(" ") === "ls-files -z") return Promise.resolve({ stdout: "klingit-go/cli/cmd/dev/main.go\0MD PRojects here.md\0" });
         return Promise.reject(new Error(`unexpected command: ${file} ${args.join(" ")}`));
       },
-      fzf: () => {
-        fzfCalls += 1;
-        return Promise.reject(Object.assign(new Error("spawn fzf ENOENT"), { code: "ENOENT" }));
-      },
     };
 
     const suggestions = await listFileSuggestions("/repo", "MD", { scope: "tracked" }, deps);
 
-    expect(fzfCalls).toBe(1);
     expect(suggestions[0]).toEqual({ path: "MD PRojects here.md", kind: "tracked" });
-  });
-
-  it("treats an fzf no-match exit as an empty filtered result", async () => {
-    const deps: FileSuggestionDependencies = {
-      execFile: (file, args) => {
-        if (file === "git" && args.join(" ") === "ls-files -z") return Promise.resolve({ stdout: "src/app.ts\0" });
-        return Promise.reject(new Error(`unexpected command: ${file} ${args.join(" ")}`));
-      },
-      fzf: () => Promise.reject(Object.assign(new Error("no match"), { exitCode: 1 })),
-    };
-
-    await expect(listFileSuggestions("/repo", "app", { scope: "tracked" }, deps)).resolves.toEqual([]);
   });
 
   it("preserves git filenames without trimming whitespace", async () => {
@@ -263,21 +209,13 @@ describe("file suggestions", () => {
     ]);
   });
 
-  it("keeps tilde-prefixed allowed-root suggestions matchable by fzf", async () => {
+  it("keeps tilde-prefixed allowed-root suggestions in their tilde form", async () => {
     const workspace = await tempWorkspace();
     const homeEntry = await mkdtemp(join(homedir(), ".pi-web-files-"));
     temporaryRoots.push(homeEntry);
     const expectedPath = `~/${basename(homeEntry)}/`;
-    const deps: FileSuggestionDependencies = {
-      fzf: (file, args, options) => {
-        expect(file).toBe("fzf");
-        expect(args).toEqual(["--filter", "~/", "--read0", "--print0"]);
-        expect(fzfRecords(options.input)).toContain(expectedPath);
-        return Promise.resolve({ stdout: `${expectedPath}\0` });
-      },
-    };
 
-    await expect(listFileSuggestions(workspace, "~/", { pathAccess: { allowedPaths: ["~/"] } }, deps)).resolves.toEqual([
+    await expect(listFileSuggestions(workspace, `~/${basename(homeEntry)}`, { pathAccess: { allowedPaths: ["~/"] } })).resolves.toEqual([
       { path: expectedPath, kind: "other" },
     ]);
   });
@@ -312,37 +250,13 @@ describe("file suggestions", () => {
     await expect(listPathSuggestions(workspace, "")).resolves.toEqual([{ path: "local.md", kind: "other" }]);
   });
 
-  it("uses fzf to filter path suggestions after directory candidates are gathered", async () => {
-    const root = await tempWorkspace();
-    await mkdir(join(root, "scripts"));
-    await mkdir(join(root, "src"));
-    await writeFile(join(root, "notes.md"), "notes\n");
-
-    const deps: FileSuggestionDependencies = {
-      fzf: (file, args, options) => {
-        expect(file).toBe("fzf");
-        expect(args).toEqual(["--filter", "sc", "--read0", "--print0"]);
-        expect(fzfRecords(options.input)).toEqual(["scripts/", "src/", "notes.md"]);
-        return Promise.resolve({ stdout: "../secret\0scripts/\0" });
-      },
-    };
-
-    await expect(listPathSuggestions(root, "sc", undefined, deps)).resolves.toEqual([
-      { path: "scripts/", kind: "other" },
-    ]);
-  });
-
-  it("falls back to path-prefix ordering when fzf fails", async () => {
+  it("orders path suggestions by prefix, directories first", async () => {
     const root = await tempWorkspace();
     await mkdir(join(root, "scripts"));
     await mkdir(join(root, "src"));
     await writeFile(join(root, "server.md"), "server\n");
 
-    const deps: FileSuggestionDependencies = {
-      fzf: () => Promise.reject(Object.assign(new Error("fzf failed"), { exitCode: 2 })),
-    };
-
-    await expect(listPathSuggestions(root, "s", undefined, deps)).resolves.toEqual([
+    await expect(listPathSuggestions(root, "s")).resolves.toEqual([
       { path: "scripts/", kind: "other" },
       { path: "src/", kind: "other" },
       { path: "server.md", kind: "other" },
