@@ -1,3 +1,4 @@
+import type { ListTilesPerRow } from "../../../../shared/apiTypes";
 import type { NavigateListScope } from "../../goToScope";
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -113,6 +114,8 @@ export class AppNavigatePage extends LitElement {
    * folder I happen to be standing in".
    */
   @property({ attribute: false }) machineSessions: readonly SessionInfo[] = [];
+  /** Tiles per row the reader chose for this layout (listTiles.ts); undefined keeps the width rule. */
+  @property({ attribute: false }) tilesPerRow: ListTilesPerRow | undefined;
 
   /** Which kind of thing the page is listing; one page shows one kind. */
   @state() private kind: NavigateKind = "sessions";
@@ -270,7 +273,7 @@ export class AppNavigatePage extends LitElement {
               : nothing}
         </div>
         <div
-          class="body"
+          class=${this.tilesPerRow === undefined ? "body" : `body tiles-${String(this.tilesPerRow)}`}
           @pointerdown=${() => { this.rowOrder.hold(); }}
           @pointerup=${() => { this.letGoOfRows(); }}
           @pointercancel=${() => { this.letGoOfRows(); }}
@@ -558,6 +561,9 @@ export class AppNavigatePage extends LitElement {
        and the menu in the card's own corner. */
     .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--pi-space-3) var(--pi-bar-inset) var(--pi-space-5); display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-content: start; gap: var(--pi-space-3); }
     @media (max-width: 430px) { .body { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); } }
+    /* A chosen count replaces the width rule (listTiles.ts, owner 2026-10-06). */
+    .body.tiles-1 { grid-template-columns: minmax(0, 1fr); }
+    .body.tiles-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .section-title, .empty { grid-column: 1 / -1; }
     .row-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .section-title { margin: var(--pi-space-4) 0 var(--pi-space-1); color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }

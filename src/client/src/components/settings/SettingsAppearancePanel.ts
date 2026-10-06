@@ -5,6 +5,18 @@ import type { QualifiedContributionId, QualifiedThemeContribution, ThemeTokens }
 import { interactiveSurfaceStyles } from "../shared";
 import { CORE_PRO_LIGHT_THEME_ID, CORE_PRO_THEME_ID } from "../../theme";
 import { themeCardSuffix } from "../../themeCardLabel";
+import type { ListTilesPerRow, PiWebListTilesConfig } from "../../../../shared/apiTypes";
+import { shownListTiles, type ListLayout } from "../../listTiles";
+
+const LIST_LAYOUTS: readonly { readonly layout: ListLayout; readonly label: string }[] = [
+  { layout: "phone", label: "Phone layout" },
+  { layout: "desktop", label: "Desktop layout" },
+];
+
+const TILE_OPTIONS: readonly { readonly tiles: ListTilesPerRow; readonly label: string }[] = [
+  { tiles: 1, label: "One per row" },
+  { tiles: 2, label: "Two per row" },
+];
 
 /**
  * Choosing how the app looks, where looking for it makes sense.
@@ -28,6 +40,13 @@ export class SettingsAppearancePanel extends LitElement {
   @property({ type: Boolean }) followSystem = false;
   @property({ attribute: false }) onSelectTheme?: (themeId: QualifiedContributionId) => void;
   @property({ attribute: false }) onToggleFollowSystem?: (follow: boolean) => void;
+  /** Tiles per row in the Navigate lists, from PI WEB's config; see listTiles.ts. */
+  @property({ attribute: false }) listTiles: PiWebListTilesConfig | undefined;
+  /** False until Settings has read PI WEB's config: the choice cannot be shown or saved before. */
+  @property({ type: Boolean }) listTilesReady = false;
+  @property({ type: Boolean }) savingListTiles = false;
+  @property({ attribute: false }) listTilesError = "";
+  @property({ attribute: false }) onSelectListTiles?: (layout: ListLayout, tiles: ListTilesPerRow) => void;
 
   override render() {
     return html`
@@ -52,7 +71,40 @@ export class SettingsAppearancePanel extends LitElement {
           ${this.themes.map((theme) => this.renderTheme(theme))}
           ${this.themes.length === 0 ? html`<p class="muted">No theme extensions are installed.</p>` : nothing}
         </div>
+
+        ${this.renderListTiles()}
       </settings-panel-frame>
+    `;
+  }
+
+  /**
+   * Tiles per row in the Navigate lists, one choice per layout (owner, 2026-10-06). Kept in PI
+   * WEB's config, so clearing the browser's data keeps it, and a phone and a desktop differ.
+   */
+  private renderListTiles() {
+    return html`
+      <section class="lists" aria-labelledby="list-tiles-title">
+        <h3 id="list-tiles-title">Lists</h3>
+        <p class="muted">Tiles per row in Sessions, Machines and Projects. Until you choose, lists fit the width: two per row on a phone, one in the desktop sidebar, as many as fit on the desktop's full-width page.</p>
+        ${LIST_LAYOUTS.map(({ layout, label }) => html`
+          <div class="list-tiles" role="radiogroup" aria-label=${`${label}: tiles per row`}>
+            <span class="list-tiles-label">${label}</span>
+            ${TILE_OPTIONS.map((option) => html`
+              <label class="list-tiles-option">
+                <input
+                  type="radio"
+                  name=${`list-tiles-${layout}`}
+                  .checked=${this.listTilesReady && shownListTiles(this.listTiles, layout) === option.tiles}
+                  ?disabled=${!this.listTilesReady || this.savingListTiles}
+                  @change=${() => { this.onSelectListTiles?.(layout, option.tiles); }}
+                >
+                <span>${option.label}</span>
+              </label>
+            `)}
+          </div>
+        `)}
+        ${this.listTilesError === "" ? nothing : html`<p class="list-tiles-error" role="alert">${this.listTilesError}</p>`}
+      </section>
     `;
   }
 
@@ -169,6 +221,14 @@ export class SettingsAppearancePanel extends LitElement {
     .follow input { flex: 0 0 auto; margin: 0; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
     .follow span { display: grid; gap: var(--pi-space-1); }
     .follow-title { font-weight: var(--pi-weight-semibold); }
+    .lists { display: grid; gap: var(--pi-space-4); margin-top: var(--pi-space-7); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
+    .lists h3 { margin: 0; font-size: var(--pi-text-base); font-weight: var(--pi-weight-semibold); }
+    .list-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: var(--pi-space-1) var(--pi-space-6); }
+    .list-tiles-label { grid-column: 1 / -1; font-weight: var(--pi-weight-semibold); }
+    .list-tiles-option { box-sizing: border-box; display: inline-flex; align-items: center; gap: var(--pi-space-3); min-height: var(--pi-control-height); cursor: pointer; }
+    @media (pointer: coarse) { .list-tiles-option { min-height: var(--pi-control-height-touch, 44px); } }
+    .list-tiles-option input { margin: 0; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
+    .list-tiles-error { margin: 0; color: var(--pi-danger); font-size: var(--pi-text-xs); }
     .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--pi-space-5); }
     .theme { display: grid; gap: var(--pi-space-2); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: left; cursor: pointer; }
     @media (hover: hover) { .theme:hover { border-color: var(--pi-accent); } }

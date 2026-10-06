@@ -85,6 +85,16 @@ export interface PiWebDeprecatedAgentInput {
     /** The replacement input; absent when the concept was removed and the input should simply be deleted. */
     readonly replacement?: string;
 }
+/** Tiles per row in a Navigate list. */
+export type ListTilesPerRow = 1 | 2;
+/**
+ * Tiles per row in the Navigate page's lists (Sessions, Machines, Projects), one choice per PI WEB
+ * layout; an absent layout keeps the width rule (docs/design/list-layout.md).
+ */
+export interface PiWebListTilesConfig {
+    phone?: ListTilesPerRow;
+    desktop?: ListTilesPerRow;
+}
 export interface PiWebConfigValues {
     host?: string;
     port?: number;
@@ -99,6 +109,8 @@ export interface PiWebConfigValues {
     maxUploadBytes?: number;
     /** What the web and session daemon logs record, and how much of them stays on disk. */
     logging?: PiWebLoggingConfig;
+    /** Tiles per row in the Navigate lists, per layout; see PiWebListTilesConfig. */
+    listTiles?: PiWebListTilesConfig;
     /**
      * When true, LLMs can post a question set to the browser via the ask_user
      * tool. On by default; set to `false` to remove the tool from the runtime.

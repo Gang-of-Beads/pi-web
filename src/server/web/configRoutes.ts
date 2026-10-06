@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { loadPiWebConfig, parseAgentConfig, parseLoggingConfig, parseUploadsConfig, resolveEffectivePiWebConfig, savePiWebConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
+import { loadPiWebConfig, parseAgentConfig, parseListTilesConfig, parseLoggingConfig, parseUploadsConfig, resolveEffectivePiWebConfig, savePiWebConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
 import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues } from "../../shared/apiTypes.js";
 import { isPiWebPluginId } from "../../shared/pluginIds.js";
 
@@ -130,6 +130,7 @@ function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "curr
   const uploads = value["uploads"];
   const maxUploadBytes = value["maxUploadBytes"];
   const logging = value["logging"];
+  const listTiles = value["listTiles"];
   const askUser = value["askUser"];
   const agent = value["agent"];
   if (host !== undefined) {
@@ -147,6 +148,7 @@ function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "curr
   if (uploads !== undefined) config.uploads = parseUploadsConfig(uploads, "request");
   if (maxUploadBytes !== undefined) config.maxUploadBytes = parseMaxUploadBytesRequest(maxUploadBytes);
   if (logging !== undefined) config.logging = parseLoggingConfig(logging, "request");
+  if (listTiles !== undefined) config.listTiles = parseListTilesConfig(listTiles, "request");
   if (askUser !== undefined) {
     if (typeof askUser !== "boolean") throw new Error("PI WEB config askUser must be a boolean");
     config.askUser = askUser;

@@ -1,3 +1,5 @@
+import type { ListTilesPerRow } from "../../../shared/apiTypes";
+import { withListTiles, type ListLayout } from "../listTiles";
 import { css, html, LitElement, unsafeCSS, type PropertyValues, type TemplateResult } from "lit";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
@@ -185,7 +187,7 @@ export class SettingsDialog extends LitElement {
   private sectionEntries(): SettingsEntry<SettingsSection>[] {
     return [
       { id: "general", label: "General", detail: "Gateway + selected machine" },
-      { id: "appearance", label: "Appearance", detail: "Theme and system preference" },
+      { id: "appearance", label: "Appearance", detail: "Theme, lists and system preference" },
       { id: "machines", label: "Machines", detail: "All connected devices" },
       { id: "sessiond", label: "Session daemon", detail: "Selected machine" },
       { id: "packages", label: "Pi packages", detail: "Selected machine" },
@@ -299,6 +301,11 @@ export class SettingsDialog extends LitElement {
           ?followSystem=${this.followSystemTheme}
           .onSelectTheme=${(themeId: QualifiedContributionId) => this.onSelectTheme?.(themeId)}
           .onToggleFollowSystem=${(follow: boolean) => this.onToggleFollowSystem?.(follow)}
+          .listTiles=${this.configResponse?.config.listTiles}
+          ?listTilesReady=${this.configResponse !== undefined}
+          ?savingListTiles=${this.saving}
+          .listTilesError=${this.error}
+          .onSelectListTiles=${(layout: ListLayout, tiles: ListTilesPerRow) => { void this.saveListTiles(layout, tiles); }}
         ></settings-appearance-panel>
       `;
     }
@@ -569,6 +576,13 @@ export class SettingsDialog extends LitElement {
     } finally {
       this.saving = false;
     }
+  }
+
+  /** One layout's tiles per row, saved with the rest of the gateway config unchanged (the write replaces every known key). */
+  private async saveListTiles(layout: ListLayout, tiles: ListTilesPerRow): Promise<void> {
+    const current = this.configResponse;
+    if (current === undefined) return;
+    await this.saveConfig({ ...current.config, listTiles: withListTiles(current.config.listTiles, layout, tiles) });
   }
 
   private async saveConfig(config: PiWebConfigValues): Promise<void> {

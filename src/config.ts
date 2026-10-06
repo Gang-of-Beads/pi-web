@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
-import type { PiWebConfigValues, PiWebDeprecatedAgentInput, PiWebLoggingConfig } from "./shared/apiTypes.js";
+import type { PiWebConfigValues, PiWebDeprecatedAgentInput, PiWebListTilesConfig, PiWebLoggingConfig } from "./shared/apiTypes.js";
 import { isPiWebPluginId, piWebPluginIdPattern } from "./shared/pluginIds.js";
 
 export type PiWebConfig = PiWebConfigValues;
@@ -223,6 +223,7 @@ export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}):
   delete existing["uploads"];
   delete existing["maxUploadBytes"];
   delete existing["logging"];
+  delete existing["listTiles"];
   delete existing["askUser"];
   delete existing["respectProjectTrust"];
   delete existing["environmentFacts"];
@@ -254,6 +255,7 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
     ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.environmentFacts !== undefined ? { environmentFacts: config.environmentFacts } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
+    ...(config.listTiles !== undefined ? { listTiles: config.listTiles } : {}),
   };
 }
 
@@ -269,6 +271,7 @@ function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebCo
     ...(value["uploads"] !== undefined ? { uploads: parseUploadsConfig(value["uploads"], path) } : {}),
     ...(value["maxUploadBytes"] !== undefined ? { maxUploadBytes: parseMaxUploadBytes(value["maxUploadBytes"], "maxUploadBytes", path) } : {}),
     ...(value["logging"] !== undefined ? { logging: parseLoggingConfig(value["logging"], path) } : {}),
+    ...(value["listTiles"] !== undefined ? { listTiles: parseListTilesConfig(value["listTiles"], path) } : {}),
     ...(value["askUser"] !== undefined ? { askUser: parseAskUser(value["askUser"], path) } : {}),
     ...(value["environmentFacts"] !== undefined ? { environmentFacts: parseBooleanKey(value["environmentFacts"], "environmentFacts", path) } : {}),
     ...(value["extensionDialogsTimeoutMs"] !== undefined ? { extensionDialogsTimeoutMs: parseExtensionDialogsTimeoutMs(value["extensionDialogsTimeoutMs"], path) } : {}),
@@ -443,6 +446,19 @@ const LOGGING_LEVELS: readonly string[] = ["errors", "requests", "debug"];
 
 function isLoggingLevel(value: unknown): value is NonNullable<PiWebLoggingConfig["level"]> {
   return typeof value === "string" && LOGGING_LEVELS.includes(value);
+}
+
+/** `listTiles`: 1 or 2 tiles per row for the `phone` and `desktop` layouts; an absent layout keeps the width rule. */
+export function parseListTilesConfig(value: unknown, path: string): PiWebListTilesConfig {
+  if (!isRecord(value)) throw new Error(`PI WEB config listTiles must be an object: ${path}`);
+  const phone = value["phone"];
+  const desktop = value["desktop"];
+  if (phone !== undefined && phone !== 1 && phone !== 2) throw new Error(`PI WEB config listTiles.phone must be 1 or 2: ${path}`);
+  if (desktop !== undefined && desktop !== 1 && desktop !== 2) throw new Error(`PI WEB config listTiles.desktop must be 1 or 2: ${path}`);
+  return {
+    ...(phone !== undefined ? { phone } : {}),
+    ...(desktop !== undefined ? { desktop } : {}),
+  };
 }
 
 export function parseLoggingConfig(value: unknown, path: string): PiWebLoggingConfig {

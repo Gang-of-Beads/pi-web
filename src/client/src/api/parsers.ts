@@ -1899,11 +1899,22 @@ function parsePiWebConfigValues(value: unknown): PiWebConfigValues {
     ...optionalField("uploads", optionalUploads(record["uploads"])),
     ...optionalField("maxUploadBytes", optionalNumber(record, "maxUploadBytes")),
     ...optionalField("logging", optionalLogging(record["logging"])),
+    ...optionalField("listTiles", optionalListTiles(record["listTiles"])),
     ...optionalField("agent", optionalAgent(record["agent"])),
     ...optionalField("askUser", optionalBoolean(record, "askUser")),
     ...optionalField("environmentFacts", optionalBoolean(record, "environmentFacts")),
     ...optionalField("extensionDialogsTimeoutMs", optionalNumber(record, "extensionDialogsTimeoutMs")),
   };
+}
+
+function optionalListTiles(value: unknown): PiWebConfigValues["listTiles"] | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value) || Array.isArray(value)) throw new Error("Invalid PI WEB listTiles field");
+  const phone = value["phone"];
+  const desktop = value["desktop"];
+  if (phone !== undefined && phone !== 1 && phone !== 2) throw new Error("Invalid PI WEB listTiles.phone");
+  if (desktop !== undefined && desktop !== 1 && desktop !== 2) throw new Error("Invalid PI WEB listTiles.desktop");
+  return { ...optionalField("phone", phone), ...optionalField("desktop", desktop) };
 }
 
 function optionalLogging(value: unknown): PiWebConfigValues["logging"] | undefined {

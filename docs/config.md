@@ -47,6 +47,7 @@ Process restarts depend on the key:
 - `serverPlugins.safeStart`: persistent offline recovery state applied before server-plugin discovery/import on the next sessiond start; use the `pi-web plugins safe-start ...` CLI rather than hand-editing it.
 - Pi package install/remove/update: not a PI WEB config key; after a mutation, type `/reload` in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. For a PI WEB package with `serverModule`, manually restart `pi-web-sessiond.service`, then reload the browser. If a global Pi extension adds or removes a model provider, or changes a provider's connection settings, the same manual sessiond restart is required; `/reload` cannot change either startup snapshot. A known Pi model provider refreshing only its own model list is applied without a restart. See [Pi extension provider baseline](#pi-extension-provider-baseline).
 - `shortcuts`: saved settings apply in the browser after config refresh/save.
+- `listTiles`: a choice saved in **Settings → Appearance → Lists** applies at once; a change made in the config file by hand applies after a browser reload.
 
 ## Global config example
 
@@ -153,6 +154,7 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | External filesystem roots | `pathAccess.allowedPaths` | — | Global + project | **Merges**: global roots first, then project roots; duplicates removed | Next file request; refresh existing views if needed |
 | Manual file upload default folder | `uploads.defaultFolder` | — | Global + project | **Overrides**: project value wins for workspaces in that project; otherwise global/default applies | New Upload dialogs and direct drag/drop batches after config/workspace refresh |
 | Log level and retention | `logging.level`, `logging.maxFileMb`, `logging.keepFiles` | — | Global (web/API and session daemon) | Not supported locally | Within a minute, no restart |
+| Tiles per row in the Navigate lists | `listTiles.phone`, `listTiles.desktop` | — | Global (the gateway's browser UI) | Not supported locally | At once from Settings; browser reload after a hand edit |
 | Upload/body limit | `maxUploadBytes` | `PI_WEB_MAX_UPLOAD_BYTES` | Global | Not supported locally | Restart web/API and session daemon on that machine |
 | Agent can post question forms | `askUser` | `PI_WEB_ASK_USER` | Global/session daemon | Not supported locally | Restart session daemon on that machine |
 | Extension dialog auto-cancel timeout | `extensionDialogsTimeoutMs` | — | Global/session daemon | Not supported locally | Restart session daemon on that machine |
@@ -256,6 +258,21 @@ The per-request size limit is still controlled by `maxUploadBytes` / `PI_WEB_MAX
 - `maxFileMb` (default 50) and `keepFiles` (default 3): once `$PI_WEB_DATA_DIR/logs/web.log` or `sessiond.log` grows past `maxFileMb`, its last `maxFileMb` is copied to `web.log.1` (older copies move to `.2`, `.3`, …, and the oldest beyond `keepFiles` is removed), then the file is emptied in place. Only the tail is copied, so trimming a very large log does not need that much free disk.
 
 Both processes check the setting and the file sizes once a minute. Retention applies to the log files the installed launchd services write; on systemd, output that goes to the journal is kept by journald's own settings instead.
+
+### Lists
+
+`listTiles` sets how many tiles each row of the Navigate lists shows (Sessions, Machines and Projects, together): `1` or `2`, one choice for PI WEB's phone layout and one for its desktop layout. Edit it in **Settings → Appearance → Lists**, or in the gateway's global config:
+
+```json
+{
+  "listTiles": {
+    "phone": 1,
+    "desktop": 2
+  }
+}
+```
+
+A layout without a value fits the width, as before: two per row on a phone, one in the desktop sidebar, and as many as fit on the desktop's full-width Navigate page. The choice lives in the config rather than the browser, so clearing a browser's data keeps it; a phone and a desktop still differ because the choice is kept per layout, not per device. The phone layout is PI WEB's narrow layout, so a phone turned on its side uses the desktop layout.
 
 ### Agent state directory
 

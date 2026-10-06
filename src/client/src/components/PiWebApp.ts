@@ -9,6 +9,7 @@ import { sessionPinsApi } from "../api/clients";
 import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
 import { machineTerminalSessions, typeCommand } from "../plugins/machineTerminalSessions";
 import { scopePages } from "../scopePages";
+import { chosenListTiles } from "../listTiles";
 import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
 import { describeError, noticeForReader, noticeFromTransport, RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame, placeholderFrameOutstanding } from "../historyWrites";
@@ -19,7 +20,7 @@ import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
 import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
-import type { BackgroundTasksRead, ExtensionUiStanding, ExtensionWidgetPlacement, PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
+import type { BackgroundTasksRead, ExtensionUiStanding, ExtensionWidgetPlacement, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig } from "../../../shared/apiTypes";
 import type { AppAction } from "../actions";
 import { composerCwd, initialAppState, type AppState } from "../appState";
 import { isSessionNotFoundError } from "../sessionNotFound";
@@ -433,6 +434,8 @@ export class PiWebApp extends LitElement {
   private readonly panelResize = new PanelResizeController(this);
   private readonly systemLightThemeMedia = typeof window !== "undefined" && "matchMedia" in window ? window.matchMedia("(prefers-color-scheme: light)") : undefined;
   private terminalAutoStartWorkspaceId: string | undefined;
+  /** Tiles per row in the Navigate lists, per layout, from PI WEB's config (listTiles.ts). */
+  @state() private listTiles: PiWebListTilesConfig | undefined;
   /** The machine terminal the global Terminal page shows, with its machine; kept in the tab, as a global page has no workspace route. */
   @state() private selectedMachineTerminal: { readonly machineId: string; readonly terminalId: string } | undefined;
   private piWebStatusTimer: number | undefined;
@@ -1478,6 +1481,7 @@ export class PiWebApp extends LitElement {
 
   private applyClientConfig(config: PiWebConfigValues): void {
     this.shortcutConfig = config.shortcuts ?? {};
+    this.listTiles = config.listTiles;
     this.workspaceUploadFolderFallback = effectiveWorkspaceUploadFolder(config);
     // Absent config means the dictation control is never rendered, so an
     // install that has not opted in cannot reach a microphone at all.
@@ -2924,6 +2928,7 @@ export class PiWebApp extends LitElement {
       .onCreateSession=${() => { this.closeNavigate(); void this.startSessionAndOpenChat(); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { this.navigation.begin(); this.closeNavigate(); this.openProjectDialog(); } : undefined}
       .machineSessions=${this.quickSwitcherSessions}
+      .tilesPerRow=${chosenListTiles(this.listTiles, this.appShell.isMobileNavigationLayout ? "phone" : "desktop")}
       .onOpenSettings=${this.appShell.isMobileNavigationLayout ? undefined : () => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }}
       .boardAnswer=${this.quickSwitcherBoardAnswer}
       .loadingChoices=${this.state.projectsLoad !== "loaded" || this.state.isLoadingWorkspaces}

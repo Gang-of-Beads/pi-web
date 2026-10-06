@@ -1,8 +1,9 @@
 # List layout: one or two tiles per row
 
-Status: owner request 2026-10-06; rulings so far (ask `22390e91`): the choice lives in Settings →
-Appearance, the three lists switch together, plugins may customise. Storage, the default and what
-"plugins customise" covers are open (below).
+Status: built. Owner rulings 2026-10-06 (asks `22390e91`, `cb9e31f7`): the choice lives in Settings →
+Appearance; the three lists switch together; it is kept in PI WEB's config, one value per layout
+(phone, desktop); the options are one or two per row; the default is today's; plugin lists are left
+out for now ("keep it simple").
 
 ## Today, measured on 8505
 
@@ -38,15 +39,15 @@ It cannot recognise one. What it can keep:
    Survives clearing, and a phone and a desktop still differ - by what the screen is, not which
    device it is. Recommended.
 
-## Proposal
+## As built
 
-- Settings → Appearance → **Lists**: "One per row", "Two per row", and "Fit the width" (today's
-  rule), kept per layout (phone, desktop) when storage 3 is chosen.
-- The choice applies to Sessions, Machines and Projects together, and to every place the Navigate
-  page is drawn (phone pages and overlay, desktop sidebar and overlay). On a wide overlay "One per
-  row" draws full-width rows and "Two per row" two columns.
-- Plugins: the host hands the choice to plugin lists (`NavSectionDisplay.columns`), so the
-  workspaces plugin's sections follow it; a plugin may fix its own list's layout when its rows only
-  read one way. The host never re-lays a plugin's list itself.
-- One classifier names the column count from (choice, layout, list width); tiles keep their shape
-  and the coarse-pointer floors whatever the count.
+- Config key `listTiles: { phone?: 1 | 2, desktop?: 1 | 2 }` in the gateway's global config
+  (docs/config.md, Lists). A layout without a value keeps the width rule, so nothing changes until
+  someone chooses.
+- Settings → Appearance → Lists: one radio pair per layout. Until a choice, each marks what that
+  layout shows today (two on a phone, one in the desktop sidebar). A save sends the whole gateway
+  config with the one key changed, since the write replaces every key it knows.
+- `listTiles.ts` names the count from (config, layout); the Navigate page draws `tiles-1` or
+  `tiles-2` over the width rule, everywhere it is drawn (phone pages and overlay, desktop sidebar
+  and overlay).
+- Plugin lists (the workspaces plugin's sections) are untouched.
