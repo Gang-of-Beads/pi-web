@@ -1,7 +1,8 @@
 # Show what is known at once, then move it into place
 
-Status: design draft for the owner (2026-10-06), revised after research the same day. Nothing
-here is built yet.
+Status: approved by the owner on 2026-10-06 (start, the quiet motion, `localStorage`). Step 1,
+the remembered session board and list motion on the Navigate page, is built; the pickers and the
+other lists are not yet.
 
 ## The request
 
@@ -30,6 +31,20 @@ catalog, `openThinkingDialog` the levels), so a phone pays a round trip on every
 list keeps its last answer in memory only (`workspaceSessionsCache.ts`, the board's 30 s freshness),
 so a reload or a cold start shows nothing until the board read lands. The board answer for those
 166 sessions is 172 KB of JSON (about 1 KB a row, 20 KB gzipped on the wire).
+
+## Measured after step 1 (8505, 2026-10-06)
+
+Headless Chrome, fine pointer; a real phone and a coarse pointer are not checked yet.
+
+| Check | Result |
+|---|---|
+| Cold load, nothing remembered (1280 × 860) | 166 rows at 1084 ms, after the board answered at 1036 ms; 171 KB remembered |
+| Warm load, three runs (1280 × 860) | 166 rows at 110-140 ms; the board answered at 223-323 ms |
+| Warm load (393 × 850) | 166 rows at 116 ms; the board answered at 245 ms |
+| Board read blocked, warm load | the remembered rows stayed for 8 s while the read was retried 4 times; nothing said "No sessions yet." |
+| A server change removes a row on screen | one fading copy and 12 rows sliding (of 166; only the band near the visible part), 200 ms |
+| The row comes back | one fade-in and 12 slides |
+| The same removal right after a press, under reduced motion, and a search that narrows to 44 rows | no motion |
 
 ## Can it be animated? (feasibility)
 
@@ -136,11 +151,20 @@ does not need protecting: losing it costs one cold load, the same as today.
 - A value is drawn and actionable only for its own key, never for another machine, project or model.
   Tapping a cached row does what it always does; a session that is gone by then follows the
   existing "session gone" path.
-- Persisted entries carry `{ version, key, savedAt, data }`, keep only the fields a row draws, live
-  at most 7 days, are capped per surface (the 200 most recent sessions per machine), are written at
-  most once a second, and are dropped when their version changes or they do not parse. Where they
-  live is the owner's choice (see the table above); `localStorage` would share the transcript
-  cache's budget and eviction.
+- Persisted entries live in `localStorage` (owner, 2026-10-06) under a versioned key per surface
+  and scope, as `{ savedAt, data }`. They live at most 7 days, are written at most once a second,
+  and are dropped when they do not parse. An entry is kept whole or not at all: one larger than
+  1 MiB is not written, because a trimmed list would draw something that was never true. They
+  share the transcript cache's budget: when the store is full, the oldest transcript page makes
+  room.
+- A remembered value is not an answer. While it is drawn the surface still counts as unanswered,
+  so nothing claims "No sessions yet." from it, and a machine that stated a refusal (signed out,
+  forbidden) draws no remembered list at all.
+
+Built for the session board (`sync/boardMemory.ts`, `SessionBoardController`): the board a
+machine last answered, whole, keyed by machine. Navigate, Go to and the quick switcher all draw from
+it. Announcements heard before the first read (a rename, a new session) apply to it as they do to
+the live board.
 
 ### 2. Rows keep their identity across updates
 
@@ -150,8 +174,10 @@ movement impossible to show and also moves focus and hover from one session to a
 
 ### 3. One motion helper for every list
 
-A small Lit directive, `listMotion`, around a keyed list. The proposed "quiet" setting, from the
-research above:
+`ListMotion` (`listMotion.ts`) around a keyed list: the page calls `prepare` before each render
+with the keys it will draw and who caused the change, and `play` after it. Rows carry
+`data-motion-key`, so a row drawn as a new node in another section is still matched to where it
+was. The "quiet" setting (owner, 2026-10-06):
 
 - **Move:** rows whose box changed slide from the old place to the new one, 200 ms,
   `cubic-bezier(0.2, 0, 0, 1)`, `transform` only.
@@ -159,14 +185,20 @@ research above:
 - **Leave:** a removed row fades out where it was, 120 ms, drawn from a short-lived copy; the rows
   below then close the gap with the move.
 - No scale, bounce, spring or stagger.
-- Only changes that came from the server animate. The reader's own actions (archive, rename, a
-  keyboard command) apply at once.
-- Only rows on screen (plus a margin) are measured and animated; the rest just appear in place.
-- No motion on the first paint from the cache or under `prefers-reduced-motion`.
+- Only changes that came from the server animate. Whether a change is the reader's is one pure
+  classifier, `listMotionGate`: a new scope (kind, search, project, fold, tile count, machine), a
+  press or key anywhere in the app within `TAP_SETTLE_MS`, and a change the host is still carrying
+  out for the reader from the list (a row action, a new session) all apply at once.
+- Only rows within half a list-height of the visible part are animated; the rest land in place.
+  Rows are measured only when the keys the list draws change, so a render that only updates what a
+  row says costs no layout read.
+- No motion on the first paint, when the list had no rows before, or under
+  `prefers-reduced-motion`.
 - While the reader's finger is down, and for `TAP_SETTLE_MS` after it lifts, the order holds
   (today's `heldRowOrder`); when the hold ends the new order animates in.
 - The row the reader is looking at stays put: if an insertion above it would push it down, the
-  scroll position follows, as the transcript's reading anchor already does.
+  scroll position follows, as the transcript's reading anchor already does. Not built in step 1:
+  the list relies on the browser's own scroll anchoring where it exists.
 
 ### 4. Pickers open at once
 
@@ -185,10 +217,10 @@ research above:
 
 ## Decided
 
+- 2026-10-06: start, in the order of the plan; the quiet motion; the cache in `localStorage`.
 - 2026-10-06: the first picker open with nothing cached waits, as today.
 - 2026-10-06: the unreachable fzf ranking for `@` completions is deleted, not revived.
 
 ## Questions for the owner
 
-Listed in the ask that accompanies this draft: whether to start, the motion setting (none, quiet,
-or the first draft's), and where the cache lives.
+None open.

@@ -44,8 +44,10 @@ export interface HistoryStorage {
  * exists to avoid. localStorage survives that, and the same eviction keeps it
  * inside the origin's budget. A browser that refuses localStorage (private
  * modes do) falls back to the per-tab store rather than losing the cache.
+ * The remembered session boards (`sync/boardMemory.ts`) share this store and
+ * its budget (owner, 2026-10-06).
  */
-function browserStorage(): HistoryStorage {
+export function durablePageStorage(): HistoryStorage {
   const backing = durableStore() ?? perTabStore();
   return {
     getItem: (key) => backing.getItem(key),
@@ -87,7 +89,7 @@ export interface CachedChatHistory extends RawMessagePage {
   savedAt: number;
 }
 
-export function readChatHistoryCache(sessionId: string, storage: HistoryStorage = browserStorage()): RawMessagePage | undefined {
+export function readChatHistoryCache(sessionId: string, storage: HistoryStorage = durablePageStorage()): RawMessagePage | undefined {
   try {
     const raw = storage.getItem(cacheKey(sessionId));
     if (raw === null || raw === "") return undefined;
@@ -118,7 +120,7 @@ function sweepRetiredKeys(storage: HistoryStorage): void {
   }
 }
 
-export function writeChatHistoryCache(sessionId: string, page: RawMessagePage, storage: HistoryStorage = browserStorage()): void {
+export function writeChatHistoryCache(sessionId: string, page: RawMessagePage, storage: HistoryStorage = durablePageStorage()): void {
   sweepRetiredKeys(storage);
   const payload = JSON.stringify({ ...page, savedAt: Date.now() });
   // A page too large for one entry is trimmed to its tail, which is the part a
@@ -159,8 +161,23 @@ function trySet(storage: HistoryStorage, sessionId: string, payload: string): bo
   }
 }
 
-/** Other sessions' cached pages, oldest first. Never the one being written. */
-function evictionOrder(storage: HistoryStorage, keepKey: string): string[] {
+/**
+ * Make room for another cache in the shared store by dropping the oldest
+ * transcript page. False when there is none left to drop.
+ */
+export function evictOldestChatHistory(storage: HistoryStorage): boolean {
+  const oldest = evictionOrder(storage, undefined)[0];
+  if (oldest === undefined) return false;
+  try {
+    storage.removeItem(oldest);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Other sessions' cached pages, oldest first. Never the one being written, when one is. */
+function evictionOrder(storage: HistoryStorage, keepKey: string | undefined): string[] {
   const entries: { key: string; savedAt: number }[] = [];
   try {
     for (const key of storage.keys()) {
@@ -191,7 +208,7 @@ function tailOf(page: RawMessagePage): RawMessagePage {
   return { messages, start: page.start + (page.messages.length - half), total: page.total };
 }
 
-export function removeChatHistoryCache(sessionId: string, storage: HistoryStorage = browserStorage()): void {
+export function removeChatHistoryCache(sessionId: string, storage: HistoryStorage = durablePageStorage()): void {
   try {
     storage.removeItem(cacheKey(sessionId));
   } catch {

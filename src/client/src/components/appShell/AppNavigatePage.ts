@@ -1,11 +1,14 @@
 import type { ListTilesPerRow } from "../../../../shared/apiTypes";
 import type { NavigateListScope } from "../../goToScope";
-import { LitElement, css, html, nothing, unsafeCSS } from "lit";
+import { LitElement, css, html, nothing, unsafeCSS, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { repeat } from "lit/directives/repeat.js";
 import type { SessionInfo } from "../../api";
 import { navigateModel, type NavigateChoice, type NavigateInput, type NavigateLevel, type NavigateSection, type NavigateSessionRow, type NavigateSessionState } from "../../navigateModel";
 import { switcherBreadcrumb, type BreadcrumbLevel } from "../../switcherBreadcrumb";
-import { createHeldRowOrder } from "../../heldRowOrder";
+import { createHeldRowOrder, TAP_SETTLE_MS } from "../../heldRowOrder";
+import { ListMotion } from "../../listMotion";
+import type { BreadcrumbSegment } from "../../switcherBreadcrumb";
 import { ActivityClock, modifiedMs } from "../../sessionOrder";
 import { listFolds } from "../../listFolds";
 import { disclosureIconStyle, renderDisclosureIcon } from "../disclosureIcon.js";
@@ -51,6 +54,32 @@ function renderNavigateStateMark(state: NavigateSessionState) {
   return html`<span class=${`session-state ${state}`} role="img" title=${label} aria-label=${label}></span>`;
 }
 
+/** What one render draws, worked out before it so the rows can be measured where they stand (`ListMotion`). */
+interface NavigateView {
+  readonly listed: Omit<NavigateInput, "query">;
+  readonly model: ReturnType<typeof navigateModel>;
+  readonly segments: readonly BreadcrumbSegment[];
+  readonly sections: readonly NavigateSection[];
+  readonly choices: readonly NavigateChoice[];
+  /** The rows the list draws, in order: what `ListMotion` compares between renders. */
+  readonly rowKeys: readonly string[];
+}
+
+/**
+ * What the reader sets on this page that makes the list another list. Lit
+ * records which of them an update changed; any of them is a new scope, which
+ * applies at once.
+ */
+const SCOPE_PROPERTIES = ["kind", "query", "pathProjectId", "foldRevision", "tilesPerRow"] as const;
+
+function sessionRowKey(row: NavigateSessionRow): string {
+  return `session:${row.machineId}:${row.session.id}`;
+}
+
+function choiceRowKey(choice: NavigateChoice): string {
+  return `${choice.level}:${choice.id}`;
+}
+
 @customElement("app-navigate-page")
 export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) input?: Omit<NavigateInput, "query">;
@@ -93,6 +122,8 @@ export class AppNavigatePage extends LitElement {
    * navigation view both have a session behind them to return to.
    */
   @property({ type: Boolean }) returnable = false;
+  /** The host is carrying out a change the reader asked for from this list; its result applies without motion. */
+  @property({ attribute: false }) readerChanging = false;
   @state() private query = "";
   /** Rows re-sort live, but never under a finger; see `heldRowOrder`. */
   private readonly rowOrder = createHeldRowOrder<NavigateSessionRow>((row) => `${row.machineId}:${row.session.id}`);
@@ -100,11 +131,69 @@ export class AppNavigatePage extends LitElement {
   private readonly activityClock = new ActivityClock();
   private readonly folds = listFolds("navigate");
   private holdRecheck: ReturnType<typeof setTimeout> | undefined;
+  /** Server changes to the rows slide into place; see `ListMotion`. */
+  private readonly motion = new ListMotion();
+  private view: NavigateView | undefined;
+  /** The machine the list showed last render; another one is a new scope. */
+  private shownMachineId: string | undefined;
+  /** Until when a change to the rows counts as the reader's: the moment after any press or key in the app. */
+  private readerQuietUntil = 0;
+  private readonly noteReaderInput = (): void => {
+    this.readerQuietUntil = Date.now() + TAP_SETTLE_MS;
+  };
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    document.addEventListener("pointerdown", this.noteReaderInput, { capture: true, passive: true });
+    document.addEventListener("keydown", this.noteReaderInput, { capture: true, passive: true });
+  }
 
   override disconnectedCallback(): void {
+    document.removeEventListener("pointerdown", this.noteReaderInput, { capture: true });
+    document.removeEventListener("keydown", this.noteReaderInput, { capture: true });
     this.rowOrder.release();
     if (this.holdRecheck !== undefined) clearTimeout(this.holdRecheck);
     super.disconnectedCallback();
+  }
+
+  protected override willUpdate(changed: PropertyValues): void {
+    if (this.readerChanging || changed.get("readerChanging") === true) this.noteReaderInput();
+    this.view = this.computeView();
+    if (this.view === undefined) return;
+    const machineId = this.view.listed.scope.machineId;
+    const scopeChanged = SCOPE_PROPERTIES.some((name) => changed.has(name)) || machineId !== this.shownMachineId;
+    this.shownMachineId = machineId;
+    this.motion.prepare(this.listBody(), this.view.rowKeys, { scopeChanged, readerActive: Date.now() < this.readerQuietUntil });
+  }
+
+  protected override updated(): void {
+    this.motion.play(this.listBody());
+  }
+
+  private listBody(): HTMLElement | null {
+    return this.renderRoot.querySelector<HTMLElement>(".body");
+  }
+
+  private computeView(): NavigateView | undefined {
+    const input = this.input;
+    if (input === undefined) return undefined;
+    const listed = this.listedInput(input);
+    const model = navigateModel({ ...listed, query: this.query, activityAt: (row, rank) => this.activityClock.timeOf(`${row.machineId}:${row.session.id}`, rank, modifiedMs(row.session.modified)) });
+    const segments = switcherBreadcrumb({
+      machines: listed.machines,
+      machineId: listed.scope.machineId,
+      projects: listed.projects,
+      projectId: listed.scope.projectId,
+      folders: input.folders,
+      folderPath: undefined,
+    }).filter((segment) => segment.level !== "folder");
+    if (this.kind === "sessions") {
+      const sections = this.orderedSections(model.sections);
+      return { listed, model, segments, sections, choices: [], rowKeys: sections.flatMap((section) => section.rows.map(sessionRowKey)) };
+    }
+    const levelChoices = model.sections.flatMap((section) => section.choices).filter((choice) => choice.level === this.kind);
+    const choices = this.kind === "project" ? pinnedFirst(levelChoices, this.pinnedProjectIds) : levelChoices;
+    return { listed, model, segments, sections: [], choices, rowKeys: choices.map(choiceRowKey) };
   }
 
   /**
@@ -208,21 +297,11 @@ export class AppNavigatePage extends LitElement {
   }
 
   override render() {
+    const view = this.view;
     const input = this.input;
-    if (input === undefined) return html`<p class="empty" role="status">Reading this machine…</p>`;
-    const listed = this.listedInput(input);
-    const model = navigateModel({ ...listed, query: this.query, activityAt: (row, rank) => this.activityClock.timeOf(`${row.machineId}:${row.session.id}`, rank, modifiedMs(row.session.modified)) });
-    const segments = switcherBreadcrumb({
-      machines: listed.machines,
-      machineId: listed.scope.machineId,
-      projects: listed.projects,
-      projectId: listed.scope.projectId,
-      folders: input.folders,
-      folderPath: undefined,
-    }).filter((segment) => segment.level !== "folder");
+    if (view === undefined || input === undefined) return html`<p class="empty" role="status">Reading this machine…</p>`;
+    const { listed, model, segments, choices } = view;
     const showsSessions = this.kind === "sessions";
-    const levelChoices = model.sections.flatMap((section) => section.choices).filter((choice) => choice.level === this.kind);
-    const choices = this.kind === "project" ? pinnedFirst(levelChoices, this.pinnedProjectIds) : levelChoices;
     return html`
       <section class="navigate">
         <header class="path-bar">
@@ -280,11 +359,11 @@ export class AppNavigatePage extends LitElement {
         >
           ${showsSessions
             ? html`
-                ${this.orderedSections(model.sections).map((section) => this.renderSessionSection(section))}
+                ${repeat(view.sections, (section) => section.id, (section) => this.renderSessionSection(section))}
                 ${this.renderSessionsEmptyState(model.matchCount)}
               `
             : html`
-                ${choices.map((choice) => this.renderChoice(choice))}
+                ${repeat(choices, choiceRowKey, (choice) => this.renderChoice(choice))}
                 ${choices.length > 0 || this.loadingChoices
                   ? nothing
                   : html`<p class="empty" role="status">Nothing to choose at this level.</p>`}
@@ -350,8 +429,8 @@ export class AppNavigatePage extends LitElement {
 
   private renderChoice(choice: NavigateChoice) {
     const icon = choice.level === "machine" ? renderMachineIcon() : renderProjectIcon();
-    const kind: NavigateRowKind = choice.level === "machine" ? "machine" : "project";
-    const rowId = `${kind}:${choice.id}`;
+    const kind: NavigateRowKind = choice.level;
+    const rowId = choiceRowKey(choice);
     return this.renderRowShell(rowId, kind, choice.id, choice.label, html`
       <button
         type="button"
@@ -393,7 +472,7 @@ export class AppNavigatePage extends LitElement {
     });
     const open = this.openMenuRowId === rowId;
     return html`
-      <div class=${open ? "row-wrap menu-open" : "row-wrap"}>
+      <div class=${open ? "row-wrap menu-open" : "row-wrap"} data-motion-key=${rowId}>
         ${row}
         ${actions.length <= 1 ? nothing : html`
           <button
@@ -433,7 +512,7 @@ export class AppNavigatePage extends LitElement {
     const label = sessionLabel(row.session);
     const key = machineSessionKey(row.machineId, row.session.id);
     const opening = isOpeningKey(this.opening, key);
-    return this.renderRowShell(`session:${row.machineId}:${row.session.id}`, "session", row.session.id, label, html`
+    return this.renderRowShell(sessionRowKey(row), "session", row.session.id, label, html`
       <button type="button" class=${`row session${row.current ? " current" : ""}${opening ? " opening" : ""}`} aria-current=${row.current ? "true" : "false"} aria-busy=${opening ? "true" : "false"} title=${label} @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
         <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>
         ${this.opening?.key === key && this.opening.phase !== "going" ? html`<span class="row-path">${renderOpeningWords(this.opening, key)}</span>` : row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
@@ -459,12 +538,13 @@ export class AppNavigatePage extends LitElement {
       <button
         type="button"
         class="section-toggle section-title"
+        data-motion-key=${`section:${section.id}`}
         aria-expanded=${folded ? "false" : "true"}
         @click=${() => { this.folds.toggle(section.id, foldedByDefault); this.foldRevision += 1; }}
       ><span class="section-fold" aria-hidden="true">${renderDisclosureIcon(folded)}</span>${title}</button>
       ${folded ? nothing : section.rows.length === 0 && section.emptyText !== undefined
-        ? html`<p class="empty section-empty" role="status">${section.emptyText}</p>`
-        : section.rows.map((row) => this.renderSession(row))}
+        ? html`<p class="empty section-empty" role="status" data-motion-key=${`empty:${section.id}`}>${section.emptyText}</p>`
+        : repeat(section.rows, sessionRowKey, (row) => this.renderSession(row))}
     `;
   }
 
@@ -559,7 +639,7 @@ export class AppNavigatePage extends LitElement {
     /* The quick-access board's shape, which the owner asked this page to
        follow: cards that fit the width, a two-line title, the place under it
        and the menu in the card's own corner. */
-    .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--pi-space-3) var(--pi-bar-inset) var(--pi-space-5); display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-content: start; gap: var(--pi-space-3); }
+    .body { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--pi-space-3) var(--pi-bar-inset) var(--pi-space-5); display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-content: start; gap: var(--pi-space-3); }
     @media (max-width: 430px) { .body { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); } }
     /* A chosen count replaces the width rule (listTiles.ts, owner 2026-10-06). */
     .body.tiles-1 { grid-template-columns: minmax(0, 1fr); }

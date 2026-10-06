@@ -32,6 +32,7 @@ import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { AuthController } from "../controllers/authController";
 import { MachineController, remoteReportedDown } from "../controllers/machineController";
 import { SessionBoardController } from "../controllers/sessionBoardController";
+import { browserBoardMemory } from "../sync/boardMemory";
 import { dedupeById, type BoardAnswer } from "../sync/sessionBoard";
 import { MachineStatusController } from "../controllers/machineStatusController";
 import { ProjectController } from "../controllers/projectController";
@@ -412,6 +413,7 @@ export class PiWebApp extends LitElement {
   /** The machine-wide session board the navigation page and the quick switcher list (B48, P1 slice 5). */
   private readonly sessionBoards: SessionBoardController = new SessionBoardController({
     knownProjects: (machineId) => machineId === selectedMachineId(this.state) && this.state.projectsLoad === "loaded" ? this.state.projects : undefined,
+    memory: browserBoardMemory(),
   });
   private readonly unsubscribeSessionBoards = this.sessionBoards.subscribe(() => { this.mirrorSessionBoard(); });
   private readonly piWebStatusController = new PiWebStatusController(
@@ -505,6 +507,8 @@ export class PiWebApp extends LitElement {
   @state() private renameFromBar: { session: SessionInfo; machineId: string } | undefined;
   /** How much of the browsed machine's board has answered; the lists claim emptiness only for a complete one. */
   @state() private quickSwitcherBoardAnswer: BoardAnswer = "none";
+  /** Changes the reader asked for from the list that are still on their way; the list applies their result without motion (cached-first-and-motion.md). */
+  @state() private readerListChanges = 0;
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
   /** Pinned sessions of the browsed machine that no open project lists (B49). */
   @state() private quickSwitcherPinnedElsewhere: readonly SessionInfo[] = [];
@@ -2936,7 +2940,7 @@ export class PiWebApp extends LitElement {
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
       .onOpenSession=${(session: SessionInfo, machineId: string) => { void this.openSessionFromQuickSwitcher(session, machineId); }}
       .opening=${this.navigation.view()}
-      .onCreateSession=${() => { this.closeNavigate(); void this.startSessionAndOpenChat(); }}
+      .onCreateSession=${() => { this.closeNavigate(); void this.asReaderListChange(() => this.startSessionAndOpenChat()); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { this.navigation.begin(); this.closeNavigate(); this.openProjectDialog(); } : undefined}
       .machineSessions=${this.quickSwitcherSessions}
       .tilesPerRow=${chosenListTiles(this.listTiles, this.appShell.isMobileNavigationLayout ? "phone" : "desktop")}
@@ -2946,8 +2950,19 @@ export class PiWebApp extends LitElement {
       .canRenameSession=${true}
       .canArchiveSessions=${!this.quickSwitcherBrowsingElsewhere()}
       .canCloseProject=${true}
-      .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => { void this.runNavigateRowAction(kind, id, action); }}
+      .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => { void this.asReaderListChange(() => this.runNavigateRowAction(kind, id, action)); }}
+      .readerChanging=${this.readerListChanges > 0}
     ></app-navigate-page>`;
+  }
+
+  /** Run a change the reader asked for from the list, so the list knows the rows it moves are the reader's doing. */
+  private async asReaderListChange(change: () => Promise<void>): Promise<void> {
+    this.readerListChanges += 1;
+    try {
+      await change();
+    } finally {
+      this.readerListChanges -= 1;
+    }
   }
 
   /**

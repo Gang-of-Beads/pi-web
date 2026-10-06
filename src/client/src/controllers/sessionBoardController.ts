@@ -4,6 +4,7 @@ import { MACHINE_WIDE_LOCATE_START } from "../sessionTarget";
 import { QUIET_WINDOW_MS } from "../sync/readPhase";
 import { ScopedResource, type ResourceClock } from "../sync/scopedResource";
 import { boardAnswer, boardWithEvent, completeSessionBoard, oneReadBoard, readSessionBoard, type BoardAnswer, type SessionBoard, type SessionBoardEvent, type SessionBoardSources } from "../sync/sessionBoard";
+import type { BoardMemory } from "../sync/boardMemory";
 
 /** How long a board read whole stays fresh: browsing it again reads no more than its gaps. */
 const BOARD_FRESH_MS = 30_000;
@@ -15,6 +16,8 @@ export interface SessionBoardControllerDependencies {
   knownProjects?: (machineId: string) => readonly Project[] | undefined;
   clock?: ResourceClock;
   now?: () => number;
+  /** Boards remembered from an earlier visit, drawn until this page's own read answers. */
+  memory?: BoardMemory;
 }
 
 /**
@@ -25,6 +28,10 @@ export interface SessionBoardControllerDependencies {
  * read again, and a partial one shows its rows and is read again, on the
  * shared backoff while the machine is the one browsed. The board is not an
  * app-row cause; one source not answering retries silently (owner Q4).
+ *
+ * Until a machine's first read answers, its board is the one this browser
+ * remembered (`boardMemory.ts`): drawn at once, never counted as an answer,
+ * and not drawn at all once the machine stated a refusal.
  */
 export class SessionBoardController {
   private readonly boards: ScopedResource<string, SessionBoard>;
@@ -33,13 +40,22 @@ export class SessionBoardController {
   private readonly wholeReadAsked = new Set<string>();
   private readonly now: () => number;
   private browsed: { machineId: string; release: () => void } | undefined;
+  private readonly memory: BoardMemory | undefined;
+  /** What memory held for each machine asked about, with the announcements heard since applied. */
+  private readonly remembered = new Map<string, SessionBoard | undefined>();
+  /** The live board last handed to memory per machine, so an unchanged one is not written again. */
+  private readonly lastRemembered = new Map<string, SessionBoard>();
+  /** Machines whose board this page has read, the ones memory may be handed. */
+  private readonly readMachines = new Set<string>();
 
   constructor(deps: SessionBoardControllerDependencies = {}) {
     const sources = deps.sources ?? defaultSources(deps.knownProjects);
     this.now = deps.now ?? (() => Date.now());
+    this.memory = deps.memory;
     this.boards = new ScopedResource<string, SessionBoard>({
       keyId: (machineId) => machineId,
       read: async (machineId) => {
+        this.readMachines.add(machineId);
         const askedWhole = this.wholeReadAsked.delete(machineId);
         const gaps = this.boards.entry(machineId).data;
         if (askedWhole || gaps === undefined || boardAnswer(gaps) === "complete") {
@@ -58,6 +74,7 @@ export class SessionBoardController {
       complete: (board) => boardAnswer(board) === "complete",
       ...(deps.clock === undefined ? {} : { clock: deps.clock }),
     });
+    if (this.memory !== undefined) this.boards.subscribe(() => { this.rememberLiveBoards(); });
   }
 
   /**
@@ -84,12 +101,17 @@ export class SessionBoardController {
     await this.boards.refresh(machineId);
   }
 
+  /** The board to draw: the live one, else the remembered one while the machine has neither answered nor refused. */
   board(machineId: string): SessionBoard | undefined {
-    return this.boards.entry(machineId).data;
+    const entry = this.boards.entry(machineId);
+    if (entry.data !== undefined) return entry.data;
+    if (entry.fact.kind !== "none") return undefined;
+    return this.recall(machineId);
   }
 
+  /** How much of the live board answered; a remembered board is no answer. */
   answer(machineId: string): BoardAnswer {
-    return boardAnswer(this.board(machineId));
+    return boardAnswer(this.boards.entry(machineId).data);
   }
 
   /** Apply a change this client made to a known board, such as a rename. */
@@ -99,6 +121,8 @@ export class SessionBoardController {
 
   /** Take what a machine announced about its sessions, so the board stays live between reads (D5). */
   applyEvent(machineId: string, event: SessionBoardEvent): void {
+    const remembered = this.remembered.get(machineId);
+    if (remembered !== undefined) this.remembered.set(machineId, boardWithEvent(remembered, event));
     this.boards.update(machineId, (board) => boardWithEvent(board, event));
   }
 
@@ -123,6 +147,21 @@ export class SessionBoardController {
 
   dispose(): void {
     this.boards.dispose();
+  }
+
+  private recall(machineId: string): SessionBoard | undefined {
+    if (!this.remembered.has(machineId)) this.remembered.set(machineId, this.memory?.recall(machineId));
+    return this.remembered.get(machineId);
+  }
+
+  /** Hand every live board that changed to memory, which keeps the latest and writes it at most once a second. */
+  private rememberLiveBoards(): void {
+    for (const machineId of this.readMachines) {
+      const board = this.boards.entry(machineId).data;
+      if (board === undefined || this.lastRemembered.get(machineId) === board) continue;
+      this.lastRemembered.set(machineId, board);
+      this.memory?.remember(machineId, board);
+    }
   }
 
   private follow(machineId: string): void {
