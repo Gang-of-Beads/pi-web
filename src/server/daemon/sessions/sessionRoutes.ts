@@ -10,6 +10,7 @@ import { normalizeSessionCleanupRequest } from "./sessionCleanup.js";
 import { payloadRevision } from "./payloadRevision.js";
 import { errorText, sessionErrorReply, type SessionErrorReply } from "./sessionErrors.js";
 import { delegationRequestFromBody, spawnCwdFromBody, subsessionReadQuery, type SubsessionTranscriptQuery } from "./delegationRequests.js";
+import { isRecord } from "../../../shared/unknownValues.js";
 
 interface SessionQuery {
   cwd?: string;
@@ -983,8 +984,4 @@ export function quietWindowMs(value: string | undefined): number | undefined {
 
 function sendError(reply: FastifyReply, answer: SessionErrorReply): FastifyReply {
   return reply.code(answer.status).send(answer.body);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

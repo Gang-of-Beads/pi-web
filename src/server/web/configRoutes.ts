@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { loadPiWebConfig, parsePiWebConfig, resolveEffectivePiWebConfig, savePiWebConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
 import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues } from "../../shared/apiTypes.js";
+import { errorMessage, isRecord } from "../../shared/unknownValues.js";
 
 export interface PiWebConfigService {
   read: () => PiWebConfigResponse | Promise<PiWebConfigResponse>;
@@ -183,12 +184,4 @@ function isEnvSet(value: string | undefined): boolean {
 
 function isConfigValidationError(error: unknown): boolean {
   return error instanceof Error && (error.message.startsWith("PI WEB config") || error.message.startsWith("PI WEB selected-machine config"));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

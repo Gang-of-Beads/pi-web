@@ -1,3 +1,4 @@
+import { errorMessage } from "../shared/unknownValues.js";
 export const minimumSupportedNodeVersion = "22.19.0";
 
 export type NativeServiceBackendKind = "systemd" | "launchd";
@@ -618,8 +619,4 @@ function environmentsEqual(
   const rightEntries = Object.entries(right);
   return leftEntries.length === rightEntries.length
     && leftEntries.every(([key, value]) => right[key] === value);
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

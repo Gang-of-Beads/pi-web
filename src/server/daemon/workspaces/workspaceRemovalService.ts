@@ -17,6 +17,7 @@ import {
   worktreePreRemoveHookPath,
   type WorktreePreRemoveHookProbe,
 } from "./worktreePreRemoveHook.js";
+import { errorMessage } from "../../../shared/unknownValues.js";
 
 export interface WorkspaceRemovalProvider {
   resolveRemoval(
@@ -349,10 +350,6 @@ function abortError(signal: AbortSignal | undefined): Error {
 function positiveInteger(value: number, key: string): number {
   if (!Number.isInteger(value) || value <= 0) throw new Error(`${key} must be a positive integer`);
   return value;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function asError(error: unknown): Error {

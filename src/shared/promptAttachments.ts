@@ -1,4 +1,5 @@
 import type { PromptAttachment, PromptFileAttachment, PromptImageAttachment } from "./apiTypes.js";
+import { isRecord } from "./unknownValues.js";
 
 /**
  * Image mime types supported by the pi coding agent. Mirrors
@@ -64,10 +65,6 @@ export function parsePromptAttachments(value: unknown, options: AttachmentValida
   const maxAttachments = options.maxAttachments ?? MAX_PROMPT_ATTACHMENTS;
   if (value.length > maxAttachments) throw new Error(`too many attachments (max ${String(maxAttachments)})`);
   return value.map((entry, index) => parsePromptAttachment(entry, index, options));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parsePromptAttachment(value: unknown, index: number, options: AttachmentValidationOptions): PromptAttachment {

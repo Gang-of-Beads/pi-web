@@ -31,6 +31,7 @@ import type {
   ServerPluginHealthInspection,
   ServerPluginProviderContribution,
 } from "../../shared/plugins/serverPluginRuntime.js";
+import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
 
 export type {
   WorkspaceProviderAuthorityResolution,
@@ -954,14 +955,6 @@ function positiveInteger(value: number | undefined, fallback: number, key: strin
   const resolved = value ?? fallback;
   if (!Number.isInteger(resolved) || resolved <= 0) throw new Error(`${key} must be a positive integer`);
   return resolved;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 class WorkspaceProviderContractError extends Error {

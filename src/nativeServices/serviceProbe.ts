@@ -12,6 +12,7 @@ import type {
   NativeServiceProbeResult,
   NativeServiceShellName,
 } from "./servicePlan.js";
+import { errorMessage } from "../shared/unknownValues.js";
 
 export type ProbeCommandResult =
   | { kind: "completed"; status: number; stdout: string; stderr: string }
@@ -583,10 +584,6 @@ function firstOutput(...values: string[]): string {
     if (line !== undefined) return line.trim();
   }
   return "no output";
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function isNodeErrorWithCode(error: unknown, code: string): error is NodeJS.ErrnoException {

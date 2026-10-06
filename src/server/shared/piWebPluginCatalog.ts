@@ -8,6 +8,7 @@ import { loadPiWebConfig, piWebDataDir, type PiWebConfig } from "../../config.js
 import type { ProjectPluginRootResolution } from "./plugins/projectPluginVerdict.js";
 import type { PiWebPluginScope, PiWebPluginSettings } from "../../shared/apiTypes.js";
 import { isPiWebPluginId, isReservedPiWebPluginId } from "../../shared/pluginIds.js";
+import { isRecord } from "../../shared/unknownValues.js";
 
 export interface ConfiguredPiPackage {
   source: string;
@@ -828,8 +829,4 @@ export function isWithin(root: string, candidate: string, pathPlatform: PathPlat
   const rel = pathPlatform.relative(root, candidate);
   // Windows returns an absolute relative() result when the paths are on different volumes.
   return rel === "" || (!pathPlatform.isAbsolute(rel) && !rel.startsWith("..") && !rel.startsWith(pathPlatform.sep));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

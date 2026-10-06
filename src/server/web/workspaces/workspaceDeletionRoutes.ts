@@ -6,6 +6,7 @@ import {
 import { SessionDaemonClient } from "../../shared/sessiondClient/sessionDaemonClient.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
 import type { SessionProxyDaemon } from "../sessionProxyRoutes.js";
+import { errorMessage } from "../../../shared/unknownValues.js";
 
 /** Browser-facing adapter; sessiond owns all workspace removal decisions and effects. */
 export function registerWorkspaceDeletionRoutes(
@@ -60,8 +61,4 @@ function proxyJsonResponse(
       error: `Invalid session daemon workspace removal response: ${errorMessage(error)}`,
     });
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

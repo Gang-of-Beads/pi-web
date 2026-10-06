@@ -8,6 +8,7 @@ import { requestCancellation } from "../../shared/requestCancellation.js";
 import { bridgeSockets } from "../webSocketBridge.js";
 import { applyWorkspaceFilePreviewErrorResponsePolicy, applyWorkspaceFilePreviewResponsePolicy } from "../../shared/workspaces/filePreviewResponseHeaders.js";
 import { workspaceFilePreviewErrorResponsePolicy, workspaceFilePreviewResponsePolicy, type WorkspaceFilePreviewResponsePolicy } from "../../shared/workspaces/filePreviewResponsePolicy.js";
+import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
 
 /** The proxy's slice of the machine registry: it only ever needs the remote client. */
 interface ProxyMachines {
@@ -352,14 +353,6 @@ function destroyReadable(body: NodeJS.ReadableStream): void {
 
 function isSelectedMachineConfigRequestError(error: unknown): boolean {
   return error instanceof Error && error.message.startsWith("PI WEB selected-machine config");
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function sendGatewayError(reply: FastifyReply, machineId: string, error: unknown): FastifyReply {

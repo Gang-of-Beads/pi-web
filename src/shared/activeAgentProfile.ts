@@ -1,4 +1,5 @@
 import type { ActiveAgentProfileDescriptor } from "./apiTypes.js";
+import { isRecord } from "./unknownValues.js";
 
 export const ACTIVE_AGENT_PROFILE_SCHEMA_VERSION = 2 as const;
 
@@ -33,8 +34,4 @@ function hasControlCharacter(value: string): boolean {
     if (code < 32 || code === 127) return true;
   }
   return false;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

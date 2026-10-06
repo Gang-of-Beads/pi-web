@@ -15,6 +15,7 @@ import {
 import { resolveAppUrl, type AppUrlContext } from "../appUrl";
 import { describeError } from "../notice";
 import { fetchWithDeadline, isTransportFailure } from "./requestDeadline";
+import { isRecord } from "../../../shared/unknownValues";
 
 export interface PluginBackendRequestTarget {
   pluginId: string;
@@ -130,8 +131,4 @@ function pluginBackendErrorMessage(text: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

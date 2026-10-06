@@ -134,6 +134,7 @@ import { deferToolResultImages, findToolResultImage } from "./toolResultImages.j
 import { boundToolResultText } from "./toolResultBounds.js";
 import { correlateQueuedPromptIds } from "./queuedPromptIdentity.js";
 import { SessionNotFoundError } from "./sessionErrors.js";
+import { errorMessage } from "../../../shared/unknownValues.js";
 
 interface ActiveSession<TRuntime> {
   runtime: TRuntime;
@@ -6344,10 +6345,6 @@ function findSessionByIdOrPrefix(sessions: readonly PiSessionListEntry[], sessio
 
 function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values)];
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 

@@ -1,4 +1,5 @@
 import type { MessagePage, SessionUiEvent } from "../../shared/apiTypes.js";
+import { isRecord } from "../../shared/unknownValues.js";
 
 /**
  * Remove provider-only thinking data at the browser transport boundary. The
@@ -51,8 +52,4 @@ function mapChanged<T>(values: T[], project: (value: T) => T): T[] {
 
 function isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

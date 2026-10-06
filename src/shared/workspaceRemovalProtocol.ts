@@ -1,4 +1,5 @@
 import type { WorkspaceRemovalRequest } from "./apiTypes.js";
+import { isRecord } from "./unknownValues.js";
 
 /** Small JSON request carrying the host-issued confirmation precondition. */
 export const WORKSPACE_REMOVAL_REQUEST_BODY_MAX_BYTES = 4 * 1024;
@@ -24,8 +25,4 @@ export function requireWorkspaceRemovalPrecondition(value: unknown): string {
     );
   }
   return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

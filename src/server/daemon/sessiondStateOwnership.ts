@@ -34,6 +34,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { piWebDataDir } from "../../config.js";
 import { sessiondEndpointDescription } from "../shared/sessiondClient/config.js";
+import { isRecord } from "../../shared/unknownValues.js";
 
 /** Marker file recording the owning daemon, inside the instance data directory. */
 export const SESSIOND_OWNER_MARKER_FILENAME = "sessiond-owner.json";
@@ -285,10 +286,6 @@ function isProcessAlive(pid: number): boolean {
 
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isErrorCode(error: unknown, code: string): boolean {

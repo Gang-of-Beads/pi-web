@@ -28,6 +28,7 @@ import {
   type WorkspaceCatalog,
   type WorkspaceProviderRuntimeSnapshot,
 } from "../../shared/workspaces/workspaceCatalog.js";
+import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
 
 const WORKSPACE_CATALOG_PATH = "/workspace-catalog";
 
@@ -432,12 +433,4 @@ function parseResponseBody(body: string): unknown {
 
 function protocolError(message: string): WorkspaceCatalogProtocolError {
   return new WorkspaceCatalogProtocolError(`Invalid session daemon workspace authority response: ${message}`);
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

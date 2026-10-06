@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type { PiPackageScope } from "../../shared/apiTypes.js";
 import { ActiveAgentProfileAccessError } from "./activeAgentProfileProvider.js";
 import type { PiPackageService } from "./piPackageService.js";
+import { errorMessage, isRecord } from "../../shared/unknownValues.js";
 
 class PiPackageRequestValidationError extends Error {}
 
@@ -86,12 +87,4 @@ function sendPiPackageError(reply: FastifyReply, error: unknown): FastifyReply {
       ? 503
       : 500;
   return reply.code(status).send({ error: errorMessage(error) });
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

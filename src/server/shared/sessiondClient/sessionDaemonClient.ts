@@ -4,6 +4,7 @@ import { isHostAbsoluteAgentDir } from "../../../config.js";
 import type { ActiveAgentProfileDescriptor } from "../../../shared/apiTypes.js";
 import { parsePiWebRuntimeComponent } from "../../../shared/piWebStatusParsing.js";
 import { sessiondHttpUrl, sessiondSocketPath } from "./config.js";
+import { errorMessage } from "../../../shared/unknownValues.js";
 
 export type SessionDaemonAgentProfileResult =
   | { status: "available"; profile: ActiveAgentProfileDescriptor }
@@ -130,8 +131,4 @@ export async function getSessionDaemonActiveAgentProfile(client: SessionDaemonRe
     return { status: "invalid", error: "session daemon active agent profile was not valid for this host" };
   }
   return { status: "available", profile: runtime.activeAgentProfile };
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

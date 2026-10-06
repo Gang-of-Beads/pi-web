@@ -35,6 +35,7 @@ import type {
   PiWebPluginRuns,
 } from "../piWebPluginCatalog.js";
 import { createServerPluginExecFile } from "./serverPluginExec.js";
+import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
 
 export type ServerPluginRuntimeState = "active" | "failed" | "incompatible" | "disabled";
 export type ServerPluginLifecyclePhase = "import" | "activate" | "validate" | "start" | "health" | "stop";
@@ -728,10 +729,6 @@ function positiveInteger(value: number | undefined, fallback: number, key: strin
   return resolved;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function formatUnknown(value: unknown): string {
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null || value === undefined) return String(value);
   try {
@@ -739,8 +736,4 @@ function formatUnknown(value: unknown): string {
   } catch {
     return Object.prototype.toString.call(value);
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

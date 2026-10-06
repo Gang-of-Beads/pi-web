@@ -4,6 +4,7 @@ import type { ServerPluginReply, ServerPluginRouteBody, ServerPluginRouteContrib
 import type { JsonValue } from "../../../shared/pluginApiTypes.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
 import type { ServerPluginRuntime } from "../../shared/plugins/serverPluginRuntime.js";
+import { isRecord } from "../../../shared/unknownValues.js";
 
 /**
  * The host side of the route-contribution seam.
@@ -91,10 +92,6 @@ function registerPluginRouteBodyParsers(app: FastifyInstance): void {
   try { app.addContentTypeParser("text/plain", { parseAs: "string" }, (_request, body, done) => { done(null, Buffer.from(body)); }); } catch { /* already registered */ }
   try { app.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_request, body, done) => { done(null, body); }); } catch { /* already registered */ }
   try { app.addContentTypeParser(/^([a-z]+\/[a-z0-9.+-]+)$/u, { parseAs: "buffer" }, (_request, body, done) => { done(null, body); }); } catch { /* already registered */ }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function stringRecord(value: unknown): Record<string, string> {

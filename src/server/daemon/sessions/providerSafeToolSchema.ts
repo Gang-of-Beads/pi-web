@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues.js";
 /**
  * The tool schemas we hand a provider, minus what its validator refuses.
  *
@@ -69,8 +70,4 @@ function total(value: unknown): number {
   let removed = 0;
   for (const entry of value) removed += stripUnsupportedToolSchemaBounds(entry);
   return removed;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

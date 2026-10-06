@@ -7,6 +7,7 @@ import {
   type InstalledNativeServiceInspection,
 } from "./serviceDoctor.js";
 import type { NativeServiceBackend, NativeServiceId } from "./servicePlan.js";
+import { errorMessage } from "../shared/unknownValues.js";
 
 export type InstalledNativeServiceDefinitionPurpose = "start" | "restart" | "doctor";
 
@@ -713,8 +714,4 @@ function firstOutputLine(...values: readonly string[]): string | undefined {
     if (line !== undefined) return line.trim();
   }
   return undefined;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

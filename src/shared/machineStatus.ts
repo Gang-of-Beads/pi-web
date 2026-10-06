@@ -1,3 +1,4 @@
+import { isRecord } from "./unknownValues.js";
 /**
  * Internal per-machine status contract shared by sessiond, the web tier, and
  * the browser.
@@ -126,8 +127,4 @@ function parseStatusFlagsByNodeId(value: unknown): Readonly<Record<string, Statu
     if (parsed !== undefined) nodes.set(nodeId, parsed);
   }
   return Object.fromEntries(nodes);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

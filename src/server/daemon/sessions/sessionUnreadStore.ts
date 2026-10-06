@@ -13,6 +13,7 @@ import {
   type SessionUnreadEvent,
   type SessionUnreadSummary,
 } from "../../../shared/apiTypes.js";
+import { isRecord } from "../../../shared/unknownValues.js";
 
 const SESSION_UNREAD_STATE_VERSION = 1;
 const SESSION_UNREAD_FILE_MODE = 0o600;
@@ -577,10 +578,6 @@ function parseSummary(value: unknown): SessionUnreadSummary {
 function requireRecord(value: unknown, message: string): Record<string, unknown> {
   if (!isRecord(value)) throw new Error(message);
   return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requireNonEmptyString(value: unknown, field: string): string {

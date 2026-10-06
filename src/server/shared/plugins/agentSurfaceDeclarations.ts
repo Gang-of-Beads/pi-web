@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues.js";
 /**
  * What a plugin says about the agent-side facts its own feature produces.
  *
@@ -74,8 +75,4 @@ function parseInjectedTurns(value: unknown): readonly InjectedTurnDeclaration[] 
 
 function isToolList(value: readonly unknown[]): value is string[] {
   return value.every((tool) => typeof tool === "string" && tool !== "");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

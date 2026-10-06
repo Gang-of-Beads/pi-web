@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { piWebDataDir } from "../../../config.js";
+import { isNodeErrorWithCode } from "../workspaces/pathSafety.js";
 
 /**
  * Which sessions are kept close on this machine.
@@ -21,10 +22,6 @@ export function sessionPinStorePath(env: NodeJS.ProcessEnv = process.env, cwd = 
   const configured = env["PI_WEB_SESSION_PINS_FILE"];
   if (configured === undefined || configured === "") return join(piWebDataDir(env, cwd), "session-pins.json");
   return resolve(cwd, configured);
-}
-
-function isNodeErrorWithCode(error: unknown, code: string): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error && error.code === code;
 }
 
 function parsePinFile(value: unknown): string[] {

@@ -13,6 +13,7 @@ import { parsePiWebRuntimeComponent } from "../../shared/piWebStatusParsing.js";
 import { SessionDaemonClient } from "./sessiondClient/sessionDaemonClient.js";
 import { isHostAbsoluteAgentDir, loadPiWebConfig, PI_CODING_AGENT_DIR_ENV, type LoadedPiWebConfig } from "../../config.js";
 import { createPiWebReleaseLookupCache, type PiWebReleaseLookup } from "./piWebReleaseLookupCache.js";
+import { isRecord } from "../../shared/unknownValues.js";
 
 const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 const PI_WEB_NPM_SOURCE = `npm:${PI_WEB_PACKAGE_NAME}`;
@@ -682,8 +683,4 @@ function parsePackageVersion(version: string): { major: number; minor: number; p
 
 function formatVersion(version: string | undefined): string {
   return version ?? "unknown";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

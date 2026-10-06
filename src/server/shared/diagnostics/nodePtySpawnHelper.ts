@@ -1,6 +1,7 @@
 import { accessSync, constants, existsSync, statSync, type Stats } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { errorMessage } from "../../../shared/unknownValues.js";
 
 // The upstream node-pty issue is the diagnosis worth reading; a second link to
 // a fork's own tracking issue only sent readers to another project.
@@ -167,8 +168,4 @@ function shellSingleQuote(value: string): string {
 
 function isFileNotFoundError(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

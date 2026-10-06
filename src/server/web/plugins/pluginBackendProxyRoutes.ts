@@ -5,6 +5,7 @@ import {
   utf8ByteLength,
 } from "../../../shared/pluginBackendProtocol.js";
 import type { SessionDaemonRequestClient } from "../../shared/sessiondClient/sessionDaemonClient.js";
+import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
 
 interface PluginBackendProxyParams {
   pluginId: string;
@@ -88,12 +89,4 @@ function isUnknownPluginBackendRoute(statusCode: number, body: unknown): boolean
   const error = body["error"];
   const message = body["message"];
   return error === "Not Found" || (typeof message === "string" && /^Route .* not found$/u.test(message));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

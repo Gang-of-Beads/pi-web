@@ -6,6 +6,7 @@ import { requirePluginBackendRevision } from "../../../shared/pluginBackendProto
 import type { MachineClient } from "../../../server-plugin-api.js";
 import { RemoteMachineRequestError } from "../../../server-plugin-api.js";
 import type { MachineRegistryFace } from "./localMachineRegistry.js";
+import { isRecord } from "../../../shared/unknownValues.js";
 
 interface RemotePluginManifestEntry {
   id: string;
@@ -249,8 +250,4 @@ function formatUnknownValue(value: unknown): string {
   } catch {
     return Object.prototype.toString.call(value);
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

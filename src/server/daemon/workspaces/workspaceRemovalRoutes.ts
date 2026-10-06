@@ -7,6 +7,7 @@ import {
 import { requestCancellation } from "../../shared/requestCancellation.js";
 import type { Project } from "../../shared/types.js";
 import { workspaceRemovalHttpStatus } from "./workspaceRemovalService.js";
+import { errorMessage } from "../../../shared/unknownValues.js";
 
 export interface WorkspaceRemovalProjectReader {
   requireProject(projectId: string): Promise<Project>;
@@ -77,8 +78,4 @@ export function registerWorkspaceRemovalRoutes(
 
 function removalRequestFailed(reply: FastifyReply, error: unknown): FastifyReply {
   return reply.code(workspaceRemovalHttpStatus(error)).send({ error: errorMessage(error) });
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

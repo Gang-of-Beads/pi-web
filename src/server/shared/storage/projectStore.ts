@@ -3,13 +3,10 @@ import { dirname, join, resolve } from "node:path";
 import { piWebDataDir } from "../../../config.js";
 import { randomUUID } from "node:crypto";
 import type { Project } from "../types.js";
+import { isNodeErrorWithCode } from "../workspaces/pathSafety.js";
 
 interface ProjectFile {
   projects: Project[];
-}
-
-function isNodeErrorWithCode(error: unknown, code: string): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error && error.code === code;
 }
 
 function parseProjectFile(value: unknown): ProjectFile {

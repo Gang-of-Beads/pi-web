@@ -1,6 +1,7 @@
 import type { PiWebComponentStatus, PiWebDeprecatedAgentInput, PiWebInstallationInfo, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebVersionResponse } from "./apiTypes.js";
 import { parseActiveAgentProfileDescriptor } from "./activeAgentProfile.js";
 import { parseKnownPiWebCapabilities } from "./capabilities.js";
+import { isRecord } from "./unknownValues.js";
 
 export function parsePiWebVersionResponse(value: unknown): PiWebVersionResponse | undefined {
   if (!isRecord(value)) return undefined;
@@ -121,8 +122,4 @@ export function parsePiWebInstallationInfo(value: unknown): PiWebInstallationInf
     ...(typeof npmRoot === "string" ? { npmRoot } : {}),
     ...(dockerMode === "runtime" || dockerMode === "dev" ? { dockerMode } : {}),
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

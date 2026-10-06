@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues.js";
 /**
  * Tool-result images travel as references, not bytes.
  *
@@ -72,10 +73,6 @@ export function findToolResultImage(entries: Iterable<unknown>, toolCallId: stri
 function base64ByteLength(data: string): number {
   const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
   return Math.floor((data.length * 3) / 4) - padding;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function getString(value: unknown, key: string): string | undefined {
