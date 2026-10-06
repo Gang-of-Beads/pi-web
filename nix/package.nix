@@ -12,7 +12,13 @@ stdenv.mkDerivation (finalAttrs: {
     inherit (finalAttrs) pname version src;
     pnpm = pnpm_12;
     fetcherVersion = 4;
-    hash = "sha256-7faUo69YEb1r1SPMzK4I07Ukus7b9jZ663iOu31SsRw=";
+    # pnpm 12's store keeps links/: package directories materialized from files/
+    # and index.db, rebuilt by the next install. fetchPnpmDeps runs jq over every
+    # *.json in the store and fails on the first commented tsconfig.json there
+    # (outdent, openai, @anthropic-ai/sdk ...), so links/ goes before it, as the
+    # fetcher already drops projects/.
+    preFixup = "rm -rf $storePath/v11/links";
+    hash = "sha256-+9LkBdXV+V1Bpsb96tPSPTn4ah18fx/zHTeFnXXJuFk=";
   };
 
   nativeBuildInputs = [ nodejs pnpm_12 pnpmConfigHook makeWrapper python3 pkg-config ]
