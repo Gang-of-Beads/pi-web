@@ -122,4 +122,3 @@ function selectedOptionIndex(picker: CommandPicker): number {
   return optionButtons(picker).findIndex((button) => button.classList.contains("selected"));
 }
 
-/** Type into the picker's search box and let it re-render. */

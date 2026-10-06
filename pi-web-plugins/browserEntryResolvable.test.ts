@@ -4,6 +4,10 @@ import { join, resolve } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { isRelativeSpecifier, moduleSpecifiers, staticModuleSpecifiers } from "../scripts/pluginModuleSpecifiers.mjs";
 
+/**
+ * npm on this platform. Windows ships it as the npm.cmd shim, and since Node 20 spawning a .cmd
+ * without a shell is refused with EINVAL, so the command and the shell flag travel together.
+ */
 const npm = process.platform === "win32" ? { command: "npm.cmd", shell: true } : { command: "npm", shell: false };
 
 /**

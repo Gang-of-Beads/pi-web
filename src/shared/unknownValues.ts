@@ -2,6 +2,10 @@
  * Guards for a value read without a type: a parsed body, a stored entry, a thrown error. The
  * browser, the web process and the daemon each kept private copies of these (the 2026-10-06
  * ponytail audit counted 57 `isRecord` alone); this module is the one copy all three import.
+ *
+ * The shared files compiled into the published plugin-api package (activeAgentProfile,
+ * machineStatus, piWebStatusParsing) keep their own copy: importing this module would add a private
+ * helper to the package's exact declaration set and strip their module docstrings from it.
  */
 
 /** A plain object: not null and not an array. */

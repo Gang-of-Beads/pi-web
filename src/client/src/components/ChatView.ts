@@ -735,7 +735,6 @@ export class ChatView extends LitElement {
    */
   private drawnWaiting: WaitingCards | undefined;
   private drawnWaitingClearTimer: ReturnType<typeof setTimeout> | undefined;
-  /** Which open card's alignment a press deferred, so the release can replay it. */
   private groupedMessagesInput?: ChatLine[];
   private groupedMessagesStart = 0;
   private groupedMessagesCache: ChatGroup[] = [];

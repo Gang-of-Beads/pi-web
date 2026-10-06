@@ -187,7 +187,6 @@ transitions, the dock and the retry).
 
 | Event | Why | The check | Marks |
 |---|---|---|---|
-|---|---|---|
 | a session is opened or selected | nothing read yet | the join read | `checking` |
 | the page becomes visible after being hidden, or is restored from the back-forward cache | a hidden page's socket and timers freeze; frames sent meanwhile may be gone | catch up from the frontier | `checking` |
 | the browser reports `online` | the network came back | catch up from the frontier | `checking` |
@@ -245,7 +244,8 @@ catch-up.
 | any | the session is deselected | none |
 
 An archived session has no live stream and carries no sync state: its read shows it or fails as
-before. A closed session the daemon does not hold open joins like any other. A session still being
+before, and a selected session archived from another device drops its sync state when the listing
+shows it archived. A closed session the daemon does not hold open joins like any other. A session still being
 created has no transcript yet; its dock shows the startup progress as before.
 
 ### Retired

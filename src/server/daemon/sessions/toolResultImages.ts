@@ -1,4 +1,3 @@
-import { isRecord } from "../../../shared/unknownValues.js";
 /**
  * Tool-result images travel as references, not bytes.
  *
@@ -14,6 +13,7 @@ import { isRecord } from "../../../shared/unknownValues.js";
  * Tiny images (icons, badges) stay inline: a round trip costs more than the
  * bytes do.
  */
+import { isRecord } from "../../../shared/unknownValues.js";
 export const INLINE_IMAGE_BYTES = 8 * 1024;
 
 /**

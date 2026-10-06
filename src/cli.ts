@@ -10,6 +10,7 @@ import { defaultPiWebConfigPath, defaultPiWebDataDir, examplePiWebConfig } from 
 import { piWebDockerCommand, type PiWebDockerMode } from "./docker/piWebDockerCommandPlan.js";
 import { ownEnvironmentValue } from "./environment.js";
 import { runPluginRecoveryCli, type SessionDaemonRestartPlan } from "./pluginRecoveryCli.js";
+import { isRecord } from "./shared/unknownValues.js";
 import {
   packageVersion,
   printPiWebVersionReport,
@@ -1354,10 +1355,6 @@ function printNodePtyDarwinSpawnHelperCheck(): boolean {
   const result = formatNodePtyDarwinSpawnHelperCheck(checkNodePtyDarwinSpawnHelper());
   for (const line of result.lines) console.log(line);
   return result.ok;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function help(): void {

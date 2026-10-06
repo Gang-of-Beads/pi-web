@@ -1220,6 +1220,7 @@ export class SessionController {
       const refreshedSelected = sessions.find((session) => session.id === selectedSession.id);
       if (refreshedSelected !== undefined) {
         if (refreshedSelected !== selectedSession) this.setState({ selectedSession: refreshedSelected });
+        if (refreshedSelected.archived === true && selectedSession.archived !== true) this.dropLiveTranscript();
         // A remembered selection restored at boot carries no list stamp: the
         // first listing is where the app learns the folder is gone. Deselect
         // into the fact instead of leaving a session on screen that can never
@@ -1789,6 +1790,16 @@ export class SessionController {
     this.syncTranscript({ type: "checked", key });
   }
 
+  /**
+   * The selection stopped having a live stream (archived from another device while open): its repair,
+   * retry and sync state go, so nothing keeps saying "Syncing…" about a stream that is not there.
+   */
+  private dropLiveTranscript(): void {
+    this.gapRepair = undefined;
+    this.cancelTranscriptRetry();
+    if (this.getState().transcriptSync !== undefined) this.setState({ transcriptSync: undefined });
+  }
+
   /** The selected session's key when it has a live transcript to fall behind on. */
   private liveTranscriptKey(): string | undefined {
     const session = this.getState().selectedSession;
@@ -2055,6 +2066,8 @@ export class SessionController {
     this.selectionSeq += 1;
     this.socket.close();
     this.streamWatermark = undefined;
+    this.gapRepair = undefined;
+    this.cancelTranscriptRetry();
     this.clearPendingUpdates();
     const state = this.getState();
     const pendingStart = this.pendingSessionStarts.get(session.id);

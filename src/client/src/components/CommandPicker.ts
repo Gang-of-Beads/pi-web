@@ -42,7 +42,7 @@ export class CommandPicker extends LitElement {
               ${option.description !== undefined && option.description !== "" ? html`<small>${option.description}</small>` : null}
             </button>
           `)}
-          ${options.length === 0 ? html`<div class="empty">No matching options</div>` : null}
+          ${options.length === 0 ? html`<div class="empty">No options</div>` : null}
         </div>
       </modal-surface>
     `;
@@ -93,9 +93,6 @@ export class CommandPicker extends LitElement {
     .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     header button { font: inherit; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; font-size: var(--pi-text-xl); line-height: 1; color: var(--pi-muted); }
-    input { box-sizing: border-box; height: var(--pi-control-height-comfort); margin: var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; padding: var(--pi-space-4) var(--pi-space-5); outline: none; }
-    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
-    input:focus { border-color: var(--pi-accent); }
     .options button { display: block; box-sizing: border-box; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); line-height: inherit; padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options button.selected { background: var(--pi-selection-bg); border-color: var(--pi-accent); }
     .options button.selected small { color: var(--pi-text-secondary, var(--pi-text)); }
@@ -103,11 +100,10 @@ export class CommandPicker extends LitElement {
     small { display: block; margin-top: var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .empty { padding: var(--pi-space-9); color: var(--pi-muted); text-align: center; }
     /* Coarse pointers get the comfort floor across the picker chrome: the
-       close control, the search field, and every option row are touch targets
+       close control and every option row are touch targets
        on a phone. Declared after every base rule it raises. */
     @media (pointer: coarse) {
       header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
-      input { min-height: var(--pi-control-height-touch, 44px); }
       .options button { min-height: var(--pi-control-height-touch, 44px); }
     }
   `];

@@ -1,4 +1,3 @@
-import { isRecord } from "../../../shared/unknownValues.js";
 /**
  * The tool schemas we hand a provider, minus what its validator refuses.
  *
@@ -21,6 +20,7 @@ import { isRecord } from "../../../shared/unknownValues.js";
  * therefore the request - on the old one. Mutating the nodes themselves is what
  * reaches the wire.
  */
+import { isRecord } from "../../../shared/unknownValues.js";
 
 const SCHEMA_VALUE_KEYS = ["properties", "patternProperties", "$defs", "definitions"];
 const SCHEMA_LIST_KEYS = ["allOf", "anyOf", "oneOf", "prefixItems"];

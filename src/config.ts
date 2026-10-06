@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import type { PiWebConfigValues, PiWebDeprecatedAgentInput, PiWebListTilesConfig, PiWebLoggingConfig } from "./shared/apiTypes.js";
 import { isPiWebPluginId, piWebPluginIdPattern } from "./shared/pluginIds.js";
+import { isRecord } from "./shared/unknownValues.js";
 
 export type PiWebConfig = PiWebConfigValues;
 
@@ -209,8 +210,8 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
 
 /**
  * The keys a save rewrites from the parsed config; every other key in the file is kept as it was.
- * `respectProjectTrust` is retired and dropped on save. `extensionDialogsTimeoutMs` is not here:
- * nothing in the page sends it, so a save keeps the value the file holds.
+ * `respectProjectTrust` is retired and dropped on save. `extensionDialogsTimeoutMs` is not here: it
+ * has no editor, so a save keeps the value the file holds, and one a request carries is not written.
  */
 const SAVED_CONFIG_KEYS: ReadonlySet<string> = new Set([
   "host", "port", "allowedHosts", "shortcuts", "plugins", "pathAccess", "uploads", "maxUploadBytes",
@@ -556,10 +557,6 @@ function parsePlugins(value: unknown, path: string): NonNullable<PiWebConfigValu
     if (settings !== undefined && (!isRecord(settings) || Array.isArray(settings))) throw new Error(`PI WEB config plugin settings must be objects: ${path}`);
     return [pluginId, config];
   }));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isNonEmptyStringArray(value: unknown): value is string[] {

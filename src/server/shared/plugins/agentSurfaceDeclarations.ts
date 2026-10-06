@@ -1,4 +1,3 @@
-import { isRecord } from "../../../shared/unknownValues.js";
 /**
  * What a plugin says about the agent-side facts its own feature produces.
  *
@@ -12,6 +11,7 @@ import { isRecord } from "../../../shared/unknownValues.js";
  * or a local checkout provides the surface just as well; one tool is enough,
  * since a plugin registering a subset still has something behind its panel.
  */
+import { isRecord } from "../../../shared/unknownValues.js";
 
 export interface AgentSurfaceDeclaration {
   /** The surface a browser panel asks about. */

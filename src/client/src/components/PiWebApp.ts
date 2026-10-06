@@ -4255,8 +4255,6 @@ export class PiWebApp extends LitElement {
     }
   }
 
-  /** Give the restored composer the caret it was tapped for. */
-
   /**
    * The add-machine dialog is the machines plugin's, opened through the
    * dialog seam; the shell's affordances run the plugin's reserved action.

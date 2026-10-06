@@ -5,6 +5,7 @@ import { effectivePiWebConfig } from "./config.js";
 import { SessionDaemonClient } from "./server/shared/sessiondClient/sessionDaemonClient.js";
 import type { PiWebComponentStatus, PiWebInstallationInfo, PiWebVersionResponse } from "./shared/apiTypes.js";
 import { parsePiWebComponentStatus, parsePiWebVersionResponse } from "./shared/piWebStatusParsing.js";
+import { errorMessage, isRecord } from "./shared/unknownValues.js";
 
 const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 const PI_WEB_VERSION_TIMEOUT_MS = 2000;
@@ -299,12 +300,4 @@ function installationLabel(installation: PiWebInstallationInfo | undefined): str
 
 function formatVersion(version: string | undefined): string {
   return version === undefined || version === "" ? "unknown" : version;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

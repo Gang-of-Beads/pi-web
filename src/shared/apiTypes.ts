@@ -1379,7 +1379,8 @@ export interface SessionStatus {
    * Live, runtime-scoped warnings for this session (skill/resource diagnostics,
    * extension load errors, Anthropic subscription-auth billing notice, etc.).
    * Recomputed on each status read from the current runtime; absent/empty when
-   * there are none. See {@link SessionWarning}.
+   * there are none. The browser does not parse it: warnings reach the reader as
+   * session notifications. See {@link SessionWarning}.
    */
   warnings?: SessionWarning[];
   /**

@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { piWebConfigPath } from "./config.js";
 import { isPiWebPluginId } from "./shared/pluginIds.js";
+import { isRecord } from "./shared/unknownValues.js";
 
 export type ServerPluginSafeStart = "bundled-only" | "none";
 
@@ -175,8 +176,4 @@ function writeConfigObject(path: string, root: Record<string, unknown>): void {
 function existingMode(path: string): number {
   if (!existsSync(path)) return 0o600;
   return statSync(path).mode & 0o777;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

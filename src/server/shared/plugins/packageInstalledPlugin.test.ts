@@ -6,6 +6,10 @@ import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 import { PiWebPluginCatalog } from "../piWebPluginCatalog";
 
+/**
+ * npm on this platform. Windows ships it as the npm.cmd shim, and since Node 20 spawning a .cmd
+ * without a shell is refused with EINVAL, so the command and the shell flag travel together.
+ */
 const npm = process.platform === "win32" ? { command: "npm.cmd", shell: true } : { command: "npm", shell: false };
 
 /**
