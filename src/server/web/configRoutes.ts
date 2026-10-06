@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { loadPiWebConfig, parseAgentConfig, parseListTilesConfig, parseLoggingConfig, parseUploadsConfig, resolveEffectivePiWebConfig, savePiWebConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
+import { loadPiWebConfig, parsePiWebConfig, resolveEffectivePiWebConfig, savePiWebConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
 import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues } from "../../shared/apiTypes.js";
-import { isPiWebPluginId } from "../../shared/pluginIds.js";
 
 export interface PiWebConfigService {
   read: () => PiWebConfigResponse | Promise<PiWebConfigResponse>;
@@ -118,48 +117,10 @@ export function parsePiWebConfigResponseBody(value: unknown, source = "PI WEB co
   };
 }
 
+/** A config update's body, parsed as the file is; messages name it "request". */
 function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "current"): PiWebConfig {
   if (!isRecord(value)) throw new Error("PI WEB config update must include a config object");
-  const config: PiWebConfig = {};
-  const host = value["host"];
-  const port = value["port"];
-  const allowedHosts = value["allowedHosts"];
-  const shortcuts = value["shortcuts"];
-  const plugins = value["plugins"];
-  const pathAccess = value["pathAccess"];
-  const uploads = value["uploads"];
-  const maxUploadBytes = value["maxUploadBytes"];
-  const logging = value["logging"];
-  const listTiles = value["listTiles"];
-  const askUser = value["askUser"];
-  const environmentFacts = value["environmentFacts"];
-  const agent = value["agent"];
-  if (host !== undefined) {
-    if (typeof host !== "string") throw new Error("PI WEB config host must be a string");
-    config.host = host;
-  }
-  if (port !== undefined) {
-    if (typeof port !== "number") throw new Error("PI WEB config port must be a number");
-    config.port = port;
-  }
-  if (allowedHosts !== undefined) config.allowedHosts = parseAllowedHostsRequest(allowedHosts);
-  if (shortcuts !== undefined) config.shortcuts = parseShortcutsRequest(shortcuts);
-  if (plugins !== undefined) config.plugins = parsePluginsRequest(plugins);
-  if (pathAccess !== undefined) config.pathAccess = parsePathAccessRequest(pathAccess);
-  if (uploads !== undefined) config.uploads = parseUploadsConfig(uploads, "request");
-  if (maxUploadBytes !== undefined) config.maxUploadBytes = parseMaxUploadBytesRequest(maxUploadBytes);
-  if (logging !== undefined) config.logging = parseLoggingConfig(logging, "request");
-  if (listTiles !== undefined) config.listTiles = parseListTilesConfig(listTiles, "request");
-  if (askUser !== undefined) {
-    if (typeof askUser !== "boolean") throw new Error("PI WEB config askUser must be a boolean");
-    config.askUser = askUser;
-  }
-  if (environmentFacts !== undefined) {
-    if (typeof environmentFacts !== "boolean") throw new Error("PI WEB config environmentFacts must be a boolean");
-    config.environmentFacts = environmentFacts;
-  }
-  if (agent !== undefined) config.agent = parseAgentRequest(agent, agentPathHost);
-  return config;
+  return parsePiWebConfig(value, "request", agentPathHost);
 }
 
 function pickSelectedMachineConfig(config: PiWebConfigValues): PiWebConfig {
@@ -178,63 +139,6 @@ function selectedMachineConfigErrorMessage(error: unknown): string {
   const message = errorMessage(error);
   if (message.startsWith("PI WEB config ")) return `PI WEB selected-machine config ${message.slice("PI WEB config ".length)}`;
   return `PI WEB selected-machine config ${message}`;
-}
-
-function parseAllowedHostsRequest(value: unknown): string[] | true {
-  if (value === true) return true;
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
-    throw new Error("PI WEB config allowedHosts must be true or an array of strings");
-  }
-  return value;
-}
-
-function parseShortcutsRequest(value: unknown): Record<string, string | null> {
-  if (!isRecord(value)) throw new Error("PI WEB config shortcuts must be an object");
-  return Object.fromEntries(Object.entries(value).map(([actionId, shortcut]) => {
-    if (shortcut !== null && (typeof shortcut !== "string" || shortcut === "")) throw new Error("PI WEB config shortcut values must be non-empty strings or null");
-    return [actionId, shortcut];
-  }));
-}
-
-function parsePathAccessRequest(value: unknown): NonNullable<PiWebConfig["pathAccess"]> {
-  if (!isRecord(value)) throw new Error("PI WEB config pathAccess must be an object");
-  const allowedPaths = value["allowedPaths"];
-  return {
-    ...(allowedPaths === undefined ? {} : { allowedPaths: parseAllowedPathsRequest(allowedPaths) }),
-  };
-}
-
-function parseAllowedPathsRequest(value: unknown): string[] {
-  if (!isNonEmptyStringArray(value)) {
-    throw new Error("PI WEB config pathAccess.allowedPaths must be an array of non-empty strings");
-  }
-  return value;
-}
-
-function isNonEmptyStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string" && item !== "");
-}
-
-function parseMaxUploadBytesRequest(value: unknown): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) throw new Error("PI WEB config maxUploadBytes must be a positive integer");
-  return value;
-}
-
-function parseAgentRequest(value: unknown, pathHost: AgentPathHost): NonNullable<PiWebConfig["agent"]> {
-  return parseAgentConfig(value, "request", pathHost);
-}
-
-function parsePluginsRequest(value: unknown): NonNullable<PiWebConfig["plugins"]> {
-  if (!isRecord(value) || Array.isArray(value)) throw new Error("PI WEB config plugins must be an object");
-  return Object.fromEntries(Object.entries(value).map(([pluginId, config]) => {
-    if (!isPiWebPluginId(pluginId)) throw new Error("PI WEB config plugin ids are invalid");
-    if (!isRecord(config) || Array.isArray(config)) throw new Error("PI WEB config plugin entries must be objects");
-    const enabled = config["enabled"];
-    if (enabled !== undefined && typeof enabled !== "boolean") throw new Error("PI WEB config plugin enabled values must be booleans");
-    const settings = config["settings"];
-    if (settings !== undefined && (!isRecord(settings) || Array.isArray(settings))) throw new Error("PI WEB config plugin settings must be objects");
-    return [pluginId, config];
-  }));
 }
 
 function parsePiWebConfigEnvOverridesResponse(value: unknown, source: string): PiWebConfigEnvOverrides {

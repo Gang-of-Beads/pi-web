@@ -207,6 +207,16 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
   };
 }
 
+/**
+ * The keys a save rewrites from the parsed config; every other key in the file is kept as it was.
+ * `respectProjectTrust` is retired and dropped on save. `extensionDialogsTimeoutMs` is not here:
+ * nothing in the page sends it, so a save keeps the value the file holds.
+ */
+const SAVED_CONFIG_KEYS: ReadonlySet<string> = new Set([
+  "host", "port", "allowedHosts", "shortcuts", "plugins", "pathAccess", "uploads", "maxUploadBytes",
+  "logging", "listTiles", "askUser", "respectProjectTrust", "environmentFacts", "agent",
+]);
+
 export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}): LoadedPiWebConfig {
   const env = options.env ?? process.env;
   const path = piWebConfigPath(env, options.cwd ?? process.cwd());
@@ -214,21 +224,8 @@ export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}):
   effectiveAgentConfig(env, normalized);
   const existing = readExistingConfigObject(path);
   if (existing["agent"] !== undefined) parseAgentConfig(existing["agent"], path);
-  delete existing["host"];
-  delete existing["port"];
-  delete existing["allowedHosts"];
-  delete existing["shortcuts"];
-  delete existing["plugins"];
-  delete existing["pathAccess"];
-  delete existing["uploads"];
-  delete existing["maxUploadBytes"];
-  delete existing["logging"];
-  delete existing["listTiles"];
-  delete existing["askUser"];
-  delete existing["respectProjectTrust"];
-  delete existing["environmentFacts"];
-  delete existing["agent"];
-  const merged = { ...existing, ...piWebConfigRecord(normalized) };
+  const kept = Object.fromEntries(Object.entries(existing).filter(([key]) => !SAVED_CONFIG_KEYS.has(key)));
+  const merged = { ...kept, ...piWebConfigRecord(normalized) };
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
   return { path, exists: true, config: normalized, deprecatedAgentInputs: detectDeprecatedAgentInputs(env, normalized) };
@@ -259,8 +256,11 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
   };
 }
 
-
-function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebConfig {
+/**
+ * A config object, from the file or from a request: `path` names where it came from in the
+ * messages, and `agentPathHost` which host the agent's paths are judged on.
+ */
+export function parsePiWebConfig(value: Record<string, unknown>, path: string, agentPathHost: AgentPathHost = "current"): PiWebConfig {
   return {
     ...(value["host"] !== undefined ? { host: parseString(value["host"], "host", path) } : {}),
     ...(value["port"] !== undefined ? { port: parsePort(value["port"], "port", path) } : {}),
@@ -275,7 +275,7 @@ function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebCo
     ...(value["askUser"] !== undefined ? { askUser: parseAskUser(value["askUser"], path) } : {}),
     ...(value["environmentFacts"] !== undefined ? { environmentFacts: parseBooleanKey(value["environmentFacts"], "environmentFacts", path) } : {}),
     ...(value["extensionDialogsTimeoutMs"] !== undefined ? { extensionDialogsTimeoutMs: parseExtensionDialogsTimeoutMs(value["extensionDialogsTimeoutMs"], path) } : {}),
-    ...(value["agent"] !== undefined ? { agent: parseAgentConfig(value["agent"], path) } : {}),
+    ...(value["agent"] !== undefined ? { agent: parseAgentConfig(value["agent"], path, agentPathHost) } : {}),
   };
 }
 
