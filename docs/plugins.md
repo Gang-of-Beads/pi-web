@@ -1105,6 +1105,31 @@ A session lands in the first section, by `order`, whose `claims` returns true; a
 
 A plugin's own small dialog can use the same compact card with `ui.showDialog({ presentation: "alert", ... })`: at most 480px wide and never touching a phone's edges.
 
+## Drawing a status page's list
+
+A page that lists things (runs, services, records) hands its rows to `ui.renderList(model)` and puts the returned template in its render; it does not write row markup or row CSS. The host draws every status page the same way: a section title above one rounded group per section, a line between rows, the row's title on the left, a status (a coloured dot and a word) or a plain muted value on the right, a muted detail line under the title, and the group's buttons in its last row.
+
+```ts
+render: (context) => ui?.renderList === undefined
+  ? html`<p>This page needs a newer PI WEB.</p>`
+  : ui.renderList({
+      read: "ready",
+      words: { empty: "No runs yet.", reading: "Reading runs…", failed: "Could not read the runs.", stale: "Could not refresh - showing the last read." },
+      groups: [{
+        id: "running",
+        heading: "Running",
+        rows: [{ id: "a1", title: "pnpm test", status: { label: "running", tone: "good" }, detail: "started 12:41 · 1m 52s" }],
+        actions: [{ id: "stop", label: "Stop all", run: () => { stopAll(); } }],
+      }],
+      notes: ["3 older runs not shown"],
+    }),
+```
+
+- `read` says whether the list was read: `"reading"`, `"ready"` or `"failed"`. A page with no rows draws one box in the middle carrying the matching words (`reading`, `empty` or `failed`), so "not read yet", "none" and "could not read" never look alike. Rows from an earlier read stay on a failed read, under the `stale` line.
+- A row's `tone` is one of `"good"` (green: running, current), `"attention"` (amber: needs a look), `"problem"` (red: failed) and `"neutral"`. Use `value` instead of `status` for a plain fact such as a version or an exit code.
+- Groups with no rows and no actions are left out. Titles wrap to two lines.
+- `ui.renderList` is optional on older hosts.
+
 ## Calling paired workspace backends
 
 Workspace panel and label contexts include an optional JSON-only backend helper. It is present only for a browser entry paired with an active server backend:

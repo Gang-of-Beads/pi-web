@@ -2224,6 +2224,7 @@ function optionalPiWebInstallationInfo(value: unknown): PiWebInstallationInfo | 
   if (scope !== undefined && scope !== "user" && scope !== "project") throw new Error("Invalid PI WEB installation scope");
   const dockerMode = record["dockerMode"];
   if (dockerMode !== undefined && dockerMode !== "runtime" && dockerMode !== "dev") throw new Error("Invalid PI WEB Docker mode");
+  const manager = record["manager"];
   return {
     kind,
     ...optionalField("path", optionalString(record, "path")),
@@ -2231,6 +2232,7 @@ function optionalPiWebInstallationInfo(value: unknown): PiWebInstallationInfo | 
     ...(scope === undefined ? {} : { scope }),
     ...optionalField("npmRoot", optionalString(record, "npmRoot")),
     ...(dockerMode === undefined ? {} : { dockerMode }),
+    ...(manager === "nix" ? { manager } : {}),
   };
 }
 

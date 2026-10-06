@@ -14,6 +14,7 @@ import { SessionDaemonClient } from "./sessiondClient/sessionDaemonClient.js";
 import { isHostAbsoluteAgentDir, loadPiWebConfig, PI_CODING_AGENT_DIR_ENV, type LoadedPiWebConfig } from "../../config.js";
 import { createPiWebReleaseLookupCache, type PiWebReleaseLookup } from "./piWebReleaseLookupCache.js";
 import { isRecord } from "../../shared/unknownValues.js";
+import { deploymentUpdateCommand } from "./deploymentUpdateCommand.js";
 
 const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 const PI_WEB_NPM_SOURCE = `npm:${PI_WEB_PACKAGE_NAME}`;
@@ -241,7 +242,21 @@ async function detectPiWebInstallation(agentDir?: string): Promise<PiWebInstalla
   }
   const npmGlobal = await detectNpmGlobalInstallation(realRoot, root);
   if (npmGlobal !== undefined) return npmGlobal;
-  return { kind: "local", path: root };
+  return detectNixInstallation(realRoot) ?? { kind: "local", path: root };
+}
+
+const NIX_STORE_PREFIX = "/nix/store/";
+
+/**
+ * A package under the nix store was placed there by a nix configuration
+ * (a flake input, home-manager, nix-darwin, NixOS), and only that
+ * configuration can replace it: PI WEB has no update of its own to offer, so
+ * the kind stays "unknown" and the manager is named. Reporting it as a local
+ * checkout of a store path, as it was, offered a git update for a directory
+ * that is read-only and has no .git.
+ */
+function detectNixInstallation(realRoot: string): PiWebInstallationInfo | undefined {
+  return realRoot.startsWith(NIX_STORE_PREFIX) ? { kind: "unknown", manager: "nix", path: realRoot } : undefined;
 }
 
 function detectDockerInstallation(): PiWebInstallationInfo | undefined {
@@ -447,7 +462,7 @@ async function commandsFor(components: PiWebStatusResponse["components"], option
   const restartWeb = serviceCommands.restartWeb ?? cliCommands.restart;
   const restartSessiond = serviceCommands.restartSessiond ?? cliCommands.restart;
   const status = serviceCommands.status ?? cliCommands.status;
-  const update = await updateCommandFor(installation, restart, options);
+  const update = deploymentUpdateCommand() ?? await updateCommandFor(installation, restart, options);
 
   return {
     ...(update === undefined ? {} : { update }),

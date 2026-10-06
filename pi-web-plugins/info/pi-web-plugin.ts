@@ -11,7 +11,7 @@ import { copyDiagnostics, renderInfoPanel } from "./infoInternals.js";
 const plugin: PiWebPlugin = {
   apiVersion: 2,
   name: "Info Plugin",
-  activate: ({ html, svg }) => ({
+  activate: ({ html, svg, ui }) => ({
     contributions: {
       actions: [
         {
@@ -41,7 +41,7 @@ const plugin: PiWebPlugin = {
             </svg>
           `,
           order: 1000,
-          render: (context) => renderInfoPanel(html, context),
+          render: (context) => renderInfoPanel(html, ui, context),
         },
       ],
     },

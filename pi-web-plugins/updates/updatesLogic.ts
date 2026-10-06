@@ -1,40 +1,7 @@
 import type { PiWebDockerMode, PiWebInstallationInfo, PiWebStatusMessage, PiWebStatusResponse, PluginRuntimeState } from "@gang-of-beads/pi-web/plugin-api";
 
-export interface CommandEntry {
-  label: string;
-  command: string;
-}
-
 export interface UpdatesRuntimeHint {
   dockerMode?: PiWebDockerMode;
-}
-
-// The single command users should run when they do not want to think: if an
-// update is available, `commands.update` already chains the update and a full
-// restart; otherwise, when anything is stale, a full restart is enough.
-export function recommendedCommand(status: PiWebStatusResponse): CommandEntry | undefined {
-  const { commands, release, components } = status;
-  if (release.updateAvailable && typeof commands.update === "string" && commands.update !== "") {
-    return { label: "Update & restart everything", command: commands.update };
-  }
-  const restartNeeded = components.web.stale || components.sessiond.stale || !components.sessiond.available;
-  if (restartNeeded && typeof commands.restart === "string" && commands.restart !== "") {
-    return { label: "Restart everything", command: commands.restart };
-  }
-  return undefined;
-}
-
-export function additionalCommands(status: PiWebStatusResponse, recommended: CommandEntry | undefined): CommandEntry[] {
-  return [
-    ["Update", status.commands.update],
-    ["Restart all", status.commands.restart],
-    ["Restart Web/UI", status.commands.restartWeb],
-    ["Restart session daemon", status.commands.restartSessiond],
-    ["Status", status.commands.status],
-  ]
-    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1] !== "")
-    .filter(([, command]) => command !== recommended?.command)
-    .map(([label, command]) => ({ label, command }));
 }
 
 export function messagesFor(state: PluginRuntimeState | undefined): PiWebStatusMessage[] {
@@ -96,6 +63,7 @@ export function formatVersion(version: string | undefined): string {
 
 export function installationLabel(installation: PiWebInstallationInfo | undefined): string {
   if (installation === undefined) return "installation unknown";
+  if (installation.manager !== undefined) return installation.manager;
   if (installation.kind === "pi-package") {
     const scope = installation.scope === undefined ? "" : ` · ${installation.scope}`;
     const source = installation.source ?? "Pi package";

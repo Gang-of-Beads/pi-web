@@ -6,7 +6,7 @@
 // lives in pi-web-plugin.ts.
 
 import type { TemplateResult } from "lit";
-import type { HtmlTemplateTag, MachineKind, PiWebComponentStatus, PiWebInstallationInfo, PiWebReleaseStatus, PiWebStatusResponse, PluginMachine, PluginRuntimeContext, Workspace, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
+import type { HtmlTemplateTag, MachineKind, PiWebComponentStatus, PiWebInstallationInfo, PiWebReleaseStatus, PiWebStatusResponse, PluginHostUi, PluginListModel, PluginListRow, PluginListTone, PluginMachine, PluginRuntimeContext, Workspace, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 
 export type ComponentHealth = "current" | "restart needed" | "unavailable";
 
@@ -22,6 +22,7 @@ export function formatVersion(version: string | undefined): string {
 
 export function installationLabel(installation: PiWebInstallationInfo | undefined): string {
   if (installation === undefined) return "installation unknown";
+  if (installation.manager !== undefined) return installation.manager;
   if (installation.kind === "pi-package") {
     const scope = installation.scope === undefined ? "" : ` · ${installation.scope}`;
     const source = installation.source ?? "Pi package";
@@ -114,118 +115,65 @@ export async function copyDiagnostics(context: PluginRuntimeContext): Promise<vo
   await navigator.clipboard.writeText(summary);
 }
 
-function renderComponent(html: HtmlTemplateTag, component: PiWebComponentStatus): TemplateResult {
+const optionalDetail = (detail: string | undefined): Pick<PluginListRow, "detail"> => detail === undefined || detail === "" ? {} : { detail };
+
+const HEALTH_TONE: Readonly<Record<ComponentHealth, PluginListTone>> = { current: "good", "restart needed": "attention", unavailable: "problem" };
+
+function componentRow(id: string, component: PiWebComponentStatus): PluginListRow {
   const health = componentHealth(component);
-  return html`
-    <div class="info-component">
-      <strong>${component.label}</strong>
-      <span class=${health === "current" ? "info-health-ok" : "info-health-attention"}>${health}</span>
-      <small>${componentDetails(component)}</small>
-    </div>
-  `;
+  return { id, title: component.label, status: { label: health, tone: HEALTH_TONE[health] }, detail: componentDetails(component) };
 }
 
-function renderStatusSection(html: HtmlTemplateTag, status: PiWebStatusResponse | undefined): TemplateResult {
-  if (status === undefined) {
-    return html`
-      <section>
-        <strong>PI WEB</strong>
-        <p class="muted">PI WEB status is not available yet. It refreshes automatically in the background.</p>
-      </section>
-    `;
-  }
+function piWebRows(status: PiWebStatusResponse | undefined): PluginListRow[] {
+  if (status === undefined) return [{ id: "status", title: "Status", value: "not available yet", detail: "It refreshes automatically in the background." }];
   const web = status.components.web;
-  const driftNote = piVersionDriftNote(web, status.components.sessiond);
-  const messageCount = status.messages.length;
-  return html`
-    <section>
-      <strong>PI WEB</strong>
-      <div class="info-row">
-        <span>Version</span>
-        <span>${formatVersion(web.runtimeVersion)}</span>
-        ${web.installedVersion === undefined || web.installedVersion === web.runtimeVersion ? null : html`<small>installed ${formatVersion(web.installedVersion)}</small>`}
-      </div>
-      <div class="info-row">
-        <span>Pi</span>
-        <span>${formatVersion(web.piVersion)}</span>
-        ${driftNote === undefined ? null : html`<small>${driftNote}</small>`}
-      </div>
-      <div class="info-row">
-        <span>Package</span>
-        <span>${status.packageName}</span>
-      </div>
-      <div class="info-row">
-        <span>Installation</span>
-        <span>${installationLabel(web.installation)}</span>
-        ${web.installation?.path === undefined || web.installation.path === "" ? null : html`<small>${web.installation.path}</small>`}
-      </div>
-      <div class="info-row">
-        <span>Release</span>
-        <span>${releaseSummary(status.release)}</span>
-        ${status.release.checkedAt === undefined || status.release.skipped === true ? null : html`<small>checked ${status.release.checkedAt}</small>`}
-      </div>
-      ${messageCount === 0 ? null : html`<p class="muted">${String(messageCount)} status ${messageCount === 1 ? "message" : "messages"} — open the Updates tab for details.</p>`}
-      <p class="muted">Status generated ${status.generatedAt}</p>
-    </section>
-    <section>
-      <strong>Services</strong>
-      ${renderComponent(html, status.components.web)}
-      ${renderComponent(html, status.components.sessiond)}
-    </section>
-  `;
+  const installed = web.installedVersion === undefined || web.installedVersion === web.runtimeVersion ? undefined : `installed ${formatVersion(web.installedVersion)}`;
+  const checked = status.release.checkedAt === undefined || status.release.skipped === true ? undefined : `checked ${status.release.checkedAt}`;
+  return [
+    { id: "version", title: "Version", value: formatVersion(web.runtimeVersion), ...optionalDetail(installed) },
+    { id: "pi", title: "Pi", value: formatVersion(web.piVersion), ...optionalDetail(piVersionDriftNote(web, status.components.sessiond)) },
+    { id: "package", title: "Package", value: status.packageName },
+    { id: "installation", title: "Installation", value: installationLabel(web.installation), ...optionalDetail(web.installation?.path) },
+    { id: "release", title: "Release", value: releaseSummary(status.release), ...optionalDetail(checked) },
+  ];
 }
 
-function renderMachineSection(html: HtmlTemplateTag, machine: PluginMachine): TemplateResult {
-  return html`
-    <section>
-      <strong>Machine</strong>
-      <div class="info-row">
-        <span>Name</span>
-        <span>${machine.name}</span>
-      </div>
-      <div class="info-row">
-        <span>Type</span>
-        <span>${machineKindLabel(machine.kind)}</span>
-      </div>
-    </section>
-  `;
+function statusNotes(status: PiWebStatusResponse | undefined): string[] {
+  if (status === undefined) return [];
+  const count = status.messages.length;
+  return [
+    ...(count === 0 ? [] : [`${String(count)} status ${count === 1 ? "message" : "messages"} - open the Updates page for details.`]),
+    `Status generated ${status.generatedAt}`,
+  ];
 }
 
-function renderWorkspaceSection(html: HtmlTemplateTag, workspace: Workspace): TemplateResult {
-  return html`
-    <section>
-      <strong>Workspace</strong>
-      <div class="info-row">
-        <span>Name</span>
-        <span>${workspace.label}</span>
-      </div>
-      <div class="info-row">
-        <span>Path</span>
-        <span class="info-path">${workspace.path}</span>
-        ${workspaceFlags(workspace).length === 0 ? null : html`<small>${workspaceFlags(workspace).join(" · ")}</small>`}
-      </div>
-    </section>
-  `;
+const INFO_WORDS = {
+  empty: "Nothing to show for this workspace.",
+  reading: "Reading this machine's status…",
+  failed: "This machine's status could not be read.",
+  stale: "Could not refresh - showing the last read.",
+} as const;
+
+/** The Info page as the host's list: PI WEB, its services, the machine and the workspace, each a group of rows. */
+export function infoListModel(context: Pick<WorkspacePanelContext, "machine" | "workspace" | "state">): PluginListModel {
+  const status = context.state?.piWebStatus;
+  const workspace = context.workspace;
+  const flags = workspaceFlags(workspace);
+  return {
+    read: "ready",
+    words: INFO_WORDS,
+    groups: [
+      { id: "pi-web", heading: "PI WEB", rows: piWebRows(status) },
+      { id: "services", heading: "Services", rows: status === undefined ? [] : [componentRow("web", status.components.web), componentRow("sessiond", status.components.sessiond)] },
+      { id: "machine", heading: "Machine", rows: [{ id: "name", title: "Name", value: context.machine.name }, { id: "type", title: "Type", value: machineKindLabel(context.machine.kind) }] },
+      { id: "workspace", heading: "Workspace", rows: [{ id: "name", title: "Name", value: workspace.label }, { id: "path", title: "Path", detail: flags.length === 0 ? workspace.path : `${workspace.path} · ${flags.join(" · ")}` }] },
+    ],
+    notes: statusNotes(status),
+  };
 }
 
 /** Panel body: render the Info tab for the current workspace panel context. */
-export function renderInfoPanel(html: HtmlTemplateTag, context: WorkspacePanelContext): TemplateResult {
-  return html`
-    <style>
-      .viewer.info-status { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-7); padding: var(--pi-space-6); overflow-y: auto; overflow-x: hidden; }
-      .viewer.info-status section { flex: 0 0 auto; min-width: 0; display: grid; gap: var(--pi-space-4); align-content: start; }
-      .viewer.info-status p { margin: 0; }
-      .info-row { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr); gap: var(--pi-space-2) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); padding: var(--pi-space-3) 0; overflow-wrap: anywhere; }
-      .info-row small { grid-column: 1 / -1; color: var(--pi-muted); }
-      .info-component { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-2) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); padding: var(--pi-space-3) 0; }
-      .info-component small { grid-column: 1 / -1; color: var(--pi-muted); overflow-wrap: anywhere; }
-      .info-health-ok { color: var(--pi-success); }
-      .info-health-attention { color: var(--pi-warning); }
-    </style>
-    <section class="viewer info-status">
-      ${renderStatusSection(html, context.state?.piWebStatus)}
-      ${renderMachineSection(html, context.machine)}
-      ${renderWorkspaceSection(html, context.workspace)}
-    </section>
-  `;
+export function renderInfoPanel(html: HtmlTemplateTag, ui: PluginHostUi | undefined, context: WorkspacePanelContext): TemplateResult {
+  if (ui?.renderList === undefined) return html`<p class="muted">This page needs a newer PI WEB on this device.</p>`;
+  return ui.renderList(infoListModel(context));
 }

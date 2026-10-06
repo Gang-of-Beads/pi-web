@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-unused-vars -- review repro fixture: stubs reach into private runtime shapes; rewritten as a permanent test when its phase removes it.fails */
 import { html as litHtml, render as litRender, svg as litSvg, type TemplateResult } from "lit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PluginActivationContext, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
+import type { PluginActivationContext, PluginListModel, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { ON_SCREEN_MARKER_TAG, type OnScreenMarker } from "./onScreenMarker.js";
 import plugin from "./pi-web-plugin.js";
 
@@ -16,6 +16,16 @@ import plugin from "./pi-web-plugin.js";
  */
 
 const SESSION = "/sessions/session-a.jsonl";
+
+/** The host's list, reduced to its text: the rows' titles, or the empty page's words for the read state. */
+function listText(model: PluginListModel): string {
+  const titles = model.groups.flatMap((group) => group.rows.map((row) => row.title));
+  const box = { reading: model.words.reading, ready: model.words.empty, failed: model.words.failed }[model.read];
+  const banner = model.read === "failed" ? `${model.words.stale} ` : "";
+  return titles.length === 0 ? box : `${banner}${titles.join(" ")}`;
+}
+
+const LIST_UI = { renderList: (model: PluginListModel): TemplateResult => litHtml`${listText(model)}` };
 
 function answer(agent: string): unknown {
   return { known: true, runs: [{ runId: agent, agent, status: "running", elapsedMs: 1000, startedAt: "2026-01-01T00:00:00.000Z", hasOutput: false }] };
@@ -40,6 +50,7 @@ function harness(): Harness {
     html: litHtml,
     svg: litSvg,
     callOperation,
+    ui: LIST_UI,
   } as unknown as PluginActivationContext;
   const contribution = plugin.activate(context).contributions.workspacePanels?.[0];
   if (contribution === undefined) throw new Error("the subagents plugin contributes no workspace panel");
@@ -98,7 +109,7 @@ describe("the subagents panel read", () => {
     const pending: ((value: unknown) => void)[] = [];
     const rejecting: ((error: unknown) => void)[] = [];
     const callOperation = vi.fn(() => new Promise<unknown>((resolve, reject) => { pending.push(resolve); rejecting.push(reject); }));
-    const context = { apiVersion: 2, pluginId: "subagents", runtimePluginId: "subagents", html: litHtml, svg: litSvg, callOperation } as unknown as PluginActivationContext;
+    const context = { apiVersion: 2, pluginId: "subagents", runtimePluginId: "subagents", html: litHtml, svg: litSvg, callOperation, ui: LIST_UI } as unknown as PluginActivationContext;
     const contribution = plugin.activate(context).contributions.workspacePanels?.[0];
     if (contribution === undefined) throw new Error("no panel");
     const panel = { machine: { id: "local" }, workspace: { id: "w", projectId: "p", path: "/w" }, state: { selectedSession: { path: SESSION }, status: { isStreaming: true } }, host: { requestRender: () => { litRender(contribution.render(panel), container); } } } as unknown as WorkspacePanelContext;
@@ -144,7 +155,7 @@ describe("the subagents panel read", () => {
   /** Object model §4.3: an idle session's run list cannot change, so the panel reads it once and stays quiet. */
   it("reads an idle session's runs once and then asks nothing more", async () => {
     const callOperation = vi.fn((_operation: string, _input: unknown) => Promise.resolve(answer("done")));
-    const contribution = plugin.activate({ apiVersion: 2, pluginId: "subagents", runtimePluginId: "subagents", html: litHtml, svg: litSvg, callOperation } as unknown as PluginActivationContext).contributions.workspacePanels?.[0];
+    const contribution = plugin.activate({ apiVersion: 2, pluginId: "subagents", runtimePluginId: "subagents", html: litHtml, svg: litSvg, callOperation, ui: LIST_UI } as unknown as PluginActivationContext).contributions.workspacePanels?.[0];
     if (contribution === undefined) throw new Error("no panel");
     const idle = { machine: { id: "local" }, workspace: { id: "w", projectId: "p", path: "/w" }, state: { selectedSession: { path: SESSION }, status: { isStreaming: false } }, host: { requestRender: () => undefined } } as unknown as WorkspacePanelContext;
     litRender(contribution.render(idle), document.createElement("div"));
@@ -161,7 +172,7 @@ describe("the subagents panel read", () => {
   it("follows the selected session through the tab badge while the panel is closed", async () => {
     const pending: ((value: unknown) => void)[] = [];
     const callOperation = vi.fn((_operation: string, _input: unknown) => new Promise<unknown>((resolve) => { pending.push(resolve); }));
-    const contribution = plugin.activate({ apiVersion: 2, pluginId: "subagents", runtimePluginId: "subagents", html: litHtml, svg: litSvg, callOperation } as unknown as PluginActivationContext).contributions.workspacePanels?.[0];
+    const contribution = plugin.activate({ apiVersion: 2, pluginId: "subagents", runtimePluginId: "subagents", html: litHtml, svg: litSvg, callOperation, ui: LIST_UI } as unknown as PluginActivationContext).contributions.workspacePanels?.[0];
     if (contribution === undefined) throw new Error("no panel");
     const panelFor = (path: string) => ({ machine: { id: "local" }, workspace: { id: "w", projectId: "p", path: "/w" }, state: { selectedSession: { path }, status: { isStreaming: true } }, host: { requestRender: () => undefined } } as unknown as WorkspacePanelContext);
     litRender(contribution.render(panelFor(SESSION)), document.createElement("div"));
@@ -181,7 +192,7 @@ describe("the subagents panel read", () => {
     const container = document.createElement("div");
     const pending: ((value: unknown) => void)[] = [];
     const callOperation = vi.fn(() => new Promise<unknown>((resolve) => { pending.push(resolve); }));
-    const context = { apiVersion: 2, pluginId: "subagents", runtimePluginId: "subagents", html: litHtml, svg: litSvg, callOperation } as unknown as PluginActivationContext;
+    const context = { apiVersion: 2, pluginId: "subagents", runtimePluginId: "subagents", html: litHtml, svg: litSvg, callOperation, ui: LIST_UI } as unknown as PluginActivationContext;
     const contribution = plugin.activate(context).contributions.workspacePanels?.[0];
     if (contribution === undefined) throw new Error("no panel");
     const panel = { machine: { id: "local" }, workspace: { id: "w", projectId: "p", path: "/w" }, state: { selectedSession: undefined }, host: { requestRender: () => undefined } } as unknown as WorkspacePanelContext;
@@ -212,7 +223,7 @@ function watched(status: unknown): Watched {
   const listeners: (() => void)[] = [];
   const callOperation = vi.fn((_operation: string, _input: unknown) => new Promise<unknown>((resolve) => { pending.push(resolve); }));
   const on = (kind: string, listener: () => void) => { if (kind === "session-activity-settled") listeners.push(listener); return () => undefined; };
-  const activated = plugin.activate({ apiVersion: 2, pluginId: "subagents", runtimePluginId: "subagents", html: litHtml, svg: litSvg, callOperation, on } as unknown as PluginActivationContext);
+  const activated = plugin.activate({ apiVersion: 2, pluginId: "subagents", runtimePluginId: "subagents", html: litHtml, svg: litSvg, callOperation, on, ui: LIST_UI } as unknown as PluginActivationContext);
   const contribution = activated.contributions.workspacePanels?.[0];
   if (contribution === undefined) throw new Error("no panel");
   let current = status;

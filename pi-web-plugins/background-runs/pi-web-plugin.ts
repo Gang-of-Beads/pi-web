@@ -1,8 +1,7 @@
 import type { PiWebPlugin } from "@gang-of-beads/pi-web/plugin-api";
 import { backgroundRunCountOf, backgroundRunNote } from "./backgroundRunNote.js";
 import { noticeLabel, taskNotice } from "./taskNotice.js";
-import type { TaskInput, TasksRead } from "./backgroundTaskRows.js";
-import "./backgroundTasksElement.js";
+import { backgroundListModel, type TaskInput, type TasksRead } from "./backgroundTaskRows.js";
 
 interface TasksContext {
   state?: { backgroundTasks?: readonly TaskInput[] | undefined; backgroundTasksRead?: TasksRead | undefined; selectedSession?: unknown } | undefined;
@@ -23,7 +22,7 @@ function runningCount(context: Parameters<typeof tasksOf>[0]): number {
 const plugin: PiWebPlugin = {
   apiVersion: 2,
   name: "Background Runs",
-  activate: ({ html, svg }) => ({
+  activate: ({ html, svg, ui }) => ({
     contributions: {
       workspacePanels: [
         {
@@ -36,7 +35,9 @@ const plugin: PiWebPlugin = {
             const running = runningCount(context);
             return running === 0 ? undefined : running;
           },
-          render: (context) => html`<pi-web-background-tasks .tasks=${tasksOf(context)} .read=${readOf(context)}></pi-web-background-tasks>`,
+          render: (context) => ui?.renderList === undefined
+            ? html`<p class="muted">This list needs a newer PI WEB on this device.</p>`
+            : ui.renderList(backgroundListModel(tasksOf(context), readOf(context))),
         },
       ],
       messageRenderers: [

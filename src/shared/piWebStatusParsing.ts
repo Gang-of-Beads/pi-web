@@ -112,6 +112,7 @@ export function parsePiWebInstallationInfo(value: unknown): PiWebInstallationInf
   const scope = value["scope"];
   const npmRoot = value["npmRoot"];
   const dockerMode = value["dockerMode"];
+  const manager = value["manager"];
   if (kind !== "pi-package" && kind !== "npm-global" && kind !== "local" && kind !== "docker" && kind !== "unknown") return undefined;
   return {
     kind,
@@ -120,6 +121,7 @@ export function parsePiWebInstallationInfo(value: unknown): PiWebInstallationInf
     ...(scope === "user" || scope === "project" ? { scope } : {}),
     ...(typeof npmRoot === "string" ? { npmRoot } : {}),
     ...(dockerMode === "runtime" || dockerMode === "dev" ? { dockerMode } : {}),
+    ...(manager === "nix" ? { manager } : {}),
   };
 }
 

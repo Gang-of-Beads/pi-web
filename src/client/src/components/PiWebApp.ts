@@ -3470,6 +3470,7 @@ export class PiWebApp extends LitElement {
         open: (options) => { this.openGlobalTerminal(machine.id, options?.terminalId); },
         runInNewTerminal: async (input) => { await this.runInNewMachineTerminal(machine.id, sessions, input); },
       },
+      checkForPiWebUpdates: () => this.piWebStatusController.checkForUpdates(),
     };
   }
 

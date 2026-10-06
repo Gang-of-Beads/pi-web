@@ -1,3 +1,5 @@
+import type { PluginListModel, PluginListRead, PluginListRow } from "@gang-of-beads/pi-web/plugin-api";
+
 /**
  * What the background list shows for each task, decided in one place.
  *
@@ -27,6 +29,9 @@ export interface TaskRow {
   readonly tone: TaskTone;
   readonly label: string;
   readonly detail: string;
+  readonly startedAt?: string | undefined;
+  readonly durationMs?: number | undefined;
+  readonly exitCode?: number | undefined;
 }
 
 export interface TaskList {
@@ -62,7 +67,7 @@ export function durationLabel(ms: number | undefined): string | undefined {
 function row(task: TaskInput): TaskRow {
   const presentation = taskPresentation(task.status);
   const parts = [durationLabel(task.durationMs), task.exitCode === undefined ? undefined : `exit ${String(task.exitCode)}`];
-  return { id: task.id, name: task.name, ...presentation, detail: parts.filter((part) => part !== undefined).join(" · ") };
+  return { id: task.id, name: task.name, ...presentation, detail: parts.filter((part) => part !== undefined).join(" · "), startedAt: task.startedAt, durationMs: task.durationMs, exitCode: task.exitCode };
 }
 
 function newestFirst(left: TaskInput, right: TaskInput): number {
@@ -80,17 +85,62 @@ export function backgroundTaskList(tasks: readonly TaskInput[], shown = FINISHED
 }
 
 /**
- * What the list says besides its rows, per read state. An empty list is "none" only once
- * the session was read; before that it is still reading, and after a failed read it is
- * unknown - with any rows from an earlier read kept and marked as possibly stale.
+ * The page the host draws for this session's runs (owner, 2026-10-06: mockup A).
+ *
+ * Running work is one group and finished work another. A running row carries a
+ * green "running"; a finished row its exit code as a plain value, or, when it
+ * failed, the failure as a red status. The detail line is when it started and
+ * how long it ran. An empty page is "none" only once the session was read;
+ * before that it is still reading, and after a failed read it is unknown, with
+ * any rows from an earlier read kept under the stale line.
  */
-const LIST_NOTE: Record<TasksRead, { empty: string; withRows: string | undefined }> = {
-  unread: { empty: "Reading this session's background runs…", withRows: undefined },
-  read: { empty: "This session has started no background runs.", withRows: undefined },
-  failed: { empty: "This machine could not read the background runs.", withRows: "Could not refresh - showing the last read." },
+const LIST_READ: Readonly<Record<TasksRead, PluginListRead>> = { unread: "reading", read: "ready", failed: "failed" };
+
+const LIST_WORDS = {
+  empty: "This session has started no background runs.",
+  reading: "Reading this session's background runs…",
+  failed: "This machine could not read the background runs.",
+  stale: "Could not refresh - showing the last read.",
+} as const;
+
+type RowSide = Pick<PluginListRow, "status" | "value">;
+
+const exitWord = (row: TaskRow): string | undefined => row.exitCode === undefined ? undefined : `exit ${String(row.exitCode)}`;
+
+const ROW_SIDE: Readonly<Record<TaskTone, (row: TaskRow) => RowSide>> = {
+  running: (row) => ({ status: { label: row.label, tone: "good" } }),
+  done: (row) => ({ value: exitWord(row) ?? row.label }),
+  problem: (row) => ({ status: { label: exitWord(row) ?? row.label, tone: "problem" } }),
+  unknown: (row) => ({ status: { label: row.label, tone: "neutral" } }),
 };
 
-export function listNote(read: TasksRead, taskCount: number): string | undefined {
-  const note = LIST_NOTE[read];
-  return taskCount === 0 ? note.empty : note.withRows;
+export type ClockTime = (iso: string) => string | undefined;
+
+export const localClockTime: ClockTime = (iso) => {
+  const time = Date.parse(iso);
+  return Number.isNaN(time) ? undefined : new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
+
+function rowDetail(row: TaskRow, clock: ClockTime, startedWord: string): string {
+  const started = row.startedAt === undefined ? undefined : clock(row.startedAt);
+  const parts = [started === undefined ? undefined : `${startedWord}${started}`, durationLabel(row.durationMs)];
+  return parts.filter((part) => part !== undefined).join(" · ");
+}
+
+function listRow(row: TaskRow, clock: ClockTime, startedWord: string): PluginListRow {
+  return { id: row.id, title: row.name, ...ROW_SIDE[row.tone](row), detail: rowDetail(row, clock, startedWord) };
+}
+
+export function backgroundListModel(tasks: readonly TaskInput[], read: TasksRead, clock: ClockTime = localClockTime): PluginListModel {
+  const list = backgroundTaskList(tasks);
+  const hidden = list.hiddenFinished;
+  return {
+    read: LIST_READ[read],
+    words: LIST_WORDS,
+    groups: [
+      { id: "running", heading: "Running", rows: list.running.map((row) => listRow(row, clock, "started ")) },
+      { id: "finished", heading: "Finished", rows: list.finished.map((row) => listRow(row, clock, "")) },
+    ],
+    notes: hidden === 0 ? [] : [`${String(hidden)} older ${hidden === 1 ? "run" : "runs"} not shown`],
+  };
 }

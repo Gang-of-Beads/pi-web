@@ -1,49 +1,15 @@
 import type { TemplateResult } from "lit";
 import { answeredVersionsFrom, piWebOfferFacts, piWebUpdateOffer } from "./piWebUpdateOffer.js";
 import { showPiWebUpdateNotice, showPiWebUpdateOffer } from "./updateOfferDialog.js";
-import type { GlobalPanelTerminal, HtmlTemplateTag, PiWebComponentStatus, PiWebPlugin, PluginActivationContext, PiWebStatusResponse, PluginRuntimeState } from "@gang-of-beads/pi-web/plugin-api";
-import { additionalCommands, fallbackDockerStatus, formatVersion, installationLabel, messageCount, recommendedCommand, shouldShowUpdatesPanel, statusFor, type UpdatesRuntimeHint } from "./updatesLogic.js";
+import type { GlobalPanelContext, GlobalPanelTerminal, HtmlTemplateTag, PiWebPlugin, PluginActivationContext, PluginHostUi } from "@gang-of-beads/pi-web/plugin-api";
+import { fallbackDockerStatus, messageCount, shouldShowUpdatesPanel, statusFor, type UpdatesRuntimeHint } from "./updatesLogic.js";
+import { updatesPageModel, type ClockTime, type RestartTarget, type UpdatesPageActions } from "./updatesPage.js";
 
 /** Run an update command in a new shell in the machine's home folder, shown on the global Terminal page. */
 function runCommandInTerminal(terminal: GlobalPanelTerminal, label: string, command: string): void {
   void terminal.runInNewTerminal({ title: label, command }).catch((error: unknown) => {
     console.error(`Updates plugin failed to run "${label}"`, error);
   });
-}
-
-function renderComponent(html: HtmlTemplateTag, component: PiWebComponentStatus): TemplateResult {
-  const status = !component.available
-    ? "unavailable"
-    : component.stale
-      ? "restart needed"
-      : "current";
-  return html`
-    <div class="updates-version-row">
-      <strong>${component.label}</strong>
-      <span>${status}</span>
-      <small>running ${formatVersion(component.runtimeVersion)} · installed ${formatVersion(component.installedVersion)}</small>
-      <small>${installationLabel(component.installation)}${component.installation?.path === undefined ? "" : ` · ${component.installation.path}`}</small>
-    </div>
-  `;
-}
-
-function renderCommandActions(html: HtmlTemplateTag, terminal: GlobalPanelTerminal | undefined, label: string, command: string): TemplateResult {
-  return html`
-    <span class="updates-command-actions">
-      <button @click=${() => { void navigator.clipboard.writeText(command); }}>Copy</button>
-      ${terminal === undefined ? null : html`<button class="primary" @click=${() => { runCommandInTerminal(terminal, label, command); }}>Run</button>`}
-    </span>
-  `;
-}
-
-function renderCommand(html: HtmlTemplateTag, terminal: GlobalPanelTerminal | undefined, label: string, command: string): TemplateResult {
-  return html`
-    <div class="updates-command">
-      <span>${label}</span>
-      <code>${command}</code>
-      ${renderCommandActions(html, terminal, label, command)}
-    </div>
-  `;
 }
 
 function updatesRuntimeHintFromModuleUrl(moduleUrl: string): UpdatesRuntimeHint {
@@ -57,99 +23,57 @@ function updatesRuntimeHintFromModuleUrl(moduleUrl: string): UpdatesRuntimeHint 
 
 const runtimeHint = updatesRuntimeHintFromModuleUrl(import.meta.url);
 
-function renderCommands(html: HtmlTemplateTag, terminal: GlobalPanelTerminal | undefined, status: PiWebStatusResponse): TemplateResult | undefined {
-  const recommended = recommendedCommand(status);
-  const additional = additionalCommands(status, recommended);
-  if (recommended === undefined && additional.length === 0) return undefined;
-  return html`
-    ${recommended === undefined ? null : html`
-      <section class="updates-recommended">
-        <strong>Recommended</strong>
-        <p class="muted">Run this one command to bring this installation fully up to date. Nothing else is required.</p>
-        ${renderCommand(html, terminal, recommended.label, recommended.command)}
-      </section>
-    `}
-    ${additional.length === 0 ? null : html`
-      <section>
-        <strong>${recommended === undefined ? "Suggested commands" : "Additional commands (optional)"}</strong>
-        ${recommended === undefined ? null : html`<p class="muted">Only needed for finer control, such as restarting a single service.</p>`}
-        ${additional.map((entry) => renderCommand(html, terminal, entry.label, entry.command))}
-      </section>
-    `}
-  `;
+const localClockTime: ClockTime = (iso) => {
+  const time = Date.parse(iso);
+  return Number.isNaN(time) ? undefined : new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
+
+/** What each restart asks before it runs: both take the page's connection down for a moment, and the daemon's stops running sessions. */
+const RESTART_CONFIRM: Readonly<Record<RestartTarget, { readonly title: string; readonly message: string; readonly terminalTitle: string }>> = {
+  web: { title: "Restart the web server?", message: "This page loses its connection for a moment and reconnects when the server is back.", terminalTitle: "Restart web" },
+  sessiond: { title: "Restart the session daemon?", message: "Sessions running on this machine stop while the daemon restarts.", terminalTitle: "Restart session daemon" },
+};
+
+/**
+ * The page's buttons. A check marks its machine as checking until the host answers; an update or
+ * restart asks on the app's own dialog and then starts in a terminal the reader can follow. A host
+ * without a dialog gets no restart or update buttons rather than ones that skip the question.
+ */
+function pageActions(context: GlobalPanelContext, ui: PluginHostUi | undefined, checking: Set<string>): UpdatesPageActions {
+  const machineId = context.machine.id;
+  const check = context.checkForPiWebUpdates;
+  const confirm = ui?.confirm;
+  const ask = (title: string, message: string, confirmLabel: string, then: () => void): void => {
+    if (confirm === undefined) return;
+    void confirm({ title, message, confirmLabel }).then((confirmed) => { if (confirmed) then(); });
+  };
+  return {
+    checking: checking.has(machineId),
+    check: check === undefined ? undefined : () => {
+      checking.add(machineId);
+      context.host.requestRender();
+      void check().catch(() => undefined).finally(() => {
+        checking.delete(machineId);
+        context.host.requestRender();
+      });
+    },
+    update: confirm === undefined ? undefined : (command, version) => {
+      ask(`Update PI WEB to ${version}?`, "The update restarts PI WEB when it finishes; sessions running on this machine stop while it restarts.", "Update", () => {
+        runCommandInTerminal(context.terminal, `Update PI WEB to ${version}`, command);
+      });
+    },
+    restart: confirm === undefined ? undefined : (target, command) => {
+      const words = RESTART_CONFIRM[target];
+      ask(words.title, words.message, "Restart", () => { runCommandInTerminal(context.terminal, words.terminalTitle, command); });
+    },
+  };
 }
 
-function renderUpdatesPanel(html: HtmlTemplateTag, terminal: GlobalPanelTerminal | undefined, state: PluginRuntimeState | undefined): TemplateResult {
-  const status = statusFor(state) ?? fallbackDockerStatus(runtimeHint);
-  if (status === undefined) {
-    return html`<section class="viewer"><p class="muted">Checking PI WEB update status…</p></section>`;
-  }
-
-  const messages = status.messages;
-  return html`
-    <style>
-      .viewer.updates-status { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-7); padding: var(--pi-space-6); overflow-y: auto; overflow-x: hidden; }
-      .viewer.updates-status section { flex: 0 0 auto; min-width: 0; display: grid; gap: var(--pi-space-4); }
-      .updates-message { display: grid; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-5); background: var(--pi-surface); }
-      .updates-message.warning { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
-      .updates-message.error { border-color: var(--pi-danger); }
-      .updates-message-title { display: flex; gap: var(--pi-space-4); align-items: baseline; }
-      .updates-message-title span { color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; }
-      .updates-version-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-2) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); padding: var(--pi-space-3) 0; }
-      .updates-version-row small { grid-column: 1 / -1; color: var(--pi-muted); }
-      .updates-command { min-width: 0; display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr) auto; gap: var(--pi-space-4); align-items: center; }
-      .updates-command code { overflow: auto; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); padding: var(--pi-space-3) var(--pi-space-4); white-space: nowrap; }
-      .updates-command-inline { grid-template-columns: minmax(0, 1fr) auto; }
-      .updates-command-actions { display: inline-flex; gap: var(--pi-space-3); }
-      .updates-command-actions button.primary { border-color: var(--pi-accent-border); color: var(--pi-text-bright); }
-      /* This panel renders as a bare template in the workspace panel's shadow
-         root, whose adopted sheet pins 32px at the same specificity and wins
-         by order; one class out-ranks it, the fix the dialog buttons took. */
-      .updates-panel button { box-sizing: border-box; min-height: var(--pi-control-height); }
-      @media (pointer: coarse) { .updates-panel button { min-height: var(--pi-control-height-touch); } }
-      .updates-recommended { border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-5); background: var(--pi-surface); }
-      .updates-recommended > strong { color: var(--pi-text-bright); }
-      .updates-meta { display: grid; gap: var(--pi-space-1); color: var(--pi-muted); font-size: var(--pi-text-xs); }
-      @media (max-width: 520px) {
-        .updates-command { grid-template-columns: minmax(0, 1fr) auto; }
-        .updates-command > span { grid-column: 1 / -1; }
-      }
-    </style>
-    <section class="viewer updates-status updates-panel">
-      <section>
-        ${messages.length === 0 ? html`<p class="muted">No PI WEB update or restart messages.</p>` : messages.map((message) => html`
-          <article class=${`updates-message ${message.severity}`}>
-            <div class="updates-message-title"><strong>${message.title}</strong><span>${message.severity}</span></div>
-            <p>${message.body}</p>
-            ${message.command === undefined ? null : html`
-              <div class="updates-command updates-command-inline">
-                <code>${message.command}</code>
-                ${renderCommandActions(html, terminal, message.title, message.command)}
-              </div>
-            `}
-          </article>
-        `)}
-      </section>
-
-      <section>
-        <strong>Installed services</strong>
-        ${renderComponent(html, status.components.web)}
-        ${renderComponent(html, status.components.sessiond)}
-      </section>
-
-      ${renderCommands(html, terminal, status)}
-
-      <section class="updates-meta">
-        <span>Generated ${status.generatedAt}</span>
-        ${status.release.latestVersion === undefined ? null : html`<span>Latest npm release ${status.release.latestVersion}</span>`}
-        ${status.release.checkedAt === undefined || status.release.skipped === true ? null : html`<span>Release checked ${status.release.checkedAt}</span>`}
-        ${status.release.skipped === true ? html`<span>Remote version check skipped.</span>` : null}
-        ${status.release.error === undefined ? null : html`<span>Remote version check failed: ${status.release.error}</span>`}
-      </section>
-    </section>
-  `;
+function renderUpdatesPanel(html: HtmlTemplateTag, ui: PluginHostUi | undefined, context: GlobalPanelContext, checking: Set<string>): TemplateResult {
+  if (ui?.renderList === undefined) return html`<p class="muted">This page needs a newer PI WEB on this device.</p>`;
+  const status = statusFor(context.state) ?? fallbackDockerStatus(runtimeHint);
+  return ui.renderList(updatesPageModel(status, pageActions(context, ui, checking), localClockTime));
 }
-
 
 /**
  * The machine's PI WEB update offer, once.
@@ -190,7 +114,8 @@ const plugin: PiWebPlugin = {
   apiVersion: 2,
   name: "Updates",
   activate: (context) => {
-    const { html, svg } = context;
+    const { html, svg, ui } = context;
+    const checking = new Set<string>();
     offerPiWebUpdate(context);
     return {
     contributions: {
@@ -224,7 +149,7 @@ const plugin: PiWebPlugin = {
             const count = messageCount(context.state);
             return count > 0 ? count : undefined;
           },
-          render: (context) => renderUpdatesPanel(html, context.terminal, context.state),
+          render: (context) => renderUpdatesPanel(html, ui, context, checking),
         },
       ],
     },

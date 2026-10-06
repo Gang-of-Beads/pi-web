@@ -5,24 +5,11 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { packageVersion } from "../../../piWebVersionReport.js";
 import type { PiWebSelfUpdateStatus } from "../../../shared/apiTypes.js";
+import { deploymentUpdateCommand } from "../../shared/deploymentUpdateCommand.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_FETCH_INTERVAL_MS = 60_000;
 const PI_WEB_UPDATE_REPO_ENV = "PI_WEB_UPDATE_REPO";
-
-/**
- * Managed deployments (the nix flake, installer scripts) update through a
- * command that owns version drift - for the flake that is the automated
- * lock-and-switch pipeline, invoked via /pi-web update or the update UI.
- * When this environment is set the git-checkout path is not offered, because
- * a store build has no .git to compare against.
- */
-export const PI_WEB_UPDATE_COMMAND_ENV = "PI_WEB_UPDATE_COMMAND";
-
-function updateCommand(): string | undefined {
-  const fromEnv = process.env[PI_WEB_UPDATE_COMMAND_ENV];
-  return fromEnv !== undefined && fromEnv !== "" ? fromEnv : undefined;
-}
 
 /**
  * Interactive self-update for the host deployment.
@@ -81,7 +68,7 @@ export function createSelfUpdateService(logger: { warn: (obj: unknown, msg: stri
 
   return {
     async status() {
-      const command = updateCommand();
+      const command = deploymentUpdateCommand();
       if (command !== undefined) {
         return {
           enabled: true,
@@ -112,7 +99,7 @@ export function createSelfUpdateService(logger: { warn: (obj: unknown, msg: stri
       };
     },
     async apply() {
-      const command = updateCommand();
+      const command = deploymentUpdateCommand();
       if (command !== undefined) {
         // bash -lc so the command's own PATH expectations hold (home-manager
         // switch needs the nix profile on PATH). On Linux the command runs

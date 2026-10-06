@@ -87,6 +87,21 @@ still type `/update` in a PI WEB session; it then fails as it does today
 
 ## Surfaces
 
+The page (owner, 2026-10-06, `updates.png`): the reader is never handed a command to copy
+or run ("不建议直接在这里给用户命令让用户run"). Each action is a button that starts the command
+as a terminal run the reader can follow; the command text itself stays off the page. The
+page has two groups drawn by the host list (`plugin-list-component.md`):
+
+- **PI WEB**: Version, Latest (up to date, or the newer version in amber, with when it was
+  checked), Installed from (the install method and its path). Buttons: Check now, and
+  "Update to x.y.z" when an update exists and this install has an update command.
+- **Services**: Web / UI and Session daemon, each with the version it runs and whether a
+  restart is needed. Buttons: Restart web, Restart session daemon, each asking first.
+
+A nix install with no saved command shows, under Latest, that the install is managed by its
+nix configuration, and links to the Settings field where an update command can be saved.
+
+
 - **Settings -> Updates** (per machine): one row per thing above: current,
   latest, install method, Check now, Update. Extension rows list each package
   with its own state. A check runs at most once per machine per 6 hours and on

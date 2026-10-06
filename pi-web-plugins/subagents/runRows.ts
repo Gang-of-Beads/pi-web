@@ -1,3 +1,5 @@
+import type { PluginListModel, PluginListRow } from "@gang-of-beads/pi-web/plugin-api";
+
 /**
  * What one subagent run says on a row.
  *
@@ -57,6 +59,47 @@ export function runPresentation(row: SubagentRunRow): RunPresentation {
     return { label: "Lost", tone: "problem", detail: `Wrote for ${elapsed}, then went silent without an outcome` };
   }
   return { label: "Unknown", tone: "unknown", detail: "Started; this machine has no outcome for it" };
+}
+
+type RowSide = Pick<PluginListRow, "status" | "value">;
+
+const ROW_SIDE: Readonly<Record<RunPresentation["tone"], (presentation: RunPresentation) => RowSide>> = {
+  running: (presentation) => ({ status: { label: presentation.label, tone: "good" } }),
+  settled: (presentation) => ({ value: presentation.label }),
+  problem: (presentation) => ({ status: { label: presentation.label, tone: "problem" } }),
+  unknown: (presentation) => ({ status: { label: presentation.label, tone: "neutral" } }),
+};
+
+function listRow(row: SubagentRunRow): PluginListRow {
+  const presentation = runPresentation(row);
+  return { id: row.runId, title: row.task === undefined ? row.agent : `${row.agent}: ${row.task}`, ...ROW_SIDE[presentation.tone](presentation), detail: presentation.detail };
+}
+
+const LIST_WORDS = {
+  empty: "This session has started no subagents.",
+  reading: "Reading this session's subagents…",
+  failed: "This machine could not read the runs.",
+  stale: "Could not refresh - showing the last read.",
+} as const;
+
+/**
+ * The page the host draws for this session's runs: running children in one
+ * group, settled ones in another. A machine that could not say anything gives
+ * its reason as the empty page's words; one whose latest refresh failed keeps
+ * the last read under the stale line.
+ */
+export function subagentListModel(state: SubagentListState | undefined, refreshFailed: boolean): PluginListModel {
+  if (state === undefined) return { read: "reading", groups: [], words: LIST_WORDS };
+  if (state.kind === "unknown") return { read: "failed", groups: [], words: { ...LIST_WORDS, failed: state.reason } };
+  const rows = state.kind === "rows" ? state.rows : [];
+  return {
+    read: refreshFailed ? "failed" : "ready",
+    words: LIST_WORDS,
+    groups: [
+      { id: "running", heading: "Running", rows: rows.filter((row) => row.status === "running").map(listRow) },
+      { id: "finished", heading: "Finished", rows: rows.filter((row) => row.status !== "running").map(listRow) },
+    ],
+  };
 }
 
 export function formatElapsed(milliseconds: number): string {

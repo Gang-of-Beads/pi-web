@@ -279,6 +279,7 @@ function printUnavailableComponent(label: string, error: string | undefined): vo
 
 function installationLabel(installation: PiWebInstallationInfo | undefined): string | undefined {
   if (installation === undefined) return undefined;
+  if (installation.manager !== undefined) return installation.path === undefined ? installation.manager : `${installation.manager} · ${installation.path}`;
   if (installation.kind === "pi-package") {
     const source = installation.source ?? "Pi package";
     const scope = installation.scope === undefined ? "" : ` · ${installation.scope}`;

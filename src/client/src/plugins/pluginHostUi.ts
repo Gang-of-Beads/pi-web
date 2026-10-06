@@ -9,6 +9,7 @@ import { readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryA
 import { renderWorkspaceMarkdownHtml } from "../formatting/workspaceMarkdown";
 import { describeError } from "../notice";
 import { askConfirmation } from "../confirmDialog";
+import { renderPluginList } from "../components/pluginList/PluginList";
 import type { PluginDialog, PluginDialogHandle, PluginHostUi } from "./types";
 
 /**
@@ -61,6 +62,7 @@ export function createPluginHostUi(dialogHost?: PluginDialogHost): PluginHostUi 
       if (dialogHost === undefined) throw new Error("This host does not present plugin dialogs.");
       return askConfirmation(dialogHost, request);
     },
+    renderList: renderPluginList,
     query: {
       read: (namespace, key) => readNamespacedString(namespace, key),
       write: (namespace, key, value, options) => { setNamespacedQueryKey(namespace, key, value, options); },

@@ -141,6 +141,8 @@ export type PiWebServiceComponent = "web" | "sessiond";
 export type PiWebStatusSeverity = "info" | "warning" | "error";
 export type PiWebInstallationKind = "pi-package" | "npm-global" | "local" | "docker" | "unknown";
 export type PiWebDockerMode = "runtime" | "dev";
+/** A package manager that owns an install PI WEB cannot update by itself. */
+export type PiWebPackageManager = "nix";
 export interface PiWebInstallationInfo {
     kind: PiWebInstallationKind;
     path?: string;
@@ -148,6 +150,8 @@ export interface PiWebInstallationInfo {
     scope?: "user" | "project";
     npmRoot?: string;
     dockerMode?: PiWebDockerMode;
+    /** The manager that placed this install, when one did; the kind is then "unknown". */
+    manager?: PiWebPackageManager;
 }
 export interface PiWebComponentStatus {
     component: PiWebServiceComponent;
@@ -232,3 +236,64 @@ export type LegacyThemeToken = "--pi-bg" | "--pi-surface" | "--pi-surface-hover"
  * before the ladder keep rendering on a coherent ladder.
  */
 export type SemanticSurfaceToken = "--pi-surface-canvas" | "--pi-surface-panel" | "--pi-surface-card" | "--pi-surface-raised" | "--pi-surface-active";
+/**
+ * A status page's list, drawn by the host (`PluginHostUi.renderList`).
+ *
+ * Every plugin used to write its own row markup, so the same "running" read in
+ * five colours and the rows had no dividers (owner, 2026-10-06). The plugin now
+ * says what its rows are and the host draws them: one grouped list, one row
+ * anatomy, one colour per tone, one box for an empty page. See
+ * docs/design/plugin-list-component.md.
+ */
+export interface PluginListModel {
+    /** Whether the plugin has read what it lists. Rows are drawn in any state; an empty page says this state's words. */
+    readonly read: PluginListRead;
+    readonly groups: readonly PluginListGroup[];
+    /** The plugin's words for each state of an empty page; absence is not negation. */
+    readonly words: PluginListWords;
+    /** Lines under the groups, such as "3 older runs not shown". */
+    readonly notes?: readonly string[];
+}
+export type PluginListRead = "reading" | "ready" | "failed";
+export interface PluginListWords {
+    /** Read, and there is nothing. */
+    readonly empty: string;
+    /** Not read yet. */
+    readonly reading: string;
+    /** The read failed and nothing was read before. */
+    readonly failed: string;
+    /** The read failed while rows from an earlier read are kept: said above them. */
+    readonly stale: string;
+}
+export interface PluginListGroup {
+    readonly id: string;
+    /** The section title above the group. */
+    readonly heading?: string;
+    readonly rows: readonly PluginListRow[];
+    /** Buttons in the group's last row. */
+    readonly actions?: readonly PluginListAction[];
+}
+export interface PluginListRow {
+    readonly id: string;
+    /** Wraps to two lines. */
+    readonly title: string;
+    /** A tone dot and a word on the right. */
+    readonly status?: PluginListStatus;
+    /** A muted value on the right, for a row without a status. */
+    readonly value?: string;
+    /** One muted line under the title. */
+    readonly detail?: string;
+}
+export interface PluginListStatus {
+    readonly label: string;
+    readonly tone: PluginListTone;
+}
+/** One colour per meaning on every status page: good is green, attention amber, problem red, neutral muted. */
+export type PluginListTone = "good" | "attention" | "problem" | "neutral";
+export interface PluginListAction {
+    readonly id: string;
+    readonly label: string;
+    readonly primary?: boolean;
+    readonly disabled?: boolean;
+    readonly run: () => void;
+}

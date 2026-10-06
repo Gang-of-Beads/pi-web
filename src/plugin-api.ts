@@ -1,6 +1,6 @@
 import type { BackgroundTasksRead, SessionBackgroundTaskInfo } from "./shared/apiTypes.js";
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { FileSuggestion, ForegroundToken, LegacyThemeToken, MachineStatus, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
+import type { FileSuggestion, ForegroundToken, PluginListModel, LegacyThemeToken, MachineStatus, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 
@@ -19,8 +19,17 @@ export type {
   MachineKind,
   PiWebComponentStatus,
   PiWebDockerMode,
+  PluginListAction,
+  PluginListGroup,
+  PluginListModel,
+  PluginListRead,
+  PluginListRow,
+  PluginListStatus,
+  PluginListTone,
+  PluginListWords,
   PiWebInstallationInfo,
   PiWebInstallationKind,
+  PiWebPackageManager,
   PiWebReleaseStatus,
   PiWebServiceComponent,
   PiWebStatusMessage,
@@ -171,6 +180,9 @@ export interface PluginHostUi {
    *  Resolves true only for the confirming key; Cancel, Escape, the backdrop and
    *  the back gesture resolve false. Optional: an older host lacks it. */
   readonly confirm?: (request: PluginConfirmRequest) => Promise<boolean>;
+  /** Draw a status page's list the way every status page draws it (grouped rows,
+   *  tone colours, the empty-page box). Optional: an older host lacks it. */
+  readonly renderList?: (model: PluginListModel) => TemplateResult;
   /** Namespaced query-string state the host keeps coordinated with route
    *  restoration. The namespace is the plugin's wire format for deep links. */
   readonly query: {
@@ -833,6 +845,8 @@ export interface GlobalPanelContext {
   state?: PluginRuntimeState;
   host: WorkspaceHost;
   terminal: GlobalPanelTerminal;
+  /** Check the machine on screen for a PI WEB release now, bypassing the cached answer. Absent on older hosts. */
+  checkForPiWebUpdates?: () => Promise<void>;
 }
 
 /**

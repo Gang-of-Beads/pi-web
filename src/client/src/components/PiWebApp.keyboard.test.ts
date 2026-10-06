@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { render } from "lit";
+import { html, render } from "lit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionInfo, Workspace } from "../api";
 import { initialAppState, type AppState } from "../appState";
@@ -316,6 +316,7 @@ function fakeFilesHostUi(): PluginHostUi {
     registerModal: (registration) => registerRenderedModal({ ...registration, focus: registration.focus ?? (() => undefined) }),
     showDialog: () => ({ close: () => undefined }),
     confirm: () => Promise.resolve(false),
+    renderList: () => html``,
     query: { read: () => undefined, write: () => undefined },
   };
 }

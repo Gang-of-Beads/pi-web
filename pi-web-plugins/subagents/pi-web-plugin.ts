@@ -1,5 +1,5 @@
 import type { HtmlTemplateTag, PiWebPlugin, PluginActivationContext, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
-import { runPresentation, type SubagentListState } from "./runRows.js";
+import { subagentListModel, type SubagentListState } from "./runRows.js";
 import { RunsRead, type RunsView } from "./runsRead.js";
 import { followedAfter, runsActivityOf, runsPollingDecision, UNSEEN_ANSWERS_BEFORE_STOP, type FollowedActivity, type RunsActivity } from "./runsPolling.js";
 import { defineOnScreenMarker } from "./onScreenMarker.js";
@@ -33,28 +33,9 @@ function sessionFileOf(context: WorkspacePanelContext): string | undefined {
   return typeof path === "string" && path !== "" ? path : undefined;
 }
 
-function renderRuns(html: HtmlTemplateTag, view: RunsView | undefined) {
-  const state: SubagentListState | undefined = view?.state;
-  if (state === undefined) return html`<p class="empty" role="status">Reading this session's subagents…</p>`;
-  if (state.kind === "unknown") return html`<p class="empty" role="status">${state.reason}</p>`;
-  const staleNote = view?.refreshFailed === true ? html`<p class="empty" role="status">Could not refresh - showing the last read.</p>` : null;
-  if (state.kind === "empty") return html`${staleNote}<p class="empty" role="status">This session has started no subagents.</p>`;
-  return html`
-    ${staleNote}
-    <ul class="list subagent-runs">
-      ${state.rows.map((row) => {
-        const presentation = runPresentation(row);
-        return html`
-          <li class=${`subagent-run ${presentation.tone}`}>
-            <span class="subagent-run-name">${row.agent}</span>
-            <span class=${`subagent-run-status ${presentation.tone}`}>${presentation.label}</span>
-            <span class="subagent-run-detail">${presentation.detail}</span>
-            ${row.task === undefined ? null : html`<span class="subagent-run-task">${row.task}</span>`}
-          </li>
-        `;
-      })}
-    </ul>
-  `;
+function renderRuns(html: HtmlTemplateTag, ui: PluginActivationContext["ui"], view: RunsView | undefined) {
+  if (ui?.renderList === undefined) return html`<p class="muted">This list needs a newer PI WEB on this device.</p>`;
+  return ui.renderList(subagentListModel(view?.state, view?.refreshFailed === true));
 }
 
 const plugin: PiWebPlugin = {
@@ -171,7 +152,7 @@ const plugin: PiWebPlugin = {
               const state = shownFor(panel);
               return state?.kind === "rows" && state.running > 0 ? state.running : undefined;
             },
-            render: (panel) => html`<pi-subagents-on-screen .onChange=${onScreen}></pi-subagents-on-screen>${renderRuns(html, ensure(panel))}`,
+            render: (panel) => html`<pi-subagents-on-screen .onChange=${onScreen}></pi-subagents-on-screen>${renderRuns(html, context.ui, ensure(panel))}`,
           },
         ],
       },

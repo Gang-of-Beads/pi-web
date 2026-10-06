@@ -3,7 +3,7 @@ import type { AppAction } from "../actions";
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
-import type { FileSuggestion, MachineKind, MachineStatus, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
+import type { FileSuggestion, MachineKind, MachineStatus, PluginListModel, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 
 export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
@@ -104,6 +104,7 @@ export interface PluginHostUi {
    *  Resolves true only for the confirming key; Cancel, Escape, the backdrop and
    *  the back gesture resolve false. */
   readonly confirm: (request: PluginConfirmRequest) => Promise<boolean>;
+  readonly renderList: (model: PluginListModel) => TemplateResult;
   /** Namespaced query-string state the host keeps coordinated with route
    *  restoration. The namespace is the plugin's wire format for deep links. */
   readonly query: {
@@ -720,6 +721,7 @@ export interface GlobalPanelContext {
   state: AppState;
   host: WorkspaceHost;
   terminal: GlobalPanelTerminal;
+  checkForPiWebUpdates: () => Promise<void>;
 }
 
 /**
