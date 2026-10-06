@@ -15,6 +15,7 @@ import type { TerminalSoftKeyInputOptions } from "./TerminalSoftKeys.js";
 import { clampTerminalFontSize, pinchDistance, pinchFontSize, type PinchState } from "./pinchZoom.js";
 import { describeTerminalError } from "./hostUi.js";
 import { adoptTerminalHostStyles } from "./hostUi.js";
+import { NO_MODIFIERS, toggledModifier, typedInput, type TerminalModifier, type TerminalModifiers } from "./terminalExtraKeys.js";
 
 const TERMINAL_OPTIONS_BASE: ITerminalOptions = {
   cursorBlink: true,
@@ -59,6 +60,7 @@ export class TerminalPanel extends LitElement {
   @state() private continuingTerminalIds: string[] = [];
   @state() private defaultSoftKeysEnvironment = false;
   @state() private softKeysEnabled = initialTerminalSoftKeysEnabled();
+  @state() private modifiers: TerminalModifiers = NO_MODIFIERS;
   @state() private copySnapshot: TerminalCopySnapshot | undefined;
   @state() private copyStatus: string | undefined;
 
@@ -383,7 +385,9 @@ export class TerminalPanel extends LitElement {
     terminalHost.addEventListener("touchcancel", this.onPinchEnd, { passive: true });
     terminal.onData((data) => {
       if (this.suppressTerminalInput || this.copySnapshot !== undefined) return;
-      this.sendTerminalInput(data);
+      const typed = typedInput(data, this.modifiers);
+      this.modifiers = typed.modifiers;
+      this.sendTerminalInput(typed.data);
     });
     const initialSize = this.fitTerminal();
     this.connectSocket(this.selectedId, terminal, initialSize);
@@ -511,8 +515,13 @@ export class TerminalPanel extends LitElement {
 
   private sendSoftKeyInput(data: string, options: TerminalSoftKeyInputOptions): void {
     if (this.copySnapshot !== undefined) return;
+    this.modifiers = NO_MODIFIERS;
     this.sendTerminalInput(data);
     if (options.refocus) this.focusTerminal();
+  }
+
+  private toggleModifier(which: TerminalModifier): void {
+    this.modifiers = toggledModifier(this.modifiers, which);
   }
 
   private focusTerminal(): void {
@@ -705,13 +714,16 @@ export class TerminalPanel extends LitElement {
     return this.copySnapshot !== undefined && this.selectedTerminalAcceptsInput() && this.softKeysEnabled;
   }
 
-  private renderTerminalAccessoryBar() {
-    if (this.copySnapshot !== undefined) return this.copyToolbarReplacesSoftKeys() ? this.renderCopyModeToolbar() : null;
+  private renderCopyModeAccessory() {
+    return this.copyToolbarReplacesSoftKeys() ? this.renderCopyModeToolbar() : null;
+  }
+
+  private renderDockedSoftKeys() {
     return this.shouldShowSoftKeys() ? this.renderSoftKeys() : null;
   }
 
   private shouldShowSoftKeys(): boolean {
-    return this.selectedTerminalAcceptsInput() && this.softKeysEnabled;
+    return this.copySnapshot === undefined && this.selectedTerminalAcceptsInput() && this.softKeysEnabled;
   }
 
   private shouldShowSoftKeysToggle(): boolean {
@@ -750,8 +762,10 @@ export class TerminalPanel extends LitElement {
     return html`
       <terminal-soft-keys
         .modes=${this.terminal?.modes}
+        .modifiers=${this.modifiers}
         .refocusOnClick=${!this.defaultSoftKeysEnvironment}
         .onInput=${(data: string, options: TerminalSoftKeyInputOptions) => { this.sendSoftKeyInput(data, options); }}
+        .onModifier=${(which: TerminalModifier) => { this.toggleModifier(which); }}
       ></terminal-soft-keys>
     `;
   }
@@ -772,12 +786,13 @@ export class TerminalPanel extends LitElement {
         </div>
         ${this.error === undefined ? null : html`<p class="error">${this.error}</p>`}
         ${this.renderCommandRunNotice()}
-        ${this.renderTerminalAccessoryBar()}
+        ${this.renderCopyModeAccessory()}
         ${this.loading ? html`<p class="muted">Loading terminals…</p>` : null}
         <div class="terminal-stage">
           <div class=${this.copySnapshot === undefined ? "terminal-host" : "terminal-host copying"} ?inert=${this.copySnapshot !== undefined}></div>
           ${this.renderCopyMode()}
         </div>
+        ${this.renderDockedSoftKeys()}
       </section>
     `;
   }

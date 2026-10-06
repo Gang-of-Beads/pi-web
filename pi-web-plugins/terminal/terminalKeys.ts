@@ -25,37 +25,6 @@ export interface TerminalModesSnapshot {
   applicationCursorKeysMode: boolean;
 }
 
-export interface TerminalSoftKeyDefinition {
-  id: TerminalSoftKeyId;
-  label: string;
-  ariaLabel: string;
-  title: string;
-}
-
-export const TERMINAL_SOFT_KEYS: readonly TerminalSoftKeyDefinition[] = [
-  { id: "escape", label: "Esc", ariaLabel: "Escape", title: "Send Escape" },
-  { id: "tab", label: "Tab", ariaLabel: "Tab", title: "Send Tab" },
-  { id: "ctrl-c", label: "Ctrl+C", ariaLabel: "Control C", title: "Interrupt the foreground process" },
-  { id: "ctrl-d", label: "Ctrl+D", ariaLabel: "Control D", title: "Send EOF / close input" },
-  { id: "ctrl-z", label: "Ctrl+Z", ariaLabel: "Control Z", title: "Suspend the foreground process" },
-  { id: "ctrl-l", label: "Ctrl+L", ariaLabel: "Control L", title: "Clear / redraw the terminal" },
-  { id: "ctrl-r", label: "Ctrl+R", ariaLabel: "Control R", title: "Reverse search history" },
-  { id: "ctrl-u", label: "Ctrl+U", ariaLabel: "Control U", title: "Delete to the start of the line" },
-  { id: "ctrl-w", label: "Ctrl+W", ariaLabel: "Control W", title: "Delete the previous word" },
-  { id: "arrow-left", label: "←", ariaLabel: "Left arrow", title: "Move left" },
-  { id: "arrow-up", label: "↑", ariaLabel: "Up arrow", title: "Move up / previous command" },
-  { id: "arrow-down", label: "↓", ariaLabel: "Down arrow", title: "Move down / next command" },
-  { id: "arrow-right", label: "→", ariaLabel: "Right arrow", title: "Move right" },
-  { id: "home", label: "Home", ariaLabel: "Home", title: "Move to the start" },
-  { id: "end", label: "End", ariaLabel: "End", title: "Move to the end" },
-  { id: "page-up", label: "PgUp", ariaLabel: "Page up", title: "Page up" },
-  { id: "page-down", label: "PgDn", ariaLabel: "Page down", title: "Page down" },
-  { id: "delete", label: "Del", ariaLabel: "Delete", title: "Delete forward" },
-  { id: "backspace", label: "⌫", ariaLabel: "Backspace", title: "Backspace" },
-  { id: "meta-backward-word", label: "M-B", ariaLabel: "Meta B", title: "Move backward one word" },
-  { id: "meta-forward-word", label: "M-F", ariaLabel: "Meta F", title: "Move forward one word" },
-];
-
 const ESC = "\x1b";
 const DEL = "\x7f";
 
