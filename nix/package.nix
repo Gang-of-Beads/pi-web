@@ -18,7 +18,7 @@ stdenv.mkDerivation (finalAttrs: {
     # (outdent, openai, @anthropic-ai/sdk ...), so links/ goes before it, as the
     # fetcher already drops projects/.
     preFixup = "rm -rf $storePath/v11/links";
-    hash = "sha256-+9LkBdXV+V1Bpsb96tPSPTn4ah18fx/zHTeFnXXJuFk=";
+    hash = "sha256-ZM/YfGEuRsJTrxfP9DBA6tRq0MWCHk4vwy83BTJv67Y=";
   };
 
   nativeBuildInputs = [ nodejs pnpm_12 pnpmConfigHook makeWrapper python3 pkg-config ]
