@@ -89,6 +89,11 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "POST", path: "/projects/:projectId/workspaces/:workspaceId/terminals/:terminalId/continue" },
   { method: "DELETE", path: "/projects/:projectId/workspaces/:workspaceId/terminals/:terminalId" },
   { method: "POST", path: "/projects/:projectId/workspaces/:workspaceId/terminal-command-runs" },
+  { method: "GET", path: "/terminals" },
+  { method: "POST", path: "/terminals" },
+  { method: "DELETE", path: "/terminals" },
+  { method: "POST", path: "/terminals/:terminalId/continue" },
+  { method: "DELETE", path: "/terminals/:terminalId" },
   { method: "GET", path: "/terminal-command-runs" },
   { method: "GET", path: "/terminal-command-runs/:runId" },
   { method: "POST", path: "/terminal-command-runs/:runId/cancel" },
@@ -163,4 +168,5 @@ export const FEDERATED_WEBSOCKET_ROUTES = [
   "/sessions/events",
   "/sessions/:sessionId/events",
   "/projects/:projectId/workspaces/:workspaceId/terminals/:terminalId/socket",
+  "/terminals/:terminalId/socket",
 ] as const satisfies readonly string[];

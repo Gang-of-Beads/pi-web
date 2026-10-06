@@ -4,7 +4,7 @@ import { FEDERATED_HTTP_ROUTES, FEDERATED_WEBSOCKET_ROUTES, SESSION_TREE_FORK_PR
 import { MAX_INLINE_PREVIEW_BYTES } from "../../../shared/workspaceFiles";
 import { PLUGIN_BACKEND_REQUEST_BODY_MAX_BYTES, PLUGIN_BACKEND_RESPONSE_BODY_MAX_BYTES } from "../../../shared/pluginBackendProtocol";
 import { configApi, filesApi, machineStatusApi, piPackagesApi, piWebApi, pluginsApi, projectsApi, sessionPinsApi, sessionsApi, terminalsApi, trustApi, workspacesApi } from "./clients";
-import { globalSessionEvents, realtimeEvents, sessionEvents, terminalSocket } from "./sockets";
+import { globalSessionEvents, machineTerminalSocket, realtimeEvents, sessionEvents, terminalSocket } from "./sockets";
 import { requestPluginBackend } from "./pluginBackends";
 import { workspaceFilePreviewUrl } from "./urls";
 
@@ -223,6 +223,11 @@ describe("federated route contract", () => {
       ignoreParseFailure(terminalsApi.listCommandRuns({ projectId: "p 1", workspaceId: "w 1", statuses: ["running"], metadata: { "pi.operation": "test" } }, machineId)),
       ignoreParseFailure(terminalsApi.getCommandRun("run 1", machineId)),
       ignoreParseFailure(terminalsApi.cancelCommandRun("run 1", machineId)),
+      ignoreParseFailure(terminalsApi.machineTerminals(machineId)),
+      ignoreParseFailure(terminalsApi.startMachineTerminal({ cols: 120, rows: 40 }, machineId)),
+      ignoreParseFailure(terminalsApi.closeMachineTerminals(machineId)),
+      ignoreParseFailure(terminalsApi.closeMachineTerminal("t 1", machineId)),
+      ignoreParseFailure(terminalsApi.continueMachineTerminal("t 1", machineId)),
     ]);
 
     const observedRoutes = uniqueHttpRoutes([
@@ -245,6 +250,7 @@ describe("federated route contract", () => {
     globalSessionEvents(machineId);
     realtimeEvents(machineId);
     terminalSocket("p 1", "w 1", "t 1", { cols: 120, rows: 40 }, machineId);
+    machineTerminalSocket("t 1", { cols: 120, rows: 40 }, machineId);
 
     const observedPaths = uniqueStrings(webSocketUrls.map((url) => routeFromMachineUrl("GET", url, machineId).path));
     const unmatched = observedPaths.filter((path) => !FEDERATED_WEBSOCKET_ROUTES.some((route) => pathMatchesPattern(path, route)));

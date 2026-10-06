@@ -36,8 +36,9 @@ Go to's scope is the scope the reader is looking at, named in one pure classifie
 | the app bar of a chat or plugin page, with a workspace selected | workspace |
 | anywhere, with no workspace selected | machine |
 
-The Navigate page owns its own scope (`pathProjectId`); it reports it when it asks for Go to, so
-the host never guesses it.
+The Navigate page owns its own scope (`pathProjectId`); it reports it, with the project it names,
+when it asks for Go to, so the host never guesses it: project pages are offered only when the
+selected workspace belongs to that project.
 
 What Go to lists:
 
@@ -80,8 +81,8 @@ prompt editor and no terminal, so a global page cannot reach a project by accide
 
 ## Placement (owner, ask `7aba00fa`: the desktop runs the phone's logic)
 
-The navigation page picks global or project with its switch (`<project> | All projects`); Go to
-follows it, on the phone and on the desktop (whose app bar has the same Go to key), and the
+Go to opened from the phone's Navigate page follows its switch (`<project> | All projects`);
+everywhere else, and on the desktop always, Go to follows what is open (ask `79cb2bc6`, below). The
 desktop's right-hand column shows the page Go to chose.
 
 - Phone: a global page is a main view like a project page; the app bar names it. Its URL carries

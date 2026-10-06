@@ -25,8 +25,13 @@ export function registerMachineTerminalRoutes(app: FastifyInstance, daemon: Sess
   app.delete<{ Params: { terminalId: string } }>(`${prefix}/terminals/:terminalId`, async (request, reply) => proxyJson(daemon, "DELETE", `/terminals/${encodeURIComponent(request.params.terminalId)}`, undefined, reply));
 
   app.get<{ Params: { terminalId: string }; Querystring: { cols?: string; rows?: string } }>(`${prefix}/terminals/:terminalId/socket`, { websocket: true }, (socket, request) => {
-    const sizeQuery = terminalSizeQuery(request.query.cols, request.query.rows);
-    bridgeSockets(socket, daemon.connectWebSocket(`/terminals/${encodeURIComponent(request.params.terminalId)}/socket${sizeQuery}`));
+    try {
+      const sizeQuery = terminalSizeQuery(request.query.cols, request.query.rows);
+      bridgeSockets(socket, daemon.connectWebSocket(`/terminals/${encodeURIComponent(request.params.terminalId)}/socket${sizeQuery}`));
+    } catch (error) {
+      socket.send(JSON.stringify({ type: "error", message: error instanceof Error ? error.message : "The session daemon did not answer" }));
+      socket.close();
+    }
   });
 }
 

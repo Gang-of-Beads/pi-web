@@ -473,10 +473,19 @@ export class PluginRegistry {
     return [...this.globalPanels].sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
   }
 
-  /** A route's page id when it names an active global page on the selected machine. */
+  /** The global pages active on the selected machine, visible or not; `visible` decides only what Go to offers. */
+  getActiveGlobalPanels(selectedMachineId: string): QualifiedGlobalPanelContribution[] {
+    return this.getGlobalPanels().filter((panel) => this.isContributionActive(panel.pluginId, panel.machineId, selectedMachineId, panel.sourcePluginId));
+  }
+
+  /** A route's page id when it names an active global page on the selected machine, by id or by one unambiguous alias. */
   resolveGlobalPanelRouteId(value: string, selectedMachineId: string): QualifiedContributionId | undefined {
-    const active = this.globalPanels.filter((panel) => this.isContributionActive(panel.pluginId, panel.machineId, selectedMachineId, panel.sourcePluginId));
-    return (active.find((panel) => panel.id === value) ?? active.find((panel) => panel.routeAliases?.includes(value) === true))?.id;
+    const active = this.getActiveGlobalPanels(selectedMachineId);
+    const exact = active.find((panel) => panel.id === value);
+    if (exact !== undefined) return exact.id;
+    const aliases = active.filter((panel) => panel.routeAliases?.includes(value) === true);
+    if (aliases.length > 1) console.warn(`Ambiguous PI WEB global page route: ${value}`);
+    return aliases.length === 1 ? aliases[0]?.id : undefined;
   }
 
   resolveWorkspacePanelRouteId(value: string, selectedMachineId: string): QualifiedContributionId | undefined {
@@ -579,11 +588,13 @@ export class PluginRegistry {
     const id = this.qualify(pluginId, panel.id, contributionIds);
     const visible = panel.visible;
     const badge = panel.badge;
+    const routeAliases = this.parseRouteAliases(id, panel.routeAliases, `${sourcePluginId ?? pluginId}:${panel.id}`);
     return {
       ...panel,
       id,
       pluginId,
       localId: panel.id,
+      ...(routeAliases.length === 0 ? {} : { routeAliases }),
       ...(machineId === undefined ? {} : { machineId }),
       ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
       visible: (context: GlobalPanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) && (visible?.(context) ?? true),
@@ -699,7 +710,7 @@ export class PluginRegistry {
   private parseRouteAliases(id: QualifiedContributionId, aliases: readonly string[] | undefined, sourceId: string): string[] {
     const parsed = [...new Set([...(aliases ?? []), sourceId])].filter((alias) => alias !== id);
     for (const alias of parsed) {
-      if (!routeAliasPattern.test(alias)) throw new Error(`Invalid workspace panel route alias for ${id}: ${alias}`);
+      if (!routeAliasPattern.test(alias)) throw new Error(`Invalid page route alias for ${id}: ${alias}`);
     }
     return parsed;
   }
