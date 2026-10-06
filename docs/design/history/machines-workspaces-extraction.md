@@ -54,8 +54,8 @@ injection port for fleet routes.
 
 ## Workspaces: what moves, what stays
 
-**Moved-set amended after the design review** (see
-`review-triage-machines-workspaces-design.md`): the server-side shape below
+**Moved-set amended after the design review** (triage in git
+history, commit `843f7b5a`): the server-side shape below
 depends on an owner decision about the plugin contract; the protocol pieces
 named here move only under that decision.
 

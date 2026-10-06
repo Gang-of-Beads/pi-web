@@ -1,6 +1,6 @@
 # PI WEB object model
 
-Status: revised design, 2026-09-30, with the owner's decisions of the same day (§7). Applies every "accept" in `docs/design/reviews/review-triage-object-model.md`. Builds on `docs/design/state-diagram.md` (rules 1–7, D1–D8, B1–B49, with B48 under D5), `docs/design/sync-convergence.md` (heads, B28 board read, keepalive head) and `docs/design/state-sync-redesign.md` (one FIFO, facts not copies).
+Status: revised design, 2026-09-30, with the owner's decisions of the same day (§7). Applies every "accept" of the object-model review (its triage is in git history, commit `b7b8bc9f`). Builds on `docs/design/state-diagram.md` (rules 1–7, D1–D8, B1–B49, with B48 under D5), `docs/design/sync-convergence.md` (heads, B28 board read, keepalive head) and `docs/design/state-sync-redesign.md` (one FIFO, facts not copies).
 
 ## Summary
 
@@ -12,7 +12,7 @@ Status: revised design, 2026-09-30, with the owner's decisions of the same day (
 6. Web→daemon forwards use deadline constants and `AbortSignal.timeout`. A reader's deadline never cancels shared daemon work.
 7. Phases: **P1** resource and row on projects, machines and workspaces → **P2** session open off the chain (typed not-found, passive tail page) → **P3** daemon tail (measure, startup instrumentation, scan single-flight, watcher filter, then deadlines) → **P4** board read, daemon heads, batched boot read → **P5** router, web publish, plugins, delete `normalizeTransientError` → **P6** transcript tail seed → **P7** boot weight and drafts. `RequestScheduler` is re-measured after P4.
 
-Evidence sources (the inventories and reviews of design run `7b4fe5b7`, kept as subagent artifacts, not in the repository; triage in `review-triage-object-model.md`), cited as:
+Evidence sources (the inventories and reviews of design run `7b4fe5b7`, kept as subagent artifacts, not in the repository; triage in commit `b7b8bc9f`), cited as:
 - **[C]** client inventory (`inventory-client.md`); paths relative to `src/client/src/`.
 - **[S]** server inventory (`inventory-server.md`).
 - **[N]** network inventory (`inventory-network.md`); **[M]** measured, **[E]** estimated.

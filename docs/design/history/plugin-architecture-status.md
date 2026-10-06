@@ -58,7 +58,7 @@ pi-web remains the single source until the contract package publishes.
   composer; a terminal session was created through the capability down to the
   daemon pty; the composer's Dictate control renders at 393x850.
 - Four review lanes (two glm max, one qwen max, one red team) over the
-  extraction commits; triage in `review-triage-extraction-waves.md`.
+  extraction commits; triage in git history (commit `f718dad1`).
 
 Live verification found four defects the suites could not, each because a unit
 test constructs a class directly while a browser must resolve and evaluate a
@@ -198,8 +198,8 @@ The three-lane review of the goals and publishing wave found the first
 extraction pass unclosed and its fixes are in: the panel's controls wired
 through two new general seams (`requestUpdate`, optional `runCommand`),
 honest empty states, the focused session's cwd back in the read, and core's
-orphaned goals machinery removed. Recorded in
-`review-triage-goals-package-wave.md`.
+orphaned goals machinery removed. Triage in git history (commit
+`09e14200`).
 
 ## Owner rulings, 2026-09-05 (final)
 
@@ -241,8 +241,8 @@ written multi-lane review and a live 8505 probe:
   machine slot in the navigation panel contributed, honest empty roster.
 - **Wave B** — sheet slot, palette machine actions, deep-link-preserving load
   retries, `MachineValidationError` classification, `machineSpecific: false`
-  for dual-module plugins. Review triage in
-  `review-triage-extraction-waveB.md`; probe `scripts/probe-waveb.mjs` (13
+  for dual-module plugins. Review triage in git
+  history (commit `9272a2eb`); probe `scripts/probe-waveb.mjs` (13
   checks).
 - **Wave D** — owner ruled the notifications and activity drawer pages leave
   the shell without conversion (`docs/design/history/wave-d-drawer-removal.md`). The

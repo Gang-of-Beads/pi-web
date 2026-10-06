@@ -117,8 +117,10 @@ Every non-trivial change wave gets, before it is called done:
    the diff, the live file paths, and a directed hunt list; require file:line findings with a
    minimal failure scenario and true/false adjudication of each suspicion.
    Triage in writing (fixed / not-fixed-with-reason / judged-not-true) before
-   fixing; two lanes disagreeing is settled by reading the source, not by
-   trusting either lane.
+   fixing, in a scratch file outside the repository; the commit that lands the
+   fixes states each outcome in its message. Triage records are not committed:
+   the reasons live in git history (owner, 2026-10-06). Two lanes disagreeing
+   is settled by reading the source, not by trusting either lane.
 2. **Live verification on the 8505 stack**: rebuild and restart via
    `scripts/stack-8505.sh up`, then drive the real UI in a browser (Playwright
    MCP or the browser tool; no committed probe scripts) for the touched flows -
