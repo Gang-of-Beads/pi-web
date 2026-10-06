@@ -608,6 +608,8 @@ export class PiWebApp extends LitElement {
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private pluginDialogs: readonly PluginDialogEntry[] = [];
   private pluginDialogSeq = 0;
+  /** The last composer picker asked for; an older one's late read opens nothing (pickerStillWanted). */
+  private pickerRequestSeq = 0;
   @state() private settingsOpen = readSettingsOpen();
   @state() private reloadAfterSettings = false;
   private settingsListFramePushed = false;
@@ -4289,9 +4291,34 @@ export class PiWebApp extends LitElement {
       });
   }
 
+  /**
+   * A composer picker reads before it opens, and is still wanted only for the session, the view and
+   * the moment it was asked for. The model picker read its lists while the reader moved on, then
+   * opened over what came next, with another session's list (owner report 2026-10-06): a newer
+   * picker, a navigation, another session or another view since the tap drops it.
+   */
+  private pickerStillWanted(): () => boolean {
+    const request = ++this.pickerRequestSeq;
+    const intent = this.navigation.latest();
+    const view = this.displayMainView();
+    const sessionKey = this.selectedSessionKey();
+    return () => request === this.pickerRequestSeq
+      && this.navigation.isCurrent(intent)
+      && this.displayMainView() === view
+      && this.selectedSessionKey() === sessionKey;
+  }
+
+  private selectedSessionKey(): string | undefined {
+    const session = this.state.selectedSession;
+    return session === undefined ? undefined : machineSessionKey(selectedMachineId(this.state), session.id);
+  }
+
   private async openModelDialog() {
+    const stillWanted = this.pickerStillWanted();
     const [models, catalog] = await Promise.all([this.sessions.listModels(), this.sessions.listModelCatalog()]);
-    const selectedValue = this.currentModelValue();    this.setState({
+    if (!stillWanted()) return;
+    const selectedValue = this.currentModelValue();
+    this.setState({
       modelDialog: {
         title: "Select model",
         ...(selectedValue !== undefined ? { selectedValue } : {}),
@@ -4458,7 +4485,9 @@ export class PiWebApp extends LitElement {
   }
 
   private async openThinkingDialog() {
+    const stillWanted = this.pickerStillWanted();
     const levels = await this.sessions.listThinkingLevels();
+    if (!stillWanted()) return;
     const current = this.state.status?.thinkingLevel ?? "off";
     this.pushModalLayerFrame();
     this.setState({
