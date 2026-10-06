@@ -1,9 +1,9 @@
 import type { EditorView } from "@codemirror/view";
 import { renderCrossIcon, renderUpIcon, uiIconStyle } from "./uiIcons.js";
-import type { ComposerEditorHandle } from "./composerEditorSetup";
+import * as composerEditor from "./composerEditorSetup";
 import { keyBelongsToInputMethod } from "./keyboardEventTarget";
 
-type ComposerEditorModule = typeof import("./composerEditorSetup");
+type ComposerEditorModule = typeof composerEditor;
 import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues } from "lit";
 import { pendingPromptActions, trayState } from "../pendingPromptActions";
 import { joinTakenBack } from "../composerTakeBack";
@@ -332,9 +332,8 @@ export class PromptEditor extends LitElement {
   private historyIndex: number | undefined;
   private historyDraftBeforeBrowse = "";
   private editor: EditorView | undefined;
-  private editorControls: ComposerEditorHandle | undefined;
-  private editorLoading = false;
-  /** The lazily-loaded editor module; set exactly when `editor` is set. */
+  private editorControls: composerEditor.ComposerEditorHandle | undefined;
+  /** The editor module; set exactly when `editor` is set. */
   private cm: ComposerEditorModule | undefined;
   private readonly mobilePromptEnterMedia = createMobilePromptEnterMedia();
   private explicitShiftKeyActive = false;
@@ -929,33 +928,32 @@ export class PromptEditor extends LitElement {
     return effectivePromptAttachmentDelivery("inline", this.attachments);
   }
 
+  /**
+   * The editor ships with the page (owner, 2026-10-06). It used to arrive by a
+   * dynamic import when the composer mounted; one failed fetch of that file left
+   * the tab with no input until a reload, because Chrome remembers a failed
+   * module import and fails every later one for the same file.
+   */
   private createEditor() {
-    if (!this.editorHost || this.editor !== undefined || this.editorLoading) return;
-    this.editorLoading = true;
-    void import("./composerEditorSetup").then((cm) => {
-      this.editorLoading = false;
-      if (!this.editorHost || this.editor !== undefined || !this.isConnected) return;
-      const handle = cm.createComposerEditor({
-        parent: this.editorHost,
-        doc: this.draft,
-        disabled: this.disabled,
-        placeholderText: composerPlaceholder(),
-        contentAttributesFor: (leadingText) => inputAssistanceContentAttributes(leadingText),
-        onDocChanged: (text) => { this.updateDraft(text); },
-        onKeyUp: (event) => this.handleEditorKeyUp(event),
-        onBlur: () => { this.resetEditorModifierState(); },
-        onKeyDown: (event, view) => this.handleEditorKeyDown(event, view),
-        onArrow: (view, direction) => this.handleEditorArrow(view, direction),
-        onEscape: () => this.closeCompletions(),
-        onTab: (view) => this.handleEditorTab(view),
-      });
-      this.cm = cm;
-      this.editorControls = handle;
-      this.editor = handle.view;
-      // The draft may have moved while the editor bytes were on the wire.
-      this.syncEditorDoc();
-      this.updateEditorDisabledState();
+    if (!this.editorHost || this.editor !== undefined) return;
+    const handle = composerEditor.createComposerEditor({
+      parent: this.editorHost,
+      doc: this.draft,
+      disabled: this.disabled,
+      placeholderText: composerPlaceholder(),
+      contentAttributesFor: (leadingText) => inputAssistanceContentAttributes(leadingText),
+      onDocChanged: (text) => { this.updateDraft(text); },
+      onKeyUp: (event) => this.handleEditorKeyUp(event),
+      onBlur: () => { this.resetEditorModifierState(); },
+      onKeyDown: (event, view) => this.handleEditorKeyDown(event, view),
+      onArrow: (view, direction) => this.handleEditorArrow(view, direction),
+      onEscape: () => this.closeCompletions(),
+      onTab: (view) => this.handleEditorTab(view),
     });
+    this.cm = composerEditor;
+    this.editorControls = handle;
+    this.editor = handle.view;
+    this.updateEditorDisabledState();
   }
 
   private syncEditorDoc() {

@@ -1,14 +1,13 @@
 /**
- * The composer is the first thing a user touches, but its editor is heavy:
- * CodeMirror core and languages measured 649KB of vendor chunks. That weight
- * must load when the composer mounts (one dynamic import in PromptEditor), not
- * ride the boot graph where every page load would wait on an editor nobody has
- * focused yet.
+ * The composer's editor ships with the page (owner, 2026-10-06). It was a
+ * dynamic import fetched when the composer mounted, to keep 649KB of CodeMirror
+ * off the first paint; one failed fetch of it then left the tab with no input
+ * until a reload, because Chrome remembers a failed module import.
  *
  * This walks the static import graph from the client entrypoint and asserts
- * the invariant at the import-shape level: no runtime (non-type-only) edge in
- * the eager closure may reach CodeMirror or the editor setup module it lives
- * behind. Type-only imports are erased at build time and do not count.
+ * the invariant at the import-shape level: a runtime (non-type-only) edge in
+ * the eager closure reaches the editor setup module and CodeMirror. Type-only
+ * imports are erased at build time and do not count.
  */
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -73,11 +72,11 @@ describe("the eager client import graph", () => {
     expect(graph.externals).toContain("lit");
   });
 
-  it("loads no CodeMirror before the composer mounts", () => {
+  it("carries the composer's editor in the first download", () => {
     const graph = eagerImportGraph(entryPath);
 
     const editorExternals = [...graph.externals].filter((specifier) => specifier.startsWith("@codemirror/"));
-    expect(editorExternals).toEqual([]);
-    expect(graph.files.has(composerEditorSetupPath)).toBe(false);
+    expect(editorExternals).not.toEqual([]);
+    expect(graph.files.has(composerEditorSetupPath)).toBe(true);
   });
 });
