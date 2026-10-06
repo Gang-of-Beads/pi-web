@@ -33,7 +33,7 @@ export function askCardNeedsRender(previous: AskLike | undefined, next: AskLike 
   return askCardFingerprint(previous) !== askCardFingerprint(next);
 }
 
-type DialogLike = Pick<PendingExtensionDialog, "dialogId" | "kind" | "title" | "message" | "placeholder" | "options" | "timeoutAt" | "lines" | "screen">;
+type DialogLike = Pick<PendingExtensionDialog, "dialogId" | "kind" | "title" | "message" | "placeholder" | "prefill" | "prefillCut" | "options" | "timeoutAt" | "lines" | "screen">;
 
 /**
  * The same reasoning for the extension dialog card, which sits in the same
@@ -51,6 +51,8 @@ export function dialogCardFingerprint(dialog: DialogLike | undefined): string {
     dialog.title,
     dialog.message ?? "",
     dialog.placeholder ?? "",
+    dialog.prefill ?? "",
+    String(dialog.prefillCut ?? ""),
     dialog.timeoutAt ?? "",
     (dialog.options ?? []).join("\u0001"),
     (dialog.lines ?? []).join("\u0001"),

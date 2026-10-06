@@ -1091,7 +1091,7 @@ PI_CODING_AGENT_SESSION_DIR=/opt/pi-profiles/lab-sessions</code></pre>
               <h2>Extension dialogs</h2>
               <p>
                 Pi extensions can ask the user questions from <code>ctx.ui.confirm()</code>,
-                <code>ctx.ui.select()</code>, and <code>ctx.ui.input()</code> — including from
+                <code>ctx.ui.select()</code>, <code>ctx.ui.input()</code>, and <code>ctx.ui.editor()</code> — including from
                 <code>session_start</code> hooks and in-flight <code>tool_call</code> hooks. PI WEB renders these dialogs
                 inline in the session transcript and answers them through a dedicated session-daemon channel, never the
                 prompt queue, so a dialog parked inside a <code>tool_call</code> hook cannot deadlock the run. Dialog
@@ -1102,8 +1102,8 @@ PI_CODING_AGENT_SESSION_DIR=/opt/pi-profiles/lab-sessions</code></pre>
               <p>
                 <code>extensionDialogsTimeoutMs</code> is the unattended-dialog safety valve: how long the session daemon
                 waits for an answer before settling the dialog with its kind's cancel value (<code>false</code> for
-                confirm, <code>undefined</code> for select and input). It defaults to <code>300000</code> (5 minutes);
-                set it to <code>0</code> to wait forever. An extension's own <code>timeout</code> option still applies,
+                confirm, <code>undefined</code> for select, input and editor). It defaults to <code>0</code>, which waits
+                for an answer indefinitely; set a positive number of milliseconds to auto-cancel instead. An extension's own <code>timeout</code> option still applies,
                 and the effective deadline is the sooner of the two.
               </p>
               <div class="callout warning">

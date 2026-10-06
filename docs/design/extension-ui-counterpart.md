@@ -195,7 +195,12 @@ using it.
   editor's. `setEditorText` / `pasteToEditor` travel as the `extension.ui` `editorText` frame and
   write the composer of each browser showing the session through the same machine+session-checked
   path the "put it back" flows use; a paste goes in at the caret, or at the end before the editor
-  is drawn. `getEditorText` answers with what the session's extensions wrote.
+  is drawn. `getEditorText` answers with what the session's extensions wrote; that text lives per
+  runtime (`extensionComposer.ts`), outliving a reload of the extensions as pi's composer does.
+  The frame is momentary: it reaches the browsers showing the session and the pending-start row,
+  and one that lands while a browser is still opening the session can be missed (the join
+  watermark drops frames at or below the snapshot, and the delta replay re-serves frames already
+  applied, so neither may re-apply a write over the reader's newer typing).
 
 ## Order of work
 

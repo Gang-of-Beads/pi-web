@@ -3162,6 +3162,10 @@ export class SessionController {
    */
   private applyPendingStartEvent(pending: PendingSessionStart, event: SessionUiEvent): void {
     if (pending.discarded || this.getState().selectedSession?.id !== pending.tempId) return;
+    if (event.type === "extension.ui" && event.kind === "editorText") {
+      void this.replacePromptEditorText?.({ machineId: selectedMachineId(this.getState()), sessionId: pending.tempId, text: event.text, mode: event.mode });
+      return;
+    }
     if (event.type === "dialog.opened") {
       this.applyOpenedDialog(event.dialog);
       return;

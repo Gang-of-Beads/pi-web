@@ -637,7 +637,7 @@ function parsePendingExtensionDialog(value: unknown): PendingExtensionDialog {
     ...(options === undefined ? {} : { options }),
     ...optionalField("placeholder", optionalBoundedNonEmptyString(record, "placeholder", EXTENSION_DIALOG_TEXT_MAX_LENGTH)),
     ...optionalField("prefill", optionalBoundedNonEmptyString(record, "prefill", EXTENSION_DIALOG_EDITOR_MAX_LENGTH)),
-    ...optionalField("prefillCut", optionalNumber(record, "prefillCut")),
+    ...(record["prefillCut"] === undefined ? {} : { prefillCut: requirePositiveSafeInteger(record, "prefillCut") }),
     // A custom screen's lines, bounded like the daemon bounds them: the screen
     // rides the status payload, so an unbounded array would be a payload nobody
     // checked.

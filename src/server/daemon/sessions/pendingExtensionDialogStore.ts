@@ -247,7 +247,14 @@ function kindFields(
 function editorPrefill(prefill: unknown): Pick<PendingExtensionDialog, "prefill" | "prefillCut"> {
   if (typeof prefill !== "string" || prefill === "") return {};
   if (prefill.length <= EXTENSION_DIALOG_EDITOR_MAX_LENGTH) return { prefill };
-  return { prefill: prefill.slice(0, EXTENSION_DIALOG_EDITOR_MAX_LENGTH), prefillCut: prefill.length - EXTENSION_DIALOG_EDITOR_MAX_LENGTH };
+  const kept = prefill.slice(0, keptLength(prefill));
+  return { prefill: kept, prefillCut: prefill.length - kept.length };
+}
+
+/** The cut never splits a surrogate pair: half a character would reach the reader and come back in the answer. */
+function keptLength(text: string): number {
+  const last = text.charCodeAt(EXTENSION_DIALOG_EDITOR_MAX_LENGTH - 1);
+  return last >= 0xd800 && last <= 0xdbff ? EXTENSION_DIALOG_EDITOR_MAX_LENGTH - 1 : EXTENSION_DIALOG_EDITOR_MAX_LENGTH;
 }
 
 /** A declared questions screen takes the Questions card's submission; a drawn screen takes text. */

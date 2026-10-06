@@ -142,16 +142,6 @@ export function extensionDialogCountdownText(timeoutAt: string | undefined, nowM
   return `Auto-cancels in ${String(seconds)}s`;
 }
 
-/**
- * One extension dialog opened by `ctx.ui.confirm()`, `ctx.ui.select()`, or
- * `ctx.ui.input()`.
- *
- * The card owns only browser-local form state (the half-typed input, the
- * in-flight close flag, the display-only countdown); the daemon remains the
- * source of truth for whether the dialog is open. Closed mode renders the
- * settled outcome — a browser-local record that stays until dismissed — for a
- * browser that saw the dialog open.
- */
 /** Says what the daemon cut from an editor's opening text, so the reader knows Send returns only what is shown. */
 function editorCutText(cut: number): string {
   return `The extension's text was longer: the last ${cut.toLocaleString()} characters are not here, and Send returns only what is.`;
@@ -162,6 +152,16 @@ function screenHeading(shape: ScreenShape | undefined): string | undefined {
   return shape?.kind === "menu" ? shape.title : undefined;
 }
 
+/**
+ * One extension dialog opened by `ctx.ui.confirm()`, `ctx.ui.select()`,
+ * `ctx.ui.input()`, `ctx.ui.editor()` or `ctx.ui.custom()`.
+ *
+ * The card owns only browser-local form state (the half-typed input, the
+ * in-flight close flag, the display-only countdown); the daemon remains the
+ * source of truth for whether the dialog is open. Closed mode renders the
+ * settled outcome — a browser-local record that stays until dismissed — for a
+ * browser that saw the dialog open.
+ */
 @customElement("extension-dialog-card")
 export class ExtensionDialogCard extends LitElement {
   @property({ attribute: false }) dialog?: PendingExtensionDialog;
@@ -187,6 +187,8 @@ export class ExtensionDialogCard extends LitElement {
   @state() private countdownNow = 0;
   /** The option the reader chose on a terminal menu, for the dialog it belongs to; until then the component's own cursor. */
   @state() private screenChoice: { dialogId: string; line: number } | undefined;
+  /** A Shift the keyboard really pressed; see promptEnterBehavior.ts (the composer tracks the same). */
+  private explicitShiftKeyActive = false;
   private dialogIdentity: string | undefined;
   private countdownTimer: number | undefined;
 
@@ -437,6 +439,8 @@ export class ExtensionDialogCard extends LitElement {
           ?disabled=${this.closing}
           @input=${(event: Event) => { this.changeInput(event); }}
           @keydown=${(event: KeyboardEvent) => { this.editorKeydown(event, dialog); }}
+          @keyup=${(event: KeyboardEvent) => { if (event.key === "Shift") this.explicitShiftKeyActive = false; }}
+          @blur=${() => { this.explicitShiftKeyActive = false; }}
         ></textarea>
         <footer class="dialog-footer">
           <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Cancel</button>
@@ -447,8 +451,17 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   private editorKeydown(event: KeyboardEvent, dialog: PendingExtensionDialog): void {
-    if (event.key !== "Enter" || keyBelongsToInputMethod(event)) return;
-    const shiftKey = shouldUsePromptEnterShiftShortcut(event.shiftKey, false);
+    if (event.key === "Shift") {
+      this.explicitShiftKeyActive = true;
+      return;
+    }
+    if (event.key !== "Enter") {
+      this.explicitShiftKeyActive = false;
+      return;
+    }
+    if (keyBelongsToInputMethod(event)) return;
+    const shiftKey = shouldUsePromptEnterShiftShortcut(event.shiftKey, this.explicitShiftKeyActive);
+    this.explicitShiftKeyActive = false;
     if (!shouldSendPromptOnEnterShortcut(shiftKey)) return;
     event.preventDefault();
     this.answerDialog(dialog, this.inputValue);
