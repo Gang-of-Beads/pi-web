@@ -1,16 +1,12 @@
 import type { TemplateResult } from "lit";
 import { answeredVersionsFrom, piWebOfferFacts, piWebUpdateOffer } from "./piWebUpdateOffer.js";
 import { showPiWebUpdateNotice, showPiWebUpdateOffer } from "./updateOfferDialog.js";
-import type { HtmlTemplateTag, PiWebComponentStatus, PiWebPlugin, PluginActivationContext, PiWebStatusResponse, PluginRuntimeState, WorkspacePanelTerminal } from "@gang-of-beads/pi-web/plugin-api";
+import type { GlobalPanelTerminal, HtmlTemplateTag, PiWebComponentStatus, PiWebPlugin, PluginActivationContext, PiWebStatusResponse, PluginRuntimeState } from "@gang-of-beads/pi-web/plugin-api";
 import { additionalCommands, fallbackDockerStatus, formatVersion, installationLabel, messageCount, recommendedCommand, shouldShowUpdatesPanel, statusFor, type UpdatesRuntimeHint } from "./updatesLogic.js";
 
-function runCommandInTerminal(terminal: WorkspacePanelTerminal, label: string, command: string): void {
-  void terminal.runCommand({
-    title: label,
-    command,
-    open: true,
-    metadata: { "pi.plugin": "updates" },
-  }).catch((error: unknown) => {
+/** Run an update command in a new shell in the machine's home folder, shown on the global Terminal page. */
+function runCommandInTerminal(terminal: GlobalPanelTerminal, label: string, command: string): void {
+  void terminal.runInNewTerminal({ title: label, command }).catch((error: unknown) => {
     console.error(`Updates plugin failed to run "${label}"`, error);
   });
 }
@@ -31,7 +27,7 @@ function renderComponent(html: HtmlTemplateTag, component: PiWebComponentStatus)
   `;
 }
 
-function renderCommandActions(html: HtmlTemplateTag, terminal: WorkspacePanelTerminal | undefined, label: string, command: string): TemplateResult {
+function renderCommandActions(html: HtmlTemplateTag, terminal: GlobalPanelTerminal | undefined, label: string, command: string): TemplateResult {
   return html`
     <span class="updates-command-actions">
       <button @click=${() => { void navigator.clipboard.writeText(command); }}>Copy</button>
@@ -40,7 +36,7 @@ function renderCommandActions(html: HtmlTemplateTag, terminal: WorkspacePanelTer
   `;
 }
 
-function renderCommand(html: HtmlTemplateTag, terminal: WorkspacePanelTerminal | undefined, label: string, command: string): TemplateResult {
+function renderCommand(html: HtmlTemplateTag, terminal: GlobalPanelTerminal | undefined, label: string, command: string): TemplateResult {
   return html`
     <div class="updates-command">
       <span>${label}</span>
@@ -61,7 +57,7 @@ function updatesRuntimeHintFromModuleUrl(moduleUrl: string): UpdatesRuntimeHint 
 
 const runtimeHint = updatesRuntimeHintFromModuleUrl(import.meta.url);
 
-function renderCommands(html: HtmlTemplateTag, terminal: WorkspacePanelTerminal | undefined, status: PiWebStatusResponse): TemplateResult | undefined {
+function renderCommands(html: HtmlTemplateTag, terminal: GlobalPanelTerminal | undefined, status: PiWebStatusResponse): TemplateResult | undefined {
   const recommended = recommendedCommand(status);
   const additional = additionalCommands(status, recommended);
   if (recommended === undefined && additional.length === 0) return undefined;
@@ -83,7 +79,7 @@ function renderCommands(html: HtmlTemplateTag, terminal: WorkspacePanelTerminal 
   `;
 }
 
-function renderUpdatesPanel(html: HtmlTemplateTag, terminal: WorkspacePanelTerminal | undefined, state: PluginRuntimeState | undefined): TemplateResult {
+function renderUpdatesPanel(html: HtmlTemplateTag, terminal: GlobalPanelTerminal | undefined, state: PluginRuntimeState | undefined): TemplateResult {
   const status = statusFor(state) ?? fallbackDockerStatus(runtimeHint);
   if (status === undefined) {
     return html`<section class="viewer"><p class="muted">Checking PI WEB update status…</p></section>`;
@@ -209,10 +205,11 @@ const plugin: PiWebPlugin = {
           run: (context) => context.checkForPiWebUpdates?.(),
         },
       ],
-      workspacePanels: [
+      globalPanels: [
         {
-          id: "workspace.updates",
+          id: "global.updates",
           title: "Updates",
+          routeAliases: ["updates:workspace.updates"],
           icon: svg`
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 6v5h-5"></path>

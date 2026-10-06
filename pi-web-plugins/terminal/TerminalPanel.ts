@@ -5,7 +5,7 @@ import { styleMap, type StyleInfo } from "lit/directives/style-map.js";
 import { Terminal, type ITerminalOptions, type ITheme } from "@xterm/xterm";
 import { FitAddon, type ITerminalDimensions } from "@xterm/addon-fit";
 import { xtermStyles } from "./xtermStyles.js";
-import type { TerminalCommandRun, TerminalInfo, Workspace, WorkspaceTerminalSessions } from "@gang-of-beads/pi-web/plugin-api";
+import type { MachineTerminalSessions, TerminalCommandRun, TerminalInfo, Workspace, WorkspaceTerminalSessions } from "@gang-of-beads/pi-web/plugin-api";
 import { copyTerminalText } from "./hostUi.js";
 import { selectFallbackTerminal, selectPreferredTerminal } from "./terminalChoice.js";
 import { createTerminalCopySnapshot, DEFAULT_TERMINAL_ANSI_THEME, type TerminalCopyRunStyle, type TerminalCopySnapshot } from "./terminalCopySnapshot.js";
@@ -31,12 +31,17 @@ const COMMAND_RUN_POLL_INTERVAL_MS = 1000;
 
 export class TerminalPanel extends LitElement {
   @property({ attribute: false }) workspace: Workspace | undefined;
+  /**
+   * Where the terminals live when they are not a workspace's: the global Terminal page passes the
+   * machine's home folder scope (docs/design/go-to-scopes.md). A workspace's path otherwise.
+   */
+  @property() scopeFolder: string | undefined;
   @property() machineId = "local";
   @property({ attribute: false }) selectedTerminalId: string | undefined;
   @property({ type: Boolean }) autoStart = false;
   @property({ type: Boolean }) expanded = false;
   /** The pty capability this panel works through; the host binds its scope. */
-  @property({ attribute: false }) sessions?: WorkspaceTerminalSessions;
+  @property({ attribute: false }) sessions?: WorkspaceTerminalSessions | MachineTerminalSessions;
   @property({ attribute: false }) onSelectTerminal: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => void = () => undefined;
   @query(".terminal-host") private terminalHost?: HTMLDivElement | null;
   /** Type size the terminal renders at; two fingers change it. See `pinchZoom`. */
@@ -122,7 +127,8 @@ export class TerminalPanel extends LitElement {
   }
 
   override willUpdate(changed: PropertyValues<this>): void {
-    const workspaceScope = this.workspace === undefined ? undefined : JSON.stringify([this.machineId, this.workspace.path]);
+    const folder = this.folder();
+    const workspaceScope = folder === undefined ? undefined : JSON.stringify([this.machineId, folder]);
     if (workspaceScope !== this.observedWorkspaceScope) {
       this.observedWorkspaceScope = workspaceScope;
       this.loadedCwd = undefined;
@@ -157,7 +163,7 @@ export class TerminalPanel extends LitElement {
   }
 
   private loadVisibleWorkspaceTerminals(): void {
-    const cwd = this.workspace?.path;
+    const cwd = this.folder();
     if (!this.visible || cwd === undefined || cwd === this.loadedCwd) return;
     this.loadedCwd = cwd;
     void this.loadTerminals();
@@ -167,12 +173,11 @@ export class TerminalPanel extends LitElement {
     this.loading = true;
     this.error = undefined;
     try {
-      const workspace = this.workspace;
-      if (workspace === undefined) return;
+      if (this.folder() === undefined) return;
       const shouldAutoStart = this.consumeAutoStart();
       const [terminals, commandRuns] = await Promise.all([
         this.terminalSessions().list(),
-        this.terminalSessions().listCommandRuns(),
+        this.listCommandRuns(),
       ]);
       this.terminals = terminals;
       this.commandRuns = commandRuns;
@@ -192,14 +197,14 @@ export class TerminalPanel extends LitElement {
   }
 
   private consumeAutoStart(): boolean {
-    const cwd = this.workspace?.path;
+    const cwd = this.folder();
     if (!this.autoStart || cwd === undefined || this.autoStartConsumedCwd === cwd) return false;
     this.autoStartConsumedCwd = cwd;
     return true;
   }
 
   private shouldReloadForRequestedTerminal(): boolean {
-    const cwd = this.workspace?.path;
+    const cwd = this.folder();
     return this.visible
       && cwd !== undefined
       && cwd === this.loadedCwd
@@ -224,7 +229,7 @@ export class TerminalPanel extends LitElement {
   }
 
   private async startTerminal(): Promise<void> {
-    if (this.workspace === undefined) return;
+    if (this.folder() === undefined) return;
     this.error = undefined;
     try {
       const size = this.measureTerminalSize() ?? DEFAULT_TERMINAL_SIZE;
@@ -239,7 +244,7 @@ export class TerminalPanel extends LitElement {
   private async closeTerminal(id: string, event: Event): Promise<void> {
     event.stopPropagation();
     try {
-      if (this.workspace === undefined) return;
+      if (this.folder() === undefined) return;
       await this.terminalSessions().close(id);
       const next = this.terminals.filter((terminal) => terminal.id !== id);
       this.terminals = next;
@@ -269,10 +274,9 @@ export class TerminalPanel extends LitElement {
   }
 
   private async loadCommandRuns(): Promise<void> {
-    const workspace = this.workspace;
-    if (workspace === undefined) return;
+    if (this.folder() === undefined) return;
     try {
-      const commandRuns = await this.terminalSessions().listCommandRuns();
+      const commandRuns = await this.listCommandRuns();
       this.commandRuns = commandRuns;
       this.cancellingRunIds = this.cancellingRunIds.filter((runId) => commandRuns.some((run) => run.id === runId && isCommandRunPending(run)));
       this.updateCommandRunPolling(this.hasPendingCommandRuns(commandRuns));
@@ -302,7 +306,8 @@ export class TerminalPanel extends LitElement {
     this.error = undefined;
     this.cancellingRunIds = [...this.cancellingRunIds, run.id];
     try {
-      await this.terminalSessions().cancelCommandRun(run.id);
+      const sessions = this.terminalSessions();
+      if ("cancelCommandRun" in sessions) await sessions.cancelCommandRun(run.id);
       await this.loadCommandRuns();
     } catch (error) {
       this.error = describeTerminalError(error);
@@ -312,7 +317,7 @@ export class TerminalPanel extends LitElement {
   }
 
   private async continueTerminal(id: string): Promise<void> {
-    if (this.workspace === undefined || this.continuingTerminalIds.includes(id)) return;
+    if (this.folder() === undefined || this.continuingTerminalIds.includes(id)) return;
     this.error = undefined;
     this.continuingTerminalIds = [...this.continuingTerminalIds, id];
     try {
@@ -362,9 +367,8 @@ export class TerminalPanel extends LitElement {
   }
 
   private ensureTerminalView(): void {
-    const workspace = this.workspace;
     const terminalHost = this.terminalHostElement();
-    if (!this.visible || this.terminal !== undefined || this.selectedId === undefined || terminalHost === undefined || workspace === undefined) return;
+    if (!this.visible || this.terminal !== undefined || this.selectedId === undefined || terminalHost === undefined || this.folder() === undefined) return;
     const terminal = new Terminal({ ...terminalOptions(this), fontSize: this.fontSize });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
@@ -387,12 +391,23 @@ export class TerminalPanel extends LitElement {
     terminal.focus();
   }
 
+  /** Where these terminals live: the workspace's folder, or the scope the global page passed. */
+  private folder(): string | undefined {
+    return this.scopeFolder ?? this.workspace?.path;
+  }
+
+  /** Command runs are a workspace's; the machine's terminals have none. */
+  private listCommandRuns(): Promise<TerminalCommandRun[]> {
+    const sessions = this.terminalSessions();
+    return "listCommandRuns" in sessions ? sessions.listCommandRuns() : Promise.resolve([]);
+  }
+
   /**
    * The capability the host bound for this workspace, or one bound here from
    * the same properties. A panel never reaches past it to a route.
    */
-  private terminalSessions(): WorkspaceTerminalSessions {
-    if (this.workspace === undefined) throw new Error("This panel has no workspace to work in");
+  private terminalSessions(): WorkspaceTerminalSessions | MachineTerminalSessions {
+    if (this.folder() === undefined) throw new Error("This panel has no folder to work in");
     if (this.sessions === undefined) throw new Error("This panel was given no terminal capability");
     return this.sessions;
   }
@@ -753,7 +768,7 @@ export class TerminalPanel extends LitElement {
               <small @click=${(event: Event) => { void this.closeTerminal(terminal.id, event); }}>${renderHostCloseIcon()}</small>
             </button>
           `)}
-          <button class="new" ?disabled=${this.workspace === undefined} @click=${() => { void this.startTerminal(); }}>+ Shell</button>
+          <button class="new" ?disabled=${this.folder() === undefined} @click=${() => { void this.startTerminal(); }}>+ Shell</button>
         </div>
         ${this.error === undefined ? null : html`<p class="error">${this.error}</p>`}
         ${this.renderCommandRunNotice()}
