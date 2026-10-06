@@ -14,7 +14,7 @@ the width: tiles of at least 140 px at 430 px wide or narrower, at least 240 px 
 | --- | --- | --- | --- |
 | Phone, 393×850 | 393 px | 2 | 186 px |
 | Tablet or wide phone, 600 px (phone layout) | 600 px | 2 | 289 px |
-| Phone on its side, 850×393 (desktop layout: sidebar) | 340 px | 1 | 324 px |
+| Window 850×393 with a mouse (desktop layout: sidebar; a touch screen keeps the phone layout) | 340 px | 1 | 324 px |
 | Desktop sidebar, 1440×900 | 340 px | 1 | 324 px |
 | Desktop Navigate overlay (keyboard shortcut), 1440 px | 1440 px | 5 | 280 px |
 
@@ -44,8 +44,8 @@ It cannot recognise one. What it can keep:
 - Config key `listTiles: { phone?: 1 | 2, desktop?: 1 | 2 }` in the gateway's global config
   (docs/config.md, Lists). A layout without a value keeps the width rule, so nothing changes until
   someone chooses.
-- Settings → Appearance → Lists: one radio pair per layout. Until a choice, each marks what that
-  layout shows today (two on a phone, one in the desktop sidebar). A save sends the whole gateway
+- Settings → Appearance → Lists: one radio pair per layout. Until a choice nothing is marked: the
+  width rule is not one of the two options (review triage, list tiles). A save sends the whole gateway
   config with the one key changed, since the write replaces every key it knows.
 - `listTiles.ts` names the count from (config, layout); the Navigate page draws `tiles-1` or
   `tiles-2` over the width rule, everywhere it is drawn (phone pages and overlay, desktop sidebar

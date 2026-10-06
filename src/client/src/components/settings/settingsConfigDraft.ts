@@ -83,16 +83,17 @@ export function machineAccessConfigPatchFromDraft(draft: MachineAccessConfigDraf
   };
 }
 
+/**
+ * Everything the file holds except what the draft replaces. The save deletes every key it knows
+ * that the body does not carry, so an allowlist here lost each key added after it (`logging`,
+ * `listTiles`: review triage, list tiles).
+ */
 function preservedGatewayConfigRemainder(baseConfig: PiWebConfigValues): PiWebConfigValues {
-  return {
-    ...(baseConfig.shortcuts === undefined ? {} : { shortcuts: baseConfig.shortcuts }),
-    ...(baseConfig.plugins === undefined ? {} : { plugins: baseConfig.plugins }),
-    ...(baseConfig.pathAccess === undefined ? {} : { pathAccess: baseConfig.pathAccess }),
-    ...(baseConfig.uploads === undefined ? {} : { uploads: baseConfig.uploads }),
-    ...(baseConfig.maxUploadBytes === undefined ? {} : { maxUploadBytes: baseConfig.maxUploadBytes }),
-    ...(baseConfig.askUser === undefined ? {} : { askUser: baseConfig.askUser }),
-    ...(baseConfig.agent === undefined ? {} : { agent: baseConfig.agent }),
-  };
+  const remainder: PiWebConfigValues = { ...baseConfig };
+  delete remainder.host;
+  delete remainder.port;
+  delete remainder.allowedHosts;
+  return remainder;
 }
 
 function parseAllowedHostsText(value: string): string[] {

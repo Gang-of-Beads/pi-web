@@ -272,7 +272,7 @@ Both processes check the setting and the file sizes once a minute. Retention app
 }
 ```
 
-A layout without a value fits the width, as before: two per row on a phone, one in the desktop sidebar, and as many as fit on the desktop's full-width Navigate page. The choice lives in the config rather than the browser, so clearing a browser's data keeps it; a phone and a desktop still differ because the choice is kept per layout, not per device. The phone layout is PI WEB's narrow layout, so a phone turned on its side uses the desktop layout.
+A layout without a value fits the width, as before: two per row on a phone, one in the desktop sidebar, and as many as fit on the desktop's full-width Navigate page. The choice lives in the config rather than the browser, so clearing a browser's data keeps it; a phone and a desktop still differ because the choice is kept per layout, not per device. PI WEB uses its phone layout on a touch screen or in a window under 760 px wide, so a phone keeps the phone layout on its side.
 
 ### Model for new sessions
 

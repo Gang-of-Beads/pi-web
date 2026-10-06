@@ -67,6 +67,8 @@ export class SettingsDialog extends LitElement {
   @property({ type: Boolean }) reloadOnClose = false;
   @property({ attribute: false }) onRefreshMachineRuntime?: (machineId: string) => void | Promise<void>;
   @state() private configResponse: PiWebConfigResponse | undefined;
+  @state() private savingListTiles = false;
+  @state() private listTilesError = "";
   @state() private accessConfigResponse: PiWebConfigResponse | undefined;
   @state() private sessiondConfigResponse: PiWebConfigResponse | undefined;
   @state() private pluginsResponse: PiWebPluginsResponse | undefined;
@@ -303,8 +305,8 @@ export class SettingsDialog extends LitElement {
           .onToggleFollowSystem=${(follow: boolean) => this.onToggleFollowSystem?.(follow)}
           .listTiles=${this.configResponse?.config.listTiles}
           ?listTilesReady=${this.configResponse !== undefined}
-          ?savingListTiles=${this.saving}
-          .listTilesError=${this.error}
+          ?savingListTiles=${this.savingListTiles}
+          .listTilesError=${this.listTilesError}
           .onSelectListTiles=${(layout: ListLayout, tiles: ListTilesPerRow) => { void this.saveListTiles(layout, tiles); }}
         ></settings-appearance-panel>
       `;
@@ -578,11 +580,25 @@ export class SettingsDialog extends LitElement {
     }
   }
 
-  /** One layout's tiles per row, saved with the rest of the gateway config unchanged (the write replaces every known key). */
+  /**
+   * One layout's tiles per row, saved with the rest of the gateway config unchanged (the write
+   * replaces every known key). Its saving flag and error are the Lists card's own: the dialog-wide
+   * error also carries load failures and other cards' saves.
+   */
   private async saveListTiles(layout: ListLayout, tiles: ListTilesPerRow): Promise<void> {
     const current = this.configResponse;
-    if (current === undefined) return;
-    await this.saveConfig({ ...current.config, listTiles: withListTiles(current.config.listTiles, layout, tiles) });
+    if (current === undefined || this.savingListTiles) return;
+    this.savingListTiles = true;
+    this.listTilesError = "";
+    try {
+      const response = await configApi.saveConfig({ ...current.config, listTiles: withListTiles(current.config.listTiles, layout, tiles) });
+      this.configResponse = response;
+      this.onConfigSaved?.(response.effectiveConfig);
+    } catch (error) {
+      this.listTilesError = `The list layout was not saved: ${describeError(error)}`;
+    } finally {
+      this.savingListTiles = false;
+    }
   }
 
   private async saveConfig(config: PiWebConfigValues): Promise<void> {

@@ -132,6 +132,7 @@ function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "curr
   const logging = value["logging"];
   const listTiles = value["listTiles"];
   const askUser = value["askUser"];
+  const environmentFacts = value["environmentFacts"];
   const agent = value["agent"];
   if (host !== undefined) {
     if (typeof host !== "string") throw new Error("PI WEB config host must be a string");
@@ -152,6 +153,10 @@ function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "curr
   if (askUser !== undefined) {
     if (typeof askUser !== "boolean") throw new Error("PI WEB config askUser must be a boolean");
     config.askUser = askUser;
+  }
+  if (environmentFacts !== undefined) {
+    if (typeof environmentFacts !== "boolean") throw new Error("PI WEB config environmentFacts must be a boolean");
+    config.environmentFacts = environmentFacts;
   }
   if (agent !== undefined) config.agent = parseAgentRequest(agent, agentPathHost);
   return config;

@@ -1,12 +1,13 @@
 import { LitElement, css, html, nothing } from "lit";
 import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property } from "lit/decorators.js";
+import { live } from "lit/directives/live.js";
 import type { QualifiedContributionId, QualifiedThemeContribution, ThemeTokens } from "../../plugins/types";
 import { interactiveSurfaceStyles } from "../shared";
 import { CORE_PRO_LIGHT_THEME_ID, CORE_PRO_THEME_ID } from "../../theme";
 import { themeCardSuffix } from "../../themeCardLabel";
 import type { ListTilesPerRow, PiWebListTilesConfig } from "../../../../shared/apiTypes";
-import { shownListTiles, type ListLayout } from "../../listTiles";
+import { chosenListTiles, type ListLayout } from "../../listTiles";
 
 const LIST_LAYOUTS: readonly { readonly layout: ListLayout; readonly label: string }[] = [
   { layout: "phone", label: "Phone layout" },
@@ -85,7 +86,7 @@ export class SettingsAppearancePanel extends LitElement {
     return html`
       <section class="lists" aria-labelledby="list-tiles-title">
         <h3 id="list-tiles-title">Lists</h3>
-        <p class="muted">Tiles per row in Sessions, Machines and Projects. Until you choose, lists fit the width: two per row on a phone, one in the desktop sidebar, as many as fit on the desktop's full-width page.</p>
+        <p class="muted">Tiles per row in the Navigate lists (Sessions, Machines, Projects). Until you choose, they fit the width: two per row on a phone, one in the desktop sidebar, as many as fit on the desktop's full-width page.</p>
         ${LIST_LAYOUTS.map(({ layout, label }) => html`
           <div class="list-tiles" role="radiogroup" aria-label=${`${label}: tiles per row`}>
             <span class="list-tiles-label">${label}</span>
@@ -94,7 +95,7 @@ export class SettingsAppearancePanel extends LitElement {
                 <input
                   type="radio"
                   name=${`list-tiles-${layout}`}
-                  .checked=${this.listTilesReady && shownListTiles(this.listTiles, layout) === option.tiles}
+                  .checked=${live(chosenListTiles(this.listTiles, layout) === option.tiles)}
                   ?disabled=${!this.listTilesReady || this.savingListTiles}
                   @change=${() => { this.onSelectListTiles?.(layout, option.tiles); }}
                 >

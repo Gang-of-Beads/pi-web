@@ -100,6 +100,7 @@
             <a href="#path-access">External path access</a>
             <a href="#manual-uploads">Manual uploads</a>
             <a href="#logs">Logs</a>
+            <a href="#lists">Lists</a>
             <a href="#agent-runtime">Agent state directory</a>
             <a href="#pi-extension-provider-baseline">Pi extension providers</a>
             <a href="#catalog-refresh">Model catalog refresh</a>
@@ -190,6 +191,7 @@
                 <li><code>serverPlugins.safeStart</code>: offline recovery state applied before server-plugin discovery/import on the next sessiond start; manage it with <code>pi-web plugins safe-start ...</code>.</li>
                 <li>Pi package install/remove/update: not a PI WEB config key; after a mutation, type <code>/reload</code> in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. For a PI WEB package with <code>serverModule</code>, manually restart <code>pi-web-sessiond.service</code>, then reload the browser. If a global Pi extension changes model-provider registration/settings, the same manual restart is required; <code>/reload</code> cannot change either startup snapshot. A known Pi model provider refreshing only its own model list is applied without a restart. See <a href="#pi-extension-provider-baseline">Pi extension provider baseline</a>.</li>
                 <li><code>shortcuts</code>: saved settings apply in the browser after config refresh/save.</li>
+                <li><code>listTiles</code>: a choice saved in <strong>Settings → Appearance → Lists</strong> applies at once; a change made in the config file by hand applies after a browser reload.</li>
               </ul>
             </section>
 
@@ -403,6 +405,14 @@ worktree_path="$1"
                       <td>Global (web/API and session daemon)</td>
                       <td>Not supported locally</td>
                       <td>Within a minute, no restart</td>
+                    </tr>
+                    <tr>
+                      <td>Tiles per row in the Navigate lists</td>
+                      <td><code>listTiles.phone</code>, <code>listTiles.desktop</code></td>
+                      <td>—</td>
+                      <td>Global (the gateway's browser UI)</td>
+                      <td>Not supported locally</td>
+                      <td>At once from Settings; browser reload after a hand edit</td>
                     </tr>
                     <tr>
                       <td>Upload/body limit</td>
@@ -689,7 +699,8 @@ worktree_path="$1"
                 (<code>listTiles.phone</code>) and one for its desktop layout (<code>listTiles.desktop</code>). Edit it in
                 <strong>Settings → Appearance → Lists</strong>, where a choice applies at once, or in the gateway's global
                 config, where it applies after a browser reload. A layout without a value fits the width, as before. The
-                choice lives in the config, so clearing a browser's data keeps it; it is kept per layout, not per device.
+                choice lives in the config, so clearing a browser's data keeps it; it is kept per layout, not per device. PI WEB
+                uses its phone layout on a touch screen or in a window under 760 px wide.
               </p>
             </section>
 
