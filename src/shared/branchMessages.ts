@@ -28,6 +28,24 @@ import type { TranscriptHead } from "./apiTypes.js";
  */
 export const TURN_STOPPED_CUSTOM_TYPE = "pi-web.turn.stopped";
 
+/**
+ * Custom entry the daemon appends when it cannot show an extension's dialog (B10): the only case
+ * left is a dialog kind this PI WEB does not know, which a newer pi could add. Owner, 2026-10-07:
+ * the row saying so stays in PI WEB's record, after a reload and on every device. A custom entry
+ * is what pi neither renders in its terminal nor sends to the model, which the owner chose over a
+ * custom message the model would read.
+ */
+export const REFUSED_DIALOG_CUSTOM_TYPE = "pi-web.dialog.refused";
+
+/** The row a refused dialog leaves, live and from history alike; `at` is when the daemon refused it. */
+export function refusedDialogMessage(reason: string, at: string | undefined): Record<string, unknown> {
+  return { role: "system", content: `An extension asked something PI WEB could not show: ${reason}.`, ...(at === undefined ? {} : { timestamp: at }) };
+}
+
+function isRefusedDialogEntry(entry: Record<string, unknown>): boolean {
+  return entry["type"] === "custom" && entry["customType"] === REFUSED_DIALOG_CUSTOM_TYPE;
+}
+
 /** A reply that ended without finishing: pi's own abort, or an error. */
 export function isCutAssistant(message: unknown): boolean {
   return isRecord(message) && message["role"] === "assistant" && (message["stopReason"] === "aborted" || message["stopReason"] === "error");
@@ -110,7 +128,7 @@ function isErroredAssistant(message: unknown): boolean {
 /** Whether the transcript renders this entry, and so whether it is counted. */
 export function isReadableBranchEntry(entry: unknown): boolean {
   if (!isRecord(entry)) return false;
-  if (entry["type"] === "message") return true;
+  if (entry["type"] === "message" || isRefusedDialogEntry(entry)) return true;
   return entry["type"] === "custom_message" && entry["display"] === true;
 }
 
@@ -162,6 +180,7 @@ export function branchTranscript(entries: Iterable<unknown>): TranscriptRow[] {
       if (level !== undefined) thinkingLevel = level;
     }
     else if (entry["type"] === "custom_message" && entry["display"] === true) push(entry, { role: "custom", content: entry["content"], customType: entry["customType"], details: entry["details"] });
+    else if (isRefusedDialogEntry(entry)) push(entry, refusedDialogMessage(getString(entry["data"], "reason") ?? "", getString(entry["data"], "at") ?? getString(entry, "timestamp")));
     else if (entry["type"] === "compaction") push(entry, { role: "system", source: "compaction", content: `Compacted history:\n\n${stringValue(entry["summary"])}` });
     else if (entry["type"] === "branch_summary") push(entry, { role: "system", source: "branch_summary", content: `Branch summary:\n\n${stringValue(entry["summary"])}` });
   }

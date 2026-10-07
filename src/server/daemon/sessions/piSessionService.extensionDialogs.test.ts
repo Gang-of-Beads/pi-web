@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { PendingExtensionDialog, SessionUiEvent } from "../../../shared/apiTypes.js";
+import { branchTranscript, isReadableBranchEntry } from "../../../shared/branchMessages.js";
 import { PiSessionService, type PiAgentSession } from "./piSessionService.js";
 import { PendingExtensionDialogStore, PendingExtensionDialogValidationError } from "./pendingExtensionDialogStore.js";
-import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
+import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, fakeSessionManager, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 const ACTIVE_SESSION_ID = "session-1";
@@ -166,17 +167,30 @@ describe("PiSessionService extension dialog UI context", () => {
    * D2, B10: a refusal is a state the reader sees, not only an error inside the extension. Content
    * is never refused any more; a dialog kind PI WEB does not know (a newer pi) still is.
    */
-  it("tells the reader, in the conversation and the notifications, why a dialog could not open", async () => {
+  it("tells the reader, in the conversation's record and the notifications, why a dialog could not open", async () => {
     const { service, store, events, fake } = dialogService();
+    const appended: { customType: string; data: unknown }[] = [];
+    fake.session.sessionManager = fakeSessionManager("/workspace", {
+      appendCustomEntry: (customType: string, data?: unknown) => { appended.push({ customType, data }); return "entry-1"; },
+    });
     const ui = await boundUiContext(service, fake);
     const reason = "An extension asked something PI WEB could not show: Unknown dialog kind widget.";
     vi.spyOn(store, "open").mockImplementation(() => { throw new PendingExtensionDialogValidationError("Unknown dialog kind widget"); });
 
     await expect(ui.confirm("Proceed?", "Really?")).rejects.toThrow(PendingExtensionDialogValidationError);
 
-    const said = events.sessionEvents.flatMap(({ event }) => (event.type === "command.output" ? [{ level: event.level, message: event.message }] : []));
+    const field = (value: unknown, key: string): unknown => Reflect.get(Object(value), key);
+    const said = events.sessionEvents.flatMap(({ event }) => (event.type === "message.end" ? [field(event.message, "content")] : []));
+    const kept = appended.map((entry) => ({ customType: entry.customType, reason: field(entry.data, "reason") }));
+    const stored = appended.map((entry) => ({ type: "custom", id: "entry-1", customType: entry.customType, data: entry.data }));
+    const reloaded = { rows: branchTranscript(stored).map((row) => row.message), readable: stored.map(isReadableBranchEntry) };
     const filed = service.notificationInbox(sessionRef(ACTIVE_SESSION_ID)).notifications.map((notification) => ({ message: notification.message, severity: notification.severity }));
-    expect({ said, filed }).toEqual({ said: [{ level: "error", message: reason }], filed: [{ message: reason, severity: "error" }] });
+    expect({ said, kept, reloaded, filed }).toEqual({
+      said: [reason],
+      kept: [{ customType: "pi-web.dialog.refused", reason: "Unknown dialog kind widget" }],
+      reloaded: { rows: events.sessionEvents.flatMap(({ event }) => (event.type === "message.end" ? [event.message] : [])), readable: [true] },
+      filed: [{ message: reason, severity: "error" }],
+    });
     await service.dispose();
   });
 

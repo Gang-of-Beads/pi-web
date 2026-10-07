@@ -39,7 +39,7 @@ import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo, TranscriptHead 
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
-import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, isCutAssistant, stoppedTurnMessage, transcriptHead, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
+import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, isCutAssistant, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, stoppedTurnMessage, transcriptHead, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
 import { runTranscriptMessages } from "../../../shared/subagentRunTranscript.js";
 import { readableMessageCount } from "./readableMessageCount.js";
 import { pluginSurfacePresence } from "./pluginSurfaces.js";
@@ -2393,8 +2393,8 @@ export class PiSessionService implements SessionRouteService {
    * Open a dialog's record, or tell the reader why it could not open. Content is never refused
    * (owner, 2026-10-04: show everything, as pi's terminal does); what remains is a dialog kind this
    * daemon does not know, which a newer pi could introduce. Then the extension's call rejects, and
-   * the reader is told the way `notify` tells them: a row in the live transcript and a filed
-   * notification (state-diagram D2, B10).
+   * the reader is told in a transcript row that stays in the session's record (a custom entry,
+   * read back by `branchMessages`; owner, 2026-10-07) and a filed notification (state-diagram D2, B10).
    */
   private openDialogRecord(session: PiAgentSession, input: PendingExtensionDialogOpenInput): PendingExtensionDialog {
     try {
@@ -2406,9 +2406,15 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private reportRefusedDialog(session: PiAgentSession, reason: string): void {
-    const message = `An extension asked something PI WEB could not show: ${reason}.`;
-    this.events.publish(session.sessionId, { type: "command.output", level: "error", message });
-    this.fileSessionNotification(session, message, "error");
+    const at = new Date().toISOString();
+    try {
+      session.sessionManager.appendCustomEntry?.(REFUSED_DIALOG_CUSTOM_TYPE, { reason, at });
+    } catch (error) {
+      console.error("[dialog] could not record a refused dialog", String(error));
+    }
+    const message = refusedDialogMessage(reason, at);
+    this.events.publish(session.sessionId, { type: "message.end", message });
+    this.fileSessionNotification(session, String(message["content"]), "error");
   }
 
   /** File a notification in the session's current generation, if it has one, and tell the browsers. */
