@@ -995,9 +995,15 @@ export class ChatView extends LitElement {
     this.saveScrollPosition(machineSessionKey(machineId, previousSessionId));
   }
 
+  /**
+   * A session opens with its own pin: following when it was left at the bottom (or nothing was stored),
+   * reading when it was left at a spot. The pin carried over from the previous session (or the page's
+   * first value) decided whether a spot above the loaded window was fetched or dropped for the bottom.
+   */
   private prepareSessionUiState(): void {
     this.lastScrollDirection = "none";
     this.readerInputUntil = 0;
+    this.pinnedToBottom = this.openViewportEvent() !== "anchor";
     this.lastScrollTop = this.chat?.scrollTop ?? 0;
     this.turnStartedAtMs = undefined;
     this.disclosures.syncSession(this.sessionId);
@@ -1091,7 +1097,7 @@ export class ChatView extends LitElement {
       this.openPages();
       this.restoreScrollPosition();
     } else if (!changed.has("sessionId") && (changed.has("messages") || this.queueGrew(changed.get("status")) || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) && this.pinnedToBottom) this.scrollToBottom();
-    if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
+    if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("transcriptLoading") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestPages(false);
     if (changed.has("messages") || changed.has("messageEnd") || changed.has("hasNewer")) this.newerRequested = false;
     this.publishScrollbarWidth();
@@ -2723,9 +2729,15 @@ export class ChatView extends LitElement {
     });
   }
 
+  /**
+   * A stored spot that was not restored while the transcript is still loading stays pending, like a
+   * skipped one: the restore ran on an empty window, found nothing above, and would have settled at the
+   * bottom. The transcriptLoading change in updated() continues it once the read lands.
+   */
   private handleScrollRestoreResult(sessionId: string, result: ChatScrollRestoreResult): void {
     this.syncScrollMetrics();
-    const deferred = result.status === "skipped" && isRestoring(this.viewportState) ? this.scrollController.readPosition(this.scrollScopeKey) : undefined;
+    const unresolved = result.status === "skipped" || (this.transcriptLoading && result.status !== "restored");
+    const deferred = unresolved && isRestoring(this.viewportState) ? this.scrollController.readPosition(this.scrollScopeKey) : undefined;
     const deferredAnchor = deferred?.mode === "anchor" ? deferred : undefined;
     if (deferredAnchor !== undefined) {
       this.pendingScrollRestoreSessionId = sessionId;
