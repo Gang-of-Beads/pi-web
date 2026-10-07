@@ -51,10 +51,15 @@ export type ViewportState =
   | { kind: "holding" }
   | { kind: "awaitingPage"; want: PageWant; resume: ViewportState };
 
+/**
+ * What the executor does. A page that lands under the reader and a spot being restored move
+ * nothing here: the reading anchor in ChatView's update() and the restore frame do that work, so
+ * those decisions are `idle` with their state (review ca45d6ed row 17 folded a no-op
+ * `restore-anchor` away).
+ */
 export type ViewportAction =
   | "idle"
   | "snap-bottom"
-  | "restore-anchor"
   | "load-older"
   | "load-newest-page"
   | "load-newer-page"
@@ -95,10 +100,13 @@ const load = (input: ViewportInput, want: PageWant, resume: ViewportState): View
 type Handler = (input: ViewportInput, event: ViewportEvent) => ViewportDecision;
 
 /** Where a session opens: the stored mode decides, absence is not a stored bottom. */
-const onOpened: Handler = (input, event) => {
-  if (event.kind !== "opened") return idle(input.state);
-  return event.saved === "anchor" ? decide("restore-anchor", { kind: "restoring" }) : decide("snap-bottom", { kind: "following" });
+const OPENING: Record<SavedOpen, ViewportDecision> = {
+  anchor: idle({ kind: "restoring" }),
+  bottom: decide("snap-bottom", { kind: "following" }),
+  absent: decide("snap-bottom", { kind: "following" }),
 };
+
+const onOpened: Handler = (input, event) => (event.kind === "opened" ? OPENING[event.saved] : idle(input.state));
 
 /**
  * The spot is above the loaded window: fetch the page it lives in and stay put. A page that waits
@@ -134,8 +142,8 @@ const FOLLOWED_LANDS_AS: Record<PageWant, PageWant> = { older: "older", newer: "
  * them through everything that loaded.
  */
 const AFTER_PAGE: Record<PageWant, ViewportDecision> = {
-  older: decide("restore-anchor", { kind: "holding" }),
-  newer: decide("restore-anchor", { kind: "holding" }),
+  older: idle({ kind: "holding" }),
+  newer: idle({ kind: "holding" }),
   newest: decide("snap-bottom", { kind: "following" }),
 };
 
@@ -149,7 +157,7 @@ const AFTER_PAGE: Record<PageWant, ViewportDecision> = {
 const onPageArrived: Handler = (input, event) => {
   if (event.kind !== "pageArrived" || input.state.kind !== "awaitingPage") return idle(input.state);
   const { resume, want } = input.state;
-  if (resume.kind === "restoring") return decide("restore-anchor", { kind: "restoring" });
+  if (resume.kind === "restoring") return idle({ kind: "restoring" });
   if (resume.kind !== "following") return AFTER_PAGE[LANDS_AS[want]];
   if (input.window.hasNewer && canLoadOnIntent(input, "newest")) return load(input, "newest", { kind: "following" });
   return AFTER_PAGE[FOLLOWED_LANDS_AS[want]];
@@ -247,9 +255,14 @@ export function isRestoring(state: ViewportState): boolean {
   return state.kind === "restoring" || (state.kind === "awaitingPage" && state.resume.kind === "restoring");
 }
 
+/**
+ * Nothing is decided against a scroller that has no height, except where a session opens: that is a
+ * fact about the new session, and answering idle left the previous session's state standing, an
+ * `awaitingPage` that asked for no page in the new one (review bbe5adc9 row 7).
+ */
 export function viewportDecision(input: ViewportInput): ViewportDecision {
-  if (!input.measured) return idle(input.state);
-  return EVENT_HANDLERS[input.event.kind](input, input.event);
+  if (input.measured) return EVENT_HANDLERS[input.event.kind](input, input.event);
+  return idle(input.event.kind === "opened" ? OPENING[input.event.saved].next : input.state);
 }
 
 /**

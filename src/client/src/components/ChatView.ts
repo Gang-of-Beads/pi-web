@@ -955,6 +955,9 @@ export class ChatView extends LitElement {
     this.contentResizeObserver?.disconnect();
     this.contentResizeObserver = undefined;
     this.observedContent = undefined;
+    this.chatResizeObserver?.disconnect();
+    this.chatResizeObserver = undefined;
+    this.observedChat = undefined;
     this.releaseImageZoomModal();
     this.prependRestoreToken += 1;
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
@@ -1080,6 +1083,7 @@ export class ChatView extends LitElement {
     if (changed.has("messages") || changed.has("messageEnd") || changed.has("hasNewer")) this.newerRequested = false;
     this.publishScrollbarWidth();
     this.observeDock();
+    this.observeChatSize();
     const chat = this.chat;
     if (chat !== undefined) this.setJumpToBottomVisible(showsJumpToBottom(chat));
     if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
@@ -1098,6 +1102,24 @@ export class ChatView extends LitElement {
 
   private observedDock: HTMLElement | undefined;
   private dockResizeObserver: ResizeObserver | undefined;
+  private observedChat: HTMLDivElement | undefined;
+  private chatResizeObserver: ResizeObserver | undefined;
+
+  /**
+   * A restore that met a scroller with no height (a chat mounted hidden) waits for it to get one: no
+   * render happens then, so only the scroller's own size says the spot can now be found (review
+   * 754821b2 row 9: the pending restore was dropped and the session opened wherever it fell).
+   */
+  private observeChatSize(): void {
+    const chat = this.chat ?? undefined;
+    if (this.observedChat === chat || typeof ResizeObserver === "undefined") return;
+    this.chatResizeObserver?.disconnect();
+    this.observedChat = chat;
+    this.chatResizeObserver = undefined;
+    if (chat === undefined) return;
+    this.chatResizeObserver = new ResizeObserver(() => { this.continuePendingScrollRestore(); });
+    this.chatResizeObserver.observe(chat);
+  }
   /**
    * Where our own follow-scroll is aiming, so the scroll event it causes is not
    * mistaken for the reader moving.
@@ -1128,7 +1150,6 @@ export class ChatView extends LitElement {
   private readonly viewportExecutors: Record<ViewportAction, () => boolean> = {
     idle: () => true,
     "snap-bottom": () => { this.scrollToBottom(); return true; },
-    "restore-anchor": () => true,
     "load-older": () => this.requestLoadMore(),
     "load-newest-page": () => this.startNewestPage(),
     "load-newer-page": () => this.startNewerPage(),
@@ -2681,6 +2702,13 @@ export class ChatView extends LitElement {
 
   private handleScrollRestoreResult(sessionId: string, result: ChatScrollRestoreResult): void {
     this.syncScrollMetrics();
+    const deferred = result.status === "skipped" && isRestoring(this.viewportState) ? this.scrollController.readPosition(this.scrollScopeKey) : undefined;
+    const deferredAnchor = deferred?.mode === "anchor" ? deferred : undefined;
+    if (deferredAnchor !== undefined) {
+      this.pendingScrollRestoreSessionId = sessionId;
+      this.pendingScrollRestorePosition = deferredAnchor;
+      return;
+    }
     if (result.status !== "missing") {
       this.updatePinnedToBottomAfterRestore(result.status);
       this.runViewport({ kind: "restoreSettled", landed: this.pinnedToBottom ? "bottom" : "spot" });

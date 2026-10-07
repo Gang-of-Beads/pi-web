@@ -13,11 +13,13 @@ describe("ChatView newer-messages boundary", () => {
     document.body.innerHTML = "";
   });
 
+  /** A reader mid-transcript, holding: a session that opens with nothing stored follows the newest (review bbe5adc9 row 7). */
   async function mount(): Promise<ChatView> {
     const view = document.body.querySelector<ChatView>("chat-view");
     if (view === null) throw new Error("chat view did not mount");
     view.messages = [];
     await view.updateComplete;
+    Reflect.set(view, "viewportState", { kind: "holding" });
     return view;
   }
 

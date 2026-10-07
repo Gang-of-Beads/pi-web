@@ -27,7 +27,7 @@ describe("where a session opens", () => {
   });
 
   it("opens at the stored spot when it was closed elsewhere, one page", () => {
-    expect(decide({ kind: "holding" }, { kind: "opened", saved: "anchor" })).toEqual({ action: "restore-anchor", next: { kind: "restoring" } });
+    expect(decide({ kind: "holding" }, { kind: "opened", saved: "anchor" })).toEqual({ action: "idle", next: { kind: "restoring" } });
   });
 
   it("opens at the newest when nothing was stored - absence is not a spot", () => {
@@ -37,6 +37,14 @@ describe("where a session opens", () => {
   it("has nothing to say without a scroller", () => {
     expect(decide({ kind: "holding" }, { kind: "opened", saved: "bottom" }, { measured: false }).action).toBe("idle");
     expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "up", metrics }, { measured: false }).action).toBe("idle");
+  });
+
+  /** Review bbe5adc9 row 7: a switch onto an unmeasured scroller kept the previous session's awaitingPage. */
+  it("takes the new session's opening state before the scroller is measured", () => {
+    const previous = { kind: "awaitingPage", want: "older", resume: { kind: "holding" } } as const;
+    expect(decide(previous, { kind: "opened", saved: "anchor" }, { measured: false })).toEqual({ action: "idle", next: { kind: "restoring" } });
+    expect(decide(previous, { kind: "opened", saved: "bottom" }, { measured: false })).toEqual({ action: "idle", next: { kind: "following" } });
+    expect(decide(previous, { kind: "opened", saved: "absent" }, { measured: false })).toEqual({ action: "idle", next: { kind: "following" } });
   });
 });
 
@@ -180,7 +188,7 @@ describe("what a reader's scroll takes over (review 9f8186d0)", () => {
 describe("a restore that reads older pages (review 754821b2)", () => {
   it("goes on restoring after each page, so the next miss asks through the decision", () => {
     const reading: ViewportState = { kind: "awaitingPage", want: "older", resume: { kind: "restoring" } };
-    expect(decide(reading, { kind: "pageArrived", want: "older" })).toEqual({ action: "restore-anchor", next: { kind: "restoring" } });
+    expect(decide(reading, { kind: "pageArrived", want: "older" })).toEqual({ action: "idle", next: { kind: "restoring" } });
   });
 });
 
@@ -295,13 +303,13 @@ describe("one page in flight at a time", () => {
   });
 
   it("resumes where it was after a page arrives", () => {
-    expect(decide(awaiting, { kind: "pageArrived", want: "older" })).toEqual({ action: "restore-anchor", next: { kind: "holding" } });
+    expect(decide(awaiting, { kind: "pageArrived", want: "older" })).toEqual({ action: "idle", next: { kind: "holding" } });
   });
 
   /** D4, B13: the end of an older window is not the bottom; the newer page the reader scrolled into leaves them reading. */
   it("keeps the reader reading after a newer page they scrolled into", () => {
     const scrolledInto: ViewportState = { kind: "awaitingPage", want: "newer", resume: { kind: "holding" } };
-    expect(decide(scrolledInto, { kind: "pageArrived", want: "newer" })).toEqual({ action: "restore-anchor", next: { kind: "holding" } });
+    expect(decide(scrolledInto, { kind: "pageArrived", want: "newer" })).toEqual({ action: "idle", next: { kind: "holding" } });
   });
 
   /** Review ca45d6ed: the jump pressed while a newer page was on its way asked to follow. */
@@ -323,7 +331,7 @@ describe("one page in flight at a time", () => {
       newestLoaded: decide(jumpedDuringOlder, { kind: "pageArrived", want: "older" }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } }),
     }).toEqual({
       jumped: { action: "load-newest-page", next: { kind: "awaitingPage", want: "newest", resume: { kind: "following" } } },
-      newestLoaded: { action: "restore-anchor", next: { kind: "holding" } },
+      newestLoaded: { action: "idle", next: { kind: "holding" } },
     });
   });
 
@@ -336,7 +344,7 @@ describe("one page in flight at a time", () => {
       takenOver: decide(takenOver, { kind: "pageArrived", want: "newest" }),
     }).toEqual({
       short: { action: "load-newest-page", next: jumped },
-      takenOver: { action: "restore-anchor", next: { kind: "holding" } },
+      takenOver: { action: "idle", next: { kind: "holding" } },
     });
   });
 

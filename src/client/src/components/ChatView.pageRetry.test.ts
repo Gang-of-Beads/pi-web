@@ -9,7 +9,8 @@ import type { ChatView } from "./ChatView";
  * ca45d6ed; `probe-failed-page.mjs`). The host flips `loadingMore` on for a page read and off when it
  * ends; a read that ends without new messages failed. The scroller clamps `scrollTop` and fires a
  * scroll event on the next frame when it moves, as a browser does, programmatic writes included;
- * a test scroll is the reader's, so it wheels first.
+ * a test scroll is the reader's, so it wheels first. The reader starts mid-transcript, holding: a
+ * session that opens with nothing stored follows the newest (review bbe5adc9 row 7).
  */
 async function mount(): Promise<{ view: ChatView; scrollTo: (top: number) => Promise<void> }> {
   document.body.innerHTML = "<chat-view></chat-view>";
@@ -21,6 +22,7 @@ async function mount(): Promise<{ view: ChatView; scrollTo: (top: number) => Pro
   if (chat === null) throw new Error("the transcript scroller is missing, so this test proves nothing");
   Object.defineProperty(chat, "scrollHeight", { value: 4000, configurable: true });
   Object.defineProperty(chat, "clientHeight", { value: 800, configurable: true });
+  Reflect.set(view, "viewportState", { kind: "holding" });
   let top = 0;
   const setTop = (value: number) => {
     const next = Math.min(Math.max(0, value), 3200);
