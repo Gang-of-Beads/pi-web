@@ -5537,7 +5537,9 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * A standing value reaches the browsers on the session's status. Writes are coalesced:
+   * A standing value reaches the browsers on the session's status. Writes are coalesced, and a
+   * window whose writes left the values as the last broadcast status carried them publishes
+   * nothing (ExtensionStanding.changedSinceSent).
    * ponytail: a fixed 100 ms window, so an extension that animates its working words at 60 fps
    * costs ten status frames a second to every browser on the machine (a status frame also goes
    * out machine-wide); make it per-slot if a status frame ever grows expensive.
@@ -5547,6 +5549,7 @@ export class PiSessionService implements SessionRouteService {
     this.standingPublishPending.add(session);
     setTimeout(() => {
       this.standingPublishPending.delete(session);
+      if (this.extensionStanding.get(session)?.changedSinceSent() !== true) return;
       this.publishStatusForSessionId(session.sessionId);
     }, STANDING_PUBLISH_MS).unref();
   }
@@ -6068,6 +6071,7 @@ export class PiSessionService implements SessionRouteService {
     this.workspaceActivity?.applySessionStatus(session.sessionManager.getCwd(), status);
     this.events.publish(session.sessionId, { type: "status.update", status });
     this.events.publishGlobal({ type: "status.update", status: { ...status, streamPosition: this.streamPosition(session.sessionId) } });
+    this.extensionStanding.get(session)?.noteSent(status.extensionUi);
     this.observeUnreadActivityState(session);
   }
 

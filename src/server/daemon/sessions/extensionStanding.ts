@@ -29,6 +29,8 @@ export class ExtensionStanding {
   private workingFrames: readonly string[] | undefined;
   private hiddenThinkingLabel: string | undefined;
   private title: string | undefined;
+  /** The standing values the last broadcast status carried, serialized; see noteSent. */
+  private lastSent: string | undefined;
 
   private readonly widgets: StandingWidgets;
 
@@ -87,6 +89,27 @@ export class ExtensionStanding {
     this.hiddenThinkingLabel = undefined;
     this.title = undefined;
     this.changed();
+  }
+
+  /**
+   * What a broadcast status carried, told by the one place that broadcasts it. Every status the
+   * browsers receive counts, not only the ones a standing write scheduled: compared with the last
+   * scheduled one instead, a value written, broadcast by a turn's status, and written back within
+   * one window was never published again, and the browsers kept the middle value (review 64297766).
+   * A status read by one page is not a broadcast and is not told.
+   */
+  noteSent(sent: ExtensionUiStanding | undefined): void {
+    this.lastSent = JSON.stringify(sent ?? null);
+  }
+
+  /**
+   * Whether the values differ from what the last broadcast status carried. An extension that
+   * writes the same status or widget again, or a component that redraws the same lines, changes
+   * nothing a browser shows, and publishing it anyway sent each open session's whole status to
+   * every browser once a second while idle.
+   */
+  changedSinceSent(): boolean {
+    return JSON.stringify(this.snapshot() ?? null) !== this.lastSent;
   }
 
   /** The wire snapshot, or undefined when nothing stands; a component widget draws now if it is due. */
