@@ -1866,6 +1866,7 @@ function parsePiWebConfigValues(value: unknown): PiWebConfigValues {
     ...optionalField("askUser", optionalBoolean(record, "askUser")),
     ...optionalField("environmentFacts", optionalBoolean(record, "environmentFacts")),
     ...optionalField("extensionDialogsTimeoutMs", optionalNumber(record, "extensionDialogsTimeoutMs")),
+    ...optionalField("updateCommand", optionalString(record, "updateCommand")),
   };
 }
 

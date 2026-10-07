@@ -109,6 +109,12 @@ export interface PiWebConfigValues {
     maxUploadBytes?: number;
     /** What the web and session daemon logs record, and how much of them stays on disk. */
     logging?: PiWebLoggingConfig;
+    /**
+     * The command that updates this machine's PI WEB and restarts it, run by the
+     * Updates page's Update button. Wins over the services' PI_WEB_UPDATE_COMMAND
+     * and over the command PI WEB derives from the install method; empty is none.
+     */
+    updateCommand?: string;
     /** Tiles per row in the Navigate lists, per layout; see PiWebListTilesConfig. */
     listTiles?: PiWebListTilesConfig;
     /**

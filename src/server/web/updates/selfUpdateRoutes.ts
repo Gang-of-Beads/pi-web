@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { packageVersion } from "../../../piWebVersionReport.js";
 import type { PiWebSelfUpdateStatus } from "../../../shared/apiTypes.js";
-import { deploymentUpdateCommand } from "../../shared/deploymentUpdateCommand.js";
+import { configuredUpdateCommand } from "../../shared/deploymentUpdateCommand.js";
+import { loadPiWebConfig } from "../../../config.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_FETCH_INTERVAL_MS = 60_000;
@@ -25,6 +26,15 @@ export interface SelfUpdateService {
   status(): Promise<PiWebSelfUpdateStatus>;
   /** True when applying started detached; throws a typed error otherwise. */
   apply(): Promise<void>;
+}
+
+/** The saved command, else the services' one; a config that cannot be read saves none. */
+function updateCommand(): string | undefined {
+  try {
+    return configuredUpdateCommand(loadPiWebConfig().config.updateCommand);
+  } catch {
+    return configuredUpdateCommand(undefined);
+  }
 }
 
 function repoCandidate(): string | undefined {
@@ -68,7 +78,7 @@ export function createSelfUpdateService(logger: { warn: (obj: unknown, msg: stri
 
   return {
     async status() {
-      const command = deploymentUpdateCommand();
+      const command = updateCommand();
       if (command !== undefined) {
         return {
           enabled: true,
@@ -99,7 +109,7 @@ export function createSelfUpdateService(logger: { warn: (obj: unknown, msg: stri
       };
     },
     async apply() {
-      const command = deploymentUpdateCommand();
+      const command = updateCommand();
       if (command !== undefined) {
         // bash -lc so the command's own PATH expectations hold (home-manager
         // switch needs the nix profile on PATH). On Linux the command runs

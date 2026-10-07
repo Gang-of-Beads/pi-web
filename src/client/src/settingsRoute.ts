@@ -11,6 +11,9 @@ export type CoreSettingsSection = "general" | "appearance" | "sessiond" | "machi
  */
 export type SettingsSection = CoreSettingsSection | QualifiedContributionId;
 
+/** A Settings field another page links to: the dialog scrolls it into view and focuses it once. */
+export type SettingsReveal = "update-command";
+
 const qualifiedSectionPattern = /^[a-z][a-z0-9.-]*:[a-z][a-z0-9.-]*$/u;
 
 export function isPluginSettingsSection(section: string): section is QualifiedContributionId {

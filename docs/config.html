@@ -100,6 +100,7 @@
             <a href="#path-access">External path access</a>
             <a href="#manual-uploads">Manual uploads</a>
             <a href="#logs">Logs</a>
+            <a href="#updates">Updates</a>
             <a href="#lists">Lists</a>
             <a href="#model-for-new-sessions">Model for new sessions</a>
             <a href="#agent-runtime">Agent state directory</a>
@@ -340,7 +341,7 @@ worktree_path="$1"
                 it, and whether project-local config overrides or merges with global config. Rows with JSON key
                 <code>—</code> are runtime-only environment variables, not config-file keys. <code>Global</code> means
                 machine-global. In Settings, selected-machine-safe global keys (<code>pathAccess</code>, <code>uploads</code>,
-                <code>maxUploadBytes</code>, <code>askUser</code>, <code>logging</code>, and <code>plugins</code>)
+                <code>maxUploadBytes</code>, <code>askUser</code>, <code>logging</code>, <code>updateCommand</code>, and <code>plugins</code>)
                 are edited for the selected machine; gateway host/port/allowed-hosts, keyboard shortcuts, and machine
                 registry/tokens stay local.
               </p>
@@ -405,6 +406,14 @@ worktree_path="$1"
                       <td>Global (web/API and session daemon)</td>
                       <td>Not supported locally</td>
                       <td>Within a minute, no restart</td>
+                    </tr>
+                    <tr>
+                      <td>Update command for the Updates page</td>
+                      <td><code>updateCommand</code></td>
+                      <td><code>PI_WEB_UPDATE_COMMAND</code> (the saved value wins)</td>
+                      <td>Global</td>
+                      <td>Not supported locally</td>
+                      <td>Next status check, no restart</td>
                     </tr>
                     <tr>
                       <td>Tiles per row in the Navigate lists</td>
@@ -688,6 +697,27 @@ worktree_path="$1"
                 Both processes check the setting and the file sizes once a minute. Retention applies to the log files the
                 installed launchd services write; on systemd, output that goes to the journal is kept by journald's own
                 settings instead.
+              </p>
+            </section>
+
+            <section id="updates">
+              <h2>Updates</h2>
+              <p>
+                <code>updateCommand</code> is the command the Updates page's <strong>Update</strong> button runs on that
+                machine. Save it in <strong>Settings → General → Updates</strong> for the selected machine (the Updates
+                page links there for a nix install without one), or in the global config:
+              </p>
+              <pre><code>{
+  "updateCommand": "~/nix-config/scripts/pi-web-update.sh --force my-host"
+}</code></pre>
+              <p>
+                The command should update PI WEB and restart it; it runs in a new terminal on the Terminal page, so its
+                output stays visible while the web process and the session daemon restart. It wins over the services'
+                <code>PI_WEB_UPDATE_COMMAND</code>, which wins over the update PI WEB works out from the install method:
+                npm, a Pi package, a git checkout with an upstream, or a <code>nix profile install</code>
+                (<code>nix profile upgrade</code>). An install from a nix configuration (home-manager, nix-darwin, NixOS)
+                has no update of its own: give it one here or in the services. An empty value saves none. The status reads
+                it on its next check; no restart.
               </p>
             </section>
 

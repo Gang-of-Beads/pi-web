@@ -24,11 +24,11 @@ describe("the PI WEB update offer dialog", () => {
   it("records a dismissal when the host closes it", async () => {
     const { ui, shown } = fakeUi();
     const answers: { version: string; answer: string }[] = [];
-    showPiWebUpdateOffer({ running: "2.202609.6", latest: "2.202609.7", command: "npm run build" }, {
+    showPiWebUpdateOffer({ running: "2.202609.6", latest: "2.202609.7" }, {
       ui,
       html,
       answer: (version) => { answers.push({ version, answer: "dismissed" }); return Promise.resolve(); },
-      copy: () => Promise.resolve(true),
+      openUpdates: undefined,
       notify: () => undefined,
     });
 
@@ -41,11 +41,11 @@ describe("the PI WEB update offer dialog", () => {
   it("records the answer once, however many times the host closes it", async () => {
     const { ui, shown } = fakeUi();
     const answers: string[] = [];
-    showPiWebUpdateOffer({ running: "2.202609.6", latest: "2.202609.7", command: "npm run build" }, {
+    showPiWebUpdateOffer({ running: "2.202609.6", latest: "2.202609.7" }, {
       ui,
       html,
       answer: () => { answers.push("dismissed"); return Promise.resolve(); },
-      copy: () => Promise.resolve(true),
+      openUpdates: undefined,
       notify: () => undefined,
     });
 
@@ -58,11 +58,11 @@ describe("the PI WEB update offer dialog", () => {
 
   it("names the versions it is offering", () => {
     const { ui, shown } = fakeUi();
-    showPiWebUpdateOffer({ running: "2.202609.6", latest: "2.202609.7", command: "npm run build" }, {
+    showPiWebUpdateOffer({ running: "2.202609.6", latest: "2.202609.7" }, {
       ui,
       html,
       answer: () => Promise.resolve(),
-      copy: () => Promise.resolve(true),
+      openUpdates: undefined,
       notify: () => undefined,
     });
 

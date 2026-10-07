@@ -41,12 +41,14 @@ export class PluginRegistry {
   private readonly settingsByPlugin = new Map<string, PluginSettings>();
   private readonly fetchJson: ((path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>) | undefined;
   private readonly readPiWebStatus: ((machineId: string) => Promise<unknown>) | undefined;
+  private readonly openPage: ((pageId: QualifiedContributionId) => void) | undefined;
 
   private readonly ui: PluginHostUi | undefined;
 
-  constructor(hostServices?: { fetchJson?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>; readPiWebStatus?: (machineId: string) => Promise<unknown>; ui?: PluginHostUi }) {
+  constructor(hostServices?: { fetchJson?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>; readPiWebStatus?: (machineId: string) => Promise<unknown>; ui?: PluginHostUi; openPage?: (pageId: QualifiedContributionId) => void }) {
     this.fetchJson = hostServices?.fetchJson;
     this.readPiWebStatus = hostServices?.readPiWebStatus;
+    this.openPage = hostServices?.openPage;
     this.ui = hostServices?.ui;
   }
   private readonly listeners = new Map<PluginLifecycleEventKind, { pluginId: string; listener: (event: PluginLifecycleEvent) => void }[]>();
@@ -89,6 +91,7 @@ export class PluginRegistry {
         }),
         ...(this.ui === undefined ? {} : { ui: this.ui }),
         ...(readPiWebStatus === undefined ? {} : { readPiWebStatus: () => readPiWebStatus(statusMachineId) }),
+        ...(this.openPage === undefined ? {} : { openPage: this.openPage }),
         on: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => this.subscribe(runtimePluginId, kind, listener),
       }));
       const contributions = activation.contributions;

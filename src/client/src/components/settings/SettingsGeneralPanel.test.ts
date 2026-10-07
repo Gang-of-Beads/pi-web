@@ -19,7 +19,7 @@ describe("settings-general-panel copy", () => {
     expect(strings).toContain("Gateway server fields edit this local gateway. File access and upload defaults edit ");
     expect(strings).toContain("Host, port, and allowed hosts are saved in the gateway config.");
     expect(strings).toContain("External filesystem roots and upload defaults are saved on ");
-    expect(values.filter((value) => value === "Lab Mac (remote machine)")).toHaveLength(5);
+    expect(values.filter((value) => value === "Lab Mac (remote machine)")).toHaveLength(6);
   });
 
   it("shows reload copy when selected-machine access config is unavailable", () => {

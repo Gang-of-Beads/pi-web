@@ -787,6 +787,7 @@ Notes:
 - `openTerminal()` switches to the built-in terminal panel. Pass `{ terminalId }` to deep-link to a specific terminal.
 - `refreshWorkspacePanels()` invokes `onInvalidate` for the selected workspace, either for every plugin panel or for one qualified `panelId`. The callback owns its refresh and should request a render when its visible state changes.
 - `checkForPiWebUpdates()` forces a fresh update check on the selected machine and refreshes `state.piWebStatus`. It is optional so plugins remain compatible with older PI WEB hosts.
+- A global page's context also carries `checkForPiWebUpdates()` and `openUpdateCommandSetting()`, which opens Settings at the field where the machine on screen saves its update command; and the activation context carries `openPage(pageId)`, which shows a page by its qualified id as Go to does (for example `${runtimePluginId}:global.updates`). All three are optional on older hosts.
 - Only fields documented here and declared by `@gang-of-beads/pi-web/plugin-api` are stable public browser API. Anything else is experimental: it may become public API later, change shape, or disappear.
 
 ### Prompt editor API

@@ -20,7 +20,7 @@ describe("the offer's facts, read from a machine's pi-web/status answer", () => 
     const facts = piWebOfferFacts(status({ runtimeVersion: "2.202609.28", installedVersion: "2.202609.28" }, { latestVersion: "2.202610.1", updateAvailable: true }));
 
     expect({ facts, verdict: piWebUpdateOffer({ running: facts.running, release: facts.release, answeredVersions: [] }) }).toEqual({
-      facts: { running: "2.202609.28", release: { latestVersion: "2.202610.1", updateAvailable: true }, command: "pi-web update" },
+      facts: { running: "2.202609.28", release: { latestVersion: "2.202610.1", updateAvailable: true } },
       verdict: { kind: "offer", running: "2.202609.28", latest: "2.202610.1" },
     });
   });
@@ -39,8 +39,8 @@ describe("the offer's facts, read from a machine's pi-web/status answer", () => 
 
   it("knows nothing from an answer of another shape", () => {
     expect([piWebOfferFacts(undefined), piWebOfferFacts({ version: "1.0.0", release: "x", components: [] })]).toEqual([
-      { running: undefined, release: {}, command: undefined },
-      { running: undefined, release: {}, command: undefined },
+      { running: undefined, release: {} },
+      { running: undefined, release: {} },
     ]);
   });
 });

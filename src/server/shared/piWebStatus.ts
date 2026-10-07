@@ -14,7 +14,7 @@ import { SessionDaemonClient } from "./sessiondClient/sessionDaemonClient.js";
 import { isHostAbsoluteAgentDir, loadPiWebConfig, PI_CODING_AGENT_DIR_ENV, type LoadedPiWebConfig } from "../../config.js";
 import { createPiWebReleaseLookupCache, type PiWebReleaseLookup } from "./piWebReleaseLookupCache.js";
 import { isRecord } from "../../shared/unknownValues.js";
-import { deploymentUpdateCommand } from "./deploymentUpdateCommand.js";
+import { configuredUpdateCommand } from "./deploymentUpdateCommand.js";
 
 const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 const PI_WEB_NPM_SOURCE = `npm:${PI_WEB_PACKAGE_NAME}`;
@@ -81,7 +81,14 @@ export interface PiWebStatusOptions {
   forceReleaseCheck?: boolean;
   activeAgentProfile?: ActiveAgentProfileDescriptor;
   hasCommand?: (command: string) => Promise<boolean>;
+  /** The machine's config, for the update command saved in Settings. */
+  loadConfig?: () => LoadedPiWebConfig;
+  /** This user's nix profile, for an install placed there by `nix profile install`. */
+  nixProfile?: () => Promise<NixProfileElements | undefined>;
 }
+
+/** `nix profile list --json`'s elements: name to the store paths it installed. */
+export type NixProfileElements = ReadonlyMap<string, readonly string[]>;
 
 const lookupLatestRelease = createPiWebReleaseLookupCache(fetchLatestNpmVersion);
 const runtimePackageInfo = readPackageInfoSync();
@@ -177,6 +184,8 @@ export async function getPiWebStatus(daemon: PiWebStatusDaemon = new SessionDaem
   const commands = await commandsFor(components, {
     activeAgentProfile: options.activeAgentProfile,
     hasCommand: options.hasCommand ?? hasCommand,
+    declaredUpdate: configuredUpdateCommand(savedUpdateCommand(options.loadConfig ?? loadPiWebConfig)),
+    nixProfile: options.nixProfile ?? readNixProfile,
   });
   const messages = buildMessages(components, release, commands);
   return {
@@ -450,9 +459,11 @@ async function fetchLatestNpmVersion(currentVersion: string): Promise<string> {
 async function commandsFor(components: PiWebStatusResponse["components"], options: {
   activeAgentProfile: ActiveAgentProfileDescriptor | undefined;
   hasCommand: (command: string) => Promise<boolean>;
+  declaredUpdate: string | undefined;
+  nixProfile: () => Promise<NixProfileElements | undefined>;
 }): Promise<PiWebStatusResponse["commands"]> {
   const installation = preferredInstallation(components);
-  if (installation?.kind === "docker") return dockerCommands(installation, deploymentUpdateCommand());
+  if (installation?.kind === "docker") return dockerCommands(installation, options.declaredUpdate);
 
   const [serviceCommands, cliCommands] = await Promise.all([
     nativeServiceCommands(),
@@ -462,7 +473,7 @@ async function commandsFor(components: PiWebStatusResponse["components"], option
   const restartWeb = serviceCommands.restartWeb ?? cliCommands.restart;
   const restartSessiond = serviceCommands.restartSessiond ?? cliCommands.restart;
   const status = serviceCommands.status ?? cliCommands.status;
-  const update = deploymentUpdateCommand() ?? await updateCommandFor(installation, restart, options);
+  const update = options.declaredUpdate ?? await updateCommandFor(installation, restart, options);
 
   return {
     ...(update === undefined ? {} : { update }),
@@ -504,8 +515,13 @@ function restartCommandFor(installation: PiWebInstallationInfo | undefined, serv
 export async function updateCommandFor(installation: PiWebInstallationInfo | undefined, restartCommand: string | undefined, options: {
   activeAgentProfile: ActiveAgentProfileDescriptor | undefined;
   hasCommand: (command: string) => Promise<boolean>;
+  nixProfile?: () => Promise<NixProfileElements | undefined>;
 }): Promise<string | undefined> {
   if (restartCommand === undefined) return undefined;
+  if (installation?.manager !== undefined) {
+    const element = await nixProfileElementFor(installation.path, options.nixProfile);
+    return element === undefined ? undefined : `nix profile upgrade ${shellQuote(element)} && ${restartCommand}`;
+  }
   if (installation?.kind === "pi-package") {
     const profile = options.activeAgentProfile;
     if (profile === undefined || !isHostAbsoluteAgentDir(profile.dir)) return undefined;
@@ -587,6 +603,51 @@ async function isGitCheckoutWithUpstream(path: string): Promise<boolean> {
   return await hasCommand("git")
     && await commandSucceeds("git", ["-C", path, "rev-parse", "--is-inside-work-tree"])
     && await commandSucceeds("git", ["-C", path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
+}
+
+/** The saved update command; a config that cannot be read saves none, and the status still answers. */
+function savedUpdateCommand(loadConfig: () => LoadedPiWebConfig): string | undefined {
+  try {
+    return loadConfig().config.updateCommand;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The profile element that installed this package, when `nix profile install` did: its store
+ * paths hold the running package, so `nix profile upgrade` moves it to the newest build of the
+ * flake it came from. A home-manager, nix-darwin or NixOS install is one element of that whole
+ * configuration and holds no such path, so it gets no command here: its nix configuration
+ * updates it (approved design, pi-web-updates-plugin.md "Nix", step 2).
+ */
+async function nixProfileElementFor(packagePath: string | undefined, nixProfile: (() => Promise<NixProfileElements | undefined>) | undefined): Promise<string | undefined> {
+  if (packagePath === undefined || nixProfile === undefined) return undefined;
+  const elements = await nixProfile();
+  if (elements === undefined) return undefined;
+  for (const [name, storePaths] of elements) {
+    if (storePaths.some((storePath) => packagePath === storePath || packagePath.startsWith(`${storePath}/`))) return name;
+  }
+  return undefined;
+}
+
+async function readNixProfile(): Promise<NixProfileElements | undefined> {
+  if (!(await hasCommand("nix"))) return undefined;
+  try {
+    const { stdout } = await execFileAsync("nix", ["profile", "list", "--json"], { encoding: "utf8", timeout: 10_000 });
+    return parseNixProfile(JSON.parse(stdout));
+  } catch {
+    return undefined;
+  }
+}
+
+function parseNixProfile(value: unknown): NixProfileElements | undefined {
+  const elements = isRecord(value) ? value["elements"] : undefined;
+  if (!isRecord(elements)) return undefined;
+  return new Map(Object.entries(elements).flatMap(([name, element]): [string, readonly string[]][] => {
+    const storePaths = isRecord(element) ? element["storePaths"] : undefined;
+    return Array.isArray(storePaths) ? [[name, storePaths.filter((path): path is string => typeof path === "string")]] : [];
+  }));
 }
 
 function hasCommand(command: string): Promise<boolean> {

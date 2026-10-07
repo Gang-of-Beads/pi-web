@@ -177,6 +177,7 @@ export interface PluginActivationContext {
    * `api/pi-web/status` through `fetchJson` there, which answers for the machine serving the page.
    */
   readonly readPiWebStatus?: () => Promise<unknown>;
+  readonly openPage?: (pageId: QualifiedContributionId) => void;
   /**
    * Host utilities a plugin surface needs but must not reimplement: the same
    * clipboard fallback chain, the same words for a failure, the same
@@ -722,6 +723,7 @@ export interface GlobalPanelContext {
   host: WorkspaceHost;
   terminal: GlobalPanelTerminal;
   checkForPiWebUpdates: () => Promise<void>;
+  openUpdateCommandSetting: () => void;
 }
 
 /**

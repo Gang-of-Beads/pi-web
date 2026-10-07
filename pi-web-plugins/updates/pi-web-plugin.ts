@@ -69,6 +69,7 @@ function pageActions(context: GlobalPanelContext, ui: PluginHostUi | undefined, 
         runCommandInTerminal(context.terminal, `Update PI WEB to ${version}`, command);
       });
     },
+    setUpdateCommand: context.openUpdateCommandSetting,
     restart: confirm === undefined ? undefined : (target, command) => {
       const words = RESTART_CONFIRM[target];
       ask(words.title, words.message, "Restart", () => { runCommandInTerminal(context.terminal, words.terminalTitle, command); });
@@ -103,11 +104,12 @@ function offerPiWebUpdate(context: PluginActivationContext): void {
       const facts = piWebOfferFacts(status);
       const verdict = piWebUpdateOffer({ running: facts.running, release: facts.release, answeredVersions: answeredVersionsFrom(answered) });
       if (verdict.kind !== "offer") return;
-      showPiWebUpdateOffer({ running: verdict.running, latest: verdict.latest, command: facts.command }, {
+      const openPage = context.openPage;
+      showPiWebUpdateOffer({ running: verdict.running, latest: verdict.latest }, {
         ui,
         html: context.html,
         answer: async (version) => { await callOperation("offer.answer", { version }); },
-        copy: (value) => ui.copyText(value),
+        openUpdates: openPage === undefined ? undefined : () => { openPage(`${context.runtimePluginId}:global.updates`); },
         notify: (message, kind) => { showPiWebUpdateNotice(context.html, ui, message, kind); },
       });
     })

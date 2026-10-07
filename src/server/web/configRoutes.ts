@@ -16,6 +16,7 @@ export const SELECTED_MACHINE_CONFIG_KEYS = [
   "logging",
   "askUser",
   "agent",
+  "updateCommand",
 ] as const satisfies readonly (keyof PiWebConfigValues)[];
 
 const SELECTED_MACHINE_CONFIG_KEY_SET = new Set<string>(SELECTED_MACHINE_CONFIG_KEYS);
@@ -133,6 +134,7 @@ function pickSelectedMachineConfig(config: PiWebConfigValues): PiWebConfig {
     ...(config.logging !== undefined ? { logging: config.logging } : {}),
     ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
+    ...(config.updateCommand !== undefined ? { updateCommand: config.updateCommand } : {}),
   };
 }
 

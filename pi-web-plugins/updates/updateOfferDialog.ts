@@ -31,9 +31,6 @@ const OFFER_STYLES = `
 export interface PiWebUpdateOfferFacts {
   running: string;
   latest: string;
-  /** The machine's own update command; it restarts the very processes that
-   *  would run it, so it is handed to the reader rather than executed here. */
-  command: string | undefined;
 }
 
 export interface PiWebUpdateDialogPorts {
@@ -41,8 +38,9 @@ export interface PiWebUpdateDialogPorts {
   html: HtmlTemplateTag;
   /** Records the answer machine-wide; the offer never returns for this version. */
   answer: (version: string) => Promise<void>;
-  /** Hands the command to the reader; resolves false when it could not copy. */
-  copy: (command: string) => Promise<boolean>;
+  /** Shows the Updates page, where the update runs as a button (owner, 2026-10-07: no command
+   *  is handed to the reader, here or on the page); absent on a host that cannot open a page. */
+  openUpdates: (() => void) | undefined;
   notify: (message: string, kind: "info" | "error") => void;
 }
 
@@ -66,27 +64,18 @@ export function showPiWebUpdateOffer(facts: PiWebUpdateOfferFacts, ports: PiWebU
         <header>
           <h2>Update PI WEB</h2>
           <p>${facts.running} → ${facts.latest} on this machine. PI WEB carries the pi agent your sessions run, so this is the update that changes both.</p>
-          <p>The update restarts the web process and the session daemon, so it runs in a terminal rather than from this page.</p>
+          <p>Update from the Updates page: the update restarts the web process and the session daemon, so it runs in a terminal you can follow.</p>
         </header>
         <footer>
-          ${facts.command === undefined ? null : html`<button
+          ${ports.openUpdates === undefined ? null : html`<button
             type="button"
             class="primary"
             @click=${() => {
               record();
               handle.close();
-              void ports.copy(facts.command ?? "")
-                .then((copied) => {
-                  ports.notify(
-                    copied
-                      ? "Update command copied. Run it in a terminal on this machine."
-                      : "This browser would not let the page copy. Update from the Updates page instead.",
-                    copied ? "info" : "error",
-                  );
-                })
-                .catch(() => { ports.notify("The command could not be copied. Update from the Updates page instead.", "error"); });
+              ports.openUpdates?.();
             }}
-          >Copy update command</button>`}
+          >Open Updates</button>`}
           <button type="button" @click=${() => { record(); handle.close(); }}>Not this version</button>
         </footer>
       </section>

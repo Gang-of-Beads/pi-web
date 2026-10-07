@@ -37,7 +37,6 @@ export function piWebUpdateOffer(input: {
 export interface PiWebStatusOfferFacts {
   running: string | undefined;
   release: PiWebRelease;
-  command: string | undefined;
 }
 
 /**
@@ -60,7 +59,6 @@ export function piWebOfferFacts(status: unknown): PiWebStatusOfferFacts {
       ...(latestVersion === undefined ? {} : { latestVersion }),
       ...(typeof updateAvailable === "boolean" ? { updateAvailable } : {}),
     },
-    command: nonEmptyString(recordAt(record["commands"])["update"]),
   };
 }
 

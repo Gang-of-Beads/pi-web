@@ -21,6 +21,8 @@ export interface UpdatesPageActions {
   readonly update: ((command: string, version: string) => void) | undefined;
   /** Start a restart command; absent when this page cannot run commands. */
   readonly restart: ((target: RestartTarget, command: string) => void) | undefined;
+  /** Open the Settings field where the update command is saved; absent on older hosts. */
+  readonly setUpdateCommand: (() => void) | undefined;
 }
 
 export type ClockTime = (iso: string) => string | undefined;
@@ -47,7 +49,7 @@ const LATEST_ROW: Readonly<Record<LatestState, (release: PiWebReleaseStatus, che
 };
 
 const MANAGED_WORDS: Readonly<Record<PiWebPackageManager, { readonly withCommand: string; readonly withoutCommand: string }>> = {
-  nix: { withCommand: "Updated by this machine's update command.", withoutCommand: "Managed by your nix configuration." },
+  nix: { withCommand: "Updated by this machine's update command.", withoutCommand: "Managed by your nix configuration. Save an update command in Settings to update from here." },
 };
 
 function installedDetail(installation: PiWebInstallationInfo | undefined, hasUpdateCommand: boolean): string | undefined {
@@ -93,6 +95,13 @@ function updateAction(status: PiWebStatusResponse, actions: UpdatesPageActions):
   return { id: "update", label: `Update to ${latest}`, primary: true, run: () => { update(command, latest); } };
 }
 
+/** A managed install with no update command links to the Settings field that can hold one (owner, 2026-10-07). */
+function setCommandAction(installation: PiWebInstallationInfo | undefined, hasUpdateCommand: boolean, actions: UpdatesPageActions): PluginListAction | undefined {
+  const open = actions.setUpdateCommand;
+  if (open === undefined || hasUpdateCommand || installation?.manager === undefined) return undefined;
+  return { id: "set-command", label: "Set an update command", run: open };
+}
+
 function checkAction(actions: UpdatesPageActions): PluginListAction | undefined {
   const check = actions.check;
   return check === undefined ? undefined : { id: "check", label: actions.checking ? "Checking…" : "Check now", disabled: actions.checking, run: check };
@@ -131,7 +140,7 @@ export function updatesPageModel(status: PiWebStatusResponse | undefined, action
   const hasUpdateCommand = status.commands.update !== undefined && status.commands.update !== "";
   const restarts = restartActions(status, actions);
   const update = updateAction(status, actions);
-  const piWeb = [checkAction(actions), update].filter((action) => action !== undefined);
+  const piWeb = [checkAction(actions), update, setCommandAction(web.installation, hasUpdateCommand, actions)].filter((action) => action !== undefined);
   const runs = restarts.length > 0 || update !== undefined;
   return {
     read: "ready",

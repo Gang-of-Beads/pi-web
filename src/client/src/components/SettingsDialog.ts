@@ -8,7 +8,7 @@ import type { AppAction } from "../actions";
 import { configApi, piPackagesApi, pluginsApi, type Machine, type MachineHealth, type MachineRuntime, type PiPackageMutationResponse, type PiPackageScope, type PiPackagesResponse, type PiWebConfigResponse, type PiWebConfigValues, type PiWebPluginsResponse } from "../api";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
 import type { QualifiedContributionId, QualifiedThemeContribution } from "../plugins/types";
-import { isPluginSettingsSection, type SettingsSection } from "../settingsRoute";
+import { isPluginSettingsSection, type SettingsReveal, type SettingsSection } from "../settingsRoute";
 import { searchSettings, type SettingsEntry } from "../settingsSearch";
 import type { PluginRuntimeContext, QualifiedSettingsSectionContribution } from "../plugins/types";
 import "./ModalSurface";
@@ -62,6 +62,9 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) pluginRuntimeContext?: PluginRuntimeContext;
   @property({ attribute: false }) onClose?: () => void;
   @property({ attribute: false }) onConfigSaved?: (config: PiWebConfigValues) => void;
+  /** A field another page linked to; see SettingsReveal. */
+  @property({ attribute: false }) reveal: SettingsReveal | undefined;
+  @property({ attribute: false }) onRevealed?: () => void;
   /** A plugin's enablement was saved; the host reloads the page when Settings closes, so its code loads or leaves. */
   @property({ attribute: false }) onPluginsChanged?: () => void;
   @property({ type: Boolean }) reloadOnClose = false;
@@ -387,7 +390,10 @@ export class SettingsDialog extends LitElement {
         .onReloadMachine=${() => this.loadAccessConfigForTarget()}
         .onSave=${(config: PiWebConfigValues) => this.saveConfig(config)}
         .onSaveMachineConfig=${(config: PiWebConfigValues) => this.saveMachineAccessConfig(config)}
-        .onSaveMachineLogging=${(config: PiWebConfigValues) => this.saveMachineLogging(config)}
+        .onSaveMachineLogging=${(config: PiWebConfigValues) => this.saveMachinePatch(config, "log settings")}
+        .onSaveMachineUpdateCommand=${(config: PiWebConfigValues) => this.saveMachinePatch(config, "the update command")}
+        .reveal=${this.reveal}
+        .onRevealed=${() => { this.onRevealed?.(); }}
       ></settings-general-panel>
     `;
   }
@@ -642,9 +648,9 @@ export class SettingsDialog extends LitElement {
     }
   }
 
-/** The Logs card's save. A failure is thrown back to the card, which says it in place, instead of landing in another card's message. */
-  private async saveMachineLogging(config: PiWebConfigValues): Promise<void> {
-    if (this.saving) throw new Error("Another settings save is still running; save the logs again in a moment.");
+/** A machine card's own save (Logs, Updates). A failure is thrown back to the card, which says it in place, instead of landing in another card's message. */
+  private async saveMachinePatch(config: PiWebConfigValues, what: string): Promise<void> {
+    if (this.saving) throw new Error(`Another settings save is still running; save ${what} again in a moment.`);
     const target = this.settingsTarget();
     this.saving = true;
     this.savedMessage = "";
@@ -655,7 +661,7 @@ export class SettingsDialog extends LitElement {
       if (target.kind === "local" && this.configResponse !== undefined) this.configResponse = mergeSelectedMachineAccessConfig(this.configResponse, response);
       this.showSavedMessage();
     } catch (error) {
-      throw new Error(`Failed to save log settings on ${settingsMachineTargetLabel(target)}: ${friendlySelectedMachineSettingsErrorMessage(describeError(error), target)}`, { cause: error });
+      throw new Error(`Failed to save ${what} on ${settingsMachineTargetLabel(target)}: ${friendlySelectedMachineSettingsErrorMessage(describeError(error), target)}`, { cause: error });
     } finally {
       this.saving = false;
     }

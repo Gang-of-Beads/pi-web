@@ -44,6 +44,8 @@ export interface PluginActivationContext {
      * `api/pi-web/status` through `fetchJson` there, which answers for the machine serving the page.
      */
     readonly readPiWebStatus?: () => Promise<unknown>;
+    /** Show one of the app's pages by its qualified id (a plugin's global or workspace page), as Go to does. Absent on older hosts. */
+    readonly openPage?: (pageId: QualifiedContributionId) => void;
     /**
      * Host utilities a plugin surface needs but must not reimplement: the same
      * clipboard fallback chain, the same words for a failure, the same
@@ -792,6 +794,8 @@ export interface GlobalPanelContext {
     terminal: GlobalPanelTerminal;
     /** Check the machine on screen for a PI WEB release now, bypassing the cached answer. Absent on older hosts. */
     checkForPiWebUpdates?: () => Promise<void>;
+    /** Open Settings at the field where the machine on screen saves its update command. Absent on older hosts. */
+    openUpdateCommandSetting?: () => void;
 }
 /**
  * A page about the machine on screen, which needs no project. Go to lists it while no project is
