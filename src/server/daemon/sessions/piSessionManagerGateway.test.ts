@@ -1,5 +1,5 @@
 import * as fsPromises from "node:fs/promises";
-import { appendFile, chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { scanStoreSessionSummaries } from "./piSessionManagerGateway";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -339,18 +339,21 @@ describe("gateway session-file resolution by id", () => {
    * P2 slice a: a directory that does not exist holds no sessions, but one the
    * daemon could not read says nothing about them. Swallowed, a permissions or
    * descriptor error answered "Session not found", and the client recreated a
-   * session that was still there.
+   * session that was still there. Inject errors at the filesystem boundary:
+   * Windows chmod cannot deny directory reads, and root bypasses POSIX modes.
    */
-  it("finds nothing in a directory that does not exist, and fails for one it cannot read", async () => {
+  it("finds nothing in a directory that does not exist", async () => {
     await expect(resolveSessionFileInDir(join(tempDir, "never-created"), cwd, "any-id", readSessionHeaderSummary)).resolves.toBeUndefined();
-    const locked = join(tempDir, "locked-sessions");
-    await writeNamedSessionFile(locked, "2026-01-01T00-00-00-000Z_locked-id.jsonl", { id: "locked-id", cwd });
-    await chmod(locked, 0o000);
+  });
+
+  it.each(["EACCES", "EMFILE"])("propagates a directory read failure with code %s", async (code) => {
+    const error = Object.assign(new Error("Session directory read failed"), { code });
+    const readdir = vi.spyOn(fsPromises, "readdir").mockRejectedValueOnce(error);
     try {
-      if (process.getuid?.() === 0) return;
-      await expect(resolveSessionFileInDir(locked, cwd, "locked-id", readSessionHeaderSummary)).rejects.toMatchObject({ code: "EACCES" });
+      await expect(resolveSessionFileInDir(join(tempDir, "locked-sessions"), cwd, "locked-id", readSessionHeaderSummary)).rejects.toBe(error);
+      expect(readdir).toHaveBeenCalledWith(join(tempDir, "locked-sessions"));
     } finally {
-      await chmod(locked, 0o700);
+      readdir.mockRestore();
     }
   });
 
