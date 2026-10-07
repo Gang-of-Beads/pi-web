@@ -3,11 +3,18 @@ import { isSessionNotFoundError } from "../sessionNotFound";
 import { MACHINE_WIDE_LOCATE_START } from "../sessionTarget";
 import { QUIET_WINDOW_MS } from "../sync/readPhase";
 import { ScopedResource, type ResourceClock } from "../sync/scopedResource";
-import { boardAnswer, boardWithEvent, completeSessionBoard, oneReadBoard, readSessionBoard, type BoardAnswer, type SessionBoard, type SessionBoardEvent, type SessionBoardSources } from "../sync/sessionBoard";
+import { boardAnswer, boardFilledFromMemory, boardWithEvent, completeSessionBoard, oneReadBoard, readSessionBoard, type BoardAnswer, type SessionBoard, type SessionBoardEvent, type SessionBoardSources } from "../sync/sessionBoard";
 import type { BoardMemory } from "../sync/boardMemory";
 
 /** How long a board read whole stays fresh: browsing it again reads no more than its gaps. */
 const BOARD_FRESH_MS = 30_000;
+
+/**
+ * How long a list waits for the live board before it draws the remembered one (owner,
+ * 2026-10-07): an answer inside this window is the first paint, with nothing to replace; past
+ * it the reader sees the remembered rows and the answer slides in when it lands.
+ */
+export const REMEMBERED_HOLD_MS = 500;
 
 export interface SessionBoardControllerDependencies {
   /** The listings of one machine; the default reads the machine's API. */
@@ -30,8 +37,10 @@ export interface SessionBoardControllerDependencies {
  * app-row cause; one source not answering retries silently (owner Q4).
  *
  * Until a machine's first read answers, its board is the one this browser
- * remembered (`boardMemory.ts`): drawn at once, never counted as an answer,
- * and not drawn at all once the machine stated a refusal.
+ * remembered (`boardMemory.ts`): drawn once the live answer has had
+ * REMEMBERED_HOLD_MS to arrive, never counted as an answer, and not drawn at
+ * all once the machine stated a refusal. A partial answer keeps the
+ * remembered rows of the sources that did not answer.
  */
 export class SessionBoardController {
   private readonly boards: ScopedResource<string, SessionBoard>;
@@ -47,11 +56,17 @@ export class SessionBoardController {
   private readonly lastRemembered = new Map<string, SessionBoard>();
   /** Machines whose board this page has read, the ones memory may be handed. */
   private readonly readMachines = new Set<string>();
+  /** When each machine's wait for its live board ends; set the first time its board is asked for. */
+  private readonly holdEnds = new Map<string, number>();
+  private readonly holdListeners = new Set<() => void>();
+  private readonly setTimer: (callback: () => void, delayMs: number) => void;
 
   constructor(deps: SessionBoardControllerDependencies = {}) {
     const sources = deps.sources ?? defaultSources(deps.knownProjects);
     this.now = deps.now ?? (() => Date.now());
     this.memory = deps.memory;
+    const clock = deps.clock;
+    this.setTimer = clock === undefined ? (callback, delayMs) => { globalThis.setTimeout(callback, delayMs); } : (callback, delayMs) => { clock.setTimer(callback, delayMs); };
     this.boards = new ScopedResource<string, SessionBoard>({
       keyId: (machineId) => machineId,
       read: async (machineId) => {
@@ -101,12 +116,22 @@ export class SessionBoardController {
     await this.boards.refresh(machineId);
   }
 
-  /** The board to draw: the live one, else the remembered one while the machine has neither answered nor refused. */
+  /**
+   * The board to draw: the live one, with remembered rows for the sources it could not read; else,
+   * once the wait for it is over, the remembered one while the machine has neither answered nor
+   * refused.
+   */
   board(machineId: string): SessionBoard | undefined {
     const entry = this.boards.entry(machineId);
-    if (entry.data !== undefined) return entry.data;
-    if (entry.fact.kind !== "none") return undefined;
+    const live = entry.data;
+    if (live !== undefined) return boardAnswer(live) === "complete" ? live : boardFilledFromMemory(live, this.recall(machineId));
+    if (entry.fact.kind !== "none" || this.waitingForLive(machineId)) return undefined;
     return this.recall(machineId);
+  }
+
+  /** Whether the board drawn is wholly the remembered one: no live answer has landed yet. */
+  drawnFromMemory(machineId: string): boolean {
+    return this.boards.entry(machineId).data === undefined && this.board(machineId) !== undefined;
   }
 
   /** How much of the live board answered; a remembered board is no answer. */
@@ -127,7 +152,12 @@ export class SessionBoardController {
   }
 
   subscribe(listener: () => void): () => void {
-    return this.boards.subscribe(listener);
+    this.holdListeners.add(listener);
+    const unsubscribe = this.boards.subscribe(listener);
+    return () => {
+      this.holdListeners.delete(listener);
+      unsubscribe();
+    };
   }
 
   /**
@@ -147,6 +177,16 @@ export class SessionBoardController {
 
   dispose(): void {
     this.boards.dispose();
+  }
+
+  /** The first ask starts the machine's wait; its end asks every listener to draw again. */
+  private waitingForLive(machineId: string): boolean {
+    if (this.memory === undefined) return false;
+    const ends = this.holdEnds.get(machineId);
+    if (ends !== undefined) return this.now() < ends;
+    this.holdEnds.set(machineId, this.now() + REMEMBERED_HOLD_MS);
+    this.setTimer(() => { for (const listener of [...this.holdListeners]) listener(); }, REMEMBERED_HOLD_MS);
+    return true;
   }
 
   private recall(machineId: string): SessionBoard | undefined {

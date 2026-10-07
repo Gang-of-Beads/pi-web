@@ -66,6 +66,15 @@ export function unansweredRow(miss: ReadMiss, nameOf: MachineName): TemplateResu
 }
 
 /**
+ * The app row while a list on screen shows what this browser remembered and
+ * its live answer has not landed (owner, 2026-10-07). Quieter than the
+ * unanswered row: nothing is wrong yet, the page is loading.
+ */
+export function syncingRow(): TemplateResult {
+  return html`<div class="error transient syncing" role="status"><span class="error-text">Syncing…</span></div>`;
+}
+
+/**
  * Whether a message is one of the self-healing transport failures.
  *
  * The classification seam: notice.ts asks it whether an error's text carries

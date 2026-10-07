@@ -208,6 +208,29 @@ was. The "quiet" setting (owner, 2026-10-06):
 - The first open on a machine, with nothing cached, waits for the read as it does today (owner,
   2026-10-06).
 
+### 1b. Wait half a second before the remembered list (owner, 2026-10-07)
+
+Ask `434f7058`, the owner's words: try loading for about 0.5 s; if the list loads in that time,
+show the new one directly; if not, show the cache plus what has loaded, and animate the later
+update in, keeping the motion simple, fast and smooth.
+
+- **The hold.** The first time a page asks for a machine's board, the list waits up to
+  `REMEMBERED_HOLD_MS` (500 ms) for the live answer (`SessionBoardController.board`). An answer
+  inside the hold is the first paint, with no motion (the list had no rows). When the hold ends
+  without an answer, the controller's listeners draw again and the remembered board is drawn; the
+  live answer, when it lands, replaces it with step 1's list motion (server-caused, quiet).
+- **Cache plus what loaded.** The board is one read, so it lands whole: the list changes once
+  when the answer arrives, never row by row, which is what keeps the top of the list from
+  reshuffling while it loads. When the answer is partial (a project, workspace or pin did not
+  answer), the remembered rows of exactly those sources stay (`boardFilledFromMemory`) until a
+  retry answers them. A remembered row of a source that did answer is never kept.
+- **The top row says "Syncing…".** While the session list is on screen and drawn wholly from
+  memory, the app row says "Syncing…" in the muted tone (owner: "直接上面 notification row 的
+  syncing 就好了吧？这样用户知道在加载中/同步中"). It is the quietest claim: a notice and "Trying
+  to sync with the server…" (nothing answered within the ack timeout) come first. A partial live
+  answer filled from memory does not say "Syncing…": the board's own retries stay silent (owner
+  Q4, 2026-09-30: the board is not an app-row cause). No mark on the rows themselves.
+
 ## Plan
 
 1. The cache tier and `listMotion`, on the Navigate session list first; measured on a real phone.
@@ -220,6 +243,8 @@ was. The "quiet" setting (owner, 2026-10-06):
 - 2026-10-06: start, in the order of the plan; the quiet motion; the cache in `localStorage`.
 - 2026-10-06: the first picker open with nothing cached waits, as today.
 - 2026-10-06: the unreachable fzf ranking for `@` completions is deleted, not revived.
+- 2026-10-07: wait 0.5 s for the live list before drawing the remembered one; fill a partial
+  answer from memory; "Syncing…" in the top row while the list shown is remembered (1b).
 
 ## Questions for the owner
 

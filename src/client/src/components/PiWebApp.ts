@@ -116,7 +116,7 @@ import { readPinnedProjectIds, togglePinnedProjectId, writePinnedProjectIds } fr
 import { observeTransportRecovery } from "../api/transportHealth";
 import { ackWatch } from "../api/ackWatch";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
-import { errorBanner, noticeExpiryMs, normalizeTransientError, unansweredRow } from "./errorBanner";
+import { errorBanner, noticeExpiryMs, normalizeTransientError, syncingRow, unansweredRow } from "./errorBanner";
 import { rowDecision, type ShownUnanswered } from "../sync/connectionSummary";
 import { messageStatusUnanswered } from "../sendVerification";
 import { earliestUnanswered } from "../sync/scopedResource";
@@ -226,6 +226,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .empty button, .archived-strip button { box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-4) var(--pi-space-6); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-accent); font: var(--pi-text-sm) var(--pi-font-ui); line-height: inherit; cursor: pointer; }
   .error { display: flex; gap: var(--pi-space-4); align-items: flex-start; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
+  .error.transient.syncing { color: var(--pi-muted); background: color-mix(in srgb, var(--pi-muted) 8%, transparent); }
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
   .error .error-retry { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-5); border: 1px solid currentColor; border-radius: var(--pi-radius-md); background: none; color: inherit; font: inherit; cursor: pointer; }
   @media (pointer: coarse) { .error .error-retry { min-height: var(--pi-control-height-touch); } }
@@ -4728,15 +4729,25 @@ export class PiWebApp extends LitElement {
   private renderUnansweredRow(noticeShown: boolean) {
     const messageStatus = messageStatusUnanswered(this.state.messageStatusUnanswered, { machineId: selectedMachineId(this.state), sessionId: this.state.selectedSession?.id });
     const unanswered = [this.machines.unanswered(), targetUnanswered(this.namedTargetInScope()), messageStatus, this.realtime.unanswered(selectedMachineId(this.state)), ackWatch.waiting()].reduce(earliestUnanswered, this.projects.unanswered());
-    const decision = rowDecision({ notice: noticeShown, unanswered, shown: this.unansweredShown, now: Date.now() });
+    const decision = rowDecision({ notice: noticeShown, unanswered, shown: this.unansweredShown, syncing: this.rememberedListOnScreen(), now: Date.now() });
     if (this.reconnectingRecheck !== undefined) globalThis.clearTimeout(this.reconnectingRecheck);
     this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : globalThis.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
+    if (decision.claim.kind === "syncing") {
+      this.unansweredShown = undefined;
+      return syncingRow();
+    }
     if (decision.claim.kind !== "unanswered") {
       this.unansweredShown = undefined;
       return null;
     }
     this.unansweredShown = { at: this.unansweredShown?.at ?? Date.now(), miss: decision.claim.miss };
     return unansweredRow(decision.claim.miss, (machineId) => this.state.machines.find((machine) => machine.id === machineId)?.name ?? machineId);
+  }
+
+  /** The session list is on screen and drawn wholly from memory: the row says it is syncing. */
+  private rememberedListOnScreen(): boolean {
+    const onScreen = this.navigateOpen || (this.appShell.isMobileNavigationLayout ? this.displayMainView() === "navigation" : !this.panelCollapse.navigationPanelCollapsed);
+    return onScreen && this.sessionBoards.drawnFromMemory(this.browsedMachineId());
   }
 
   private renderErrorBanner(error: string, retiredBy: RetiredBy) {

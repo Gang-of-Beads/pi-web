@@ -25,7 +25,7 @@ import type { Unanswered } from "./scopedResource";
  * was true for every healthy read in flight, and waiving the grace for it let
  * the row stay up while the server answered everything (review 2026-10-07).
  */
-export type RowClaim = { readonly kind: "none" } | { readonly kind: "notice" } | { readonly kind: "unanswered"; readonly miss: ReadMiss };
+export type RowClaim = { readonly kind: "none" } | { readonly kind: "notice" } | { readonly kind: "unanswered"; readonly miss: ReadMiss } | { readonly kind: "syncing" };
 
 export interface RowDecision {
   readonly claim: RowClaim;
@@ -46,10 +46,17 @@ export interface RowInput {
   readonly unanswered: Unanswered | undefined;
   /** The unanswered row, if it is showing. */
   readonly shown: ShownUnanswered | undefined;
+  /**
+   * A list on screen is drawn from what this browser remembered and the live answer has not
+   * landed (owner, 2026-10-07: the row says "Syncing…", so the reader knows it is loading). The
+   * quietest claim: anything else the row has to say comes first.
+   */
+  readonly syncing: boolean;
   readonly now: number;
 }
 
 const NONE: RowClaim = { kind: "none" };
+const SYNCING: RowClaim = { kind: "syncing" };
 
 export function rowDecision(input: RowInput): RowDecision {
   if (input.notice) return { claim: { kind: "notice" } };
@@ -58,7 +65,8 @@ export function rowDecision(input: RowInput): RowDecision {
   const graceLeft = unanswered === undefined ? undefined : TRANSIENT_GRACE_MS - (now - unanswered.since);
   const holdLeft = shown === undefined ? 0 : BANNER_MIN_VISIBLE_MS - (now - shown.at);
   if (shown !== undefined && holdLeft > 0) return { claim: { kind: "unanswered", miss: shown.miss }, recheckInMs: Math.min(holdLeft, graceLeft ?? holdLeft) };
-  return graceLeft === undefined ? { claim: NONE } : { claim: NONE, recheckInMs: graceLeft };
+  const claim = input.syncing ? SYNCING : NONE;
+  return graceLeft === undefined ? { claim } : { claim, recheckInMs: graceLeft };
 }
 
 function earnsRow(unanswered: Unanswered, shown: ShownUnanswered | undefined, now: number): boolean {

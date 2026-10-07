@@ -38,6 +38,37 @@ export type UnknownSource =
   | { readonly kind: "workspace"; readonly path: string }
   | { readonly kind: "pin"; readonly sessionId: string };
 
+/**
+ * A partial live board with the remembered rows of exactly the sources that did not answer
+ * (owner, 2026-10-07: "先显示缓存+已经加载的"). A remembered session stays when its workspace
+ * did not answer, or its project's workspaces did not; a remembered pin when the pin did not. A
+ * source that answered said what it holds, so none of its remembered rows is kept. The unknown
+ * sources stay unknown, so the board is still partial and still read again.
+ */
+export function boardFilledFromMemory(live: SessionBoard, remembered: SessionBoard | undefined): SessionBoard {
+  if (remembered === undefined || live.unknownSources.length === 0) return live;
+  const projectIds = new Set(live.unknownSources.flatMap((source) => (source.kind === "project" ? [source.projectId] : [])));
+  const pinIds = new Set(live.unknownSources.flatMap((source) => (source.kind === "pin" ? [source.sessionId] : [])));
+  const liveWorkspaceIds = new Set(live.workspaces.map((workspace) => workspace.id));
+  const workspaces = remembered.workspaces.filter((workspace) => projectIds.has(workspace.projectId) && !liveWorkspaceIds.has(workspace.id));
+  const paths = [...live.unknownSources.flatMap((source) => (source.kind === "workspace" ? [source.path] : [])), ...workspaces.map((workspace) => workspace.path)];
+  const listed = new Set([...live.sessions, ...(live.pinnedElsewhere ?? [])].map((session) => session.id));
+  const sessions = remembered.sessions.filter((session) => !listed.has(session.id) && paths.some((path) => within(session.cwd, path)));
+  const pinned = (remembered.pinnedElsewhere ?? []).filter((session) => pinIds.has(session.id) && !listed.has(session.id));
+  if (sessions.length === 0 && workspaces.length === 0 && pinned.length === 0) return live;
+  const pinnedElsewhere = [...(live.pinnedElsewhere ?? []), ...pinned];
+  return {
+    ...live,
+    sessions: [...live.sessions, ...sessions].sort((left, right) => Date.parse(right.modified) - Date.parse(left.modified)),
+    workspaces: [...live.workspaces, ...workspaces],
+    ...(pinnedElsewhere.length === 0 ? {} : { pinnedElsewhere }),
+  };
+}
+
+function within(cwd: string, path: string): boolean {
+  return cwd === path || cwd.startsWith(`${path.replace(/\/+$/u, "")}/`);
+}
+
 /** How much of a board has answered (state-diagram B48, the session board). */
 export type BoardAnswer = "none" | "partial" | "complete";
 
