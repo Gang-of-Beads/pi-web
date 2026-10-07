@@ -124,6 +124,8 @@ export interface ChatLine {
     responseId?: string;
     /** Built from an assistant reply that ended in an error; see retriedAttempt.ts. */
     failedAttempt?: true;
+    /** A model error's provider text, whole, shown behind Details under the row's sentence (B34). */
+    failureDetail?: string;
     /** Present only on messages this browser sent; see MessageDelivery. */
     delivery?: MessageDelivery;
     clientMessageId?: string;

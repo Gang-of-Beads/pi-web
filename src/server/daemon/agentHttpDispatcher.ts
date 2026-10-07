@@ -8,8 +8,8 @@ import { Client, EnvHttpProxyAgent, Pool, setGlobalDispatcher, type Dispatcher }
  * undici's global dispatcher caps `bodyTimeout` and `headersTimeout` at
  * 300_000 ms by default, so any model response that stays idle for 5 minutes
  * (slow local backends such as vLLM producing a single chunk) dies with
- * `TypeError: terminated` — surfaced as "(SYSTEM) Model response failed:
- * terminated" (issue #113).
+ * `TypeError: terminated` — surfaced as the transcript's temporary-error row
+ * with "terminated" behind its Details (issue #113).
  *
  * The pi CLI avoids this by calling
  * `configureHttpDispatcher(settingsManager.getHttpIdleTimeoutMs())` at

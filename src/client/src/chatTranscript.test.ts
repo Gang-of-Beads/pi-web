@@ -253,7 +253,7 @@ describe("applyTranscriptEvent", () => {
       },
     })).toEqual([
       textMessage("user", "question"),
-      { role: "system", parts: [{ type: "text", text: "Model response failed: provider returned 500" }], meta: { timestamp: "2026-05-09T12:00:00.000Z", model: { provider: "anthropic", id: "claude-sonnet" }, failedAttempt: true } },
+      { role: "system", parts: [{ type: "text", text: "The model provider had a temporary error. Send a message to try again." }], meta: { timestamp: "2026-05-09T12:00:00.000Z", model: { provider: "anthropic", id: "claude-sonnet" }, failedAttempt: true, failureDetail: "provider returned 500" } },
     ]);
   });
 
@@ -275,7 +275,7 @@ describe("applyTranscriptEvent", () => {
     })).toEqual([
       textMessage("user", "question"),
       { ...textMessage("assistant", "partial answer"), meta: { timestamp: "2026-05-09T12:00:00.000Z", failedAttempt: true } },
-      { role: "system", parts: [{ type: "text", text: "Model response failed: connection lost" }], meta: { timestamp: "2026-05-09T12:00:00.000Z", failedAttempt: true } },
+      { role: "system", parts: [{ type: "text", text: "The model provider had a temporary error. Send a message to try again." }], meta: { timestamp: "2026-05-09T12:00:00.000Z", failedAttempt: true, failureDetail: "connection lost" } },
     ]);
   });
 

@@ -2,6 +2,7 @@ import { ASK_USER_ANSWERS_CUSTOM_TYPE } from "../../shared/apiTypes";
 import { deliverySettled } from "./messageDelivery";
 import { parseAskUserOutcome } from "./api/parsers";
 import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview, ToolResultImageRef } from "./components/shared";
+import { MODEL_FAILURE_SENTENCE, modelFailure } from "./modelFailure";
 
 export function normalizeMessages(messages: unknown[]): ChatLine[] {
   return coalesceToolExecutions(messages.flatMap(normalizeMessage)).filter((message) => message.parts.length > 0);
@@ -86,9 +87,10 @@ export function normalizeMessage(message: unknown): ChatLine[] {
   const visible = parts.filter((part) => part.type !== "empty");
   const displayRole = role === "assistant" && visible.length > 0 && visible.every((part) => part.type === "skillRead") ? "skill" : role;
   const lines = visible.length > 0 ? [withMessageMeta({ role: displayRole, parts: visible, ...(source === undefined ? {} : { source }) }, message)] : [];
-  const errorLine = assistantErrorLine(message);
-  if (errorLine === undefined) return lines;
-  const settled = [...lines, withMessageMeta(errorLine, message)];
+  const failure = assistantFailure(message);
+  if (failure === undefined) return lines;
+  const errorLine = withMessageMeta(textMessage("system", failure.text), message);
+  const settled = [...lines, failure.detail === undefined ? errorLine : { ...errorLine, meta: { ...errorLine.meta, failureDetail: failure.detail } }];
   return getString(message, "stopReason") === "error" ? settled.map(asFailedAttempt) : settled;
 }
 
@@ -97,56 +99,42 @@ function asFailedAttempt(line: ChatLine): ChatLine {
   return { ...line, meta: { ...line.meta, failedAttempt: true } };
 }
 
-const UNSTATED_REASON: ReadonlyMap<string, string> = new Map([["error", "The model returned an error."], ["aborted", "Request was aborted"]]);
+const UNFINISHED_STOP_REASONS: ReadonlySet<string> = new Set(["error", "aborted"]);
 
-function assistantErrorLine(message: unknown): ChatLine | undefined {
-  const unstated = UNSTATED_REASON.get(getString(message, "stopReason") ?? "");
-  if (getString(message, "role") !== "assistant" || unstated === undefined) return undefined;
+/** The row a reply that did not finish leaves: its sentence, and for a model error the provider's own text behind Details (B34). */
+function assistantFailure(message: unknown): { text: string; detail?: string } | undefined {
+  if (getString(message, "role") !== "assistant" || !UNFINISHED_STOP_REASONS.has(getString(message, "stopReason") ?? "")) return undefined;
   const errorMessage = getString(message, "errorMessage")?.trim();
-  const detail = errorMessage === undefined || errorMessage === "" ? unstated : errorMessage;
-  return textMessage("system", describeAssistantFailure(detail, message));
+  const stated = errorMessage === "" ? undefined : errorMessage;
+  const text = describeAssistantFailure(stated, message);
+  return failureKind(message) === "failed" && stated !== undefined ? { text, detail: stated } : { text };
 }
 
 /**
- * What ended a reply that did not finish.
- *
- * "This operation was aborted" is true of a Stop the reader pressed and of a
- * connection something else cut, and the row used to read "(the turn was stopped
- * before it finished)" for both. Owner, 2026-09-30: only two cases matter - you
- * stopped it, or it was interrupted. The daemon marks a reply the reader's Stop cut
- * (`stoppedBy: "you"`, live and in history), so everything else is an interruption.
+ * What ended a reply that did not finish, read from pi's own fields only: `stopReason`
+ * says error or aborted, and the daemon's `stoppedBy: "you"` marks a reply the reader's
+ * Stop cut (owner, 2026-09-30: only two aborted cases matter - you stopped it, or it was
+ * interrupted). The error text never decides the kind: an error whose provider text says
+ * "aborted" is an error, as pi's own terminal shows it (owner, 2026-10-07: no state from
+ * text). Which error it was is pi's call too (modelFailure.ts).
  */
-export type FailureKind = "failed" | "unreplayable-thinking" | "stopped-by-you" | "interrupted";
+export type FailureKind = "failed" | "stopped-by-you" | "interrupted";
 
-export function failureKind(detail: string, message: unknown): FailureKind {
-  if (isUnreplayableThinkingFailure(detail)) return "unreplayable-thinking";
-  if (!/aborted/iu.test(detail) && getString(message, "stopReason") !== "aborted") return "failed";
+export function failureKind(message: unknown): FailureKind {
+  if (getString(message, "stopReason") !== "aborted") return "failed";
   return getString(message, "stoppedBy") === "you" ? "stopped-by-you" : "interrupted";
 }
 
-const FAILURE_TEXT: Record<FailureKind, (detail: string, tool: string | undefined) => string> = {
-  failed: (detail) => `Model response failed: ${detail}`,
-  "unreplayable-thinking": (detail) => `Model response failed: ${detail} (a turn was interrupted while the model was thinking, so this conversation carries a thinking block the provider will not accept again; every retry on this branch fails the same way. Open /tree and fork from the user message that asked for the broken turn - the fork drops it and returns your message as a draft.)`,
-  "stopped-by-you": (_detail, tool) => (tool === undefined ? "You stopped this turn." : `You stopped this turn while it was running ${tool}.`),
-  interrupted: (detail, tool) => `${tool === undefined ? "Interrupted before it finished" : `Interrupted while running ${tool}`}: ${detail}`,
+/** An error with no provider text is not classified: pi's classifiers read only provider text, never a stand-in. */
+const FAILURE_TEXT: Record<FailureKind, (stated: string | undefined, tool: string | undefined, provider: string | undefined) => string> = {
+  failed: (stated, _tool, provider) => MODEL_FAILURE_SENTENCE[stated === undefined ? "provider" : modelFailure(stated, provider)],
+  "stopped-by-you": (_stated, tool) => (tool === undefined ? "You stopped this turn." : `You stopped this turn while it was running ${tool}.`),
+  interrupted: (stated, tool) => `${tool === undefined ? "Interrupted before it finished" : `Interrupted while running ${tool}`}: ${stated ?? "Request was aborted"}`,
 };
 
-/** The failure row's text; the tool a cut reply was calling is named when it had one. */
-export function describeAssistantFailure(detail: string, message: unknown): string {
-  return FAILURE_TEXT[failureKind(detail, message)](detail, lastToolCallName(message));
-}
-
-/**
- * The provider refusing a thinking block it will not see unchanged again.
- *
- * A thinking block's signature arrives at the end of the block, so a turn cut
- * while the model is thinking is stored without one. Replaying it is refused,
- * and it is replayed on every subsequent request - so the session reads as
- * randomly broken rather than as holding one bad entry. Naming that is the
- * difference between an error and a dead end.
- */
-export function isUnreplayableThinkingFailure(detail: string): boolean {
-  return /thinking/iu.test(detail) && /cannot be modified|must remain as they were/iu.test(detail);
+/** The failure row's sentence; the tool a cut reply was calling is named when it had one. */
+export function describeAssistantFailure(stated: string | undefined, message: unknown): string {
+  return FAILURE_TEXT[failureKind(message)](stated, lastToolCallName(message), getString(message, "provider"));
 }
 
 /** The last tool this message was calling, if any. */

@@ -459,6 +459,9 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .part.thinking { border-top-color: var(--pi-border-muted); }
   .part.thinking > summary { color: var(--pi-dim); }
   .part.thinking > formatted-text { color: var(--pi-muted); }
+  .part.failure-detail > summary { display: flex; align-items: center; min-height: var(--pi-control-height-compact, 24px); }
+  @media (pointer: coarse) { .part.failure-detail > summary { min-height: var(--pi-control-height-touch); } }
+  .part.failure-detail > pre { color: var(--pi-muted); }
   pre { margin: var(--pi-space-3) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; direction: ltr; text-align: left; unicode-bidi: isolate; }
   .shell-output { color: var(--pi-text); font: var(--pi-text-sm) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: 1.45; direction: ltr; text-align: left; unicode-bidi: isolate; }
   @keyframes pulse { 0%, 100% { transform: scale(.75); opacity: .55; } 50% { transform: scale(1.2); opacity: 1; } }
@@ -1946,6 +1949,7 @@ export class ChatView extends LitElement {
       <article class=${toolOnly || askUserRecordOnly ? shellClass : `msg ${message.role}${queuedClass}`} data-index=${index} data-scroll-anchor-id=${this.messageAnchorKey(index)}>
         ${toolOnly || askUserRecordOnly ? null : this.renderMessageHeader(message, String(index))}
         ${message.parts.map((part) => this.renderPart(part, message))}
+        ${this.renderFailureDetail(message)}
         ${this.renderDeliveryMark(message)}
       </article>
     `;
@@ -1994,6 +1998,7 @@ export class ChatView extends LitElement {
             <section class=${toolOnly ? "group-msg tool-execution-shell" : `group-msg ${message.role}`} data-index=${startIndex + offset} data-scroll-anchor-id=${this.eventAnchorKey(startIndex + offset)}>
               ${toolOnly ? null : this.renderMessageHeader(message, `${String(startIndex)}:${String(offset)}`)}
               ${message.parts.map((part) => this.renderPart(part, message))}
+              ${this.renderFailureDetail(message)}
             </section>
           `;
         })}
@@ -2153,6 +2158,13 @@ export class ChatView extends LitElement {
     const next = new Set(this.expandedNotices);
     if (!next.delete(key)) next.add(key);
     this.expandedNotices = next;
+  }
+
+  /** A model error's provider text, whole and unparsed, behind Details (B34): the sentence above says what happened. */
+  private renderFailureDetail(message: ChatLine) {
+    const detail = message.meta?.failureDetail;
+    if (detail === undefined) return null;
+    return html`<details class="part failure-detail"><summary>Details</summary><pre>${detail}</pre></details>`;
   }
 
   private renderPart(part: ChatPart, message?: ChatLine) {

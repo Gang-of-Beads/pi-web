@@ -17,7 +17,7 @@ describe("a failure pi retries", () => {
 
   it("leaves the live transcript when the retry starts", () => {
     const shown = ended([user("go")], failure("overloaded", 1_000));
-    expect(texts(shown)).toEqual(["go", "Model response failed: overloaded"]);
+    expect(texts(shown)).toEqual(["go", "The model provider had a temporary error. Send a message to try again."]);
     expect(texts(applyTranscriptEvent(shown, retry))).toEqual(["go"]);
   });
 
@@ -34,6 +34,8 @@ describe("a failure pi retries", () => {
 
   it("takes back only the newest failure when two are on screen", () => {
     const shown = ended(ended([user("go")], failure("first try", 1_000)), failure("second try", 2_000));
-    expect(texts(applyTranscriptEvent(shown, retry))).toEqual(["go", "Model response failed: first try"]);
+    const after = applyTranscriptEvent(shown, retry);
+    expect(texts(after)).toEqual(["go", "The model provider returned an error. Send a message to try again."]);
+    expect(after?.[1]?.meta?.failureDetail).toBe("first try");
   });
 });

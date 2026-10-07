@@ -154,7 +154,7 @@ describe("chat message normalization", () => {
 
   it("shows assistant model errors as system chat messages", () => {
     expect(normalizeMessage({ role: "assistant", content: [], stopReason: "error", errorMessage: "429 rate limit", timestamp: "2026-05-09T12:00:00.000Z", provider: "openai", model: "gpt-4.1" })).toEqual([
-      { role: "system", parts: [{ type: "text", text: "Model response failed: 429 rate limit" }], meta: { timestamp: "2026-05-09T12:00:00.000Z", model: { provider: "openai", id: "gpt-4.1" }, failedAttempt: true } },
+      { role: "system", parts: [{ type: "text", text: "The model provider had a temporary error. Send a message to try again." }], meta: { timestamp: "2026-05-09T12:00:00.000Z", model: { provider: "openai", id: "gpt-4.1" }, failedAttempt: true, failureDetail: "429 rate limit" } },
     ]);
   });
 
@@ -162,14 +162,18 @@ describe("chat message normalization", () => {
     const aborted = "This operation was aborted";
     const bash = [{ type: "toolCall", name: "bash" }];
 
-    it.each<[FailureKind, string, unknown, string]>([
-      ["stopped-by-you", aborted, { content: [], stoppedBy: "you" }, "You stopped this turn."],
-      ["stopped-by-you", aborted, { content: bash, stoppedBy: "you" }, "You stopped this turn while it was running bash."],
-      ["interrupted", aborted, { content: [] }, "Interrupted before it finished: This operation was aborted"],
-      ["interrupted", aborted, { content: bash }, "Interrupted while running bash: This operation was aborted"],
-      ["failed", "429 rate limit", { content: [], stoppedBy: "you" }, "Model response failed: 429 rate limit"],
+    it.each<[FailureKind, string | undefined, unknown, string]>([
+      ["stopped-by-you", aborted, { content: [], stopReason: "aborted", stoppedBy: "you" }, "You stopped this turn."],
+      ["stopped-by-you", aborted, { content: bash, stopReason: "aborted", stoppedBy: "you" }, "You stopped this turn while it was running bash."],
+      ["interrupted", aborted, { content: [], stopReason: "aborted" }, "Interrupted before it finished: This operation was aborted"],
+      ["interrupted", aborted, { content: bash, stopReason: "aborted" }, "Interrupted while running bash: This operation was aborted"],
+      ["failed", "429 rate limit", { content: [], stopReason: "error", stoppedBy: "you" }, "The model provider had a temporary error. Send a message to try again."],
+      ["failed", aborted, { content: [], stopReason: "error" }, "The model provider returned an error. Send a message to try again."],
+      ["failed", "prompt is too long: 213462 tokens > 200000 maximum", { content: [], stopReason: "error" }, "The conversation is too long for this model. Send a message to try again."],
+      ["failed", undefined, { content: [], stopReason: "error" }, "The model provider returned an error. Send a message to try again."],
+      ["interrupted", undefined, { content: [], stopReason: "aborted" }, "Interrupted before it finished: Request was aborted"],
     ])("%s: %s", (kind, detail, message, text) => {
-      expect(failureKind(detail, message)).toBe(kind);
+      expect(failureKind(message)).toBe(kind);
       expect(describeAssistantFailure(detail, message)).toBe(text);
     });
 
@@ -209,7 +213,7 @@ describe("chat message normalization", () => {
   it("keeps partial assistant content and adds a visible error line", () => {
     expect(normalizeMessage({ role: "assistant", content: [{ type: "text", text: "partial answer" }], stopReason: "error", errorMessage: "connection lost" })).toEqual([
       { ...textMessage("assistant", "partial answer"), meta: { failedAttempt: true } },
-      { ...textMessage("system", "Model response failed: connection lost"), meta: { failedAttempt: true } },
+      { ...textMessage("system", "The model provider had a temporary error. Send a message to try again."), meta: { failedAttempt: true, failureDetail: "connection lost" } },
     ]);
   });
 
