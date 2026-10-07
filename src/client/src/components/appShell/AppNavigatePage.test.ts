@@ -71,7 +71,7 @@ describe("app-navigate-page", () => {
     expect(texts(page, ".path-step")).toEqual(["All projects"]);
     expect(texts(page, ".row.session").join(" ")).toContain("fix login");
     expect(texts(page, ".section-title")).toEqual(["Active", "Archived (0)"]);
-    expect(texts(page, ".kind")).toEqual(["Sessions", "Projects"]);
+    expect(texts(page, ".kind")).toEqual(["Projects", "Sessions"]);
   });
 
   it("narrows through a choice without leaving the page", async () => {
@@ -109,7 +109,7 @@ describe("app-navigate-page", () => {
 
   it("offers only the levels a reader can stand on", async () => {
     const page = await mount({}, input({ scope: { machineId: "local", projectId: "p1", folderPath: undefined, sessionId: undefined } }));
-    expect(texts(page, ".kind")).toEqual(["Sessions", "Projects"]);
+    expect(texts(page, ".kind")).toEqual(["Projects", "Sessions"]);
   });
 
   it("marks the open session in the list", async () => {

@@ -323,9 +323,9 @@ export class AppNavigatePage extends LitElement {
           </div>
         </header>
         <nav class="kinds" aria-label="What to list">
-          ${this.renderKindTab("sessions", "Sessions", renderChatIcon())}
           ${segments.some((segment) => segment.level === "machine") ? this.renderKindTab("machine", "Machines", renderMachineIcon()) : nothing}
           ${this.renderKindTab("project", "Projects", renderProjectIcon())}
+          ${this.renderKindTab("sessions", "Sessions", renderChatIcon())}
         </nav>
         ${showsSessions ? this.renderScopeSwitch(listed.projects, input.scope.projectId) : nothing}
         ${showsSessions ? html`

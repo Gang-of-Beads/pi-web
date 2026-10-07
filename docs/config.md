@@ -275,7 +275,7 @@ The command should update PI WEB and restart it; it runs in a new terminal on th
 
 ### Lists
 
-`listTiles` sets how many tiles each row of the Navigate lists shows (Sessions, Machines and Projects, together): `1` or `2`, one choice for PI WEB's phone layout and one for its desktop layout. Edit it in **Settings → Appearance → Lists**, or in the gateway's global config:
+`listTiles` sets how many tiles each row of the Navigate lists shows (Machines, Projects and Sessions, together): `1` or `2`, one choice for PI WEB's phone layout and one for its desktop layout. Edit it in **Settings → Appearance → Lists**, or in the gateway's global config:
 
 ```json
 {
