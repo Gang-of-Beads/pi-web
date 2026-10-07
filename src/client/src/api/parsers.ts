@@ -745,8 +745,8 @@ export function parseSessionStatus(value: unknown): SessionStatus {
 
 /**
  * What the session's extensions left standing. Read field by field and never fatal: a value this
- * build cannot read is left out, so it can never cost the whole status (review 1005). Statuses and
- * widgets an older daemon sends are not read: PI WEB draws neither (owner, 2026-10-06).
+ * build cannot read is left out, so it can never cost the whole status (review 1005). Widgets an
+ * older daemon sends are not read: PI WEB draws none (owner, 2026-10-06).
  */
 function optionalExtensionUi(value: unknown): Pick<SessionStatus, "extensionUi"> | object {
   if (typeof value !== "object" || value === null) return {};
@@ -755,11 +755,19 @@ function optionalExtensionUi(value: unknown): Pick<SessionStatus, "extensionUi">
     const field: unknown = Reflect.get(value, key);
     return typeof field === "string" && field !== "" ? field : undefined;
   };
+  const statusList: unknown = Reflect.get(value, "statuses");
+  const statuses = Array.isArray(statusList) ? statusList.flatMap((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const key: unknown = Reflect.get(entry, "key");
+    const statusText: unknown = Reflect.get(entry, "text");
+    return typeof key === "string" && typeof statusText === "string" && statusText !== "" ? [{ key, text: statusText }] : [];
+  }) : [];
   const workingMessage = text("workingMessage");
   const workingFrames = strings(Reflect.get(value, "workingFrames"));
   const hiddenThinkingLabel = text("hiddenThinkingLabel");
   const title = text("title");
   const standing: NonNullable<SessionStatus["extensionUi"]> = {
+    ...(statuses.length === 0 ? {} : { statuses }),
     ...(workingMessage === undefined ? {} : { workingMessage }),
     ...(Reflect.get(value, "workingHidden") === true ? { workingHidden: true as const } : {}),
     ...(workingFrames === undefined ? {} : { workingFrames }),

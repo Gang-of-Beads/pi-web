@@ -1,17 +1,19 @@
 import type { ExtensionUiStanding } from "../../../shared/apiTypes.js";
 
 /**
- * What a session's extensions leave standing on its screen through `ctx.ui`: the working row's
- * words, mark and visibility, the hidden-thinking label and the tab title
+ * What a session's extensions leave standing on its screen through `ctx.ui`: footer statuses,
+ * the working row's words, mark and visibility, the hidden-thinking label and the tab title
  * (extension-ui-counterpart.md, owner 2026-10-04).
  *
- * `setStatus` and `setWidget` are not kept: PI WEB draws no extension box around the composer
- * and no extension status line (owner, 2026-10-06), so they stay pi's headless no-ops. A
- * plugin's own surface is a page reached from Go to.
+ * Statuses are drawn in the status bar between the context and the cost, where there is room
+ * (owner, 2026-10-07: PI WEB favours no plugin; what fits is shown, what does not is left out,
+ * as in pi's terminal). `setWidget` is not kept: PI WEB draws no extension box around the
+ * composer (owner, 2026-10-06), so it stays pi's headless no-op.
  *
  * pi's terminal keeps these in its one process and draws them in its one screen; PI WEB keeps
  * them here, per session runtime, and every browser showing the session draws the snapshot that
- * rides on its status. A single slot is last-writer-wins, and a reset restores PI WEB's own
+ * rides on its status. A status holds one value per key and statuses sort by key, as pi's footer
+ * sorts them; a single slot is last-writer-wins, and a reset restores PI WEB's own
  * default even if another extension set the value. A reload of the session's extensions clears
  * everything, as pi's does. Only the payload is bounded, never refused: a text is cut at
  * STATUS_MAX_LENGTH.
@@ -19,6 +21,7 @@ import type { ExtensionUiStanding } from "../../../shared/apiTypes.js";
 export const STATUS_MAX_LENGTH = 1_000;
 
 export class ExtensionStanding {
+  private readonly statuses = new Map<string, string>();
   private workingMessage: string | undefined;
   private workingHidden = false;
   private workingFrames: readonly string[] | undefined;
@@ -27,6 +30,14 @@ export class ExtensionStanding {
 
   /** `changed` is told after every write. */
   constructor(private readonly changed: () => void) {}
+
+  /** pi's `setStatus`: a text under its key, or none; a text that is blank once flattened is none. */
+  setStatus(key: string, text: unknown): void {
+    const flat = text === undefined ? "" : statusText(text);
+    if (flat === "") this.statuses.delete(key);
+    else this.statuses.set(key, flat);
+    this.changed();
+  }
 
   setWorkingMessage(message?: string): void {
     this.workingMessage = message === undefined || message === "" ? undefined : statusText(message);
@@ -55,6 +66,7 @@ export class ExtensionStanding {
 
   /** Everything back to PI WEB's defaults: the session's extensions reloaded or its runtime ended. */
   clear(): void {
+    this.statuses.clear();
     this.workingMessage = undefined;
     this.workingHidden = false;
     this.workingFrames = undefined;
@@ -66,6 +78,7 @@ export class ExtensionStanding {
   /** The wire snapshot, or undefined when nothing stands. */
   snapshot(): ExtensionUiStanding | undefined {
     const standing: ExtensionUiStanding = {
+      ...(this.statuses.size === 0 ? {} : { statuses: [...this.statuses].sort(([left], [right]) => left.localeCompare(right)).map(([key, text]) => ({ key, text })) }),
       ...(this.workingMessage === undefined ? {} : { workingMessage: this.workingMessage }),
       ...(this.workingHidden ? { workingHidden: true as const } : {}),
       ...(this.workingFrames === undefined ? {} : { workingFrames: [...this.workingFrames] }),

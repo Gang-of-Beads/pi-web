@@ -5434,6 +5434,7 @@ export class PiSessionService implements SessionRouteService {
     const baseUiContext = session.extensionRunner.getUIContext();
     const standing = this.standingFor(session);
     const standingMembers: Readonly<Record<string, unknown>> = {
+      setStatus: (key: string, text: unknown) => { standing.setStatus(key, text); },
       setWorkingMessage: (message?: string) => { standing.setWorkingMessage(message); },
       setWorkingVisible: (visible: boolean) => { standing.setWorkingVisible(visible); },
       setWorkingIndicator: (options?: { frames?: string[] }) => { standing.setWorkingIndicator(options); },

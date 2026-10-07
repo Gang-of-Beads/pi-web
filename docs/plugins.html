@@ -208,9 +208,12 @@
                 stand: <code>setWorkingMessage</code>, <code>setWorkingVisible</code> and
                 <code>setWorkingIndicator</code> change the working row; <code>setHiddenThinkingLabel</code> labels folded
                 thinking; and <code>setTitle</code> names the browser tab while that session is open in the chat view. Reloading the
-                session's extensions clears them, as in pi. <code>setStatus</code> and <code>setWidget</code> draw nothing:
-                PI WEB has no extension status line and no extension box around the composer, and a plugin's own surface is
-                a page reached from Go to. <code>editor(title, prefill)</code> opens a card with a
+                session's extensions clears them, as in pi. <code>setStatus</code> is drawn in the status bar: tokens in and
+                out and the context on the left, the extensions' statuses after them, joined with spaces in key order as pi's
+                footer joins them, and the cost at the right edge; statuses are cut with an ellipsis when the line runs out
+                and left out when there is no room for them, on a phone for instance, and hovering the line shows them in
+                full. <code>setWidget</code> draws nothing: PI WEB has no extension box around the composer, and a plugin's
+                own surface is a page reached from Go to. <code>editor(title, prefill)</code> opens a card with a
                 multi-line text area holding <code>prefill</code>, and Enter follows the composer's Enter setting; an
                 opening text past 32,000 characters is cut and the card says how much. <code>setEditorText</code> replaces
                 the session's composer text and <code>pasteToEditor</code> inserts at the caret, in every browser showing the
@@ -244,8 +247,12 @@
                       <td>One line in the conversation; info replaces the previous info line, warnings and errors are kept.</td>
                     </tr>
                     <tr>
-                      <td><code>setStatus</code>, <code>setWidget</code></td>
-                      <td>No effect: PI WEB has no extension status line and no extension box around the composer; a plugin's own surface is a page reached from Go to.</td>
+                      <td><code>setStatus</code></td>
+                      <td>The status bar, between the context and the cost, where there is room; left out when there is none.</td>
+                    </tr>
+                    <tr>
+                      <td><code>setWidget</code></td>
+                      <td>No effect: PI WEB has no extension box around the composer; a plugin's own surface is a page reached from Go to.</td>
                     </tr>
                     <tr>
                       <td><code>setWorkingMessage</code>, <code>setWorkingVisible</code>, <code>setWorkingIndicator</code></td>

@@ -13,6 +13,19 @@ as small extra states. Both are pi's headless no-ops again, as in
 v2.202609.28, and the sections below that describe them are history. The
 working row, the thinking label and the tab title stand.
 
+**Restored 2026-10-07: `setStatus`, in the status bar.** Ask `1a7ec5e2`, the
+owner's words: "pi web不特意兼容任何的具体插件，能显示就显示，显示不开就omitted了，
+这个是general的设计，而且和tui是对标的" (PI WEB favours no particular plugin;
+show what fits, leave out what does not; a general design, matched to the
+terminal), and the layout (ask `90f823e2`): "左侧是token in/out然后context，
+然后显示插件的底部那行，最右边是花费" - tokens in and out, then the context, then
+the extensions' status line, and the cost at the far right. Statuses join with
+a space in key order, as pi's footer joins them; the numbers keep their room
+first; the statuses take what is left, cut with an ellipsis, and are left out
+when fewer than six characters would show. No line of their own, no tap to
+open (the 10-06 line above the numbers was the one withdrawn). `setWidget`
+stays withdrawn.
+
 ## Why
 
 An extension talks to its user through `ctx.ui` (`ExtensionUIContext`, pi
