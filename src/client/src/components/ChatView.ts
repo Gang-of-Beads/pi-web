@@ -27,7 +27,10 @@ import { deliveryWordKey, deliveryWords } from "../deliveryWords";
 import { commandDeliveryPresentation, commandResultLine, type CommandLedgerEntry } from "../commandLedger";
 import { placeCommands } from "../commandPlacement";
 import { IDENTITY_ZOOM, pinchZoom, panZoom, wheelZoom, type PinchPoint, type PinchStart, type ZoomTransform } from "../imageZoomGesture";
+import { isScrollKey, wheelReachesScroller } from "../readerScrollInput";
 
+/** How long after a scroll key or a release a movement of the transcript still counts as the reader's. */
+const READER_INPUT_WINDOW_MS = 500;
 /** One wheel notch, as a scale factor: exp(-deltaY / this). */
 const WHEEL_ZOOM_STEP = 300;
 import type { ClosedExtensionDialog } from "../appState";
@@ -780,6 +783,13 @@ export class ChatView extends LitElement {
   private imageRetryObserver: IntersectionObserver | undefined;
   /** A transcript selection, anchored near its end; undefined while collapsed. */
   private quoteChip: { quoted: string; top: number; left: number } | undefined;
+  /** Until when a movement of the transcript is the reader's: a press holds it open, a scroll key opens it briefly. */
+  private readerInputUntil = 0;
+
+  private readonly onDocumentKeydown = (event: KeyboardEvent): void => {
+    if (isScrollKey(event)) this.readerInputUntil = Math.max(this.readerInputUntil, Date.now() + READER_INPUT_WINDOW_MS);
+  };
+
   private readonly onDocumentSelectionChange = (): void => {
     queueMicrotask(() => { this.readSelectionForQuote(); });
   };
@@ -933,6 +943,7 @@ export class ChatView extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     document.addEventListener("selectionchange", this.onDocumentSelectionChange);
+    document.addEventListener("keydown", this.onDocumentKeydown);
     window.addEventListener("resize", this.onViewportResize);
     window.addEventListener("pagehide", this.onPageHide);
     window.visualViewport?.addEventListener("resize", this.onViewportResize);
@@ -945,6 +956,7 @@ export class ChatView extends LitElement {
 
   override disconnectedCallback(): void {
     document.removeEventListener("selectionchange", this.onDocumentSelectionChange);
+    document.removeEventListener("keydown", this.onDocumentKeydown);
     this.imageRetryObserver?.disconnect();
     this.stopTurnClock();
     this.saveScrollPosition();
@@ -985,6 +997,7 @@ export class ChatView extends LitElement {
 
   private prepareSessionUiState(): void {
     this.lastScrollDirection = "none";
+    this.readerInputUntil = 0;
     this.lastScrollTop = this.chat?.scrollTop ?? 0;
     this.turnStartedAtMs = undefined;
     this.disclosures.syncSession(this.sessionId);
@@ -2259,7 +2272,8 @@ export class ChatView extends LitElement {
   }
 
   private onWheel(event: WheelEvent) {
-    this.readerTookTheScroll();
+    const chat = this.chat ?? undefined;
+    if (chat !== undefined && wheelReachesScroller(event.composedPath(), chat, event.deltaY)) this.readerTookTheScroll();
     if (event.deltaY < 0 && this.canScrollUp()) this.pinnedToBottom = false;
   }
 
@@ -2280,6 +2294,7 @@ export class ChatView extends LitElement {
    * transcript frozen, which is worse than the movement it prevents.
    */
   private releasePointer(): void {
+    this.readerInputUntil = Date.now() + READER_INPUT_WINDOW_MS;
     this.followGate.notePointerUp(Date.now());
     if (this.drawnWaiting !== undefined) {
       if (this.drawnWaitingClearTimer !== undefined) clearTimeout(this.drawnWaitingClearTimer);
@@ -2298,6 +2313,7 @@ export class ChatView extends LitElement {
   }
 
   private notePressStart(): void {
+    this.readerInputUntil = Number.POSITIVE_INFINITY;
     if (this.catchUpFollowTimer !== undefined) {
       clearTimeout(this.catchUpFollowTimer);
       this.catchUpFollowTimer = undefined;
@@ -2320,7 +2336,13 @@ export class ChatView extends LitElement {
     if (this.touchStartY !== undefined && y !== undefined && y > this.touchStartY && this.canScrollUp()) this.pinnedToBottom = false;
   }
 
-  /** D4: a reader who scrolls during a restore or a jump takes the scroll; the restore stops where it is. */
+  /**
+   * D4: a reader who moves the transcript during a restore or a jump takes the scroll; the restore
+   * stops where it is. A wheel or a touch takes it at once, before a restore already queued for the
+   * next frame can move them (review 754821b2), unless a nested scroller spends the wheel. A key or a
+   * scrollbar drag has no such event, so a movement shortly after a scroll key or during a press takes
+   * it (review 9f8186d0 rows 6-7); a movement with no input is the browser's (readerScrollInput.ts).
+   */
   private readerTookTheScroll(): void {
     this.pageRetry = readerMoved(this.pageRetry);
     if (readerCanTakeOver(this.viewportState)) this.runViewport({ kind: "readerTookOver" });
@@ -2348,6 +2370,7 @@ export class ChatView extends LitElement {
     const wasPinnedToBottom = this.pinnedToBottom;
     const moved = chat.scrollTop !== this.lastScrollTop;
     if (moved) this.pageRetry = readerMoved(this.pageRetry);
+    if (moved && Date.now() <= this.readerInputUntil) this.readerTookTheScroll();
     const scrollingUp = chat.scrollTop < this.lastScrollTop;
     if (heightChanged && wasPinnedToBottom) {
       this.lastClientHeight = chat.clientHeight;
