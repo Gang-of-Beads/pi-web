@@ -20,7 +20,7 @@ import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
 import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
-import type { BackgroundTasksRead, ExtensionUiStanding, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig } from "../../../shared/apiTypes";
+import type { BackgroundTasksRead, ExtensionUiStanding, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig, PluginSurfacePresence } from "../../../shared/apiTypes";
 import type { AppAction } from "../actions";
 import { composerCwd, initialAppState, type AppState } from "../appState";
 import { isSessionNotFoundError } from "../sessionNotFound";
@@ -300,6 +300,7 @@ const PANEL_EDGE_COLUMNS_WIDTH_PX = 2;
 import { deliveredClientMessageIds } from "../userMessageRegister";
 import { OUTBOX_CHANGED_EVENT, sessionsWithFailedSends } from "../pendingOutbox";
 import { rowedClientMessageIds } from "../messageDelivery";
+import { frontedPageShown } from "../frontedPage";
 
 interface SessionCleanupDialogState {
   preview?: SessionCleanupPreviewResponse | undefined;
@@ -3440,7 +3441,8 @@ export class PiWebApp extends LitElement {
   /** The global pages Go to offers on the machine on screen (docs/design/go-to-scopes.md). */
   private visibleGlobalPanels(): QualifiedGlobalPanelContribution[] {
     const context = this.createGlobalPanelContext();
-    return this.activeGlobalPanels().filter((panel) => panel.visible?.(context) ?? true);
+    const surfaces = this.openSessionSurfaces();
+    return this.activeGlobalPanels().filter((panel) => (panel.visible?.(context) ?? true) && frontedPageShown(panel.fronts, surfaces));
   }
 
   /** Whether `id` is a global page of the machine on screen; another machine's page id is not. */
@@ -3535,7 +3537,8 @@ export class PiWebApp extends LitElement {
     const workspace = this.state.selectedWorkspace;
     if (workspace === undefined) return [];
     const context = this.createWorkspacePanelContext(workspace);
-    return this.plugins.getWorkspacePanels().filter((panel) => panel.visible?.(context) ?? true);
+    const surfaces = this.openSessionSurfaces();
+    return this.plugins.getWorkspacePanels().filter((panel) => (panel.visible?.(context) ?? true) && frontedPageShown(panel.fronts, surfaces));
   }
 
   private workspacePanelEmptyState(): WorkspacePanelEmptyState {
@@ -4684,6 +4687,13 @@ export class PiWebApp extends LitElement {
    * What the open session's extensions left standing, only while the status in hand is that
    * session's: a value read for one session never draws under another.
    */
+  /** What the session on screen reports about declared surfaces; undefined is unknown. */
+  private openSessionSurfaces(): PluginSurfacePresence | undefined {
+    const session = this.state.selectedSession;
+    if (session === undefined || this.state.status?.sessionId !== session.id) return undefined;
+    return this.state.status.pluginSurfaces;
+  }
+
   private openSessionStanding(state: AppState): ExtensionUiStanding | undefined {
     const session = state.selectedSession;
     if (session === undefined || state.status?.sessionId !== session.id) return undefined;

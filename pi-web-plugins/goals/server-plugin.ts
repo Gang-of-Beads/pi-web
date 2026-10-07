@@ -63,6 +63,9 @@ const plugin: PiWebServerPlugin = {
   apiVersion: 1,
   name: "Goals",
   activate: () => ({
+    agentFacts: {
+      surfaces: [{ surface: "goals", tools: ["create_goal", "get_goal", "update_goal", "focus_goal"] }],
+    },
     operations: {
       "goals.list": listGoalsOperation,
     },

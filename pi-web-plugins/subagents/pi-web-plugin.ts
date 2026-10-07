@@ -145,6 +145,7 @@ const plugin: PiWebPlugin = {
           {
             id: "workspace.subagents",
             title: "Subagents",
+            fronts: "subagents",
             icon: svg`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.5"></circle><circle cx="5" cy="19" r="2.5"></circle><circle cx="19" cy="19" r="2.5"></circle><path d="M12 7.5v4"></path><path d="M12 11.5 6.5 16.8"></path><path d="M12 11.5l5.5 5.3"></path></svg>`,
             order: 60,
             badge: (panel) => {

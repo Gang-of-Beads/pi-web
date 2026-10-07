@@ -704,10 +704,11 @@ function parsePluginSurfaces(value: unknown): PluginSurfacePresence | undefined 
   if (value === undefined || value === null || typeof value !== "object") return undefined;
   // Each surface is an independent fact; one unrecognized value must not
   // discard the others under version skew.
-  const goals = parsePluginSurfaceState(Reflect.get(value, "goals"));
-  const subagents = parsePluginSurfaceState(Reflect.get(value, "subagents"));
-  if (goals === undefined && subagents === undefined) return undefined;
-  return { ...(goals === undefined ? {} : { goals }), ...(subagents === undefined ? {} : { subagents }) };
+  const surfaces = Object.entries(value).flatMap(([surface, state]: [string, unknown]) => {
+    const parsed = parsePluginSurfaceState(state);
+    return parsed === undefined ? [] : [[surface, parsed] as const];
+  });
+  return surfaces.length === 0 ? undefined : Object.fromEntries(surfaces);
 }
 
 export function parseSessionStatus(value: unknown): SessionStatus {

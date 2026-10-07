@@ -1318,16 +1318,11 @@ export interface SessionWarning {
 export type PluginSurfaceState = "present" | "absent" | "failed";
 
 /**
- * Presence per surface. An omitted surface is unknown, not absent.
- *
- * Only surfaces a panel actually consults appear here: publishing one nothing
- * reads is a field nobody can be wrong about, which reads as coverage without
- * being any.
+ * Presence per surface, by the name the server plugin that fronts it declared
+ * (`agentFacts.surfaces`); the host names none. An omitted surface is unknown,
+ * not absent.
  */
-export interface PluginSurfacePresence {
-  goals?: PluginSurfaceState;
-  subagents?: PluginSurfaceState;
-}
+export type PluginSurfacePresence = Readonly<Record<string, PluginSurfaceState>>;
 
 export interface SessionStatus {
   sessionId: string;

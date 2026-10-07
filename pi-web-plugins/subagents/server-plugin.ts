@@ -40,6 +40,9 @@ const plugin: PiWebServerPlugin = {
   apiVersion: 1,
   name: "Subagents",
   activate: () => ({
+    agentFacts: {
+      surfaces: [{ surface: "subagents", tools: ["subagent"] }],
+    },
     operations: {
       "runs.list": async (input): Promise<JsonValue> => {
         const sessionFile = sessionFileFrom(input);

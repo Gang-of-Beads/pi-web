@@ -3,12 +3,16 @@ import { pluginSurfacePresence } from "./pluginSurfaces.js";
 import { recordDeclaredAgentFacts, resetDeclaredAgentFacts } from "./declaredAgentFacts.js";
 
 /**
- * The goals surface is backed by whatever tools the goals plugin declares, so
- * these read against a declaration rather than a constant the host keeps.
+ * Every surface is backed by whatever tools its plugin declares, so these read
+ * against declarations rather than constants the host keeps: the goals and
+ * subagents plugins each declare their own.
  */
 beforeEach(() => {
   recordDeclaredAgentFacts({
-    surfaces: [{ surface: "goals", tools: ["create_goal", "get_goal", "update_goal", "focus_goal"] }],
+    surfaces: [
+      { surface: "goals", tools: ["create_goal", "get_goal", "update_goal", "focus_goal"] },
+      { surface: "subagents", tools: ["subagent"] },
+    ],
     injectedTurns: [],
   });
 });
@@ -48,7 +52,7 @@ describe("what a plugin-backed surface can say about itself", () => {
    * own goals absent.
    */
   it("does not care which file or package provides them", () => {
-    expect(pluginSurfacePresence(loader([{ path: "/somebody/else/fork.ts", tools: ["get_goal"] }]))?.goals).toBe("present");
+    expect(pluginSurfacePresence(loader([{ path: "/somebody/else/fork.ts", tools: ["get_goal"] }]))?.["goals"]).toBe("present");
   });
 
   it("reports absent when nothing registers them and nothing failed", () => {
@@ -57,7 +61,7 @@ describe("what a plugin-backed surface can say about itself", () => {
 
   /** A broken install must not hide behind a tidy empty panel. */
   it("keeps a load failure apart from absence", () => {
-    expect(pluginSurfacePresence(loader([], [{ path: "/x/goal.ts", error: "boom" }]))?.goals).toBe("failed");
+    expect(pluginSurfacePresence(loader([], [{ path: "/x/goal.ts", error: "boom" }]))?.["goals"]).toBe("failed");
   });
 
   /**
@@ -71,6 +75,16 @@ describe("what a plugin-backed surface can say about itself", () => {
 
   /** A tool that belongs to some other surface does not stand in for this one. */
   it("only answers for the surface it was asked about", () => {
-    expect(pluginSurfacePresence(loader([{ path: "/x/sub.ts", tools: ["subagent"] }]))?.goals).toBe("absent");
+    expect(pluginSurfacePresence(loader([{ path: "/x/sub.ts", tools: ["subagent"] }]))?.["goals"]).toBe("absent");
+  });
+
+  /** Two plugins fronting one surface: any tool either names backs it. */
+  it("backs a surface declared twice by either declaration's tools", () => {
+    recordDeclaredAgentFacts({
+      surfaces: [{ surface: "notes", tools: ["note_add"] }, { surface: "notes", tools: ["note_list"] }],
+      injectedTurns: [],
+    });
+
+    expect(pluginSurfacePresence(loader([{ path: "/x/notes.ts", tools: ["note_list"] }]))).toEqual({ notes: "present" });
   });
 });

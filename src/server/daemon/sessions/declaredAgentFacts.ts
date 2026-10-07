@@ -27,10 +27,6 @@ export function declaredAgentFacts(): AgentFactDeclarations {
   return declared;
 }
 
-export function declaredSurfaceTools(surface: string): readonly string[] {
-  return declared.surfaces.find((entry) => entry.surface === surface)?.tools ?? [];
-}
-
 export function resetDeclaredAgentFacts(): void {
   declared = empty;
 }

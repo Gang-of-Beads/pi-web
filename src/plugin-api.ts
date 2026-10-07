@@ -867,6 +867,13 @@ export interface GlobalPanelContribution {
   /** Slots the host opens by name, e.g. `core:global.terminal`; the host never names a plugin. */
   routeAliases?: string[];
   visible?: (context: GlobalPanelContext) => boolean;
+  /**
+   * The agent-side surface this page fronts, by the name its server plugin declares in
+   * `agentFacts.surfaces`. Go to leaves the page out while the session on screen reports that
+   * surface absent (nothing it loaded registers the surface's tools); a failed load, or no answer,
+   * keeps it.
+   */
+  fronts?: string;
   badge?: (context: GlobalPanelContext) => string | number | TemplateResult | undefined;
   /** The page's controls, drawn at the top of its page and always visible. */
   toolbar?: (context: GlobalPanelContext) => TemplateResult;
@@ -881,6 +888,13 @@ export interface WorkspacePanelContribution {
   /** Former URL tool/view values that should resolve to this panel. */
   routeAliases?: string[];
   visible?: (context: WorkspacePanelContext) => boolean;
+  /**
+   * The agent-side surface this page fronts, by the name its server plugin declares in
+   * `agentFacts.surfaces`. Go to leaves the page out while the session on screen reports that
+   * surface absent (nothing it loaded registers the surface's tools); a failed load, or no answer,
+   * keeps it.
+   */
+  fronts?: string;
   badge?: (context: WorkspacePanelContext) => string | number | TemplateResult | undefined;
   /** Called when the host invalidates workspace-panel data. */
   onInvalidate?: (context: WorkspacePanelContext) => void | Promise<void>;

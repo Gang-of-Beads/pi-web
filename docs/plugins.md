@@ -863,6 +863,7 @@ interface WorkspacePanelContribution {
   order?: number;
   routeAliases?: string[];
   visible?: (context: WorkspacePanelContext) => boolean;
+  fronts?: string;
   badge?: (context: WorkspacePanelContext) => string | number | TemplateResult | undefined;
   onInvalidate?: (context: WorkspacePanelContext) => void | Promise<void>;
   toolbar?: (context: WorkspacePanelContext) => TemplateResult;
