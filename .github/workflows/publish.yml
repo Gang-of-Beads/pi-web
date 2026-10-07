@@ -88,6 +88,12 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v20
 
+      - name: Restore and save Nix store
+        uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock', 'flake.nix', 'nix/*.nix', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json') }}
+          restore-prefixes-first-match: nix-v1-${{ runner.os }}-${{ runner.arch }}-
+
       - name: Push Nix builds to the binary cache
         uses: cachix/cachix-action@v15
         with:
@@ -167,6 +173,12 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v20
 
+      - name: Restore and save Nix store
+        uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock', 'flake.nix', 'nix/*.nix', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json') }}
+          restore-prefixes-first-match: nix-v1-${{ runner.os }}-${{ runner.arch }}-
+
       - name: Push Nix builds to the binary cache
         uses: cachix/cachix-action@v15
         with:
@@ -185,6 +197,12 @@ jobs:
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v20
+
+      - name: Restore and save Nix store
+        uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock', 'flake.nix', 'nix/*.nix', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json') }}
+          restore-prefixes-first-match: nix-v1-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Push Nix builds to the binary cache
         uses: cachix/cachix-action@v15
