@@ -125,6 +125,8 @@ import {
 import { plainTextTheme } from "./plainTextTheme.js";
 import { ExtensionComposer } from "./extensionComposer.js";
 import { ExtensionStanding } from "./extensionStanding.js";
+import { ExtensionOrigins, type LoadedExtensionFile } from "./extensionOrigin.js";
+import { declaredAgentFacts } from "./declaredAgentFacts.js";
 import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
 import { DECLARABLE_SCREENS, declaredScreen, refusedDeclarationSummary } from "./declaredScreen.js";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
@@ -627,7 +629,7 @@ export interface PiAgentSession {
      * plugin-backed surface tell absent from installed-but-empty instead of
      * inferring it from whatever data the plugin happens to have written.
      */
-    getExtensions?(): { extensions: readonly { path: string; tools?: ReadonlyMap<string, unknown> }[]; errors: readonly { path: string; error: string }[] };
+    getExtensions?(): { extensions: readonly { path: string; resolvedPath?: string; sourceInfo?: { origin?: string; scope?: string; baseDir?: string }; tools?: ReadonlyMap<string, unknown> }[]; errors: readonly { path: string; error: string }[] };
   };
   subscribe(listener: (event: unknown) => void): () => void;
   bindExtensions(bindings: PiExtensionBindings): Promise<void>;
@@ -1470,6 +1472,8 @@ export class PiSessionService implements SessionRouteService {
   private readonly customScreens = new Map<string, (key: string) => void>();
   /** Per runtime, so a disposed or rebound runtime takes its values with it; see extensionStanding.ts. */
   private readonly extensionStanding = new WeakMap<PiAgentSession, ExtensionStanding>();
+  /** Who wrote a widget, read off the call stack (extension-keys-in-go-to.md). */
+  private readonly extensionOrigins = new ExtensionOrigins();
   /** Per runtime, as the standing values are; see extensionComposer.ts for why the text outlives a reload. */
   private readonly extensionComposers = new WeakMap<PiAgentSession, ExtensionComposer>();
   private readonly standingPublishPending = new WeakSet<PiAgentSession>();
@@ -5433,8 +5437,14 @@ export class PiSessionService implements SessionRouteService {
   ): ExtensionUIContext {
     const baseUiContext = session.extensionRunner.getUIContext();
     const standing = this.standingFor(session);
+    const setWidget = (key: string, content: unknown, options?: { placement?: unknown }): void => {
+      const call: { stack?: string } = {};
+      Error.captureStackTrace(call, setWidget);
+      standing.setWidget(key, content, options, this.extensionOrigins.originOf(call.stack, loadedExtensionFiles(session), declaredAgentFacts().surfaces));
+    };
     const standingMembers: Readonly<Record<string, unknown>> = {
       setStatus: (key: string, text: unknown) => { standing.setStatus(key, text); },
+      setWidget,
       setWorkingMessage: (message?: string) => { standing.setWorkingMessage(message); },
       setWorkingVisible: (visible: boolean) => { standing.setWorkingVisible(visible); },
       setWorkingIndicator: (options?: { frames?: string[] }) => { standing.setWorkingIndicator(options); },
@@ -5514,7 +5524,7 @@ export class PiSessionService implements SessionRouteService {
   private standingFor(session: PiAgentSession): ExtensionStanding {
     const existing = this.extensionStanding.get(session);
     if (existing !== undefined) return existing;
-    const standing = new ExtensionStanding(() => { this.scheduleStandingPublish(session); });
+    const standing = new ExtensionStanding(() => { this.scheduleStandingPublish(session); }, { theme: plainTextTheme });
     this.extensionStanding.set(session, standing);
     return standing;
   }
@@ -7160,4 +7170,15 @@ function stringifyPrimitive(value: unknown): string {
 async function closedBranch(path: string): Promise<ReturnType<typeof branchFromFileEntries> | undefined> {
   const entries = await readSessionFileEntries(path);
   return entries !== undefined && isCurrentVersionFile(entries, CURRENT_SESSION_VERSION) ? branchFromFileEntries(entries) : undefined;
+}
+
+/** The runtime's loaded extensions as attribution reads them; none when it cannot list them. */
+function loadedExtensionFiles(session: PiAgentSession): LoadedExtensionFile[] {
+  const listed = session.resourceLoader.getExtensions?.();
+  return (listed?.extensions ?? []).map((extension) => ({
+    path: extension.path,
+    ...(extension.resolvedPath === undefined ? {} : { resolvedPath: extension.resolvedPath }),
+    ...(extension.sourceInfo === undefined ? {} : { sourceInfo: extension.sourceInfo }),
+    tools: extension.tools === undefined ? [] : [...extension.tools.keys()],
+  }));
 }

@@ -1,14 +1,16 @@
-import type { ExtensionUiStanding } from "../../../shared/apiTypes.js";
+import type { ExtensionUiStanding, ExtensionWidgetPlacement } from "../../../shared/apiTypes.js";
+import type { ExtensionOrigin } from "./extensionOrigin.js";
+import { StandingWidgets } from "./standingWidgets.js";
 
 /**
  * What a session's extensions leave standing on its screen through `ctx.ui`: footer statuses,
- * the working row's words, mark and visibility, the hidden-thinking label and the tab title
- * (extension-ui-counterpart.md, owner 2026-10-04).
+ * widgets, the working row's words, mark and visibility, the hidden-thinking label and the tab
+ * title (extension-ui-counterpart.md, owner 2026-10-04).
  *
  * Statuses are drawn in the status bar between the context and the cost, where there is room
  * (owner, 2026-10-07: PI WEB favours no plugin; what fits is shown, what does not is left out,
- * as in pi's terminal). `setWidget` is not kept: PI WEB draws no extension box around the
- * composer (owner, 2026-10-06), so it stays pi's headless no-op.
+ * as in pi's terminal). Widgets are kept with the extension that set them and drawn as that
+ * extension's page in Go to, never around the composer (StandingWidgets; extension-keys-in-go-to.md).
  *
  * pi's terminal keeps these in its one process and draws them in its one screen; PI WEB keeps
  * them here, per session runtime, and every browser showing the session draws the snapshot that
@@ -28,8 +30,19 @@ export class ExtensionStanding {
   private hiddenThinkingLabel: string | undefined;
   private title: string | undefined;
 
-  /** `changed` is told after every write. */
-  constructor(private readonly changed: () => void) {}
+  private readonly widgets: StandingWidgets;
+
+  /** `changed` is told after every write; `theme` is what a widget factory draws with. */
+  constructor(private readonly changed: () => void, options: { readonly theme?: unknown; readonly now?: () => number } = {}) {
+    this.widgets = new StandingWidgets(changed, options.theme, options.now ?? (() => Date.now()));
+  }
+
+  /** pi's `setWidget`, kept with the extension that called it, when it could be told. */
+  setWidget(key: string, content: unknown, options: { placement?: unknown } | undefined, origin: ExtensionOrigin | undefined): void {
+    const placement: ExtensionWidgetPlacement = options?.placement === "belowEditor" ? "belowEditor" : "aboveEditor";
+    this.widgets.set(key, content, placement, origin);
+    this.changed();
+  }
 
   /** pi's `setStatus`: a text under its key, or none; a text that is blank once flattened is none. */
   setStatus(key: string, text: unknown): void {
@@ -67,6 +80,7 @@ export class ExtensionStanding {
   /** Everything back to PI WEB's defaults: the session's extensions reloaded or its runtime ended. */
   clear(): void {
     this.statuses.clear();
+    this.widgets.clear();
     this.workingMessage = undefined;
     this.workingHidden = false;
     this.workingFrames = undefined;
@@ -75,9 +89,11 @@ export class ExtensionStanding {
     this.changed();
   }
 
-  /** The wire snapshot, or undefined when nothing stands. */
+  /** The wire snapshot, or undefined when nothing stands; a component widget draws now if it is due. */
   snapshot(): ExtensionUiStanding | undefined {
+    const widgets = this.widgets.snapshot();
     const standing: ExtensionUiStanding = {
+      ...(widgets.length === 0 ? {} : { widgets }),
       ...(this.statuses.size === 0 ? {} : { statuses: [...this.statuses].sort(([left], [right]) => left.localeCompare(right)).map(([key, text]) => ({ key, text })) }),
       ...(this.workingMessage === undefined ? {} : { workingMessage: this.workingMessage }),
       ...(this.workingHidden ? { workingHidden: true as const } : {}),

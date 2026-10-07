@@ -746,8 +746,7 @@ export function parseSessionStatus(value: unknown): SessionStatus {
 
 /**
  * What the session's extensions left standing. Read field by field and never fatal: a value this
- * build cannot read is left out, so it can never cost the whole status (review 1005). Widgets an
- * older daemon sends are not read: PI WEB draws none (owner, 2026-10-06).
+ * build cannot read is left out, so it can never cost the whole status (review 1005).
  */
 function optionalExtensionUi(value: unknown): Pick<SessionStatus, "extensionUi"> | object {
   if (typeof value !== "object" || value === null) return {};
@@ -763,12 +762,23 @@ function optionalExtensionUi(value: unknown): Pick<SessionStatus, "extensionUi">
     const statusText: unknown = Reflect.get(entry, "text");
     return typeof key === "string" && typeof statusText === "string" && statusText !== "" ? [{ key, text: statusText }] : [];
   }) : [];
+  const widgetList: unknown = Reflect.get(value, "widgets");
+  const widgets = Array.isArray(widgetList) ? widgetList.flatMap((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const key: unknown = Reflect.get(entry, "key");
+    const lines = strings(Reflect.get(entry, "lines"));
+    if (typeof key !== "string" || lines === undefined) return [];
+    const placement = Reflect.get(entry, "placement") === "belowEditor" ? "belowEditor" as const : "aboveEditor" as const;
+    const extension = widgetExtension(Reflect.get(entry, "extension"));
+    return [{ key, placement, lines, ...(extension === undefined ? {} : { extension }) }];
+  }) : [];
   const workingMessage = text("workingMessage");
   const workingFrames = strings(Reflect.get(value, "workingFrames"));
   const hiddenThinkingLabel = text("hiddenThinkingLabel");
   const title = text("title");
   const standing: NonNullable<SessionStatus["extensionUi"]> = {
     ...(statuses.length === 0 ? {} : { statuses }),
+    ...(widgets.length === 0 ? {} : { widgets }),
     ...(workingMessage === undefined ? {} : { workingMessage }),
     ...(Reflect.get(value, "workingHidden") === true ? { workingHidden: true as const } : {}),
     ...(workingFrames === undefined ? {} : { workingFrames }),
@@ -776,6 +786,16 @@ function optionalExtensionUi(value: unknown): Pick<SessionStatus, "extensionUi">
     ...(title === undefined ? {} : { title }),
   };
   return Object.keys(standing).length === 0 ? {} : { extensionUi: standing };
+}
+
+/** Who set a widget; dropped whole when its id or title cannot be read, so the widget stands under its key. */
+function widgetExtension(value: unknown): { id: string; title: string; surface?: string } | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const id: unknown = Reflect.get(value, "id");
+  const title: unknown = Reflect.get(value, "title");
+  const surface: unknown = Reflect.get(value, "surface");
+  if (typeof id !== "string" || id === "" || typeof title !== "string" || title === "") return undefined;
+  return { id, title, ...(typeof surface === "string" && surface !== "" ? { surface } : {}) };
 }
 
 function optionalStreamPosition(value: unknown): { streamPosition?: { seq: number; epoch: string } } {

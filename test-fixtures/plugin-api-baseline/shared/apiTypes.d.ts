@@ -825,9 +825,28 @@ export type ExtensionEditorTextMode = "set" | "paste";
 /** Where an extension widget sits: pi's `WidgetPlacement`. */
 export type ExtensionWidgetPlacement = "aboveEditor" | "belowEditor";
 /**
+ * One `setWidget` block (extension-keys-in-go-to.md). `lines` is empty once the extension
+ * cleared it: the extension's key stays until the session's extensions reload.
+ */
+export interface ExtensionWidgetStanding {
+    key: string;
+    placement: ExtensionWidgetPlacement;
+    lines: string[];
+    /**
+     * The extension that set it, read off the call: `id` is stable for its package, `title` is the
+     * name its package gives itself (`piWeb.title`, else its name), and `surface` is the declared
+     * surface it backs, when a plugin's page fronts it. Absent when the call could not be matched.
+     */
+    extension?: {
+        id: string;
+        title: string;
+        surface?: string;
+    };
+}
+/**
  * What a session's extensions left standing through `ctx.ui` (extension-ui-counterpart.md):
- * footer statuses, the working row's words, mark and visibility, the hidden-thinking label and the tab title.
- * Widgets are not carried (owner, 2026-10-06). Absent when nothing stands, and from a daemon that
+ * footer statuses, widgets, the working row's words, mark and visibility, the hidden-thinking label and the
+ * tab title. Absent when nothing stands, and from a daemon that
  * predates the field. Every field is the extension's; PI WEB's own default applies when absent.
  */
 export interface ExtensionUiStanding {
@@ -836,12 +855,8 @@ export interface ExtensionUiStanding {
         key: string;
         text: string;
     }[];
-    /** Never set since 2026-10-06: PI WEB draws no extension widget; kept so older readers still compile. */
-    widgets?: {
-        key: string;
-        placement: ExtensionWidgetPlacement;
-        lines: string[];
-    }[];
+    /** `setWidget` blocks, each with the extension that set it; drawn as that extension's page in Go to. */
+    widgets?: ExtensionWidgetStanding[];
     workingMessage?: string;
     workingHidden?: true;
     /** `[]`: no mark; otherwise the first frame stands as the mark. */

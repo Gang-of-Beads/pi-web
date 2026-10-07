@@ -23,8 +23,10 @@ the extensions' status line, and the cost at the far right. Statuses join with
 a space in key order, as pi's footer joins them; the numbers keep their room
 first; the statuses take what is left, cut with an ellipsis, and are left out
 when fewer than six characters would show. No line of their own, no tap to
-open (the 10-06 line above the numbers was the one withdrawn). `setWidget`
-stays withdrawn.
+open (the 10-06 line above the numbers was the one withdrawn).
+
+**Restored 2026-10-07: `setWidget`, as the extension's page in Go to.** Never
+around the composer or in the conversation; see extension-keys-in-go-to.md.
 
 ## Why
 

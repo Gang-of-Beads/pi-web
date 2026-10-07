@@ -212,8 +212,10 @@
                 out and the context on the left, the extensions' statuses after them, joined with spaces in key order as pi's
                 footer joins them, and the cost at the right edge; statuses are cut with an ellipsis when the line runs out
                 and left out when there is no room for them, on a phone for instance, and hovering the line shows them in
-                full. <code>setWidget</code> draws nothing: PI WEB has no extension box around the composer, and a plugin's
-                own surface is a page reached from Go to. <code>editor(title, prefill)</code> opens a card with a
+                full. <code>setWidget</code> is the extension's own page in Go to, never drawn around the composer: from an
+                extension's first widget in a session Go to has a key for it, named by <code>piWeb.title</code> in its package's
+                <code>package.json</code> (else the package's name), whose page shows each widget as the terminal draws it and
+                follows every update; an extension a plugin's page fronts brings no key of its own. <code>editor(title, prefill)</code> opens a card with a
                 multi-line text area holding <code>prefill</code>, and Enter follows the composer's Enter setting; an
                 opening text past 32,000 characters is cut and the card says how much. <code>setEditorText</code> replaces
                 the session's composer text and <code>pasteToEditor</code> inserts at the caret, in every browser showing the
@@ -252,7 +254,7 @@
                     </tr>
                     <tr>
                       <td><code>setWidget</code></td>
-                      <td>No effect: PI WEB has no extension box around the composer; a plugin's own surface is a page reached from Go to.</td>
+                      <td>The extension's own page in Go to, named by <code>piWeb.title</code> in its package; none when a plugin's page fronts it. Never around the composer.</td>
                     </tr>
                     <tr>
                       <td><code>setWorkingMessage</code>, <code>setWorkingVisible</code>, <code>setWorkingIndicator</code></td>

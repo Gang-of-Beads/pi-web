@@ -60,8 +60,17 @@ pi gives every extension the same `ctx.ui`, so a `setWidget` call does not say
 who made it. The call site does: the daemon reads the caller's file from the
 call stack (pi loads extensions through jiti, which keeps their file paths,
 helper files and timer callbacks included; measured 2026-10-07) and matches it
-to the loaded extension whose directory holds it. That gives the extension
+to the loaded extension whose extent holds it. That gives the extension
 and the Pi package it came from.
+
+An extension's extent is pi's own record of where it came from
+(`sourceInfo`), never a search upward: an installed package is its install
+directory, and an entry of an extensions folder (`~/.pi/agent/extensions`,
+`<project>/.pi/extensions`) is that file or that entry's directory. The
+first version searched upward for a package.json, found the one in the home
+directory, and made one single-file extension the author of every widget;
+the daemon's own frame is dropped before the stack is read for the same
+reason.
 
 - From an extension's first widget in a session, Go to has a key for that
   extension. Its page shows each of the extension's widgets under its key, as
@@ -71,6 +80,8 @@ and the Pi package it came from.
 - An extension a plugin fronts (one that registers a tool of a declared
   surface) brings no key: its plugin's page is the key.
 - A call no loaded extension can be matched to is shown under its widget key.
+- Clearing a key that held nothing leaves nothing: pi-background-tasks clears
+  its widget at every turn and never sets one, and brings no key.
 
 ### 3. The name is the plugin's
 
@@ -85,3 +96,11 @@ name. pi's own manifest has no display name.
    Go to's gate. Goals and Subagents declare `fronts`.
 2. Section 2 and 3: the daemon keeps attributed widgets; Go to adds a key per
    unfronted extension; the host draws its page.
+
+Measured on 8505 (2026-10-07) with the extensions this machine runs plus a
+probe extension in the project's `.pi/extensions` that draws from a helper
+file and a timer: pi-goal's widget came back as pi-goal-x fronting `goals`
+(no key; Goals stands for it), pi-subagents' as fronting `subagents`,
+pi-background-tasks brought nothing, and the probe brought a "Widget probe"
+key (its `piWeb.title`) whose page showed its widget, full page on a phone
+and in the right-hand column on a desktop.

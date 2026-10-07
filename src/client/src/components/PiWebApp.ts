@@ -301,6 +301,7 @@ import { deliveredClientMessageIds } from "../userMessageRegister";
 import { OUTBOX_CHANGED_EVENT, sessionsWithFailedSends } from "../pendingOutbox";
 import { rowedClientMessageIds } from "../messageDelivery";
 import { frontedPageShown } from "../frontedPage";
+import { extensionWidgetPanels } from "./ExtensionWidgetPage";
 
 interface SessionCleanupDialogState {
   preview?: SessionCleanupPreviewResponse | undefined;
@@ -3538,7 +3539,8 @@ export class PiWebApp extends LitElement {
     if (workspace === undefined) return [];
     const context = this.createWorkspacePanelContext(workspace);
     const surfaces = this.openSessionSurfaces();
-    return this.plugins.getWorkspacePanels().filter((panel) => (panel.visible?.(context) ?? true) && frontedPageShown(panel.fronts, surfaces));
+    const declared = this.plugins.getWorkspacePanels().filter((panel) => (panel.visible?.(context) ?? true) && frontedPageShown(panel.fronts, surfaces));
+    return [...declared, ...extensionWidgetPanels(this.openSessionStanding(this.state)?.widgets)];
   }
 
   private workspacePanelEmptyState(): WorkspacePanelEmptyState {
