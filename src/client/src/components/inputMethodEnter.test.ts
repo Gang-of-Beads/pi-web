@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { keyBelongsToInputMethod } from "./keyboardEventTarget";
@@ -41,7 +41,7 @@ function sourceFiles(dir: string): string[] {
 const repoRoot = join(clientDir, "..", "..", "..");
 const enterReaders = [...sourceFiles(clientDir), ...sourceFiles(pluginsDir)]
   .filter((path) => READS_ENTER.test(readFileSync(path, "utf8")))
-  .map((path) => relative(repoRoot, path));
+  .map((path) => relative(repoRoot, path).split(sep).join("/"));
 
 describe("Enter handlers and input methods", () => {
   it("precondition: the scan finds the composer and the pickers", () => {

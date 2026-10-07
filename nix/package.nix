@@ -12,7 +12,10 @@ stdenv.mkDerivation (finalAttrs: {
     inherit (finalAttrs) pname version src;
     pnpm = pnpm_12;
     fetcherVersion = 4;
-    hash = "sha256-7faUo69YEb1r1SPMzK4I07Ukus7b9jZ663iOu31SsRw=";
+    hash = "sha256-ZM/YfGEuRsJTrxfP9DBA6tRq0MWCHk4vwy83BTJv67Y=";
+    preFixup = ''
+      rm -rf "$storePath/v11/links"
+    '';
   };
 
   nativeBuildInputs = [ nodejs pnpm_12 pnpmConfigHook makeWrapper python3 pkg-config ]
