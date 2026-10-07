@@ -39,13 +39,14 @@ export class ExtensionWidgetPage extends LitElement {
 
 /**
  * The extensions' pages as workspace pages, after every plugin's: the host draws them, as it draws
- * a notice or a status, because they are pi's `ctx.ui` and no plugin's.
+ * a notice or a status, because they are pi's `ctx.ui` and no plugin's. They carry their own
+ * `pluginId`, not core's, since Go to's scopes group pages by it.
  */
-export function extensionWidgetPanels(widgets: readonly ExtensionWidgetStanding[] | undefined): QualifiedWorkspacePanelContribution[] {
-  return extensionWidgetPages(widgets).map((page, index) => ({
-    id: `core:extension.${page.id}`,
-    pluginId: "core",
-    localId: `extension.${page.id}`,
+export function extensionWidgetPanels(widgets: readonly ExtensionWidgetStanding[] | undefined, frontedSurfaces: ReadonlySet<string>): QualifiedWorkspacePanelContribution[] {
+  return extensionWidgetPages(widgets, frontedSurfaces).map((page, index) => ({
+    id: `extension:${page.id}`,
+    pluginId: "extension",
+    localId: page.id,
     title: page.title,
     order: 10_000 + index,
     render: () => html`<extension-widget-page .page=${page}></extension-widget-page>`,

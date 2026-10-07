@@ -2111,6 +2111,7 @@ export class PiWebApp extends LitElement {
   private closeSettings(): void {
     this.settingsOpen = false;
     this.settingsSection = undefined;
+    this.settingsReveal = undefined;
     this.settingsListFramePushed = false;
     writeSettingsSection(undefined);
     this.leftSettings();
@@ -3540,7 +3541,8 @@ export class PiWebApp extends LitElement {
     const context = this.createWorkspacePanelContext(workspace);
     const surfaces = this.openSessionSurfaces();
     const declared = this.plugins.getWorkspacePanels().filter((panel) => (panel.visible?.(context) ?? true) && frontedPageShown(panel.fronts, surfaces));
-    return [...declared, ...extensionWidgetPanels(this.openSessionStanding(this.state)?.widgets)];
+    const fronted = new Set([...declared, ...this.visibleGlobalPanels()].flatMap((panel) => (panel.fronts === undefined ? [] : [panel.fronts])));
+    return [...declared, ...extensionWidgetPanels(this.openSessionStanding(this.state)?.widgets, fronted)];
   }
 
   private workspacePanelEmptyState(): WorkspacePanelEmptyState {
@@ -4685,10 +4687,6 @@ export class PiWebApp extends LitElement {
     return prompts;
   }
 
-  /**
-   * What the open session's extensions left standing, only while the status in hand is that
-   * session's: a value read for one session never draws under another.
-   */
   /** What the session on screen reports about declared surfaces; undefined is unknown. */
   private openSessionSurfaces(): PluginSurfacePresence | undefined {
     const session = this.state.selectedSession;
@@ -4696,6 +4694,10 @@ export class PiWebApp extends LitElement {
     return this.state.status.pluginSurfaces;
   }
 
+  /**
+   * What the open session's extensions left standing, only while the status in hand is that
+   * session's: a value read for one session never draws under another.
+   */
   private openSessionStanding(state: AppState): ExtensionUiStanding | undefined {
     const session = state.selectedSession;
     if (session === undefined || state.status?.sessionId !== session.id) return undefined;
@@ -4758,8 +4760,7 @@ export class PiWebApp extends LitElement {
 
   /** The session list is on screen and drawn wholly from memory: the row says it is syncing. */
   private rememberedListOnScreen(): boolean {
-    const onScreen = this.navigateOpen || (this.appShell.isMobileNavigationLayout ? this.displayMainView() === "navigation" : !this.panelCollapse.navigationPanelCollapsed);
-    return onScreen && this.sessionBoards.drawnFromMemory(this.browsedMachineId());
+    return (this.navigateOpen || this.shellPanelOpen()) && this.sessionBoards.drawnFromMemory(this.browsedMachineId());
   }
 
   private renderErrorBanner(error: string, retiredBy: RetiredBy) {
@@ -4962,7 +4963,10 @@ export class PiWebApp extends LitElement {
   /** Resolve the row id back to its typed view; unknown ids are ignored. */
   private openShellToolTab(id: string): void {
     const panel = [...this.visibleWorkspacePanels(), ...this.visibleGlobalPanels()].find((candidate) => candidate.id === id);
-    if (panel === undefined) return;
+    if (panel === undefined) {
+      this.setState(noticePatch(noticeForReader("That page is not available here")));
+      return;
+    }
     this.selectMainView(panel.id);
   }
 

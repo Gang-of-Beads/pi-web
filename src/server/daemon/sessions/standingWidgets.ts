@@ -9,7 +9,8 @@ import type { ExtensionOrigin } from "./extensionOrigin.js";
  * it. A cleared widget stays as an empty one: the extension's key stays in Go to and its page says
  * it shows nothing now, until the session's extensions reload. Clearing a key that held nothing
  * leaves nothing: an extension that only ever clears (pi-background-tasks does, at every turn) has
- * drawn nothing and brings no key.
+ * drawn nothing and brings no key. A component that could not be built still keeps its author's key,
+ * so the extension's page exists and says it shows nothing, instead of the widget vanishing.
  *
  * Only the payload is bounded, never refused: a widget is cut at WIDGET_MAX_LINES lines of
  * LINE_MAX_LENGTH characters, saying what it cut.
@@ -92,7 +93,8 @@ export class StandingWidgets {
       return;
     }
     const author = previous?.origin ?? origin;
-    if (previous === undefined || author === undefined) this.widgets.delete(key);
+    const triedToDraw = typeof content === "function";
+    if (author === undefined || (previous === undefined && !triedToDraw)) this.widgets.delete(key);
     else this.widgets.set(key, StandingWidget.ofLines(placement, author, []));
   }
 

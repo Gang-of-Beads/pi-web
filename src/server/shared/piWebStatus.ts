@@ -641,8 +641,10 @@ async function readNixProfile(): Promise<NixProfileElements | undefined> {
   }
 }
 
+/** Nix 2.20 and later list elements by name; earlier versions list them in an array, upgraded by index. */
 function parseNixProfile(value: unknown): NixProfileElements | undefined {
-  const elements = isRecord(value) ? value["elements"] : undefined;
+  const listed = isRecord(value) ? value["elements"] : undefined;
+  const elements = Array.isArray(listed) ? Object.fromEntries(listed.map((element: unknown, index) => [String(index), element])) : listed;
   if (!isRecord(elements)) return undefined;
   return new Map(Object.entries(elements).flatMap(([name, element]): [string, readonly string[]][] => {
     const storePaths = isRecord(element) ? element["storePaths"] : undefined;

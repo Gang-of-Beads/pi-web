@@ -75,15 +75,20 @@ export class ExtensionOrigins {
     const candidates = extensions.map((extension) => ({ extension, owner: this.packageOf(extension) }));
     for (const file of stackFiles(stack)) {
       const real = this.real(file);
-      if (real.includes(PI_OWN_PACKAGES)) continue;
       const owners = candidates.filter(({ owner }) => real === owner.root || real.startsWith(`${owner.root}${sep}`));
       const owner = owners.sort((left, right) => right.owner.root.length - left.owner.root.length)[0]?.owner;
-      if (owner === undefined) continue;
+      if (owner === undefined || (real.includes(PI_OWN_PACKAGES) && !owner.root.includes(PI_OWN_PACKAGES))) continue;
       const tools = candidates.filter((candidate) => candidate.owner.root === owner.root).flatMap((candidate) => candidate.extension.tools);
       const surface = surfaces.find((declared) => declared.tools.some((tool) => tools.includes(tool)))?.surface;
       return { id: owner.id, title: owner.title, ...(surface === undefined ? {} : { surface }) };
     }
     return undefined;
+  }
+
+  /** Forgets every extent and title read, so a reloaded extension's renamed package is read again. */
+  forget(): void {
+    this.packages.clear();
+    this.realpaths.clear();
   }
 
   private packageOf(extension: LoadedExtensionFile): ExtensionPackage {

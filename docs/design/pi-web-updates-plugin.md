@@ -59,17 +59,17 @@ covers the first four; nix is new):
 1. **A configured command** wins: `PI_WEB_UPDATE_COMMAND` (the owner's
    nix-config already sets it to `scripts/pi-web-update.sh --force <flake-id>`,
    which re-pins the flake input to the latest release, switches home-manager,
-   restarts the services and pushes the pin), or the new config key
-   `updates.piWeb.command` in `~/.config/pi-web/config.json`, editable in the
-   plugin's Settings page.
+   restarts the services and pushes the pin), or the config key
+   `updateCommand`, saved per machine in **Settings → General → Updates**
+   (2026-10-07), which wins over the environment variable.
 2. **An imperative profile**: `nix profile list --json` has an element whose
    store path is the running package -> `nix profile upgrade <element>`, then
    the native-service restart.
 3. **Declarative (home-manager, nix-darwin, NixOS) without a command**: no
-   button. The offer names the version, says "this install is managed by your
-   nix configuration", shows the two steps for a flake input named `pi-web`
-   (`nix flake update pi-web`, then your switch command), and links to the
-   Settings field where the command can be saved.
+   button. The page says "Managed by your nix configuration. Save an update
+   command in Settings to update from here." and offers "Set an update
+   command", which opens the Settings field; it hands the reader no command to
+   run (owner, 2026-10-06).
 
 A command runs in a detached terminal run (the existing command-run surface),
 so its output is visible and a web or daemon restart in the middle does not

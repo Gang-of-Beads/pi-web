@@ -53,7 +53,7 @@ export function boardFilledFromMemory(live: SessionBoard, remembered: SessionBoa
   const workspaces = remembered.workspaces.filter((workspace) => projectIds.has(workspace.projectId) && !liveWorkspaceIds.has(workspace.id));
   const paths = [...live.unknownSources.flatMap((source) => (source.kind === "workspace" ? [source.path] : [])), ...workspaces.map((workspace) => workspace.path)];
   const listed = new Set([...live.sessions, ...(live.pinnedElsewhere ?? [])].map((session) => session.id));
-  const sessions = remembered.sessions.filter((session) => !listed.has(session.id) && paths.some((path) => within(session.cwd, path)));
+  const sessions = remembered.sessions.filter((session) => !listed.has(session.id) && paths.some((path) => sessionLocationVerdict(session.cwd, path) === "described"));
   const pinned = (remembered.pinnedElsewhere ?? []).filter((session) => pinIds.has(session.id) && !listed.has(session.id));
   if (sessions.length === 0 && workspaces.length === 0 && pinned.length === 0) return live;
   const pinnedElsewhere = [...(live.pinnedElsewhere ?? []), ...pinned];
@@ -63,10 +63,6 @@ export function boardFilledFromMemory(live: SessionBoard, remembered: SessionBoa
     workspaces: [...live.workspaces, ...workspaces],
     ...(pinnedElsewhere.length === 0 ? {} : { pinnedElsewhere }),
   };
-}
-
-function within(cwd: string, path: string): boolean {
-  return cwd === path || cwd.startsWith(`${path.replace(/\/+$/u, "")}/`);
 }
 
 /** How much of a board has answered (state-diagram B48, the session board). */

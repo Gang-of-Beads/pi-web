@@ -177,6 +177,7 @@ export class SessionBoardController {
 
   dispose(): void {
     this.boards.dispose();
+    this.holdListeners.clear();
   }
 
   /** The first ask starts the machine's wait; its end asks every listener to draw again. */

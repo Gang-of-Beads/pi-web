@@ -80,6 +80,13 @@ reason.
 - An extension a plugin fronts (one that registers a tool of a declared
   surface) brings no key: its plugin's page is the key.
 - A call no loaded extension can be matched to is shown under its widget key.
+- An extension's page is a project page (it hangs off the session's workspace),
+  so Go to offers it while a project is in scope: not on the Navigate page's
+  machine scope, nor for a session opened with no project selected.
+- Only a page on screen that fronts the surface takes an extension's widgets:
+  with the plugin's page missing here (its browser module failed, or it was
+  disabled before the daemon restarted), the extension keeps its own key
+  (review 74d6b4bb).
 - Clearing a key that held nothing leaves nothing: pi-background-tasks clears
   its widget at every turn and never sets one, and brings no key.
 

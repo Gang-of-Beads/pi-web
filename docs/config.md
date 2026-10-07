@@ -263,7 +263,7 @@ Both processes check the setting and the file sizes once a minute. Retention app
 
 ### Updates
 
-`updateCommand` is the command the Updates page's **Update** button runs on that machine. Save it in **Settings → General → Updates** for the selected machine (the Updates page links there for a nix install without one), or in the global config:
+`updateCommand` is the command the Updates page's **Update** button, and the fleet **Update** in **Settings → Machines**, run on that machine. Save it in **Settings → General → Updates** for the selected machine (the Updates page links there for a nix install without one), or in the global config:
 
 ```json
 {

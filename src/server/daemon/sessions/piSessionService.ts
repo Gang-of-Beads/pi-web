@@ -4196,6 +4196,7 @@ export class PiSessionService implements SessionRouteService {
       async () => {
         this.publishActivity(session, "reloading resources", "active");
         this.extensionStanding.get(session)?.clear();
+        this.extensionOrigins.forget();
         const priorGeneration = this.notificationGenerationBySession.get(session);
         let candidateGeneration: SessionNotificationGeneration | undefined;
         try {

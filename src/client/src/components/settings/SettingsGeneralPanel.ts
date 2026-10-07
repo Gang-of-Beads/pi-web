@@ -255,7 +255,7 @@ export class SettingsGeneralPanel extends LitElement {
       <section class="settings-card" aria-label="Selected machine updates">
         <div class="card-heading">
           <h3>Updates</h3>
-          <p>What the Updates page's Update button runs on ${this.targetLabel}. It runs in a new terminal on the Terminal page, so you can follow it.</p>
+          <p>What the Updates page's Update button, and the fleet Update in Settings → Machines, run on ${this.targetLabel}. From the Updates page it runs in a new terminal on the Terminal page, so you can follow it.</p>
         </div>
         ${this.updateCommandError === "" ? null : html`<div class="message error-message">${this.updateCommandError}</div>`}
         ${config === undefined ? html`<div class="loading-card">${this.machineLoading ? "Loading selected-machine update settings…" : "Selected-machine update settings are unavailable. Reload before saving."}</div>` : html`

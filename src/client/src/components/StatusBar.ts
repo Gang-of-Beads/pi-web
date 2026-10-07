@@ -16,9 +16,9 @@ const statusBarStyles = css`${unsafeCSS(uiIconStyle)}
      edge. The numbers keep their room first; statuses are cut with an ellipsis, and when fewer than
      six characters would show they are left out, as pi's terminal leaves out what does not fit. */
   .bar.numbers { justify-content: flex-start; }
-  .statuses { flex: 1 1 0; container-type: inline-size; }
-  .statuses-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  @container (width < 6ch) { .statuses-text { visibility: hidden; } }
+  .statuses { flex: 1 1 0; container-type: inline-size; margin-inline-start: calc(-1 * var(--pi-space-6)); }
+  .statuses-text { display: block; padding-inline-start: var(--pi-space-6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @container (width < calc(6ch + var(--pi-space-6))) { .statuses-text { visibility: hidden; } }
   .cost { flex: 0 0 auto; }
   /* The bar draws a control now, so it owes the touch contract every other
      control-bearing component signs. */
