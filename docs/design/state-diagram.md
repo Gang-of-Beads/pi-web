@@ -343,25 +343,31 @@ stateDiagram-v2
 
 ## D5. Page sync and the socket
 
+What the page holds of the selected session's transcript is one value with one owner, `transcriptSync` in `SessionController` (sync-convergence.md, phase B). It is not drawn; the reader sees the session's line and, when a request went unanswered for the ack timeout, the top row's "Trying to sync with the server…".
+
 ```mermaid
 stateDiagram-v2
-    [*] --> unknown
-    unknown --> current: read with head
-    current --> current: frame applied in order
-    current --> behind: head (heartbeat, frame or read) is ahead, or T passes with nothing received, or the tab resumes
-    current --> diverged: a frame or head of another epoch
-    behind --> current: catch-up read joins at the old leaf
-    behind --> diverged: catch-up does not join (other epoch, compaction, navigation)
-    diverged --> current: tail window reloaded
-    diverged --> unknown: tail reload failed
-    current --> unknown: socket dead and heads unreadable
-    behind --> unknown: socket dead and heads unreadable
-    unknown --> behind: a head arrives
+    [*] --> checking: a session is opened or selected (the join read)
+    checking --> confirmed: the check landed for this key and the gap repair holds nothing
+    checking --> retrying: the check failed (an error, or the 30 s request deadline)
+    confirmed --> confirmed: a frame applied in seq order
+    confirmed --> checking: a reason to look
+    retrying --> retrying: a reason to look (the retry stays armed)
+    retrying --> confirmed: a check landed for this key
+    confirmed --> [*]: another session or machine selected, or the session deselected
+    checking --> [*]: another session or machine selected, or the session deselected
+    retrying --> [*]: another session or machine selected, or the session deselected
 ```
 
-- **Owner.** Each surface has a head (docs/design/sync-convergence.md): the transcript `{n, leaf}`, the stream `{epoch, seq}`, and the list and card revisions. The page compares heads and never assumes.
-- **Socket:** `connecting` → `open` → `closed`, plus `dead` when nothing at all arrives for 2 × the heartbeat interval.
-- **A cached page is a seed,** `unknown` until the first head comparison. A persisted page and its watermark are always written together.
+- **A reason to look** (each starts the catch-up from the frontier, or the full read when there is no frontier yet): the page becomes visible or is restored from the back-forward cache; the browser reports `online`; the socket loses an open connection or reopens; the selected session goes idle; the seq monitor, the gap repair or a heartbeat head shows a gap; a revisioned frame fails validation; and **nothing at all arrives on the session socket for the quiet window *T*** (below).
+- **The quiet window *T*** (owner, 2026-09-30: "pull only when nothing at all has arrived for 15 s"; B7). *T* is a setting of this browser, default 15 s, on the Settings page. The page names *T* when it opens the session socket (`quiet=<seconds>`), and the daemon sends a quiet socket a heartbeat every 0.6 *T* (3–20 s), carrying the stream head. So a healthy idle socket is never silent for *T*, and a heartbeat whose head is ahead is already a gap. Silence for *T* means the socket or its link has stopped delivering: the page asks for the frames after its frontier, and asks again after every further *T* of silence. The ask is one small request that answers nothing when the page is in step. A link that does not answer it is the top row's to say, so a page whose network went away says so within *T* plus the ack timeout instead of looking live (viewport P1: 60 s offline looked live).
+  - *T* is read when the socket opens; a change applies to the next connection, so the page and the daemon always agree on it.
+  - *T* runs from 5 s to 30 s. The page looks every 5 s and drops a socket silent for 42 s, so a look must land between *T* and the drop; past about 37 s the drop would come first and its reconnect would ask before *T* did (review ff7ba655).
+  - A daemon that predates the heartbeat ignores `quiet=` and keeps 20 s keepalives; with *T* below that, the page asks once per keepalive gap while idle. One request; phase D (skew) names the older build.
+  - The retry caps of other reads (B48: backoff capped at the quiet window) keep the default 15 s; they are about a read that got no answer, not about silence.
+- **Socket:** `connecting` → `open` → `closed`. While open it is checked every 5 s while the page is visible, and on coming back to the front: silent for *T* is a reason to look (above), and silent past the liveness budget (42 s: two 20 s keepalives and a margin, safe with an older daemon) is `dead`, and the socket is dropped and reopened, which is itself a reason to look.
+- **`POST /sessions/heads` is not built** (phase A item 5, checklist A3). It was the pull after *T*. The catch-up from the frontier answers the same question in the same one request and also carries the frames that were missed, so a heads read would add a round trip and a route nothing else needs. The transcript head `{n, leaf}` is still not compared (sync-convergence.md, "Not yet").
+- **A cached page is a seed.** The join read always runs; the cache only fills the screen until it lands. The delta replay from a persisted watermark is retired (phase B).
 - **Every surface is live** (owner, 2026-09-30: "every screen should take event-based updates at all times"). This covers everything on screen: session rows and their state, latest activity, whether a session waits for the reader, and a list's order.
   - Each surface subscribes to the events that change it and applies them as they arrive.
   - The same quiet window *T* applies: nothing received for *T* makes the surface compare its head and pull only what changed.

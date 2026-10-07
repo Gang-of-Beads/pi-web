@@ -21,9 +21,20 @@ import {
 import type { SettingsReveal } from "../../settingsRoute";
 import { describeError } from "../../notice";
 import { interactiveSurfaceStyles } from "../shared";
+import { parseQuietWindowSeconds, QUIET_WINDOW_RANGE, DEFAULT_QUIET_WINDOW_SECONDS, readQuietWindowSeconds, writeQuietWindowSeconds } from "../../quietWindow";
+
+/** What the This browser card says under its heading after the reader acted. */
+type QuietWindowNote = "none" | "saved" | "invalid" | "refused";
+
+const QUIET_WINDOW_NOTES: Record<QuietWindowNote, TemplateResult | null> = {
+  none: null,
+  saved: html`<div class="message" role="status">Saved in this browser.</div>`,
+  invalid: html`<div class="message error-message" role="alert">Enter a whole number of seconds from ${QUIET_WINDOW_RANGE.min} to ${QUIET_WINDOW_RANGE.max}.</div>`,
+  refused: html`<div class="message error-message" role="alert">This browser would not keep the setting, so the value shown stays in use.</div>`,
+};
 
 function generalDescription(targetLabel: string): TemplateResult {
-  return html`Gateway server fields edit this local gateway. File access and upload defaults edit ${targetLabel}.`;
+  return html`This browser's setting stays in this browser. Gateway server fields edit this local gateway. File access and upload defaults edit ${targetLabel}.`;
 }
 
 @customElement("settings-general-panel")
@@ -56,6 +67,8 @@ export class SettingsGeneralPanel extends LitElement {
   @state() private loggingError = "";
   @state() private gatewayLocalError = "";
   @state() private machineLocalError = "";
+  @state() private quietWindowDraft = String(readQuietWindowSeconds());
+  @state() private quietWindowNote: QuietWindowNote = "none";
 
   protected override willUpdate(changed: PropertyValues<this>): void {
     if (changed.has("configResponse") && this.configResponse !== undefined) {
@@ -92,6 +105,7 @@ export class SettingsGeneralPanel extends LitElement {
         .onAction=${() => { this.reloadAll(); }}
       >
         <div class="settings-sections">
+          ${this.renderThisBrowserSettings()}
           ${this.renderGatewayServerSettings()}
           ${this.renderSelectedMachineAccessSettings()}
           ${this.renderSelectedMachineLogging()}
@@ -99,6 +113,46 @@ export class SettingsGeneralPanel extends LitElement {
         </div>
       </settings-panel-frame>
     `;
+  }
+
+  /**
+   * The quiet window T (owner, 2026-09-30, B7; quietWindow.ts). Kept in this browser, not in a
+   * machine's config: a phone and a desktop may want different values. A saved value applies to
+   * the next session connection, which is when the page tells the daemon.
+   */
+  private renderThisBrowserSettings(): TemplateResult {
+    return html`
+      <section class="settings-card" aria-label="This browser">
+        <div class="card-heading">
+          <h3>This browser</h3>
+          <p>Kept in this browser only, so a phone and a computer can each have their own.</p>
+        </div>
+        ${QUIET_WINDOW_NOTES[this.quietWindowNote]}
+        <form class="config-form" @submit=${(event: Event) => { this.saveQuietWindow(event); }}>
+          <label class="field">
+            <span class="field-heading"><span>Check for missed updates after (seconds)</span></span>
+            <input id="quiet-window" inputmode="numeric" .value=${this.quietWindowDraft} autocomplete="off" @input=${(event: Event) => { this.quietWindowDraft = inputValue(event); this.quietWindowNote = "none"; }}>
+            <small>When nothing at all has arrived from a session's server for this long, PI WEB asks it for anything missed. A working connection sends a small heartbeat more often than this, so it never has to ask. From ${QUIET_WINDOW_RANGE.min} to ${QUIET_WINDOW_RANGE.max}; ${DEFAULT_QUIET_WINDOW_SECONDS} by default. Applies to each session the next time it opens or reconnects.</small>
+          </label>
+          <footer class="form-actions">
+            <button class="primary">Save</button>
+          </footer>
+        </form>
+      </section>
+    `;
+  }
+
+  private saveQuietWindow(event: Event): void {
+    event.preventDefault();
+    const seconds = parseQuietWindowSeconds(this.quietWindowDraft);
+    if (seconds === undefined) {
+      this.quietWindowNote = "invalid";
+      return;
+    }
+    writeQuietWindowSeconds(seconds);
+    const kept = readQuietWindowSeconds();
+    this.quietWindowDraft = String(kept);
+    this.quietWindowNote = kept === seconds ? "saved" : "refused";
   }
 
   private renderGatewayServerSettings(): TemplateResult {

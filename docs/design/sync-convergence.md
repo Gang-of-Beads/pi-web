@@ -115,6 +115,7 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
    - A session socket's heartbeat carries `head: { seq, epoch, n, leaf }`, about 90 bytes.
    - The stream position is nested under `head` on purpose. A top-level `seq` would enter the page's gap repair as if it were the missed frame itself, and with exactly one frame missing it would be marked applied and lost.
 5. **Heads read.** `POST /sessions/heads` with `{ sessions: [{ id, cwd }] }` returns each session's `{ seq, epoch, n, leaf }`, or `unknown` when the daemon does not hold it open. A page uses it when *T* passes with nothing received.
+   - Not built (B7, 2026-10-07). Phase B made the pull after *T* the catch-up from the frontier: one request that answers the frames the page missed, and nothing when it is in step. A heads read would only add a round trip before it, and `{n, leaf}` is not compared yet ("Not yet" below).
 6. **The head is what gets compared.** Status carries the head too. `messageCount` stays a display figure and is never compared, since it counts a different set (it leaves out compaction summaries).
 
 ## Every surface is live (B28, owner 2026-09-30)
@@ -214,6 +215,7 @@ watched; a request the caller cancelled says nothing).
 | the socket loses an open connection, including the liveness check dropping one silent past 42 s (checked every 5 s while visible: the probe after silence) | frames published until it reopens reach nobody here | catch up from the frontier (a failed reconnect attempt is not news: a daemon that stays down would repeat it on every try) | `checking` |
 | the socket reopens | the new connection carries nothing over | catch up from the frontier; the ledger ask waits for it | `checking` |
 | the selected session goes idle | the status may come over the machine socket ahead of the session socket's own frames, and a trailing loss there has no later frame to reveal it | catch up from the frontier | `checking` |
+| nothing at all arrives on the session socket for the quiet window *T* (a setting of this browser, default 15 s), and again after every further *T* of silence | the page names *T* when it opens the socket and the daemon heartbeats a quiet socket every 0.6 *T*, so a healthy idle socket never reaches it: silence for *T* means the socket or its link stopped delivering (B7) | catch up from the frontier | `checking` |
 | the seq monitor, the gap repair or a heartbeat head shows a gap, or a frame from another seq space arrives | frames are missing | the gap repair, or the full read | `checking` |
 | a revisioned frame fails validation | a transition was lost | the full read | `checking` |
 | any check fails | it could not confirm | the retry | `retrying` |

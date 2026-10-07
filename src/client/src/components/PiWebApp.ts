@@ -1415,8 +1415,9 @@ export class PiWebApp extends LitElement {
 
   /**
    * Both sockets verify themselves; a stale one closes and reconnects, and the
-   * reconnect is what refetches whatever was missed. Skipped while the tab is
-   * hidden, where the resume path takes over.
+   * reconnect is what refetches whatever was missed. The session socket also asks
+   * for what was missed, without reconnecting, after its quiet window T of silence
+   * (B7). Skipped while the tab is hidden, where the resume path takes over.
    */
   private checkSocketLiveness(): void {
     if (document.visibilityState !== "visible") return;

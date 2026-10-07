@@ -83,6 +83,8 @@ export interface SessionSocketHandlers {
   onGap: (lastSeen: number) => void;
   /** An open connection went away; frames published until it reopens reach nobody here. */
   onDisconnect?: () => void;
+  /** Nothing at all arrived for the page's quiet window T while the connection was open (B7). */
+  onQuiet?: () => void;
 }
 
 export interface SessionEventSocket {
@@ -593,6 +595,7 @@ export class SessionController {
           void this.catchUp().then(() => this.askLedgerAbout(session, machineId));
         },
         onDisconnect: () => { if (this.gapRepair === repair) void this.recheckTranscript(); },
+        onQuiet: () => { if (this.gapRepair === repair) void this.recheckTranscript(); },
         onMalformed: () => {
           this.syncTranscript({ type: "check", key: transcriptKey });
           this.dialogScope.requestResync();

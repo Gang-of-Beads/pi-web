@@ -1,9 +1,11 @@
 import type { SessionRef } from "../../../shared/apiTypes";
 import { resolveAppWebSocketUrl } from "../appUrl";
 
-export function sessionEvents(session: SessionRef, machineId = "local"): WebSocket {
-  const query = `?${new URLSearchParams({ cwd: session.cwd }).toString()}`;
-  return new WebSocket(resolveAppWebSocketUrl(`${machinePrefix(machineId)}/sessions/${encodeURIComponent(session.id)}/events${query}`));
+/** A session's stream; `quietSeconds` names the page's quiet window, so the daemon heartbeats a quiet socket within it. */
+export function sessionEvents(session: SessionRef, machineId = "local", quietSeconds?: number): WebSocket {
+  const params = new URLSearchParams({ cwd: session.cwd });
+  if (quietSeconds !== undefined) params.set("quiet", String(quietSeconds));
+  return new WebSocket(resolveAppWebSocketUrl(`${machinePrefix(machineId)}/sessions/${encodeURIComponent(session.id)}/events?${params.toString()}`));
 }
 
 export function globalSessionEvents(machineId = "local"): WebSocket {

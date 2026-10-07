@@ -2,7 +2,8 @@ import { realtimeEvents, sessionEvents } from "./api";
 import { ackWatch } from "./api/ackWatch";
 import { parseRealtimeStreamEvent, parseSessionAskClosedEvent, parseSessionAskOpenedEvent, parseSessionDialogClosedEvent, parseSessionDialogOpenedEvent, parseSessionNotificationInboxEvent, parseSessionStartupProgressEvent, parseSessionStreamEvent, parseSessionUnreadEvent } from "./api/parsers";
 import type { RealtimeEvent, SessionRef, SessionUiEvent } from "../../shared/apiTypes";
-import { socketLivenessVerdict, type SocketReadyState } from "./socketLiveness";
+import { socketLivenessVerdict, type SocketLivenessVerdict, type SocketReadyState } from "./socketLiveness";
+import { readQuietWindowSeconds } from "./quietWindow";
 import type { SocketPhase } from "./socketAnchoredRead";
 import type { Unanswered } from "./sync/scopedResource";
 import type { SessionSocketHandlers } from "./controllers/sessionController";
@@ -55,17 +56,27 @@ export class SessionSocket {
   private onInitialOpen: (() => void) | undefined;
   private onMalformed: ((frameType: string) => void) | undefined;
   private onDisconnect: (() => void) | undefined;
+  private onQuiet: (() => void) | undefined;
   /** The connection that opened, so losing it is told apart from an attempt that never connected. */
   private openedSocket: WebSocket | undefined;
   private machineId = "local";
   private lastFrameAt = 0;
   private connectStartedAt = 0;
+  /** The quiet window T the open connection named, read from this browser's setting when it opened. */
+  private quietMs: number | undefined;
+  private lastCheckAt = 0;
+  private readonly quietWindowSeconds: () => number;
+
+  constructor(quietWindowSeconds: () => number = readQuietWindowSeconds) {
+    this.quietWindowSeconds = quietWindowSeconds;
+  }
 
   /**
-   * Drop a connection that has gone silent past the keepalive budget, so the
-   * normal reconnect path (and the refresh it triggers) can run. Called when
-   * the browser comes back to the foreground, which is exactly when a
-   * connection that died while the tab was hidden needs to be noticed.
+   * Ask for what was missed after the quiet window T of silence, and drop a connection that has
+   * gone silent past the keepalive budget, so the normal reconnect path (and the refresh it
+   * triggers) can run. Called every few seconds while the page is visible, and when the browser
+   * comes back to the foreground, which is exactly when a connection that died while the tab was
+   * hidden needs to be noticed.
    */
   checkLiveness(now = Date.now()): void {
     const socket = this.socket;
@@ -78,8 +89,22 @@ export class SessionSocket {
       now,
       silenceBudgetMs: LIVENESS_TIMEOUT_MS,
       handshakeBudgetMs: HANDSHAKE_TIMEOUT_MS,
+      quietMs: this.quietMs,
+      lastCheckAt: this.lastCheckAt,
     });
-    if (verdict !== "drop-and-reconnect") return;
+    this.livenessActions[verdict]({ socket, now });
+  }
+
+  private readonly livenessActions: Record<SocketLivenessVerdict, (check: { socket: WebSocket; now: number }) => void> = {
+    "leave-alone": () => undefined,
+    check: ({ now }) => {
+      this.lastCheckAt = now;
+      this.onQuiet?.();
+    },
+    "drop-and-reconnect": ({ socket }) => { this.dropSilent(socket); },
+  };
+
+  private dropSilent(socket: WebSocket): void {
     // closeSocketQuietly detaches onclose before closing, so the close that
     // normally schedules the reconnect cannot: dropping a dead socket without
     // this left nothing connected and nothing trying, which is a worse stall
@@ -120,6 +145,7 @@ export class SessionSocket {
     this.onInitialOpen = handlers.onInitialOpen;
     this.onMalformed = handlers.onMalformed;
     this.onDisconnect = handlers.onDisconnect;
+    this.onQuiet = handlers.onQuiet;
     this.seqMonitor = new ScopeSeqMonitor("session", handlers.onGap);
     this.shouldReconnect = true;
     this.open();
@@ -140,16 +166,21 @@ export class SessionSocket {
     this.onInitialOpen = undefined;
     this.onMalformed = undefined;
     this.onDisconnect = undefined;
+    this.onQuiet = undefined;
     this.openedSocket = undefined;
     this.hasOpened = false;
     this.machineId = "local";
+    this.quietMs = undefined;
   }
 
   private open(): void {
     const session = this.session;
     if (session === undefined || session.id === "" || session.cwd === "" || !this.shouldReconnect) return;
-    const socket = sessionEvents(session, this.machineId);
+    const quietSeconds = this.quietWindowSeconds();
+    const socket = sessionEvents(session, this.machineId, quietSeconds);
     this.socket = socket;
+    this.quietMs = quietSeconds * 1000;
+    this.lastCheckAt = 0;
     this.connectStartedAt = Date.now();
     socket.onopen = () => {
       if (this.socket !== socket) return;
@@ -267,7 +298,7 @@ export class RealtimeSocket {
     this.phaseListener = listener;
   }
 
-  /** Same liveness contract as SessionSocket; see checkLiveness there. */
+  /** Shares SessionSocket's drop-and-reconnect budgets only; the realtime socket names no quiet window, so it never gets the quiet-window check verdict. */
   checkLiveness(now = Date.now()): void {
     const socket = this.socket;
     if (socket === undefined) return;
