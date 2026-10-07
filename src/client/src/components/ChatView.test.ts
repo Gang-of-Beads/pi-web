@@ -145,6 +145,25 @@ describe("ChatView queued messages stay in place", () => {
     expect(isQueuedLineOf(view, settled)).toBe(false);
   });
 
+  /** B36: Recall and "Edit and send again" sat side by side; the second copied a message still waiting to go. */
+  it("gives a queued row one take-back key, and a sent row its resend key back", () => {
+    const view = new ChatView();
+    view.onRecallQueuedMessage = vi.fn();
+    view.onResendMessage = vi.fn();
+    view.messages = [queuedLine("cm-1")];
+    view.status = queuedStatus([{ kind: "steer", text: "hello", clientMessageId: "cm-1" }]);
+
+    const queued = templateText(renderMessageActions(view, queuedLine("cm-1"), "0"));
+    expect(queued).toContain('data-action="recall"');
+    expect(queued).not.toContain("Edit and send again");
+
+    const sent = { ...queuedLine("cm-1"), meta: { delivery: { clientMessageId: "cm-1", state: "delivered" as const } } };
+    view.status = queuedStatus([]);
+    const settled = templateText(renderMessageActions(view, sent, "0"));
+    expect(settled).not.toContain('data-action="recall"');
+    expect(settled).toContain("Edit and send again");
+  });
+
   it("does not list a message that already has a bubble", () => {
     // The double render: one send appearing as a bubble and as a queue row.
     const view = new ChatView();
@@ -313,6 +332,18 @@ type TranscriptMessages = (this: ChatView) => ChatLine[];
 
 function isTranscriptMessages(value: unknown): value is TranscriptMessages {
   return typeof value === "function";
+}
+
+type RenderMessageActions = (this: ChatView, message: ChatLine, key: string) => TemplateResult | null;
+
+function isRenderMessageActions(value: unknown): value is RenderMessageActions {
+  return typeof value === "function";
+}
+
+function renderMessageActions(view: ChatView, message: ChatLine, key: string): TemplateResult | null {
+  const method: unknown = Reflect.get(view, "renderMessageActions");
+  if (!isRenderMessageActions(method)) throw new Error("ChatView.renderMessageActions is not callable");
+  return method.call(view, message, key);
 }
 
 function renderQueuedMessages(view: ChatView): TemplateResult {

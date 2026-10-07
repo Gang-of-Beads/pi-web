@@ -2058,9 +2058,14 @@ export class ChatView extends LitElement {
     </button>`;
   }
 
+  /**
+   * A row's keys. A queued row's only take-back is Recall, drawn once the daemon's queue lists the
+   * message: "Edit and send again" copies a message still waiting to go, so taking it up there sent it
+   * twice (B36, audit P2-5). Until the queue lists it the row has no take-back, never the copy.
+   */
   private renderMessageActions(message: ChatLine, key: string) {
     const pendingDecision = retryableDeliveryId(message) !== undefined || discardAction(message) !== undefined;
-    const resendable = this.onResendMessage !== undefined && isResendableLine(message) && !pendingDecision;
+    const resendable = this.onResendMessage !== undefined && isResendableLine(message) && !pendingDecision && !this.isQueuedLine(message);
     const recall = this.renderQueuedBubbleRecall(message);
     const discard = this.onDiscardMessage === undefined ? undefined : discardAction(message);
     const retryId = this.onRetryMessage === undefined ? undefined : retryableDeliveryId(message);
