@@ -714,7 +714,7 @@ stateDiagram-v2
   1. a session tap: `showView("chat")` pushed the chat view before the selection, then the selection pushed the session once its first read settled; a cross-machine tap first pushed the machine as well;
   2. a workspace opened from the switcher: the machine move pushed, then the project or workspace pick pushed;
   3. a tapped row that answered not-found: the target's publication pushed, and the locate's reopen in another workspace pushed again (review ae155c79);
-  4. still open: a machine choice whose restore finishes after a tap made during it writes second (pre-existing, CHECKLIST).
+  4. a machine choice whose restore finished after a tap made during it wrote second, inverting the entries and, when the restore preserved an unrestored place, naming that place instead of the tapped one; the choice now keeps the intent it began with and, once overtaken, writes only as an overtaken move does (`nameMachineAfterSupersededMove`).
 
 
 ### The target of a session link (P2 slice b, B31; owner Q8)

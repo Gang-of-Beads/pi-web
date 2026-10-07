@@ -1913,13 +1913,23 @@ export class PiWebApp extends LitElement {
     setNamespacedQueryKey(WORKSPACE_ROUTE_NAMESPACE, "expanded", surface.workspaceExpanded === true ? "1" : undefined, { replace: true });
   }
 
+  /**
+   * Move to a machine and back to where the reader last was there. A tap made while that restore runs
+   * overtakes it: the restore then writes no entry of its own, so the history keeps the tap's entry last
+   * and the URL names the tapped place, not the remembered one (D8; review ae155c79 DeepSeek §3).
+   */
   private async selectMachineWithMemory(machine: Machine, options: { rememberCurrent?: boolean } = {}): Promise<void> {
     if (this.state.selectedMachine?.id === machine.id) return;
     if (options.rememberCurrent !== false && !this.routeRestoreInProgress) this.rememberCurrentMachineNavigation();
     const seq = ++this.machineNavigationRestoreSeq;
+    const intent = this.navigation.latest();
     const snapshot = this.machineNavigation.latest(machine.id) ?? emptyMachineNavigationSnapshot(machine.id);
-    await this.restoreRouteFor(routeFromMachineNavigationSnapshot(snapshot), snapshot.surface, snapshot.view);
+    await this.restoreRouteFor(routeFromMachineNavigationSnapshot(snapshot), snapshot.surface, snapshot.view, intent);
     if (seq !== this.machineNavigationRestoreSeq || this.state.selectedMachine?.id !== machine.id) return;
+    if (!this.navigation.isCurrent(intent)) {
+      this.nameMachineAfterSupersededMove();
+      return;
+    }
     if (this.shouldPreserveUnrestoredMachineNavigation(snapshot)) {
       this.machineNavigation.remember(snapshot);
       this.writeMachineNavigationSnapshotToUrl(snapshot);
