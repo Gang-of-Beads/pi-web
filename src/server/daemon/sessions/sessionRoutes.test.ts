@@ -1391,7 +1391,7 @@ describe("session routes", () => {
       expect(initialSessions).toHaveLength(1);
       const firstRevision = initialBody["revision"];
       if (typeof firstRevision !== "string") throw new Error("initial listing had no revision");
-      expect(firstRevision).toMatch(/^[0-9a-f]{8}$/);
+      expect(firstRevision).toMatch(/^[0-9a-f]{40}$/);
 
       const unchanged = await routeApp.inject({ method: "GET", url: `/sessions?cwd=${encodeURIComponent(requestCwd)}&revision=${firstRevision}` });
       expect(unchanged.statusCode).toBe(200);

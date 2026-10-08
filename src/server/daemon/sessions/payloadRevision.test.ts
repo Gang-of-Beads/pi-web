@@ -20,6 +20,6 @@ describe("payloadRevision", () => {
   });
 
   it("answers fixed-width hex", () => {
-    expect(payloadRevision({})).toMatch(/^[0-9a-f]{8}$/);
+    expect(payloadRevision({})).toMatch(/^[0-9a-f]{40}$/);
   });
 });
