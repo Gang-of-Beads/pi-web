@@ -143,6 +143,14 @@ export class AppContextBar extends LitElement {
        itself the name was clipped mid-glyph with no ellipsis, while the phone
        scope chip beside it truncated properly. */
     .session-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* B35: on a coarse pointer the keys keep their drawn 36px and a finger reaches 44px, as the
+       composer's keys do; the title clips its text in its own span so the reach is not clipped. */
+    @media (pointer: coarse) {
+      .panel-toggle, .session-title { position: relative; }
+      .session-title { overflow: visible; }
+      .panel-toggle::after { content: ""; position: absolute; inset: calc((var(--pi-panel-header-control-height) - var(--pi-control-height-touch)) / 2); }
+      .session-title::after { content: ""; position: absolute; inset: calc((var(--pi-panel-header-control-height) - var(--pi-control-height-touch)) / 2) 0; }
+    }
     .session-title:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     @media (hover: hover) { .session-title:hover { color: var(--pi-text-bright); } }
   `;

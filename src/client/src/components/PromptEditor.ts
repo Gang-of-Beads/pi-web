@@ -97,7 +97,8 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .actions button { line-height: var(--pi-panel-header-control-height); }
   .compact-status { display: flex; min-width: 0; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); flex: 1 1 0; }
   .compact-status > button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .select-model { max-width: min(42vw, 320px); min-height: var(--pi-control-height-comfort); display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; }
+  .select-model { max-width: min(42vw, 320px); min-height: var(--pi-control-height-comfort); display: inline-flex; align-items: center; box-sizing: border-box; }
+  .select-model-label { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; overflow: hidden; }
   /* Separate boxes so the provider gives way first and the model id survives. */
   .select-model-provider { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .select-model-id { flex: 0 0 auto; white-space: nowrap; }
@@ -246,7 +247,8 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   @media (pointer: coarse) {
     .icon-button::after { content: ""; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch, 44px)) / 2); }
     .attachment-remove { width: 18px; height: 18px; }
-    .select-model { min-height: var(--pi-control-height-comfort); }
+    .select-model { position: relative; min-height: var(--pi-control-height-comfort); }
+    .select-model::after { content: ""; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch, 44px)) / 2); }
     .select-thinking { min-width: var(--pi-control-height-comfort); }
     .compact-status > button { min-width: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); }
   }
@@ -576,7 +578,7 @@ export class PromptEditor extends LitElement {
     const provider = status.model?.provider !== undefined && status.model.provider !== "" ? `${status.model.provider}/` : "";
     return html`
       <div class="compact-status" aria-label="Session status">
-        <button class="select-model" title=${`Select model: ${provider}${model}`} @click=${() => this.onSelectModel?.()}>${provider === "" ? null : html`<span class="select-model-provider">${provider}</span>`}<span class="select-model-id">${model}</span></button>
+        <button class="select-model" title=${`Select model: ${provider}${model}`} @click=${() => this.onSelectModel?.()}><span class="select-model-label">${provider === "" ? null : html`<span class="select-model-provider">${provider}</span>`}<span class="select-model-id">${model}</span></span></button>
         <button class="select-thinking icon-button" title=${`Thinking level: ${thinkingLevelLabel(status.thinkingLevel)}`} aria-label=${`Thinking level: ${thinkingLevelLabel(status.thinkingLevel)}`} @click=${() => this.onSelectThinking?.()}>${renderThinkingGauge(thinkingGauge(status.thinkingLevel, this.availableThinkingLevels))}</button>
       </div>
     `;
