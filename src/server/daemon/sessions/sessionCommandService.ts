@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { SessionUiEvent } from "../../../shared/apiTypes.js";
 import type { ClientCommandResult, ClientSession, ClientSessionTreeSnapshot } from "../../shared/types.js";
 import { isBuiltinCommand } from "./builtinCommands.js";
+import { sessionHasActiveWork } from "./sessionActiveWork.js";
 
 export interface CommandSession {
   sessionId: string;
@@ -493,9 +494,6 @@ function isDefined<T>(value: T | undefined): value is T {
   return value !== undefined;
 }
 
-function sessionHasActiveWork(session: CommandSession): boolean {
-  return session.isStreaming || session.isBashRunning || session.isCompacting || session.pendingMessageCount > 0;
-}
 
 function forkActiveUnsupported(command: "fork" | "clone"): ClientCommandResult {
   return { type: "unsupported", message: `Cannot ${command} while the session is active. Stop current activity before ${command === "fork" ? "forking" : "cloning"}.` };

@@ -137,6 +137,7 @@ import { deferToolResultImages, findToolResultImage } from "./toolResultImages.j
 import { boundToolResultText } from "./toolResultBounds.js";
 import { correlateQueuedPromptIds } from "./queuedPromptIdentity.js";
 import { SessionNotFoundError } from "./sessionErrors.js";
+import { sessionHasActiveWork } from "./sessionActiveWork.js";
 import { errorMessage } from "../../../shared/unknownValues.js";
 
 interface ActiveSession<TRuntime> {
@@ -6577,9 +6578,6 @@ function workingClock(session: PiAgentSession): WorkingClock {
   return session.isBashRunning ? "shell" : "none";
 }
 
-function sessionHasActiveWork(session: PiAgentSession, extraQueuedMessageCount = 0): boolean {
-  return session.isStreaming || session.isCompacting || session.isBashRunning || session.pendingMessageCount + extraQueuedMessageCount > 0;
-}
 
 function sessionDisplayName(session: PiAgentSession): string {
   return session.sessionName ?? session.sessionId;
