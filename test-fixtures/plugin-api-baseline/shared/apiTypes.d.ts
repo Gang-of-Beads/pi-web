@@ -1618,7 +1618,7 @@ type SessionUiEventBody =
 /**
  * A turn was stopped deliberately, and by what. An abort otherwise travels as
  * the provider's own "Request was aborted", which cannot say whether the
- * reader pressed Stop, another device did, or the runtime was reloaded.
+ * reader pressed Stop or another device did ("user"), or the runtime closed ("closed").
  */
  | {
     type: "session.stopped";

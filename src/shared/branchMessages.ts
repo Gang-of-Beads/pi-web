@@ -125,7 +125,7 @@ function isErroredAssistant(message: unknown): boolean {
   return isRecord(message) && message["role"] === "assistant" && message["stopReason"] === "error";
 }
 
-/** Entry types `branchTranscript` always draws a row for (a message pi retried aside). */
+/** Entry types `branchTranscript` draws a row for, except a message pi retried aside. */
 const RENDERED_ENTRY_TYPES: ReadonlySet<unknown> = new Set(["message", "compaction", "branch_summary"]);
 
 /**

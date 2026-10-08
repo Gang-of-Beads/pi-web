@@ -223,7 +223,8 @@ async function createSessionDaemonRuntime() {
     // Capture providers registered by global extensions while the runtime is
     // still mutable, then freeze every later extension-provider mutation before
     // any real session can load project resources.
-    await bootstrapAndFreezeGlobalExtensionProviders(auth.runtime, activeAgentProfile.dir, app.log, debugExtensionPaths(daemonEnvironment, delimiter));
+    const extensionPaths = debugExtensionPaths(daemonEnvironment, delimiter);
+    await bootstrapAndFreezeGlobalExtensionProviders(auth.runtime, activeAgentProfile.dir, app.log, extensionPaths);
     // The shared model runtime is constructed offline so request paths never
     // wait on provider-catalog fetches; this is the single bounded network
     // refresher, and auth changes (login/logout) ask it for a prompt run. It
@@ -301,7 +302,7 @@ async function createSessionDaemonRuntime() {
         // select, input, and custom - whose TUI component is rendered to lines and
         // shown as a modal. The list stays for a host that gives one up.
         unsupportedSurfaces: [],
-        extensionPaths: debugExtensionPaths(daemonEnvironment, delimiter),
+        extensionPaths,
       },
       extensionDialogsTimeoutMs: config.extensionDialogsTimeoutMs,
       notificationStore,
