@@ -19,7 +19,7 @@ import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
 import type { BoardAnswer } from "../../sync/sessionBoard";
 import { sessionStateBadgeStyles } from "../sessionStateBadgeStyles.js";
 import { SESSION_STATE_LABELS } from "../activityBadge";
-import { actionMenuPanelStyle } from "../actionMenu";
+import { actionMenuPanelStyle, actionMenuPanelStyleAtPointer, contextMenuFromMouse } from "../actionMenu";
 import { navigateRowActions, type NavigateRowActionId, type NavigateRowKind } from "../../navigateRowActions";
 import { sessionLabel } from "../../sessionLabels";
 import { machineSessionKey } from "../../machineKeys";
@@ -496,7 +496,7 @@ export class AppNavigatePage extends LitElement {
     });
     const open = this.openMenuRowId === rowId;
     return html`
-      <div class=${open ? "row-wrap menu-open" : "row-wrap"} data-motion-key=${rowId}>
+      <div class=${open ? "row-wrap menu-open" : "row-wrap"} data-motion-key=${rowId} @contextmenu=${actions.length <= 1 ? nothing : (event: MouseEvent) => { this.openRowMenuAtPointer(rowId, event); }}>
         ${row}
         ${actions.length <= 1 ? nothing : html`
           <button
@@ -564,6 +564,13 @@ export class AppNavigatePage extends LitElement {
   /** Leave picking without continuing anything. */
   stopPicking(): void {
     this.rowTap = "open";
+  }
+
+  private openRowMenuAtPointer(rowId: string, event: MouseEvent): void {
+    if (!contextMenuFromMouse(event)) return;
+    event.preventDefault();
+    this.openMenuRowId = rowId;
+    this.menuStyle = actionMenuPanelStyleAtPointer(event);
   }
 
   private toggleRowMenu(rowId: string, target: EventTarget | null): void {

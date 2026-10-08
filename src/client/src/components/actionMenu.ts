@@ -9,6 +9,8 @@ const ACTION_MENU_MIN_WIDTH_PX = 200;
 /** Breathing room kept from the edges when the panel cannot hug its trigger. */
 const ACTION_MENU_EDGE_INSET_PX = 8;
 const ACTION_MENU_MIN_USEFUL_HEIGHT_PX = 120;
+/** The panel's own min-width (`.action-menu-panel` in shared.ts): the room a pointer-placed menu keeps to its right. */
+const ACTION_MENU_POINTER_WIDTH_PX = 240;
 
 interface ActionMenuRect {
   top: number;
@@ -63,6 +65,32 @@ export function actionMenuPanelStyle(target: EventTarget | null, options: Action
     `width: ${px(width)};`,
     `max-width: ${px(inner)};`,
   ].join(" ");
+}
+
+/**
+ * A row's menu opened by a right-click stands where the pointer is, as the platform's own context
+ * menu does (owner, 2026-10-09: "right-click should give the ⋯ menu's options, natively"): its top
+ * left corner at the pointer, slid left or lifted above the pointer when the viewport has no room
+ * for it there.
+ */
+export function actionMenuPanelStyleAtPointer(event: MouseEvent): string {
+  if (typeof window === "undefined") return "";
+  const bounds = viewportBounds();
+  const left = Math.max(ACTION_MENU_EDGE_INSET_PX, Math.min(event.clientX, bounds.right - ACTION_MENU_EDGE_INSET_PX - ACTION_MENU_POINTER_WIDTH_PX));
+  const below = bounds.bottom - event.clientY - ACTION_MENU_EDGE_INSET_PX;
+  const above = event.clientY - ACTION_MENU_EDGE_INSET_PX;
+  const vertical = below < ACTION_MENU_MIN_USEFUL_HEIGHT_PX && above > below
+    ? [`bottom: ${px(bounds.bottom - event.clientY)};`, `max-height: ${px(above)};`]
+    : [`top: ${px(event.clientY)};`, `max-height: ${px(below)};`];
+  return [...vertical, `left: ${px(left)};`, "right: auto;", `max-width: ${px(bounds.right - ACTION_MENU_EDGE_INSET_PX - left)};`].join(" ");
+}
+
+/**
+ * Whether a context-menu request came from a mouse. Android fires the same event for a touch
+ * long press, which belongs to the list's own long-press handling.
+ */
+export function contextMenuFromMouse(event: MouseEvent): boolean {
+  return !(event instanceof PointerEvent) || event.pointerType === "mouse" || event.pointerType === "";
 }
 
 function actionMenuBounds(target: HTMLElement): ActionMenuRect {

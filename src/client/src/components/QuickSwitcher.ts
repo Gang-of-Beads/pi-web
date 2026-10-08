@@ -17,7 +17,7 @@ import { keyBelongsToInputMethod, keyboardEventOriginatesFromNativeActivationCon
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
 import { interactiveSurfaceStyles } from "./shared";
-import { actionMenuPanelStyle } from "./actionMenu.js";
+import { actionMenuPanelStyle, actionMenuPanelStyleAtPointer, contextMenuFromMouse } from "./actionMenu.js";
 import { machineSessionKey, machineWorkspaceKey } from "../machineKeys";
 import type { PendingNavigation } from "../navigationIntent";
 import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningWords } from "./openingMark";
@@ -359,7 +359,7 @@ export class QuickSwitcher extends LitElement {
           aria-busy=${isOpeningKey(this.opening, this.rowKey(session)) ? "true" : "false"}
           ${scrollWhenSelected(selected, session.id)}
           @click=${() => { this.openSession(session); }}
-          @contextmenu=${(event: MouseEvent) => { event.preventDefault(); this.openRowMenu(session.id, event.currentTarget); }}
+          @contextmenu=${(event: MouseEvent) => { this.openRowMenuAtPointer(session.id, event); }}
           @pointerdown=${(event: PointerEvent) => { this.heldSession = session; this.longPress.start(event); }}
           @pointermove=${(event: PointerEvent) => { this.longPress.move(event); }}
           @pointerup=${() => { this.longPress.cancel(); }}
@@ -382,15 +382,28 @@ export class QuickSwitcher extends LitElement {
     `;
   }
 
+  private heldSessionButton(): HTMLElement | null {
+    return this.renderRoot.querySelector<HTMLElement>(".row-menu-toggle");
+  }
+
+  /**
+   * A right-click opens the menu where the pointer is. The press that came with it started a
+   * hold, and its release lands on the menu rather than the row, so the hold is dropped here:
+   * left running, it fired half a second later and closed the menu it found open.
+   */
+  private openRowMenuAtPointer(sessionId: string, event: MouseEvent): void {
+    event.preventDefault();
+    if (!contextMenuFromMouse(event)) return;
+    this.longPress.cancel();
+    this.openMenuSessionId = sessionId;
+    this.menuStyle = actionMenuPanelStyleAtPointer(event);
+  }
+
   /**
    * The row menu is fixed and viewport-constrained like every other row menu:
    * absolutely positioned under the row, the last row's menu was clipped by
    * the scrolling body, and scrolling to reach it moved the row away.
    */
-  private heldSessionButton(): HTMLElement | null {
-    return this.renderRoot.querySelector<HTMLElement>(".row-menu-toggle");
-  }
-
   private openRowMenu(sessionId: string | undefined, target: EventTarget | null): void {
     this.openMenuSessionId = this.openMenuSessionId === sessionId ? undefined : sessionId;
     this.menuStyle = this.openMenuSessionId === undefined ? "" : actionMenuPanelStyle(target, { constrainTo: "viewport" });
