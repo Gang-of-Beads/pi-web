@@ -20,6 +20,8 @@ export interface LoadExternalPluginsOptions {
   machineId?: string;
   shouldLoadPlugin?: (entry: PluginManifestEntry) => boolean;
   moduleLoader?: (moduleUrl: string) => Promise<unknown>;
+  /** A retry's number; each retry imports a URL of its own (see `retriedModuleUrl`). */
+  attempt?: number;
 }
 
 export interface ExternalPluginLoadFailure {
@@ -45,7 +47,7 @@ export async function loadExternalPlugins(manifestUrl = "pi-web-plugins/manifest
   const settled = await Promise.all(manifest.plugins.map(async (entry) => {
     if (options.shouldLoadPlugin?.(entry) === false) return undefined;
     try {
-      const moduleUrl = resolvePluginModuleUrl(entry.module, resolvedManifestUrl);
+      const moduleUrl = retriedModuleUrl(resolvePluginModuleUrl(entry.module, resolvedManifestUrl), options.attempt);
       const module = await (options.moduleLoader ?? importPluginModule)(moduleUrl);
       const plugin = parsePluginModule(module, moduleUrl);
       const registration: PiWebPluginRegistration = {
@@ -71,6 +73,14 @@ export async function loadExternalPlugins(manifestUrl = "pi-web-plugins/manifest
 export function resolvePluginModuleUrl(moduleReference: string, manifestUrl: string, appUrlContext?: AppUrlContext): string {
   if (!moduleReference.startsWith("/")) return new URL(moduleReference, manifestUrl).toString();
   return appUrlContext === undefined ? resolveAppUrl(moduleReference) : resolveAppUrl(moduleReference, appUrlContext);
+}
+
+/** A browser may answer a module URL whose import failed with the same failure, so a retry asks for a URL of its own. */
+function retriedModuleUrl(moduleUrl: string, attempt: number | undefined): string {
+  if (attempt === undefined || attempt === 0) return moduleUrl;
+  const url = new URL(moduleUrl);
+  url.searchParams.set("retry", String(attempt));
+  return url.toString();
 }
 
 async function importPluginModule(moduleUrl: string): Promise<unknown> {

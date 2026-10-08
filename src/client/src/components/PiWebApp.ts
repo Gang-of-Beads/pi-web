@@ -71,6 +71,7 @@ import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, Qualif
 import { CORE_PRO_LIGHT_THEME_ID, isNativeThemeId, applyNativeProLightTheme, CORE_PRO_THEME_ID, CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyNativeProTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
+import { createPluginLoadRetry } from "../plugins/pluginLoadRetry";
 import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope } from "../plugins/registry";
 import { createPluginWorkspaceBackend } from "../plugins/workspaceBackend";
 import { createWorkspaceFiles as createPluginWorkspaceFiles } from "../plugins/workspaceFiles";
@@ -488,6 +489,7 @@ export class PiWebApp extends LitElement {
   private pluginLoadFailures: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map();
   private readonly machinePluginLoadPromises = new Map<string, Promise<void>>();
   private gatewayPluginLoadPromise: Promise<void> | undefined;
+  private readonly pluginRetry = createPluginLoadRetry((attempt) => this.retryMissingPlugins(attempt));
   private themePreference: ThemePreference = readStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
   @state() private activeThemeId: QualifiedContributionId = CLASSIC_THEME_ID;
   @state() private isRefreshingApp = false;
@@ -773,6 +775,7 @@ export class PiWebApp extends LitElement {
    * the liveness check retire any socket that only looks alive.
    */
   private readonly onBrowserOnline = () => {
+    this.pluginRetry.wake();
     this.projects.wake();
     this.workspaces.wake();
     this.machines.wake();
@@ -799,6 +802,7 @@ export class PiWebApp extends LitElement {
   private readonly onDocumentVisibilityChange = () => {
     this.updateSubagentPolling();
     if (document.visibilityState === "visible") {
+      this.pluginRetry.wake();
       void this.sessions.recheckTranscript();
       this.projects.wake();
       this.workspaces.wake();
@@ -1369,6 +1373,7 @@ export class PiWebApp extends LitElement {
     if (this.livenessTimer !== undefined) window.clearInterval(this.livenessTimer);
     this.livenessTimer = undefined;
     window.removeEventListener("online", this.onBrowserOnline);
+    this.pluginRetry.dispose();
     window.removeEventListener("pointerdown", this.onInteractionLivenessProbe, { capture: true });
     document.removeEventListener("visibilitychange", this.onDocumentVisibilityChange);
     this.clearPendingRemoteRouteRestore();
@@ -4123,10 +4128,26 @@ export class PiWebApp extends LitElement {
     return load;
   }
 
-  private loadExternalPlugins(): Promise<boolean> {
+  private loadExternalPlugins(attempt = 0): Promise<boolean> {
     return this.registerExternalPlugins("PI WEB plugins", "local", () => loadExternalPlugins("pi-web-plugins/manifest.json", {
       shouldLoadPlugin: (entry) => !this.plugins.hasPlugin(entry.id),
+      attempt,
     }));
+  }
+
+  /** One retry of every plugin still missing: this machine's, then the selected remote machine's. */
+  private async retryMissingPlugins(attempt: number): Promise<boolean> {
+    const local = await this.loadExternalPlugins(attempt);
+    if (local) this.gatewayPluginLoadPromise = Promise.resolve();
+    const machine = this.state.selectedMachine;
+    if (machine?.kind !== "remote" || this.loadedMachinePluginIds.has(machine.id)) return local;
+    await this.loadPluginsForMachine(machine, attempt);
+    return local && this.loadedMachinePluginIds.has(machine.id);
+  }
+
+  /** Whether a plugin that may draw this machine's messages failed to load in this tab. */
+  private pluginsIncomplete(machineId: string): boolean {
+    return [machineId, "local"].some((id) => (this.pluginLoadFailures.get(id)?.size ?? 0) > 0);
   }
 
   private async loadPluginsForSelectedMachine(): Promise<void> {
@@ -4136,7 +4157,7 @@ export class PiWebApp extends LitElement {
     await this.loadPluginsForMachine(machine);
   }
 
-  private async loadPluginsForMachine(machine: Machine): Promise<void> {
+  private async loadPluginsForMachine(machine: Machine, attempt = 0): Promise<void> {
     await this.ensureGatewayPluginsLoaded();
     if (machine.kind !== "remote" || this.loadedMachinePluginIds.has(machine.id)) return;
     const runtime = this.state.machineRuntimes[machine.id];
@@ -4151,6 +4172,7 @@ export class PiWebApp extends LitElement {
       machineId: machine.id,
       shouldLoadPlugin: (entry) => !this.plugins.hasPlugin(machineScopedPluginId(machine.id, entry.id))
         && this.plugins.shouldLoadRemotePlugin(entry.id, entry.machineSpecific),
+      attempt,
     }))
       .then((loaded) => { if (loaded) this.loadedMachinePluginIds.add(machine.id); })
       .finally(() => { this.machinePluginLoadPromises.delete(machine.id); });
@@ -4179,9 +4201,11 @@ export class PiWebApp extends LitElement {
       }
       this.applyPreferredTheme(false);
       this.requestUpdate();
+      if (!complete) this.pluginRetry.failed();
       return complete;
     } catch (error) {
       console.warn(`Failed to load ${label}`, error);
+      this.pluginRetry.failed();
       return false;
     }
   }
@@ -4858,7 +4882,7 @@ export class PiWebApp extends LitElement {
     return html`
       <chat-view .onRetryMessage=${(clientMessageId: string) => { this.promptEditor?.retryOutbox(clientMessageId); }} .onDiscardMessage=${this.handleDiscardMessage} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk}
         .onDialogKey=${this.handleDialogKey}
-        .pendingAsks=${state.pendingAsks} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .machineId=${selectedMachineId(state)} .sessionCwd=${session.cwd}></chat-view>
+        .pendingAsks=${state.pendingAsks} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} ?pluginsIncomplete=${this.pluginsIncomplete(selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .machineId=${selectedMachineId(state)} .sessionCwd=${session.cwd}></chat-view>
     `;
   }
 

@@ -632,6 +632,18 @@ export function chatMessageMetadataLabel(message: ChatLine): string {
   return parts.join(" · ");
 }
 
+type UndrawnMessage = "plugins-incomplete" | "unclaimed";
+
+/**
+ * What a message no plugin draws says. "Nothing renders it" is true only when every plugin
+ * loaded; while one failed to load in this tab the message may be that plugin's, so it says so
+ * (absence is not negation).
+ */
+const UNDRAWN_MESSAGE_WORDS: Readonly<Record<UndrawnMessage, { title: string; detail: (tag: string) => string }>> = {
+  "plugins-incomplete": { title: "Not drawn yet", detail: (tag) => `A plugin did not load on this device, so "${tag}" cannot be drawn yet. PI WEB is trying again.` },
+  unclaimed: { title: "Unrecognized message", detail: (tag) => `Nothing on this machine renders "${tag}".` },
+};
+
 function formatMessageTimestamp(timestamp: string): string | undefined {
   const date = new Date(timestamp);
   if (!Number.isFinite(date.getTime())) return undefined;
@@ -668,6 +680,8 @@ export class ChatView extends LitElement {
   /** Activity notes contributed by plugins; see `ActivityNoteContribution`. */
   @property({ attribute: false }) activityNotes: readonly QualifiedActivityNoteContribution[] = [];
   @property({ attribute: false }) findMessageRenderer?: (tag: string) => QualifiedMessageRendererContribution | undefined;
+  /** A plugin failed to load in this tab, so a message nothing draws may be one of its own. */
+  @property({ type: Boolean }) pluginsIncomplete = false;
   @property({ attribute: false }) findCodeFenceRenderer?: (language: string) => QualifiedCodeFenceRendererContribution | undefined;
   @property({ type: Boolean }) isSendingPrompt = false;
   /** Set while the page is not known to hold the whole transcript: the dock says so instead of the status. */
@@ -1955,9 +1969,10 @@ export class ChatView extends LitElement {
   private renderCustomPart(part: Extract<ChatPart, { type: "custom" }>) {
     const renderer = this.findMessageRenderer?.(part.tag);
     if (renderer === undefined) {
+      const words = UNDRAWN_MESSAGE_WORDS[this.pluginsIncomplete ? "plugins-incomplete" : "unclaimed"];
       return html`<div class="part custom-card custom-card-unknown">
-        <strong>Unrecognized message</strong>
-        <small>Nothing on this machine renders "${part.tag}".</small>
+        <strong>${words.title}</strong>
+        <small>${words.detail(part.tag)}</small>
       </div>`;
     }
     const body = this.renderCustomBody(renderer, part);
