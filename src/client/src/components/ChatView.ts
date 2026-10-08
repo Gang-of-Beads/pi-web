@@ -370,8 +370,10 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      messages are the landmarks in a transcript, so they keep the accent tint;
      the assistant answers on almost every turn, so its card is the ordinary
      surface and carries no hue at all; system lines keep their own quiet
-     colour because they are the exception worth spotting. */
-  .msg.user > .msg-header { border-bottom-color: var(--pi-border-muted); background: color-mix(in srgb, var(--pi-accent) 26%, var(--pi-surface)); box-shadow: inset var(--pi-rail-width) 0 0 var(--pi-accent); }
+     colour because they are the exception worth spotting. The user header has no
+     rail: it was half of a pair with the assistant's purple rail, and once that went it
+     stood alone as a heavy gold stub on the card's corner (owner, 2026-10-09). */
+  .msg.user > .msg-header { border-bottom-color: var(--pi-border-muted); background: color-mix(in srgb, var(--pi-accent) 26%, var(--pi-surface)); box-shadow: none; }
   /* The sticky header rides above the card's border while the message scrolls
      under it; without an opaque fill the scrolled text shows through the gap
      (the clipped "…dden." line the owner screenshotted). Same fill as the
