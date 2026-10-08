@@ -30,9 +30,9 @@ Owner, 2026-09-30, on sub-sessions filling the session list: "If spawn sub sessi
    - The `spawnSessions` and `subsessions` config keys are retired. They are still accepted, so existing files load, but ignored. Their Settings toggles are removed.
    - Existing tracked children keep their links. The Subagents tab keeps listing them.
 2. **`ask_user` becomes an extension.**
-   - `optional-extensions/ask-user.ts` ships in the package and registers `ask_user` with the same parameters, prompt text and ending of the run. It is not under `extensions/`: PI WEB is itself a pi package whose `pi.extensions` names that directory, so anything there loads for everyone who installs PI WEB into pi.
-   - It posts the question set to a new route, `POST /sessions/:id/asks`. The daemon's ask store, the Questions card, and the follow-up message carrying the answers are unchanged.
-   - The daemon loads the extension into its sessions only when `askUser` is on, and `askUser` now defaults to off. The Settings toggle stays.
+   - It is an inline pi extension (`askUserExtension` in `askUserTool.ts`, named `pi-web-ask-user`) that registers `ask_user` with the same parameters, prompt text and ending of the run. It is not under `extensions/`: PI WEB is itself a pi package whose `pi.extensions` names that directory, so anything there loads for everyone who installs PI WEB into pi.
+   - Built (2026-10-09) as an inline extension rather than the planned file posting to a new `POST /sessions/:id/asks` route: the extension runs inside the daemon that owns the ask store, so it opens the ask directly, and a file would first have had to find the daemon's socket. The daemon's ask store, the Questions card, and the follow-up message carrying the answers are unchanged.
+   - The daemon passes the extension to its sessions' resource loader only when `askUser` is on, and `askUser` now defaults to off. The Settings toggle stays.
 3. **`edit` stays.** It is pi's own tool with a preview, not an added one.
 
 ## Consequences

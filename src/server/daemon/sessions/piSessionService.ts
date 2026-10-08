@@ -24,6 +24,7 @@ import {
   type EditToolDetails,
   type ExtensionUIDialogOptions,
   type ExtensionUIContext,
+  type InlineExtension,
   type ModelRuntime,
   type PromptOptions,
   type ProjectTrustContext,
@@ -93,7 +94,7 @@ import { type AuthChange } from "./authService.js";
 import { canonicalizeStoredCwd, cwdPathsEqual } from "../workingDirectory.js";
 import { readSessionHeaderSummary } from "./sessionFileHeader.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
-import { createAskUserToolDefinition, type AskUserInvocation, type AskUserToolDeps } from "./askUserTool.js";
+import { askUserExtension, type AskUserInvocation, type AskUserToolDeps } from "./askUserTool.js";
 import { PendingAskStore, renderAskUserAnswersText, type PendingAskCloseResult, type PendingAskOpenResult } from "./pendingAskStore.js";
 import { PendingExtensionDialogStore, PendingExtensionDialogValidationError, type ExtensionDialogCancelReason, type PendingExtensionDialogOpenInput } from "./pendingExtensionDialogStore.js";
 import type { ExtensionNoticeLevel, PendingExtensionDialog } from "../../../shared/apiTypes.js";
@@ -965,13 +966,12 @@ function createRuntimeWithOneShotSessionOptions(
 /**
  * The tools PI WEB puts on a session: pi's own `edit`, wrapped to compute a diff
  * preview, and nothing it adds. Owner, 2026-09-30: "pi web should not give the AI any
- * extra tools; those should all be defined by the user's own plugins" - delegation is a session route (docs/design/no-builtin-agent-tools.md).
+ * extra tools; those should all be defined by the user's own plugins" - delegation is a session
+ * route, and `ask_user` an extension loaded only when it is turned on
+ * (docs/design/no-builtin-agent-tools.md).
  */
-export function createPiWebCustomToolDefinitions(cwd: string, askUser?: AskUserToolDeps) {
-  return [
-    createPiWebEditToolDefinition(cwd),
-    ...(askUser === undefined ? [] : [createAskUserToolDefinition(askUser)]),
-  ];
+export function createPiWebCustomToolDefinitions(cwd: string) {
+  return [createPiWebEditToolDefinition(cwd)];
 }
 
 /**
@@ -1147,7 +1147,8 @@ export async function resolveWebProjectTrusted(resolution: WebProjectTrustResolu
 }
 
 /**
- * Resource-loader options that append PI WEB's own system-prompt sections.
+ * Resource-loader options for PI WEB's additions: its own system-prompt sections, and the
+ * extensions it loads when the operator turned them on (`ask_user`).
  *
  * `appendSystemPromptOverride` composes with what the loader already resolved,
  * so the operator's `SYSTEM.md` / `APPEND_SYSTEM.md` files keep their content
@@ -1156,9 +1157,13 @@ export async function resolveWebProjectTrusted(resolution: WebProjectTrustResolu
  */
 export function piWebResourceLoaderOptions(
   appendSystemPromptSections: readonly string[],
+  extensions: readonly InlineExtension[] = [],
 ): CreateAgentSessionServicesOptions["resourceLoaderOptions"] | undefined {
-  if (appendSystemPromptSections.length === 0) return undefined;
-  return { appendSystemPromptOverride: (base) => [...base, ...appendSystemPromptSections] };
+  if (appendSystemPromptSections.length === 0 && extensions.length === 0) return undefined;
+  return {
+    ...(appendSystemPromptSections.length === 0 ? {} : { appendSystemPromptOverride: (base: string[]) => [...base, ...appendSystemPromptSections] }),
+    ...(extensions.length === 0 ? {} : { extensionFactories: [...extensions] }),
+  };
 }
 
 function createDefaultRuntimeFactory(
@@ -1166,7 +1171,7 @@ function createDefaultRuntimeFactory(
   askUser?: AskUserToolDeps,
   appendSystemPromptSections: readonly string[] = [],
 ): PiWebCreateAgentSessionRuntimeFactory {
-  const resourceLoaderOptions = piWebResourceLoaderOptions(appendSystemPromptSections);
+  const resourceLoaderOptions = piWebResourceLoaderOptions(appendSystemPromptSections, askUser === undefined ? [] : [askUserExtension(askUser)]);
   return async ({ cwd, agentDir, sessionManager, sessionStartEvent, initialModel, initialThinkingLevel }) => {
     // PI WEB always honors pi's project-trust model. When the workspace ships
     // trust-requiring resources, trust is resolved exactly once, mirroring the
@@ -1212,7 +1217,7 @@ function createDefaultRuntimeFactory(
       ...(initialThinkingLevel === undefined ? {} : { initialThinkingLevel }),
     });
     services.diagnostics.push(...modelOptions.diagnostics);
-    const customTools = createPiWebCustomToolDefinitions(cwd, askUser);
+    const customTools = createPiWebCustomToolDefinitions(cwd);
     const result = await createAgentSessionFromServices({
       services,
       sessionManager,

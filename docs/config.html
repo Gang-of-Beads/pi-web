@@ -987,9 +987,10 @@ PI_CODING_AGENT_SESSION_DIR=/opt/pi-profiles/lab-sessions</code></pre>
 
               <h3><code>askUser</code> and <code>ask_user</code></h3>
               <p>
-                <code>askUser</code> controls whether agents receive the core <code>ask_user</code> tool. It defaults to
-                <code>true</code>; set it to <code>false</code>, or set <code>PI_WEB_ASK_USER=false</code>, to remove the
-                tool. The environment override accepts <code>0|1|true|false</code> and takes precedence over the config file.
+                <code>askUser</code> controls whether sessions load the <code>ask_user</code> extension PI WEB ships, which
+                gives agents the <code>ask_user</code> tool. It defaults to <code>false</code>: PI WEB gives agents no tools
+                of its own unless you turn one on. Set it to <code>true</code>, or set <code>PI_WEB_ASK_USER=true</code>, to
+                load it. The environment override accepts <code>0|1|true|false</code> and takes precedence over the config file.
               </p>
               <p>
                 Use <strong>Settings → Session daemon → Allow agents to ask questions</strong> to change
@@ -1020,8 +1021,9 @@ PI_CODING_AGENT_SESSION_DIR=/opt/pi-profiles/lab-sessions</code></pre>
                 the model is told its questions went unanswered as part of the turn the message itself starts.
               </p>
               <div class="callout warning">
-                <strong>Restart required:</strong> restart the session daemon after changing <code>askUser</code> or after
-                upgrading PI WEB to a version that introduces this tool. For the systemd user service, run
+                <strong>Restart required:</strong> restart the session daemon after changing <code>askUser</code>, or after
+                upgrading from a version where <code>ask_user</code> was on by default: sessions then offer it only once it
+                is turned on. For the systemd user service, run
                 <code>systemctl --user restart pi-web-sessiond</code>.
               </div>
             </section>

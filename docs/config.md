@@ -391,7 +391,7 @@ The `spawnSessions` and `subsessions` config keys, and `PI_WEB_SPAWN_SESSIONS` a
 
 #### `askUser` and `ask_user`
 
-`askUser` controls whether agents receive the core `ask_user` tool. It defaults to `true`; set it to `false`, or set `PI_WEB_ASK_USER=false`, to remove the tool. The environment override accepts `0|1|true|false` and takes precedence over the config file.
+`askUser` controls whether sessions load the `ask_user` extension PI WEB ships, which gives agents the `ask_user` tool. It defaults to `false`: PI WEB gives agents no tools of its own unless you turn one on. Set it to `true`, or set `PI_WEB_ASK_USER=true`, to load it. The environment override accepts `0|1|true|false` and takes precedence over the config file.
 
 Use **Settings → Session daemon → Allow agents to ask questions** to change `askUser` on the selected machine. An environment override makes the toggle read-only.
 
@@ -403,7 +403,7 @@ PI WEB confirms a partial submission before sending it and names the unanswered 
 
 Sending an ordinary chat message while a form is open voids the form: the card closes as cancelled and the model is told its questions went unanswered as part of the turn the message itself starts.
 
-Restart the session daemon after changing `askUser` or after upgrading PI WEB to a version that introduces this tool. For the systemd user service, run `systemctl --user restart pi-web-sessiond`.
+Restart the session daemon after changing `askUser`, or after upgrading from a version where `ask_user` was on by default: sessions then offer it only once it is turned on. For the systemd user service, run `systemctl --user restart pi-web-sessiond`.
 
 ### Extension dialogs
 

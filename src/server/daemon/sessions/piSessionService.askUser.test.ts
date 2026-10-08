@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE } from "../../../shared/apiTypes.js";
-import { createPiWebCustomToolDefinitions, PiSessionService } from "./piSessionService.js";
+import { askUserExtension } from "./askUserTool.js";
+import { createPiWebCustomToolDefinitions, PiSessionService, piWebResourceLoaderOptions } from "./piSessionService.js";
 import { PendingAskStore, PendingAskValidationError } from "./pendingAskStore.js";
 import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
 
@@ -65,16 +66,16 @@ function askRevisions(events: CapturingSessionEventHub): unknown[] {
 
 
 describe("ask_user registration", () => {
-  it("offers ask_user whenever the capability is configured", () => {
-    const definitions = createPiWebCustomToolDefinitions("/workspace", { open: vi.fn() });
+  it("loads ask_user as an extension whenever the capability is configured", () => {
+    const options = piWebResourceLoaderOptions([], [askUserExtension({ open: vi.fn() })]);
 
-    expect(definitions.map((definition) => definition.name)).toEqual(["edit", "ask_user"]);
+    expect(options?.extensionFactories).toEqual([expect.objectContaining({ name: "pi-web-ask-user" })]);
+    expect(createPiWebCustomToolDefinitions("/workspace").map((definition) => definition.name)).toEqual(["edit"]);
   });
 
   it("omits ask_user when the capability is disabled", () => {
-    const definitions = createPiWebCustomToolDefinitions("/workspace");
-
-    expect(definitions.map((definition) => definition.name)).toEqual(["edit"]);
+    expect(piWebResourceLoaderOptions([], [])).toBeUndefined();
+    expect(createPiWebCustomToolDefinitions("/workspace").map((definition) => definition.name)).toEqual(["edit"]);
   });
 });
 

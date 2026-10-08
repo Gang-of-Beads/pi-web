@@ -213,7 +213,7 @@ describe("PI WEB config persistence", () => {
   });
 
   it("resolves askUser in the effective config so the runtime has a single source of truth", async () => {
-    expect(effectivePiWebConfig(testOptions()).config.askUser).toBe(true);
+    expect(effectivePiWebConfig(testOptions()).config.askUser).toBe(false);
 
     await writeFile(configPath, `${JSON.stringify({ askUser: false }, null, 2)}\n`, "utf8");
 
@@ -277,11 +277,12 @@ describe("extensionDialogsTimeoutMs", () => {
 });
 
 describe("askUserEnabled", () => {
-  it("is on by default because the user is present for every ask", () => {
-    expect(askUserEnabled({}, {})).toBe(true);
+  it("is off by default: PI WEB gives the agent no tools of its own", () => {
+    expect(askUserEnabled({}, {})).toBe(false);
   });
 
-  it("honors an explicit config opt-out", () => {
+  it("honors an explicit config choice", () => {
+    expect(askUserEnabled({}, { askUser: true })).toBe(true);
     expect(askUserEnabled({}, { askUser: false })).toBe(false);
   });
 

@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool, type InlineExtension } from "@earendil-works/pi-coding-agent";
 import {
   ASK_USER_ID_MAX_LENGTH,
   ASK_USER_OPTION_LIMIT,
@@ -89,6 +89,19 @@ function postedText(result: PendingAskOpenResult): string {
   const count = result.ask.questions.length;
   const posted = `Posted ${count.toString()} question${count === 1 ? "" : "s"} to the user as ask ${result.ask.askId}. Ending this run; the answers arrive as a follow-up message that wakes you, naming every question the user left unanswered. Do not repost these questions.`;
   return posted;
+}
+
+/**
+ * `ask_user` as an extension PI WEB loads into its sessions only when `askUser` is on (owner,
+ * 2026-09-30: PI WEB gives the agent no tools of its own; docs/design/no-builtin-agent-tools.md).
+ * It is an inline extension rather than a file: it runs inside the daemon that owns the ask store,
+ * so it opens the ask directly instead of finding the daemon's address to post it to a route.
+ * It gives way to an `ask_user` the user installed in pi (pi-ask-user, for one): pi loads inline
+ * extensions last and the first registration of a name wins, and a replaceable extension is left
+ * out instead of reported as a conflict.
+ */
+export function askUserExtension(deps: AskUserToolDeps): InlineExtension {
+  return { name: "pi-web-ask-user", replaceable: true, factory: (pi) => { pi.registerTool(createAskUserToolDefinition(deps)); } };
 }
 
 /**

@@ -306,16 +306,15 @@ function parseExtensionDialogsTimeoutMs(value: unknown, path: string): number {
 }
 
 /**
- * Whether LLMs may post a question set to the browser via the ask_user tool. On
- * by default: the questions land in the session the user is already watching and
- * nothing happens without them acting. Set the env var `PI_WEB_ASK_USER` or the
- * `askUser` config key to `false` to remove the tool. The env var takes
- * precedence over the config file.
+ * Whether sessions load the `ask_user` extension, which lets the agent post a
+ * question set to the browser. Off by default (owner, 2026-09-30: PI WEB gives the
+ * agent no tools of its own). Set the env var `PI_WEB_ASK_USER` or the `askUser`
+ * config key to `true` to load it. The env var takes precedence over the config file.
  */
 export function askUserEnabled(env: NodeJS.ProcessEnv = process.env, config: PiWebConfig = {}): boolean {
   const fromEnv = env["PI_WEB_ASK_USER"];
   if (fromEnv !== undefined && fromEnv !== "") return fromEnv === "1" || fromEnv.toLowerCase() === "true";
-  return config.askUser ?? true;
+  return config.askUser ?? false;
 }
 
 function parseBooleanKey(value: unknown, key: string, path: string): boolean {
