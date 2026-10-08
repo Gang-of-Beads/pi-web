@@ -29,8 +29,14 @@ import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningWor
 /** What a tap on a session row does. */
 type SessionRowTap = "open" | "continue";
 
-/** The "Continue from…" button turns picking on, and off again. */
-const NEXT_ROW_TAP: Readonly<Record<SessionRowTap, SessionRowTap>> = { open: "continue", continue: "open" };
+/** The New session menu shares the one open-menu slot with the row menus. */
+const NEW_SESSION_MENU = "new-session";
+
+/** The New session button in each tap mode: it starts a session or opens its menu, or, while picking, names the mode and leaves it. */
+const CREATE_BUTTON: Readonly<Record<SessionRowTap, { label: string; picking: boolean }>> = {
+  open: { label: "+ New session", picking: false },
+  continue: { label: "✕ Continue from…", picking: true },
+};
 
 /**
  * The one navigation surface: where you are, what is under it, and what you
@@ -134,7 +140,7 @@ export class AppNavigatePage extends LitElement {
   /** The host is carrying out a change the reader asked for from this list; its result applies without motion. */
   @property({ attribute: false }) readerChanging = false;
   @state() private query = "";
-  /** What a tap on a session row does: open it, or continue it in a new session after "Continue from…". */
+  /** What a tap on a session row does: open it, or continue it in a new session after New session's "Continue from…". */
   @state() private rowTap: SessionRowTap = "open";
   /** Rows re-sort live, but never under a finger; see `heldRowOrder`. */
   private readonly rowOrder = createHeldRowOrder<NavigateSessionRow>((row) => `${row.machineId}:${row.session.id}`);
@@ -363,12 +369,11 @@ export class AppNavigatePage extends LitElement {
         ` : nothing}
         <div class="actions">
           ${showsSessions
-            ? html`<button type="button" class="create" @click=${() => { this.rowTap = "open"; this.onCreateSession?.(); }}>+ New session</button>${this.onContinueFrom === undefined ? nothing : html`<button type="button" class="create secondary" aria-pressed=${this.rowTap === "continue" ? "true" : "false"} title="Start a new session that carries an existing session's whole history" @click=${() => { this.rowTap = NEXT_ROW_TAP[this.rowTap]; }}>↻ Continue from…</button>`}`
+            ? this.renderCreateSession()
             : this.kind === "project" && this.onAddProject !== undefined
               ? html`<button type="button" class="create" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>`
               : nothing}
         </div>
-        ${showsSessions && this.rowTap === "continue" ? html`<p class="pick-hint" role="status"><span>Choose the session to continue in a new one.</span><button type="button" class="pick-cancel" @click=${() => { this.rowTap = "open"; }}>Cancel</button></p>` : nothing}
         <div
           class=${this.tilesPerRow === undefined ? "body" : `body tiles-${String(this.tilesPerRow)}`}
           @pointerdown=${() => { this.rowOrder.hold(); }}
@@ -519,6 +524,47 @@ export class AppNavigatePage extends LitElement {
     `;
   }
 
+  /**
+   * New session, and inside it "Continue from…" (owner 2026-10-08: no extra button, no hint line). The
+   * menu offers an empty session or picking one to continue; while picking, the button itself says so
+   * and a tap on it leaves. A machine that cannot continue sessions gets the plain button.
+   */
+  private renderCreateSession() {
+    const button = CREATE_BUTTON[this.rowTap];
+    const menu = this.onContinueFrom !== undefined && this.rowTap === "open";
+    return html`
+      <button
+        type="button"
+        class="create"
+        aria-pressed=${button.picking ? "true" : nothing}
+        aria-haspopup=${menu ? "menu" : nothing}
+        aria-expanded=${menu ? (this.openMenuRowId === NEW_SESSION_MENU ? "true" : "false") : nothing}
+        @click=${(event: MouseEvent) => { CREATE_TAPS[this.rowTap](this, event.currentTarget); }}
+      >${button.label}</button>
+      ${this.openMenuRowId === NEW_SESSION_MENU ? html`
+        <div class="menu-scrim" @click=${() => { this.openMenuRowId = undefined; }}></div>
+        <div class="action-menu-panel" role="menu" aria-label="New session" style=${this.menuStyle}>
+          <button type="button" role="menuitem" @click=${() => { this.openMenuRowId = undefined; this.onCreateSession?.(); }}>Empty session</button>
+          <button type="button" role="menuitem" title="Start a new session that carries an existing session's whole history" @click=${() => { this.openMenuRowId = undefined; this.rowTap = "continue"; }}>Continue from…</button>
+        </div>
+      ` : nothing}
+    `;
+  }
+
+  /** New session's tap: start one at once where nothing can be continued, otherwise open its menu. */
+  tapNewSession(target: EventTarget | null): void {
+    if (this.onContinueFrom === undefined) {
+      this.onCreateSession?.();
+      return;
+    }
+    this.toggleRowMenu(NEW_SESSION_MENU, target);
+  }
+
+  /** Leave picking without continuing anything. */
+  stopPicking(): void {
+    this.rowTap = "open";
+  }
+
   private toggleRowMenu(rowId: string, target: EventTarget | null): void {
     this.openMenuRowId = this.openMenuRowId === rowId ? undefined : rowId;
     this.menuStyle = this.openMenuRowId === undefined ? "" : actionMenuPanelStyle(target, { constrainTo: "viewport" });
@@ -651,10 +697,7 @@ export class AppNavigatePage extends LitElement {
     .search { box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-font-ui); }
     .actions { flex: 0 0 auto; display: flex; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
     .create { box-sizing: border-box; flex: 1 1 0; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-selection-bg); color: var(--pi-text-bright); font: inherit; cursor: pointer; }
-    .create.secondary { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text); }
-    .create.secondary[aria-pressed="true"] { border-color: var(--pi-accent-border); color: var(--pi-text-bright); }
-    .pick-hint { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-3); margin: var(--pi-space-3) var(--pi-bar-inset) 0; color: var(--pi-text); font-size: var(--pi-text-xs); }
-    .pick-cancel { box-sizing: border-box; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; cursor: pointer; }
+    .create[aria-pressed="true"] { border-color: var(--pi-accent); }
     /* Two entries to a line: the owner reads this list as a board of places,
        and one tall row per screen line wasted half the width. */
     /* The quick-access board's shape, which the owner asked this page to
@@ -698,6 +741,12 @@ declare global {
 function pinnedFirst<T extends { id: string }>(choices: readonly T[], pinned: ReadonlySet<string>): T[] {
   return [...choices.filter((choice) => pinned.has(choice.id)), ...choices.filter((choice) => !pinned.has(choice.id))];
 }
+
+/** Each tap mode's action on the New session button. */
+const CREATE_TAPS: Readonly<Record<SessionRowTap, (page: AppNavigatePage, target: EventTarget | null) => void>> = {
+  open: (page, target) => { page.tapNewSession(target); },
+  continue: (page) => { page.stopPicking(); },
+};
 
 /** Each tap mode's action on the tapped row. */
 const ROW_TAPS: Readonly<Record<SessionRowTap, (page: AppNavigatePage, row: NavigateSessionRow) => void>> = {
