@@ -91,6 +91,8 @@ export interface NavigateModel {
   nextLevel: NavigateLevel | undefined;
   sections: NavigateSection[];
   matchCount: number;
+  /** How many listed rows carry each tag, before the query narrows them: what `#` can suggest (B42). */
+  tagCounts: ReadonlyMap<string, number>;
 }
 
 interface MachineLike { id: string; name: string }
@@ -133,13 +135,14 @@ export function navigateModel(input: NavigateInput): NavigateModel {
   const rows = scoped
     .filter((session) => session.archived !== true)
     .map((session) => row(session, input.scope.machineId, input));
-  const archivedRows = scoped
+  const archivedAll = scoped
     .filter((session) => session.archived === true)
-    .map((session) => row(session, input.scope.machineId, input))
-    .filter((entry) => matches(entry, input.query));
+    .map((session) => row(session, input.scope.machineId, input));
+  const archivedRows = archivedAll.filter((entry) => matches(entry, input.query));
   const matching = rows.filter((entry) => matches(entry, input.query));
 
-  const pinnedRows = pinnedSection(input).filter((entry) => matches(entry, input.query));
+  const pinnedAll = pinnedSection(input);
+  const pinnedRows = pinnedAll.filter((entry) => matches(entry, input.query));
   // One session, one row: a pinned session is listed once, from the pins, wherever its
   // state would otherwise put it.
   const unpinned = matching.filter((entry) => !entry.pinned);
@@ -153,7 +156,13 @@ export function navigateModel(input: NavigateInput): NavigateModel {
     if (choices.length > 0) sections.push({ id: "choices", title: choiceTitle(level), rows: [], choices });
   }
 
-  return { nextLevel, sections, matchCount: matching.length + pinnedRows.length };
+  return { nextLevel, sections, matchCount: matching.length + pinnedRows.length, tagCounts: tagCounts([...pinnedAll, ...rows.filter((entry) => !entry.pinned), ...archivedAll]) };
+}
+
+function tagCounts(rows: readonly NavigateSessionRow[]): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+  for (const entry of rows) for (const tag of entry.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  return counts;
 }
 
 /**
@@ -228,16 +237,17 @@ export function derivedTags(session: SessionInfo, input: Pick<NavigateInput, "pr
   const stateTag = STATE_TAG[input.sessionStates.get(session.id) ?? "unknown"];
   if (stateTag !== undefined) tags.push(stateTag);
   if (input.pinnedSessionIds.has(session.id)) tags.push("pinned");
+  if (session.archived === true) tags.push("archived");
   return [...new Set(tags.map((tag) => tag.toLowerCase()))];
 }
 
-/** The searchable tag each state carries, where it carries one. */
+/** The searchable tag each state carries, where it carries one: the word its row shows (B42). */
 const STATE_TAG: Readonly<Record<NavigateSessionState, string | undefined>> = {
   asking: "waiting",
-  working: "running",
+  working: "working",
   background: undefined,
   error: undefined,
-  idle: undefined,
+  idle: "idle",
   unknown: undefined,
 };
 

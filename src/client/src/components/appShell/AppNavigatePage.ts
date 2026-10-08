@@ -23,6 +23,7 @@ import { actionMenuPanelStyle, actionMenuPanelStyleAtPointer, contextMenuFromMou
 import { navigateBulkActions, navigateRowActions, type NavigateBulkActionId, type NavigateBulkGroup, type NavigateRowActionId, type NavigateRowFacts, type NavigateRowKind } from "../../navigateRowActions";
 import { NavigateSelection, type NavigateSelectionState } from "../../navigateSelection";
 import { NavigateReorder, type TouchDragReadiness } from "../../navigateReorder";
+import { tagSuggestions, typedTag, withTag } from "../../tagSearch";
 import type { ReorderPoint } from "../../listReorder";
 import { isSelecting, type SelectionOutcome } from "../../selectionModel";
 import { renderSelectionActions, renderSelectionHeader, selectionBarStyles } from "./navigateSelectionBar";
@@ -558,6 +559,7 @@ export class AppNavigatePage extends LitElement {
               @input=${(event: Event) => { if (event.target instanceof HTMLInputElement) this.query = event.target.value; }}
             />
           </div>
+          ${this.renderTagSuggestions()}
         ` : nothing}
         <div class="actions">
           ${showsSessions
@@ -568,6 +570,23 @@ export class AppNavigatePage extends LitElement {
           ${this.renderSelectKey()}
         </div>
     `;
+  }
+
+  /** While the last search term is a `#` tag, the tags the listed rows carry that it can become, with how many rows carry each (B42). */
+  private renderTagSuggestions() {
+    const typed = typedTag(this.query);
+    const counts = this.view?.model.tagCounts;
+    if (typed === undefined || counts === undefined) return nothing;
+    const suggestions = tagSuggestions(counts, typed);
+    if (suggestions.length === 0) return nothing;
+    return html`<div class="tag-suggestions" role="group" aria-label="Tags">
+      ${suggestions.map((suggestion) => html`<button type="button" class="tag-suggestion" @click=${() => { this.pickTag(suggestion.tag); }}>#${suggestion.tag}<span class="tag-count">${suggestion.count}</span></button>`)}
+    </div>`;
+  }
+
+  private pickTag(tag: string): void {
+    this.query = withTag(this.query, tag);
+    this.renderRoot.querySelector<HTMLInputElement>(".search")?.focus();
   }
 
   /**
@@ -1022,6 +1041,14 @@ export class AppNavigatePage extends LitElement {
     .row-wrap > .row { -webkit-touch-callout: none; }
     .select-key { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font: inherit; cursor: pointer; }
     @media (pointer: coarse) { .select-key { display: none; } }
+    /* One scrolling row of tag chips under the search, so typing a hash adds one row and no more; its
+       padding holds each chip's 44px reach, which the scrolling row would otherwise clip. */
+    .tag-suggestions { display: flex; gap: var(--pi-space-2); overflow-x: auto; padding: var(--pi-space-3) var(--pi-bar-inset); scrollbar-width: none; }
+    .tag-suggestion { position: relative; flex: 0 0 auto; box-sizing: border-box; display: inline-flex; align-items: center; gap: var(--pi-space-2); min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
+    .tag-count { color: var(--pi-muted); }
+    @media (hover: hover) { .tag-suggestion:hover { border-color: var(--pi-accent-border); } }
+    .tag-suggestion:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
+    @media (pointer: coarse) { .tag-suggestion::after { content: ""; position: absolute; inset: calc((var(--pi-control-height) - var(--pi-control-height-touch)) / 2) 0; } }
     /* B35: the header's keys keep their drawn height and a finger reaches 44px. The kinds and the
        create key stand 4px apart, so their reach grows only up and down; a path step and a scope
        clip their text in a span and the switch rounds its own ends, so the reach is not clipped. */
