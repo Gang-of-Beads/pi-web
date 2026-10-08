@@ -162,6 +162,14 @@ const DEFAULT_UNREAD_PUBLICATION_RETRY_MS = 1_000;
 const TEARDOWN_TAKE_BACK_MS = 5_000;
 /** How long an extension's standing-value writes gather before one status frame carries them. */
 const STANDING_PUBLISH_MS = 100;
+
+/** Whether a status is broadcast: always, or only when it differs from the last one broadcast. */
+type StatusBroadcast = "always" | "if-changed";
+
+const STATUS_BROADCAST: Readonly<Record<StatusBroadcast, (last: string | undefined, next: string) => boolean>> = {
+  always: () => true,
+  "if-changed": (last, next) => last !== next,
+};
 /**
  * The longest a closing session holds back its reopen. A close normally finishes within its
  * abort; an abort that never returns (a tool ignoring the signal) must not lock the session id
@@ -1478,6 +1486,8 @@ export class PiSessionService implements SessionRouteService {
   /** Per runtime, as the standing values are; see extensionComposer.ts for why the text outlives a reload. */
   private readonly extensionComposers = new WeakMap<PiAgentSession, ExtensionComposer>();
   private readonly standingPublishPending = new WeakSet<PiAgentSession>();
+  /** The status last broadcast for each runtime, serialized; see publishStatus. */
+  private readonly lastBroadcastStatus = new WeakMap<PiAgentSession, string>();
   /** Sessions whose running turn the reader stopped, with the moment recorded; settled once, at the latest when that turn ends. */
   private readonly stoppedByReader = new Map<string, string>();
   private readonly dialogWaiters = new ExtensionDialogWaiters();
@@ -5864,10 +5874,10 @@ export class PiSessionService implements SessionRouteService {
       this.pumpInbox(session);
       const activity = this.activities.get(session.sessionId);
       if (!this.hasActiveWork(session)) {
-        if (activity?.phase === "active") this.publishStatus(session);
+        if (activity?.phase === "active") this.publishStatus(session, "if-changed");
         continue;
       }
-      this.publishStatus(session);
+      this.publishStatus(session, "if-changed");
       if (activity?.phase === "active") this.publishActivity(session, activity.label, "active", activity.detail);
       else this.publishActivity(session, this.activityLabelFromStatus(session), "active");
     }
@@ -6065,15 +6075,31 @@ export class PiSessionService implements SessionRouteService {
     this.observeUnreadActivityState(session);
   }
 
-  private publishStatus(session: PiAgentSession): void {
+  /**
+   * Bring everything that follows a session's status up to date and broadcast the status. The 2 s
+   * heartbeat asks `if-changed`: it broadcasts only a status that differs from the last one
+   * broadcast for the session, while its other work runs either way. Measured on 8505 (B28), 9 of
+   * every 10 heartbeat frames of a working session were identical, 1.7 KB each, on the session's
+   * socket and again on every machine socket; a frame lost meanwhile is a gap the seq checks find.
+   */
+  private publishStatus(session: PiAgentSession, when: StatusBroadcast = "always"): void {
     const status = this.statusFromSession(session);
     this.recordRunLifecycle(session);
     this.clearStaleActiveActivity(session);
     this.workspaceActivity?.applySessionStatus(session.sessionManager.getCwd(), status);
-    this.events.publish(session.sessionId, { type: "status.update", status });
-    this.events.publishGlobal({ type: "status.update", status: { ...status, streamPosition: this.streamPosition(session.sessionId) } });
-    this.extensionStanding.get(session)?.noteSent(status.extensionUi);
+    if (this.statusBroadcastDue(session, status, when)) {
+      this.events.publish(session.sessionId, { type: "status.update", status });
+      this.events.publishGlobal({ type: "status.update", status: { ...status, streamPosition: this.streamPosition(session.sessionId) } });
+      this.extensionStanding.get(session)?.noteSent(status.extensionUi);
+    }
     this.observeUnreadActivityState(session);
+  }
+
+  private statusBroadcastDue(session: PiAgentSession, status: ClientSessionStatus, when: StatusBroadcast): boolean {
+    const shown = JSON.stringify(status);
+    if (!STATUS_BROADCAST[when](this.lastBroadcastStatus.get(session), shown)) return false;
+    this.lastBroadcastStatus.set(session, shown);
+    return true;
   }
 
   /**
