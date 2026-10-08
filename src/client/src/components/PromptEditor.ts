@@ -27,7 +27,7 @@ import { isRequestTimeout } from "../api/requestDeadline";
 import { newClientMessageId } from "../messageDelivery";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
-import { type CompletionItem} from "./shared";
+import { type CompletionItem, attachmentZoomStyles } from "./shared";
 import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
 import "./AutocompleteMenu";
@@ -49,13 +49,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
   }
 
-  /* A pending image attachment opens full-size in its own dialog: the native
-     top layer covers the page, Esc and a backdrop click close it, and the
-     controls are reachable by keyboard like every other control in the app. */
-  dialog.attachment-zoom { box-sizing: border-box; position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
-  dialog.attachment-zoom[open] { display: flex; }
-  dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
-  .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
+  ${attachmentZoomStyles}
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
      Scoped to controls, so scrollable and pannable surfaces keep the gestures
      they set for themselves; and it lives here rather than on the app shell
