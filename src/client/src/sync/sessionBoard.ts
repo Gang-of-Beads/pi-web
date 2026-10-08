@@ -224,11 +224,21 @@ export function boardWithEvent(board: SessionBoard, event: SessionBoardEvent): S
   return { ...board, sessions: [event.session, ...board.sessions].sort(newestFirst) };
 }
 
-function withActivity(board: SessionBoard, sessionId: string, at: string): SessionBoard {
+/**
+ * The session with a later activity time as its `modified`, or the same session for an older,
+ * equal or unreadable one (B28). Every list a session row is drawn from takes its time through
+ * this one rule: the board, and the selected project's listing (`sessionController`), which the
+ * Navigate page draws on the machine in use.
+ */
+export function withLaterActivity(session: SessionInfo, at: string): SessionInfo {
   const atMs = Date.parse(at);
+  return Number.isNaN(atMs) || atMs <= Date.parse(session.modified) ? session : { ...session, modified: at };
+}
+
+function withActivity(board: SessionBoard, sessionId: string, at: string): SessionBoard {
   const listed = [...board.sessions, ...(board.pinnedElsewhere ?? [])].find((session) => session.id === sessionId);
-  if (listed === undefined || Number.isNaN(atMs) || atMs <= Date.parse(listed.modified)) return board;
-  const moved = withEachListed(board, sessionId, (session) => ({ ...session, modified: at }));
+  if (listed === undefined || withLaterActivity(listed, at) === listed) return board;
+  const moved = withEachListed(board, sessionId, (session) => withLaterActivity(session, at));
   return { ...moved, sessions: [...moved.sessions].sort(newestFirst) };
 }
 

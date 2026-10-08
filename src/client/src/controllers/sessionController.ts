@@ -1,3 +1,4 @@
+import { withLaterActivity } from "../sync/sessionBoard";
 import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Project, type Workspace } from "../api";
 import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
@@ -2465,7 +2466,7 @@ export class SessionController {
     }
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
-      ...sessionMessageCountPatch(state, status.sessionId, status.messageCount),
+      ...sessionRowPatch(state, status),
       ...(clearsStaleActivity || adoptedActivity !== undefined ? { sessionActivities: activitiesAfterAdoption(state.sessionActivities, status.sessionId, adoptedActivity) } : {}),
       status: isSelected ? status : state.status,
       ...(isSelected ? { statusReadFailed: undefined } : {}),
@@ -3456,20 +3457,22 @@ function bulkFailureMessages(failures: readonly SessionBulkFailure[]): string[] 
   return failures.map((failure) => `${failure.sessionId}: ${failure.error}`);
 }
 
-function sessionMessageCountPatch(state: AppState, sessionId: string, messageCount: number | undefined): Pick<Partial<AppState>, "sessions" | "selectedSession"> {
-  if (messageCount === undefined) return {};
-
-  const sessionsChanged = state.sessions.some((session) => session.id === sessionId && session.messageCount !== messageCount);
-  const sessions = sessionsChanged
-    ? state.sessions.map((session) => session.id === sessionId ? { ...session, messageCount } : session)
-    : undefined;
-  const selectedSession = state.selectedSession?.id === sessionId && state.selectedSession.messageCount !== messageCount
-    ? { ...state.selectedSession, messageCount }
-    : state.selectedSession;
-
+/**
+ * What a status says about its session's row: its message count, and when it last changed. The
+ * Navigate page draws the machine in use from this listing, so a status that moves the activity
+ * time must move it here as well as on the board (B28); the time only ever moves later.
+ */
+function sessionRowPatch(state: AppState, status: SessionStatus): Pick<Partial<AppState>, "sessions" | "selectedSession"> {
+  const update = (session: SessionInfo): SessionInfo => {
+    const counted = status.messageCount === undefined || session.messageCount === status.messageCount ? session : { ...session, messageCount: status.messageCount };
+    return status.lastActivityAt === undefined ? counted : withLaterActivity(counted, status.lastActivityAt);
+  };
+  const listed = state.sessions.find((session) => session.id === status.sessionId);
+  const updated = listed === undefined ? undefined : update(listed);
+  const selectedSession = state.selectedSession?.id === status.sessionId ? update(state.selectedSession) : state.selectedSession;
   return {
-    ...(sessions === undefined ? {} : { sessions }),
-    ...(selectedSession !== state.selectedSession ? { selectedSession } : {}),
+    ...(updated === listed ? {} : { sessions: state.sessions.map((session) => (session.id === status.sessionId ? updated ?? session : session)) }),
+    ...(selectedSession === state.selectedSession ? {} : { selectedSession }),
   };
 }
 
