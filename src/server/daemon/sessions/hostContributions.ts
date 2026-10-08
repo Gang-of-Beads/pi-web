@@ -19,6 +19,11 @@ export interface HostContributions {
    * what the extension's call resolves to is announced, never silent.
    */
   readonly unsupportedSurfaces: readonly string[];
+  /**
+   * Extension files loaded into every session besides pi's own discovery. Only a test stack sets
+   * any (`PI_WEB_DEBUG_EXTENSION_PATHS`), so its fixtures stay out of the operator's own pi.
+   */
+  readonly extensionPaths?: readonly string[];
 }
 
 export const EMPTY_HOST_CONTRIBUTIONS: HostContributions = {
@@ -28,7 +33,7 @@ export const EMPTY_HOST_CONTRIBUTIONS: HostContributions = {
 
 /** One row of the host-vs-native deviation list. */
 export interface HostDeviation {
-  readonly kind: "prompt-addition" | "surface-interception";
+  readonly kind: "prompt-addition" | "surface-interception" | "extension-addition";
   readonly detail: string;
 }
 
@@ -41,5 +46,13 @@ export function describeHostContributions(contributions: HostContributions): Hos
   for (const surface of contributions.unsupportedSurfaces) {
     rows.push({ kind: "surface-interception", detail: surface });
   }
+  for (const extensionPath of contributions.extensionPaths ?? []) {
+    rows.push({ kind: "extension-addition", detail: extensionPath });
+  }
   return rows;
+}
+
+/** The extension files a test stack names in `PI_WEB_DEBUG_EXTENSION_PATHS`, separated like PATH. */
+export function debugExtensionPaths(env: Readonly<Record<string, string | undefined>>, separator: string): readonly string[] {
+  return (env["PI_WEB_DEBUG_EXTENSION_PATHS"] ?? "").split(separator).filter((entry) => entry !== "");
 }

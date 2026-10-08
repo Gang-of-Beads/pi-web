@@ -1178,11 +1178,13 @@ export async function resolveWebProjectTrusted(resolution: WebProjectTrustResolu
 export function piWebResourceLoaderOptions(
   appendSystemPromptSections: readonly string[],
   extensions: readonly InlineExtension[] = [],
+  extensionPaths: readonly string[] = [],
 ): CreateAgentSessionServicesOptions["resourceLoaderOptions"] | undefined {
-  if (appendSystemPromptSections.length === 0 && extensions.length === 0) return undefined;
+  if (appendSystemPromptSections.length === 0 && extensions.length === 0 && extensionPaths.length === 0) return undefined;
   return {
     ...(appendSystemPromptSections.length === 0 ? {} : { appendSystemPromptOverride: (base: string[]) => [...base, ...appendSystemPromptSections] }),
     ...(extensions.length === 0 ? {} : { extensionFactories: [...extensions] }),
+    ...(extensionPaths.length === 0 ? {} : { additionalExtensionPaths: [...extensionPaths] }),
   };
 }
 
@@ -1190,8 +1192,9 @@ function createDefaultRuntimeFactory(
   modelRuntime: ModelRuntime,
   askUser?: AskUserToolDeps,
   appendSystemPromptSections: readonly string[] = [],
+  extensionPaths: readonly string[] = [],
 ): PiWebCreateAgentSessionRuntimeFactory {
-  const resourceLoaderOptions = piWebResourceLoaderOptions(appendSystemPromptSections, askUser === undefined ? [] : [askUserExtension(askUser)]);
+  const resourceLoaderOptions = piWebResourceLoaderOptions(appendSystemPromptSections, askUser === undefined ? [] : [askUserExtension(askUser)], extensionPaths);
   return async ({ cwd, agentDir, sessionManager, sessionStartEvent, initialModel, initialThinkingLevel }) => {
     // PI WEB always honors pi's project-trust model. When the workspace ships
     // trust-requiring resources, trust is resolved exactly once, mirroring the
@@ -1585,6 +1588,7 @@ export class PiSessionService implements SessionRouteService {
       this.modelRuntime,
       deps.askUserEnabled === true ? { open: (input) => this.openAsk(input) } : undefined,
       deps.hostContributions?.systemPromptSections ?? [],
+      deps.hostContributions?.extensionPaths ?? [],
     );
     this.createAgentRuntime = deps.createAgentRuntime ?? defaultCreateAgentRuntime;
     this.workspaceActivity = deps.workspaceActivity;

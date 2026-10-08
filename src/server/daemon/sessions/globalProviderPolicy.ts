@@ -62,10 +62,15 @@ function isModelsOnlyProviderUpdate(baseline: RegisteredProviderConfig, incoming
   return incoming.models !== undefined && !isDeepStrictEqual(incoming.models, baseline.models);
 }
 
-async function loadGlobalExtensionServices(runtime: ModelRuntime, agentDir: string): Promise<AgentSessionServices> {
+async function loadGlobalExtensionServices(runtime: ModelRuntime, agentDir: string, extensionPaths: readonly string[]): Promise<AgentSessionServices> {
   const scratchCwd = await mkdtemp(join(tmpdir(), "pi-web-global-ext-"));
   try {
-    return await createAgentSessionServices({ cwd: scratchCwd, agentDir, modelRuntime: runtime });
+    return await createAgentSessionServices({
+      cwd: scratchCwd,
+      agentDir,
+      modelRuntime: runtime,
+      ...(extensionPaths.length === 0 ? {} : { resourceLoaderOptions: { additionalExtensionPaths: [...extensionPaths] } }),
+    });
   } finally {
     await rm(scratchCwd, { recursive: true, force: true });
   }
@@ -177,13 +182,18 @@ function freezeProviderMutations(
  * property of the provider rather than of the project. Native registration
  * stays fully frozen — it passes a whole `Provider` object with no comparable
  * config — as does unregistration.
+ *
+ * `extensionPaths` are the host's extra extension files (a test stack's fixtures,
+ * `HostContributions.extensionPaths`): sessions load them too, so the providers
+ * they register must be in the baseline before it freezes.
  */
 export async function bootstrapAndFreezeGlobalExtensionProviders(
   runtime: ModelRuntime,
   agentDir: string,
   logger: GlobalProviderBootstrapLogger,
+  extensionPaths: readonly string[] = [],
 ): Promise<void> {
-  const services = await loadGlobalExtensionServices(runtime, agentDir);
+  const services = await loadGlobalExtensionServices(runtime, agentDir, extensionPaths);
   const providerIds = Object.freeze([...runtime.getRegisteredProviderIds()].sort());
 
   freezeProviderMutations(runtime, logger, captureProviderConfigBaseline(runtime));

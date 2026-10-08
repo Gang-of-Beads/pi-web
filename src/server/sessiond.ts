@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { mkdir, rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import { delimiter, dirname } from "node:path";
 import Fastify from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import { WorkspaceActivityService } from "./daemon/activity/workspaceActivityService.js";
@@ -11,6 +11,7 @@ import { SessionEventHub } from "./daemon/realtime/sessionEventHub.js";
 import { drainActiveWork, resolveDrainTimeoutMs } from "./daemon/sessions/shutdownDrain.js";
 import { recordInterruptedRuns, takeInterruptedRuns } from "./daemon/sessions/interruptedRunStore.js";
 import { AuthService } from "./daemon/sessions/authService.js";
+import { debugExtensionPaths } from "./daemon/sessions/hostContributions.js";
 import { bootstrapAndFreezeGlobalExtensionProviders } from "./daemon/sessions/globalProviderPolicy.js";
 import { registerAuthRoutes } from "./daemon/sessions/authRoutes.js";
 import { ModelCatalogRefresher } from "./daemon/sessions/modelCatalogRefresher.js";
@@ -222,7 +223,7 @@ async function createSessionDaemonRuntime() {
     // Capture providers registered by global extensions while the runtime is
     // still mutable, then freeze every later extension-provider mutation before
     // any real session can load project resources.
-    await bootstrapAndFreezeGlobalExtensionProviders(auth.runtime, activeAgentProfile.dir, app.log);
+    await bootstrapAndFreezeGlobalExtensionProviders(auth.runtime, activeAgentProfile.dir, app.log, debugExtensionPaths(daemonEnvironment, delimiter));
     // The shared model runtime is constructed offline so request paths never
     // wait on provider-catalog fetches; this is the single bounded network
     // refresher, and auth changes (login/logout) ask it for a prompt run. It
@@ -300,6 +301,7 @@ async function createSessionDaemonRuntime() {
         // select, input, and custom - whose TUI component is rendered to lines and
         // shown as a modal. The list stays for a host that gives one up.
         unsupportedSurfaces: [],
+        extensionPaths: debugExtensionPaths(daemonEnvironment, delimiter),
       },
       extensionDialogsTimeoutMs: config.extensionDialogsTimeoutMs,
       notificationStore,
