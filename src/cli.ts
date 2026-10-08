@@ -306,9 +306,10 @@ function describeServiceShell(): string {
 
 /**
  * The environment a managed service is installed with: the config path when
- * one was chosen, the log directory the service manager is pointed at (so the
- * process trims the file it is actually given), plus the deployment variables
- * only the installing environment knows. A service manager does not inherit the installing
+ * one was chosen, the log directory launchd is pointed at (so the process trims
+ * the file it is actually given; systemd sends the output to the journal and
+ * the variable names nothing there), plus the deployment variables only the
+ * installing environment knows. A service manager does not inherit the installing
  * shell's environment, so anything left out here is lost at service start.
  */
 function serviceEnvironment(options: InstallOptions, configPath: string): Record<string, string> {

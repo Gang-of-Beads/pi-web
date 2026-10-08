@@ -88,8 +88,9 @@ export class ProjectController {
 
   /**
    * Read the projects of a machine a list browses without selecting it (the Navigate page's machine
-   * pick), and keep reading them while it is browsed. Browsing the selected machine lets the other
-   * go: its listing is already watched.
+   * pick), and keep reading them while it is browsed, which outlives the page closing: the page
+   * reopens on it. Browsing the machine selected at the call releases the browsed machine's watch,
+   * since the selected machine's listing is watched already.
    */
   browse(machineId: string): void {
     const target = machineId === selectedMachineId(this.getState()) ? undefined : machineId;

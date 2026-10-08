@@ -6568,7 +6568,7 @@ function archiveInputFromCandidate(candidate: WorkspaceArchiveCandidate): Archiv
 }
 
 /**
- * Whose start the working clock shows. A `!!` shell run is not the agent's turn: anchored on the
+ * Whose start the working clock shows. A `!` or `!!` shell run is not the agent's turn: anchored on the
  * last user message it read the previous turn's age (3h 1m for a 12 s sleep, 2026-10-05).
  */
 type WorkingClock = "turn" | "shell" | "none";
@@ -6577,7 +6577,6 @@ function workingClock(session: PiAgentSession): WorkingClock {
   if (session.isStreaming || session.isCompacting) return "turn";
   return session.isBashRunning ? "shell" : "none";
 }
-
 
 function sessionDisplayName(session: PiAgentSession): string {
   return session.sessionName ?? session.sessionId;

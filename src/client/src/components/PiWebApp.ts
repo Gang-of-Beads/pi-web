@@ -3265,6 +3265,7 @@ export class PiWebApp extends LitElement {
     this.openLazySurface("quick-switcher", "Session search");
     this.quickSwitcherOpen = true;
     this.quickSwitcherBrowseMachineId = selectedMachineId(this.state);
+    this.projects.browse(selectedMachineId(this.state));
     this.pushModalLayerFrame();
     // Show what is cached, then refresh behind it. The cache was previously
     // kept for the life of the page, so anything that changed after the first

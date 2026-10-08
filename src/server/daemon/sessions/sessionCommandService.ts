@@ -494,7 +494,6 @@ function isDefined<T>(value: T | undefined): value is T {
   return value !== undefined;
 }
 
-
 function forkActiveUnsupported(command: "fork" | "clone"): ClientCommandResult {
   return { type: "unsupported", message: `Cannot ${command} while the session is active. Stop current activity before ${command === "fork" ? "forking" : "cloning"}.` };
 }
