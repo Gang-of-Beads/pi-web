@@ -1,20 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { KeyValueStorage } from "./sessionStorageMemory";
-import { InMemoryTerminalSelectionMemory, SessionStorageTerminalSelectionMemory } from "./terminalSelection";
-
+import { SessionStorageTerminalSelectionMemory } from "./terminalSelection";
 
 describe("terminal selection", () => {
-  it("remembers terminal ids per workspace cwd", () => {
-    const memory = new InMemoryTerminalSelectionMemory();
-    memory.rememberTerminal("/repo", "t1");
-    memory.rememberTerminal("/other", "t2");
-
-    expect(memory.latestTerminalId("/repo")).toBe("t1");
-    memory.forgetTerminal("t1");
-    expect(memory.latestTerminalId("/repo")).toBeUndefined();
-    expect(memory.latestTerminalId("/other")).toBe("t2");
-  });
-
   it("persists terminal ids per workspace cwd", () => {
     const storage = memoryStorage();
     const memory = new SessionStorageTerminalSelectionMemory(storage);
