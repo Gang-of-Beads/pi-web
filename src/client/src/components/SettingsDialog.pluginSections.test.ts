@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { html } from "lit";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsDialog, activeSettingsPanelTag } from "./SettingsDialog";
 import { parseSettingsSection } from "../settingsRoute";
 import { createPluginRuntimeContext } from "../plugins/pluginRuntimeContextTestSupport";
@@ -17,6 +17,20 @@ function section(patch: Partial<QualifiedSettingsSectionContribution> = {}): Qua
     ...patch,
   };
 }
+
+/**
+ * The dialog reads its config and plugins as it connects. Under happy-dom those reads went to
+ * localhost:3000 and failed after the test had ended, and their logs surfaced in the full run as
+ * "Closing rpc while onUserConsoleLog was pending"; no test here needs an answer, so none comes.
+ */
+beforeEach(() => {
+  vi.stubGlobal("fetch", () => new Promise<Response>(() => undefined));
+});
+
+afterEach(() => {
+  document.body.replaceChildren();
+  vi.unstubAllGlobals();
+});
 
 async function dialogWith(sections: QualifiedSettingsSectionContribution[], active = "voice:voice"): Promise<SettingsDialog> {
   const dialog = new SettingsDialog();
