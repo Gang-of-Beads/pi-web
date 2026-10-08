@@ -29,6 +29,10 @@ interface HeldKey {
  * Arrows and page keys repeat while held. CTRL and ALT only arm; the panel
  * owns the armed state because the next key may come from the phone's
  * keyboard, which this row never sees.
+ *
+ * The rows are 36 px, below the 44 px touch floor: two rows at 44 px took
+ * too much of a phone screen already shared with the keyboard (owner,
+ * 2026-10-08). Each key is a seventh of the width, so the target stays wide.
  */
 export class TerminalSoftKeys extends LitElement {
   @property({ attribute: false }) modes: TerminalModesSnapshot | undefined;
@@ -126,7 +130,7 @@ export class TerminalSoftKeys extends LitElement {
   static override styles = [css`
     :host { flex: 0 0 auto; display: block; }
     .extra-keys { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--pi-border-muted); background: var(--pi-bg); touch-action: none; }
-    .extra-keys button { box-sizing: border-box; display: grid; place-items: center; min-width: 0; height: var(--pi-control-height-touch); margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: 1; white-space: nowrap; cursor: pointer; touch-action: none; -webkit-touch-callout: none; user-select: none; }
+    .extra-keys button { box-sizing: border-box; display: grid; place-items: center; min-width: 0; height: var(--pi-control-height-comfort); margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: 1; white-space: nowrap; cursor: pointer; touch-action: none; -webkit-touch-callout: none; user-select: none; }
     .extra-keys button.modifier { color: var(--pi-muted); }
     .extra-keys button.armed { background: var(--pi-accent); color: var(--pi-on-accent); }
     .extra-keys button:active { background: var(--pi-surface); }
