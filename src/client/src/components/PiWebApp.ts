@@ -33,7 +33,7 @@ import { AuthController } from "../controllers/authController";
 import { MachineController, remoteReportedDown } from "../controllers/machineController";
 import { SessionBoardController } from "../controllers/sessionBoardController";
 import { browserBoardMemory } from "../sync/boardMemory";
-import { dedupeById, type BoardAnswer } from "../sync/sessionBoard";
+import { boardEventOf, dedupeById, type BoardAnswer } from "../sync/sessionBoard";
 import { MachineStatusController } from "../controllers/machineStatusController";
 import { ProjectController } from "../controllers/projectController";
 import { PiWebStatusController } from "../controllers/piWebStatusController";
@@ -2388,8 +2388,8 @@ export class PiWebApp extends LitElement {
   }
 
   private handleMachineActivityEvent(machineId: string, event: BrowserRealtimeEvent): void {
-    if (event.type === "session.name" || event.type === "session.created") this.sessionBoards.applyEvent(machineId, event);
-    else if (event.type === "pins.changed") this.refreshMachinePins(machineId);
+    this.applyBoardEvent(machineId, event);
+    if (event.type === "pins.changed") this.refreshMachinePins(machineId);
     else if (event.type === "sessions.unread") this.sessionUnread.applyEvent(machineId, event);
     else if (event.type === "machine.status") this.machineStatus.apply(machineId, event.status);
   }
@@ -2403,9 +2403,14 @@ export class PiWebApp extends LitElement {
       this.applyTerminalEvent(event);
       if (event.type === "terminal.exited") void this.refreshWorkspaceDeletionRuns();
     } else {
-      if (event.type === "session.name" || event.type === "session.created") this.sessionBoards.applyEvent(machineId, event);
+      this.applyBoardEvent(machineId, event);
       this.sessions.applyGlobalEvent(event);
     }
+  }
+
+  private applyBoardEvent(machineId: string, event: BrowserRealtimeEvent): void {
+    const boardEvent = boardEventOf(event);
+    if (boardEvent !== undefined) this.sessionBoards.applyEvent(machineId, boardEvent);
   }
 
   private applyTerminalEvent(event: TerminalUiEvent): void {

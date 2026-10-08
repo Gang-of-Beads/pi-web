@@ -1,4 +1,5 @@
 import type { Project, SessionInfo, Workspace } from "../api";
+import type { RealtimeEvent } from "../../../shared/apiTypes";
 import { HttpError } from "../api/http";
 import { UnexpectedBoardAnswer, type SessionBoardAnswer } from "../api/parsers";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
@@ -59,7 +60,7 @@ export function boardFilledFromMemory(live: SessionBoard, remembered: SessionBoa
   const pinnedElsewhere = [...(live.pinnedElsewhere ?? []), ...pinned];
   return {
     ...live,
-    sessions: [...live.sessions, ...sessions].sort((left, right) => Date.parse(right.modified) - Date.parse(left.modified)),
+    sessions: [...live.sessions, ...sessions].sort(newestFirst),
     workspaces: [...live.workspaces, ...workspaces],
     ...(pinnedElsewhere.length === 0 ? {} : { pinnedElsewhere }),
   };
@@ -145,7 +146,7 @@ function boardFromAnswer(answer: SessionBoardAnswer): SessionBoard {
 function assembleBoard(known: SessionBoard, workspaceLists: readonly Listed<Workspace>[], sessionLists: readonly Listed<SessionInfo>[]): SessionBoard {
   const listedWorkspaces = workspaceLists.flatMap((entry) => ("listed" in entry ? entry.listed : []));
   const sessions = dedupeById([...known.sessions, ...sessionLists.flatMap((entry) => ("listed" in entry ? entry.listed : []))])
-    .sort((left, right) => Date.parse(right.modified) - Date.parse(left.modified));
+    .sort(newestFirst);
   const unknownSources = [...known.unknownSources, ...[...workspaceLists, ...sessionLists].flatMap((entry) => ("unknown" in entry ? [entry.unknown] : []))];
   const listed = new Set(sessions.map((session) => session.id));
   const pinnedElsewhere = (known.pinnedElsewhere ?? []).filter((session) => !listed.has(session.id));
@@ -190,7 +191,18 @@ export function oneReadBoard(read: () => Promise<SessionBoardAnswer>): () => Pro
 /** What a machine announces about its sessions that the board can take without a read (state-diagram D5). */
 export type SessionBoardEvent =
   | { readonly type: "session.name"; readonly sessionId: string; readonly name?: string | undefined }
-  | { readonly type: "session.created"; readonly session: SessionInfo };
+  | { readonly type: "session.created"; readonly session: SessionInfo }
+  | { readonly type: "session.activity"; readonly sessionId: string; readonly at: string };
+
+/**
+ * The board's share of a frame on a machine's socket: a rename, a new session, or a status that
+ * says when its session last changed (B28). Anything else is not the board's.
+ */
+export function boardEventOf(event: RealtimeEvent): SessionBoardEvent | undefined {
+  if (event.type === "session.name" || event.type === "session.created") return event;
+  if (event.type !== "status.update" || event.status.lastActivityAt === undefined) return undefined;
+  return { type: "session.activity", sessionId: event.status.sessionId, at: event.status.lastActivityAt };
+}
 
 /**
  * The board with an announced change applied. A rename renames the session
@@ -199,18 +211,34 @@ export type SessionBoardEvent =
  * a read that already has it changes nothing. A session the board already
  * lists keeps its row: the announcement is the session as it was created, and
  * a read that lists it holds it as it is now (written, titled, counted). A
- * session in no listed workspace is not this board's to add.
+ * session in no listed workspace is not this board's to add. A session's
+ * newer activity moves its row, and an older one, from a frame that waited
+ * behind a read, changes nothing.
  */
 export function boardWithEvent(board: SessionBoard, event: SessionBoardEvent): SessionBoard {
-  if (event.type === "session.name") {
-    const rename = (sessions: readonly SessionInfo[]) => sessions.map((session) => (session.id === event.sessionId ? withName(session, event.name) : session));
-    return { ...board, sessions: rename(board.sessions), ...(board.pinnedElsewhere === undefined ? {} : { pinnedElsewhere: rename(board.pinnedElsewhere) }) };
-  }
+  if (event.type === "session.name") return withEachListed(board, event.sessionId, (session) => withName(session, event.name));
+  if (event.type === "session.activity") return withActivity(board, event.sessionId, event.at);
   const listed = board.sessions.some((session) => session.id === event.session.id);
   const held = board.workspaces.some((workspace) => sessionLocationVerdict(event.session.cwd, workspace.path) === "described");
   if (listed || !held) return board;
-  const sessions = [event.session, ...board.sessions].sort((left, right) => Date.parse(right.modified) - Date.parse(left.modified));
-  return { ...board, sessions };
+  return { ...board, sessions: [event.session, ...board.sessions].sort(newestFirst) };
+}
+
+function withActivity(board: SessionBoard, sessionId: string, at: string): SessionBoard {
+  const atMs = Date.parse(at);
+  const listed = [...board.sessions, ...(board.pinnedElsewhere ?? [])].find((session) => session.id === sessionId);
+  if (listed === undefined || Number.isNaN(atMs) || atMs <= Date.parse(listed.modified)) return board;
+  const moved = withEachListed(board, sessionId, (session) => ({ ...session, modified: at }));
+  return { ...moved, sessions: [...moved.sessions].sort(newestFirst) };
+}
+
+function withEachListed(board: SessionBoard, sessionId: string, change: (session: SessionInfo) => SessionInfo): SessionBoard {
+  const each = (sessions: readonly SessionInfo[]) => sessions.map((session) => (session.id === sessionId ? change(session) : session));
+  return { ...board, sessions: each(board.sessions), ...(board.pinnedElsewhere === undefined ? {} : { pinnedElsewhere: each(board.pinnedElsewhere) }) };
+}
+
+function newestFirst(left: SessionInfo, right: SessionInfo): number {
+  return Date.parse(right.modified) - Date.parse(left.modified);
 }
 
 function withName(session: SessionInfo, name: string | undefined): SessionInfo {

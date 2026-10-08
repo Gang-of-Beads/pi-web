@@ -718,6 +718,7 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     ...optionalField("pluginSurfaces", parsePluginSurfaces(record["pluginSurfaces"])),
     ...optionalField("persisted", parseOptionalBoolean(record["persisted"], "persisted")),
     ...optionalField("turnStartedAt", optionalString(record, "turnStartedAt")),
+    ...optionalField("lastActivityAt", optionalString(record, "lastActivityAt")),
     isStreaming: requireBoolean(record, "isStreaming"),
     isCompacting: requireBoolean(record, "isCompacting"),
     isBashRunning: requireBoolean(record, "isBashRunning"),

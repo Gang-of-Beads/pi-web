@@ -526,6 +526,7 @@ export interface PiSessionManager {
   getEntries?(): readonly unknown[];
   getTree?(): readonly ProjectableSessionTreeNode[];
   getLeafId(): string | null;
+  getLeafEntry?(): { readonly timestamp?: unknown } | undefined;
   getHeader?(): { parentSession?: string } | null | undefined;
   appendCustomEntry?(customType: string, data?: unknown): string;
 }
@@ -6126,6 +6127,7 @@ export class PiSessionService implements SessionRouteService {
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
     const working = session.isStreaming || session.isCompacting || session.isBashRunning;
     const turnStartedAt = working ? turnStartedAtFromBranch(session.sessionManager.getBranch()) : undefined;
+    const lastActivityAt = leafEntryAt(session.sessionManager);
     const surfaces = pluginSurfacePresence(session.resourceLoader);
     const extensionUi = this.extensionStanding.get(session)?.snapshot();
     return {
@@ -6143,6 +6145,7 @@ export class PiSessionService implements SessionRouteService {
       // working session mid-turn anchors its elapsed readout here instead of
       // re-clocking from the moment it happened to look.
       ...(turnStartedAt === undefined ? {} : { turnStartedAt }),
+      ...(lastActivityAt === undefined ? {} : { lastActivityAt }),
       pendingMessageCount: visibleQueued.length,
       queuedMessages: visibleQueued,
       ...(queuedAnswers.length === 0 ? {} : { queuedAnswers }),
@@ -6721,6 +6724,17 @@ async function clearParentSession(sessionFile: string): Promise<void> {
 function clearParentSessionHeader(sessionManager: PiSessionManager): void {
   const header = sessionManager.getHeader?.();
   if (header !== undefined && header !== null) delete header.parentSession;
+}
+
+/**
+ * When the session last changed on its current branch: the timestamp of the leaf entry. Usually
+ * this is the newest entry and matches the listing's file time. After tree navigation the leaf can
+ * be older than the file time; consumers keep the newer of the two, so an older value never moves
+ * the board (B28).
+ */
+function leafEntryAt(manager: PiSessionManager): string | undefined {
+  const timestamp = manager.getLeafEntry?.()?.timestamp;
+  return typeof timestamp === "string" ? timestamp : undefined;
 }
 
 /**
