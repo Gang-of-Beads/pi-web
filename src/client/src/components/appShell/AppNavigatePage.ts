@@ -353,7 +353,10 @@ export class AppNavigatePage extends LitElement {
     const showsSessions = this.kind === "sessions";
     return html`
       <section class=${isSelecting(this.selection.state) ? "navigate selecting" : "navigate"} @pointerdown=${this.pressGuard} @click=${this.holdReleaseGuard}>
-        ${isSelecting(this.selection.state) ? this.renderSelection(this.selection.state) : this.renderBrowseHeader(segments, listed, input.scope.projectId, showsSessions)}
+        <div class="head-stack">
+          <div class="list-head" ?inert=${isSelecting(this.selection.state)}>${this.renderBrowseHeader(segments, listed, input.scope.projectId, showsSessions)}</div>
+          ${isSelecting(this.selection.state) ? this.renderSelection(this.selection.state) : nothing}
+        </div>
         <div
           class=${this.tilesPerRow === undefined ? "body" : `body tiles-${String(this.tilesPerRow)}`}
           @pointerdown=${() => { this.rowOrder.hold(); }}
@@ -448,7 +451,11 @@ export class AppNavigatePage extends LitElement {
     return html`<button type="button" class="select-key" @click=${() => { this.selection.dispatch({ type: "start", group }); }}>Select</button>`;
   }
 
-  /** Selecting is a page of its own: its header and its actions stand where the browsing header did. */
+  /**
+   * Selecting lays its keys over the browsing header instead of replacing it (owner, 2026-10-09):
+   * the header keeps its height under a translucent scrim, so no row moves when the page enters
+   * or leaves selecting, and the row under the finger that held it is still under the finger.
+   */
   private renderSelection(state: Exclude<NavigateSelectionState, { phase: "browsing" }>) {
     const chosen = this.selectableRows().filter((row) => row.group === state.group && state.ids.has(row.id));
     const bar = {
@@ -460,9 +467,10 @@ export class AppNavigatePage extends LitElement {
       onChoose: (action: NavigateBulkActionId, ids: readonly string[]) => { void this.runBulkAction(state.group, action, ids); },
     };
     return html`
-      ${renderSelectionHeader(bar)}
-      <slot name="app-row"></slot>
-      ${renderSelectionActions(bar)}
+      <div class="selection-overlay">
+        ${renderSelectionHeader(bar)}
+        ${renderSelectionActions(bar)}
+      </div>
     `;
   }
 
@@ -850,6 +858,10 @@ export class AppNavigatePage extends LitElement {
        it was acting on. */
     .row-wrap.menu-open > .row { border-color: var(--pi-accent); }
     .row-wrap.selected > .row { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+    .head-stack { position: relative; flex: 0 0 auto; }
+    .list-head { display: flex; flex-direction: column; }
+    .selection-overlay { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; background: var(--pi-bg-overlay); }
+    .selection-overlay .selection-header { background: var(--pi-bg); }
     /* A hold is the row's own gesture: iOS must not start a callout or a text selection under it, which cancels the press. */
     .row-wrap > .row { -webkit-touch-callout: none; }
     .select-key { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font: inherit; cursor: pointer; }

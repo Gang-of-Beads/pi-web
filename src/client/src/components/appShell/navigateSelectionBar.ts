@@ -15,9 +15,10 @@ export interface SelectionBarInput {
 
 /**
  * Selecting is a page of its own (owner, 2026-10-09: "batch mode can be like a new page that
- * hides the keys underneath; too many keys otherwise"). Its header takes the place of the path
- * bar, the kinds and the search, drawn in the path bar's own keys: the way out where the grid
- * key stands, the count as the title, Select all at the end. Under it, the actions that fit the
+ * hides the keys underneath; too many keys otherwise"). Its header lies over the path bar, the
+ * kinds and the search, which stay in place under a translucent scrim so the list does not move,
+ * drawn in the path bar's own keys: the way out where the grid key stands, the count as the
+ * title, Select all at the end. Under it, the actions that fit the
  * selection, every key the same size (owner, 2026-10-09). While an action runs, every key waits.
  */
 export function renderSelectionHeader(input: SelectionBarInput) {
