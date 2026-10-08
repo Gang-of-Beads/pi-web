@@ -1622,7 +1622,7 @@ type SessionUiEventBody =
  */
  | {
     type: "session.stopped";
-    cause: "user" | "reload" | "closed";
+    cause: "user" | "closed";
 } | SessionNotificationInboxEvent | {
     type: "session.error";
     message: string;

@@ -1131,7 +1131,7 @@ function optionalNumberOrNull(record: Record<string, unknown>, key: string): num
 
 function parseSessionStoppedEvent(record: Record<string, unknown>): Extract<SessionUiEvent, { type: "session.stopped" }> {
   const cause = record["cause"];
-  if (cause !== "user" && cause !== "reload" && cause !== "closed") throw new Error("Invalid stop cause");
+  if (cause !== "user" && cause !== "closed") throw new Error("Invalid stop cause");
   return { type: "session.stopped", cause };
 }
 

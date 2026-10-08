@@ -1707,7 +1707,7 @@ type SessionUiEventBody =
    * the provider's own "Request was aborted", which cannot say whether the
    * reader pressed Stop, another device did, or the runtime was reloaded.
    */
-  | { type: "session.stopped"; cause: "user" | "reload" | "closed" }
+  | { type: "session.stopped"; cause: "user" | "closed" }
   | SessionNotificationInboxEvent
   | { type: "session.error"; message: string }
   | { type: "ask.opened"; ask: PendingAskUser; revision?: number; daemonInstanceId?: string }
