@@ -1,3 +1,5 @@
+import { browserLocalStorage } from "./browserLocalStorage";
+
 /**
  * Pinned sessions, remembered on this device.
  *
@@ -22,7 +24,7 @@ export type PinStorage = Pick<Storage, "getItem" | "setItem">;
 /** The machine a legacy flat pin list is attributed to. */
 export const LEGACY_PIN_MACHINE_ID = "local";
 
-export function readPinnedSessionIds(machineId: string, storage = browserStorage()): Set<string> {
+export function readPinnedSessionIds(machineId: string, storage: PinStorage | undefined = browserLocalStorage()): Set<string> {
   if (storage === undefined) return new Set();
   try {
     const raw = storage.getItem(SESSION_PINS_STORAGE_KEY);
@@ -39,7 +41,7 @@ export function readPinnedSessionIds(machineId: string, storage = browserStorage
   }
 }
 
-export function writePinnedSessionIds(machineId: string, ids: ReadonlySet<string>, storage = browserStorage()): void {
+export function writePinnedSessionIds(machineId: string, ids: ReadonlySet<string>, storage: PinStorage | undefined = browserLocalStorage()): void {
   if (storage === undefined) return;
   try {
     storage.setItem(SESSION_PINS_STORAGE_KEY, JSON.stringify({ ...readAllScopes(storage), [machineId]: [...ids] }));
@@ -84,11 +86,3 @@ function readAllScopes(storage: PinStorage): Record<string, string[]> {
   }
 }
 
-function browserStorage(): PinStorage | undefined {
-  if (typeof window === "undefined") return undefined;
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
-}

@@ -1,3 +1,4 @@
+import { browserLocalStorage } from "./browserLocalStorage";
 import { ASK_USER_OTHER_TEXT_MAX_LENGTH, type AskUserAnswer, type AskUserQuestion, type AskUserSubmission } from "../../shared/apiTypes";
 
 /**
@@ -19,20 +20,12 @@ function draftStorageKey(sessionId: string, askId: string): string {
   return `${draftStoragePrefix}${sessionId}:${askId}`;
 }
 
-function browserStorage(): Storage | undefined {
-  try {
-    return typeof localStorage === "undefined" ? undefined : localStorage;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Read the stored draft. Any unreadable or malformed payload yields an empty
  * draft: a half-typed answer set is a convenience, never a reason to fail
  * rendering the questions.
  */
-export function loadAskDraft(sessionId: string, askId: string, storage = browserStorage()): AskDraftAnswers {
+export function loadAskDraft(sessionId: string, askId: string, storage = browserLocalStorage()): AskDraftAnswers {
   try {
     const stored = storage?.getItem(draftStorageKey(sessionId, askId));
     return stored === null || stored === undefined ? {} : draftAnswersFromJson(stored);
@@ -41,7 +34,7 @@ export function loadAskDraft(sessionId: string, askId: string, storage = browser
   }
 }
 
-export function saveAskDraft(sessionId: string, askId: string, answers: AskDraftAnswers, storage = browserStorage()): void {
+export function saveAskDraft(sessionId: string, askId: string, answers: AskDraftAnswers, storage = browserLocalStorage()): void {
   try {
     const entries = Object.entries(answers).filter(([, answer]) => answer.values.length > 0 || (answer.otherText ?? "") !== "");
     if (entries.length === 0) storage?.removeItem(draftStorageKey(sessionId, askId));
@@ -51,7 +44,7 @@ export function saveAskDraft(sessionId: string, askId: string, answers: AskDraft
   }
 }
 
-export function clearAskDraft(sessionId: string, askId: string, storage = browserStorage()): void {
+export function clearAskDraft(sessionId: string, askId: string, storage = browserLocalStorage()): void {
   try {
     storage?.removeItem(draftStorageKey(sessionId, askId));
   } catch {

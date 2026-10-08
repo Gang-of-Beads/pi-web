@@ -1,3 +1,4 @@
+import { browserLocalStorage } from "./browserLocalStorage";
 import { COARSE_OR_MOBILE_MEDIA_QUERY } from "./breakpoints";
 
 export const MOBILE_PROMPT_ENTER_MEDIA_QUERY = COARSE_OR_MOBILE_MEDIA_QUERY;
@@ -16,7 +17,7 @@ export function parsePromptEnterPreference(value: string | null): PromptEnterPre
   return "auto";
 }
 
-export function readPromptEnterPreference(storage = browserStorage()): PromptEnterPreference {
+export function readPromptEnterPreference(storage: PromptEnterPreferenceStorage | undefined = browserLocalStorage()): PromptEnterPreference {
   if (storage === undefined) return "auto";
   try {
     return parsePromptEnterPreference(storage.getItem(PROMPT_ENTER_PREFERENCE_STORAGE_KEY));
@@ -25,7 +26,7 @@ export function readPromptEnterPreference(storage = browserStorage()): PromptEnt
   }
 }
 
-export function writePromptEnterPreference(preference: PromptEnterPreference, storage = browserStorage()): void {
+export function writePromptEnterPreference(preference: PromptEnterPreference, storage: PromptEnterPreferenceStorage | undefined = browserLocalStorage()): void {
   if (storage === undefined) return;
   try {
     storage.setItem(PROMPT_ENTER_PREFERENCE_STORAGE_KEY, preference);
@@ -53,11 +54,3 @@ export function shouldSendPromptOnEnterShortcut(shiftKey: boolean, media = creat
   return shiftKey ? !plainEnterSends : plainEnterSends;
 }
 
-function browserStorage(): PromptEnterPreferenceStorage | undefined {
-  if (typeof window === "undefined") return undefined;
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
-}

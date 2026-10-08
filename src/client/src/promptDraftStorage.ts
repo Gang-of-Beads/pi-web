@@ -1,18 +1,12 @@
+import { browserLocalStorage } from "./browserLocalStorage";
+
 const draftStoragePrefix = "pi-web:prompt-draft:";
 
 function draftStorageKey(sessionId: string): string {
   return `${draftStoragePrefix}${sessionId}`;
 }
 
-function browserStorage(): Storage | undefined {
-  try {
-    return typeof localStorage === "undefined" ? undefined : localStorage;
-  } catch {
-    return undefined;
-  }
-}
-
-export function loadDraft(sessionId: string, storage = browserStorage()): string {
+export function loadDraft(sessionId: string, storage = browserLocalStorage()): string {
   try {
     return storage?.getItem(draftStorageKey(sessionId)) ?? "";
   } catch {
@@ -20,7 +14,7 @@ export function loadDraft(sessionId: string, storage = browserStorage()): string
   }
 }
 
-export function saveDraft(sessionId: string, draft: string, storage = browserStorage()): void {
+export function saveDraft(sessionId: string, draft: string, storage = browserLocalStorage()): void {
   try {
     if (draft) storage?.setItem(draftStorageKey(sessionId), draft);
     else storage?.removeItem(draftStorageKey(sessionId));
@@ -29,7 +23,7 @@ export function saveDraft(sessionId: string, draft: string, storage = browserSto
   }
 }
 
-export function clearDraft(sessionId: string, storage = browserStorage()): void {
+export function clearDraft(sessionId: string, storage = browserLocalStorage()): void {
   try {
     storage?.removeItem(draftStorageKey(sessionId));
   } catch {
@@ -37,7 +31,7 @@ export function clearDraft(sessionId: string, storage = browserStorage()): void 
   }
 }
 
-export function moveDraft(fromSessionId: string, toSessionId: string, storage = browserStorage()): void {
+export function moveDraft(fromSessionId: string, toSessionId: string, storage = browserLocalStorage()): void {
   const draft = loadDraft(fromSessionId, storage);
   if (draft === "") return;
   saveDraft(toSessionId, draft, storage);

@@ -7,11 +7,12 @@
  * pin that needed a round trip would be slower than the scroll it replaces.
  */
 
+import { browserLocalStorage } from "./browserLocalStorage";
 import { type PinStorage } from "./sessionPins";
 
 export const PROJECT_PINS_STORAGE_KEY = "pi-web.pinnedProjects";
 
-export function readPinnedProjectIds(machineId: string, storage: PinStorage | undefined = browserStorage()): Set<string> {
+export function readPinnedProjectIds(machineId: string, storage: PinStorage | undefined = browserLocalStorage()): Set<string> {
   if (storage === undefined) return new Set();
   try {
     const raw = storage.getItem(PROJECT_PINS_STORAGE_KEY);
@@ -25,7 +26,7 @@ export function readPinnedProjectIds(machineId: string, storage: PinStorage | un
   }
 }
 
-export function writePinnedProjectIds(machineId: string, ids: ReadonlySet<string>, storage: PinStorage | undefined = browserStorage()): void {
+export function writePinnedProjectIds(machineId: string, ids: ReadonlySet<string>, storage: PinStorage | undefined = browserLocalStorage()): void {
   if (storage === undefined) return;
   try {
     const raw = storage.getItem(PROJECT_PINS_STORAGE_KEY);
@@ -49,6 +50,3 @@ export function togglePinnedProjectId(ids: ReadonlySet<string>, projectId: strin
   return next;
 }
 
-function browserStorage(): PinStorage | undefined {
-  return typeof window === "undefined" ? undefined : window.localStorage;
-}

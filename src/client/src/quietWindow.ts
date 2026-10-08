@@ -1,3 +1,4 @@
+import { browserLocalStorage } from "./browserLocalStorage";
 import { QUIET_WINDOW_MS } from "./sync/readPhase";
 
 /**
@@ -25,7 +26,7 @@ export function parseQuietWindowSeconds(value: string | null): number | undefine
   return seconds >= QUIET_WINDOW_RANGE.min && seconds <= QUIET_WINDOW_RANGE.max ? seconds : undefined;
 }
 
-export function readQuietWindowSeconds(storage = browserStorage()): number {
+export function readQuietWindowSeconds(storage: QuietWindowStorage | undefined = browserLocalStorage()): number {
   if (storage === undefined) return DEFAULT_QUIET_WINDOW_SECONDS;
   try {
     return parseQuietWindowSeconds(storage.getItem(QUIET_WINDOW_STORAGE_KEY)) ?? DEFAULT_QUIET_WINDOW_SECONDS;
@@ -35,7 +36,7 @@ export function readQuietWindowSeconds(storage = browserStorage()): number {
 }
 
 /** Keeps the value in this browser; when the browser refuses the write, the previously stored value (or the default when none was stored) stays in use. */
-export function writeQuietWindowSeconds(seconds: number, storage = browserStorage()): void {
+export function writeQuietWindowSeconds(seconds: number, storage: QuietWindowStorage | undefined = browserLocalStorage()): void {
   if (storage === undefined) return;
   try {
     storage.setItem(QUIET_WINDOW_STORAGE_KEY, String(seconds));
@@ -44,11 +45,3 @@ export function writeQuietWindowSeconds(seconds: number, storage = browserStorag
   }
 }
 
-function browserStorage(): QuietWindowStorage | undefined {
-  if (typeof window === "undefined") return undefined;
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
-}

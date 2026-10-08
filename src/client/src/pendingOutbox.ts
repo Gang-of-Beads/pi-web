@@ -1,3 +1,4 @@
+import { browserLocalStorage } from "./browserLocalStorage";
 import type { PromptAttachment } from "./api";
 import type { PromptAttachmentDelivery } from "../../shared/apiTypes";
 import type { OutgoingEvent, OutgoingState } from "./outgoingMessages";
@@ -47,14 +48,6 @@ export interface PendingPrompt {
    */
   delivery?: PromptAttachmentDelivery;
   at: string;
-}
-
-function browserStorage(): Storage | undefined {
-  try {
-    return typeof localStorage === "undefined" ? undefined : localStorage;
-  } catch {
-    return undefined;
-  }
 }
 
 function outboxKey(sessionKey: string): string {
@@ -207,7 +200,7 @@ const NEEDS_ATTENTION: Readonly<Record<OutgoingState, boolean>> = {
  * The failure's record already carries its scope; this reads the marks back out for the
  * list, so the reader can see that a session needs attention before opening it.
  */
-export function sessionsWithFailedSends(storage = browserStorage()): Set<string> {
+export function sessionsWithFailedSends(storage = browserLocalStorage()): Set<string> {
   const marked = new Set<string>();
   if (storage === undefined) return marked;
   for (let index = 0; index < storage.length; index += 1) {
@@ -221,7 +214,7 @@ export function sessionsWithFailedSends(storage = browserStorage()): Set<string>
   return marked;
 }
 
-export function loadPendingPrompts(sessionKey: string, storage = browserStorage()): PendingPrompt[] {
+export function loadPendingPrompts(sessionKey: string, storage = browserLocalStorage()): PendingPrompt[] {
   try {
     const raw = storage?.getItem(outboxKey(sessionKey));
     if (raw === undefined || raw === null || raw === "") return [];
@@ -234,7 +227,7 @@ export function loadPendingPrompts(sessionKey: string, storage = browserStorage(
 }
 
 /** Returns whether the record was written; the callers that move a message out of another store need to know. */
-export function savePendingPrompt(sessionKey: string, prompt: PendingPrompt, storage = browserStorage()): boolean {
+export function savePendingPrompt(sessionKey: string, prompt: PendingPrompt, storage = browserLocalStorage()): boolean {
   if (storage === undefined) return false;
   try {
     const pending = loadPendingPrompts(sessionKey, storage);
@@ -255,7 +248,7 @@ export function savePendingPrompt(sessionKey: string, prompt: PendingPrompt, sto
   }
 }
 
-export function forgetPendingPrompt(sessionKey: string, clientMessageId: string, storage = browserStorage()): void {
+export function forgetPendingPrompt(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): void {
   try {
     const remaining = loadPendingPrompts(sessionKey, storage).filter((entry) => entry.clientMessageId !== clientMessageId);
     if (remaining.length === 0) storage?.removeItem(outboxKey(sessionKey));
@@ -307,7 +300,7 @@ function writeReserve(sessionKey: string, reserved: readonly ReservedPrompt[], s
  * the inbox accepted, and Retry needs the words and attachments to send it again under the same
  * identity - a refused row once offered Retry with nothing left to send.
  */
-export function reserveAcceptedPrompt(sessionKey: string, clientMessageId: string, storage = browserStorage(), now = Date.now()): void {
+export function reserveAcceptedPrompt(sessionKey: string, clientMessageId: string, storage = browserLocalStorage(), now = Date.now()): void {
   const record = loadPendingPrompts(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId);
   if (record?.refused === true) return;
   sweepExpiredReserves(storage, now);
@@ -354,7 +347,7 @@ function storedReserveLength(sessionKey: string, storage: Storage): number {
  * received, read "Not received" with a Retry that had nothing to send. A refusal is marked so
  * only Retry sends it again. Returns whether a record now carries the verdict.
  */
-export function failPendingPrompt(sessionKey: string, clientMessageId: string, cause: DeliveryFailureCause, refused: boolean, storage = browserStorage(), now = Date.now()): boolean {
+export function failPendingPrompt(sessionKey: string, clientMessageId: string, cause: DeliveryFailureCause, refused: boolean, storage = browserLocalStorage(), now = Date.now()): boolean {
   const outboxed = loadPendingPrompts(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId);
   const reserved = loadReserve(sessionKey, storage, now);
   const kept = outboxed === undefined ? reserved.find((entry) => entry.clientMessageId === clientMessageId) : undefined;
@@ -373,7 +366,7 @@ export function failPendingPrompt(sessionKey: string, clientMessageId: string, c
  * arrived (Receiving…); bytes that never left did not (Not sent). The table cannot say it, because
  * a failed record ignores a timeout; a retry is a fresh attempt, so its outcome replaces the old.
  */
-export function markUnansweredPrompt(sessionKey: string, clientMessageId: string, bytesLeft: boolean, storage = browserStorage()): void {
+export function markUnansweredPrompt(sessionKey: string, clientMessageId: string, bytesLeft: boolean, storage = browserLocalStorage()): void {
   const record = loadPendingPrompts(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId);
   if (record === undefined) return;
   const marked: PendingPrompt = { ...record, state: bytesLeft ? "unverifiable" : "failed" };
@@ -410,7 +403,7 @@ function resendsByItself(record: PendingPrompt, now: number): boolean {
 }
 
 /** The agent took it: nothing can refuse it any more. */
-export function forgetReservedPrompt(sessionKey: string, clientMessageId: string, storage = browserStorage(), now = Date.now()): void {
+export function forgetReservedPrompt(sessionKey: string, clientMessageId: string, storage = browserLocalStorage(), now = Date.now()): void {
   const reserved = loadReserve(sessionKey, storage, now);
   if (!reserved.some((entry) => entry.clientMessageId === clientMessageId)) return;
   writeReserve(sessionKey, reserved.filter((entry) => entry.clientMessageId !== clientMessageId), storage);
@@ -422,7 +415,7 @@ export function forgetReservedPrompt(sessionKey: string, clientMessageId: string
  * new id; records left under the old key were read by no surface - not the strip, not the
  * session list, not a replay - and Retry called them gone.
  */
-export function moveOutbox(fromSessionKey: string, toSessionKey: string, storage = browserStorage(), now = Date.now()): void {
+export function moveOutbox(fromSessionKey: string, toSessionKey: string, storage = browserLocalStorage(), now = Date.now()): void {
   if (fromSessionKey === toSessionKey) return;
   const reserved = loadReserve(fromSessionKey, storage, now);
   if (reserved.length > 0 && writeReserve(toSessionKey, [...loadReserve(toSessionKey, storage, now), ...reserved], storage)) {
@@ -434,7 +427,7 @@ export function moveOutbox(fromSessionKey: string, toSessionKey: string, storage
   if (landed) clearPendingPrompts(fromSessionKey, storage);
 }
 
-export function clearPendingPrompts(sessionKey: string, storage = browserStorage()): void {
+export function clearPendingPrompts(sessionKey: string, storage = browserLocalStorage()): void {
   try {
     storage?.removeItem(outboxKey(sessionKey));
     announceOutboxChange(sessionKey);

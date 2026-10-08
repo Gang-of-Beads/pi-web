@@ -1,3 +1,4 @@
+import { browserLocalStorage } from "./browserLocalStorage";
 import type { SessionInfo } from "./api";
 
 const storageKey = "pi-web:cached-new-sessions:v1";
@@ -6,15 +7,7 @@ const defaultMachineId = "local";
 
 export type CachedNewSessionInfo = SessionInfo & { browserCachedNew: true; machineId: string };
 
-function browserStorage(): Storage | undefined {
-  try {
-    return typeof localStorage === "undefined" ? undefined : localStorage;
-  } catch {
-    return undefined;
-  }
-}
-
-export function rememberCachedNewSession(session: SessionInfo, machineId = defaultMachineId, storage = browserStorage()): void {
+export function rememberCachedNewSession(session: SessionInfo, machineId = defaultMachineId, storage = browserLocalStorage()): void {
   if (session.messageCount !== 0 || session.archived === true) return;
   const sessions = loadCachedNewSessions(storage).filter((candidate) => candidate.id !== session.id || candidate.machineId !== machineId);
   saveCachedNewSessions([markCachedNewSessionInfo(session, machineId), ...sessions], storage);
@@ -24,12 +17,12 @@ export function markCachedNewSessionInfo(session: SessionInfo, machineId = defau
   return { ...session, browserCachedNew: true, machineId };
 }
 
-export function forgetCachedNewSession(sessionId: string, machineId = defaultMachineId, storage = browserStorage()): void {
+export function forgetCachedNewSession(sessionId: string, machineId = defaultMachineId, storage = browserLocalStorage()): void {
   const sessions = loadCachedNewSessions(storage).filter((session) => session.id !== sessionId || session.machineId !== machineId);
   saveCachedNewSessions(sessions, storage);
 }
 
-export function mergeCachedNewSessions(cwd: string, sessions: SessionInfo[], machineId = defaultMachineId, storage = browserStorage()): SessionInfo[] {
+export function mergeCachedNewSessions(cwd: string, sessions: SessionInfo[], machineId = defaultMachineId, storage = browserLocalStorage()): SessionInfo[] {
   const sessionIds = new Set(sessions.map((session) => session.id));
   const cachedSessions = loadCachedNewSessions(storage);
   const retainedCachedSessions = cachedSessions.filter((session) => session.machineId !== machineId || !sessionIds.has(session.id));
@@ -61,7 +54,7 @@ export function stripCachedNewSessionMarker(session: SessionInfo): SessionInfo {
   };
 }
 
-export function loadCachedNewSessions(storage = browserStorage()): CachedNewSessionInfo[] {
+export function loadCachedNewSessions(storage = browserLocalStorage()): CachedNewSessionInfo[] {
   try {
     const raw = storage?.getItem(storageKey);
     if (raw === undefined || raw === null || raw === "") return [];
@@ -73,7 +66,7 @@ export function loadCachedNewSessions(storage = browserStorage()): CachedNewSess
   }
 }
 
-function saveCachedNewSessions(sessions: CachedNewSessionInfo[], storage = browserStorage()): void {
+function saveCachedNewSessions(sessions: CachedNewSessionInfo[], storage = browserLocalStorage()): void {
   try {
     if (sessions.length === 0) storage?.removeItem(storageKey);
     else storage?.setItem(storageKey, JSON.stringify(sessions));

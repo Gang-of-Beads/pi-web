@@ -1,3 +1,5 @@
+import { browserLocalStorage } from "./browserLocalStorage";
+
 /**
  * Which sections of a session list the reader folded, per list (owner, 2026-10-04: every list
  * remembers its own). Stored on this device only; a section the reader never touched takes its
@@ -12,7 +14,7 @@ export interface ListFolds {
   toggle(sectionId: string, foldedByDefault: boolean): void;
 }
 
-export function listFolds(list: SessionListName, storage: Pick<Storage, "getItem" | "setItem"> | undefined = browserStorage()): ListFolds {
+export function listFolds(list: SessionListName, storage: Pick<Storage, "getItem" | "setItem"> | undefined = browserLocalStorage()): ListFolds {
   const key = `${STORAGE_PREFIX}${list}`;
   const read = (): Record<string, boolean> => {
     const raw = storage?.getItem(key);
@@ -41,10 +43,3 @@ export function listFolds(list: SessionListName, storage: Pick<Storage, "getItem
   };
 }
 
-function browserStorage(): Storage | undefined {
-  try {
-    return globalThis.localStorage;
-  } catch {
-    return undefined;
-  }
-}
