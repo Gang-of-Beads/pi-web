@@ -231,7 +231,7 @@ function composedParentElement(element: Element): Element | null {
 }
 
 /** Whether `node` is contained in `host` across open shadow boundaries. */
-export function composedContains(host: Element, node: Element): boolean {
+export function composedContains(host: Element, node: Node): boolean {
   let current: Node = node;
   for (;;) {
     if (current === host) return true;

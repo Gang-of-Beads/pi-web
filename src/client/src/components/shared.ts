@@ -162,7 +162,7 @@ export interface CompletionItem {
 
 /** The full-size attachment dialog, drawn the same wherever an attachment can be opened (five stylesheets carried their own copy). */
 export const attachmentZoomStyles = css`
-  /* A pending image attachment opens full-size in its own dialog: the native
+  /* An image attachment opens full-size in its own dialog: the native
      top layer covers the page, Esc and a backdrop click close it, and the
      controls are reachable by keyboard like every other control in the app. */
   dialog.attachment-zoom { box-sizing: border-box; position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }

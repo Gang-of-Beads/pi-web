@@ -49,7 +49,7 @@ import { isQueuedAnswer, withQueuedAnswers } from "../queuedAnswerRows";
 import { placeUserRows } from "../userRowPlacement";
 import { stepStatusText, stepWaitingText } from "../sessionStepWords";
 import { activityDockWords } from "../activityDockWords";
-import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
+import { composedContains, registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./FormattedText";
 import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
@@ -532,19 +532,6 @@ function renderDeliveryGlyph(kind: DeliveryGlyph): TemplateResult {
 }
 
 /** contains() stops at shadow boundaries; the transcript's text parts live in one. */
-function composedContains(host: Element, node: Node | null): boolean {
-  let current: Node | null = node;
-  while (current !== null) {
-    if (current === host) return true;
-    if (current.parentNode !== null) current = current.parentNode;
-    else {
-      const root = current.getRootNode();
-      current = root instanceof ShadowRoot ? root.host : null;
-    }
-  }
-  return false;
-}
-
 /**
  * A delivered message carries no words: the agent took it, and it is an ordinary input message.
  * `chatDeliveryMarkerVisible` keeps this from ever being drawn.
@@ -812,7 +799,7 @@ export class ChatView extends LitElement {
   private readSelectionForQuote(): void {
     const selection = document.getSelection();
     const chat = this.chat;
-    if (selection === null || selection.isCollapsed || selection.rangeCount === 0 || chat === undefined || !composedContains(chat, selection.anchorNode)) {
+    if (selection === null || selection.isCollapsed || selection.rangeCount === 0 || chat === undefined || selection.anchorNode === null || !composedContains(chat, selection.anchorNode)) {
       if (this.quoteChip !== undefined) { this.quoteChip = undefined; this.requestUpdate(); }
       return;
     }

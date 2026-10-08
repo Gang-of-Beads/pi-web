@@ -1,3 +1,5 @@
+import { browserLocalStorage } from "./browserLocalStorage";
+
 export type ChatScrollPosition = ChatBottomScrollPosition | ChatAnchorScrollPosition;
 
 export interface ChatBottomScrollPosition {
@@ -57,22 +59,20 @@ const DEFAULT_BOTTOM_SAVE_THRESHOLD = DEFAULT_NEAR_BOTTOM_THRESHOLD;
 
 const browserScrollStorage: ChatScrollStorage = {
   getItem(key: string): string | null {
-    if (typeof localStorage === "undefined") return null;
-    return localStorage.getItem(key);
+    return browserLocalStorage()?.getItem(key) ?? null;
   },
   setItem(key: string, value: string): void {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(key, value);
+    browserLocalStorage()?.setItem(key, value);
   },
   removeItem(key: string): void {
-    if (typeof localStorage === "undefined") return;
-    localStorage.removeItem(key);
+    browserLocalStorage()?.removeItem(key);
   },
   keys(): string[] {
-    if (typeof localStorage === "undefined") return [];
+    const storage = browserLocalStorage();
+    if (storage === undefined) return [];
     const found: string[] = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
       if (key !== null) found.push(key);
     }
     return found;

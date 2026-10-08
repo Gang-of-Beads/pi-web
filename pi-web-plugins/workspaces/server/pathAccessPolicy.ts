@@ -2,7 +2,7 @@ import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep, win32 } from "node:path";
 import type { PluginPathAccessConfig } from "@gang-of-beads/pi-web/server-plugin-api";
-import { isPathRefusal, normalizeRelativePath, PathRefusal } from "./pathSafety.js";
+import { isNodeErrorWithCode, isPathRefusal, normalizeRelativePath, PathRefusal } from "./pathSafety.js";
 
 export interface AllowedPathRoot {
   /** Raw config value for diagnostics. */
@@ -113,8 +113,4 @@ async function canonicalExistingPath(path: string): Promise<string> {
 function isInsideOrSame(root: string, target: string): boolean {
   const rel = relative(root, target);
   return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
-}
-
-function isNodeErrorWithCode(error: unknown, code: string): error is NodeJS.ErrnoException {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
