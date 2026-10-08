@@ -105,6 +105,12 @@ interface SelectableRow {
   readonly facts: NavigateRowFacts;
 }
 
+/**
+ * The lists a row can be dragged within (R11): the Pinned sessions, and on the Projects page the
+ * pinned projects and the rest, each in its own order. A row moves only within its own list.
+ */
+type DragList = "pinned-sessions" | "pinned-projects" | "projects";
+
 /** The group a Select key starts, per kind of list; machines have no bulk actions (bulk-selection.md). */
 const SELECT_KEY_GROUP: Readonly<Record<NavigateKind, NavigateBulkGroup | undefined>> = {
   sessions: "live",
@@ -166,12 +172,16 @@ export class AppNavigatePage extends LitElement {
   private readonly selection = new NavigateSelection((next, previous) => { this.selectionChanged(next, previous); });
   /** The reader put the Pinned section in a new order (R11): the whole order, for the scope the list stands in. */
   @property({ attribute: false }) onReorderPins?: (order: readonly string[], scopeProjectId: string | undefined) => void;
-  /** Dragging a pinned row to another place (R11, state diagram D9). */
+  /** The reader put the pinned projects, or the other projects, in a new order (R11). */
+  @property({ attribute: false }) onReorderProjects?: (pinned: boolean, order: readonly string[]) => void;
+  /** Whether this page's projects are the selected machine's, which the host can reorder. */
+  @property({ attribute: false }) canReorderProjects = false;
+  /** Dragging a row to another place within its list (R11, state diagram D9). */
   private readonly reorder = new NavigateReorder({
-    order: () => this.pinOrderIds(),
-    rowAt: (point, dragged) => this.pinRowAt(point, dragged),
+    order: (id) => this.dragIds(this.dragListOf(id)),
+    rowAt: (point, dragged) => this.dragRowAt(point, dragged),
     changed: () => { this.requestUpdate(); },
-    drop: (order) => { this.onReorderPins?.(order, this.pathProjectId); },
+    drop: (id, order) => { this.dropped(this.dragListOf(id), order); },
     settleHold: () => { this.selection.pointerEnd(); },
   });
   /** The row lifted by the last render, so the next one can set it down. */
@@ -240,7 +250,7 @@ export class AppNavigatePage extends LitElement {
    */
   private placeLiftedRow(): void {
     const state = this.reorder.state;
-    const key = state.phase === "dragging" ? this.pinRowKey(state.id) : undefined;
+    const key = state.phase === "dragging" ? this.dragKey(this.dragListOf(state.id), state.id) : undefined;
     if (this.liftedKey !== undefined && this.liftedKey !== key) {
       const previous = this.rowWrap(this.liftedKey);
       previous?.classList.remove("lifted");
@@ -263,23 +273,46 @@ export class AppNavigatePage extends LitElement {
     return this.renderRoot.querySelector<HTMLElement>(`.row-wrap[data-motion-key="${CSS.escape(key)}"]`);
   }
 
-  private pinRowKey(id: string): string {
-    return `session:${this.view?.listed.scope.machineId ?? ""}:${id}`;
+  /** The list a dragged row belongs to, by what the page lists. */
+  private dragListOf(id: string): DragList {
+    if (this.kind === "sessions") return "pinned-sessions";
+    return this.pinnedProjectIds.has(id) ? "pinned-projects" : "projects";
   }
 
-  /** The pin-ordered section's rows of this machine, in the order the list draws them. */
-  private pinOrderIds(): readonly string[] {
-    const machineId = this.view?.listed.scope.machineId;
-    const section = this.view?.sections.find((candidate) => candidate.ordering === "pins");
-    return section === undefined ? [] : section.rows.filter((row) => row.machineId === machineId).map((row) => row.session.id);
+  private dragKey(list: DragList, id: string): string {
+    return list === "pinned-sessions" ? `session:${this.view?.listed.scope.machineId ?? ""}:${id}` : `project:${id}`;
   }
 
-  private pinRowAt(point: ReorderPoint, dragged: string): string | undefined {
-    return this.pinOrderIds().find((id) => {
+  /** A list's rows, in the order the page draws them: the Pinned section's of this machine, or one group of projects. */
+  private dragIds(list: DragList): readonly string[] {
+    const view = this.view;
+    if (view === undefined) return [];
+    if (list === "pinned-sessions") {
+      const section = view.sections.find((candidate) => candidate.ordering === "pins");
+      return section === undefined ? [] : section.rows.filter((row) => row.machineId === view.listed.scope.machineId).map((row) => row.session.id);
+    }
+    const pinned = list === "pinned-projects";
+    return view.choices.filter((choice) => choice.level === "project" && this.pinnedProjectIds.has(choice.id) === pinned).map((choice) => choice.id);
+  }
+
+  private dragRowAt(point: ReorderPoint, dragged: string): string | undefined {
+    const list = this.dragListOf(dragged);
+    return this.dragIds(list).find((id) => {
       if (id === dragged) return false;
-      const box = this.rowWrap(this.pinRowKey(id))?.getBoundingClientRect();
+      const box = this.rowWrap(this.dragKey(list, id))?.getBoundingClientRect();
       return box !== undefined && point.x >= box.left && point.x <= box.right && point.y >= box.top && point.y <= box.bottom;
     });
+  }
+
+  /**
+   * The order applies on the page at once: the rows the press held are let go and the change counts
+   * as the reader's, so nothing slides back to the old order or replays the move.
+   */
+  private dropped(list: DragList, order: readonly string[]): void {
+    this.rowOrder.release();
+    this.noteReaderInput();
+    if (list === "pinned-sessions") this.onReorderPins?.(order, this.pathProjectId);
+    else this.onReorderProjects?.(list === "pinned-projects", order);
   }
 
   private readonly cancelDragOnEscape = (event: KeyboardEvent): void => {
@@ -320,7 +353,7 @@ export class AppNavigatePage extends LitElement {
       return { listed, model, segments, sections, choices: [], rowKeys: sections.flatMap((section) => section.rows.map(sessionRowKey)) };
     }
     const levelChoices = model.sections.flatMap((section) => section.choices).filter((choice) => choice.level === this.kind);
-    const choices = this.kind === "project" ? pinnedFirst(levelChoices, this.pinnedProjectIds) : levelChoices;
+    const choices = this.kind === "project" ? this.draggedChoices(pinnedFirst(levelChoices, this.pinnedProjectIds)) : levelChoices;
     return { listed, model, segments, sections: [], choices, rowKeys: choices.map(choiceRowKey) };
   }
 
@@ -666,6 +699,17 @@ export class AppNavigatePage extends LitElement {
       .map((section) => ({ ...section, rows: [...section.rows].sort((left, right) => (placeOf.get(`${left.machineId}:${left.session.id}`) ?? 0) - (placeOf.get(`${right.machineId}:${right.session.id}`) ?? 0)) }));
   }
 
+  /** While a project is dragged, its group stands in the order the drag would drop; the other group keeps its place. */
+  private draggedChoices(choices: NavigateChoice[]): NavigateChoice[] {
+    const state = this.reorder.state;
+    if (state.phase !== "dragging") return choices;
+    const moving = new Set(state.order);
+    const inOrder = state.order.flatMap((id) => choices.filter((choice) => choice.id === id));
+    const slots = choices.flatMap((choice, index) => (moving.has(choice.id) ? [index] : []));
+    const placed = new Map(slots.map((slot, rank) => [slot, inOrder[rank]]));
+    return choices.map((choice, index) => placed.get(index) ?? choice);
+  }
+
   /** While a pinned row is dragged, the Pinned section stands in the order the drag would drop. */
   private draggedSections(sections: NavigateSection[]): NavigateSection[] {
     const state = this.reorder.state;
@@ -723,16 +767,18 @@ export class AppNavigatePage extends LitElement {
     const rowId = choiceRowKey(choice);
     const group: NavigateBulkGroup | undefined = choice.level === "project" ? "projects" : undefined;
     const selected = this.rowSelected(group, choice.id);
+    const draggable = choice.level === "project" && this.canReorderProjects;
     return this.renderRowShell(rowId, kind, choice.id, choice.label, html`
       <button
         type="button"
         class=${`row${choice.current ? " current" : ""}${projectRowClass(choice)}`}
         title=${choice.detail ?? choice.label}
         aria-pressed=${selected === undefined ? nothing : String(selected)}
-        @pointerdown=${(event: PointerEvent) => { this.selection.pointerDown(group, choice.id, event); }}
+        @pointerdown=${(event: PointerEvent) => { this.selection.pointerDown(group, choice.id, event); if (draggable) this.reorder.mouseDown(choice.id, event); }}
         @pointermove=${(event: PointerEvent) => { this.selection.pointerMove(event); }}
         @pointerup=${() => { this.selection.pointerEnd(); }}
         @pointercancel=${() => { this.selection.pointerEnd(); }}
+        @touchstart=${draggable ? (event: TouchEvent) => { this.reorder.touchStart(choice.id, event, isSelecting(this.selection.state)); } : nothing}
         @click=${(event: MouseEvent) => {
           if (this.selection.click(group, choice.id, event) === "selection") return;
           if (choice.level === "project") { this.pathProjectId = choice.id; this.lastProjectId = choice.id; }
@@ -1062,11 +1108,11 @@ declare global {
 }
 
 /**
- * A pin means "keep this close", so a pinned project leads the board; the rest
- * keep the order the model gave them.
+ * A pin means "keep this close", so a pinned project leads the board, in the order the reader
+ * dragged the pins into (R11); the rest keep the order the model gave them.
  */
 function pinnedFirst<T extends { id: string }>(choices: readonly T[], pinned: ReadonlySet<string>): T[] {
-  return [...choices.filter((choice) => pinned.has(choice.id)), ...choices.filter((choice) => !pinned.has(choice.id))];
+  return [...[...pinned].flatMap((id) => choices.filter((choice) => choice.id === id)), ...choices.filter((choice) => !pinned.has(choice.id))];
 }
 
 /** Each tap mode's action on the New session button. */

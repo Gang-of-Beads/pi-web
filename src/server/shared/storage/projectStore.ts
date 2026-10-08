@@ -4,6 +4,7 @@ import { piWebDataDir } from "../../../config.js";
 import { randomUUID } from "node:crypto";
 import type { Project } from "../types.js";
 import { isNodeErrorWithCode } from "../workspaces/pathSafety.js";
+import { orderedById } from "../../../shared/listOrder.js";
 
 interface ProjectFile {
   projects: Project[];
@@ -77,6 +78,14 @@ export class ProjectStore {
         createdAt: new Date().toISOString(),
       };
       return { result: project, data: { projects: [...data.projects, project] } };
+    });
+  }
+
+  /** The projects in the order the reader dragged them into (R11), applied as `orderedIds` does. */
+  async reorder(order: readonly string[]): Promise<Project[]> {
+    return this.change((data) => {
+      const projects = orderedById(data.projects, order);
+      return { result: projects, data: { projects } };
     });
   }
 

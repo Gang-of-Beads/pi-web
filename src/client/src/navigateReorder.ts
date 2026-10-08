@@ -2,12 +2,12 @@ import { REORDER_IDLE, TOUCH_DRAG_HOLD_MS, movedTo, reorderRelease, reorderTrans
 
 /** What the page tells the drag about the list it stands in. */
 export interface ReorderHost {
-  /** The ids a dragged row moves among, in the order they stand now. */
-  readonly order: () => readonly string[];
+  /** The ids of the list a row moves among, in the order they stand now. */
+  readonly order: (id: string) => readonly string[];
   /** The row of that list under a point, the dragged one left out; undefined over none. */
   readonly rowAt: (point: ReorderPoint, dragged: string) => string | undefined;
   readonly changed: () => void;
-  readonly drop: (order: readonly string[]) => void;
+  readonly drop: (id: string, order: readonly string[]) => void;
   /** A finger that rested to drag is not also a long press that toggles the row. */
   readonly settleHold: () => void;
 }
@@ -68,18 +68,24 @@ export class NavigateReorder {
   move(at: ReorderPoint): boolean {
     const state = this.current;
     if (state.phase === "idle") return false;
-    const order = state.phase === "dragging" ? this.orderAt(state.id, state.order, at) : this.host.order();
+    const order = state.phase === "dragging" ? this.orderAt(state.id, state.order, at) : this.host.order(state.id);
     this.dispatch({ type: "move", at, order });
     const next = this.current;
     return next.phase === "dragging" || (next.phase === "pressing" && next.ready);
   }
 
+  /**
+   * A drop hands the order to the host before the drag ends, so the host's new order is what the
+   * page draws when the lifted row is set down: ending the drag first drew the old order for a
+   * moment and then moved the rows again (owner, 2026-10-09).
+   */
   release(): void {
     const outcome = reorderRelease(this.current);
+    if (outcome.kind === "drop") {
+      this.dropClick = true;
+      this.host.drop(outcome.id, outcome.order);
+    }
     this.dispatch({ type: "release" });
-    if (outcome.kind !== "drop") return;
-    this.dropClick = true;
-    this.host.drop(outcome.order);
   }
 
   cancel(): void {

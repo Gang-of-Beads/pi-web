@@ -90,6 +90,12 @@ function registerLocalProjectRoutes(app: FastifyInstance, projects: ProjectServi
     }
   });
 
+  app.post<{ Body: unknown }>(`${prefix}/projects/order`, async (request, reply) => {
+    const order: unknown = typeof request.body === "object" && request.body !== null ? Reflect.get(request.body, "order") : undefined;
+    if (!Array.isArray(order) || order.some((id) => typeof id !== "string" || id === "")) return reply.code(400).send({ error: "order must be a list of project ids" });
+    return withFolderPresence(await projects.reorder(order.filter((id): id is string => typeof id === "string")));
+  });
+
   app.delete<{ Params: { projectId: string } }>(`${prefix}/projects/:projectId`, async (request, reply) => {
     try {
       await projects.close(request.params.projectId);

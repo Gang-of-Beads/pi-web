@@ -48,6 +48,7 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "POST", path: "/pi-packages/update", timeoutMs: PI_PACKAGE_MUTATION_PROXY_TIMEOUT_MS },
   { method: "GET", path: "/projects" },
   { method: "POST", path: "/projects" },
+  { method: "POST", path: "/projects/order" },
   { method: "DELETE", path: "/projects/:projectId" },
   { method: "GET", path: "/project-directories" },
   { method: "GET", path: "/projects/:projectId/workspaces" },

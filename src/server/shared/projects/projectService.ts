@@ -21,6 +21,10 @@ export class ProjectService {
     return this.store.add(input.name === undefined ? { path: resolved } : { name: input.name, path: resolved });
   }
 
+  reorder(order: readonly string[]): Promise<Project[]> {
+    return this.store.reorder(order);
+  }
+
   async close(id: string): Promise<void> {
     if (!(await this.store.remove(id))) throw new Error("Project not found");
   }

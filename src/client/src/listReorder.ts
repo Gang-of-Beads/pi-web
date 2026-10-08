@@ -28,7 +28,7 @@ export type ReorderEvent =
   | { readonly type: "cancel" };
 
 /** What a release meant: a press that never became a drag (the row's own tap), a drop with its order, or nothing. */
-export type ReorderRelease = { readonly kind: "tap" } | { readonly kind: "drop"; readonly order: readonly string[] } | { readonly kind: "none" };
+export type ReorderRelease = { readonly kind: "tap" } | { readonly kind: "drop"; readonly id: string; readonly order: readonly string[] } | { readonly kind: "none" };
 
 export const REORDER_IDLE: ReorderState = Object.freeze({ phase: "idle" });
 
@@ -63,7 +63,7 @@ function fromPressing(state: Pressing, event: Exclude<ReorderEvent, { type: "pre
 
 /** Read before dispatching "release": what the press that is ending amounted to. */
 export function reorderRelease(state: ReorderState): ReorderRelease {
-  if (state.phase === "dragging") return { kind: "drop", order: state.order };
+  if (state.phase === "dragging") return { kind: "drop", id: state.id, order: state.order };
   if (state.phase === "pressing") return { kind: "tap" };
   return { kind: "none" };
 }

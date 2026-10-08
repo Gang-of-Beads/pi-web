@@ -255,6 +255,8 @@ export const machineStatusApi = {
 export const projectsApi = {
   projects: (machineId = "local") => request(`${machinePrefix(machineId)}/projects`, arrayOf(parseProject)),
   addProject: (path: string, name?: string, create?: boolean, machineId = "local") => request(`${machinePrefix(machineId)}/projects`, parseProject, { method: "POST", body: JSON.stringify({ path, name, create }) }),
+  /** The whole order of the projects the reader dragged (R11). */
+  reorderProjects: (order: readonly string[], machineId = "local") => request(`${machinePrefix(machineId)}/projects/order`, arrayOf(parseProject), { method: "POST", body: JSON.stringify({ order: [...order] }) }),
   closeProject: (projectId: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}`, parseClosed, { method: "DELETE" }),
   /** `init.signal` aborts the server's directory walk for a superseded query. */
   projectDirectories: (query: string, machineId = "local", init?: RequestInit) => request(`${machinePrefix(machineId)}/project-directories?q=${encodeURIComponent(query)}`, arrayOf(parseFileSuggestion), init),

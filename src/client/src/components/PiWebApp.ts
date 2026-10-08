@@ -106,7 +106,7 @@ import "./appShell/AppNavigatePage";
 import type { AppNavigatePage, NavigateKind } from "./appShell/AppNavigatePage";
 import type { NavigateBulkActionId, NavigateBulkActionIds, NavigateBulkGroup, NavigateRowActionId, NavigateRowKind } from "../navigateRowActions";
 import type { SelectionOutcome } from "../selectionModel";
-import { orderedPins } from "../../../shared/pinOrder";
+import { orderedIds } from "../../../shared/listOrder";
 import { sessionLabel } from "../sessionLabels";
 import { NavigationIntents, openingAnnouncement } from "../navigationIntent";
 import { writeClipboardText } from "../clipboard";
@@ -2740,6 +2740,22 @@ export class PiWebApp extends LitElement {
     return fresh.ids;
   }
 
+  /**
+   * The reader dragged the projects into a new order (R11): the pinned ones are this device's
+   * list, kept in its order; the rest are the machine's, written to its projects file.
+   */
+  private reorderProjects(pinned: boolean, order: readonly string[]): void {
+    if (!pinned) {
+      void this.projects.reorderProjects(order);
+      return;
+    }
+    const machineId = this.browsedMachineId();
+    const ids = new Set(orderedIds([...this.pinnedProjectIds], order));
+    this.pinnedProjectCache = { machineId, ids };
+    writePinnedProjectIds(machineId, ids);
+    this.requestUpdate();
+  }
+
   private togglePinnedProject(projectId: string): void {
     const machineId = this.browsedMachineId();
     const ids = togglePinnedProjectId(this.pinnedProjectIds, projectId);
@@ -2771,11 +2787,11 @@ export class PiWebApp extends LitElement {
     const projectPins = this.projectPinnedSessionIdsFor(machineId, scopeProjectId);
     const cached = this.pinCache;
     if (projectPins === undefined || scopeProjectId === undefined) {
-      const ids = new Set(orderedPins([...this.pinnedSessionIdsFor(machineId)], order));
+      const ids = new Set(orderedIds([...this.pinnedSessionIdsFor(machineId)], order));
       this.pinCache = cached?.machineId === machineId ? { ...cached, ids } : { machineId, ids };
       writePinnedSessionIds(machineId, ids);
     } else if (cached?.projects !== undefined) {
-      this.pinCache = { ...cached, projects: new Map([...cached.projects, [scopeProjectId, new Set(orderedPins([...projectPins], order))]]) };
+      this.pinCache = { ...cached, projects: new Map([...cached.projects, [scopeProjectId, new Set(orderedIds([...projectPins], order))]]) };
     }
     this.requestUpdate();
     const projectId = projectPins === undefined ? undefined : scopeProjectId;
@@ -3063,6 +3079,8 @@ export class PiWebApp extends LitElement {
       .onBulkAction=${(group: NavigateBulkGroup, action: NavigateBulkActionId, ids: readonly string[]) => this.asReaderListChange(() => this.runNavigateBulkAction(group, action, ids))}
       .onSelectingChange=${(exit: (() => void) | undefined) => { this.noteNavigateSelecting(exit); }}
       .onReorderPins=${(order: readonly string[], scopeProjectId: string | undefined) => { this.reorderPinnedSessions(order, scopeProjectId); }}
+      .onReorderProjects=${(pinned: boolean, order: readonly string[]) => { this.reorderProjects(pinned, order); }}
+      .canReorderProjects=${!this.quickSwitcherBrowsingElsewhere()}
     >${this.renderAppRowSlot(overlay ? "navigate-overlay" : "navigation-view")}</app-navigate-page>`;
   }
 

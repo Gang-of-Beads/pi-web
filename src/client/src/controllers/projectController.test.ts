@@ -33,6 +33,7 @@ describe("ProjectController", () => {
         api: {
           projects: vi.fn().mockResolvedValue([currentProject]),
           addProject: vi.fn(),
+          reorderProjects: vi.fn(),
           closeProject: vi.fn(),
           setWorkspaceTrust: vi.fn(),
         },
@@ -63,6 +64,7 @@ describe("ProjectController", () => {
         api: {
           projects: vi.fn(),
           addProject: vi.fn().mockResolvedValue(addedProject),
+          reorderProjects: vi.fn(),
           closeProject: vi.fn(),
           setWorkspaceTrust: vi.fn(),
         },
@@ -91,6 +93,7 @@ describe("ProjectController", () => {
         api: {
           projects: vi.fn(),
           addProject: vi.fn().mockResolvedValue(addedProject),
+          reorderProjects: vi.fn(),
           closeProject: vi.fn(),
           setWorkspaceTrust,
         },
@@ -119,6 +122,7 @@ describe("ProjectController", () => {
         api: {
           projects: vi.fn(),
           addProject: vi.fn().mockResolvedValue(addedProject),
+          reorderProjects: vi.fn(),
           closeProject: vi.fn(),
           setWorkspaceTrust,
         },
@@ -160,6 +164,7 @@ describe("ProjectController", () => {
         api: {
           projects: vi.fn(),
           addProject: vi.fn(),
+          reorderProjects: vi.fn(),
           closeProject: vi.fn().mockResolvedValue(undefined),
           setWorkspaceTrust: vi.fn(),
         },
@@ -199,7 +204,7 @@ describe("ProjectController.loadProjects", () => {
       () => state,
       (patch) => { state = { ...state, ...patch }; },
       { selectProject: vi.fn(), forgetProject: vi.fn(), clearSelection: vi.fn() },
-      { api: { projects, addProject: vi.fn(), closeProject: vi.fn(), setWorkspaceTrust: vi.fn() }, clock },
+      { api: { projects, addProject: vi.fn(), reorderProjects: vi.fn(), closeProject: vi.fn(), setWorkspaceTrust: vi.fn() }, clock },
     );
 
     await controller.loadProjects();
@@ -218,7 +223,7 @@ describe("ProjectController.loadProjects", () => {
       () => state,
       (patch) => { state = { ...state, ...patch }; },
       { selectProject: vi.fn(), forgetProject: vi.fn(), clearSelection: vi.fn() },
-      { api: { projects, addProject: vi.fn(), closeProject: vi.fn(), setWorkspaceTrust: vi.fn() }, clock: { now: () => 5, setTimer: () => () => undefined } },
+      { api: { projects, addProject: vi.fn(), reorderProjects: vi.fn(), closeProject: vi.fn(), setWorkspaceTrust: vi.fn() }, clock: { now: () => 5, setTimer: () => () => undefined } },
     );
 
     await controller.loadProjects();
@@ -239,6 +244,7 @@ describe("ProjectController.loadProjects", () => {
         api: {
           projects: vi.fn().mockResolvedValue([listed]),
           addProject: vi.fn(),
+          reorderProjects: vi.fn(),
           closeProject: vi.fn(),
           setWorkspaceTrust: vi.fn(),
         },

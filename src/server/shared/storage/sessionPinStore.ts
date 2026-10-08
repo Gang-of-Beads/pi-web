@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { piWebDataDir } from "../../../config.js";
 import { isNodeErrorWithCode } from "../workspaces/pathSafety.js";
-import { orderedPins } from "../../../shared/pinOrder.js";
+import { orderedIds } from "../../../shared/listOrder.js";
 
 /**
  * Which sessions are kept close on this machine.
@@ -54,13 +54,13 @@ export function adoptedPins(sessionIds: readonly string[]): PinChange {
 
 /**
  * The reader dragged a pinned list into a new order (R11; owner, 2026-10-08: "pinned is meant to be
- * a fixed place"), applied as `orderedPins` does. A project id orders that project's pins, none the
+ * a fixed place"), applied as `orderedIds` does. A project id orders that project's pins, none the
  * global ones.
  */
 export function pinOrder(order: readonly string[], projectId?: string): PinChange {
   return (pins) => projectId === undefined
-    ? { ...pins, global: orderedPins(pins.global, order) }
-    : { ...pins, projects: withProject(pins.projects, projectId, orderedPins(pins.projects[projectId] ?? [], order)) };
+    ? { ...pins, global: orderedIds(pins.global, order) }
+    : { ...pins, projects: withProject(pins.projects, projectId, orderedIds(pins.projects[projectId] ?? [], order)) };
 }
 
 /** A deleted session leaves every pin: the global one and each project's. */

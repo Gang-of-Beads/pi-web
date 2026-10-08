@@ -4,6 +4,7 @@ import { describeError } from "../notice";
 import { QUIET_WINDOW_MS, type ReadFact } from "../sync/readPhase";
 import { ScopedResource, type ResourceClock, type Unanswered } from "../sync/scopedResource";
 import { selectedMachineId, type GetState, type SetState } from "./types";
+import { orderedById } from "../../../shared/listOrder";
 import type { WorkspaceController } from "./workspaceController";
 
 /**
@@ -17,7 +18,7 @@ export interface ProjectTrustChoice {
 }
 
 export interface ProjectControllerDependencies {
-  api?: Pick<typeof defaultApi, "projects" | "addProject" | "closeProject" | "setWorkspaceTrust">;
+  api?: Pick<typeof defaultApi, "projects" | "addProject" | "reorderProjects" | "closeProject" | "setWorkspaceTrust">;
   clock?: ResourceClock;
   /** Called whenever a listing changes phase or value, so the app row can re-decide. */
   onListingChange?: () => void;
@@ -35,7 +36,7 @@ const FACT_WORDS = new Map<ReadFact["kind"], string>([
 ]);
 
 export class ProjectController {
-  private readonly api: Pick<typeof defaultApi, "projects" | "addProject" | "closeProject" | "setWorkspaceTrust">;
+  private readonly api: Pick<typeof defaultApi, "projects" | "addProject" | "reorderProjects" | "closeProject" | "setWorkspaceTrust">;
   /** The projects of each machine, read until answered (B48). This controller is its only writer. */
   private readonly listings: ScopedResource<string, Project[]>;
   private watched: { machineId: string; release: () => void } | undefined;
@@ -163,6 +164,24 @@ export class ProjectController {
     const mainWorkspace = this.getState().workspaces.find((workspace) => workspace.isMain);
     if (mainWorkspace === undefined) return;
     await this.api.setWorkspaceTrust(project.id, mainWorkspace.id, trusted, machineId);
+  }
+
+  /** The projects in the order the reader dragged them into (R11): on the page at once, then the machine's answer. */
+  async reorderProjects(order: readonly string[]): Promise<void> {
+    const machineId = selectedMachineId(this.getState());
+    const before = this.getState().projects.map((project) => project.id);
+    this.listings.update(machineId, (listed) => orderedById(listed, order));
+    this.setState({ projects: orderedById(this.getState().projects, order) });
+    try {
+      const answered = await this.api.reorderProjects(order, machineId);
+      if (selectedMachineId(this.getState()) !== machineId) return;
+      this.listings.update(machineId, () => answered);
+      this.setState({ projects: answered });
+    } catch (error) {
+      if (selectedMachineId(this.getState()) !== machineId) return;
+      this.listings.update(machineId, (listed) => orderedById(listed, before));
+      this.setState({ projects: orderedById(this.getState().projects, before), ...errorNoticePatch(error) });
+    }
   }
 
   async closeProject(projectId: string) {
