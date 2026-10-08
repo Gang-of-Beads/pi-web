@@ -2,7 +2,7 @@ import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep, win32 } from "node:path";
 import type { PluginPathAccessConfig } from "@gang-of-beads/pi-web/server-plugin-api";
-import { normalizeRelativePath } from "./pathSafety.js";
+import { isPathRefusal, normalizeRelativePath, PathRefusal } from "./pathSafety.js";
 
 export interface AllowedPathRoot {
   /** Raw config value for diagnostics. */
@@ -54,7 +54,7 @@ export async function resolvePathAccessTarget(policy: PathAccessPolicy, requeste
 
   const displayPath = normalizeRelativePath(request);
   const target = await canonicalExistingPath(resolve(policy.workspaceRoot, displayPath));
-  ensureInside(policy.workspaceRoot, target, "Path escapes workspace");
+  if (!isInsideOrSame(policy.workspaceRoot, target)) throw new PathRefusal("escapes-workspace", "Path escapes workspace");
   return { kind: "workspace", root: policy.workspaceRoot, target, displayPath };
 }
 
@@ -65,7 +65,7 @@ export function isAbsoluteishPath(path: string): boolean {
 async function resolveAllowedRoots(allowedPaths: readonly string[], options: PathAccessPolicyOptions): Promise<AllowedPathRoot[]> {
   const roots: AllowedPathRoot[] = [];
   for (const source of allowedPaths) {
-    const expanded = expandAbsoluteishPath(source, options, `Allowed path must be absolute or start with ~: ${source}`);
+    const expanded = expandAbsoluteishPath(source, options, () => new Error(`Allowed path must be absolute or start with ~: ${source}`));
     const realPath = await canonicalDirectory(expanded, `Allowed path ${source}`);
     if (roots.some((root) => root.realPath === realPath)) continue;
     roots.push({ source, path: expanded, realPath });
@@ -76,40 +76,38 @@ async function resolveAllowedRoots(allowedPaths: readonly string[], options: Pat
 async function resolveAllowedTarget(policy: PathAccessPolicy, request: string, options: PathAccessPolicyOptions): Promise<ResolvedPathAccessTarget> {
   if (policy.allowedRoots.length === 0) throw new Error("Absolute paths are not allowed");
 
-  const displayPath = expandAbsoluteishPath(request, options, `Path is not absolute: ${request}`);
+  const displayPath = expandAbsoluteishPath(request, options, () => new PathRefusal("not-absolute", `Path is not absolute: ${request}`));
   const target = await canonicalExistingPath(displayPath);
   const root = policy.allowedRoots.find((allowedRoot) => isInsideOrSame(allowedRoot.realPath, target));
-  if (root === undefined) throw new Error("Path is outside allowed paths");
+  if (root === undefined) throw new PathRefusal("outside-allowed", "Path is outside allowed paths");
   return { kind: "allowed", root: root.realPath, target, displayPath };
 }
 
-function expandAbsoluteishPath(path: string, options: PathAccessPolicyOptions, relativeMessage: string): string {
+function expandAbsoluteishPath(path: string, options: PathAccessPolicyOptions, relativeRefusal: () => Error): string {
   const home = options.homeDir ?? homedir();
   if (path === "~") return home;
   if (path.startsWith("~/") || path.startsWith("~\\")) return resolve(home, path.slice(2));
   if (isAbsolute(path)) return resolve(path);
   if (win32.isAbsolute(path)) throw new Error(`Absolute path is not valid on this host: ${path}`);
-  throw new Error(relativeMessage);
+  throw relativeRefusal();
 }
 
 async function canonicalDirectory(path: string, label: string): Promise<string> {
-  const canonical = await canonicalExistingPath(path, `${label} does not exist`);
+  const canonical = await canonicalExistingPath(path).catch((error: unknown) => {
+    throw isPathRefusal(error, "missing") ? new Error(`${label} does not exist`, { cause: error }) : error;
+  });
   const result = await stat(canonical);
   if (!result.isDirectory()) throw new Error(`${label} must be a directory`);
   return canonical;
 }
 
-async function canonicalExistingPath(path: string, missingMessage = "Path does not exist"): Promise<string> {
+async function canonicalExistingPath(path: string): Promise<string> {
   try {
     return await realpath(path);
   } catch (error) {
-    if (isNodeErrorWithCode(error, "ENOENT")) throw new Error(missingMessage, { cause: error });
+    if (isNodeErrorWithCode(error, "ENOENT")) throw new PathRefusal("missing", "Path does not exist", { cause: error });
     throw error;
   }
-}
-
-function ensureInside(root: string, target: string, message: string): void {
-  if (!isInsideOrSame(root, target)) throw new Error(message);
 }
 
 function isInsideOrSame(root: string, target: string): boolean {

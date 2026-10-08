@@ -4,7 +4,7 @@ import type { DeleteWorkspaceFileResponse, FileContentMediaType, FileContentResp
 import type { PluginPathAccessConfig } from "@gang-of-beads/pi-web/server-plugin-api";
 import { classifyWorkspaceFile, MAX_WORKSPACE_FILE_CONTENT_BYTES, type WorkspaceFileClassification } from "./workspaceFiles.js";
 import { resolveWorkspacePathAccessTarget } from "./pathAccessPolicy.js";
-import { ensureInside, isNodeErrorWithCode, resolveInsideWorkspace, resolveParentInsideWorkspace } from "./pathSafety.js";
+import { ensureInside, isNodeErrorWithCode, isPathRefusal, PathRefusal, resolveInsideWorkspace, resolveParentInsideWorkspace } from "./pathSafety.js";
 
 export async function readWorkspaceFile(rootPath: string, path: string | undefined, pathAccess?: PluginPathAccessConfig): Promise<FileContentResponse> {
   if (path === undefined || path === "") throw new Error("path query parameter is required");
@@ -55,12 +55,12 @@ export async function writeWorkspaceFile(rootPath: string, path: string | undefi
     const { target, relativePath } = await resolveInsideWorkspace(rootPath, path);
     const s = await stat(target);
     if (!s.isFile()) throw new Error("Path is not a file");
-    if (!overwrite) throw new Error(`File already exists: ${relativePath}`);
+    if (!overwrite) throw new PathRefusal("exists", `File already exists: ${relativePath}`);
     exists = true;
   } catch (error: unknown) {
-    if (error instanceof Error && error.message.startsWith("File already exists")) throw error;
+    if (isPathRefusal(error, "exists")) throw error;
     if (isNodeErrorWithCode(error, "ENOENT")) { /* expected for creation — continue */ }
-    else if (error instanceof Error && error.message === "Path does not exist") { /* expected for creation — continue */ }
+    else if (isPathRefusal(error, "missing")) { /* expected for creation — continue */ }
     else throw error; // re-throw permission errors, "not a file", traversal errors, etc.
   }
 
@@ -106,7 +106,7 @@ export async function deleteWorkspaceFile(rootPath: string, path: string | undef
     return { path: relativePath, existed: true };
   } catch (error: unknown) {
     if (isNodeErrorWithCode(error, "ENOENT")) return { path: relativePath, existed: false };
-    if (error instanceof Error && error.message === "Path does not exist") return { path: relativePath, existed: false };
+    if (isPathRefusal(error, "missing")) return { path: relativePath, existed: false };
     throw error;
   }
 }
@@ -136,10 +136,10 @@ export async function moveWorkspaceFile(rootPath: string, fromPath: string | und
   if (!overwrite) {
     try {
       const destStat = await stat(realDest);
-      if (destStat.isFile()) throw new Error(`File already exists: ${destRelative}`);
+      if (destStat.isFile()) throw new PathRefusal("exists", `File already exists: ${destRelative}`);
     } catch (error: unknown) {
       if (isNodeErrorWithCode(error, "ENOENT")) { /* expected — target doesn't exist */ }
-      else if (error instanceof Error && error.message.startsWith("File already exists")) throw error;
+      else if (isPathRefusal(error, "exists")) throw error;
       else throw error;
     }
   }

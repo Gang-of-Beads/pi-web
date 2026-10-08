@@ -4,6 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, sep, win32 } from "node:
 import { sanitizedGitEnv } from "./gitEnv.js";
 import type { FileSuggestion, PluginPathAccessConfig } from "@gang-of-beads/pi-web/server-plugin-api";
 import { createPathAccessPolicy, isAbsoluteishPath, resolvePathAccessTarget, type PathAccessPolicy } from "./pathAccessPolicy.js";
+import { PathRefusal, type PathRefusalKind } from "./pathSafety.js";
 
 const commandMaxBuffer = 1024 * 1024 * 8;
 const maxFilesystemFallbackPaths = 20_000;
@@ -204,13 +205,11 @@ function isInsideRelativePath(path: string): boolean {
   return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
 }
 
+/** The refusals that mean "no suggestions here" rather than a failure to report. */
+const SUGGESTION_MISSES: ReadonlySet<PathRefusalKind> = new Set(["outside-allowed", "missing", "traversal", "escapes-workspace", "not-absolute"]);
+
 function isPathSuggestionMiss(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  return error.message === "Path is outside allowed paths"
-    || error.message === "Path does not exist"
-    || error.message === "Path traversal is not allowed"
-    || error.message === "Path escapes workspace"
-    || error.message.startsWith("Path is not absolute:");
+  return error instanceof PathRefusal && SUGGESTION_MISSES.has(error.kind);
 }
 
 async function listFilesForScope(cwd: string, scope: FileSuggestionScope | undefined, exec: CommandRunner): Promise<FileSuggestion[]> {
