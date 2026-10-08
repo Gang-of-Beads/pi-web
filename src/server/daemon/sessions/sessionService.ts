@@ -140,6 +140,8 @@ export interface SessionRouteService {
   respondToCommand(ref: SessionRouteRef, requestId: string, value: string): Promise<ClientCommandResult>;
   navigateTree(ref: SessionRouteRef, request: ClientSessionTreeNavigateRequest): Promise<ClientSessionTreeNavigateResult>;
   forkFromTree(ref: SessionRouteRef, request: ClientSessionTreeForkRequest): Promise<ClientSessionTreeForkResult>;
+  /** A new session carrying this one's whole history; the source is left as it is. */
+  continueInNewSession(ref: SessionRouteRef): Promise<ClientSessionTreeForkResult>;
   /** Stops current work and returns whatever was queued, so it is not lost. */
   abort(ref: SessionRouteRef): Promise<{ discarded: QueuedSessionMessage[] }>;
   stop(ref: SessionRouteRef): void | Promise<void>;

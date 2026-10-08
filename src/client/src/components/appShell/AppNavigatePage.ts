@@ -26,6 +26,12 @@ import { machineSessionKey } from "../../machineKeys";
 import type { PendingNavigation } from "../../navigationIntent";
 import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningWords } from "../openingMark";
 
+/** What a tap on a session row does. */
+type SessionRowTap = "open" | "continue";
+
+/** The "Continue from…" button turns picking on, and off again. */
+const NEXT_ROW_TAP: Readonly<Record<SessionRowTap, SessionRowTap>> = { open: "continue", continue: "open" };
+
 /**
  * The one navigation surface: where you are, what is under it, and what you
  * can open.
@@ -90,6 +96,8 @@ export class AppNavigatePage extends LitElement {
   /** The session the reader tapped and is waiting for; its row answers the tap (D8). */
   @property({ attribute: false }) opening: PendingNavigation | undefined = undefined;
   @property({ attribute: false }) onCreateSession?: () => void;
+  /** Continue a session in a new one; absent where that cannot be offered. */
+  @property({ attribute: false }) onContinueFrom?: (session: SessionInfo, machineId: string) => void;
   @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onClose?: () => void;
   /**
@@ -126,6 +134,8 @@ export class AppNavigatePage extends LitElement {
   /** The host is carrying out a change the reader asked for from this list; its result applies without motion. */
   @property({ attribute: false }) readerChanging = false;
   @state() private query = "";
+  /** What a tap on a session row does: open it, or continue it in a new session after "Continue from…". */
+  @state() private rowTap: SessionRowTap = "open";
   /** Rows re-sort live, but never under a finger; see `heldRowOrder`. */
   private readonly rowOrder = createHeldRowOrder<NavigateSessionRow>((row) => `${row.machineId}:${row.session.id}`);
   /** Holds a working session's place while it runs; see `ActivityClock`. */
@@ -297,6 +307,12 @@ export class AppNavigatePage extends LitElement {
     this.query = "";
   }
 
+  private tapSessionRow(row: NavigateSessionRow): void {
+    const tap = this.rowTap;
+    this.rowTap = "open";
+    ROW_TAPS[tap](this, row);
+  }
+
   override render() {
     const view = this.view;
     const input = this.input;
@@ -347,11 +363,12 @@ export class AppNavigatePage extends LitElement {
         ` : nothing}
         <div class="actions">
           ${showsSessions
-            ? html`<button type="button" class="create" @click=${() => { this.onCreateSession?.(); }}>+ New session</button>`
+            ? html`<button type="button" class="create" @click=${() => { this.rowTap = "open"; this.onCreateSession?.(); }}>+ New session</button>${this.onContinueFrom === undefined ? nothing : html`<button type="button" class="create secondary" aria-pressed=${this.rowTap === "continue" ? "true" : "false"} title="Start a new session that carries an existing session's whole history" @click=${() => { this.rowTap = NEXT_ROW_TAP[this.rowTap]; }}>↻ Continue from…</button>`}`
             : this.kind === "project" && this.onAddProject !== undefined
               ? html`<button type="button" class="create" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>`
               : nothing}
         </div>
+        ${showsSessions && this.rowTap === "continue" ? html`<p class="pick-hint" role="status"><span>Choose the session to continue in a new one.</span><button type="button" class="pick-cancel" @click=${() => { this.rowTap = "open"; }}>Cancel</button></p>` : nothing}
         <div
           class=${this.tilesPerRow === undefined ? "body" : `body tiles-${String(this.tilesPerRow)}`}
           @pointerdown=${() => { this.rowOrder.hold(); }}
@@ -514,7 +531,7 @@ export class AppNavigatePage extends LitElement {
     const key = machineSessionKey(row.machineId, row.session.id);
     const opening = isOpeningKey(this.opening, key);
     return this.renderRowShell(sessionRowKey(row), "session", row.session.id, label, html`
-      <button type="button" class=${`row session${row.current ? " current" : ""}${opening ? " opening" : ""}`} aria-current=${row.current ? "true" : "false"} aria-busy=${opening ? "true" : "false"} title=${label} @click=${() => { this.onOpenSession?.(row.session, row.machineId); }}>
+      <button type="button" class=${`row session${row.current ? " current" : ""}${opening ? " opening" : ""}`} aria-current=${row.current ? "true" : "false"} aria-busy=${opening ? "true" : "false"} title=${label} @click=${() => { this.tapSessionRow(row); }}>
         <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>
         ${this.opening?.key === key && this.opening.phase !== "going" ? html`<span class="row-path">${renderOpeningWords(this.opening, key)}</span>` : row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
       </button>
@@ -635,6 +652,9 @@ export class AppNavigatePage extends LitElement {
     .actions { flex: 0 0 auto; display: flex; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
     .create { box-sizing: border-box; flex: 1 1 0; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-selection-bg); color: var(--pi-text-bright); font: inherit; cursor: pointer; }
     .create.secondary { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text); }
+    .create.secondary[aria-pressed="true"] { border-color: var(--pi-accent-border); color: var(--pi-text-bright); }
+    .pick-hint { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-3); margin: var(--pi-space-3) var(--pi-bar-inset) 0; color: var(--pi-text); font-size: var(--pi-text-xs); }
+    .pick-cancel { box-sizing: border-box; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; cursor: pointer; }
     /* Two entries to a line: the owner reads this list as a board of places,
        and one tall row per screen line wasted half the width. */
     /* The quick-access board's shape, which the owner asked this page to
@@ -678,3 +698,9 @@ declare global {
 function pinnedFirst<T extends { id: string }>(choices: readonly T[], pinned: ReadonlySet<string>): T[] {
   return [...choices.filter((choice) => pinned.has(choice.id)), ...choices.filter((choice) => !pinned.has(choice.id))];
 }
+
+/** Each tap mode's action on the tapped row. */
+const ROW_TAPS: Readonly<Record<SessionRowTap, (page: AppNavigatePage, row: NavigateSessionRow) => void>> = {
+  open: (page, row) => { page.onOpenSession?.(row.session, row.machineId); },
+  continue: (page, row) => { page.onContinueFrom?.(row.session, row.machineId); },
+};

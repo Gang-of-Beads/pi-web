@@ -382,7 +382,8 @@ export const sessionsApi = {
     method: "POST",
     body: sessionBody(session, { targetId: navigation.targetId, expectedLeafId: navigation.expectedLeafId, summary: navigation.summary }),
   }),
-  forkTree: (session: SessionRef, fork: SessionTreeForkRequest, machineId = "local") => requestSessionTreeFork(session, fork, machineId),
+  forkTree: (session: SessionRef, fork: SessionTreeForkRequest, machineId = "local") => requestSessionFork(session, "tree/fork", { entryId: fork.entryId, expectedLeafId: fork.expectedLeafId }, machineId),
+  continueInNewSession: (session: SessionRef, machineId = "local") => requestSessionFork(session, "continue", {}, machineId),
   locateSession: (session: SessionRef, machineId = "local") => requestSessionLocation(session, machineId),
   transcriptTail: (session: SessionRef, options: { limit: number }, machineId = "local") => readNewerDaemonRoute(`${sessionQueryPath(session, "transcript-tail", machineId)}&${new URLSearchParams({ limit: String(options.limit) }).toString()}`, machineId, parseSessionTranscriptTail, /^Route GET:.*\/transcript-tail(\?.*)? not found$/i),
   /**
@@ -446,18 +447,27 @@ export class SessionTreeForkUnavailableError extends Error {
   }
 }
 
-async function requestSessionTreeFork(session: SessionRef, fork: SessionTreeForkRequest, machineId: string): Promise<SessionTreeForkResult> {
+/** The two ways a session forks, and what an older daemon that lacks the route says for each. */
+type SessionForkEndpoint = "tree/fork" | "continue";
+
+const SESSION_FORK_ROUTES: Readonly<Record<SessionForkEndpoint, { missing: RegExp; unavailable: () => Error }>> = {
+  "tree/fork": { missing: /^Route POST:.*\/tree\/fork not found$/i, unavailable: () => new SessionTreeForkUnavailableError() },
+  continue: { missing: /^Route POST:.*\/continue not found$/i, unavailable: () => new Error("This machine's session daemon cannot continue a session in a new one yet. Update PI WEB there and restart its session daemon.") },
+};
+
+async function requestSessionFork(session: SessionRef, endpoint: SessionForkEndpoint, fields: Record<string, unknown>, machineId: string): Promise<SessionTreeForkResult> {
+  const route = SESSION_FORK_ROUTES[endpoint];
   try {
-    return await fetchWithDeadline(resolveAppUrl(sessionPath(session, "tree/fork", machineId)), {
+    return await fetchWithDeadline(resolveAppUrl(sessionPath(session, endpoint, machineId)), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: sessionBody(session, { entryId: fork.entryId, expectedLeafId: fork.expectedLeafId }),
+      body: sessionBody(session, fields),
     }, async (response) => {
-      reportTransportReachable(sessionPath(session, "tree/fork", machineId));
+      reportTransportReachable(sessionPath(session, endpoint, machineId));
       if (!response.ok) {
         const body: unknown = await response.json().catch((): unknown => ({}));
-        if (isMissingSessionTreeForkRoute(response.status, body)) throw new SessionTreeForkUnavailableError();
-        throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(sessionPath(session, "tree/fork", machineId)), undefined, errorCode(body));
+        if (isMissingDaemonRoute(response.status, body, route.missing)) throw route.unavailable();
+        throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(sessionPath(session, endpoint, machineId)), undefined, errorCode(body));
       }
       return parseSessionTreeForkResult(await response.json());
     });
@@ -467,10 +477,6 @@ async function requestSessionTreeFork(session: SessionRef, fork: SessionTreeFork
     if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, machineId);
     throw error;
   }
-}
-
-function isMissingSessionTreeForkRoute(status: number, value: unknown): boolean {
-  return isMissingDaemonRoute(status, value, /^Route POST:.*\/tree\/fork not found$/i);
 }
 
 /**

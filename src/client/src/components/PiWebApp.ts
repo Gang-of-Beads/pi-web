@@ -3008,6 +3008,7 @@ export class PiWebApp extends LitElement {
       .onOpenSession=${(session: SessionInfo, machineId: string) => { void this.openSessionFromQuickSwitcher(session, machineId); }}
       .opening=${this.navigation.view()}
       .onCreateSession=${() => { this.closeNavigate(); void this.asReaderListChange(() => this.startSessionAndOpenChat()); }}
+      .onContinueFrom=${(session: SessionInfo, machineId: string) => { void this.continueInNewSession(session, machineId); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { this.navigation.begin(); this.closeNavigate(); this.openProjectDialog(); } : undefined}
       .machineSessions=${this.quickSwitcherSessions}
       .tilesPerRow=${chosenListTiles(this.listTiles, this.appShell.isMobileNavigationLayout ? "phone" : "desktop")}
@@ -3353,6 +3354,11 @@ export class PiWebApp extends LitElement {
     }
     await this.machines.selectMachine(target, options);
     return true;
+  }
+
+  private async continueInNewSession(session: SessionInfo, machineId: string): Promise<void> {
+    const forked = await this.sessions.continueInNewSession(session, machineId);
+    if (forked !== undefined) await this.openSessionFromQuickSwitcher(forked, machineId);
   }
 
   /**

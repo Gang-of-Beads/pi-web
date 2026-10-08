@@ -670,6 +670,14 @@ app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unkn
     }
   });
 
+  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/continue`, async (request, reply) => {
+    try {
+      return await sessions.continueInNewSession(sessionRefFromBody(request.params.sessionId, optionalRecord(request.body)));
+    } catch (error) {
+      return sendError(reply, sessionErrorReply(error, 400));
+    }
+  });
+
   app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/abort`, async (request, reply) => {
     try {
       // The queue the abort emptied comes back with the response: those

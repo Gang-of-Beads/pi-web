@@ -1065,6 +1065,28 @@ export class SessionController {
     return result;
   }
 
+  /**
+   * Continue a session in a new one (owner, 2026-10-08, ask c74272fa): the daemon forks it at its
+   * newest entry, so the new session carries the whole history and the source stays as it is. The
+   * new session joins the listed sessions of its machine; the caller opens it. undefined when the
+   * fork did not happen: a failed request sets an error notice, and a fork cancelled by a session hook returns silently.
+   */
+  async continueInNewSession(session: SessionInfo, machineId: string): Promise<SessionInfo | undefined> {
+    let result: SessionTreeForkResult;
+    try {
+      result = await this.api.continueInNewSession(session, machineId);
+    } catch (error) {
+      this.setState(errorNoticePatch(error));
+      return undefined;
+    }
+    if (result.cancelled) return undefined;
+    const forked = result.session;
+    if (result.promptDraft !== undefined) saveDraft(machineSessionKey(machineId, forked.id), result.promptDraft);
+    this.transcripts.discard(machineSessionKey(machineId, session.id));
+    if (selectedMachineId(this.getState()) === machineId) this.setState({ sessions: [forked, ...this.getState().sessions.filter((candidate) => candidate.id !== forked.id)] });
+    return forked;
+  }
+
   async abortTreeNavigation(): Promise<void> {
     const state = this.getState();
     const session = state.selectedSession;

@@ -4181,6 +4181,21 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
+   * Continue a session in a new one (owner, 2026-10-08, ask c74272fa): a fork at its newest entry,
+   * so the new session carries the whole history and the source file is left as it is. The leaf is
+   * read here, where the fork happens, because the browser only knows the last message, and a
+   * session's newest entry is not always a message.
+   */
+  async continueInNewSession(ref: PiSessionRef): Promise<ClientSessionTreeForkResult> {
+    await this.assertWritable(ref);
+    const session = await this.getOrOpen(ref);
+    if (this.isTreeExclusiveSessionIdentityActive(ref.id) || this.hasActiveWork(session)) throw new Error("Stop current session activity before continuing in a new session");
+    const leafId = session.sessionManager.getLeafId();
+    if (leafId === null) throw new Error("This session has nothing to continue from yet.");
+    return this.forkFromTree(ref, { entryId: leafId, expectedLeafId: leafId });
+  }
+
+  /**
    * A changed-id fork can rebind its runtime after a heartbeat published the
    * prior identity as active. Clear every observable owner before forgetting
    * that identity's local activity record.

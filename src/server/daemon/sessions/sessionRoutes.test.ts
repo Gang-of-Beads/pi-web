@@ -1810,6 +1810,11 @@ class CapturingRouteSessionService implements SessionRouteService {
     this.navigateTreeCalls.push({ lookup, request });
     return Promise.resolve({ cancelled: false, editorText: "edit this" });
   }
+  continueInNewSession(lookup: SessionRouteRef): Promise<SessionTreeForkResult> {
+    this.calls.push({ continueInNewSession: lookup });
+    return Promise.resolve({ cancelled: true });
+  }
+
   forkFromTree(lookup: SessionRouteRef, request: SessionTreeForkRequest): Promise<SessionTreeForkResult> {
     if (this.forkFromTreeError !== undefined) return Promise.reject(this.forkFromTreeError);
     this.forkFromTreeCalls.push({ lookup, request });
