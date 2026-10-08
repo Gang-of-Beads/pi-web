@@ -1,6 +1,6 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab, insertNewlineAndIndent } from "@codemirror/commands";
 import { markdown, deleteMarkupBackward, insertNewlineContinueMarkup } from "@codemirror/lang-markdown";
-import { EditorSelection, EditorState, Compartment, type SelectionRange } from "@codemirror/state";
+import { EditorSelection, EditorState, type SelectionRange } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view";
 import { defaultHighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
 
@@ -15,7 +15,6 @@ import { defaultHighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } 
 export interface ComposerEditorCallbacks {
   parent: HTMLElement;
   doc: string;
-  disabled: boolean;
   placeholderText: string | HTMLElement;
   contentAttributesFor(leadingText: string): Record<string, string>;
   onDocChanged(text: string): void;
@@ -27,15 +26,8 @@ export interface ComposerEditorCallbacks {
   onTab(view: EditorView): boolean;
 }
 
-export interface ComposerEditorHandle {
-  view: EditorView;
-  setDisabled(disabled: boolean): void;
-}
-
-export function createComposerEditor(options: ComposerEditorCallbacks): ComposerEditorHandle {
-  const editable = new Compartment();
-  const readOnly = new Compartment();
-  const view = new EditorView({
+export function createComposerEditor(options: ComposerEditorCallbacks): EditorView {
+  return new EditorView({
     parent: options.parent,
     state: EditorState.create({
       doc: options.doc,
@@ -53,8 +45,6 @@ export function createComposerEditor(options: ComposerEditorCallbacks): Composer
           blur: () => { options.onBlur(); },
         }),
         placeholder(options.placeholderText),
-        editable.of(EditorView.editable.of(!options.disabled)),
-        readOnly.of(EditorState.readOnly.of(options.disabled)),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) options.onDocChanged(update.state.doc.toString());
         }),
@@ -72,17 +62,6 @@ export function createComposerEditor(options: ComposerEditorCallbacks): Composer
       ],
     }),
   });
-  return {
-    view,
-    setDisabled(disabled: boolean): void {
-      view.dispatch({
-        effects: [
-          editable.reconfigure(EditorView.editable.of(!disabled)),
-          readOnly.reconfigure(EditorState.readOnly.of(disabled)),
-        ],
-      });
-    },
-  };
 }
 
 /** A collapsed selection at `position`, for dispatch sites outside this module. */

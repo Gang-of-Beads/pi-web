@@ -216,7 +216,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
      action alone carries the accent. */
   button { font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   button:not(:disabled):active { background: var(--pi-surface-hover); }
-  button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
+  button:disabled, textarea:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
   @media (max-width: 760px) {
     footer { gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset); }
     /* The action row is a bar: one bar tall, its 36px controls centred. */
@@ -257,7 +257,6 @@ type PendingAttachment = CapturedAttachment & { id: string };
 
 @customElement("prompt-editor")
 export class PromptEditor extends LitElement {
-  @property({ type: Boolean }) disabled = false;
   @property() sessionId?: string;
   @property() cwd?: string;
   @property() machineId = "local";
@@ -333,7 +332,6 @@ export class PromptEditor extends LitElement {
   private historyIndex: number | undefined;
   private historyDraftBeforeBrowse = "";
   private editor: EditorView | undefined;
-  private editorControls: composerEditor.ComposerEditorHandle | undefined;
   /** The editor module; set exactly when `editor` is set. */
   private cm: ComposerEditorModule | undefined;
   private readonly mobilePromptEnterMedia = createMobilePromptEnterMedia();
@@ -404,7 +402,6 @@ export class PromptEditor extends LitElement {
   }
 
   protected override updated(changed: PropertyValues) {
-    if (changed.has("disabled")) this.updateEditorDisabledState();
     if (changed.has("sessionId") || changed.has("machineId")) {
       this.syncEditorDoc();
       // The strip must carry the scope it belongs to: rows loaded for the
@@ -426,7 +423,6 @@ export class PromptEditor extends LitElement {
     }
     this.editor?.destroy();
     this.editor = undefined;
-    this.editorControls = undefined;
     super.disconnectedCallback();
   }
 
@@ -446,11 +442,10 @@ export class PromptEditor extends LitElement {
           ${this.isCompacting && !shellMode ? html`<div class="mode-hint">Compacting history · message will be queued</div>` : null}
           <div class="editor-box">
             <div
-              class=${`markdown-editor${this.disabled ? " markdown-editor-disabled" : ""}`}
+              class="markdown-editor"
               aria-label="Message pi"
-              aria-disabled=${this.disabled ? "true" : "false"}
             ></div>
-            <button class="editor-attach icon-button" ?disabled=${this.disabled} title="Attach files" aria-label="Attach files" @click=${() => { this.attachmentInput?.click(); }}>${renderAttachIcon()}</button>
+            <button class="editor-attach icon-button" title="Attach files" aria-label="Attach files" @click=${() => { this.attachmentInput?.click(); }}>${renderAttachIcon()}</button>
           </div>
           <autocomplete-menu .items=${this.completions} .selectedIndex=${this.selectedIndex} .onPick=${(item: CompletionItem) => { this.pick(item); }}></autocomplete-menu>
         </div>
@@ -459,8 +454,8 @@ export class PromptEditor extends LitElement {
           ${this.renderCompactStatus()}
           ${this.renderHistoryButton()}
           ${this.renderComposerContributions("trailing")}
-          <button class="icon-button send-button" ?disabled=${this.disabled} title=${queuesInput ? "Steer — joins the current turn at the next safe point" : "Send message"} aria-label=${queuesInput ? "Steer current response (queued if busy)" : "Send message"} @click=${() => { this.send(this.canSteer ? "steer" : "followUp"); }}>${this.canSteer ? renderSteerIcon() : queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
-          <button class="icon-button stop-button" ?disabled=${this.disabled || !this.canStop} title=${this.canStop ? "Stop current work and clear queued messages" : "Nothing running"} aria-label="Stop current work" @click=${() => this.onStop?.()}>${renderStopIcon()}</button>
+          <button class="icon-button send-button" title=${queuesInput ? "Steer — joins the current turn at the next safe point" : "Send message"} aria-label=${queuesInput ? "Steer current response (queued if busy)" : "Send message"} @click=${() => { this.send(this.canSteer ? "steer" : "followUp"); }}>${this.canSteer ? renderSteerIcon() : queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
+          <button class="icon-button stop-button" ?disabled=${!this.canStop} title=${this.canStop ? "Stop current work and clear queued messages" : "Nothing running"} aria-label="Stop current work" @click=${() => this.onStop?.()}>${renderStopIcon()}</button>
         </div>
       </footer>
       ${this.renderAttachmentZoom()}
@@ -828,7 +823,6 @@ export class PromptEditor extends LitElement {
   }
 
   private renderHistoryButton() {
-    if (this.disabled) return null;
     const key = draftStorageKey(this.machineId, this.sessionId);
     const localCount = key === undefined ? 0 : loadPromptHistory(key).length;
     if (localCount === 0 && this.sessionPrompts.length === 0) return null;
@@ -836,7 +830,6 @@ export class PromptEditor extends LitElement {
       <button
         class="editor-history icon-button"
         type="button"
-        ?disabled=${this.disabled}
         title="Reuse an earlier prompt"
         aria-label="Reuse an earlier prompt"
         @click=${() => { this.openPromptHistoryPicker(); }}
@@ -880,7 +873,7 @@ export class PromptEditor extends LitElement {
       sessionId: this.sessionId,
       machineId: this.machineId,
       draft: this.editor?.state.doc.toString() ?? this.draft,
-      busy: this.disabled || this.sending,
+      busy: this.sending,
       insertText: (text: string) => { this.insertDictatedText(text); },
       replaceDraft: (text: string) => { this.replaceText(text); },
       notify: (message: string, severity: "info" | "warning" | "error") => { this.onPluginNotice?.(message, severity); },
@@ -937,10 +930,9 @@ export class PromptEditor extends LitElement {
    */
   private createEditor() {
     if (!this.editorHost || this.editor !== undefined) return;
-    const handle = composerEditor.createComposerEditor({
+    const view = composerEditor.createComposerEditor({
       parent: this.editorHost,
       doc: this.draft,
-      disabled: this.disabled,
       placeholderText: composerPlaceholder(),
       contentAttributesFor: (leadingText) => inputAssistanceContentAttributes(leadingText),
       onDocChanged: (text) => { this.updateDraft(text); },
@@ -952,9 +944,7 @@ export class PromptEditor extends LitElement {
       onTab: (view) => this.handleEditorTab(view),
     });
     this.cm = composerEditor;
-    this.editorControls = handle;
-    this.editor = handle.view;
-    this.updateEditorDisabledState();
+    this.editor = view;
   }
 
   private syncEditorDoc() {
@@ -967,10 +957,6 @@ export class PromptEditor extends LitElement {
       changes: { from: 0, to: current.length, insert: this.draft },
       selection: cm.cursorAt(this.draft.length),
     });
-  }
-
-  private updateEditorDisabledState() {
-    this.editorControls?.setDisabled(this.disabled);
   }
 
   private updateDraft(value: string) {
@@ -1304,7 +1290,6 @@ export class PromptEditor extends LitElement {
    * the network. A send is never swallowed because another is uploading; it waits its turn.
    */
   private send(streamingBehavior?: "steer" | "followUp") {
-    if (this.disabled) return;
     // A file still being read belongs to this message. Sending without it is
     // how one submission became a text message plus a bodiless image.
     if (this.attachingCount > 0) {
