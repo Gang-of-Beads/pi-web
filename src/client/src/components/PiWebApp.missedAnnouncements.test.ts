@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sessionPinsApi } from "../api/clients";
+import { sessionPinsApi, type MachinePins } from "../api/clients";
 import { RealtimeSocket } from "../sessionSocket";
 import { PiWebApp } from "./PiWebApp";
+
+/** A machine's pins answer with no project pins: what these tests are about is the global set. */
+function pinAnswer(ids: string[]): MachinePins {
+  return { global: ids, projects: undefined };
+}
 
 /**
  * A lost announcement is noticed (state-diagram D5, B28 slice H1). A machine's global socket can
@@ -16,7 +21,7 @@ afterEach(() => {
 
 describe("an open after the page heard the machine (B28 slice H2)", () => {
   it("reads again what the frames keep live on a reopen and on a handoff between the machine's sockets, and not on the page's first open", async () => {
-    vi.spyOn(sessionPinsApi, "pins").mockResolvedValue([]);
+    vi.spyOn(sessionPinsApi, "pins").mockResolvedValue(pinAnswer([]));
     const opens: { machineId: string; open: () => void }[] = [];
     vi.spyOn(RealtimeSocket.prototype, "connect").mockImplementation((_onEvent, onOpen, machineId = "local") => { if (onOpen !== undefined) opens.push({ machineId, open: onOpen }); });
     const app = createApp();
@@ -57,7 +62,7 @@ describe("an open after the page heard the machine (B28 slice H2)", () => {
   });
 
   it("leaves the open workspace panels to the hidden tab's return, as a live workspace.changed does", async () => {
-    vi.spyOn(sessionPinsApi, "pins").mockResolvedValue([]);
+    vi.spyOn(sessionPinsApi, "pins").mockResolvedValue(pinAnswer([]));
     const missed = new Map<string, () => void>();
     vi.spyOn(RealtimeSocket.prototype, "connect").mockImplementation((_onEvent, _onOpen, machineId = "local", onMissed) => { if (onMissed !== undefined) missed.set(machineId, onMissed); });
     const app = createApp("hidden");
@@ -79,7 +84,7 @@ describe("an open after the page heard the machine (B28 slice H2)", () => {
 
 describe("a burst of lost announcements", () => {
   it("shares one pass of reads, and asks for at most one more after it", async () => {
-    vi.spyOn(sessionPinsApi, "pins").mockResolvedValue([]);
+    vi.spyOn(sessionPinsApi, "pins").mockResolvedValue(pinAnswer([]));
     const missed = new Map<string, () => void>();
     vi.spyOn(RealtimeSocket.prototype, "connect").mockImplementation((_onEvent, _onOpen, machineId = "local", onMissed) => { if (onMissed !== undefined) missed.set(machineId, onMissed); });
     const app = createApp();
@@ -144,7 +149,7 @@ const flush = async (): Promise<void> => { for (let index = 0; index < 6; index 
 
 describe("a machine's socket that lost an announcement", () => {
   it("reads again, once, what the frames of the machine in use and of a followed machine keep live", async () => {
-    const pins = vi.spyOn(sessionPinsApi, "pins").mockResolvedValue([]);
+    const pins = vi.spyOn(sessionPinsApi, "pins").mockResolvedValue(pinAnswer([]));
     const missed = new Map<string, () => void>();
     vi.spyOn(RealtimeSocket.prototype, "connect").mockImplementation((_onEvent, _onOpen, machineId = "local", onMissed) => { if (onMissed !== undefined) missed.set(machineId, onMissed); });
     const app = createApp();

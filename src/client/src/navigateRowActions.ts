@@ -9,7 +9,7 @@
 
 export type NavigateRowKind = "session" | "project" | "machine";
 
-export type NavigateRowActionId = "open" | "pin" | "unpin" | "rename" | "archive" | "restore" | "delete-archived" | "copy-path" | "close-project";
+export type NavigateRowActionId = "open" | "pin" | "unpin" | "pin-project" | "unpin-project" | "rename" | "archive" | "restore" | "delete-archived" | "copy-path" | "close-project";
 
 export interface NavigateRowAction {
   id: NavigateRowActionId;
@@ -18,6 +18,8 @@ export interface NavigateRowAction {
 
 export interface NavigateRowFacts {
   pinned?: boolean;
+  /** A session's pin in the project the list stands in (B49); undefined where none can be set. */
+  projectPinned?: boolean | undefined;
   renamable?: boolean;
   /** The host can change this session's archive state: persisted, and on the machine it acts on. */
   archivable?: boolean;
@@ -39,7 +41,8 @@ export function navigateRowActions(kind: NavigateRowKind, facts: NavigateRowFact
     return actions;
   }
   if (kind === "session") {
-    actions.push(facts.pinned === true ? { id: "unpin", label: "Unpin" } : { id: "pin", label: "Pin to top" });
+    actions.push(facts.pinned === true ? { id: "unpin", label: "Unpin globally" } : { id: "pin", label: "Pin globally" });
+    if (facts.projectPinned !== undefined) actions.push(facts.projectPinned ? { id: "unpin-project", label: "Unpin in this project" } : { id: "pin-project", label: "Pin in this project" });
     if (facts.renamable === true) actions.push({ id: "rename", label: "Rename" });
     if (facts.archivable === true) actions.push({ id: "archive", label: "Archive" });
   }

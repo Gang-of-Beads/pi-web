@@ -198,24 +198,48 @@ export const piPackagesApi = {
  * browses that machine reads and writes the same set.
  */
 export const sessionPinsApi = {
-  pins: (machineId = "local") => request(`${machinePrefix(machineId)}/session-pins`, parsePinnedSessionIds, { cache: "no-store" }),
+  pins: (machineId = "local") => request(`${machinePrefix(machineId)}/session-pins`, parseMachinePins, { cache: "no-store" }),
   setPinned: (sessionId: string, pinned: boolean, machineId = "local") => request(
     `${machinePrefix(machineId)}/session-pins`,
-    parsePinnedSessionIds,
+    parseMachinePins,
     { method: "POST", body: JSON.stringify({ sessionId, pinned }) },
+  ),
+  setProjectPinned: (sessionId: string, projectId: string, pinned: boolean, machineId = "local") => request(
+    `${machinePrefix(machineId)}/session-pins`,
+    parseMachinePins,
+    { method: "POST", body: JSON.stringify({ sessionId, pinned, projectId }) },
   ),
   adopt: (sessionIds: readonly string[], machineId = "local") => request(
     `${machinePrefix(machineId)}/session-pins`,
-    parsePinnedSessionIds,
+    parseMachinePins,
     { method: "POST", body: JSON.stringify({ adopt: [...sessionIds] }) },
   ),
 };
 
-function parsePinnedSessionIds(value: unknown): string[] {
+/**
+ * A machine's pins (B49): the global ones, and each project's own by project id. `projects` is
+ * undefined when the machine answered without them, an older build that keeps no project pins, so
+ * the page offers no project pin there rather than one that would vanish.
+ */
+export interface MachinePins {
+  readonly global: readonly string[];
+  readonly projects: ReadonlyMap<string, ReadonlySet<string>> | undefined;
+}
+
+function parseMachinePins(value: unknown): MachinePins {
   if (typeof value !== "object" || value === null) throw new Error("The machine did not answer with its pins");
   const pinned: unknown = Reflect.get(value, "pinnedSessionIds");
   if (!Array.isArray(pinned)) throw new Error("The machine did not answer with its pins");
-  return pinned.filter((id): id is string => typeof id === "string");
+  return { global: stringsOf(pinned), projects: parseProjectPins(Reflect.get(value, "projectPins")) };
+}
+
+function parseProjectPins(value: unknown): ReadonlyMap<string, ReadonlySet<string>> | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  return new Map(Object.entries(value).flatMap(([projectId, ids]): [string, ReadonlySet<string>][] => (Array.isArray(ids) ? [[projectId, new Set(stringsOf(ids))]] : [])));
+}
+
+function stringsOf(values: readonly unknown[]): string[] {
+  return values.filter((id): id is string => typeof id === "string");
 }
 
 export const machineStatusApi = {

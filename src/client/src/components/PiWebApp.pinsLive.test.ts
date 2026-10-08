@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sessionPinsApi } from "../api/clients";
+import { sessionPinsApi, type MachinePins } from "../api/clients";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { PiWebApp } from "./PiWebApp";
+
+/** A machine's pins answer with no project pins: what these tests are about is the global set. */
+function pinAnswer(ids: string[]): MachinePins {
+  return { global: ids, projects: undefined };
+}
 
 /**
  * Pins are live from an event, not re-read on every render (P5 slice a; state-diagram D5).
@@ -54,7 +59,7 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
     let answers = 0;
     const pins = vi.spyOn(sessionPinsApi, "pins").mockImplementation(() => {
       answers += 1;
-      return answers === 4 ? Promise.reject(new Error("offline")) : Promise.resolve(["s1"]);
+      return answers === 4 ? Promise.reject(new Error("offline")) : Promise.resolve(pinAnswer(["s1"]));
     });
     const app = createApp();
     const renderPins = () => call(app, "pinnedSessionIdsFor", "local");
@@ -86,7 +91,7 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
   });
 
   it("reads another machine's pins again when that machine's activity socket says they changed", async () => {
-    const pins = vi.spyOn(sessionPinsApi, "pins").mockResolvedValue([]);
+    const pins = vi.spyOn(sessionPinsApi, "pins").mockResolvedValue(pinAnswer([]));
     const app = createApp();
     call(app, "pinnedSessionIdsFor", "remote-1");
     await flush();
@@ -98,10 +103,10 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
   });
 
   it("reads once more after a read that was on its way when the machine said its pins changed", async () => {
-    let answerFirst: (ids: string[]) => void = () => undefined;
+    let answerFirst: (pins: MachinePins) => void = () => undefined;
     const pins = vi.spyOn(sessionPinsApi, "pins")
       .mockImplementationOnce(() => new Promise((resolve) => { answerFirst = resolve; }))
-      .mockResolvedValue(["s1", "s2"]);
+      .mockResolvedValue(pinAnswer(["s1", "s2"]));
     const app = createApp();
     call(app, "pinnedSessionIdsFor", "local");
     await flush();
@@ -110,7 +115,7 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
     call(app, "handleRealtimeEvent", "local", { type: "pins.changed" });
     await flush();
     const whileOnItsWay = pins.mock.calls.length;
-    answerFirst(["s1"]);
+    answerFirst(pinAnswer(["s1"]));
     await flush();
     await flush();
     const shown: unknown = call(app, "pinnedSessionIdsFor", "local");
@@ -119,7 +124,7 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
   });
 
   it("reads a machine's pins when its activity socket reopens, and every answered machine's when the tab resumes", async () => {
-    const pins = vi.spyOn(sessionPinsApi, "pins").mockResolvedValue([]);
+    const pins = vi.spyOn(sessionPinsApi, "pins").mockResolvedValue(pinAnswer([]));
     const opens: (() => void)[] = [];
     vi.spyOn(RealtimeSocket.prototype, "connect").mockImplementation((_onEvent, onOpen) => { if (onOpen !== undefined) opens.push(onOpen); });
     const app = createApp();
@@ -145,7 +150,7 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
   });
 
   it("lists a pinned session whose project is closed in Pinned and the quick switcher, and drops it once unpinned (B49)", async () => {
-    vi.spyOn(sessionPinsApi, "pins").mockResolvedValue(["elsewhere"]);
+    vi.spyOn(sessionPinsApi, "pins").mockResolvedValue(pinAnswer(["elsewhere"]));
     const app = createApp();
     const elsewhere = { id: "elsewhere", cwd: "/closed", path: "/closed/elsewhere.jsonl", created: "2026-09-01", modified: "2026-09-01", messageCount: 1, firstMessage: "kept" };
     const listed = { id: "listed", cwd: "/alpha", path: "/alpha/listed.jsonl", created: "2026-09-02", modified: "2026-09-02", messageCount: 1, firstMessage: "open" };
@@ -175,7 +180,7 @@ describe("a machine's pins are read once, then on its word (P5 slice a)", () => 
   });
 
   it("keeps another machine's pinned rows on that machine's switcher tab, by that machine's pins (B49)", async () => {
-    vi.spyOn(sessionPinsApi, "pins").mockImplementation((machineId) => Promise.resolve(machineId === "remote-1" ? ["far"] : []));
+    vi.spyOn(sessionPinsApi, "pins").mockImplementation((machineId) => Promise.resolve(pinAnswer(machineId === "remote-1" ? ["far"] : [])));
     const app = createApp();
     const far = { id: "far", cwd: "/closed", path: "/closed/far.jsonl", created: "2026-09-01", modified: "2026-09-01", messageCount: 1, firstMessage: "far" };
     const unpinned = { ...far, id: "unpinned-far" };

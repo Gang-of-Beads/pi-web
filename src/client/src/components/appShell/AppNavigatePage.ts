@@ -464,7 +464,7 @@ export class AppNavigatePage extends LitElement {
     id: string,
     label: string,
     row: unknown,
-    facts: { pinned?: boolean; hasPath?: boolean; closable?: boolean; archived?: boolean; archivable?: boolean },
+    facts: { pinned?: boolean; projectPinned?: boolean | undefined; hasPath?: boolean; closable?: boolean; archived?: boolean; archivable?: boolean },
   ) {
     const actions = navigateRowActions(kind, {
       ...facts,
@@ -517,7 +517,7 @@ export class AppNavigatePage extends LitElement {
         <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>
         ${this.opening?.key === key && this.opening.phase !== "going" ? html`<span class="row-path">${renderOpeningWords(this.opening, key)}</span>` : row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
       </button>
-    `, { pinned: row.pinned, archived: row.session.archived === true, archivable: this.canArchiveSessions && row.session.persisted !== false });
+    `, { pinned: row.pins.global, projectPinned: row.pins.project, archived: row.session.archived === true, archivable: this.canArchiveSessions && row.session.persisted !== false });
   }
 
   /**

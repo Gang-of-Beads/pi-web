@@ -44,13 +44,21 @@ export interface NavigateChoice {
   sessionCount?: number;
 }
 
+export interface SessionPinFacts {
+  readonly global: boolean;
+  readonly project: boolean | undefined;
+}
+
 /** The mark beside a session's name: its category from the one classifier (B14), or unknown before its state is known. */
 export type NavigateSessionState = SessionActivityCategory | "unknown";
 
 export interface NavigateSessionRow {
   session: SessionInfo;
   machineId: string;
+  /** Whether the row sits under PINNED on this board; see `shownPinned`. */
   pinned: boolean;
+  /** Its global pin, and its pin in the project the board stands in (undefined where there is none to set). */
+  pins: SessionPinFacts;
   /** Whether this row is the session currently open. */
   current: boolean;
   /** Derived tags: project, folder, machine, state. Searchable with `#`, not shown. */
@@ -91,11 +99,14 @@ export interface NavigateInput {
   folders: readonly FolderLike[];
   /** Sessions on the browsed machine. */
   sessions: readonly SessionInfo[];
-  /** Pinned sessions from every machine, each carrying the machine it belongs to. */
+  /** Globally pinned sessions, each carrying the machine it belongs to; a project's own pins come from `sessions`. */
   pinned: readonly { session: SessionInfo; machineId: string }[];
   /** Each session's category from `sessionActivityCategory`; a session missing from it is unknown. */
   sessionStates: ReadonlyMap<string, SessionActivityCategory>;
+  /** The machine's global pins. */
   pinnedSessionIds: ReadonlySet<string>;
+  /** The scoped project's pins (B49); undefined with no project in scope or a machine that keeps none. */
+  projectPinnedSessionIds?: ReadonlySet<string> | undefined;
   query: string;
   /** Manual tags per session id, merged with the derived ones. */
   manualTags?: Readonly<Record<string, readonly string[]>>;
@@ -223,10 +234,12 @@ function sessionState(session: SessionInfo, input: NavigateInput): NavigateSessi
 
 function row(session: SessionInfo, machineId: string, input: NavigateInput): NavigateSessionRow {
   const manual = input.manualTags?.[session.id] ?? [];
+  const pins = pinFacts(session.id, input);
   return {
     session,
     machineId,
-    pinned: input.pinnedSessionIds.has(session.id),
+    pinned: shownPinned(pins),
+    pins,
     current: machineId === input.scope.machineId && session.id === input.scope.sessionId,
     tags: [...new Set([...derivedTags(session, input, machineId), ...manual.map((tag) => tag.toLowerCase())])],
     detail: sessionDetail(session, machineId, input),
@@ -268,14 +281,44 @@ function sessionDetail(session: SessionInfo, machineId: string, input: NavigateI
 
 /**
  * Pins obey the path, because the path is the only scope control on this
- * board. Standing in a project and being shown another project's pinned
- * sessions read as the global list with a different title - the owner's
- * report - so a narrowed path lists only the pins it actually contains.
+ * board: a narrowed path lists only the pins it contains (the owner's report of
+ * another project's pins under a project title). Which pin counts is `shownPinned`'s
+ * rule (B49): on the machine-wide board PINNED lists global pins; with a project in
+ * scope it lists only that project's own pins, unless the machine keeps no project
+ * pins, in which case the global pins still apply.
  */
 function pinnedSection(input: NavigateInput): NavigateSessionRow[] {
-  return input.pinned
-    .filter((entry) => inScope(entry.session, input))
-    .map((entry) => ({ ...row(entry.session, entry.machineId, input), pinned: true }));
+  const projectPins = input.scope.projectId === undefined ? undefined : input.projectPinnedSessionIds;
+  if (projectPins === undefined) {
+    return input.pinned
+      .filter((entry) => inScope(entry.session, input))
+      .map((entry) => globallyPinned(row(entry.session, entry.machineId, input)))
+      .filter((entry) => entry.pinned);
+  }
+  return input.sessions
+    .filter((session) => inScope(session, input) && projectPins.has(session.id))
+    .map((session) => row(session, input.scope.machineId, input));
+}
+
+/** An entry of `pinned` is pinned globally by the caller's word, whatever the id set says. */
+function globallyPinned(entry: NavigateSessionRow): NavigateSessionRow {
+  const pins = { ...entry.pins, global: true };
+  return { ...entry, pins, pinned: shownPinned(pins) };
+}
+
+function pinFacts(sessionId: string, input: NavigateInput): SessionPinFacts {
+  const project = input.scope.projectId === undefined ? undefined : input.projectPinnedSessionIds?.has(sessionId);
+  return { global: input.pinnedSessionIds.has(sessionId), project };
+}
+
+/**
+ * Which pin puts a row under PINNED (B49). Owner, 2026-10-08 (ask 9dcf07fa): "global is the
+ * global pin, project is the project pin; the menu chooses where to pin". So the machine-wide board
+ * lists global pins, and a project lists only its own; a global pin sits in a project's list like
+ * any session. A machine that keeps no project pins has only the global pin, in a project too.
+ */
+function shownPinned(pins: SessionPinFacts): boolean {
+  return pins.project ?? pins.global;
 }
 
 function inScope(session: SessionInfo, input: NavigateInput): boolean {

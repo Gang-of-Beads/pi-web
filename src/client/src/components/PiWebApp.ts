@@ -5,7 +5,7 @@ import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { request } from "../api/http";
-import { sessionPinsApi } from "../api/clients";
+import { sessionPinsApi, type MachinePins } from "../api/clients";
 import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
 import { machineTerminalSessions, typeCommand } from "../plugins/machineTerminalSessions";
 import { scopePages } from "../scopePages";
@@ -519,7 +519,7 @@ export class PiWebApp extends LitElement {
    * ids are unique per machine; the cache is re-read whenever the selection
    * moves, so machine A's pins can never mark or act on machine B's rows.
    */
-  @state() private pinCache: { machineId: string; ids: ReadonlySet<string> } | undefined;
+  @state() private pinCache: { machineId: string; ids: ReadonlySet<string>; projects?: ReadonlyMap<string, ReadonlySet<string>> } | undefined;
   private pinReadsInFlight = new Set<string>();
   private pinsAdopted = new Set<string>();
 
@@ -599,10 +599,21 @@ export class PiWebApp extends LitElement {
     void this.ensureMachinePins(machineId);
   }
 
-  private applyMachinePins(machineId: string, ids: readonly string[]): void {
-    writePinnedSessionIds(machineId, new Set(ids));
-    if (this.pinCache?.machineId === machineId) this.pinCache = { machineId, ids: new Set(ids) };
+  private applyMachinePins(machineId: string, answered: MachinePins): void {
+    writePinnedSessionIds(machineId, new Set(answered.global));
+    if (this.pinCache?.machineId === machineId) this.pinCache = { machineId, ids: new Set(answered.global), ...(answered.projects === undefined ? {} : { projects: answered.projects }) };
     this.requestUpdate();
+  }
+
+  /**
+   * A project's own pins on a machine (B49), from the machine's last answer; undefined until it
+   * answered, or when it keeps no project pins, so nothing offers a pin it could not keep.
+   */
+  private projectPinnedSessionIdsFor(machineId: string, projectId: string | undefined): ReadonlySet<string> | undefined {
+    if (projectId === undefined) return undefined;
+    const cached = this.pinCache;
+    if (cached?.machineId !== machineId || cached.projects === undefined) return undefined;
+    return cached.projects.get(projectId) ?? EMPTY_ID_SET;
   }
   @state() private quickSwitcherWorkspaces: readonly Workspace[] = [];
   private quickSwitcherMachineId: string | undefined;
@@ -2717,6 +2728,21 @@ export class PiWebApp extends LitElement {
       .catch((error: unknown) => { this.setState(errorNoticePatch(error)); });
   }
 
+  /** The project pin's toggle: optimistic, then the machine's answer, as the global pin's. */
+  private toggleProjectPinnedSession(session: SessionInfo, projectId: string): void {
+    const machineId = this.browsedMachineId();
+    const cached = this.pinCache;
+    const current = this.projectPinnedSessionIdsFor(machineId, projectId);
+    const projects = cached?.projects;
+    if (cached === undefined || projects === undefined || current === undefined) return;
+    const next = togglePinnedSessionId(current, session.id);
+    this.pinCache = { ...cached, projects: new Map([...projects, [projectId, next]]) };
+    this.requestUpdate();
+    void sessionPinsApi.setProjectPinned(session.id, projectId, next.has(session.id), machineId)
+      .then((answered) => { this.applyMachinePins(machineId, answered); })
+      .catch((error: unknown) => { this.setState(errorNoticePatch(error)); });
+  }
+
   /**
    * Sessions whose agent is blocked on an `ask_user` answer. They cannot make
    * any progress until the user replies, which is why the switcher lists them
@@ -2916,6 +2942,7 @@ export class PiWebApp extends LitElement {
     const browsingElsewhere = machineId !== selectedMachineId(state);
     const sessions = browsingElsewhere ? this.quickSwitcherSessions : state.sessions;
     const pinnedIds = this.pinnedSessionIdsFor(machineId);
+    const projectPinnedIds = this.projectPinnedSessionIdsFor(machineId, state.selectedProject?.id);
     return {
       scope: { machineId, projectId: state.selectedProject?.id, folderPath: state.selectedWorkspace?.path, sessionId: state.selectedSession?.id },
       machines: state.machines.map((machine) => ({ id: machine.id, name: machine.name })),
@@ -2930,6 +2957,7 @@ export class PiWebApp extends LitElement {
         .map((session) => ({ session, machineId })),
       sessionStates: browsingElsewhere ? EMPTY_STATE_MAP : this.sessionStateKinds(),
       pinnedSessionIds: pinnedIds,
+      projectPinnedSessionIds: projectPinnedIds,
       unreadSessionIds: browsingElsewhere ? EMPTY_ID_SET : this.unreadSessionIds,
       interruptedSessionIds: browsingElsewhere ? EMPTY_ID_SET : this.interruptedRunsByMachine.get(selectedMachineId(state)) ?? EMPTY_ID_SET,
       sections: sessionSections(this.plugins.getSessionSections(machineId)),
@@ -3017,6 +3045,12 @@ export class PiWebApp extends LitElement {
       if (kind === "project") { this.togglePinnedProject(id); return; }
       const session = this.listedSession(id);
       if (session !== undefined) this.togglePinnedSession(session);
+      return;
+    }
+    if (action === "pin-project" || action === "unpin-project") {
+      const session = this.listedSession(id);
+      const projectId = this.state.selectedProject?.id;
+      if (session !== undefined && projectId !== undefined) this.toggleProjectPinnedSession(session, projectId);
       return;
     }
     if (action === "rename") {

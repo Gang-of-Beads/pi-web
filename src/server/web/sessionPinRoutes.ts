@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import type { SessionPinStore } from "../shared/storage/sessionPinStore.js";
+import { adoptedPins, globalPin, projectPin, type PinChange, type SessionPinStore, type SessionPins } from "../shared/storage/sessionPinStore.js";
 
 class SessionPinRequestError extends Error {}
 
@@ -10,13 +10,15 @@ class SessionPinRequestError extends Error {}
  * gateway forwards `/api/machines/<id>/session-pins` to that machine's web
  * process (`FEDERATED_HTTP_ROUTES`, P5 slice b), whose store announces a
  * change to its own daemon (P5 slice a); this route only reads and writes.
+ * Every answer carries both kinds of pin (B49): `projectPins` is always present, so a page can tell
+ * a machine that keeps project pins from an older one that answers without the field.
  */
 export function registerSessionPinRoutes(app: FastifyInstance, store: SessionPinStore, prefix = "/api"): void {
   const base = prefix.replace(/\/+$/u, "") === "" ? "/api" : prefix.replace(/\/+$/u, "");
 
   app.get(`${base}/session-pins`, async (_request, reply) => {
     try {
-      return { pinnedSessionIds: await store.list() };
+      return pinAnswer(await store.read());
     } catch (error) {
       return failed(reply, error);
     }
@@ -24,28 +26,33 @@ export function registerSessionPinRoutes(app: FastifyInstance, store: SessionPin
 
   app.post<{ Body: unknown }>(`${base}/session-pins`, async (request, reply) => {
     try {
-      const { sessionId, pinned, adopt } = parsePinRequest(request.body);
-      if (adopt !== undefined) return { pinnedSessionIds: await store.adopt(adopt) };
-      if (sessionId === undefined) throw new SessionPinRequestError("A pin change needs a session id");
-      return { pinnedSessionIds: pinned ? await store.pin(sessionId) : await store.unpin(sessionId) };
+      return pinAnswer(await store.apply(parsePinRequest(request.body)));
     } catch (error) {
       return failed(reply, error);
     }
   });
 }
 
-function parsePinRequest(body: unknown): { sessionId?: string; pinned: boolean; adopt?: string[] } {
+function pinAnswer(pins: SessionPins): { pinnedSessionIds: readonly string[]; projectPins: Readonly<Record<string, readonly string[]>> } {
+  return { pinnedSessionIds: pins.global, projectPins: pins.projects };
+}
+
+/** `{ adopt }`, `{ sessionId, pinned }` for the global pin, or `{ sessionId, pinned, projectId }` for that project's. */
+function parsePinRequest(body: unknown): PinChange {
   if (typeof body !== "object" || body === null || Array.isArray(body)) throw new SessionPinRequestError("A pin change needs a body");
   const adopt: unknown = Reflect.get(body, "adopt");
   if (adopt !== undefined) {
     if (!Array.isArray(adopt) || adopt.some((id) => typeof id !== "string")) throw new SessionPinRequestError("adopt must be a list of session ids");
-    return { pinned: true, adopt: adopt.filter((id): id is string => typeof id === "string" && id !== "") };
+    return adoptedPins(adopt.filter((id): id is string => typeof id === "string" && id !== ""));
   }
   const sessionId: unknown = Reflect.get(body, "sessionId");
   const pinned: unknown = Reflect.get(body, "pinned");
+  const projectId: unknown = Reflect.get(body, "projectId");
   if (typeof sessionId !== "string" || sessionId === "") throw new SessionPinRequestError("A pin change needs a session id");
   if (typeof pinned !== "boolean") throw new SessionPinRequestError("A pin change needs pinned: true or false");
-  return { sessionId, pinned };
+  if (projectId === undefined) return globalPin(sessionId, pinned);
+  if (typeof projectId !== "string" || projectId === "") throw new SessionPinRequestError("projectId must name a project");
+  return projectPin(projectId, sessionId, pinned);
 }
 
 function failed(reply: FastifyReply, error: unknown): FastifyReply {

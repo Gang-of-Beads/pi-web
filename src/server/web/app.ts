@@ -35,7 +35,7 @@ import { registerPiPackageRoutes } from "./piPackageRoutes.js";
 import { registerSessionPinRoutes } from "./sessionPinRoutes.js";
 import { daemonSessionListing, daemonSessionLocate, registerSessionBoardRoutes, type SessionBoardSources } from "./sessionBoardRoutes.js";
 import { nudgeChange } from "../shared/sessiondClient/changeNudge.js";
-import { SessionPinStore, sessionPinStorePath } from "../shared/storage/sessionPinStore.js";
+import { forgottenPin, SessionPinStore, sessionPinStorePath } from "../shared/storage/sessionPinStore.js";
 import { createPiWebStatusCache, type PiWebStatusCache } from "./piWebStatusCache.js";
 import { getPiWebRuntime, getPiWebStatus, getPiWebVersionStatus } from "../shared/piWebStatus.js";
 import {
@@ -285,7 +285,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   registerSessionBoardRoutes(app, sessionBoardSources);
   registerSessionBoardRoutes(app, sessionBoardSources, "/api/machines/local");
 
-  const unpinDeleted = { sessionsDeleted: async (sessionIds: readonly string[]) => { for (const sessionId of sessionIds) await sessionPins.unpin(sessionId); } };
+  const unpinDeleted = { sessionsDeleted: async (sessionIds: readonly string[]) => { for (const sessionId of sessionIds) await sessionPins.apply(forgottenPin(sessionId)); } };
   registerSessionProxyRoutes(app, sessionDaemon, "/api", unpinDeleted);
   registerSessionProxyRoutes(app, sessionDaemon, "/api/machines/local", unpinDeleted);
   registerPluginBackendProxyRoutes(app, sessionDaemon);

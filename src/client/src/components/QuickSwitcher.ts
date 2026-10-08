@@ -59,7 +59,7 @@ export class QuickSwitcher extends LitElement {
   @property({ attribute: false }) interruptedSessionIds: ReadonlySet<string> = new Set();
   /** Sessions whose agent stopped on an error; listed above everything else. */
   @property({ attribute: false }) errorSessionIds: ReadonlySet<string> = new Set();
-  /** Sessions the user pinned on this device. */
+  /** The browsed machine's global session pins. */
   @property({ attribute: false }) pinnedSessionIds: ReadonlySet<string> = new Set();
   /** Projects offered as context filters. */
   @property({ attribute: false }) projects: readonly Project[] = [];
@@ -396,7 +396,7 @@ export class QuickSwitcher extends LitElement {
     return html`
       <div class="action-menu-panel row-menu" role="menu" style=${this.menuStyle}>
         <button role="menuitem" @click=${() => { this.openSession(session); }}>Open</button>
-        <button role="menuitem" @click=${() => { this.togglePin(session); }}>${pinned ? "Unpin" : "Pin to top"}</button>
+        <button role="menuitem" @click=${() => { this.togglePin(session); }}>${pinned ? "Unpin globally" : "Pin globally"}</button>
         <button role="menuitem" ?disabled=${this.onRenameSession === undefined} @click=${() => { this.startRename(session); }}>Rename</button>
       </div>
     `;

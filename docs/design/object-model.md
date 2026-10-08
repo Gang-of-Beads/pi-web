@@ -243,7 +243,8 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
   - **Global pin**: machine-wide. It is listed in the global board's PINNED, whatever projects are open. It is today's pin, stored in `session-pins.json`.
   - **Project pin**: kept at the top of its own project's session list. **New**. It is stored per machine and per project, next to the global pins, so every device sees it.
   - The row menu offers "Pin globally" and "Pin in this project" as two separate toggles, and a session may carry both.
-  - Still to design, before code: whether global pins also show inside a project's list. The owner once reported a global pin "vanishing" inside a project, so the answer must be explicit.
+  - **Built (B49 slice b, 2026-10-08):** `session-pins.json` keeps `projectPins: { <projectId>: [ids] }` beside `pinnedSessionIds` (the old shape when no project has a pin); every answer of `/session-pins` carries `projectPins`, so a page tells a machine that keeps project pins from an older one and offers "Pin in this project" only on the first. POST `{ sessionId, pinned, projectId }` sets a project pin. A deleted session leaves every pin. The Navigate row menu reads "Pin globally" and, with a project in scope, "Pin in this project"; the quick switcher keeps the global toggle. 
+  - **Owner, 2026-10-08 (ask `9dcf07fa`): "global is the global pin, project is the project pin; the menu chooses where to pin."** The machine-wide board lists global pins under PINNED; a project lists only its own pins there, and a global pin sits in a project's list like any other session (`navigateModel.shownPinned`). A machine that keeps no project pins has only the global pin, in a project too.
 
 ### 1.15 Background runs, subagent runs, interrupted runs
 
