@@ -62,7 +62,8 @@ const plugin: PiWebPlugin = {
       const answer = await callOperation("goals.list", input);
       if (!isRecord(answer)) throw new Error("the machine answered without a goal list");
       const rawGoals: unknown[] = Array.isArray(answer["goals"]) ? answer["goals"] : [];
-      return { goals: rawGoals.filter(isGoalSummary), brokenFiles: 0 };
+      const brokenFiles: unknown = answer["brokenFiles"];
+      return { goals: rawGoals.filter(isGoalSummary), brokenFiles: typeof brokenFiles === "number" && Number.isInteger(brokenFiles) && brokenFiles > 0 ? brokenFiles : 0 };
     };
 
     const read = (workspacePath: string, sessionCwd: string | undefined, requestUpdate: () => void): void => {

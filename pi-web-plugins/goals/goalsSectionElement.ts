@@ -31,6 +31,15 @@ export interface GoalsSectionState {
   brokenFiles: number;
 }
 
+/**
+ * What an answer with no readable goal says. Goal files that exist but could not be parsed are
+ * not "no goals": the machine counted them, and saying none hid them (absence is not negation).
+ */
+export function emptyGoalsWords(brokenFiles: number): string {
+  if (brokenFiles === 0) return "No goals in this project.";
+  return `${String(brokenFiles)} goal ${brokenFiles === 1 ? "file" : "files"} in this project could not be read.`;
+}
+
 export function activeGoal(state: GoalsSectionState | undefined): GoalRecordSummary | undefined {
   return state?.goals[0];
 }
@@ -88,7 +97,7 @@ export class PiWebGoalsSection extends LitElement {
     if (goal === undefined) {
       if (this.failed) return html`<div class="goal-row"><p class="pending goal-main" role="status">Goal records could not be read on this machine.</p>${this.renderRefresh()}</div>`;
       if (this.state === undefined) return html`<p class="pending">Reading goal records…</p>`;
-      return html`<div class="goal-row"><p class="pending goal-main" role="status">No goals in this project.</p>${this.renderRefresh()}</div>`;
+      return html`<div class="goal-row"><p class="pending goal-main" role="status">${emptyGoalsWords(this.state.brokenFiles)}</p>${this.renderRefresh()}</div>`;
     }
     const progress = progressLabel(goal);
     return html`
