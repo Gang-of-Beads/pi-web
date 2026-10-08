@@ -580,6 +580,15 @@ Plugins read through the host, so the rule reaches them as one host facility: a 
 - There is no Try now; the page retries by itself. Known data stays live and usable. Other actions fire now and show as pending, and are never replayed.
 - A tapped session opens unless it was deleted (the reason, and a way back) or archived (read-only, with Restore).
 
+**Where the row draws** (owner, 2026-10-09, on "Trying to sync with the server…" sitting above the phone Navigate page's header: "it should be under the header row"). The row sits under the header of the page in view, as it sits under the chat's context bar. One classifier, `appRowPlace`, picks the single place; nothing else renders it:
+
+| place | when | the row sits |
+|---|---|---|
+| `dialog-layer` | a dialog is open | above the dialog, which moves down by the row's height (owner, 2026-10-04) |
+| `navigate-overlay` | Navigate is open over the page | under the Navigate header (before, it drew in the main column, hidden behind the overlay) |
+| `navigation-view` | the phone shows its navigation view | under the Navigate header |
+| `main` | anything else | in the main column, under the context bar |
+
 ### A lost announcement is noticed (B28 slice H1)
 
 Every surface stays live from the machine's announcements on its global socket: unread, pins, statuses, a session's name, a new session. The socket can stay open and still lose one: a proxy drops a frame, a send fails on a full buffer, a debug drop. Before this, nothing noticed it.

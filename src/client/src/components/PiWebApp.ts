@@ -75,6 +75,7 @@ import { createPluginWorkspaceBackend } from "../plugins/workspaceBackend";
 import { createWorkspaceFiles as createPluginWorkspaceFiles } from "../plugins/workspaceFiles";
 import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
 import { AppShellController } from "../appShell/appShellController";
+import { appRowPlace, type AppRowPlace } from "../appShell/appRowPlace";
 import { BrowserResumeController } from "../appShell/browserResumeController";
 import "./appShell/ContextSwitcherSheet";
 import "./appShell/AppGoToSheet";
@@ -3030,7 +3031,7 @@ export class PiWebApp extends LitElement {
       .canCloseProject=${true}
       .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => { void this.asReaderListChange(() => this.runNavigateRowAction(kind, id, action)); }}
       .readerChanging=${this.readerListChanges > 0}
-    ></app-navigate-page>`;
+    >${this.renderAppRowSlot(overlay ? "navigate-overlay" : "navigation-view")}</app-navigate-page>`;
   }
 
   /** Run a change the reader asked for from the list, so the list knows the rows it moves are the reader's doing. */
@@ -4861,6 +4862,28 @@ export class PiWebApp extends LitElement {
     await this.machines.loadMachines(selectedMachineId(this.state));
   }
 
+  private appRowPlace(): AppRowPlace {
+    return appRowPlace({
+      modalPresent: this.modalPresent,
+      navigateOpen: this.navigateOpen,
+      phoneNavigationView: this.appShell.isMobileNavigationLayout && this.displayMainView() === "navigation",
+    });
+  }
+
+  private renderAppRowAt(place: AppRowPlace) {
+    return this.appRowPlace() === place ? this.renderAppRow(this.state.error, this.state.errorRetiredBy) : null;
+  }
+
+  private renderAppRowSlot(place: AppRowPlace) {
+    const row = this.renderAppRowAt(place);
+    return row === null ? null : html`<div slot="app-row">${row}</div>`;
+  }
+
+  private renderAppRowLayer() {
+    const row = this.renderAppRowAt("dialog-layer");
+    return row === null ? null : html`<div class="app-row-layer">${row}</div>`;
+  }
+
   /**
    * The row when no notice holds it: reconnecting, once the machine in use has
    * gone without an answer for the grace period, and held for the minimum
@@ -5130,7 +5153,7 @@ export class PiWebApp extends LitElement {
         <main class=${mainViewClass(displayView)} @dragenter=${this.handleChatDragEnter} @dragover=${this.handleChatDragOver} @dragleave=${this.handleChatDragLeave} @drop=${this.handleChatDrop}>
           ${this.appShell.isMobileNavigationLayout && displayView === "navigation" ? null : this.renderContextBar()}
 
-          ${this.modalPresent ? null : this.renderAppRow(state.error, state.errorRetiredBy)}
+          ${this.renderAppRowAt("main")}
           ${this.renderStaleClientBanner()}
           ${this.renderSelfUpdateBanner()}
           ${deprecatedAgentInputsBanner(deprecatedAgentInputsWarnings(state.machines, state.machineRuntimes))}
@@ -5209,7 +5232,7 @@ export class PiWebApp extends LitElement {
         .onSelect=${(id: string) => { this.goTo(id); }}
         .onClose=${() => { this.goToSheetOpen = false; }}
       ></app-go-to-sheet>` : null}
-      ${this.modalPresent ? html`<div class="app-row-layer">${this.renderAppRow(state.error, state.errorRetiredBy)}</div>` : null}
+      ${this.renderAppRowLayer()}
     `;
   }
 

@@ -322,7 +322,7 @@ export class AppNavigatePage extends LitElement {
   override render() {
     const view = this.view;
     const input = this.input;
-    if (view === undefined || input === undefined) return html`<p class="empty" role="status">Reading this machine…</p>`;
+    if (view === undefined || input === undefined) return html`<slot name="app-row"></slot><p class="empty" role="status">Reading this machine…</p>`;
     const { listed, model, segments, choices } = view;
     const showsSessions = this.kind === "sessions";
     return html`
@@ -345,6 +345,7 @@ export class AppNavigatePage extends LitElement {
             ${this.onOpenGoTo === undefined ? nothing : html`<button type="button" class="settings menu-key" aria-label="Go to a view" title="Go to a view" aria-haspopup="dialog" @click=${() => { this.onOpenGoTo?.(this.pathProjectId === undefined ? { kind: "machine" } : { kind: "project", projectId: this.pathProjectId }); }}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>`}
           </div>
         </header>
+        <slot name="app-row"></slot>
         <nav class="kinds" aria-label="What to list">
           ${segments.some((segment) => segment.level === "machine") ? this.renderKindTab("machine", "Machines", renderMachineIcon()) : nothing}
           ${this.renderKindTab("project", "Projects", renderProjectIcon())}
@@ -658,6 +659,7 @@ export class AppNavigatePage extends LitElement {
 
     :host { display: block; min-height: 0; height: 100%; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); user-select: none; -webkit-user-select: none; }
     .navigate { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+    ::slotted([slot="app-row"]) { flex: 0 0 auto; }
     .path-bar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-2); min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
     /* No sideways scrolling on a phone: the path shares the width and each
        step ellipsises, so the whole scope is readable at a glance (owner). */
