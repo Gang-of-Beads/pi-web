@@ -17,6 +17,8 @@ interface MachineFile {
   machines: StoredMachine[];
   /** User-chosen alias for the local machine, kept in the same file. */
   localAlias?: string;
+  /** The order the reader dragged the machines into (R11), the local machine's id among them. */
+  order?: string[];
 }
 
 export interface LocalAliasResult {
@@ -67,6 +69,15 @@ export class MachineStore {
     return { alias, updatedAt };
   }
 
+  async order(): Promise<string[]> {
+    return (await this.read()).order ?? [];
+  }
+
+  async setOrder(order: readonly string[]): Promise<void> {
+    const data = await this.read();
+    await this.write({ ...data, order: [...order] });
+  }
+
   async localAlias(): Promise<LocalAliasResult> {
     const data = await this.read();
     return { alias: data.localAlias, updatedAt: undefined };
@@ -114,7 +125,12 @@ export class MachineStore {
 function parseMachineFile(value: unknown): MachineFile {
   if (!isRecord(value) || !Array.isArray(value["machines"])) throw new Error("Invalid machine file");
   const localAlias = optionalString(value["localAlias"], "localAlias");
-  return { machines: value["machines"].map(parseStoredMachine), ...(localAlias === undefined ? {} : { localAlias }) };
+  const order = optionalStringList(value["order"], "order");
+  return {
+    machines: value["machines"].map(parseStoredMachine),
+    ...(localAlias === undefined ? {} : { localAlias }),
+    ...(order === undefined ? {} : { order }),
+  };
 }
 
 function parseStoredMachine(value: unknown): StoredMachine {
@@ -136,6 +152,12 @@ function optionalString(value: unknown, key: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") throw new Error(`Invalid machine ${key}`);
   return value;
+}
+
+function optionalStringList(value: unknown, key: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) throw new Error(`Invalid machine ${key}`);
+  return value.map(String);
 }
 
 function optionalStringRecord(value: unknown, key: string): Record<string, string> | undefined {

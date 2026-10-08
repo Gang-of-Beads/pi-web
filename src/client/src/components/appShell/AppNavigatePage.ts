@@ -22,7 +22,7 @@ import { SESSION_STATE_LABELS } from "../activityBadge";
 import { actionMenuPanelStyle, actionMenuPanelStyleAtPointer, contextMenuFromMouse } from "../actionMenu";
 import { navigateBulkActions, navigateRowActions, type NavigateBulkActionId, type NavigateBulkGroup, type NavigateRowActionId, type NavigateRowFacts, type NavigateRowKind } from "../../navigateRowActions";
 import { NavigateSelection, type NavigateSelectionState } from "../../navigateSelection";
-import { NavigateReorder } from "../../navigateReorder";
+import { NavigateReorder, type TouchDragReadiness } from "../../navigateReorder";
 import type { ReorderPoint } from "../../listReorder";
 import { isSelecting, type SelectionOutcome } from "../../selectionModel";
 import { renderSelectionActions, renderSelectionHeader, selectionBarStyles } from "./navigateSelectionBar";
@@ -106,10 +106,11 @@ interface SelectableRow {
 }
 
 /**
- * The lists a row can be dragged within (R11): the Pinned sessions, and on the Projects page the
- * pinned projects and the rest, each in its own order. A row moves only within its own list.
+ * The lists a row can be dragged within (R11): the Pinned sessions, on the Projects page the
+ * pinned projects and the rest, and on the Machines page the machines, each in its own order.
+ * A row moves only within its own list.
  */
-type DragList = "pinned-sessions" | "pinned-projects" | "projects";
+type DragList = "pinned-sessions" | "pinned-projects" | "projects" | "machines";
 
 /** The group a Select key starts, per kind of list; machines have no bulk actions (bulk-selection.md). */
 const SELECT_KEY_GROUP: Readonly<Record<NavigateKind, NavigateBulkGroup | undefined>> = {
@@ -174,6 +175,8 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onReorderPins?: (order: readonly string[], scopeProjectId: string | undefined) => void;
   /** The reader put the pinned projects, or the other projects, in a new order (R11). */
   @property({ attribute: false }) onReorderProjects?: (pinned: boolean, order: readonly string[]) => void;
+  /** The reader put the machines in a new order (R11). */
+  @property({ attribute: false }) onReorderMachines?: (order: readonly string[]) => void;
   /** Whether this page's projects are the selected machine's, which the host can reorder. */
   @property({ attribute: false }) canReorderProjects = false;
   /** Dragging a row to another place within its list (R11, state diagram D9). */
@@ -276,11 +279,13 @@ export class AppNavigatePage extends LitElement {
   /** The list a dragged row belongs to, by what the page lists. */
   private dragListOf(id: string): DragList {
     if (this.kind === "sessions") return "pinned-sessions";
+    if (this.kind === "machine") return "machines";
     return this.pinnedProjectIds.has(id) ? "pinned-projects" : "projects";
   }
 
   private dragKey(list: DragList, id: string): string {
-    return list === "pinned-sessions" ? `session:${this.view?.listed.scope.machineId ?? ""}:${id}` : `project:${id}`;
+    if (list === "pinned-sessions") return `session:${this.view?.listed.scope.machineId ?? ""}:${id}`;
+    return list === "machines" ? `machine:${id}` : `project:${id}`;
   }
 
   /** A list's rows, in the order the page draws them: the Pinned section's of this machine, or one group of projects. */
@@ -291,6 +296,7 @@ export class AppNavigatePage extends LitElement {
       const section = view.sections.find((candidate) => candidate.ordering === "pins");
       return section === undefined ? [] : section.rows.filter((row) => row.machineId === view.listed.scope.machineId).map((row) => row.session.id);
     }
+    if (list === "machines") return view.choices.filter((choice) => choice.level === "machine").map((choice) => choice.id);
     const pinned = list === "pinned-projects";
     return view.choices.filter((choice) => choice.level === "project" && this.pinnedProjectIds.has(choice.id) === pinned).map((choice) => choice.id);
   }
@@ -312,6 +318,7 @@ export class AppNavigatePage extends LitElement {
     this.rowOrder.release();
     this.noteReaderInput();
     if (list === "pinned-sessions") this.onReorderPins?.(order, this.pathProjectId);
+    else if (list === "machines") this.onReorderMachines?.(order);
     else this.onReorderProjects?.(list === "pinned-projects", order);
   }
 
@@ -353,7 +360,7 @@ export class AppNavigatePage extends LitElement {
       return { listed, model, segments, sections, choices: [], rowKeys: sections.flatMap((section) => section.rows.map(sessionRowKey)) };
     }
     const levelChoices = model.sections.flatMap((section) => section.choices).filter((choice) => choice.level === this.kind);
-    const choices = this.kind === "project" ? this.draggedChoices(pinnedFirst(levelChoices, this.pinnedProjectIds)) : levelChoices;
+    const choices = this.draggedChoices(this.kind === "project" ? pinnedFirst(levelChoices, this.pinnedProjectIds) : levelChoices);
     return { listed, model, segments, sections: [], choices, rowKeys: choices.map(choiceRowKey) };
   }
 
@@ -699,7 +706,7 @@ export class AppNavigatePage extends LitElement {
       .map((section) => ({ ...section, rows: [...section.rows].sort((left, right) => (placeOf.get(`${left.machineId}:${left.session.id}`) ?? 0) - (placeOf.get(`${right.machineId}:${right.session.id}`) ?? 0)) }));
   }
 
-  /** While a project is dragged, its group stands in the order the drag would drop; the other group keeps its place. */
+  /** While a choice is dragged, its group stands in the order the drag would drop; the other group keeps its place. */
   private draggedChoices(choices: NavigateChoice[]): NavigateChoice[] {
     const state = this.reorder.state;
     if (state.phase !== "dragging") return choices;
@@ -767,7 +774,8 @@ export class AppNavigatePage extends LitElement {
     const rowId = choiceRowKey(choice);
     const group: NavigateBulkGroup | undefined = choice.level === "project" ? "projects" : undefined;
     const selected = this.rowSelected(group, choice.id);
-    const draggable = choice.level === "project" && this.canReorderProjects;
+    const draggable = choice.level === "machine" ? this.onReorderMachines !== undefined : this.canReorderProjects;
+    const readiness: TouchDragReadiness = choice.level === "machine" ? "long-press" : isSelecting(this.selection.state) ? "rest" : "batch-hold";
     return this.renderRowShell(rowId, kind, choice.id, choice.label, html`
       <button
         type="button"
@@ -778,7 +786,7 @@ export class AppNavigatePage extends LitElement {
         @pointermove=${(event: PointerEvent) => { this.selection.pointerMove(event); }}
         @pointerup=${() => { this.selection.pointerEnd(); }}
         @pointercancel=${() => { this.selection.pointerEnd(); }}
-        @touchstart=${draggable ? (event: TouchEvent) => { this.reorder.touchStart(choice.id, event, isSelecting(this.selection.state)); } : nothing}
+        @touchstart=${draggable ? (event: TouchEvent) => { this.reorder.touchStart(choice.id, event, readiness); } : nothing}
         @click=${(event: MouseEvent) => {
           if (this.selection.click(group, choice.id, event) === "selection") return;
           if (choice.level === "project") { this.pathProjectId = choice.id; this.lastProjectId = choice.id; }
@@ -932,7 +940,7 @@ export class AppNavigatePage extends LitElement {
         @pointermove=${(event: PointerEvent) => { this.selection.pointerMove(event); }}
         @pointerup=${() => { this.selection.pointerEnd(); }}
         @pointercancel=${() => { this.selection.pointerEnd(); }}
-        @touchstart=${draggable ? (event: TouchEvent) => { this.reorder.touchStart(id, event, isSelecting(this.selection.state)); } : nothing}
+        @touchstart=${draggable ? (event: TouchEvent) => { this.reorder.touchStart(id, event, isSelecting(this.selection.state) ? "rest" : "batch-hold"); } : nothing}
         @click=${(event: MouseEvent) => { if (this.selection.click(group, id, event) === "row") this.tapSessionRow(row); }}
       >
         <span class="row-title"><span class="row-icon" data-kind="session">${this.rowIcon(group, id, renderChatIcon())}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>

@@ -831,18 +831,19 @@ Selecting is a page of its own (owner, 2026-10-09): a header with the way out (â
 
 | state | event | next |
 |---|---|---|
-| `idle` | a press that may drag: on the phone in `selecting`, the press that entered it, or a later one held 200 ms; on the desktop, any press on a row | `pressing(row, origin)` |
+| `idle` | a press that may drag: on the phone in `selecting`, the press that entered it, or a later one held 200 ms; on a phone list without batch mode (machines), a press held 500 ms, whose release then opens nothing; on the desktop, any press on a row | `pressing(row, origin)` |
 | `pressing` | the pointer moves past 4 px (desktop) or is still down after the hold (phone) | `dragging(row, slot)` |
 |  | release before that | `idle`, and the press is a tap (desktop: open; phone in batch mode: toggle) |
 |  | a quick swipe on the phone | `idle`; the list scrolls |
 | `dragging(row, slot)` | move | `dragging(row, slot')` |
 |  | release over the list | `dropped(order)`: the whole new order is sent, not a move |
 |  | Escape, pointer cancel, release outside | `idle`, order unchanged |
-| `dropped(order)` | the server answers | `idle`; the list re-reads, and the server's order wins |
+| `dropped(order)` | at once | the list stands in the new order before the lifted row is set down, so nothing slides back and moves again (owner, 2026-10-09) |
+|  | the server answers | `idle`; the server's order wins; a refusal puts the order back and says why |
 
 **Why the whole order.** A move ("put X after Y") replayed twice or applied against a list another device has changed scrambles it; the full order is idempotent, and the server answers with the order it kept.
 
-**Where the order lives.** With the data it orders, so every device sees it: session pins in the pin file's arrays; pinned projects move from browser storage to the machine's pin file (adopted once); projects in `projects.json`; machines in the machines plugin's store. A pinned section stands in its pin order; its rows still show state marks but no longer move on activity.
+**Where the order lives.** With the data it orders, so every device sees it: session pins in the pin file's arrays; projects in `projects.json`; machines in the machines plugin's `machines.json` (`order`, the local machine's id among them, so it can move too). Pinned projects are still this browser's, in their pin set's order; moving them to the machine's pin file (adopted once) is a later step. A pinned section stands in its pin order; its rows still show state marks but no longer move on activity.
 
 ## Methodology folded in (research run `e7c7403c`, `uiux-methodology.md`)
 

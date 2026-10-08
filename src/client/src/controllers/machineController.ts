@@ -6,6 +6,7 @@ import { classifyReadError, QUIET_WINDOW_MS, type ReadFact, type ReadMiss, type 
 import { ScopedResource, type Unanswered } from "../sync/scopedResource";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import type { ProjectController } from "./projectController";
+import { orderedById } from "../../../shared/listOrder";
 
 /** The roster has one key: the web process in use serves it. */
 const ROSTER = "roster";
@@ -226,6 +227,21 @@ export class MachineController {
     } catch (error) {
       this.setState(errorNoticePatch(error));
       return undefined;
+    }
+  }
+
+  /** The machines in the order the reader dragged them into (R11): on the page at once, then the web process's answer. */
+  async reorderMachines(order: readonly string[]): Promise<void> {
+    const before = this.getState().machines.map((machine) => machine.id);
+    this.setState({ machines: orderedById(this.getState().machines, order) });
+    this.roster.update(ROSTER, (listed) => orderedById(listed, order));
+    try {
+      const answered = await api.reorderMachines(order);
+      this.roster.update(ROSTER, () => answered);
+    } catch (error) {
+      this.setState({ machines: orderedById(this.getState().machines, before), ...errorNoticePatch(error) });
+      this.roster.update(ROSTER, (listed) => orderedById(listed, before));
+      void this.roster.refresh(ROSTER);
     }
   }
 

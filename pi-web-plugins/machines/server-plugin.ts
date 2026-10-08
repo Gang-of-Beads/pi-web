@@ -1,4 +1,5 @@
 import type {
+  Machine,
   MachineRegistryContribution,
   PiWebServerPlugin,
   ServerPluginActivationContext,
@@ -43,13 +44,37 @@ const plugin: PiWebServerPlugin = {
     const machines = new MachineService(new MachineStore(machineStorePathIn(storePath())), { localRuntime });
     return {
       machineRegistry: machines,
-      routes: managementRoutes(machines),
+      routes: [...managementRoutes(machines), orderRoute((order) => machines.reorder(order))],
     };
   },
 };
 
 function managementRoutes(machines: MachineRegistryContribution): ServerPluginRouteContribution[] {
   return [listRoute(machines), addRoute(machines), healthRoute(machines), runtimeRoute(machines), getRoute(machines), updateRoute(machines), removeRoute(machines)];
+}
+
+/**
+ * The order the reader dragged the machines into (R11). It is the store's, not the registry face's:
+ * a host that injects its own registry keeps its own order and answers this route not found.
+ */
+function orderRoute(reorder: (order: readonly string[]) => Promise<Machine[]>): ServerPluginRouteContribution {
+  return {
+    method: "POST",
+    path: "/machines/order",
+    async handle(request, reply) {
+      try {
+        await sendJson(reply, { machines: await reorder(orderField(request.body)) });
+      } catch (error) {
+        await sendError(reply, error);
+      }
+    },
+  };
+}
+
+function orderField(body: ServerPluginRouteBody | undefined): string[] {
+  const order = body === undefined || body instanceof Uint8Array ? undefined : body["order"];
+  if (!Array.isArray(order) || !order.every((id) => typeof id === "string")) throw new MachineValidationError('Field "order" must be a list of machine ids');
+  return order.map(String);
 }
 
 function listRoute(machines: MachineRegistryContribution): ServerPluginRouteContribution {

@@ -1,3 +1,4 @@
+import { LONG_PRESS_MS } from "./longPress";
 import { REORDER_IDLE, TOUCH_DRAG_HOLD_MS, movedTo, reorderRelease, reorderTransition, type ReorderEvent, type ReorderPoint, type ReorderState } from "./listReorder";
 
 /** What the page tells the drag about the list it stands in. */
@@ -11,6 +12,20 @@ export interface ReorderHost {
   /** A finger that rested to drag is not also a long press that toggles the row. */
   readonly settleHold: () => void;
 }
+
+/**
+ * When a finger's press may drag: on a list in batch mode after a short rest; on a list with batch
+ * mode only once the long press that enters it lands (the page reports it); on a list without batch
+ * mode (machines) after a long press of its own, whose release opens nothing.
+ */
+export type TouchDragReadiness = "rest" | "batch-hold" | "long-press";
+
+/** How long the finger rests before it may drag, and whether that rest also claims its release. */
+const TOUCH_READINESS: Record<TouchDragReadiness, { afterMs: number | undefined; claimsRelease: boolean }> = {
+  rest: { afterMs: TOUCH_DRAG_HOLD_MS, claimsRelease: false },
+  "batch-hold": { afterMs: undefined, claimsRelease: false },
+  "long-press": { afterMs: LONG_PRESS_MS, claimsRelease: true },
+};
 
 /**
  * The gestures that drive a row drag on the Navigate page (state diagram D9, `listReorder.ts`).
@@ -44,19 +59,23 @@ export class NavigateReorder {
     this.press({ type: "press", id, pointer: "mouse", at: pointOf(event), ready: true });
   }
 
-  touchStart(id: string, event: TouchEvent, selecting: boolean): void {
+  touchStart(id: string, event: TouchEvent, readiness: TouchDragReadiness): void {
     const touch = event.touches[0];
     if (touch === undefined || event.touches.length > 1) {
       this.cancel();
       return;
     }
     this.press({ type: "press", id, pointer: "touch", at: pointOf(touch), ready: false });
-    if (!selecting) return;
+    const { afterMs, claimsRelease } = TOUCH_READINESS[readiness];
+    if (afterMs === undefined) return;
     this.holdTimer = window.setTimeout(() => {
       this.holdTimer = undefined;
       this.host.settleHold();
       this.dispatch({ type: "held" });
-    }, TOUCH_DRAG_HOLD_MS);
+      if (!claimsRelease || this.current.phase === "idle") return;
+      this.dropClick = true;
+      if ("vibrate" in navigator) navigator.vibrate(10);
+    }, afterMs);
   }
 
   /** Selecting began from the press that is still down: its finger may drag at once. */

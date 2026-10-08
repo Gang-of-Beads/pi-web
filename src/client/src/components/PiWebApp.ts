@@ -3080,6 +3080,7 @@ export class PiWebApp extends LitElement {
       .onSelectingChange=${(exit: (() => void) | undefined) => { this.noteNavigateSelecting(exit); }}
       .onReorderPins=${(order: readonly string[], scopeProjectId: string | undefined) => { this.reorderPinnedSessions(order, scopeProjectId); }}
       .onReorderProjects=${(pinned: boolean, order: readonly string[]) => { this.reorderProjects(pinned, order); }}
+      .onReorderMachines=${(order: readonly string[]) => { void this.machines.reorderMachines(order); }}
       .canReorderProjects=${!this.quickSwitcherBrowsingElsewhere()}
     >${this.renderAppRowSlot(overlay ? "navigate-overlay" : "navigation-view")}</app-navigate-page>`;
   }

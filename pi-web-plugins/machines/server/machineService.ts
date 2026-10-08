@@ -24,6 +24,16 @@ export interface MachineServiceDependencies {
 const LOCAL_MACHINE_TIMESTAMP = "1970-01-01T00:00:00.000Z";
 const DEFAULT_HEALTH_CACHE_TTL_MS = 5_000;
 
+/**
+ * The machines in a dragged order (R11): the ids it names first, the rest after in their own order,
+ * so a machine added on another device since the drag still lists.
+ */
+function inOrder(machines: readonly Machine[], order: readonly string[]): Machine[] {
+  const rank = new Map([...new Set(order)].map((id, index) => [id, index]));
+  const rankOf = (machine: Machine) => rank.get(machine.id) ?? rank.size;
+  return machines.map((machine, index) => ({ machine, index })).sort((left, right) => rankOf(left.machine) - rankOf(right.machine) || left.index - right.index).map(({ machine }) => machine);
+}
+
 export class MachineService {
   private readonly healthCache = new Map<string, { expiresAt: number; health: MachineHealth }>();
   private readonly runtimeCache = new Map<string, { expiresAt: number; runtime: MachineRuntime }>();
@@ -31,7 +41,13 @@ export class MachineService {
   constructor(private readonly store: MachineStore, private readonly deps: MachineServiceDependencies) {}
 
   async list(): Promise<Machine[]> {
-    return [await this.localMachine(), ...(await this.store.list()).map(publicMachine)];
+    return inOrder([await this.localMachine(), ...(await this.store.list()).map(publicMachine)], await this.store.order());
+  }
+
+  /** The whole order the reader dragged the machines into; the answer is the list as it now stands. */
+  async reorder(order: readonly string[]): Promise<Machine[]> {
+    await this.store.setOrder(inOrder(await this.list(), order).map((machine) => machine.id));
+    return await this.list();
   }
 
   async get(id: string): Promise<Machine | undefined> {
