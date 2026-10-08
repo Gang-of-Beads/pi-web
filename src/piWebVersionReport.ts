@@ -157,7 +157,7 @@ async function fetchPiWebVersionResponse(
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(PI_WEB_VERSION_TIMEOUT_MS),
   });
-  if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
+  if (!response.ok) throw new HttpStatusError(response.status);
   const parsed: unknown = await response.json();
   const status = parsePiWebVersionResponse(parsed);
   if (status === undefined) throw new Error("response did not include PI WEB version information");
@@ -207,7 +207,7 @@ async function collectRunningSessiondInfo(): Promise<{ component?: PiWebComponen
       PI_WEB_VERSION_TIMEOUT_MS,
       "session daemon health check timed out",
     );
-    if (response.statusCode < 200 || response.statusCode >= 300) throw new Error(`HTTP ${String(response.statusCode)}`);
+    if (response.statusCode < 200 || response.statusCode >= 300) throw new HttpStatusError(response.statusCode);
     const parsed: unknown = response.body === "" ? undefined : JSON.parse(response.body);
     const version = isRecord(parsed) ? parsed["version"] : undefined;
     const component = parsePiWebComponentStatus(version);
@@ -234,8 +234,17 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMes
   }
 }
 
+/** A response outside 2xx, keeping its status so a caller asks for 404 by number, not by words (B16). */
+class HttpStatusError extends Error {
+  override name = "HttpStatusError";
+
+  constructor(readonly status: number) {
+    super(`HTTP ${String(status)}`);
+  }
+}
+
 function isHttpNotFound(error: unknown): boolean {
-  return error instanceof Error && error.message === "HTTP 404";
+  return error instanceof HttpStatusError && error.status === 404;
 }
 
 function printInstalledPackageVersions(): void {
