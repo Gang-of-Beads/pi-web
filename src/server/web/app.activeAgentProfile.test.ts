@@ -6,6 +6,7 @@ import type { ActiveAgentProfileDescriptor, PiWebConfigResponse, PiWebPluginInfo
 import type { SessionDaemonAgentProfileResult } from "../shared/sessiondClient/sessionDaemonClient.js";
 import type { ActiveAgentProfileProvider } from "./activeAgentProfileProvider.js";
 import { buildApp } from "./app.js";
+import { noServerPlugins } from "./app.testSupport.js";
 import type { PiWebConfigService } from "./configRoutes.js";
 
 let tempDir: string;
@@ -49,6 +50,7 @@ describe("buildApp active profile composition", () => {
       config: emptyConfigService(),
       clientDist: false,
       logger: false,
+      serverPluginRuntime: await noServerPlugins(),
     });
 
     try {
@@ -68,7 +70,7 @@ describe("buildApp active profile composition", () => {
       expect(packageSources(secondPackages.json())).not.toContain(firstPackageDir);
       expect(pluginIds(secondPlugins.json())).toContain("profile-second");
       expect(pluginIds(secondPlugins.json())).not.toContain("profile-first");
-      expect(getActiveAgentProfile).toHaveBeenCalledTimes(5);
+      expect(getActiveAgentProfile).toHaveBeenCalledTimes(4);
     } finally {
       await app.close();
     }
@@ -96,6 +98,7 @@ describe("buildApp active profile composition", () => {
       },
       clientDist: false,
       logger: false,
+      serverPluginRuntime: await noServerPlugins(),
     });
 
     try {
@@ -134,6 +137,7 @@ describe("buildApp active profile composition", () => {
       config: emptyConfigService(),
       clientDist: false,
       logger: false,
+      serverPluginRuntime: await noServerPlugins(),
     });
 
     try {

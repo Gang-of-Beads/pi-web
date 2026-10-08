@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "./app.js";
+import { noServerPlugins } from "./app.testSupport.js";
 import type { PiWebConfigResponse } from "../../shared/apiTypes.js";
 import type { PiWebConfigService } from "./configRoutes.js";
 
@@ -43,6 +44,7 @@ async function appWithClient() {
     config: emptyConfigService(),
     clientDist: await clientDistWithAssets(),
     logger: false,
+    serverPluginRuntime: await noServerPlugins(),
   });
 }
 

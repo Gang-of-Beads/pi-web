@@ -203,6 +203,22 @@ async function appTestServerPluginRuntime(): Promise<ServerPluginRuntime> {
   });
 }
 
+/**
+ * A web plugin runtime with nothing in it, for a test whose subject is not a server plugin.
+ * Without one, buildApp scans this machine's real plugin catalog and imports every web plugin's
+ * server module: 115-240 ms a build alone against 10-20 ms empty (measured 2026-10-08), which the
+ * full suite's load stretched past the 5 s test timeout (app.staticAssets, app.piWebStatus,
+ * app.plugins; app.activeAgentProfile passed even 30 s), and the test read whatever plugins this
+ * machine had.
+ */
+export async function noServerPlugins(): Promise<ServerPluginRuntime> {
+  return await createServerPluginRuntime({
+    catalog: { snapshot: () => Promise.resolve({ plugins: [], diagnostics: [] }) },
+    safeStart: "none",
+    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined, error: () => undefined },
+  });
+}
+
 function fakePiWebPluginAsset(pluginId: string, assetPath: string): Promise<{ content: Buffer; contentType: string } | undefined> {
   if (pluginId !== "fake") return Promise.resolve(undefined);
   if (assetPath === "plugin.js") return Promise.resolve({ content: Buffer.from("export default {};"), contentType: "application/javascript; charset=utf-8" });

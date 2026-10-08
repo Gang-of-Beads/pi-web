@@ -4,7 +4,7 @@ import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { machineScopedPluginId } from "../../shared/machinePluginIds.js";
 import { buildApp } from "./app.js";
-import { appTestContext, fakeRemoteClient, registerAppTestHooks } from "./app.testSupport.js";
+import { appTestContext, fakeRemoteClient, noServerPlugins, registerAppTestHooks } from "./app.testSupport.js";
 import { PiWebPluginService } from "./piWebPluginService.js";
 
 registerAppTestHooks();
@@ -55,7 +55,7 @@ describe("buildApp PI WEB plugin routes", () => {
       roots: [{ path: pluginsRoot, source: "test", scope: "local" }],
       packageProvider: false,
     });
-    const routeApp = await buildApp({ piWebPlugins: service, clientDist: false, logger: false });
+    const routeApp = await buildApp({ piWebPlugins: service, clientDist: false, logger: false, serverPluginRuntime: await noServerPlugins() });
 
     try {
       const firstManifest = await routeApp.inject({ method: "GET", url: "/pi-web-plugins/manifest.json" });
