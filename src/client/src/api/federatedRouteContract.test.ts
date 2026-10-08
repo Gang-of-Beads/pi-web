@@ -4,7 +4,7 @@ import { FEDERATED_HTTP_ROUTES, FEDERATED_WEBSOCKET_ROUTES, SESSION_TREE_FORK_PR
 import { MAX_INLINE_PREVIEW_BYTES } from "../../../shared/workspaceFiles";
 import { PLUGIN_BACKEND_REQUEST_BODY_MAX_BYTES, PLUGIN_BACKEND_RESPONSE_BODY_MAX_BYTES } from "../../../shared/pluginBackendProtocol";
 import { configApi, filesApi, machineStatusApi, piPackagesApi, piWebApi, pluginsApi, projectsApi, sessionPinsApi, sessionsApi, terminalsApi, trustApi, workspacesApi } from "./clients";
-import { globalSessionEvents, machineTerminalSocket, realtimeEvents, sessionEvents, terminalSocket } from "./sockets";
+import { machineTerminalSocket, realtimeEvents, sessionEvents, terminalSocket } from "./sockets";
 import { requestPluginBackend } from "./pluginBackends";
 import { workspaceFilePreviewUrl } from "./urls";
 
@@ -247,7 +247,6 @@ describe("federated route contract", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
 
     sessionEvents(session, machineId);
-    globalSessionEvents(machineId);
     realtimeEvents(machineId);
     terminalSocket("p 1", "w 1", "t 1", { cols: 120, rows: 40 }, machineId);
     machineTerminalSocket("t 1", { cols: 120, rows: 40 }, machineId);

@@ -749,10 +749,6 @@ app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unkn
     eventHub.add(request.params.sessionId, socket, quietOption(request.query.quiet));
   });
 
-  app.get<{ Querystring: EventsQuery }>(`${prefix}/sessions/events`, { websocket: true }, (socket, request) => {
-    eventHub.addGlobal(socket, quietOption(request.query.quiet));
-  });
-
   app.get<{ Querystring: EventsQuery }>(`${prefix}/events`, { websocket: true }, (socket, request) => {
     eventHub.addGlobal(socket, quietOption(request.query.quiet));
   });

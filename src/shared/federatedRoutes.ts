@@ -173,7 +173,6 @@ export const FEDERATED_HTTP_ROUTES = [
 
 export const FEDERATED_WEBSOCKET_ROUTES = [
   "/events",
-  "/sessions/events",
   "/sessions/:sessionId/events",
   "/projects/:projectId/workspaces/:workspaceId/terminals/:terminalId/socket",
   "/terminals/:terminalId/socket",
