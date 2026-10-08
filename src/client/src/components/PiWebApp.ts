@@ -34,6 +34,7 @@ import { MachineController, remoteReportedDown } from "../controllers/machineCon
 import { SessionBoardController } from "../controllers/sessionBoardController";
 import { browserBoardMemory } from "../sync/boardMemory";
 import { boardEventOf, dedupeById, type BoardAnswer } from "../sync/sessionBoard";
+import { dataTransferHasFiles, FileDragDepth, fileDropFrameStyle, filesFromDataTransfer } from "../fileDrop";
 import { MachineStatusController } from "../controllers/machineStatusController";
 import { ProjectController } from "../controllers/projectController";
 import { PiWebStatusController } from "../controllers/piWebStatusController";
@@ -174,6 +175,8 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
   .header-actions { display: flex; align-items: center; gap: var(--pi-space-4); }
   main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .file-drop-frame { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; display: grid; place-items: center; border: 2px dashed var(--pi-accent); border-radius: var(--pi-radius-lg); background: color-mix(in srgb, var(--pi-accent) 10%, transparent); pointer-events: none; }
+  .file-drop-frame span { padding: var(--pi-space-3) var(--pi-space-4); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-bright); font-weight: var(--pi-weight-strong); }
   /* A dashed hairline, not the browser's medium default: this rule was
      generalised from a chip that carried its own border width. */
   .empty { border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-7); color: var(--pi-muted); }
@@ -620,6 +623,9 @@ export class PiWebApp extends LitElement {
     return cached.projects.get(projectId) ?? EMPTY_ID_SET;
   }
   @state() private quickSwitcherWorkspaces: readonly Workspace[] = [];
+  private readonly fileDrag = new FileDragDepth();
+  /** Where the dashed "Drop files to attach" frame stands while files are dragged over the chat. */
+  @state() private fileDropFrame: string | undefined;
   private quickSwitcherMachineId: string | undefined;
   /**
    * The machine whose sessions the switcher is browsing. Defaults to the
@@ -1220,6 +1226,8 @@ export class PiWebApp extends LitElement {
     window.addEventListener("pageshow", this.onPageShow);
     this.browserResume.connect();
     window.addEventListener("keydown", this.onKeyDown, GLOBAL_SHORTCUT_LISTENER_OPTIONS);
+    window.addEventListener("dragover", this.refuseStrayFileDrop);
+    window.addEventListener("drop", this.refuseStrayFileDrop);
     this.systemLightThemeMedia?.addEventListener("change", this.onSystemLightThemeChange);
     this.applyPreferredTheme(false);
     this.connectRealtime();
@@ -1329,6 +1337,8 @@ export class PiWebApp extends LitElement {
     window.removeEventListener("pageshow", this.onPageShow);
     this.browserResume.disconnect();
     window.removeEventListener("keydown", this.onKeyDown, GLOBAL_SHORTCUT_LISTENER_OPTIONS);
+    window.removeEventListener("dragover", this.refuseStrayFileDrop);
+    window.removeEventListener("drop", this.refuseStrayFileDrop);
     this.systemLightThemeMedia?.removeEventListener("change", this.onSystemLightThemeChange);
     this.keyboard.reset();
     this.auth.dispose();
@@ -4735,6 +4745,49 @@ export class PiWebApp extends LitElement {
     void this.openThinkingDialog();
   };
 
+  /** Whether a dropped file has a composer to go to: an open session that is not archived. */
+  private canTakeDroppedFiles(): boolean {
+    const session = this.state.selectedSession;
+    return session !== undefined && session.archived !== true && this.promptEditor !== undefined;
+  }
+
+  private readonly handleChatDragEnter = (event: DragEvent): void => {
+    if (event.dataTransfer === null || !dataTransferHasFiles(event.dataTransfer) || !this.canTakeDroppedFiles()) return;
+    if (this.fileDrag.enter() && event.currentTarget instanceof HTMLElement) this.fileDropFrame = fileDropFrameStyle(event.currentTarget.getBoundingClientRect());
+  };
+
+  private readonly handleChatDragOver = (event: DragEvent): void => {
+    if (event.dataTransfer === null || !dataTransferHasFiles(event.dataTransfer) || !this.canTakeDroppedFiles()) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  private readonly handleChatDragLeave = (): void => {
+    if (this.fileDropFrame !== undefined && this.fileDrag.leave()) this.fileDropFrame = undefined;
+  };
+
+  /** A drop the composer already took is not attached twice: it prevented the default. */
+  private readonly handleChatDrop = (event: DragEvent): void => {
+    this.fileDrag.reset();
+    this.fileDropFrame = undefined;
+    if (event.defaultPrevented || !this.canTakeDroppedFiles()) return;
+    const files = filesFromDataTransfer(event.dataTransfer);
+    if (files.length === 0) return;
+    event.preventDefault();
+    void this.promptEditor?.attachFiles(files);
+  };
+
+  /** A file dropped where nothing takes it would open in place of the app (`fileDrop.ts`). */
+  private readonly refuseStrayFileDrop = (event: DragEvent): void => {
+    if (event.type === "drop") {
+      this.fileDrag.reset();
+      this.fileDropFrame = undefined;
+    }
+    if (event.defaultPrevented || event.dataTransfer === null || !dataTransferHasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "none";
+  };
+
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
       <chat-view .onRetryMessage=${(clientMessageId: string) => { this.promptEditor?.retryOutbox(clientMessageId); }} .onDiscardMessage=${this.handleDiscardMessage} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk}
@@ -5074,7 +5127,7 @@ export class PiWebApp extends LitElement {
         ${this.renderNavigationProgress()}
         <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigatePage(false)}</aside>
         ${this.contextSheetOpen ? null : this.renderNavigationPanelEdgeControl()}
-        <main class=${mainViewClass(displayView)}>
+        <main class=${mainViewClass(displayView)} @dragenter=${this.handleChatDragEnter} @dragover=${this.handleChatDragOver} @dragleave=${this.handleChatDragLeave} @drop=${this.handleChatDrop}>
           ${this.appShell.isMobileNavigationLayout && displayView === "navigation" ? null : this.renderContextBar()}
 
           ${this.modalPresent ? null : this.renderAppRow(state.error, state.errorRetiredBy)}
@@ -5086,6 +5139,7 @@ export class PiWebApp extends LitElement {
             ${this.renderChatView(state, state.selectedSession)}
             ${state.selectedSession.archived === true ? this.renderArchivedComposerSlot(state.selectedSession) : html`<prompt-editor .rowedMessageIds=${rowedClientMessageIds(state.messages, [...(state.status?.queuedMessages ?? []), ...(state.clientQueuedSessionMessages[state.selectedSession.id] ?? [])])} .sessionId=${state.selectedSession.id} .cwd=${composerCwd(state)} .sessionPrompts=${this.sessionPromptsFor(state)} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true}  .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .composerContributions=${this.plugins.getComposerContributions(selectedMachineId(state))} .onPluginNotice=${(message: string) => { this.setState(noticePatch(noticeForReader(message))); }}></prompt-editor>`}
             ${this.renderStatusBar(state)}
+            ${this.fileDropFrame === undefined ? nothing : html`<div class="file-drop-frame" style=${this.fileDropFrame} aria-hidden="true"><span>Drop files to attach</span></div>`}
             ${state.commandDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} .title=${state.commandDialog.title} .options=${state.commandDialog.options} .onPick=${(value: string) => this.sessions.respondToCommand(state.commandDialog?.requestId ?? "", value)} .onCancel=${() => { this.sessions.cancelCommand(); }}></command-picker>` : null}
             ${state.modelDialog !== undefined ? html`<model-picker ?abovedialog=${this.settingsOpen} title=${state.modelDialog.title} .options=${state.modelDialog.options} .catalog=${state.modelDialog.catalog} .selectedValue=${state.modelDialog.selectedValue} .onPick=${(value: string) => { void this.pickModel(value); }} .onToggleEnabled=${this.handleToggleModelEnabled} .onCancel=${() => { this.setState({ modelDialog: undefined }); }}></model-picker>` : null}
             ${state.thinkingDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.thinkingDialog.title} .options=${state.thinkingDialog.options} .selectedValue=${state.thinkingDialog.selectedValue} .onPick=${(value: string) => { void this.pickThinking(value); }} .onCancel=${() => { this.setState({ thinkingDialog: undefined }); }}></command-picker>` : null}

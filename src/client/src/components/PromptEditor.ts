@@ -14,6 +14,7 @@ import { api, type FileSuggestion, type PromptAttachment, type SessionModel, typ
 import type { PromptAttachmentDelivery } from "../../../shared/apiTypes";
 import type { ComposerRuntimeContext, ComposerSlot, QualifiedComposerContribution } from "../plugins/types";
 import { capturePromptAttachments, effectivePromptAttachmentDelivery, isInlinePromptAttachment, type CapturedAttachment } from "../promptAttachmentCapture";
+import { dataTransferHasFiles, filesFromDataTransfer } from "../fileDrop";
 import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputModes";
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
@@ -759,6 +760,11 @@ export class PromptEditor extends LitElement {
     `;
   }
 
+  /** Files dropped on the chat around the composer (`fileDrop.ts`), taken as if dropped here. */
+  attachFiles(files: readonly File[]): Promise<void> {
+    return this.addAttachmentFiles([...files]);
+  }
+
   private async handlePaste(event: ClipboardEvent) {
     const files = filesFromDataTransfer(event.clipboardData);
     if (files.length === 0) return;
@@ -1469,17 +1475,6 @@ function emptyFileSuggestions(): FileSuggestion[] {
 
 function emptySessionModels(): SessionModel[] {
   return [];
-}
-
-function filesFromDataTransfer(data: DataTransfer | null): File[] {
-  if (data === null) return [];
-  return Array.from(data.files);
-}
-
-function dataTransferHasFiles(data: DataTransfer): boolean {
-  const items = Array.from(data.items);
-  if (items.length > 0) return items.some((item) => item.kind === "file");
-  return Array.from(data.types).includes("Files");
 }
 
 function pendingToPromptAttachment(attachment: PendingAttachment): PromptAttachment {
