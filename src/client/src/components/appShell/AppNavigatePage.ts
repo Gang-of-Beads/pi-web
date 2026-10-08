@@ -720,12 +720,16 @@ export class AppNavigatePage extends LitElement {
     .section-title, .empty { grid-column: 1 / -1; }
     .row-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .row.folder-missing .row-name, .row.folder-missing .row-icon { color: var(--pi-muted); }
-    .section-title { margin: var(--pi-space-4) 0 var(--pi-space-1); color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
-    .section-toggle { justify-self: start; display: inline-flex; align-items: center; gap: var(--pi-space-2); box-sizing: border-box; min-height: var(--pi-control-height); padding: 0 var(--pi-space-2); border: 1px solid transparent; border-radius: var(--pi-radius-md); background: transparent; cursor: pointer; text-align: start; }
+    .section-title { margin: var(--pi-space-5) 0 0; color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
+    /* A section title stands close to its own rows (owner, 2026-10-09: "the Pinned / Active
+       margins are too tall"). The 44px coarse-pointer target no longer sets the box's height; a
+       hit area reaches up over the margin and the grid gap above and down over the gap below,
+       up to the neighbouring tiles but never onto them. */
+    .section-toggle { position: relative; justify-self: start; display: inline-flex; align-items: center; gap: var(--pi-space-2); box-sizing: border-box; padding: var(--pi-space-3) var(--pi-space-2); border: 1px solid transparent; border-radius: var(--pi-radius-md); background: transparent; cursor: pointer; text-align: start; }
+    .section-toggle::after { content: ""; position: absolute; inset: calc(-1 * var(--pi-space-7)) 0 calc(-1 * var(--pi-space-3)); }
     .section-toggle:focus-visible { border-color: var(--pi-accent); }
     .section-fold { display: inline-grid; place-items: center; width: 12px; height: 12px; }
     .section-empty { margin: 0 0 var(--pi-space-2); }
-    @media (pointer: coarse) { .section-toggle { min-height: var(--pi-control-height-touch, 44px); } }
     .row { box-sizing: border-box; display: grid; gap: var(--pi-space-2); width: 100%; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); padding: var(--pi-space-4) calc(var(--tile-menu-size) + var(--pi-space-2)) var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
     .row.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row-title { min-width: 0; overflow: hidden; }
