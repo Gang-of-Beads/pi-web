@@ -125,10 +125,17 @@ function isErroredAssistant(message: unknown): boolean {
   return isRecord(message) && message["role"] === "assistant" && message["stopReason"] === "error";
 }
 
-/** Whether the transcript renders this entry, and so whether it is counted. */
+/** Entry types `branchTranscript` always draws a row for (a message pi retried aside). */
+const RENDERED_ENTRY_TYPES: ReadonlySet<unknown> = new Set(["message", "compaction", "branch_summary"]);
+
+/**
+ * Whether the transcript renders this entry, and so whether it is counted. A compaction and a
+ * branch summary are drawn as rows, so they count: leaving them out made the session's count
+ * one short of the transcript's own total per compaction (owed review of 402a9e22, lane C).
+ */
 export function isReadableBranchEntry(entry: unknown): boolean {
   if (!isRecord(entry)) return false;
-  if (entry["type"] === "message" || isRefusedDialogEntry(entry)) return true;
+  if (RENDERED_ENTRY_TYPES.has(entry["type"]) || isRefusedDialogEntry(entry)) return true;
   return entry["type"] === "custom_message" && entry["display"] === true;
 }
 
