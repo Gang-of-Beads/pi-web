@@ -5,6 +5,7 @@ import type { ServerPluginProviderContribution } from "../../shared/plugins/serv
 import type { Project } from "../../shared/types.js";
 import { WorkspaceProviderRegistry } from "./workspaceProviderRegistry.js";
 import { registerPluginBackendRoutes } from "./pluginBackendRoutes.js";
+import { ProjectNotFoundError } from "../../shared/projects/projectService.js";
 
 const project: Project = {
   id: "project one",
@@ -112,7 +113,7 @@ function projectReader() {
   return {
     requireProject: (projectId: string) => projectId === project.id
       ? Promise.resolve(project)
-      : Promise.reject(new Error("Project not found")),
+      : Promise.reject(new ProjectNotFoundError()),
   };
 }
 

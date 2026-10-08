@@ -9,6 +9,7 @@ import type { Project } from "../../shared/types.js";
 import { createWorkspaceProviderRuntimeSnapshot } from "../../shared/workspaces/workspaceCatalog.js";
 import { WorkspaceProviderRegistry } from "./workspaceProviderRegistry.js";
 import { registerWorkspaceCatalogRoutes } from "./workspaceCatalogRoutes.js";
+import { ProjectNotFoundError } from "../../shared/projects/projectService.js";
 
 const project: Project = {
   id: "p1",
@@ -161,7 +162,7 @@ function projectReader() {
     list: () => Promise.resolve([project]),
     requireProject: (projectId: string) => projectId === project.id
       ? Promise.resolve(project)
-      : Promise.reject(new Error("Project not found")),
+      : Promise.reject(new ProjectNotFoundError()),
   };
 }
 

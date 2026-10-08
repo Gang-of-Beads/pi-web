@@ -13,7 +13,7 @@ import { ProjectStore } from "../shared/storage/projectStore.js";
 import type { MachineClient } from "../../server-plugin-api.js";
 import { MachineService } from "../../../pi-web-plugins/machines/server/machineService.js";
 import { MachineStore } from "../../../pi-web-plugins/machines/server/machineStore.js";
-import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
+import { WorkspaceCatalogRequestError, type WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
 import type { PiPackageService } from "./piPackageService.js";
 import type { SessionProxyDaemon } from "./sessionProxyRoutes.js";
 import type { ActiveAgentProfileDescriptor, PiPackageInfo, PiWebConfigResponse, PiWebConfigValues, WorkspaceListing, WorkspaceProviderAuthorityResolution } from "../../shared/apiTypes.js";
@@ -255,7 +255,7 @@ export class AppTestWorkspaceCatalog implements WorkspaceCatalog {
 
   async resolve(projectId: string, workspaceId: string): Promise<WorkspaceListing> {
     const workspace = (await this.list(projectId)).find((candidate) => candidate.id === workspaceId);
-    if (workspace === undefined) throw new Error("Workspace not found");
+    if (workspace === undefined) throw new WorkspaceCatalogRequestError("Workspace not found", 404);
     return workspace;
   }
 

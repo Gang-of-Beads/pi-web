@@ -13,6 +13,7 @@ import {
   WorkspaceProviderRequestError,
   type WorkspaceProviderRequest,
 } from "./workspaceProviderRegistry.js";
+import { ProjectNotFoundError } from "../../shared/projects/projectService.js";
 
 interface PluginBackendRouteParams {
   pluginId: string;
@@ -70,9 +71,9 @@ export function registerPluginBackendRoutes(
         const message = boundedErrorMessage(error);
         return attributedError(
           reply,
-          message === "Project not found" ? 404 : 500,
+          error instanceof ProjectNotFoundError ? 404 : 500,
           message,
-          message === "Project not found" ? "project-not-found" : "project-resolution-failed",
+          error instanceof ProjectNotFoundError ? "project-not-found" : "project-resolution-failed",
           pluginId,
           operation,
         );

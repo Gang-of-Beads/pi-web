@@ -8,6 +8,7 @@ import { requestCancellation } from "../../shared/requestCancellation.js";
 import type { Project } from "../../shared/types.js";
 import { workspaceRemovalHttpStatus } from "./workspaceRemovalService.js";
 import { errorMessage } from "../../../shared/unknownValues.js";
+import { ProjectNotFoundError } from "../../shared/projects/projectService.js";
 
 export interface WorkspaceRemovalProjectReader {
   requireProject(projectId: string): Promise<Project>;
@@ -55,7 +56,7 @@ export function registerWorkspaceRemovalRoutes(
         project = await dependencies.projects.requireProject(request.params.projectId);
       } catch (error) {
         const message = errorMessage(error);
-        return reply.code(message === "Project not found" ? 404 : 500).send({ error: message });
+        return reply.code(error instanceof ProjectNotFoundError ? 404 : 500).send({ error: message });
       }
 
       const cancellation = requestCancellation(request, reply);

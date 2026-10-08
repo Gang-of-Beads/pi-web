@@ -3,6 +3,19 @@ import type { ProjectStore } from "../storage/projectStore.js";
 import type { Project } from "../types.js";
 import { expandUserPath } from "./directorySuggestions.js";
 
+
+/**
+ * The project id names no project on this machine. Routes answer 404 for this type; they used to
+ * compare the message "Project not found" (B16).
+ */
+export class ProjectNotFoundError extends Error {
+  override name = "ProjectNotFoundError";
+
+  constructor() {
+    super("Project not found");
+  }
+}
+
 export class ProjectService {
   constructor(private readonly store: ProjectStore) {}
 
@@ -26,12 +39,12 @@ export class ProjectService {
   }
 
   async close(id: string): Promise<void> {
-    if (!(await this.store.remove(id))) throw new Error("Project not found");
+    if (!(await this.store.remove(id))) throw new ProjectNotFoundError();
   }
 
   async requireProject(id: string): Promise<Project> {
     const project = await this.store.get(id);
-    if (!project) throw new Error("Project not found");
+    if (!project) throw new ProjectNotFoundError();
     return project;
   }
 }

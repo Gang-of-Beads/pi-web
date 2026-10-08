@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type { Project } from "../../shared/types.js";
 import type { WorkspaceProviderAuthorityResolution } from "./workspaceProviderRegistry.js";
 import type { WorkspaceProviderRuntimeSnapshot } from "../../shared/workspaces/workspaceCatalog.js";
+import { ProjectNotFoundError } from "../../shared/projects/projectService.js";
 
 export interface WorkspaceCatalogProjectReader {
   requireProject(projectId: string): Promise<Project>;
@@ -49,5 +50,5 @@ export function registerWorkspaceCatalogRoutes(
 
 function catalogRequestFailed(reply: FastifyReply, error: unknown): FastifyReply {
   const message = error instanceof Error ? error.message : String(error);
-  return reply.code(message === "Project not found" ? 404 : 500).send({ error: message });
+  return reply.code(error instanceof ProjectNotFoundError ? 404 : 500).send({ error: message });
 }

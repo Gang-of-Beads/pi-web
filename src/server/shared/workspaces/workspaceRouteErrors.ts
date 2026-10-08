@@ -1,5 +1,6 @@
 import type { FastifyReply } from "fastify";
 import { WorkspaceCatalogRequestError, workspaceCatalogHttpStatus } from "./workspaceCatalog.js";
+import { ProjectNotFoundError } from "../projects/projectService.js";
 
 /**
  * Identity misses answer the routes' 400 shape through the plugin's own
@@ -8,8 +9,7 @@ import { WorkspaceCatalogRequestError, workspaceCatalogHttpStatus } from "./work
  */
 export function isWorkspaceIdentityMiss(error: unknown): boolean {
   if (error instanceof WorkspaceCatalogRequestError) return error.statusCode === 404;
-  const message = error instanceof Error ? error.message : "";
-  return message === "Project not found" || message === "Workspace not found";
+  return error instanceof ProjectNotFoundError;
 }
 
 export function sendWorkspaceRequestError(

@@ -7,6 +7,7 @@ import {
   registerWorkspaceRemovalRoutes,
   type WorkspaceRemover,
 } from "./workspaceRemovalRoutes.js";
+import { ProjectNotFoundError } from "../../shared/projects/projectService.js";
 
 const project: Project = {
   id: "project one",
@@ -106,6 +107,6 @@ function projectReader() {
   return {
     requireProject: (projectId: string) => projectId === project.id
       ? Promise.resolve(project)
-      : Promise.reject(new Error("Project not found")),
+      : Promise.reject(new ProjectNotFoundError()),
   };
 }
