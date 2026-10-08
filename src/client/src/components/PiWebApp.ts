@@ -104,7 +104,8 @@ import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
 import "./appShell/AppContextBar";
 import "./appShell/AppNavigatePage";
 import type { AppNavigatePage, NavigateKind } from "./appShell/AppNavigatePage";
-import type { NavigateRowActionId, NavigateRowKind } from "../navigateRowActions";
+import type { NavigateBulkActionId, NavigateBulkActionIds, NavigateBulkGroup, NavigateRowActionId, NavigateRowKind } from "../navigateRowActions";
+import type { SelectionOutcome } from "../selectionModel";
 import { sessionLabel } from "../sessionLabels";
 import { NavigationIntents, openingAnnouncement } from "../navigationIntent";
 import { writeClipboardText } from "../clipboard";
@@ -502,6 +503,8 @@ export class PiWebApp extends LitElement {
   @state() private quickSwitcherOpen = false;
   /** The one navigation surface; see `navigateModel`. */
   @state() private navigateOpen = false;
+  /** How the Navigate page leaves selecting, while it is selecting; the back gesture takes it first. */
+  private navigateSelectionExit: (() => void) | undefined;
   @state() private contextSheetOpen = false;
   @state() private goToSheetOpen = false;
   /** What the Navigate page that opened Go to listed; undefined when a chat or plugin page opened it. */
@@ -747,6 +750,7 @@ export class PiWebApp extends LitElement {
     if (this.state.authDialog !== undefined) { this.auth.closeDialog(); return; }
     // The navigation page is the outermost layer: everything above it has
     // already answered the gesture, so back leaves the page it was opened on.
+    if (this.navigateSelectionExit !== undefined) { this.navigateSelectionExit(); return; }
     if (this.navigateOpen) this.closeNavigate();
   }
   private readonly onPageShow = (event: PageTransitionEvent) => {
@@ -2783,6 +2787,7 @@ export class PiWebApp extends LitElement {
   /** True while a modal layer owns the back gesture. */
   private modalLayerOpen(): boolean {
     return this.quickSwitcherOpen
+      || this.navigateSelectionExit !== undefined
       || this.navigateOpen
       || this.contextSheetOpen
       || this.goToSheetOpen
@@ -3031,14 +3036,16 @@ export class PiWebApp extends LitElement {
       .canCloseProject=${true}
       .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => { void this.asReaderListChange(() => this.runNavigateRowAction(kind, id, action)); }}
       .readerChanging=${this.readerListChanges > 0}
+      .onBulkAction=${(group: NavigateBulkGroup, action: NavigateBulkActionId, ids: readonly string[]) => this.asReaderListChange(() => this.runNavigateBulkAction(group, action, ids))}
+      .onSelectingChange=${(exit: (() => void) | undefined) => { this.noteNavigateSelecting(exit); }}
     >${this.renderAppRowSlot(overlay ? "navigate-overlay" : "navigation-view")}</app-navigate-page>`;
   }
 
   /** Run a change the reader asked for from the list, so the list knows the rows it moves are the reader's doing. */
-  private async asReaderListChange(change: () => Promise<void>): Promise<void> {
+  private async asReaderListChange<Result>(change: () => Promise<Result>): Promise<Result> {
     this.readerListChanges += 1;
     try {
-      await change();
+      return await change();
     } finally {
       this.readerListChanges -= 1;
     }
@@ -3101,6 +3108,62 @@ export class PiWebApp extends LitElement {
     }
     if (!(await this.confirm({ title: `Close ${project.name}?`, message: "This only removes it from PI WEB; the project folder does not change.", confirmLabel: "Close project", tone: "danger" }))) return;
     await this.projects.closeProject(project.id);
+  }
+
+  /**
+   * The Navigate page started or ended selecting rows (state diagram D9). Starting pushes a
+   * history frame, so the back gesture leaves the selection before it leaves the page.
+   */
+  private noteNavigateSelecting(exit: (() => void) | undefined): void {
+    const entering = exit !== undefined && this.navigateSelectionExit === undefined;
+    this.navigateSelectionExit = exit;
+    if (entering) this.pushModalLayerFrame();
+  }
+
+  /**
+   * A bulk action on the rows selected on the Navigate page, through the calls the row menu
+   * uses for one row. A destructive one asks first; declining answers "cancelled", and the page
+   * keeps the selection.
+   */
+  private async runNavigateBulkAction(group: NavigateBulkGroup, action: NavigateBulkActionId, ids: readonly string[]): Promise<SelectionOutcome> {
+    const executors: Readonly<Record<string, ((ids: readonly string[]) => Promise<SelectionOutcome>) | undefined>> = this.navigateBulkExecutors()[group];
+    const run = executors[action];
+    return run === undefined ? "done" : run(ids);
+  }
+
+  private navigateBulkExecutors(): { readonly [Group in NavigateBulkGroup]: Readonly<Record<NavigateBulkActionIds[Group], (ids: readonly string[]) => Promise<SelectionOutcome>>> } {
+    const sessionsOf = (ids: readonly string[]) => ids.flatMap((id) => { const session = this.listedSession(id); return session === undefined ? [] : [session]; });
+    const reread = async (): Promise<SelectionOutcome> => { await this.loadQuickSwitcherData(true); return "done"; };
+    return {
+      live: {
+        archive: async (ids) => { await this.sessions.archiveSessions(sessionsOf(ids)); return reread(); },
+        pin: (ids) => { for (const session of sessionsOf(ids)) this.togglePinnedSession(session); return Promise.resolve("done"); },
+        unpin: (ids) => { for (const session of sessionsOf(ids)) this.togglePinnedSession(session); return Promise.resolve("done"); },
+        "mark-read": async (ids) => {
+          const machineId = this.browsedMachineId();
+          await Promise.all(sessionsOf(ids).map((session) => this.sessionUnread.acknowledge(machineId, session)));
+          return "done";
+        },
+      },
+      archived: {
+        restore: async (ids) => { for (const session of sessionsOf(ids)) await this.sessions.restoreSession(session); return reread(); },
+        "delete-archived": async (ids) => {
+          const sessions = sessionsOf(ids);
+          if (!(await this.confirm({ title: `Delete ${String(sessions.length)} archived session${sessions.length === 1 ? "" : "s"} permanently?`, message: "The archived sessions and their transcript files are removed. This cannot be undone.", confirmLabel: "Delete permanently", tone: "danger" }))) return "cancelled";
+          await this.sessions.deleteArchivedSessions(sessions);
+          return reread();
+        },
+      },
+      projects: {
+        pin: (ids) => { for (const id of ids) this.togglePinnedProject(id); return Promise.resolve("done"); },
+        unpin: (ids) => { for (const id of ids) this.togglePinnedProject(id); return Promise.resolve("done"); },
+        "close-project": async (ids) => {
+          if (!(await this.confirm({ title: `Close ${String(ids.length)} project${ids.length === 1 ? "" : "s"}?`, message: "This only removes them from PI WEB; the project folders do not change.", confirmLabel: "Close projects", tone: "danger" }))) return "cancelled";
+          for (const id of ids) await this.projects.closeProject(id);
+          return "done";
+        },
+      },
+    };
   }
 
   /**

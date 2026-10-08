@@ -26,6 +26,8 @@ export interface NavigateRowFacts {
   archived?: boolean;
   closable?: boolean;
   hasPath?: boolean;
+  /** The session finished something the reader has not looked at. */
+  unread?: boolean;
 }
 
 const OPEN: Record<NavigateRowKind, string> = {
@@ -33,6 +35,62 @@ const OPEN: Record<NavigateRowKind, string> = {
   project: "Open",
   machine: "Switch to this machine",
 };
+
+/** The selectable groups of the Navigate page; a selection stays inside one (state diagram D9). */
+export type NavigateBulkGroup = "live" | "archived" | "projects";
+
+/** The bulk actions each group offers; the host's executors are keyed by these, so a missing one is a type error. */
+export interface NavigateBulkActionIds {
+  readonly live: "archive" | "pin" | "unpin" | "mark-read";
+  readonly archived: "restore" | "delete-archived";
+  readonly projects: "pin" | "unpin" | "close-project";
+}
+
+export type NavigateBulkActionId = NavigateBulkActionIds[NavigateBulkGroup];
+
+export interface NavigateBulkAction {
+  readonly id: NavigateBulkActionId;
+  readonly label: string;
+  /** The selected rows this action fits; it acts on these and no others. */
+  readonly ids: readonly string[];
+}
+
+interface BulkRule<Id extends NavigateBulkActionId> {
+  readonly id: Id;
+  readonly label: string;
+  readonly fits: (facts: NavigateRowFacts) => boolean;
+}
+
+/**
+ * What a selection can do, per group (docs/design/bulk-selection.md; owner, 2026-10-09: the keys are verbs).
+ * An action is offered when it fits at least one selected row and acts only on those, so a
+ * mixed selection offers both Pin and Unpin instead of neither.
+ */
+const BULK_RULES: { readonly [Group in NavigateBulkGroup]: readonly BulkRule<NavigateBulkActionIds[Group]>[] } = {
+  live: [
+    { id: "archive", label: "Archive", fits: (facts) => facts.archivable === true },
+    { id: "pin", label: "Pin", fits: (facts) => facts.pinned !== true },
+    { id: "unpin", label: "Unpin", fits: (facts) => facts.pinned === true },
+    { id: "mark-read", label: "Mark as read", fits: (facts) => facts.unread === true },
+  ],
+  archived: [
+    { id: "restore", label: "Restore", fits: (facts) => facts.archivable === true },
+    { id: "delete-archived", label: "Delete permanently", fits: (facts) => facts.archivable === true },
+  ],
+  projects: [
+    { id: "pin", label: "Pin", fits: (facts) => facts.pinned !== true },
+    { id: "unpin", label: "Unpin", fits: (facts) => facts.pinned === true },
+    { id: "close-project", label: "Close project", fits: (facts) => facts.closable === true },
+  ],
+};
+
+export function navigateBulkActions(group: NavigateBulkGroup, rows: readonly { readonly id: string; readonly facts: NavigateRowFacts }[]): NavigateBulkAction[] {
+  const rules: readonly BulkRule<NavigateBulkActionId>[] = BULK_RULES[group];
+  return rules.flatMap((rule) => {
+    const ids = rows.filter((row) => rule.fits(row.facts)).map((row) => row.id);
+    return ids.length === 0 ? [] : [{ id: rule.id, label: rule.label, ids }];
+  });
+}
 
 export function navigateRowActions(kind: NavigateRowKind, facts: NavigateRowFacts = {}): NavigateRowAction[] {
   const actions: NavigateRowAction[] = [{ id: "open", label: OPEN[kind] }];

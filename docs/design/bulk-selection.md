@@ -41,7 +41,7 @@ Owner, 2026-09-30: "Long-pressing an item on any list page opens a bulk-operatio
 
 ### Actions
 
-- One table per row kind, beside `navigateRowActions`, marks which actions work on many rows. The bar offers the ones that fit **every** selected row.
+- One table per row kind, beside `navigateRowActions`, marks which actions work on many rows. The bar offers each action that fits **at least one** selected row and applies it to those rows only, so a mixed selection offers both Pin (2) and Unpin (1) (owner, 2026-10-09, ask 9d95632d: verbs, with the count when an action fits fewer than all).
 - Destructive actions confirm with the count ("Delete 5 archived sessions permanently?").
 - Each action runs as one batch request. The result line names any failures, and the list is re-read afterwards (the sync rule: never trust a local edit to match).
 

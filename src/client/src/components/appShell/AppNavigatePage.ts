@@ -13,14 +13,17 @@ import type { BreadcrumbSegment } from "../../switcherBreadcrumb";
 import { ActivityClock, modifiedMs } from "../../sessionOrder";
 import { listFolds } from "../../listFolds";
 import { disclosureIconStyle, renderDisclosureIcon } from "../disclosureIcon.js";
-import { renderChatIcon, renderChevronRightIcon, renderGearIcon, renderGridIcon, renderMachineIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
+import { renderChatIcon, renderCheckIcon, renderChevronRightIcon, renderGearIcon, renderGridIcon, renderMachineIcon, renderPendingRingIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
 import type { BoardAnswer } from "../../sync/sessionBoard";
 import { sessionStateBadgeStyles } from "../sessionStateBadgeStyles.js";
 import { SESSION_STATE_LABELS } from "../activityBadge";
 import { actionMenuPanelStyle, actionMenuPanelStyleAtPointer, contextMenuFromMouse } from "../actionMenu";
-import { navigateRowActions, type NavigateRowActionId, type NavigateRowKind } from "../../navigateRowActions";
+import { navigateBulkActions, navigateRowActions, type NavigateBulkActionId, type NavigateBulkGroup, type NavigateRowActionId, type NavigateRowFacts, type NavigateRowKind } from "../../navigateRowActions";
+import { NavigateSelection, type NavigateSelectionState } from "../../navigateSelection";
+import { isSelecting, type SelectionOutcome } from "../../selectionModel";
+import { renderSelectionActions, renderSelectionHeader, selectionBarStyles } from "./navigateSelectionBar";
 import { sessionLabel } from "../../sessionLabels";
 import { machineSessionKey } from "../../machineKeys";
 import type { PendingNavigation } from "../../navigationIntent";
@@ -93,6 +96,20 @@ function choiceRowKey(choice: NavigateChoice): string {
   return `${choice.level}:${choice.id}`;
 }
 
+/** What a selectable row carries into the selection: its id, its group, and the facts its bulk actions read. */
+interface SelectableRow {
+  readonly id: string;
+  readonly group: NavigateBulkGroup;
+  readonly facts: NavigateRowFacts;
+}
+
+/** The group a Select key starts, per kind of list; machines have no bulk actions (bulk-selection.md). */
+const SELECT_KEY_GROUP: Readonly<Record<NavigateKind, NavigateBulkGroup | undefined>> = {
+  sessions: "live",
+  project: "projects",
+  machine: undefined,
+};
+
 @customElement("app-navigate-page")
 export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) input?: Omit<NavigateInput, "query">;
@@ -139,6 +156,12 @@ export class AppNavigatePage extends LitElement {
   @property({ type: Boolean }) returnable = false;
   /** The host is carrying out a change the reader asked for from this list; its result applies without motion. */
   @property({ attribute: false }) readerChanging = false;
+  /** Runs a bulk action on the selected rows; a cancelled confirmation answers "cancelled". Absent, the selection offers no actions. */
+  @property({ attribute: false }) onBulkAction?: (group: NavigateBulkGroup, action: NavigateBulkActionId, ids: readonly string[]) => Promise<SelectionOutcome>;
+  /** Told when selecting starts, with the way out the back gesture takes, and when it ends. */
+  @property({ attribute: false }) onSelectingChange?: (exit: (() => void) | undefined) => void;
+  /** Selecting many rows (state diagram D9); the page draws what it says. */
+  private readonly selection = new NavigateSelection((next, previous) => { this.selectionChanged(next, previous); });
   @state() private query = "";
   /** What a tap on a session row does: open it, or continue it in a new session after New session's "Continue from…". */
   @state() private rowTap: SessionRowTap = "open";
@@ -166,6 +189,7 @@ export class AppNavigatePage extends LitElement {
   }
 
   override disconnectedCallback(): void {
+    this.exitSelection();
     document.removeEventListener("pointerdown", this.noteReaderInput, { capture: true });
     document.removeEventListener("keydown", this.noteReaderInput, { capture: true });
     this.rowOrder.release();
@@ -179,6 +203,8 @@ export class AppNavigatePage extends LitElement {
     if (this.view === undefined) return;
     const machineId = this.view.listed.scope.machineId;
     const scopeChanged = SCOPE_PROPERTIES.some((name) => changed.has(name)) || machineId !== this.shownMachineId;
+    if (changed.has("kind") || changed.has("pathProjectId") || machineId !== this.shownMachineId) this.exitSelection();
+    else this.selection.dispatch({ type: "rows", ids: new Set(this.selectableRows().map((row) => row.id)) });
     this.shownMachineId = machineId;
     this.motion.prepare(this.listBody(), this.view.rowKeys, { scopeChanged, readerActive: Date.now() < this.readerQuietUntil });
   }
@@ -326,7 +352,34 @@ export class AppNavigatePage extends LitElement {
     const { listed, model, segments, choices } = view;
     const showsSessions = this.kind === "sessions";
     return html`
-      <section class="navigate">
+      <section class=${isSelecting(this.selection.state) ? "navigate selecting" : "navigate"} @pointerdown=${this.pressGuard} @click=${this.holdReleaseGuard}>
+        ${isSelecting(this.selection.state) ? this.renderSelection(this.selection.state) : this.renderBrowseHeader(segments, listed, input.scope.projectId, showsSessions)}
+        <div
+          class=${this.tilesPerRow === undefined ? "body" : `body tiles-${String(this.tilesPerRow)}`}
+          @pointerdown=${() => { this.rowOrder.hold(); }}
+          @pointerup=${() => { this.letGoOfRows(); }}
+          @pointercancel=${() => { this.letGoOfRows(); }}
+        >
+          ${showsSessions
+            ? html`
+                ${repeat(view.sections, (section) => section.id, (section) => this.renderSessionSection(section))}
+                ${this.renderSessionsEmptyState(model.matchCount)}
+              `
+            : html`
+                ${repeat(choices, choiceRowKey, (choice) => this.renderChoice(choice))}
+                ${choices.length > 0 || this.loadingChoices
+                  ? nothing
+                  : html`<p class="empty" role="status">Nothing to choose at this level.</p>`}
+              `}
+        </div>
+      </section>
+    `;
+  }
+
+
+  /** The page's own header while browsing: the path, the kinds, the scope switch, and the list's search and create keys. */
+  private renderBrowseHeader(segments: readonly BreadcrumbSegment[], listed: Omit<NavigateInput, "query">, sessionProjectId: string | undefined, showsSessions: boolean) {
+    return html`
         <header class="path-bar">
           ${this.renderQuickAccess()}
           <div class="path-row">
@@ -351,7 +404,13 @@ export class AppNavigatePage extends LitElement {
           ${this.renderKindTab("project", "Projects", renderProjectIcon())}
           ${this.renderKindTab("sessions", "Sessions", renderChatIcon())}
         </nav>
-        ${showsSessions ? this.renderScopeSwitch(listed.projects, input.scope.projectId) : nothing}
+        ${showsSessions ? this.renderScopeSwitch(listed.projects, sessionProjectId) : nothing}
+        ${this.renderListHeader(showsSessions)}
+    `;
+  }
+
+  private renderListHeader(showsSessions: boolean) {
+    return html`
         ${showsSessions ? html`
           <div class="search-row">
             <input
@@ -374,27 +433,127 @@ export class AppNavigatePage extends LitElement {
             : this.kind === "project" && this.onAddProject !== undefined
               ? html`<button type="button" class="create" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>`
               : nothing}
+          ${this.renderSelectKey()}
         </div>
-        <div
-          class=${this.tilesPerRow === undefined ? "body" : `body tiles-${String(this.tilesPerRow)}`}
-          @pointerdown=${() => { this.rowOrder.hold(); }}
-          @pointerup=${() => { this.letGoOfRows(); }}
-          @pointercancel=${() => { this.letGoOfRows(); }}
-        >
-          ${showsSessions
-            ? html`
-                ${repeat(view.sections, (section) => section.id, (section) => this.renderSessionSection(section))}
-                ${this.renderSessionsEmptyState(model.matchCount)}
-              `
-            : html`
-                ${repeat(choices, choiceRowKey, (choice) => this.renderChoice(choice))}
-                ${choices.length > 0 || this.loadingChoices
-                  ? nothing
-                  : html`<p class="empty" role="status">Nothing to choose at this level.</p>`}
-              `}
-        </div>
-      </section>
     `;
+  }
+
+  /**
+   * A quiet way into selecting for a mouse, which has no long press (owner, 2026-09-30); the
+   * phone's hold is the gesture there, so the key stays off coarse pointers.
+   */
+  private renderSelectKey() {
+    const group = SELECT_KEY_GROUP[this.kind];
+    if (group === undefined || this.onBulkAction === undefined) return nothing;
+    return html`<button type="button" class="select-key" @click=${() => { this.selection.dispatch({ type: "start", group }); }}>Select</button>`;
+  }
+
+  /** Selecting is a page of its own: its header and its actions stand where the browsing header did. */
+  private renderSelection(state: Exclude<NavigateSelectionState, { phase: "browsing" }>) {
+    const chosen = this.selectableRows().filter((row) => row.group === state.group && state.ids.has(row.id));
+    const bar = {
+      state,
+      actions: this.onBulkAction === undefined ? [] : navigateBulkActions(state.group, chosen),
+      visibleIds: this.visibleSelectableIds(state.group),
+      onExit: () => { this.exitSelection(); },
+      onSelectAll: (ids: readonly string[]) => { this.selection.dispatch({ type: "select-all", ids }); },
+      onChoose: (action: NavigateBulkActionId, ids: readonly string[]) => { void this.runBulkAction(state.group, action, ids); },
+    };
+    return html`
+      ${renderSelectionHeader(bar)}
+      <slot name="app-row"></slot>
+      ${renderSelectionActions(bar)}
+    `;
+  }
+
+  private async runBulkAction(group: NavigateBulkGroup, action: NavigateBulkActionId, ids: readonly string[]): Promise<void> {
+    const run = this.onBulkAction;
+    if (run === undefined) return;
+    this.selection.dispatch({ type: "choose", action });
+    const outcome = await run(group, action, ids).catch((): SelectionOutcome => "cancelled");
+    this.selection.dispatch({ type: "settled", outcome });
+  }
+
+  /** Leave selecting, from the way-out key, Escape, the back gesture, or a change of list. */
+  exitSelection(): void {
+    this.selection.dispatch({ type: "exit" });
+  }
+
+  private selectionChanged(next: NavigateSelectionState, previous: NavigateSelectionState): void {
+    this.requestUpdate();
+    if (isSelecting(next) === isSelecting(previous)) return;
+    if (isSelecting(next)) {
+      this.openMenuRowId = undefined;
+      document.addEventListener("keydown", this.escapeSelection, { capture: true });
+      this.onSelectingChange?.(() => { this.exitSelection(); });
+      return;
+    }
+    document.removeEventListener("keydown", this.escapeSelection, { capture: true });
+    this.onSelectingChange?.(undefined);
+  }
+
+  private readonly pressGuard = { handleEvent: (): void => { this.selection.pressStarted(); }, capture: true };
+
+  private readonly holdReleaseGuard = { handleEvent: (event: MouseEvent): void => { this.selection.swallowHoldRelease(event); }, capture: true };
+
+  private readonly escapeSelection = (event: KeyboardEvent): void => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.exitSelection();
+  };
+
+  /**
+   * The rows a selection may hold, in list order. A session pinned on another machine stands in
+   * this list but is acted on there, so it is not selectable here; neither is an archived one
+   * where this host cannot change archives.
+   */
+  private selectableRows(): SelectableRow[] {
+    const view = this.view;
+    if (view === undefined) return [];
+    if (this.kind !== "sessions") {
+      return view.choices.flatMap((choice): SelectableRow[] => choice.level === "project"
+        ? [{ id: choice.id, group: "projects", facts: { pinned: this.pinnedProjectIds.has(choice.id), closable: this.canCloseProject } }]
+        : []);
+    }
+    return view.sections.flatMap((section) => section.rows.flatMap((row): SelectableRow[] => {
+      const group = this.sessionGroup(row);
+      return group === undefined ? [] : [{ id: row.session.id, group, facts: this.sessionFacts(row) }];
+    }));
+  }
+
+  /** Select all takes what the reader can see: rows of folded sections stay as they are. */
+  private visibleSelectableIds(group: NavigateBulkGroup): string[] {
+    const view = this.view;
+    if (view === undefined) return [];
+    if (this.kind !== "sessions") return this.selectableRows().filter((row) => row.group === group).map((row) => row.id);
+    return view.sections
+      .filter((section) => !this.folds.isFolded(section.id, section.foldedByDefault === true))
+      .flatMap((section) => section.rows.filter((row) => this.sessionGroup(row) === group).map((row) => row.session.id));
+  }
+
+  private sessionGroup(row: NavigateSessionRow): NavigateBulkGroup | undefined {
+    if (row.machineId !== this.view?.listed.scope.machineId) return undefined;
+    if (row.session.archived !== true) return "live";
+    return this.canArchiveSessions ? "archived" : undefined;
+  }
+
+  private sessionFacts(row: NavigateSessionRow): NavigateRowFacts {
+    return { pinned: row.pins.global, archived: row.session.archived === true, archivable: this.canArchiveSessions && row.session.persisted !== false, unread: this.input?.unreadSessionIds?.has(row.session.id) === true };
+  }
+
+  /** While selecting, a row of the selected group leads with its mark instead of its icon. */
+  private rowIcon(group: NavigateBulkGroup | undefined, id: string, icon: unknown) {
+    const selected = this.rowSelected(group, id);
+    if (selected === undefined) return icon;
+    return selected ? renderCheckIcon() : renderPendingRingIcon();
+  }
+
+  /** Whether a row is selected; undefined while the list is not selecting that row's group. */
+  private rowSelected(group: NavigateBulkGroup | undefined, id: string): boolean | undefined {
+    const state = this.selection.state;
+    if (!isSelecting(state) || state.group !== group) return undefined;
+    return state.ids.has(id);
   }
 
   /**
@@ -455,25 +614,33 @@ export class AppNavigatePage extends LitElement {
     const icon = choice.level === "machine" ? renderMachineIcon() : renderProjectIcon();
     const kind: NavigateRowKind = choice.level;
     const rowId = choiceRowKey(choice);
+    const group: NavigateBulkGroup | undefined = choice.level === "project" ? "projects" : undefined;
+    const selected = this.rowSelected(group, choice.id);
     return this.renderRowShell(rowId, kind, choice.id, choice.label, html`
       <button
         type="button"
         class=${`row${choice.current ? " current" : ""}${projectRowClass(choice)}`}
         title=${choice.detail ?? choice.label}
-        @click=${() => {
+        aria-pressed=${selected === undefined ? nothing : String(selected)}
+        @pointerdown=${(event: PointerEvent) => { this.selection.pointerDown(group, choice.id, event); }}
+        @pointermove=${(event: PointerEvent) => { this.selection.pointerMove(event); }}
+        @pointerup=${() => { this.selection.pointerEnd(); }}
+        @pointercancel=${() => { this.selection.pointerEnd(); }}
+        @click=${(event: MouseEvent) => {
+          if (this.selection.click(group, choice.id, event) === "selection") return;
           if (choice.level === "project") { this.pathProjectId = choice.id; this.lastProjectId = choice.id; }
           this.onChoose?.(choice.level, choice.id);
           this.kind = "sessions";
         }}
       >
-        <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${icon}</span>${kind === "project" && this.pinnedProjectIds.has(choice.id) ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${choice.label}</span></span>
+        <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${this.rowIcon(group, choice.id, icon)}</span>${kind === "project" && this.pinnedProjectIds.has(choice.id) ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${choice.label}</span></span>
         ${choice.detail === undefined ? nothing : html`<span class="row-path">${choice.detail}</span>`}
       </button>
     `, {
       hasPath: choice.detail !== undefined,
       closable: kind === "project" && this.canCloseProject,
       pinned: kind === "project" && this.pinnedProjectIds.has(choice.id),
-    });
+    }, group, selected);
   }
 
   /**
@@ -489,16 +656,19 @@ export class AppNavigatePage extends LitElement {
     label: string,
     row: unknown,
     facts: { pinned?: boolean; projectPinned?: boolean | undefined; hasPath?: boolean; closable?: boolean; archived?: boolean; archivable?: boolean },
+    group: NavigateBulkGroup | undefined,
+    selected: boolean | undefined,
   ) {
     const actions = navigateRowActions(kind, {
       ...facts,
       renamable: kind === "session" && this.canRenameSession,
     });
     const open = this.openMenuRowId === rowId;
+    const menu = actions.length > 1 && !isSelecting(this.selection.state);
     return html`
-      <div class=${open ? "row-wrap menu-open" : "row-wrap"} data-motion-key=${rowId} @contextmenu=${actions.length <= 1 ? nothing : (event: MouseEvent) => { this.openRowMenuAtPointer(rowId, event); }}>
+      <div class=${`row-wrap${open ? " menu-open" : ""}${selected === true ? " selected" : ""}`} data-motion-key=${rowId} @contextmenu=${(event: MouseEvent) => { this.rowContextMenu(rowId, menu, group, id, event); }}>
         ${row}
-        ${actions.length <= 1 ? nothing : html`
+        ${!menu ? nothing : html`
           <button
             type="button"
             class="action-menu-toggle"
@@ -566,8 +736,18 @@ export class AppNavigatePage extends LitElement {
     this.rowTap = "open";
   }
 
-  private openRowMenuAtPointer(rowId: string, event: MouseEvent): void {
-    if (!contextMenuFromMouse(event)) return;
+  /**
+   * A right-click opens the row's menu where the pointer is (R14). A touch long press fires the
+   * same event on Android, and there the hold is selection's: the browser's own menu must not
+   * open over it.
+   */
+  private rowContextMenu(rowId: string, menu: boolean, group: NavigateBulkGroup | undefined, id: string, event: MouseEvent): void {
+    if (!contextMenuFromMouse(event)) {
+      event.preventDefault();
+      this.selection.touchContextMenu(group, id, event);
+      return;
+    }
+    if (!menu) return;
     event.preventDefault();
     this.openMenuRowId = rowId;
     this.menuStyle = actionMenuPanelStyleAtPointer(event);
@@ -584,12 +764,27 @@ export class AppNavigatePage extends LitElement {
     const label = sessionLabel(row.session);
     const key = machineSessionKey(row.machineId, row.session.id);
     const opening = isOpeningKey(this.opening, key);
-    return this.renderRowShell(sessionRowKey(row), "session", row.session.id, label, html`
-      <button type="button" class=${`row session${row.current ? " current" : ""}${opening ? " opening" : ""}`} aria-current=${row.current ? "true" : "false"} aria-busy=${opening ? "true" : "false"} title=${label} @click=${() => { this.tapSessionRow(row); }}>
-        <span class="row-title"><span class="row-icon" data-kind="session">${renderChatIcon()}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>
+    const group = this.sessionGroup(row);
+    const id = row.session.id;
+    const selected = this.rowSelected(group, id);
+    return this.renderRowShell(sessionRowKey(row), "session", id, label, html`
+      <button
+        type="button"
+        class=${`row session${row.current ? " current" : ""}${opening ? " opening" : ""}`}
+        aria-current=${row.current ? "true" : "false"}
+        aria-busy=${opening ? "true" : "false"}
+        aria-pressed=${selected === undefined ? nothing : String(selected)}
+        title=${label}
+        @pointerdown=${(event: PointerEvent) => { this.selection.pointerDown(group, id, event); }}
+        @pointermove=${(event: PointerEvent) => { this.selection.pointerMove(event); }}
+        @pointerup=${() => { this.selection.pointerEnd(); }}
+        @pointercancel=${() => { this.selection.pointerEnd(); }}
+        @click=${(event: MouseEvent) => { if (this.selection.click(group, id, event) === "row") this.tapSessionRow(row); }}
+      >
+        <span class="row-title"><span class="row-icon" data-kind="session">${this.rowIcon(group, id, renderChatIcon())}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>
         ${this.opening?.key === key && this.opening.phase !== "going" ? html`<span class="row-path">${renderOpeningWords(this.opening, key)}</span>` : row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
       </button>
-    `, { pinned: row.pins.global, projectPinned: row.pins.project, archived: row.session.archived === true, archivable: this.canArchiveSessions && row.session.persisted !== false });
+    `, { pinned: row.pins.global, projectPinned: row.pins.project, archived: row.session.archived === true, archivable: this.canArchiveSessions && row.session.persisted !== false }, group, selected);
   }
 
   /**
@@ -628,7 +823,7 @@ export class AppNavigatePage extends LitElement {
   }
 
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, sessionStateBadgeStyles, openingMarkStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, sessionStateBadgeStyles, openingMarkStyles, selectionBarStyles, css`
     .row.session.opening { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row .row-title { flex: 1 1 auto; min-width: 0; }
     .row-name { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); line-height: 1.3; overflow-wrap: anywhere; }
@@ -654,6 +849,11 @@ export class AppNavigatePage extends LitElement {
        a floating panel over a two-column board said nothing about which tile
        it was acting on. */
     .row-wrap.menu-open > .row { border-color: var(--pi-accent); }
+    .row-wrap.selected > .row { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+    /* A hold is the row's own gesture: iOS must not start a callout or a text selection under it, which cancels the press. */
+    .row-wrap > .row { -webkit-touch-callout: none; }
+    .select-key { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font: inherit; cursor: pointer; }
+    @media (pointer: coarse) { .select-key { display: none; } }
     /* A menu stays until it is answered or dismissed: a tap anywhere else
        takes it back, which is what a reader expects of a popup. */
     .menu-scrim { position: fixed; inset: 0; z-index: calc(var(--pi-layer-popover) - 1); background: transparent; }

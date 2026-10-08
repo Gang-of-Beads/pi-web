@@ -806,6 +806,44 @@ stateDiagram-v2
 - **Continuation** is a region too: `idle` → `waiting-quiescence` (no subagent run or background task active) → `injected`, or `fallback-fired` after a bounded wait.
 - **The goal record format belongs to the goal plugin, and so does its reader.** Nothing else parses the files. A file that cannot be read is shown as unreadable, never as "no goals" (B27).
 
+## D9. A list in batch mode (selection and reorder)
+
+Owner, 2026-09-30 (bulk selection) and 2026-10-09 (R11, ask 593df15e): "long press (enters batch mode); dragging is moving; tapping the others is multi-select for a batch action". Desktop: press and drag moves a row, a click opens it, Shift or Cmd/Ctrl-click selects, and the row menu stays on ⋯ and right-click (R14).
+
+Two pure machines, composed by the list. Each is its own module, and the list is a dumb executor of both.
+
+**Selection** (`selectionModel.ts`), per list, one group at a time (live sessions, archived sessions, projects, machines):
+
+| state | event | next |
+|---|---|---|
+| `browsing` | hold, or a modifier-click, on a row | `selecting(group, {row})` |
+| `selecting(ids)` | tap a row of the same group | the row toggled |
+|  | Select all | every visible row of the group |
+|  | a refresh drops rows | those ids pruned |
+|  | an action | `acting(action, ids)` |
+|  | ✕ Done, Escape, back, another list (kind, project or machine) | `browsing` |
+| `acting(action, ids)` | done | `browsing`; the list re-reads, and a failure shows in the app row as a one-row action's does |
+|  | cancelled: a destructive action asks in the app's confirm dialog, and the reader declined | `selecting(ids)` |
+
+Selecting is a page of its own (owner, 2026-10-09): the path bar, the kinds, the scope switch, the search and the create key give way to a header with the way out (✕) where the grid key stands, the count as its title and Select all, and under it a row of equal-size action keys; leaving the selection brings the browsing page back as it was. A hold is a touch or pen press held 500 ms; a mouse never holds, so on the desktop a press stays the row's own and Shift or Cmd/Ctrl-click enters selecting, with a quiet Select key in the list header for a mouse that does not know the gesture. Entering selecting pushes a history frame, so back leaves the selection first. A session pinned on another machine is not selectable here: it is acted on where it lives.
+
+**Reorder** (`listReorder.ts`), per reorderable list (pinned sessions, pinned projects, projects, machines):
+
+| state | event | next |
+|---|---|---|
+| `idle` | a press that may drag: on the phone in `selecting`, the press that entered it, or a later one held 200 ms; on the desktop, any press on a row | `pressing(row, origin)` |
+| `pressing` | the pointer moves past 4 px (desktop) or is still down after the hold (phone) | `dragging(row, slot)` |
+|  | release before that | `idle`, and the press is a tap (desktop: open; phone in batch mode: toggle) |
+|  | a quick swipe on the phone | `idle`; the list scrolls |
+| `dragging(row, slot)` | move | `dragging(row, slot')` |
+|  | release over the list | `dropped(order)`: the whole new order is sent, not a move |
+|  | Escape, pointer cancel, release outside | `idle`, order unchanged |
+| `dropped(order)` | the server answers | `idle`; the list re-reads, and the server's order wins |
+
+**Why the whole order.** A move ("put X after Y") replayed twice or applied against a list another device has changed scrambles it; the full order is idempotent, and the server answers with the order it kept.
+
+**Where the order lives.** With the data it orders, so every device sees it: session pins in the pin file's arrays; pinned projects move from browser storage to the machine's pin file (adopted once); projects in `projects.json`; machines in the machines plugin's store. A pinned section stands in its pin order; its rows still show state marks but no longer move on activity.
+
 ## Methodology folded in (research run `e7c7403c`, `uiux-methodology.md`)
 
 - **Statecharts** (statecharts.dev; Stately testing docs):
