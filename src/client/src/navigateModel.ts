@@ -13,6 +13,7 @@
  * there is no screen to return from.
  */
 
+import { presentProjectsFirst, projectDetail, projectFolderFlag } from "./projectFolder";
 import { CORE_SESSION_SECTIONS, compareRanked, modifiedMs, sectionOf, sessionRank, type SessionRank, type SessionSectionDefinition } from "./sessionOrder";
 import type { SessionInfo } from "./api";
 import type { SessionActivityCategory } from "../../shared/sessionActivityState";
@@ -40,6 +41,8 @@ export interface NavigateChoice {
   label: string;
   detail?: string;
   current: boolean;
+  /** A project whose folder is gone, drawn greyed and listed last (`projectFolder.ts`). */
+  folderMissing?: true;
   /** Sessions known to live under this choice, when the caller knows. */
   sessionCount?: number;
 }
@@ -89,7 +92,7 @@ export interface NavigateModel {
 }
 
 interface MachineLike { id: string; name: string }
-interface ProjectLike { id: string; name: string; path?: string }
+interface ProjectLike { id: string; name: string; path?: string; folderMissing?: boolean }
 interface FolderLike { id: string; label: string; path: string; projectId?: string }
 
 export interface NavigateInput {
@@ -352,13 +355,17 @@ function choicesFor(level: NavigateLevel | undefined, input: NavigateInput): Nav
   if (level === "machine") {
     return input.machines.map((machine) => ({ level, id: machine.id, label: machine.name, current: machine.id === input.scope.machineId }));
   }
-  return input.projects.map((project) => ({
-    level,
-    id: project.id,
-    label: project.name,
-    ...(project.path === undefined ? {} : { detail: project.path }),
-    current: project.id === input.scope.projectId,
-  }));
+  return presentProjectsFirst(input.projects).map((project) => {
+    const detail = projectDetail(project);
+    return {
+      level,
+      id: project.id,
+      label: project.name,
+      ...(detail === undefined ? {} : { detail }),
+      current: project.id === input.scope.projectId,
+      ...projectFolderFlag(project),
+    };
+  });
 }
 
 function choiceTitle(level: NavigateLevel | undefined): string {

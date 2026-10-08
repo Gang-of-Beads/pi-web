@@ -1,3 +1,4 @@
+import { projectRowClass } from "../../projectFolder";
 import type { ListTilesPerRow } from "../../../../shared/apiTypes";
 import type { NavigateListScope } from "../../goToScope";
 import { LitElement, css, html, nothing, unsafeCSS, type PropertyValues } from "lit";
@@ -434,7 +435,7 @@ export class AppNavigatePage extends LitElement {
     return this.renderRowShell(rowId, kind, choice.id, choice.label, html`
       <button
         type="button"
-        class=${choice.current ? "row current" : "row"}
+        class=${`row${choice.current ? " current" : ""}${projectRowClass(choice)}`}
         title=${choice.detail ?? choice.label}
         @click=${() => {
           if (choice.level === "project") { this.pathProjectId = choice.id; this.lastProjectId = choice.id; }
@@ -646,6 +647,7 @@ export class AppNavigatePage extends LitElement {
     .body.tiles-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .section-title, .empty { grid-column: 1 / -1; }
     .row-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
+    .row.folder-missing .row-name, .row.folder-missing .row-icon { color: var(--pi-muted); }
     .section-title { margin: var(--pi-space-4) 0 var(--pi-space-1); color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
     .section-toggle { justify-self: start; display: inline-flex; align-items: center; gap: var(--pi-space-2); box-sizing: border-box; min-height: var(--pi-control-height); padding: 0 var(--pi-space-2); border: 1px solid transparent; border-radius: var(--pi-radius-md); background: transparent; cursor: pointer; text-align: start; }
     .section-toggle:focus-visible { border-color: var(--pi-accent); }

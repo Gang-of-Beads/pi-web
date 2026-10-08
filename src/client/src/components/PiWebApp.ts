@@ -61,6 +61,7 @@ import { shownWorkspacePanel, workspacePanelHoldsCanvas, workspacePanelMayHoldCa
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { SessionUnreadController } from "../sessionUnread";
 import { heldOpenSessionIn, nextOpenRowHold, type OpenRow } from "../openRowHold";
+import { projectFolderFlag } from "../projectFolder";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
@@ -2962,7 +2963,7 @@ export class PiWebApp extends LitElement {
     return {
       scope: { machineId, projectId: state.selectedProject?.id, folderPath: state.selectedWorkspace?.path, sessionId: state.selectedSession?.id },
       machines: state.machines.map((machine) => ({ id: machine.id, name: machine.name })),
-      projects: state.projects.map((project) => ({ id: project.id, name: project.name, path: project.path })),
+      projects: projectChoices(state.projects),
       folders: state.workspaces.map((workspace) => ({ id: workspace.id, label: workspace.label, path: workspace.path, projectId: workspace.projectId })),
       sessions,
       // Pins answer for the machine, not for the project the reader happens to
@@ -3728,7 +3729,7 @@ export class PiWebApp extends LitElement {
     const workspaceById = (workspaceId: string): Workspace | undefined => state.workspaces.find((workspace) => workspace.id === workspaceId);
     const closeSheet = surface === "sheet";
     return {
-      projects: state.projects.map((project) => ({ id: project.id, name: project.name, path: project.path })),
+      projects: projectChoices(state.projects),
       projectsLoad: state.projectsLoad,
       workspaces: state.workspaces,
       workspacesLoad: state.isLoadingWorkspaces ? "loading" : "loaded",
@@ -5295,6 +5296,10 @@ function machineScopedKey(machineId: string, value: string): string {
 
 function omitWorkspaceDeletionRun(runs: Record<string, TerminalCommandRun>, workspaceId: string): Record<string, TerminalCommandRun> {
   return Object.fromEntries(Object.entries(runs).filter(([candidate]) => candidate !== workspaceId));
+}
+
+function projectChoices(projects: AppState["projects"]) {
+  return projects.map((project) => ({ id: project.id, name: project.name, path: project.path, ...projectFolderFlag(project) }));
 }
 
 function nextFrame(): Promise<void> {

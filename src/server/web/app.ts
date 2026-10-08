@@ -50,6 +50,7 @@ import { createSelfUpdateService, registerSelfUpdateRoutes } from "./updates/sel
 import { registerMachineProxyRoutes } from "./machines/machineProxyRoutes.js";
 import { registerPluginBackendProxyRoutes } from "./plugins/pluginBackendProxyRoutes.js";
 import { registerPluginOperationProxyRoutes } from "./plugins/pluginOperationProxyRoutes.js";
+import { withFolderPresence } from "./projectFolderPresence.js";
 import { proxyMachinePluginAsset, registerMachinePluginProxyRoutes } from "./machines/machinePluginProxyRoutes.js";
 import { localMachineFallback, type MachineRegistryFace } from "./machines/localMachineRegistry.js";
 import type { Project, WorkspaceEffectiveConfig, WorkspaceProviderResolution } from "../shared/types.js";
@@ -79,7 +80,7 @@ interface LocalProjectRouteOptions {
 }
 
 function registerLocalProjectRoutes(app: FastifyInstance, projects: ProjectService, workspaces: WorkspaceCatalog, prefix: string, options: LocalProjectRouteOptions = {}): void {
-  app.get(`${prefix}/projects`, async () => projects.list());
+  app.get(`${prefix}/projects`, async () => withFolderPresence(await projects.list()));
 
   app.post<{ Body: { name?: string; path: string; create?: boolean } }>(`${prefix}/projects`, async (request, reply) => {
     try {

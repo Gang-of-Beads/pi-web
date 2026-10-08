@@ -13,6 +13,8 @@
  * opinion about it.
  */
 
+import { presentProjectsFirst, projectDetail } from "./projectFolder";
+
 export type BreadcrumbLevel = "machine" | "project" | "folder";
 
 export interface BreadcrumbOption {
@@ -34,7 +36,7 @@ export interface BreadcrumbSegment {
 interface BreadcrumbInput {
   machines: readonly { id: string; name: string }[];
   machineId: string;
-  projects: readonly { id: string; name: string; path?: string }[];
+  projects: readonly { id: string; name: string; path?: string; folderMissing?: boolean }[];
   projectId: string | undefined;
   folders: readonly { id: string; label: string; path: string; projectId?: string }[];
   folderPath: string | undefined;
@@ -74,12 +76,10 @@ export function switcherBreadcrumb(input: BreadcrumbInput): BreadcrumbSegment[] 
     level: "project",
     label: project?.name ?? "All projects",
     chosen: project !== undefined,
-    options: input.projects.map((entry) => ({
-      id: entry.id,
-      label: entry.name,
-      ...(entry.path === undefined ? {} : { detail: entry.path }),
-      current: entry.id === input.projectId,
-    })),
+    options: presentProjectsFirst(input.projects).map((entry) => {
+      const detail = projectDetail(entry);
+      return { id: entry.id, label: entry.name, ...(detail === undefined ? {} : { detail }), current: entry.id === input.projectId };
+    }),
   });
 
   const folders = distinctByPath(foldersInScope(input));

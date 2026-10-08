@@ -361,6 +361,8 @@ export interface Project {
   name: string;
   path: string;
   createdAt: string;
+  /** The project's folder is certainly gone, as the project list read it (`projectFolderPresence.ts`). */
+  folderMissing?: true;
 }
 
 export interface WorkspaceEffectiveConfig {
