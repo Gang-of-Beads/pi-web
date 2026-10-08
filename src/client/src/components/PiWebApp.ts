@@ -3020,7 +3020,7 @@ export class PiWebApp extends LitElement {
     return {
       scope: { machineId, projectId: state.selectedProject?.id, folderPath: state.selectedWorkspace?.path, sessionId: state.selectedSession?.id },
       machines: state.machines.map((machine) => ({ id: machine.id, name: machine.name })),
-      projects: projectChoices(state.projects),
+      projects: projectChoices(browsingElsewhere ? this.projects.listed(machineId) ?? [] : state.projects),
       folders: state.workspaces.map((workspace) => ({ id: workspace.id, label: workspace.label, path: workspace.path, projectId: workspace.projectId })),
       sessions,
       // Pins answer for the machine, not for the project the reader happens to
@@ -3071,10 +3071,10 @@ export class PiWebApp extends LitElement {
       .tilesPerRow=${chosenListTiles(this.listTiles, this.appShell.isMobileNavigationLayout ? "phone" : "desktop")}
       .onOpenSettings=${this.appShell.isMobileNavigationLayout ? undefined : () => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }}
       .boardAnswer=${this.quickSwitcherBoardAnswer}
-      .loadingChoices=${this.state.projectsLoad !== "loaded" || this.state.isLoadingWorkspaces}
+      .loadingChoices=${this.navigateChoicesLoading()}
       .canRenameSession=${true}
       .canArchiveSessions=${!this.quickSwitcherBrowsingElsewhere()}
-      .canCloseProject=${true}
+      .canCloseProject=${!this.quickSwitcherBrowsingElsewhere()}
       .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => { void this.asReaderListChange(() => this.runNavigateRowAction(kind, id, action)); }}
       .readerChanging=${this.readerListChanges > 0}
       .onBulkAction=${(group: NavigateBulkGroup, action: NavigateBulkActionId, ids: readonly string[]) => this.asReaderListChange(() => this.runNavigateBulkAction(group, action, ids))}
@@ -3084,6 +3084,13 @@ export class PiWebApp extends LitElement {
       .onReorderMachines=${(order: readonly string[]) => { void this.machines.reorderMachines(order); }}
       .canReorderProjects=${!this.quickSwitcherBrowsingElsewhere()}
     >${this.renderAppRowSlot(overlay ? "navigate-overlay" : "navigation-view")}</app-navigate-page>`;
+  }
+
+  /** Whether the choices the page lists are still being read: the browsed machine's projects, or the selected machine's. */
+  private navigateChoicesLoading(): boolean {
+    const machineId = this.browsedMachineId();
+    if (machineId !== selectedMachineId(this.state)) return this.projects.listed(machineId) === undefined;
+    return this.state.projectsLoad !== "loaded" || this.state.isLoadingWorkspaces;
   }
 
   /** Run a change the reader asked for from the list, so the list knows the rows it moves are the reader's doing. */
@@ -3230,8 +3237,11 @@ export class PiWebApp extends LitElement {
     const startSession = this.startSessionOnProjectChoice;
     this.startSessionOnProjectChoice = false;
     this.navigation.begin();
-    const project = this.state.projects.find((entry) => entry.id === id);
-    if (project === undefined) return;
+    const machineId = this.browsedMachineId();
+    const listed = machineId === selectedMachineId(this.state) ? this.state.projects : this.projects.listed(machineId) ?? [];
+    const chosen = listed.find((entry) => entry.id === id);
+    if (chosen === undefined || !(await this.moveToMachine(machineId, { updateUrl: false }))) return;
+    const project = this.state.projects.find((entry) => entry.id === id) ?? chosen;
     if (!startSession) {
       await this.workspaces.selectProject(project);
       return;
@@ -3380,6 +3390,7 @@ export class PiWebApp extends LitElement {
     if (this.quickSwitcherBrowseMachineId === machineId) return;
     this.navigation.begin();
     this.quickSwitcherBrowseMachineId = machineId;
+    this.projects.browse(machineId);
     this.mirrorSessionBoard();
     void this.loadQuickSwitcherData();
   }
@@ -5495,7 +5506,7 @@ function omitWorkspaceDeletionRun(runs: Record<string, TerminalCommandRun>, work
   return Object.fromEntries(Object.entries(runs).filter(([candidate]) => candidate !== workspaceId));
 }
 
-function projectChoices(projects: AppState["projects"]) {
+function projectChoices(projects: readonly Project[]) {
   return projects.map((project) => ({ id: project.id, name: project.name, path: project.path, ...projectFolderFlag(project) }));
 }
 

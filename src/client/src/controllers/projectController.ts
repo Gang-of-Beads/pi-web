@@ -40,6 +40,7 @@ export class ProjectController {
   /** The projects of each machine, read until answered (B48). This controller is its only writer. */
   private readonly listings: ScopedResource<string, Project[]>;
   private watched: { machineId: string; release: () => void } | undefined;
+  private browsed: { machineId: string; release: () => void } | undefined;
   private mirrored: Project[] | undefined;
   private noticedFact: ReadFact["kind"] = "none";
 
@@ -83,6 +84,24 @@ export class ProjectController {
   async answeredProjects(machineId: string, wanted: () => boolean): Promise<readonly Project[] | undefined> {
     const view = await this.listings.whenAnswered(machineId, wanted);
     return view?.data;
+  }
+
+  /**
+   * Read the projects of a machine a list browses without selecting it (the Navigate page's machine
+   * pick), and keep reading them while it is browsed. Browsing the selected machine lets the other
+   * go: its listing is already watched.
+   */
+  browse(machineId: string): void {
+    const target = machineId === selectedMachineId(this.getState()) ? undefined : machineId;
+    if (this.browsed?.machineId === target) return;
+    this.browsed?.release();
+    this.browsed = target === undefined ? undefined : { machineId: target, release: this.listings.watch(target) };
+    if (target !== undefined) void this.listings.refresh(target);
+  }
+
+  /** A machine's projects as it last answered; undefined until it has. */
+  listed(machineId: string): readonly Project[] | undefined {
+    return this.listings.entry(machineId).data;
   }
 
   /** A sign of life: retry a lost projects read now instead of waiting out the backoff. */
