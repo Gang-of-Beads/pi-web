@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { QueuedSessionMessage } from "../../shared/apiTypes";
 import type { ChatLine } from "./components/shared";
-import { applyQueueToDelivery, carryDeliveryForward, splitTranscriptAndPending } from "./messageDelivery";
+import { applyQueueToDelivery, carryDeliveryForward } from "./messageDelivery";
 
 /**
  * A queue snapshot says what is queued right now. It does not say what was
@@ -82,39 +82,5 @@ describe("absence from a queue snapshot", () => {
     const carried = carryDeliveryForward(failed, { role: "user", parts: [{ type: "text", text: "make them smaller" }] });
 
     expect(carried.meta?.delivery?.state).toBe("delivered");
-  });
-});
-
-describe("one message renders on exactly one row", () => {
-  /** The owner's screenshot: a blue transcript card and an amber queued card. */
-  it("claims the waiting bubble instead of synthesizing a second row", () => {
-    const messages = [tracked("id-a", "make them smaller", "queued")];
-
-    const split = splitTranscriptAndPending(messages, [queuedEntry({ text: "make them smaller", clientMessageId: "id-a" })]);
-
-    expect(split.pending).toHaveLength(1);
-    expect(split.settled).toHaveLength(0);
-  });
-
-  /**
-   * The regression itself: once absence had settled the bubble, the entry could
-   * no longer claim it, because claiming only looks at bubbles still waiting.
-   */
-  it("still claims its bubble after a snapshot that omitted it", () => {
-    const messages = applyQueueToDelivery([tracked("id-a", "make them smaller", "queued")], []);
-
-    const split = splitTranscriptAndPending(messages, [queuedEntry({ text: "make them smaller", clientMessageId: "id-a" })]);
-
-    expect(split.pending).toHaveLength(1);
-    expect(split.settled).toHaveLength(0);
-  });
-
-  it("does not draw a queued row for a message the agent has committed", () => {
-    const messages = [tracked("id-a", "make them smaller", "delivered")];
-
-    const split = splitTranscriptAndPending(messages, []);
-
-    expect(split.pending).toHaveLength(0);
-    expect(split.settled).toHaveLength(1);
   });
 });

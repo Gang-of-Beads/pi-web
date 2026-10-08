@@ -1,7 +1,6 @@
 import type { TemplateResult } from "lit";
 import { describe, expect, it, vi } from "vitest";
 import type { QueuedSessionMessage, SessionStatus } from "../api";
-import { splitTranscriptAndPending } from "../messageDelivery";
 import type { ChatLine } from "./shared";
 import {
   ChatView,
@@ -186,7 +185,6 @@ describe("ChatView queued messages stay in place", () => {
     const strip = templateText(renderQueuedMessages(view));
     expect(strip).not.toContain("from my phone");
     expect(strip).toContain("Clear queue");
-    expect([...splitTranscriptAndPending(view.messages, view.status.queuedMessages).settled, ...splitTranscriptAndPending(view.messages, view.status.queuedMessages).pending]).toHaveLength(1);
   });
 });
 

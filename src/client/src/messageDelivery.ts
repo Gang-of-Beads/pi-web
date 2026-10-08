@@ -78,50 +78,6 @@ export function deliveryWaiting(state: MessageDeliveryState): boolean {
   return !deliverySettled(state);
 }
 
-/** Settled messages, and the ones the agent has not started. */
-export function splitTranscriptAndPending(messages: readonly ChatLine[], queued: readonly QueuedSessionMessage[]): { settled: ChatLine[]; pending: ChatLine[] } {
-  if (queued.length === 0) return { settled: [...messages], pending: [] };
-  const bubbles = new Map<string, ChatLine>();
-  const unclaimed: ChatLine[] = [];
-  for (const line of messages) {
-    const delivery = line.meta?.delivery;
-    if (delivery === undefined) continue;
-    // The server can still hold a message it has already echoed back, so the id
-    // claims it whatever the mark says.
-    bubbles.set(delivery.clientMessageId, line);
-    if (deliveryWaiting(delivery.state)) unclaimed.push(line);
-  }
-  const pending: ChatLine[] = [];
-  for (const message of queued) {
-    const byId = message.clientMessageId === undefined ? undefined : bubbles.get(message.clientMessageId);
-    // Claimed, not matched: two identical messages stay two. An empty text is
-    // never matched on - a message whose payload is an attachment carries no
-    // words, and one empty string matches every other, which claimed the wrong
-    // bubble and left a duplicate for the right one.
-    const byWords = byId ?? (message.text === ""
-      ? undefined
-      : unclaimed.find((line) => line.meta?.delivery?.kind === message.kind && chatLineText(line) === message.text));
-    if (byWords !== undefined) unclaimed.splice(unclaimed.indexOf(byWords), 1);
-    pending.push(byWords ?? queuedUserLine(message));
-  }
-  const moved = new Set(pending);
-  return { settled: messages.filter((line) => !moved.has(line)), pending };
-}
-
-/** The words of a bubble, for matching a queue entry that carries no id. */
-function chatLineText(line: ChatLine): string {
-  return line.parts.filter((part) => part.type === "text").map((part) => part.text).join("");
-}
-
-/**
- * A queued message with no bubble here, drawn like one. It carries the queue's
- * own kind so the mark reads the same as a locally sent message's.
- */
-function queuedUserLine(message: QueuedSessionMessage): ChatLine {
-  const clientMessageId = message.clientMessageId ?? `queued:${message.kind}:${message.text}`;
-  return { role: "user", parts: [{ type: "text", text: message.text }], meta: { delivery: { clientMessageId, state: "queued", kind: message.kind } } };
-}
-
 /** The time a tracked bubble shows, which is the time its message is sent with. */
 export function deliveryLineSentAt(messages: readonly ChatLine[], clientMessageId: string): string | undefined {
   return messages[findDeliveryLineIndex(messages, clientMessageId)]?.meta?.timestamp;

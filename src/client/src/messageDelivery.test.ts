@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyQueueToDelivery, deliveryProvenByServer, deliverySettled, deliveryTaken, deliveryWaiting, splitTranscriptAndPending, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, withdrawDeliveryLine, restartDelivery } from "./messageDelivery";
+import { applyQueueToDelivery, deliveryProvenByServer, deliverySettled, deliveryTaken, deliveryWaiting, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, withdrawDeliveryLine, restartDelivery } from "./messageDelivery";
 import type { ChatLine, MessageDeliveryState } from "./components/shared";
 
 const ID = "cm-1";
@@ -190,37 +190,6 @@ describe("findTrackedUserLineIndex", () => {
   });
 });
 
-describe("splitTranscriptAndPending", () => {
-  it("puts a locally sent message after one queued earlier elsewhere", () => {
-    // The reported symptom: a message sent seconds ago rendered above one
-    // queued minutes earlier, because the first had a bubble in the transcript
-    // and the second was drawn in a panel below the whole transcript.
-    const mine = { role: "user" as const, parts: [{ type: "text" as const, text: "mine, just now" }], meta: { delivery: { clientMessageId: "c1", state: "queued" as const, kind: "steer" as const } } };
-    const ordered = splitTranscriptAndPending([mine], [
-      { kind: "steer", text: "queued earlier, from my phone" },
-      { kind: "steer", text: "mine, just now", clientMessageId: "c1" },
-    ]);
-
-    expect([...ordered.settled, ...ordered.pending].map(firstText)).toEqual(["queued earlier, from my phone", "mine, just now"]);
-  });
-
-  it("keeps what is waiting out of the settled transcript, so it can be drawn below the work in flight", () => {
-    const delivered = { role: "assistant" as const, parts: [{ type: "text" as const, text: "an answer" }] };
-    const ordered = splitTranscriptAndPending([delivered], [{ kind: "followUp", text: "waiting" }]);
-    expect([...ordered.settled, ...ordered.pending].map(firstText)).toEqual(["an answer", "waiting"]);
-  });
-
-  it("is a no-op with an empty queue", () => {
-    const line = { role: "user" as const, parts: [{ type: "text" as const, text: "said" }] };
-    expect(splitTranscriptAndPending([line], [])).toEqual({ settled: [line], pending: [] });
-  });
-});
-
-function firstText(line: ChatLine): string {
-  const part = line.parts[0];
-  return part?.type === "text" ? part.text : "";
-}
-
 describe("optimisticUserLine with attachments", () => {
   it("keeps the images with the bubble, since the queue only keeps text", () => {
     // A pending prompt that was mostly a screenshot rendered as an empty-looking
@@ -250,50 +219,6 @@ describe("optimisticUserLine with attachments", () => {
   });
 });
 
-describe("a queued message that already has a bubble", () => {
-  /**
-   * The queue is matched to bubbles by client id, and only bubbles already
-   * marked queued were considered. A message still marked sending - the state
-   * it holds between leaving the browser and the next status frame - matched
-   * nothing, so a second row was synthesized for it and the same words
-   * appeared twice, one above the other.
-   *
-   * The server also lists messages queued by other callers, which carry no id
-   * at all. Those must still find their bubble here rather than duplicate it.
-   */
-  it("does not draw a second row for a message still marked sending", () => {
-    const messages: ChatLine[] = [
-      { role: "user", parts: [{ type: "text", text: "do the thing" }], meta: { delivery: { clientMessageId: "cm-1", state: "sending", kind: "steer" } } },
-    ];
-    const queued = [{ text: "do the thing", kind: "steer" as const, clientMessageId: "cm-1" }];
-
-    expect([...splitTranscriptAndPending(messages, queued).settled, ...splitTranscriptAndPending(messages, queued).pending]).toHaveLength(1);
-  });
-
-  it("finds the bubble for a queue entry that carries no id", () => {
-    const messages: ChatLine[] = [
-      { role: "user", parts: [{ type: "text", text: "do the thing" }], meta: { delivery: { clientMessageId: "cm-1", state: "queued", kind: "steer" } } },
-    ];
-    const queued = [{ text: "do the thing", kind: "steer" as const }];
-
-    expect([...splitTranscriptAndPending(messages, queued).settled, ...splitTranscriptAndPending(messages, queued).pending]).toHaveLength(1);
-  });
-
-  /**
-   * Two identical texts are two messages. Matching by words must not collapse
-   * them into one.
-   */
-  it("keeps two identical messages as two", () => {
-    const messages: ChatLine[] = [
-      { role: "user", parts: [{ type: "text", text: "again" }], meta: { delivery: { clientMessageId: "cm-1", state: "queued", kind: "steer" } } },
-      { role: "user", parts: [{ type: "text", text: "again" }], meta: { delivery: { clientMessageId: "cm-2", state: "queued", kind: "steer" } } },
-    ];
-    const queued = [{ text: "again", kind: "steer" as const }, { text: "again", kind: "steer" as const }];
-
-    expect([...splitTranscriptAndPending(messages, queued).settled, ...splitTranscriptAndPending(messages, queued).pending]).toHaveLength(2);
-  });
-});
-
 describe("the bubble the browser draws for what you just sent", () => {
   /**
    * A streaming reply reaches the transcript only when it finishes, so it can
@@ -309,49 +234,6 @@ describe("the bubble the browser draws for what you just sent", () => {
 
     expect(line.meta?.timestamp).toBeTypeOf("string");
     expect(Date.parse(line.meta?.timestamp ?? "")).not.toBeNaN();
-  });
-});
-
-describe("a bubble the server still holds after marking it taken", () => {
-  /**
-   * The queue is claimed against bubbles that have not settled. A bubble marked
-   * delivered was skipped, so when the server still listed the same message as
-   * queued - which is what a steer queue does - a second row was drawn for it
-   * and the same words appeared twice, one plain and one marked queued.
-   *
-   * A bubble carrying the id is that message, whatever its mark says.
-   */
-  it("is claimed by its id even after it was marked delivered", () => {
-    const messages: ChatLine[] = [
-      { role: "user", parts: [{ type: "text", text: "make them smaller" }], meta: { delivery: { clientMessageId: "cm-1", state: "delivered", kind: "steer" } } },
-    ];
-    const queued = [{ text: "make them smaller", kind: "steer" as const, clientMessageId: "cm-1" }];
-
-    const split = splitTranscriptAndPending(messages, queued);
-
-    expect([...split.settled, ...split.pending]).toHaveLength(1);
-  });
-});
-
-describe("where a claimed bubble ends up", () => {
-  /**
-   * Claiming moves the bubble out of the settled transcript and into the
-   * pending list, which is drawn below the work in flight. That is where a
-   * message the agent has not finished with belongs, above or below its own
-   * history.
-   */
-  it("moves the claimed bubble to the pending list, not both", () => {
-    const older: ChatLine = { role: "assistant", parts: [{ type: "text", text: "an answer" }] };
-    const claimed: ChatLine = {
-      role: "user",
-      parts: [{ type: "text", text: "waiting" }],
-      meta: { delivery: { clientMessageId: "cm-1", state: "queued", kind: "steer" } },
-    };
-
-    const split = splitTranscriptAndPending([older, claimed], [{ text: "waiting", kind: "steer", clientMessageId: "cm-1" }]);
-
-    expect(split.settled).toEqual([older]);
-    expect(split.pending).toEqual([claimed]);
   });
 });
 
