@@ -277,13 +277,18 @@ function isTestSupportPath(path: string): boolean {
   return path.includes(".testSupport.");
 }
 
+/**
+ * The fixtures link the repository's node_modules, so pnpm must run the script as it is: with
+ * its verify-deps-before-run check on, pnpm 12 tried to install into the linked node_modules
+ * whenever the fixture's fresh package.json looked newer than the last check, and failed.
+ */
 function runPnpm(args: string[], cwd: string, timeoutMs = 30_000): Promise<string> {
   return execUtf8(process.platform === "win32" ? "pnpm.cmd" : "pnpm", args, cwd, timeoutMs, process.platform === "win32");
 }
 
 function execUtf8(file: string, args: string[], cwd: string, timeoutMs: number, shell: boolean): Promise<string> {
   return new Promise((resolvePromise, reject) => {
-    execFile(file, args, { cwd, shell, encoding: "utf8", maxBuffer: 10 * 1024 * 1024, timeout: timeoutMs }, (error, stdout) => {
+    execFile(file, args, { cwd, shell, encoding: "utf8", maxBuffer: 10 * 1024 * 1024, timeout: timeoutMs, env: { ...process.env, pnpm_config_verify_deps_before_run: "false" } }, (error, stdout) => {
       if (error !== null) {
         reject(error instanceof Error ? error : new Error("Command failed"));
         return;
