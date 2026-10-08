@@ -807,7 +807,7 @@ describe("a custom screen declared as questions", () => {
     const { service, fake } = dialogService();
     const ui = await boundUiContext(service, fake);
 
-    expect(Reflect.get(ui, "piWebScreens")).toEqual(["questions"]);
+    expect(Reflect.get({ ...ui }, "piWebScreens")).toEqual(["questions"]);
     await service.dispose();
   });
 

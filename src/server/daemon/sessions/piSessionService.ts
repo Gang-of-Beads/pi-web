@@ -5449,6 +5449,17 @@ export class PiSessionService implements SessionRouteService {
     session.extensionRunner.setUIContext(this.sessionUiContext(session, generation), "rpc");
   }
 
+  /**
+   * The UI context the session's extensions get. pi 1.0.4 hands extensions a copy of it
+   * (`{ ...ui, select, confirm, input, editor, custom }`, its prompt bookkeeping), and a copy
+   * keeps only the context's own properties: a member only the Proxy's `get` answered was
+   * dropped. `piWebScreens` was such a member, so since 1.0.4 pi-goal read no declarable
+   * screens, sent its terminal component, and the reader met the same question twice: a
+   * terminal dump, then the native card behind it (owner, 2026-10-08). The Proxy now reports it
+   * as an own property, so the copy keeps it; every other member the trap answers is one pi's
+   * context already has. The base is not copied into a new target: a copy would read every
+   * getter of it at once, before any extension asked for one.
+   */
   private sessionUiContext(
     session: PiAgentSession,
     generation: SessionNotificationGeneration | undefined,
@@ -5490,6 +5501,10 @@ export class PiSessionService implements SessionRouteService {
     // headless defaults so unsupported surfaces cancel safely instead of
     // hanging.
     return new Proxy(baseUiContext, {
+      ownKeys: (target) => [...new Set([...Reflect.ownKeys(target), "piWebScreens"])],
+      getOwnPropertyDescriptor: (target, property) => (property === "piWebScreens"
+        ? { value: DECLARABLE_SCREENS, enumerable: true, configurable: true, writable: false }
+        : Reflect.getOwnPropertyDescriptor(target, property)),
       get: (target, property, receiver): unknown => {
         if (property === "notify") return notify;
         if (typeof property === "string" && Object.hasOwn(standingMembers, property)) return standingMembers[property];
