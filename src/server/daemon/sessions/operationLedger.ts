@@ -131,7 +131,7 @@ function isStoredRow(value: unknown): value is StoredRow {
 }
 
 function isOutcome(value: unknown): value is OperationOutcome {
-  return value === "pending" || value === "succeeded" || value === "consumed" || value === "failed" || value === "withdrawn" || value === "unknown";
+  return typeof value === "string" && Object.hasOwn(READMITTED, value);
 }
 
 /**

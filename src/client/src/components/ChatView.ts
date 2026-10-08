@@ -640,7 +640,7 @@ type UndrawnMessage = "plugins-incomplete" | "unclaimed";
  * (absence is not negation).
  */
 const UNDRAWN_MESSAGE_WORDS: Readonly<Record<UndrawnMessage, { title: string; detail: (tag: string) => string }>> = {
-  "plugins-incomplete": { title: "Not drawn yet", detail: (tag) => `A plugin did not load on this device, so "${tag}" cannot be drawn yet. PI WEB is trying again.` },
+  "plugins-incomplete": { title: "Not drawn yet", detail: (tag) => `A plugin did not load in this tab, so "${tag}" is not drawn yet. PI WEB will try again; reloading the page tries now.` },
   unclaimed: { title: "Unrecognized message", detail: (tag) => `Nothing on this machine renders "${tag}".` },
 };
 

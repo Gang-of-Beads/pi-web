@@ -25,6 +25,7 @@ export function createPluginLoadRetry(retry: (attempt: number) => Promise<boolea
   let attempt = 0;
   let missing = false;
   let running = false;
+  let disposed = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const cancel = (): void => {
     if (timer !== undefined) clearTimeout(timer);
@@ -32,14 +33,14 @@ export function createPluginLoadRetry(retry: (attempt: number) => Promise<boolea
   };
   const schedule = (): void => {
     const delay = delays[attempt];
-    if (timer !== undefined || running || delay === undefined) return;
+    if (disposed || timer !== undefined || running || delay === undefined) return;
     timer = setTimeout(() => {
       timer = undefined;
       void run();
     }, delay);
   };
   const run = async (): Promise<void> => {
-    if (running) return;
+    if (disposed || running) return;
     cancel();
     running = true;
     attempt += 1;
@@ -57,6 +58,9 @@ export function createPluginLoadRetry(retry: (attempt: number) => Promise<boolea
     wake: () => {
       if (missing) void run();
     },
-    dispose: cancel,
+    dispose: () => {
+      disposed = true;
+      cancel();
+    },
   };
 }

@@ -359,7 +359,8 @@ type RepeatAnswerFrame = "prompt.accepted" | "prompt.withdrawn" | "prompt.consum
 
 /**
  * The frame that answers a repeat of an identity the ledger already holds: what became of it, so
- * the sender's row settles. Failed and unknown rows are admitted again, so never repeat here.
+ * the sender's row settles. Failed and unknown rows are admitted again, so they never repeat here;
+ * their entries only keep the table total.
  */
 const REPEAT_ANSWER_FRAME: Readonly<Record<OperationOutcome, RepeatAnswerFrame>> = {
   pending: "prompt.accepted",
@@ -3719,7 +3720,7 @@ export class PiSessionService implements SessionRouteService {
     const sessionId = session.sessionId;
     this.forgetHandoffWatchers(sessionId, watchers);
     if (result.verdict === "handed") {
-      if (result.landed !== undefined) this.settleResolved(session, entryKey(entry), SETTLED_WHEN_RESOLVED[result.landed]);
+      if (result.landed !== undefined) this.settleResolved(session.sessionId, entryKey(entry), SETTLED_WHEN_RESOLVED[result.landed]);
       return;
     }
     if (result.verdict === "transient" && !result.committed) {
@@ -3762,11 +3763,11 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /** `key` is the message's sender id, or its local hold id (`entryKey`) when it was sent without one. */
-  private settleResolved(session: PiAgentSession, key: string | undefined, settlement: ResolvedSettlement): void {
+  private settleResolved(sessionId: string, key: string | undefined, settlement: ResolvedSettlement): void {
     const settle: Record<ResolvedSettlement, () => void> = {
       none: () => undefined,
-      read: () => { this.settleSucceeded(session.sessionId, key); },
-      consumed: () => { this.settleConsumed(session.sessionId, key); },
+      read: () => { this.settleSucceeded(sessionId, key); },
+      consumed: () => { this.settleConsumed(sessionId, key); },
     };
     settle[settlement]();
   }
@@ -3780,6 +3781,7 @@ export class PiSessionService implements SessionRouteService {
     this.events.publish(sessionId, { type: "prompt.consumed", clientMessageId: id });
   }
 
+  /** `key` is the message's sender id, or its local hold id (`entryKey`) when it was sent without one. */
   private settleSucceeded(sessionId: string, key: string | undefined): void {
     this.settleHanded(sessionId, key);
     const id = publishedId(key);
@@ -3787,9 +3789,9 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * The message is no longer in pi's hands as an unread message - read, refused or withdrawn - so
+   * The message is no longer in pi's hands as an unread message - read, consumed, refused or withdrawn - so
    * the inbox file stops keeping it for a restart (D1, B33). Every path that ends a handed message
-   * comes through here: `settleSucceeded`, `refuse` and `withdraw`; a take-back moves it with
+   * comes through here: `settleSucceeded`, `settleConsumed`, `refuse` and `withdraw`; a take-back moves it with
    * `restoreFront` instead.
    */
   private settleHanded(sessionId: string, key: string | undefined): void {
