@@ -493,10 +493,10 @@ export function parseUploadsConfig(value: unknown, path: string): NonNullable<Pi
 }
 
 function parseWorkspaceRelativeFolder(value: unknown, key: string, path: string): string {
-  if (typeof value !== "string" || value.trim() === "") throw new Error(`PI WEB config ${key} must be a non-empty workspace-relative path: ${path}`);
-  if (isAbsoluteLike(value)) throw new Error(`PI WEB config ${key} must be workspace-relative: ${path}`);
+  if (typeof value !== "string" || value.trim() === "") throw new Error(`PI WEB config ${key} must be a non-empty project-relative path: ${path}`);
+  if (isAbsoluteLike(value)) throw new Error(`PI WEB config ${key} must be project-relative: ${path}`);
   const parts = value.split(/[\\/]+/).filter((part) => part !== "" && part !== ".");
-  if (parts.length === 0) throw new Error(`PI WEB config ${key} must be a non-empty workspace-relative path: ${path}`);
+  if (parts.length === 0) throw new Error(`PI WEB config ${key} must be a non-empty project-relative path: ${path}`);
   if (parts.some((part) => part === "..")) throw new Error(`PI WEB config ${key} must not contain path traversal: ${path}`);
   return parts.join("/");
 }

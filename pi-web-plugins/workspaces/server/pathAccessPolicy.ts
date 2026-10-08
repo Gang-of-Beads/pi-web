@@ -36,14 +36,14 @@ export interface PathAccessPolicyOptions {
 
 export async function createPathAccessPolicy(workspaceRootPath: string, pathAccess: PluginPathAccessConfig | undefined, options: PathAccessPolicyOptions = {}): Promise<PathAccessPolicy> {
   return {
-    workspaceRoot: await canonicalDirectory(workspaceRootPath, "Workspace path"),
+    workspaceRoot: await canonicalDirectory(workspaceRootPath, "Project folder"),
     allowedRoots: await resolveAllowedRoots(pathAccess?.allowedPaths ?? [], options),
   };
 }
 
 export async function resolveWorkspacePathAccessTarget(rootPath: string, requestedPath: string | undefined, pathAccess?: PluginPathAccessConfig, options: PathAccessPolicyOptions = {}): Promise<ResolvedPathAccessTarget> {
   const request = requestedPath ?? "";
-  const workspaceRoot = await canonicalDirectory(rootPath, "Workspace path");
+  const workspaceRoot = await canonicalDirectory(rootPath, "Project folder");
   const allowedRoots = isAbsoluteishPath(request) ? await resolveAllowedRoots(pathAccess?.allowedPaths ?? [], options) : [];
   return resolvePathAccessTarget({ workspaceRoot, allowedRoots }, requestedPath, options);
 }

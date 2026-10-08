@@ -29,7 +29,7 @@ describe("workspace upload helpers", () => {
     expect(workspaceUploadPath(" uploads\\manual// ", "./report.txt")).toBe("uploads/manual/report.txt");
     expect(workspaceUploadPath("", "report.txt")).toBe("report.txt");
 
-    expect(() => workspaceUploadPath("/tmp", "report.txt")).toThrow("workspace-relative");
+    expect(() => workspaceUploadPath("/tmp", "report.txt")).toThrow("project-relative");
     expect(() => workspaceUploadPath("uploads", "../secret.txt")).toThrow("path traversal");
     expect(() => workspaceUploadPath("uploads", " ")).toThrow("must not be empty");
   });

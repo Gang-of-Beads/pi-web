@@ -14,8 +14,8 @@ const plugin: PiWebPlugin = {
         actions: [
           {
             id: "workspace.open-relays",
-            title: "Open Workspace Relays",
-            description: `Open the workspace Relays tab. Relays live in ${RELAYS_ROOT}.`,
+            title: "Open Project Relays",
+            description: `Open the project's Relays tab. Relays live in ${RELAYS_ROOT}.`,
             group: "Workspace",
             enabled: (context) => context.state.selectedWorkspace !== undefined,
             run: (context) => {

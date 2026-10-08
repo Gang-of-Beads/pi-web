@@ -39,21 +39,21 @@ export class WorkspacePanel extends LitElement {
     const workspace = this.workspace;
     if (workspace === undefined) return this.renderEmptyState(this.emptyState ?? {
       kind: "message",
-      title: "Select a workspace",
-      body: "Choose a workspace to use its tools.",
+      title: "Select a project",
+      body: "Choose a project to use its tools.",
     });
     const context = this.panelContext;
     if (context === undefined) return this.renderEmptyState({
       kind: "message",
-      title: "Workspace tools unavailable",
-      body: "Try selecting the workspace again.",
+      title: "Project tools unavailable",
+      body: "Try selecting the project again.",
     });
     const selectedPanel = shownWorkspacePanel(this.panels, this.tool);
     return html`
       ${selectedPanel === undefined ? this.renderEmptyState({
         kind: "message",
-        title: "No workspace tools available",
-        body: "No tools are available for this workspace.",
+        title: "No project tools available",
+        body: "No tools are available for this project.",
       }) : html`
         ${this.renderToolbar(context, selectedPanel)}
         <div class="panel-content" role="region" aria-label=${selectedPanel.title}>

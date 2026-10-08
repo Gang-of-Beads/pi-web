@@ -95,7 +95,7 @@ describe("settings-plugins-panel layout", () => {
 
   it.each([
     ["bundled-only", "Only bundled server plugins were imported."],
-    ["none", "No server plugins were imported; the kernel folder workspace remains available."],
+    ["none", "No server plugins were imported; projects still open as plain folders."],
   ] as const)("renders active %s safe-start recovery", (safeStart, message) => {
     const panel = new SettingsPluginsPanel();
     const response = pluginsResponse([]);

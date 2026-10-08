@@ -32,7 +32,7 @@ describe("quick-switcher", () => {
 
     const row = createRow(switcher);
     expect(row.disabled).toBe(true);
-    expect(row.textContent).toContain("Select a workspace first");
+    expect(row.textContent).toContain("Select a project first");
 
     row.click();
     expect(onCreateSession).not.toHaveBeenCalled();

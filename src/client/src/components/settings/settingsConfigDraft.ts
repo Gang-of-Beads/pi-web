@@ -115,7 +115,7 @@ function parseAllowedPathsText(value: string): string[] {
 function normalizeWorkspaceRelativeFolder(value: string): string {
   const trimmed = value.trim();
   if (trimmed === "") return "";
-  if (isAbsoluteLike(trimmed)) throw new Error("Upload default folder must be workspace-relative.");
+  if (isAbsoluteLike(trimmed)) throw new Error("Upload default folder must be project-relative.");
   const parts = trimmed.split(/[\\/]+/u).filter((part) => part !== "" && part !== ".");
   if (parts.length === 0) return "";
   if (parts.some((part) => part === "..")) throw new Error("Upload default folder must not contain path traversal.");

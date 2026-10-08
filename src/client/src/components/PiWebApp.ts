@@ -3299,7 +3299,7 @@ export class PiWebApp extends LitElement {
       return;
     }
     if (project === undefined) {
-      this.setState(noticePatch(noticeForReader("The project this workspace belongs to is not in the project list.")));
+      this.setState(noticePatch(noticeForReader("This folder's project is not in the project list.")));
       this.navigation.fail(seq);
       this.updateUrl();
       return;
@@ -3621,33 +3621,33 @@ export class PiWebApp extends LitElement {
         ? {
             kind: "message",
             title: "No projects yet",
-            body: "Use Actions → Add Project to add a folder. Workspace tools will appear here after you choose a workspace.",
+            body: "Use Actions → Add Project to add a folder. A project's tools appear here once you choose it.",
           }
         : {
             kind: "message",
             title: "Select a project",
-            body: "Choose a project from the sidebar, then select a workspace to use its tools.",
+            body: "Choose a project from the sidebar to use its tools.",
           };
     }
     if (this.state.isLoadingWorkspaces) return UNKNOWN_YET;
     if (this.state.workspaces.length === 0) {
       return {
         kind: "message",
-        title: "No workspaces found",
-        body: `${project.name} does not have any available workspaces. Try selecting the project again or re-adding it.`,
+        title: "Project folder not available",
+        body: `${project.name}'s folder could not be opened. Try selecting the project again or re-adding it.`,
       };
     }
     return {
       kind: "message",
-      title: "Select a workspace",
-      body: `Choose a workspace in ${project.name} to use its tools.`,
+      title: "Open the project",
+      body: `Open ${project.name} to use its tools.`,
     };
   }
 
   private sessionEmptyMessage(): string {
     if (this.state.projectsLoad !== "loaded") return "";
     if (this.state.selectedWorkspace !== undefined) return "Select or start a session.";
-    if (this.state.selectedProject !== undefined) return "Select a workspace to start a session.";
+    if (this.state.selectedProject !== undefined) return "Open the project to start a session.";
     if (this.state.projects.length === 0) return "Add a project to start a session.";
     return "Open a session on the left, or start a new one.";
   }
@@ -3982,11 +3982,11 @@ export class PiWebApp extends LitElement {
       {
         id: "app.sessions.new",
         title: "New session",
-        description: "Start a session in the selected workspace",
+        description: "Start a session in the selected project",
         shortcut: "mod+shift+n",
         group: "Sessions",
         enabled: this.canStartSession(),
-        ...(this.canStartSession() ? {} : { disabledReason: "Select a workspace first" }),
+        ...(this.canStartSession() ? {} : { disabledReason: "Select a project first" }),
         run: () => { void this.startSessionAndOpenChat(); },
       },
       {
@@ -4010,8 +4010,8 @@ export class PiWebApp extends LitElement {
       },
       {
         id: "app.layout.reset-workspace-panel-size",
-        title: "Reset workspace panel size",
-        description: "Restore the workspace panel to its default width",
+        title: "Reset side panel size",
+        description: "Restore the side panel to its default width",
         group: "View",
         run: () => { this.resetResizablePanel("workspace"); },
       },

@@ -47,6 +47,9 @@ import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
 import { backgroundRunCountChanged } from "../backgroundRunCountSignal";
 import { ParkedNotices } from "../parkedNotices";
 
+/** What a start in a project whose folder is gone says, wherever it is refused. */
+const MISSING_PROJECT_FOLDER = "This project's folder no longer exists, so a new session cannot start here.";
+
 const MESSAGE_PAGE_SIZE = 100;
 const TRANSCRIPT_RETRY_FIRST_MS = 5_000;
 const TRANSCRIPT_RETRY_MAX_MS = 60_000;
@@ -431,7 +434,7 @@ export class SessionController {
     // phantom "New session" row from existing at all, instead of creating a
     // pending start whose every retry repeats the daemon's folder error.
     if (workspace.cwdMissing === true) {
-      this.setState(noticePatch(noticeForReader(`This workspace's folder no longer exists, so a new session cannot start here.`)));
+      this.setState(noticePatch(noticeForReader(MISSING_PROJECT_FOLDER)));
       return;
     }
     const machineId = selectedMachineId(this.getState());
@@ -2335,7 +2338,7 @@ export class SessionController {
       const machineId = selectedMachineId(this.getState());
       const deadWorkspace = this.getState().workspaces.some((workspace) => workspace.cwdMissing === true && workspace.path === session.cwd);
       if (deadWorkspace) {
-        this.setState(noticePatch(noticeForReader("This workspace's folder no longer exists, so a new session cannot start here.")));
+        this.setState(noticePatch(noticeForReader(MISSING_PROJECT_FOLDER)));
         return;
       }
       const replacement = await this.api.startSession(session.cwd, machineId);

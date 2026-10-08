@@ -106,7 +106,7 @@ class PiWebTasksPanel extends HTMLElement {
   private render(): void {
     const context = this.contextValue;
     if (context === undefined) {
-      this.root.innerHTML = `${taskStyles()}<section class="empty">Select a workspace.</section>`;
+      this.root.innerHTML = `${taskStyles()}<section class="empty">Select a project.</section>`;
       return;
     }
 
@@ -156,7 +156,7 @@ class PiWebTasksPanel extends HTMLElement {
 
     if (state.config.tasks.length === 0) return `<p class="muted">No tasks are defined in ${escapeHtml(state.path)}. Add tasks to the file, then click Refresh.</p>`;
     return `
-      <p class="muted">Tasks run in a dedicated workspace terminal, then switch to that terminal. Edit ${escapeHtml(state.path)} and click Refresh to reload.</p>
+      <p class="muted">Tasks run in a dedicated project terminal, then switch to that terminal. Edit ${escapeHtml(state.path)} and click Refresh to reload.</p>
       ${renderTaskGroups(state.config.tasks, this.runningTaskId)}
     `;
   }
@@ -224,7 +224,7 @@ class PiWebTasksPanel extends HTMLElement {
   openWorkspaceTerminal(terminalId?: string): void {
     const context = this.contextValue;
     if (context === undefined) {
-      this.status = { kind: "error", message: "Select a workspace before opening a terminal." };
+      this.status = { kind: "error", message: "Select a project before opening a terminal." };
       this.render();
       return;
     }

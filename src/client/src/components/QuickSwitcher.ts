@@ -126,7 +126,7 @@ export class QuickSwitcher extends LitElement {
             autocapitalize="none"
             spellcheck="false"
             enterkeyhint="search"
-            aria-label="Search sessions and workspaces"
+            aria-label="Search sessions and projects"
             placeholder="Search sessions"
             .value=${this.query}
             @input=${(event: Event) => { this.onQueryInput(event); }}
@@ -286,13 +286,13 @@ export class QuickSwitcher extends LitElement {
     const subtitle = this.browsingElsewhere
       ? "Open a session on this machine first"
       : workspaceLabel === undefined
-        ? "Select a workspace first"
+        ? "Select a project first"
         : `In ${workspaceLabel}`;
     return html`
       <button
         class="row create-row"
         ?disabled=${!this.canStartSession}
-        title=${this.canStartSession ? "Start a new session" : "Select a workspace to start a session"}
+        title=${this.canStartSession ? "Start a new session" : "Select a project to start a session"}
         @click=${() => { this.createSession(); }}
       >
         <span class="row-title">+ New session</span>

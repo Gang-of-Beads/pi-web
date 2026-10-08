@@ -179,7 +179,7 @@ export class PiFilesPanel extends LitElement {
             ${state.tree.length === 0
               ? state.treeFailed === undefined
                 ? html`<p class="muted">No files loaded.</p>`
-                : html`<p class="muted tree-failed" role="alert">Couldn't read this workspace's files: ${state.treeFailed}</p>`
+                : html`<p class="muted tree-failed" role="alert">Couldn't read this project's files: ${state.treeFailed}</p>`
               : repeat(state.tree, (entry) => entry.path, (entry) => this.renderTreeEntry(explorer, entry, 0))}
           </div>
           <div class="viewer">
@@ -230,7 +230,7 @@ export class PiFilesPanel extends LitElement {
     const batches = Object.values(this.batches).sort((left, right) => right.startedAt.localeCompare(left.startedAt));
     if (batches.length === 0) return null;
     return html`
-      <section class="upload-progress" aria-label="Workspace uploads">
+      <section class="upload-progress" aria-label="Uploads">
         <div class="upload-progress-header">
           <strong>Uploads</strong>
           <small>${uploadSummaryLabel(batches)}</small>
@@ -246,7 +246,7 @@ export class PiFilesPanel extends LitElement {
         <div class="upload-batch-heading">
           <div>
             <strong>${uploadBatchTitle(batch)}</strong>
-            <small>${batch.destinationFolder === "" ? "workspace root" : batch.destinationFolder}</small>
+            <small>${batch.destinationFolder === "" ? "project root" : batch.destinationFolder}</small>
           </div>
           <span>${uploadBatchStatusLabel(batch)}</span>
         </div>
@@ -290,7 +290,7 @@ export class PiFilesPanel extends LitElement {
             <label>
               <span>Destination folder</span>
               <input id="workspace-upload-destination" .value=${this.destinationFolder} placeholder=${context.files.uploadFolder} @input=${this.handleDestinationInput} />
-              <small>Workspace-relative. Leave empty to upload at the workspace root.</small>
+              <small>Project-relative. Leave empty to upload at the project root.</small>
             </label>
             <div class="dialog-options">
               <label>

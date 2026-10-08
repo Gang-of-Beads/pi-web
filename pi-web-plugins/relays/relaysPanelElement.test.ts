@@ -31,14 +31,14 @@ describe("workspace states", () => {
   it("asks for a workspace when no context is set", async () => {
     const panel = await mountPanel();
 
-    expect(shadow(panel).textContent).toContain("Select a workspace.");
+    expect(shadow(panel).textContent).toContain("Select a project.");
   });
 
   it("explains the relays convention when the workspace has no relays root", async () => {
     // The fake rejects unknown paths with "Path does not exist".
     const panel = await mountPanel(panelContext(workspaceFilesFake()));
 
-    expect(viewerText(panel)).toContain("No relays in this workspace.");
+    expect(viewerText(panel)).toContain("No relays in this project.");
     expect(viewerText(panel)).toContain(`${RELAYS_ROOT}/<name>/`);
   });
 
@@ -48,7 +48,7 @@ describe("workspace states", () => {
 
     const panel = await mountPanel(panelContext(fake));
 
-    expect(viewerText(panel)).toContain("No relays in this workspace.");
+    expect(viewerText(panel)).toContain("No relays in this project.");
   });
 
   it("surfaces a scan failure with its detail", async () => {
@@ -58,7 +58,7 @@ describe("workspace states", () => {
     const panel = await mountPanel(panelContext(fake));
 
     const error = shadow(panel).querySelector(".status.error");
-    expect(error?.textContent).toContain("Could not scan workspace relays.");
+    expect(error?.textContent).toContain("Could not scan this project's relays.");
     expect(error?.textContent).toContain("connection lost");
   });
 });

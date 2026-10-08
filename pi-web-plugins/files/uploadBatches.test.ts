@@ -101,7 +101,7 @@ describe("workspace upload batch state", () => {
   it("workspace upload paths stay workspace-relative and reject traversal", () => {
     expect(workspaceUploadPath(" docs\\manual// ", "./report.txt")).toBe("docs/manual/report.txt");
     expect(workspaceUploadPath("", "report.txt")).toBe("report.txt");
-    expect(() => workspaceUploadPath("/tmp", "report.txt")).toThrow("workspace-relative");
+    expect(() => workspaceUploadPath("/tmp", "report.txt")).toThrow("project-relative");
     expect(() => workspaceUploadPath("docs", "../secret.txt")).toThrow("path traversal");
     expect(() => workspaceUploadPath("docs", " ")).toThrow("must not be empty");
   });

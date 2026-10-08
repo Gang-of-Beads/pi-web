@@ -150,7 +150,7 @@ describe("the goals section read", () => {
     expect({
       text: await shownText(harness.container),
       refresh: harness.container.querySelector("pi-web-goals-section")?.shadowRoot?.querySelector("button.refresh") instanceof HTMLButtonElement,
-    }).toEqual({ text: expect.stringContaining("No goals in this workspace.") as unknown, refresh: true });
+    }).toEqual({ text: expect.stringContaining("No goals in this project.") as unknown, refresh: true });
   });
 
   /** Phase 4's read identity: a refresh's answer only replaces an older one. */

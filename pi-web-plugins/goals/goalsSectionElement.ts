@@ -77,7 +77,7 @@ export class PiWebGoalsSection extends LitElement {
     return html`<button
       class="refresh"
       type="button"
-      title="Re-read goal records from the workspace"
+      title="Re-read goal records from the project"
       aria-label="Refresh goals"
       @click=${this.handleRefresh}
     ><svg class="goal-refresh-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg></button>`;
@@ -88,7 +88,7 @@ export class PiWebGoalsSection extends LitElement {
     if (goal === undefined) {
       if (this.failed) return html`<div class="goal-row"><p class="pending goal-main" role="status">Goal records could not be read on this machine.</p>${this.renderRefresh()}</div>`;
       if (this.state === undefined) return html`<p class="pending">Reading goal records…</p>`;
-      return html`<div class="goal-row"><p class="pending goal-main" role="status">No goals in this workspace.</p>${this.renderRefresh()}</div>`;
+      return html`<div class="goal-row"><p class="pending goal-main" role="status">No goals in this project.</p>${this.renderRefresh()}</div>`;
     }
     const progress = progressLabel(goal);
     return html`

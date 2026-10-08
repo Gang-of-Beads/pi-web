@@ -71,7 +71,7 @@ export class SettingsPluginsPanel extends LitElement {
         title: "Server-plugin safe mode active",
         content: runtime.safeStart === "bundled-only"
           ? html`Only bundled server plugins were imported. Clear safe mode with <code>${runtime.recovery.clearSafeStart}</code>.`
-          : html`No server plugins were imported; the kernel folder workspace remains available. Clear safe mode with <code>${runtime.recovery.clearSafeStart}</code>.`,
+          : html`No server plugins were imported; projects still open as plain folders. Clear safe mode with <code>${runtime.recovery.clearSafeStart}</code>.`,
       });
     }
     if (runtime?.desiredSafeStart !== undefined && runtime.desiredSafeStart !== (runtime.safeStart ?? "off")) {

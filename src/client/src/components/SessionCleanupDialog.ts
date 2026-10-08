@@ -119,7 +119,7 @@ export class SessionCleanupDialog extends LitElement {
           <div class="table-scroll" tabindex="0" aria-label="Cleanup projects table">
             <table>
               <thead>
-                <tr><th>Clean up</th><th>Project/workspace path</th><th>Archive</th><th>Delete archived</th></tr>
+                <tr><th>Clean up</th><th>Project path</th><th>Archive</th><th>Delete archived</th></tr>
               </thead>
               <tbody>
                 ${preview.projects.map((project) => this.renderProjectRow(project, selected.has(project.cwd)))}

@@ -314,7 +314,7 @@ function normalizeWorkspaceUploadPath(value: string, label: string, options: { a
     if (options.allowEmpty) return "";
     throw new Error(`${label} must not be empty`);
   }
-  if (isAbsoluteLike(trimmed)) throw new Error(`${label} must be workspace-relative`);
+  if (isAbsoluteLike(trimmed)) throw new Error(`${label} must be project-relative`);
   const parts = trimmed.split(/[\\/]+/u).filter((part) => part !== "" && part !== ".");
   if (parts.length === 0) {
     if (options.allowEmpty) return "";

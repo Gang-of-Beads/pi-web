@@ -94,7 +94,7 @@ class PiWebRelaysPanel extends HTMLElement {
       ${relaysStyles()}
       <section class="toolbar" hidden></section>
       <nav class="document-tabs" aria-label="Relay documents" hidden></nav>
-      <section class="viewer"><div class="empty">Select a workspace.</div></section>
+      <section class="viewer"><div class="empty">Select a project.</div></section>
     `;
     this.toolbar = requiredRegion(this.root, ".toolbar");
     this.tabStrip = requiredRegion(this.root, "nav.document-tabs");
@@ -398,7 +398,7 @@ class PiWebRelaysPanel extends HTMLElement {
 
   private renderViewer(): void {
     if (this.contextValue === undefined) {
-      this.viewer.innerHTML = `<div class="empty">Select a workspace.</div>`;
+      this.viewer.innerHTML = `<div class="empty">Select a project.</div>`;
       return;
     }
     this.viewer.innerHTML = this.renderViewerContent();
@@ -407,7 +407,7 @@ class PiWebRelaysPanel extends HTMLElement {
   private renderViewerContent(): string {
     const listing = this.listing;
     if (listing === undefined) return `<p class="muted">Scanning ${escapeHtml(RELAYS_ROOT)}…</p>`;
-    if (listing.kind === "unavailable") return renderErrorState("Could not scan workspace relays.", listing.detail);
+    if (listing.kind === "unavailable") return renderErrorState("Could not scan this project's relays.", listing.detail);
     if (listing.kind === "missing" || listing.relays.length === 0) return renderEmptyState();
     return this.renderSelectedRelay();
   }
@@ -504,8 +504,8 @@ function documentName(path: string): string {
 function renderEmptyState(): string {
   return `
     <div class="empty-state">
-      <strong>No relays in this workspace.</strong>
-      <p>Relay packets live in <code>${escapeHtml(RELAYS_ROOT)}/&lt;name&gt;/</code>. This workspace has none yet.</p>
+      <strong>No relays in this project.</strong>
+      <p>Relay packets live in <code>${escapeHtml(RELAYS_ROOT)}/&lt;name&gt;/</code>. This project has none yet.</p>
     </div>
   `;
 }

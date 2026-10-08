@@ -83,7 +83,7 @@ describe("settings config drafts", () => {
   });
 
   it("rejects invalid selected-machine upload default folders before saving", () => {
-    expect(() => machineAccessConfigPatchFromDraft({ allowedPathsText: "", uploadDefaultFolder: "/tmp/uploads" })).toThrow("Upload default folder must be workspace-relative.");
+    expect(() => machineAccessConfigPatchFromDraft({ allowedPathsText: "", uploadDefaultFolder: "/tmp/uploads" })).toThrow("Upload default folder must be project-relative.");
     expect(() => machineAccessConfigPatchFromDraft({ allowedPathsText: "", uploadDefaultFolder: "../secret" })).toThrow("Upload default folder must not contain path traversal.");
   });
 
