@@ -1379,6 +1379,8 @@ export class PiSessionService implements SessionRouteService {
   private readonly steps = new Map<string, { step: SessionStep; since: string }>();
   /** Last counted background runs per open session; see refreshBackgroundRunCounts. */
   private readonly backgroundRunCounts = new Map<string, number>();
+  /** When each session's running shell command began, for the clock its status carries; pi keeps no such time. */
+  private readonly shellStartedAt = new Map<string, string>();
   private backgroundRunScanInFlight = false;
   private backgroundRunRefreshRequested = true;
   private readonly backgroundWorkWatcher: BackgroundWorkWatcher;
@@ -4048,12 +4050,14 @@ export class PiSessionService implements SessionRouteService {
     if (!command) throw new Error("Usage: !<shell command>");
     if (session.isBashRunning) throw new Error("A bash command is already running");
 
+    this.shellStartedAt.set(session.sessionId, new Date().toISOString());
     this.publishActivityForEvent(session, { type: "bash_execution_start", command });
     this.events.publish(session.sessionId, { type: "shell.start", command, excludeFromContext: isExcluded });
     void this.runSessionEntryMutation(session, "run a shell command", () => session.executeBash(command, (chunk) => {
       this.events.publish(session.sessionId, { type: "shell.chunk", chunk });
       this.publishStatus(session);
     }, { excludeFromContext: isExcluded })).then((result) => {
+      this.shellStartedAt.delete(session.sessionId);
       this.events.publish(session.sessionId, {
         type: "shell.end",
         output: result.output,
@@ -4066,6 +4070,7 @@ export class PiSessionService implements SessionRouteService {
       this.publishActivity(session, "bash complete", result.exitCode === 0 ? "idle" : "error", command);
       this.publishStatus(session);
     }).catch((error: unknown) => {
+      this.shellStartedAt.delete(session.sessionId);
       const message = error instanceof Error ? error.message : String(error);
       this.events.publish(session.sessionId, { type: "shell.end", output: message, isError: true });
       this.events.publish(session.sessionId, { type: "session.error", message });
@@ -6195,8 +6200,7 @@ export class PiSessionService implements SessionRouteService {
     const queuedAnswers = this.queuedAnswers(session);
     const activity = this.currentActivity(session.sessionId);
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
-    const working = session.isStreaming || session.isCompacting || session.isBashRunning;
-    const turnStartedAt = working ? facts.turnStartedAt : undefined;
+    const turnStartedAt = { turn: facts.turnStartedAt, shell: this.shellStartedAt.get(session.sessionId), none: undefined }[workingClock(session)];
     const lastActivityAt = leafEntryAt(session.sessionManager);
     const surfaces = pluginSurfacePresence(session.resourceLoader);
     const extensionUi = this.extensionStanding.get(session)?.snapshot();
@@ -6211,9 +6215,9 @@ export class PiSessionService implements SessionRouteService {
       isStreaming: session.isStreaming,
       isCompacting: session.isCompacting,
       isBashRunning: session.isBashRunning,
-      // The turn's own start, read off the transcript: a browser that joins a
-      // working session mid-turn anchors its elapsed readout here instead of
-      // re-clocking from the moment it happened to look.
+      // The start of what is working, the agent turn's read off the transcript or a
+      // shell run's: a browser that joins mid-run anchors its elapsed readout here
+      // instead of re-clocking from the moment it happened to look.
       ...(turnStartedAt === undefined ? {} : { turnStartedAt }),
       ...(lastActivityAt === undefined ? {} : { lastActivityAt }),
       pendingMessageCount: visibleQueued.length,
@@ -6560,6 +6564,17 @@ function archiveInputFromCandidate(candidate: WorkspaceArchiveCandidate): Archiv
   if (candidate.listEntry !== undefined) return archiveInputFromListEntry(candidate.listEntry);
   if (candidate.activeSession !== undefined) return archiveInputFromActiveSession(candidate.activeSession);
   throw new Error(`Session is not available for archiving: ${candidate.id}`);
+}
+
+/**
+ * Whose start the working clock shows. A `!!` shell run is not the agent's turn: anchored on the
+ * last user message it read the previous turn's age (3h 1m for a 12 s sleep, 2026-10-05).
+ */
+type WorkingClock = "turn" | "shell" | "none";
+
+function workingClock(session: PiAgentSession): WorkingClock {
+  if (session.isStreaming || session.isCompacting) return "turn";
+  return session.isBashRunning ? "shell" : "none";
 }
 
 function sessionHasActiveWork(session: PiAgentSession, extraQueuedMessageCount = 0): boolean {
