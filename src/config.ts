@@ -5,6 +5,14 @@ import type { PiWebConfigValues, PiWebDeprecatedAgentInput, PiWebListTilesConfig
 import { isPiWebPluginId, piWebPluginIdPattern } from "./shared/pluginIds.js";
 import { isRecord } from "./shared/unknownValues.js";
 
+/**
+ * A config file or request that does not say what PI WEB accepts. The type is what answers a
+ * request with 400 rather than 500; its message was the only mark before (B16).
+ */
+export class PiWebConfigError extends Error {
+  override name = "PiWebConfigError";
+}
+
 export type PiWebConfig = PiWebConfigValues;
 
 export interface LoadedPiWebConfig {
@@ -170,7 +178,7 @@ export function loadPiWebConfig(options: LoadOptions = {}): LoadedPiWebConfig {
   if (!existsSync(path)) return { path, exists: false, config: {}, deprecatedAgentInputs: detectDeprecatedAgentInputs(env) };
 
   const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-  if (!isRecord(parsed)) throw new Error(`PI WEB config must be a JSON object: ${path}`);
+  if (!isRecord(parsed)) throw new PiWebConfigError(`PI WEB config must be a JSON object: ${path}`);
 
   const config = parsePiWebConfig(parsed, path);
   return { path, exists: true, config, deprecatedAgentInputs: detectDeprecatedAgentInputs(env, config) };
@@ -257,7 +265,7 @@ function configWriteError(error: unknown, path: string): unknown {
 function readExistingConfigObject(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
   const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-  if (!isRecord(parsed)) throw new Error(`PI WEB config must be a JSON object: ${path}`);
+  if (!isRecord(parsed)) throw new PiWebConfigError(`PI WEB config must be a JSON object: ${path}`);
   return parsed;
 }
 
@@ -305,24 +313,24 @@ export function parsePiWebConfig(value: Record<string, unknown>, path: string, a
 }
 
 function parseUpdateCommand(value: unknown, path: string): string {
-  if (typeof value !== "string") throw new Error(`PI WEB config updateCommand must be a string: ${path}`);
+  if (typeof value !== "string") throw new PiWebConfigError(`PI WEB config updateCommand must be a string: ${path}`);
   return value.trim();
 }
 
 function parseMaxUploadBytes(value: unknown, key: string, path = "environment"): number {
   const bytes = typeof value === "number" ? value : typeof value === "string" && value !== "" ? Number(value) : NaN;
-  if (!Number.isInteger(bytes) || bytes < 1) throw new Error(`PI WEB config ${key} must be a positive integer: ${path}`);
+  if (!Number.isInteger(bytes) || bytes < 1) throw new PiWebConfigError(`PI WEB config ${key} must be a positive integer: ${path}`);
   return bytes;
 }
 
 function parseAskUser(value: unknown, path: string): boolean {
-  if (typeof value !== "boolean") throw new Error(`PI WEB config askUser must be a boolean: ${path}`);
+  if (typeof value !== "boolean") throw new PiWebConfigError(`PI WEB config askUser must be a boolean: ${path}`);
   return value;
 }
 
 function parseExtensionDialogsTimeoutMs(value: unknown, path: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    throw new Error(`PI WEB config extensionDialogsTimeoutMs must be a non-negative integer: ${path}`);
+    throw new PiWebConfigError(`PI WEB config extensionDialogsTimeoutMs must be a non-negative integer: ${path}`);
   }
   return value;
 }
@@ -340,7 +348,7 @@ export function askUserEnabled(env: NodeJS.ProcessEnv = process.env, config: PiW
 }
 
 function parseBooleanKey(value: unknown, key: string, path: string): boolean {
-  if (typeof value !== "boolean") throw new Error(`PI WEB config ${key} must be a boolean: ${path}`);
+  if (typeof value !== "boolean") throw new PiWebConfigError(`PI WEB config ${key} must be a boolean: ${path}`);
   return value;
 }
 
@@ -377,7 +385,7 @@ export function offlineModeEnabled(env: NodeJS.ProcessEnv = process.env): boolea
 }
 
 function parseString(value: unknown, key: string, path: string): string {
-  if (typeof value !== "string" || value === "") throw new Error(`PI WEB config ${key} must be a non-empty string: ${path}`);
+  if (typeof value !== "string" || value === "") throw new PiWebConfigError(`PI WEB config ${key} must be a non-empty string: ${path}`);
   return value;
 }
 
@@ -393,9 +401,9 @@ const DEPRECATED_AGENT_CONFIG_KEYS = new Set(["command", "dir"]);
 export type AgentPathHost = "current" | "portable";
 
 export function parseAgentConfig(value: unknown, path: string, pathHost: AgentPathHost = "current"): NonNullable<PiWebConfig["agent"]> {
-  if (!isRecord(value)) throw new Error(`PI WEB config agent must be an object: ${path}`);
+  if (!isRecord(value)) throw new PiWebConfigError(`PI WEB config agent must be an object: ${path}`);
   const unknownKey = Object.keys(value).find((key) => !DEPRECATED_AGENT_CONFIG_KEYS.has(key));
-  if (unknownKey !== undefined) throw new Error(`PI WEB config agent accepts only the deprecated keys "command" and "dir"; unknown key ${JSON.stringify(unknownKey)}: ${path}`);
+  if (unknownKey !== undefined) throw new PiWebConfigError(`PI WEB config agent accepts only the deprecated keys "command" and "dir"; unknown key ${JSON.stringify(unknownKey)}: ${path}`);
   const command = value["command"];
   const dir = value["dir"];
   return {
@@ -413,7 +421,7 @@ function parseAgentDir(value: unknown, key: string, path: string, pathHost: Agen
   const isAbsoluteDir = pathHost === "current" ? isHostAbsoluteAgentDir(dir) : isPortableAbsoluteAgentPath(dir);
   if (!isAbsoluteDir && !isHomePath(dir, pathHost)) {
     const absoluteLabel = pathHost === "current" ? "a host-absolute" : "an absolute";
-    throw new Error(`PI WEB config ${key} must be ${absoluteLabel} path or start with ~: ${path}`);
+    throw new PiWebConfigError(`PI WEB config ${key} must be ${absoluteLabel} path or start with ~: ${path}`);
   }
   return dir;
 }
@@ -422,7 +430,7 @@ function resolveAgentDirPath(value: string, env: NodeJS.ProcessEnv, key: string,
   const parsed = parseAgentDir(value, key, path, "current");
   const expanded = expandHomePath(parsed, env);
   if (!isHostAbsoluteAgentDir(expanded)) {
-    throw new Error(`PI WEB config ${key} must resolve to a host-absolute path: ${path}`);
+    throw new PiWebConfigError(`PI WEB config ${key} must resolve to a host-absolute path: ${path}`);
   }
   return normalize(expanded);
 }
@@ -441,14 +449,14 @@ function isSafeAgentDirPath(value: string): boolean {
 
 function parsePort(value: unknown, key: string, path = "environment"): number {
   const port = typeof value === "number" ? value : typeof value === "string" && value !== "" ? Number(value) : NaN;
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`PI WEB config ${key} must be an integer from 1 to 65535: ${path}`);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new PiWebConfigError(`PI WEB config ${key} must be an integer from 1 to 65535: ${path}`);
   return port;
 }
 
 function parseAllowedHosts(value: unknown, path: string): string[] | true {
   if (value === true) return true;
   if (!isNonEmptyStringArray(value)) {
-    throw new Error(`PI WEB config allowedHosts must be true or an array of non-empty strings: ${path}`);
+    throw new PiWebConfigError(`PI WEB config allowedHosts must be true or an array of non-empty strings: ${path}`);
   }
   return value;
 }
@@ -459,7 +467,7 @@ function parseAllowedHostsEnv(value: string): string[] | true {
 }
 
 export function parsePathAccessConfig(value: unknown, path: string): NonNullable<PiWebConfigValues["pathAccess"]> {
-  if (!isRecord(value)) throw new Error(`PI WEB config pathAccess must be an object: ${path}`);
+  if (!isRecord(value)) throw new PiWebConfigError(`PI WEB config pathAccess must be an object: ${path}`);
   const allowedPaths = value["allowedPaths"];
   return {
     ...(allowedPaths !== undefined ? { allowedPaths: parseAllowedPaths(allowedPaths, path) } : {}),
@@ -467,7 +475,7 @@ export function parsePathAccessConfig(value: unknown, path: string): NonNullable
 }
 
 function parseAllowedPaths(value: unknown, path: string): string[] {
-  if (!isNonEmptyStringArray(value)) throw new Error(`PI WEB config pathAccess.allowedPaths must be an array of non-empty strings: ${path}`);
+  if (!isNonEmptyStringArray(value)) throw new PiWebConfigError(`PI WEB config pathAccess.allowedPaths must be an array of non-empty strings: ${path}`);
   return value;
 }
 
@@ -479,11 +487,11 @@ function isLoggingLevel(value: unknown): value is NonNullable<PiWebLoggingConfig
 
 /** `listTiles`: 1 or 2 tiles per row for the `phone` and `desktop` layouts; an absent layout keeps the width rule. */
 export function parseListTilesConfig(value: unknown, path: string): PiWebListTilesConfig {
-  if (!isRecord(value)) throw new Error(`PI WEB config listTiles must be an object: ${path}`);
+  if (!isRecord(value)) throw new PiWebConfigError(`PI WEB config listTiles must be an object: ${path}`);
   const phone = value["phone"];
   const desktop = value["desktop"];
-  if (phone !== undefined && phone !== 1 && phone !== 2) throw new Error(`PI WEB config listTiles.phone must be 1 or 2: ${path}`);
-  if (desktop !== undefined && desktop !== 1 && desktop !== 2) throw new Error(`PI WEB config listTiles.desktop must be 1 or 2: ${path}`);
+  if (phone !== undefined && phone !== 1 && phone !== 2) throw new PiWebConfigError(`PI WEB config listTiles.phone must be 1 or 2: ${path}`);
+  if (desktop !== undefined && desktop !== 1 && desktop !== 2) throw new PiWebConfigError(`PI WEB config listTiles.desktop must be 1 or 2: ${path}`);
   return {
     ...(phone !== undefined ? { phone } : {}),
     ...(desktop !== undefined ? { desktop } : {}),
@@ -491,13 +499,13 @@ export function parseListTilesConfig(value: unknown, path: string): PiWebListTil
 }
 
 export function parseLoggingConfig(value: unknown, path: string): PiWebLoggingConfig {
-  if (!isRecord(value)) throw new Error(`PI WEB config logging must be an object: ${path}`);
+  if (!isRecord(value)) throw new PiWebConfigError(`PI WEB config logging must be an object: ${path}`);
   const level = value["level"];
   const maxFileMb = value["maxFileMb"];
   const keepFiles = value["keepFiles"];
-  if (level !== undefined && !isLoggingLevel(level)) throw new Error(`PI WEB config logging.level must be "errors", "requests" or "debug": ${path}`);
-  if (maxFileMb !== undefined && (typeof maxFileMb !== "number" || !Number.isInteger(maxFileMb) || maxFileMb < 1)) throw new Error(`PI WEB config logging.maxFileMb must be a whole number of megabytes, at least 1: ${path}`);
-  if (keepFiles !== undefined && (typeof keepFiles !== "number" || !Number.isInteger(keepFiles) || keepFiles < 1 || keepFiles > 20)) throw new Error(`PI WEB config logging.keepFiles must be a whole number from 1 to 20: ${path}`);
+  if (level !== undefined && !isLoggingLevel(level)) throw new PiWebConfigError(`PI WEB config logging.level must be "errors", "requests" or "debug": ${path}`);
+  if (maxFileMb !== undefined && (typeof maxFileMb !== "number" || !Number.isInteger(maxFileMb) || maxFileMb < 1)) throw new PiWebConfigError(`PI WEB config logging.maxFileMb must be a whole number of megabytes, at least 1: ${path}`);
+  if (keepFiles !== undefined && (typeof keepFiles !== "number" || !Number.isInteger(keepFiles) || keepFiles < 1 || keepFiles > 20)) throw new PiWebConfigError(`PI WEB config logging.keepFiles must be a whole number from 1 to 20: ${path}`);
   return {
     ...(level !== undefined ? { level } : {}),
     ...(typeof maxFileMb === "number" ? { maxFileMb } : {}),
@@ -506,7 +514,7 @@ export function parseLoggingConfig(value: unknown, path: string): PiWebLoggingCo
 }
 
 export function parseUploadsConfig(value: unknown, path: string): NonNullable<PiWebConfigValues["uploads"]> {
-  if (!isRecord(value)) throw new Error(`PI WEB config uploads must be an object: ${path}`);
+  if (!isRecord(value)) throw new PiWebConfigError(`PI WEB config uploads must be an object: ${path}`);
   const defaultFolder = value["defaultFolder"];
   return {
     ...(defaultFolder !== undefined ? { defaultFolder: parseWorkspaceRelativeFolder(defaultFolder, "uploads.defaultFolder", path) } : {}),
@@ -514,11 +522,11 @@ export function parseUploadsConfig(value: unknown, path: string): NonNullable<Pi
 }
 
 function parseWorkspaceRelativeFolder(value: unknown, key: string, path: string): string {
-  if (typeof value !== "string" || value.trim() === "") throw new Error(`PI WEB config ${key} must be a non-empty project-relative path: ${path}`);
-  if (isAbsoluteLike(value)) throw new Error(`PI WEB config ${key} must be project-relative: ${path}`);
+  if (typeof value !== "string" || value.trim() === "") throw new PiWebConfigError(`PI WEB config ${key} must be a non-empty project-relative path: ${path}`);
+  if (isAbsoluteLike(value)) throw new PiWebConfigError(`PI WEB config ${key} must be project-relative: ${path}`);
   const parts = value.split(/[\\/]+/).filter((part) => part !== "" && part !== ".");
-  if (parts.length === 0) throw new Error(`PI WEB config ${key} must be a non-empty project-relative path: ${path}`);
-  if (parts.some((part) => part === "..")) throw new Error(`PI WEB config ${key} must not contain path traversal: ${path}`);
+  if (parts.length === 0) throw new PiWebConfigError(`PI WEB config ${key} must be a non-empty project-relative path: ${path}`);
+  if (parts.some((part) => part === "..")) throw new PiWebConfigError(`PI WEB config ${key} must not contain path traversal: ${path}`);
   return parts.join("/");
 }
 
@@ -565,24 +573,24 @@ function isAbsoluteLike(value: string): boolean {
 }
 
 function parseShortcuts(value: unknown, path: string): Record<string, string | null> {
-  if (!isRecord(value)) throw new Error(`PI WEB config shortcuts must be an object: ${path}`);
+  if (!isRecord(value)) throw new PiWebConfigError(`PI WEB config shortcuts must be an object: ${path}`);
   return Object.fromEntries(Object.entries(value).map(([actionId, shortcut]) => {
     if (shortcut !== null && (typeof shortcut !== "string" || shortcut === "")) {
-      throw new Error(`PI WEB config shortcut values must be non-empty strings or null: ${path}`);
+      throw new PiWebConfigError(`PI WEB config shortcut values must be non-empty strings or null: ${path}`);
     }
     return [actionId, shortcut];
   }));
 }
 
 function parsePlugins(value: unknown, path: string): NonNullable<PiWebConfigValues["plugins"]> {
-  if (!isRecord(value) || Array.isArray(value)) throw new Error(`PI WEB config plugins must be an object: ${path}`);
+  if (!isRecord(value) || Array.isArray(value)) throw new PiWebConfigError(`PI WEB config plugins must be an object: ${path}`);
   return Object.fromEntries(Object.entries(value).map(([pluginId, config]) => {
-    if (!isPiWebPluginId(pluginId)) throw new Error(`PI WEB config plugin ids must match ${piWebPluginIdPattern.source}: ${path}`);
-    if (!isRecord(config) || Array.isArray(config)) throw new Error(`PI WEB config plugin entries must be objects: ${path}`);
+    if (!isPiWebPluginId(pluginId)) throw new PiWebConfigError(`PI WEB config plugin ids must match ${piWebPluginIdPattern.source}: ${path}`);
+    if (!isRecord(config) || Array.isArray(config)) throw new PiWebConfigError(`PI WEB config plugin entries must be objects: ${path}`);
     const enabled = config["enabled"];
-    if (enabled !== undefined && typeof enabled !== "boolean") throw new Error(`PI WEB config plugin enabled values must be booleans: ${path}`);
+    if (enabled !== undefined && typeof enabled !== "boolean") throw new PiWebConfigError(`PI WEB config plugin enabled values must be booleans: ${path}`);
     const settings = config["settings"];
-    if (settings !== undefined && (!isRecord(settings) || Array.isArray(settings))) throw new Error(`PI WEB config plugin settings must be objects: ${path}`);
+    if (settings !== undefined && (!isRecord(settings) || Array.isArray(settings))) throw new PiWebConfigError(`PI WEB config plugin settings must be objects: ${path}`);
     return [pluginId, config];
   }));
 }

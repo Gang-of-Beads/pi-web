@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { loadPiWebConfig, parsePiWebConfig, resolveEffectivePiWebConfig, savePiWebConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
+import { PiWebConfigError, loadPiWebConfig, parsePiWebConfig, resolveEffectivePiWebConfig, savePiWebConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
 import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues } from "../../shared/apiTypes.js";
 import { errorMessage, isRecord } from "../../shared/unknownValues.js";
 
@@ -85,14 +85,14 @@ export function registerLocalMachineConfigRoutes(app: FastifyInstance, service: 
 }
 
 export function parseSelectedMachineConfigRequest(value: unknown, agentPathHost: AgentPathHost = "current"): PiWebConfig {
-  if (!isRecord(value)) throw new Error("PI WEB selected-machine config update must include a config object");
+  if (!isRecord(value)) throw new PiWebConfigError("PI WEB selected-machine config update must include a config object");
   for (const key of Object.keys(value)) {
-    if (!SELECTED_MACHINE_CONFIG_KEY_SET.has(key)) throw new Error(`PI WEB selected-machine config key is not allowed: ${key}`);
+    if (!SELECTED_MACHINE_CONFIG_KEY_SET.has(key)) throw new PiWebConfigError(`PI WEB selected-machine config key is not allowed: ${key}`);
   }
   try {
     return pickSelectedMachineConfig(parseConfigRequest(value, agentPathHost));
   } catch (error) {
-    throw new Error(selectedMachineConfigErrorMessage(error), { cause: error });
+    throw new PiWebConfigError(selectedMachineConfigErrorMessage(error), { cause: error });
   }
 }
 
@@ -121,7 +121,7 @@ export function parsePiWebConfigResponseBody(value: unknown, source = "PI WEB co
 
 /** A config update's body, parsed as the file is; messages name it "request". */
 function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "current"): PiWebConfig {
-  if (!isRecord(value)) throw new Error("PI WEB config update must include a config object");
+  if (!isRecord(value)) throw new PiWebConfigError("PI WEB config update must include a config object");
   return parsePiWebConfig(value, "request", agentPathHost);
 }
 
@@ -185,5 +185,5 @@ function isEnvSet(value: string | undefined): boolean {
 }
 
 function isConfigValidationError(error: unknown): boolean {
-  return error instanceof Error && (error.message.startsWith("PI WEB config") || error.message.startsWith("PI WEB selected-machine config"));
+  return error instanceof PiWebConfigError;
 }

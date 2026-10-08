@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
-import { piWebConfigPath } from "./config.js";
+import { PiWebConfigError, piWebConfigPath } from "./config.js";
 import { isPiWebPluginId } from "./shared/pluginIds.js";
 import { isRecord } from "./shared/unknownValues.js";
 
@@ -65,12 +65,12 @@ export function disableServerPlugin(
   return mutateRecoveryConfig(options, (root, path) => {
     const configuredPlugins = root["plugins"];
     if (configuredPlugins !== undefined && !isRecord(configuredPlugins)) {
-      throw new Error(`PI WEB config plugins must be an object: ${path}`);
+      throw new PiWebConfigError(`PI WEB config plugins must be an object: ${path}`);
     }
     const plugins = configuredPlugins ?? {};
     const configuredPlugin = Object.hasOwn(plugins, pluginId) ? plugins[pluginId] : undefined;
     if (configuredPlugin !== undefined && !isRecord(configuredPlugin)) {
-      throw new Error(`PI WEB config plugin ${pluginId} must be an object: ${path}`);
+      throw new PiWebConfigError(`PI WEB config plugin ${pluginId} must be an object: ${path}`);
     }
     root["plugins"] = {
       ...plugins,
@@ -134,7 +134,7 @@ function mutateRecoveryConfig(
 
 function readConfigObject(path: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-  if (!isRecord(parsed)) throw new Error(`PI WEB config must be a JSON object: ${path}`);
+  if (!isRecord(parsed)) throw new PiWebConfigError(`PI WEB config must be a JSON object: ${path}`);
   return parsed;
 }
 
