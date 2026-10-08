@@ -372,8 +372,12 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      surface and carries no hue at all; system lines keep their own quiet
      colour because they are the exception worth spotting. The user header has no
      rail: it was half of a pair with the assistant's purple rail, and once that went it
-     stood alone as a heavy gold stub on the card's corner (owner, 2026-10-09). */
-  .msg.user > .msg-header { border-bottom-color: var(--pi-border-muted); background: color-mix(in srgb, var(--pi-accent) 26%, var(--pi-surface)); box-shadow: none; }
+     stood alone as a heavy gold stub on the card's corner (owner, 2026-10-09). The
+     tint is the accent border over the hover surface: the accent itself is a dark brown on
+     the light side, and mixing it into white gave a grey khaki that read like the
+     assistant's card (owner, 2026-10-09). On the dark side this lands within a shade of
+     the old accent-over-surface tint (rgb 76,64,45 -> 75,65,45), which the owner keeps. */
+  .msg.user > .msg-header { border-bottom-color: var(--pi-border-muted); background: color-mix(in srgb, var(--pi-accent-border) 39%, var(--pi-surface-hover)); box-shadow: none; }
   /* The sticky header rides above the card's border while the message scrolls
      under it; without an opaque fill the scrolled text shows through the gap
      (the clipped "…dden." line the owner screenshotted). Same fill as the
