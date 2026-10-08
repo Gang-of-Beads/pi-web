@@ -71,12 +71,12 @@ export function registerSessionProxyRoutes(app: FastifyInstance, daemon: Session
     bridgeSockets(socket, daemon.connectWebSocket(stripPrefix(request.url, prefix)));
   });
 
-  app.get(`${prefix}/sessions/events`, { websocket: true }, (socket) => {
-    bridgeSockets(socket, daemon.connectWebSocket("/sessions/events"));
+  app.get(`${prefix}/sessions/events`, { websocket: true }, (socket, request) => {
+    bridgeSockets(socket, daemon.connectWebSocket(stripPrefix(request.url, prefix)));
   });
 
-  app.get(`${prefix}/events`, { websocket: true }, (socket) => {
-    bridgeSockets(socket, daemon.connectWebSocket("/events"));
+  app.get(`${prefix}/events`, { websocket: true }, (socket, request) => {
+    bridgeSockets(socket, daemon.connectWebSocket(stripPrefix(request.url, prefix)));
   });
 
   app.all(`${prefix}/status`, (request, reply) => proxy(request, reply));

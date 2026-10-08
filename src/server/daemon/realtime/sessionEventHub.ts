@@ -185,12 +185,19 @@ export class SessionEventHub {
     this.globalJoinFrame = frame;
   }
 
-  addGlobal(socket: RealtimeSocket): void {
+  /**
+   * A machine-wide subscriber, heartbeated within the quiet window it named, as a session's is.
+   * The join frame echoes that window (`quiet`, seconds): the page checks the socket after a
+   * window of silence only when its daemon confirmed it, so a daemon or a remote machine that
+   * predates it, which keeps the 20 s heartbeat, is never taken for silent (B28).
+   */
+  addGlobal(socket: RealtimeSocket, options: { quietMs?: number } = {}): void {
     this.globalSockets.add(socket);
-    this.cadence.set(socket, { intervalMs: heartbeatIntervalMs(), lastSentAt: this.now() });
+    this.cadence.set(socket, { intervalMs: heartbeatIntervalMs(options.quietMs), lastSentAt: this.now() });
     socket.on("close", () => this.globalSockets.delete(socket));
     const joinFrame = this.globalJoinFrame?.();
-    if (joinFrame !== undefined) this.sendToSocket(this.globalSockets, socket, JSON.stringify({ ...joinFrame, seq: this.globalSeq }));
+    const quiet = options.quietMs === undefined ? {} : { quiet: options.quietMs / 1000 };
+    if (joinFrame !== undefined) this.sendToSocket(this.globalSockets, socket, JSON.stringify({ ...joinFrame, seq: this.globalSeq, ...quiet }));
   }
 
   publish(sessionId: string, event: SessionUiEvent): void {

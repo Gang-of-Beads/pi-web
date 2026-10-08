@@ -738,16 +738,15 @@ app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unkn
   app.get<{ Params: { sessionId: string }; Querystring: EventsQuery }>(`${prefix}/sessions/:sessionId/events`, { websocket: true }, (socket, request) => {
     // cwd is intentionally ignored so a malformed value cannot throw inside the websocket
     // handler; a malformed quiet window reads as none, which keeps the default heartbeat.
-    const quietMs = quietWindowMs(request.query.quiet);
-    eventHub.add(request.params.sessionId, socket, quietMs === undefined ? {} : { quietMs });
+    eventHub.add(request.params.sessionId, socket, quietOption(request.query.quiet));
   });
 
-  app.get(`${prefix}/sessions/events`, { websocket: true }, (socket) => {
-    eventHub.addGlobal(socket);
+  app.get<{ Querystring: EventsQuery }>(`${prefix}/sessions/events`, { websocket: true }, (socket, request) => {
+    eventHub.addGlobal(socket, quietOption(request.query.quiet));
   });
 
-  app.get(`${prefix}/events`, { websocket: true }, (socket) => {
-    eventHub.addGlobal(socket);
+  app.get<{ Querystring: EventsQuery }>(`${prefix}/events`, { websocket: true }, (socket, request) => {
+    eventHub.addGlobal(socket, quietOption(request.query.quiet));
   });
 }
 
@@ -974,6 +973,10 @@ function optionalNumber(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function quietOption(value: string | undefined): { quietMs?: number } {
+  const quietMs = quietWindowMs(value);
+  return quietMs === undefined ? {} : { quietMs };
+}
 
 /** A quiet window in whole seconds, 1 to 600; anything else is no window. */
 export function quietWindowMs(value: string | undefined): number | undefined {

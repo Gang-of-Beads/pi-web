@@ -23,8 +23,10 @@ export function machineTerminalSocket(terminalId: string, initialSize?: { cols: 
   return new WebSocket(resolveAppWebSocketUrl(`${machinePrefix(machineId)}/terminals/${encodeURIComponent(terminalId)}/socket${sizeQuery}`));
 }
 
-export function realtimeEvents(machineId = "local"): WebSocket {
-  return new WebSocket(resolveAppWebSocketUrl(`${machinePrefix(machineId)}/events`));
+/** A machine's announcements; `quietSeconds` names the page's quiet window, as a session's stream does. */
+export function realtimeEvents(machineId = "local", quietSeconds?: number): WebSocket {
+  const query = quietSeconds === undefined ? "" : `?${new URLSearchParams({ quiet: String(quietSeconds) }).toString()}`;
+  return new WebSocket(resolveAppWebSocketUrl(`${machinePrefix(machineId)}/events${query}`));
 }
 
 function machinePrefix(machineId: string): string {

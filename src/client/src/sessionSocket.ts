@@ -269,6 +269,15 @@ export class RealtimeSocket {
   private waitingSince = 0;
   private reachedServer = false;
   private phaseListener: (() => void) | undefined;
+  /** The quiet window this connection named, and the one its daemon confirmed in the join frame. */
+  private requestedQuietMs: number | undefined;
+  private quietMs: number | undefined;
+  private lastCheckAt = 0;
+  private readonly quietWindowSeconds: () => number;
+
+  constructor(quietWindowSeconds: () => number = readQuietWindowSeconds) {
+    this.quietWindowSeconds = quietWindowSeconds;
+  }
 
   /**
    * Where this socket stands for `machineId` (state-diagram D5, P6 slice a): absent when it is not
@@ -298,7 +307,11 @@ export class RealtimeSocket {
     this.phaseListener = listener;
   }
 
-  /** Shares SessionSocket's drop-and-reconnect budgets only; the realtime socket names no quiet window, so it never gets the quiet-window check verdict. */
+  /**
+   * SessionSocket's contract, with one difference: the quiet window is checked only once the
+   * daemon confirmed it in the join frame, and silence for it counts as a missed announcement, so
+   * the page reads again what this socket keeps live (B28).
+   */
   checkLiveness(now = Date.now()): void {
     const socket = this.socket;
     if (socket === undefined) return;
@@ -310,10 +323,23 @@ export class RealtimeSocket {
       now,
       silenceBudgetMs: LIVENESS_TIMEOUT_MS,
       handshakeBudgetMs: HANDSHAKE_TIMEOUT_MS,
+      quietMs: this.quietMs,
+      lastCheckAt: this.lastCheckAt,
     });
-    if (verdict !== "drop-and-reconnect") return;
-    // Same as SessionSocket: the quiet close detaches onclose, so this must
-    // schedule the reconnect itself or the drop is permanent.
+    this.livenessActions[verdict]({ socket, now });
+  }
+
+  private readonly livenessActions: Record<SocketLivenessVerdict, (check: { socket: WebSocket; now: number }) => void> = {
+    "leave-alone": () => undefined,
+    check: ({ now }) => {
+      this.lastCheckAt = now;
+      this.onMissed?.();
+    },
+    "drop-and-reconnect": ({ socket, now }) => { this.dropSilent(socket, now); },
+  };
+
+  /** Same as SessionSocket: the quiet close detaches onclose, so this must schedule the reconnect itself or the drop is permanent. */
+  private dropSilent(socket: WebSocket, now: number): void {
     this.socket = undefined;
     if (this.openedSocket === socket) this.waitingSince = now;
     closeSocketQuietly(socket);
@@ -352,12 +378,17 @@ export class RealtimeSocket {
     this.onOpen = undefined;
     this.onMissed = undefined;
     this.machineId = "local";
+    this.quietMs = undefined;
   }
 
   private open(): void {
     if (!this.shouldReconnect) return;
-    const socket = realtimeEvents(this.machineId);
+    const quietSeconds = this.quietWindowSeconds();
+    const socket = realtimeEvents(this.machineId, quietSeconds);
     this.socket = socket;
+    this.requestedQuietMs = quietSeconds * 1000;
+    this.quietMs = undefined;
+    this.lastCheckAt = 0;
     this.connectStartedAt = Date.now();
     let reached = false;
     socket.onopen = () => {
@@ -410,6 +441,7 @@ export class RealtimeSocket {
     if (this.socket !== socket) return;
     if (this.openedSocket !== socket) this.prove(socket);
     this.seqMonitor.observe(raw);
+    if (this.requestedQuietMs !== undefined && confirmedQuietMs(raw) === this.requestedQuietMs) this.quietMs = this.requestedQuietMs;
     const head = heartbeatHeadSeq(raw);
     if (head !== undefined) this.seqMonitor.observeHead(head);
     const event = parseRealtimeSocketEvent(raw);
@@ -559,6 +591,13 @@ export class ScopeSeqMonitor {
     this.onGap?.(last);
     console.warn(`[pi-web] ${this.scope} scope lost frames: expected ${String(last + 1)}, got ${String(seq)} (${String(seq - last - 1)} missing)`);
   }
+}
+
+/** The quiet window, in ms, a machine socket's join frame says its daemon will heartbeat within. */
+function confirmedQuietMs(raw: unknown): number | undefined {
+  if (eventType(raw) !== "machine.status" || typeof raw !== "object" || raw === null) return undefined;
+  const quiet: unknown = Reflect.get(raw, "quiet");
+  return typeof quiet === "number" && Number.isFinite(quiet) ? quiet * 1000 : undefined;
 }
 
 /** The `seq` a heartbeat carries under `head`, or undefined for any other frame and an older daemon's bare heartbeat. */
