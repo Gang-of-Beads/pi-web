@@ -206,7 +206,7 @@ describe("settings-plugins-panel layout", () => {
     expect(renderedWithoutLifecycle).toContain("Configured only");
     const configuredOnly = rows.find(({ id }) => id === "configured-only");
     if (configuredOnly === undefined) throw new Error("Expected configured-only settings row");
-    expect(templateValues(renderPluginTemplate(panel, configuredOnly)).filter(isBoolean)).toEqual([true, false]);
+    expect(templateValues(renderPluginTemplate(panel, configuredOnly)).map(boundValue).filter(isBoolean)).toEqual([true, false]);
   });
 
   it("keeps loaded plugins visible but disabled when selected-machine config is unavailable", () => {
@@ -222,7 +222,7 @@ describe("settings-plugins-panel layout", () => {
       "remote-disabled",
     ]);
     expect(countOccurrences(rendered, "Configuration is unavailable. Reload to try again before changing plugin enablement.")).toBe(1);
-    expect(templateValues(renderPluginTemplate(panel, pluginInfo("remote-disabled", false))).filter(isBoolean)).toEqual([false, true]);
+    expect(templateValues(renderPluginTemplate(panel, pluginInfo("remote-disabled", false))).map(boundValue).filter(isBoolean)).toEqual([false, true]);
   });
 });
 
@@ -311,6 +311,13 @@ function isSettingsNotice(value: unknown): value is SettingsNotice {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item: unknown) => typeof item === "string");
+}
+
+/** The value a directive binding carries (the toggle binds `live(enabled)`), or the value itself. */
+function boundValue(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || !("values" in value) || !Array.isArray(value.values)) return value;
+  const values: unknown[] = value.values;
+  return values[0];
 }
 
 function isBoolean(value: unknown): value is boolean {

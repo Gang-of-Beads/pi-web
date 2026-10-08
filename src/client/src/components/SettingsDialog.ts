@@ -41,6 +41,8 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) machine: Machine | undefined;
   @property({ attribute: false }) machineRuntime: MachineRuntime | undefined;
   @property({ attribute: false }) machines: Machine[] = [];
+  /** Plugins this browser could not load or register, per machine id, then plugin id, with the reason (B38). */
+  @property({ attribute: false }) pluginLoadFailures: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map();
   @property({ attribute: false }) machineStatuses: Record<string, MachineHealth> = {};
   @property({ attribute: false }) onBackToList?: () => void;
   @property({ attribute: false }) onAddMachine?: () => void;
@@ -372,6 +374,7 @@ export class SettingsDialog extends LitElement {
           .targetLabel=${settingsMachineTargetLabel(this.settingsTarget())}
           .onReload=${() => this.loadPluginsForTarget()}
           .onTogglePlugin=${(pluginId: string, enabled: boolean) => this.togglePlugin(pluginId, enabled)}
+          .browserFailures=${this.pluginLoadFailures.get(this.settingsTarget().id)}
         ></settings-plugins-panel>
       `;
     }

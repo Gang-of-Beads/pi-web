@@ -1,6 +1,7 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property } from "lit/decorators.js";
+import { live } from "lit/directives/live.js";
 import type { PiWebConfigResponse, PiWebPluginInfo, PiWebPluginsResponse } from "../../api";
 import { PI_WEB_PLUGIN_RECOVERY_COMMANDS } from "../../../../shared/pluginRecoveryCommands";
 import "./SettingsPanelFrame";
@@ -23,6 +24,8 @@ export class SettingsPluginsPanel extends LitElement {
   @property() targetLabel = "local (local gateway)";
   @property({ attribute: false }) onReload?: () => void | Promise<void>;
   @property({ attribute: false }) onTogglePlugin?: (pluginId: string, enabled: boolean) => void | Promise<void>;
+  /** Why a plugin of this machine did not load or register in this browser, by plugin id (B38). */
+  @property({ attribute: false }) browserFailures: ReadonlyMap<string, string> | undefined;
 
   override render(): TemplateResult {
     const plugins = settingsPluginRows(this.pluginsResponse, this.configResponse);
@@ -151,16 +154,24 @@ export class SettingsPluginsPanel extends LitElement {
           <small>${plugin.configOnly ? "configured only · package not discovered" : `${plugin.source} · ${plugin.scope}${plugin.machineSpecific ? " · machine-specific" : ""}${plugin.discovered ? "" : " · active snapshot only"}`}</small>
           <small>${configuredState}</small>
           ${this.renderPluginStatuses(plugin)}
+          ${this.renderBrowserFailure(plugin)}
           ${plugin.server?.message === undefined ? nothing : html`<small class="diagnostic">${plugin.server.message}</small>`}
           ${plugin.server?.health?.message === undefined ? nothing : html`<small class="diagnostic">Health: ${plugin.server.health.message}</small>`}
           ${plugin.server === undefined ? nothing : html`<small class="command">Offline disable: <code>${plugin.server.disableCommand}</code></small>`}
         </div>
         <label class="toggle">
-          <input type="checkbox" .checked=${plugin.enabled} ?disabled=${this.saving || this.configResponse === undefined || !plugin.editable} @change=${(event: Event) => { void this.togglePlugin(plugin, event); }}>
+          <input type="checkbox" .checked=${live(plugin.enabled)} ?disabled=${this.saving || this.configResponse === undefined || !plugin.editable} @change=${(event: Event) => { void this.togglePlugin(plugin, event); }}>
           <span>${plugin.enabled ? "Desired enabled" : "Desired disabled"}</span>
         </label>
       </article>
     `;
+  }
+
+  /** A plugin this browser could not load or register says so on its card, with the reason, instead of only in the console. */
+  private renderBrowserFailure(plugin: SettingsPluginRow): TemplateResult | typeof nothing {
+    const reason = this.browserFailures?.get(plugin.id);
+    if (reason === undefined) return nothing;
+    return html`<small class="diagnostic">Did not load in this browser: ${reason}. Fix the plugin, then reload the page.</small>`;
   }
 
   private renderPluginStatuses(plugin: SettingsPluginRow): TemplateResult {

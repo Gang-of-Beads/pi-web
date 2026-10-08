@@ -227,9 +227,31 @@ export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}):
   if (existing["agent"] !== undefined) parseAgentConfig(existing["agent"], path);
   const kept = Object.fromEntries(Object.entries(existing).filter(([key]) => !SAVED_CONFIG_KEYS.has(key)));
   const merged = { ...kept, ...piWebConfigRecord(normalized) };
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+  } catch (error) {
+    throw configWriteError(error, path);
+  }
   return { path, exists: true, config: normalized, deprecatedAgentInputs: detectDeprecatedAgentInputs(env, normalized) };
+}
+
+/** Why the config file could not be written, by the system's error code, in words a reader can act on. */
+const CONFIG_WRITE_REFUSALS: Readonly<Record<string, string>> = {
+  EACCES: "permission denied",
+  EPERM: "not permitted",
+  EROFS: "the file system is read-only",
+};
+
+/**
+ * A config write the system refused, as a sentence that names the file and the fix (B38: a plugin
+ * toggle on a read-only config.json reported a bare EACCES). Other errors pass through unchanged.
+ */
+function configWriteError(error: unknown, path: string): unknown {
+  const code = error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : undefined;
+  const reason = code === undefined ? undefined : CONFIG_WRITE_REFUSALS[code];
+  if (reason === undefined) return error;
+  return new Error(`PI WEB could not save its config file ${path} (${reason}). Make the file writable, or set PI_WEB_CONFIG to a writable file, then try again.`, { cause: error });
 }
 
 function readExistingConfigObject(path: string): Record<string, unknown> {
