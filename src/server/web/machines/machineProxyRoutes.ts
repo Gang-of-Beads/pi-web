@@ -3,8 +3,7 @@ import type { WebSocket } from "ws";
 import type { MachineClient, MachineJsonResponse, MachineRequestOptions } from "../../../server-plugin-api.js";
 import { DEFAULT_REMOTE_REQUEST_TIMEOUT_MS, RemoteMachineRequestError } from "../../../server-plugin-api.js";
 import { FEDERATED_HTTP_ROUTES, FEDERATED_WEBSOCKET_ROUTES, WORKSPACE_FILE_PREVIEW_ROUTE_PATH, type FederatedHttpRouteSpec } from "../../../shared/federatedRoutes.js";
-import { PiWebConfigError } from "../../../config.js";
-import { mergeSelectedMachineConfig, parsePiWebConfigResponseBody, parseSelectedMachineConfigRequest, selectedMachineConfigResponse } from "../configRoutes.js";
+import { SelectedMachineConfigRequestError, mergeSelectedMachineConfig, parsePiWebConfigResponseBody, parseSelectedMachineConfigRequest, selectedMachineConfigResponse } from "../configRoutes.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
 import { bridgeSockets } from "../webSocketBridge.js";
 import { applyWorkspaceFilePreviewErrorResponsePolicy, applyWorkspaceFilePreviewResponsePolicy } from "../../shared/workspaces/filePreviewResponseHeaders.js";
@@ -353,7 +352,7 @@ function destroyReadable(body: NodeJS.ReadableStream): void {
 }
 
 function isSelectedMachineConfigRequestError(error: unknown): boolean {
-  return error instanceof PiWebConfigError;
+  return error instanceof SelectedMachineConfigRequestError;
 }
 
 function sendGatewayError(reply: FastifyReply, machineId: string, error: unknown): FastifyReply {

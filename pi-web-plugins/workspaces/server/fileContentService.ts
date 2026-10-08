@@ -58,10 +58,7 @@ export async function writeWorkspaceFile(rootPath: string, path: string | undefi
     if (!overwrite) throw new PathRefusal("exists", `File already exists: ${relativePath}`);
     exists = true;
   } catch (error: unknown) {
-    if (isPathRefusal(error, "exists")) throw error;
-    if (isNodeErrorWithCode(error, "ENOENT")) { /* expected for creation — continue */ }
-    else if (isPathRefusal(error, "missing")) { /* expected for creation — continue */ }
-    else throw error; // re-throw permission errors, "not a file", traversal errors, etc.
+    if (!isNodeErrorWithCode(error, "ENOENT") && !isPathRefusal(error, "missing")) throw error;
   }
 
   // Use resolveParentInsideWorkspace for the actual write since the target may not exist yet
@@ -138,9 +135,7 @@ export async function moveWorkspaceFile(rootPath: string, fromPath: string | und
       const destStat = await stat(realDest);
       if (destStat.isFile()) throw new PathRefusal("exists", `File already exists: ${destRelative}`);
     } catch (error: unknown) {
-      if (isNodeErrorWithCode(error, "ENOENT")) { /* expected — target doesn't exist */ }
-      else if (isPathRefusal(error, "exists")) throw error;
-      else throw error;
+      if (!isNodeErrorWithCode(error, "ENOENT")) throw error;
     }
   }
 

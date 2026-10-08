@@ -84,15 +84,17 @@ export function registerLocalMachineConfigRoutes(app: FastifyInstance, service: 
   });
 }
 
+export class SelectedMachineConfigRequestError extends PiWebConfigError {}
+
 export function parseSelectedMachineConfigRequest(value: unknown, agentPathHost: AgentPathHost = "current"): PiWebConfig {
-  if (!isRecord(value)) throw new PiWebConfigError("PI WEB selected-machine config update must include a config object");
+  if (!isRecord(value)) throw new SelectedMachineConfigRequestError("PI WEB selected-machine config update must include a config object");
   for (const key of Object.keys(value)) {
-    if (!SELECTED_MACHINE_CONFIG_KEY_SET.has(key)) throw new PiWebConfigError(`PI WEB selected-machine config key is not allowed: ${key}`);
+    if (!SELECTED_MACHINE_CONFIG_KEY_SET.has(key)) throw new SelectedMachineConfigRequestError(`PI WEB selected-machine config key is not allowed: ${key}`);
   }
   try {
     return pickSelectedMachineConfig(parseConfigRequest(value, agentPathHost));
   } catch (error) {
-    throw new PiWebConfigError(selectedMachineConfigErrorMessage(error), { cause: error });
+    throw new SelectedMachineConfigRequestError(selectedMachineConfigErrorMessage(error), { cause: error });
   }
 }
 
