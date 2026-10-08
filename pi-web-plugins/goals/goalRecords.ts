@@ -38,8 +38,45 @@ const taskListOf = (raw: Record<string, unknown>): { status?: unknown }[] => {
   return Array.isArray(tasks) ? tasks.filter((task): task is { status?: unknown } => isRecord(task) || Array.isArray(task)) : [];
 };
 
-/** Goal records are version-3 JSON documents stored as `.md` files; the same
- *  files the goal runtime writes, read tolerantly (a broken file is counted,
+/**
+ * A goal file's record: the JSON object it starts with. pi-goal writes that object and then a
+ * markdown copy of the prompt and progress for people (`# Goal Prompt`), and reads the file back
+ * the same way (its `findJsonObjectEnd`). Parsing the whole file failed on every goal pi-goal
+ * wrote, so the Goals page said "No goals in this workspace" beside a workspace full of them
+ * (owner, 2026-10-08). undefined when the file does not start with a whole JSON object.
+ */
+export function leadingJsonObject(text: string): unknown {
+  const start = text.indexOf("{");
+  if (start === -1 || text.slice(0, start).trim() !== "") return undefined;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === "\"") inString = false;
+      continue;
+    }
+    if (char === "\"") inString = true;
+    else if (char === "{") depth += 1;
+    else if (char === "}") depth -= 1;
+    if (depth === 0) return parsedOrUndefined(text.slice(start, index + 1));
+  }
+  return undefined;
+}
+
+function parsedOrUndefined(json: string): unknown {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return undefined;
+  }
+}
+
+/** A goal record is the version-3 JSON object a goal file starts with (`leadingJsonObject`);
+ *  the same files the goal runtime writes, read tolerantly (a broken file is counted,
  *  never fatal). */
 export function parseGoalRecord(fileName: string, value: unknown): GoalRecordSummary | undefined {
   if (!isRecord(value)) return undefined;

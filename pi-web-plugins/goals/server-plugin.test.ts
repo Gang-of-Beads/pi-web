@@ -6,10 +6,10 @@ import { listGoalsOperation, readGoalDirectory } from "./server-plugin.js";
 
 let root: string;
 
-const goalFile = (objective: string, status: string, updatedAt: string): string => JSON.stringify({
+const goalFile = (objective: string, status: string, updatedAt: string): string => `${JSON.stringify({
   version: 3, id: `goal-${objective.replace(/\W+/g, "-").toLowerCase()}`, objective, status, updatedAt,
   taskList: { tasks: [{ id: "t1", title: "One", status: "complete" }, { id: "t2", title: "Two", status: "pending" }] },
-});
+}, null, 2)}\n\n# Goal Prompt\n\n${objective}\n`;
 
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "goals-plugin-"));
