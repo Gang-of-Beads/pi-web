@@ -1,50 +1,14 @@
-import { html, type TemplateResult } from "lit";
-import { createRef, ref, type Ref } from "lit/directives/ref.js";
-import type { MachineSectionContribution, MachineSectionContext, PiWebPlugin } from "@gang-of-beads/pi-web/plugin-api";
-import { MachineList } from "./MachineList";
+import type { PiWebPlugin } from "@gang-of-beads/pi-web/plugin-api";
 import { openAddMachineDialog } from "./addMachineDialog";
 import { rememberMachinesHost } from "./hostUi";
 
 /**
- * The machine fleet as a plugin. The shell keeps the selection engine, the
- * section order, the keyboard machine, and the collapse state, and feeds this
- * module a plain snapshot per machine with the health check folded in; the
- * list renders from that snapshot alone. The add
- * dialog opens through the shell's dialog seam behind the reserved
- * `add-machine` action, the same handoff the add-project dialog uses.
+ * The machine fleet's actions as a plugin. The Navigate page lists the machines itself; this
+ * module brings the add dialog, which opens through the shell's dialog seam behind the reserved
+ * `add-machine` action (the same handoff the add-project dialog uses), and the refresh, open and
+ * remove actions for the selected machine. Its machines section was removed with the
+ * `machineSections` contribution, which no surface rendered (B47).
  */
-
-const listRef: Ref<MachineList> = createRef();
-
-function renderMachinesList(context: MachineSectionContext): TemplateResult {
-  const display = context.display;
-  return html`<machine-list
-    ${ref(listRef)}
-    .hidden=${display.hidden}
-    .machines=${[...context.machines]}
-    .selectedMachineId=${context.selectedMachineId}
-    .machineFlags=${context.machineFlags}
-    .collapsible=${display.collapsible}
-    .collapsed=${display.collapsed}
-    .onToggleCollapsed=${() => { context.toggleCollapsed(); }}
-    .onAdd=${display.withCreate && context.addMachine !== undefined ? () => { context.addMachine?.(); } : undefined}
-    .onSelect=${(machineId: string) => { context.selectMachine(machineId); }}
-    .onRemove=${context.removeMachine === undefined ? undefined : (machineId: string) => { context.removeMachine?.(machineId); }}
-    .onRename=${context.renameMachine === undefined ? undefined : (machineId: string, name: string) => { context.renameMachine?.(machineId, name); }}
-    .onRefresh=${context.refreshMachine === undefined ? undefined : (machineId: string) => { context.refreshMachine?.(machineId); }}
-    .onOpen=${context.openMachine === undefined ? undefined : (machineId: string) => { context.openMachine?.(machineId); }}
-    .onFocusNextSection=${() => { void context.focusNextSection(); }}
-    .onCancelKeyboardNavigation=${() => { void context.cancelKeyboardNavigation(); }}
-  ></machine-list>`;
-}
-
-export function machinesSection(): MachineSectionContribution {
-  return {
-    id: "machines",
-    focus: async () => await listRef.value?.focusSelectedOrFirst() ?? false,
-    render: (context) => renderMachinesList(context),
-  };
-}
 
 const machinesPlugin: PiWebPlugin = {
   apiVersion: 2,
@@ -53,7 +17,6 @@ const machinesPlugin: PiWebPlugin = {
     rememberMachinesHost(context.ui);
     return {
       contributions: {
-        machineSections: [machinesSection()],
         actions: [
           {
             id: "add-machine",

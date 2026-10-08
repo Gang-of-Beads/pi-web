@@ -67,7 +67,7 @@ import { projectFolderFlag } from "../projectFolder";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
-import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, MachineTerminalSessions, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, MachineSectionContext } from "../plugins/types";
+import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, MachineTerminalSessions, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext } from "../plugins/types";
 import { CORE_PRO_LIGHT_THEME_ID, isNativeThemeId, applyNativeProLightTheme, CORE_PRO_THEME_ID, CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyNativeProTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
@@ -3919,82 +3919,6 @@ export class PiWebApp extends LitElement {
       },
       retryProjectsLoad: () => { void this.projects.loadProjects(); },
       retryWorkspacesLoad: () => { void this.workspaces.refreshSelectedProjectTopology(); },
-      toggleCollapsed: () => undefined,
-      focusPreviousSection: () => undefined,
-      focusNextSection: () => undefined,
-      cancelKeyboardNavigation: () => undefined,
-    };
-  }
-
-  /**
-  * The host snapshot a contributed machines section renders. Without the
-  * machines plugin no section consumes it; the machine affordances hide and
-  * the context bar still names the selected machine.
-  */
-  private buildMachineSectionContext(surface: "panel" | "sheet"): MachineSectionContext {
-    const state = this.state;
-    const closeSheet = surface === "sheet";
-    const machineById = (machineId: string): Machine | undefined => state.machines.find((machine) => machine.id === machineId);
-    const staleMachineNotice = (): void => {
-      this.setState(errorNoticePatch(new Error("This machine is no longer listed.")));
-    };
-    return {
-      machines: state.machines.map((machine) => ({
-        id: machine.id,
-        name: machine.name,
-        kind: machine.kind,
-        ...(machine.baseUrl === undefined ? {} : { baseUrl: machine.baseUrl }),
-        status: state.machineStatuses[machine.id]?.status ?? machine.status ?? "unknown",
-      })),
-      selectedMachineId: state.selectedMachine?.id,
-      machineFlags: Object.fromEntries(state.machines.map((machine) => [machine.id, state.machineStatusSnapshots[machine.id]?.machine ?? {}])),
-      display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: false },
-      requestUpdate: () => { this.requestUpdate(); },
-      selectMachine: (machineId) => {
-        const machine = machineById(machineId);
-        if (machine === undefined) return;
-        if (closeSheet) this.contextSheetOpen = false;
-        this.navigation.begin();
-        void this.selectMachineWithMemory(machine);
-      },
-      addMachine: () => {
-        if (closeSheet) this.contextSheetOpen = false;
-        this.openMachineDialog();
-      },
-      removeMachine: (machineId) => {
-        const machine = machineById(machineId);
-        if (machine === undefined) {
-          staleMachineNotice();
-          return;
-        }
-        void this.removeMachine(machine);
-      },
-      renameMachine: (machineId, name) => {
-        const machine = machineById(machineId);
-        if (machine === undefined) {
-          staleMachineNotice();
-          return;
-        }
-        void this.renameMachine(machine, name);
-      },
-      refreshMachine: (machineId) => {
-        const machine = machineById(machineId);
-        if (machine === undefined) {
-          staleMachineNotice();
-          return;
-        }
-        this.navigation.begin();
-        void this.machines.selectMachine(machine).then(() => Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]));
-      },
-      openMachine: (machineId) => {
-        const machine = machineById(machineId);
-        const baseUrl = machine?.kind === "remote" ? machine.baseUrl : undefined;
-        if (baseUrl === undefined) {
-          staleMachineNotice();
-          return;
-        }
-        window.open(baseUrl, "_blank", "noopener,noreferrer");
-      },
       toggleCollapsed: () => undefined,
       focusPreviousSection: () => undefined,
       focusNextSection: () => undefined,

@@ -1,7 +1,7 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
 import { pluginsPath } from "../api/clients";
-import type { ActivityNoteContribution, QualifiedActivityNoteContribution, SessionSectionContribution, QualifiedSessionSectionContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, MachineSectionContribution, QualifiedMachineSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ActivityNoteContribution, QualifiedActivityNoteContribution, SessionSectionContribution, QualifiedSessionSectionContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -37,7 +37,6 @@ export class PluginRegistry {
   private activityNotes: QualifiedActivityNoteContribution[] = [];
   private sessionSections: QualifiedSessionSectionContribution[] = [];
   private navSections: QualifiedNavSectionContribution[] = [];
-  private machineSections: QualifiedMachineSectionContribution[] = [];
   private readonly settingsByPlugin = new Map<string, PluginSettings>();
   private readonly fetchJson: ((path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>) | undefined;
   private readonly readPiWebStatus: ((machineId: string) => Promise<unknown>) | undefined;
@@ -111,7 +110,6 @@ export class PluginRegistry {
       const activityNotes = (contributions.activityNotes ?? []).map((note) => this.qualifyActivityNote(runtimePluginId, note, registration.machineId, registration.sourcePluginId, contributionIds));
       const sessionSections = (contributions.sessionSections ?? []).map((section) => this.qualifySessionSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const navSections = (contributions.navSections ?? []).map((section) => this.qualifyNavSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
-      const machineSections = (contributions.machineSections ?? []).map((section) => this.qualifyMachineSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const messageRenderers = (contributions.messageRenderers ?? []).map((renderer) => this.qualifyMessageRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds, claimedTags));
       const claimedLanguages = new Set<string>();
       const codeFenceRenderers = (contributions.codeFenceRenderers ?? []).map((renderer) => this.qualifyCodeFenceRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds, claimedLanguages));
@@ -134,7 +132,6 @@ export class PluginRegistry {
       this.activityNotes.push(...activityNotes);
       this.sessionSections.push(...sessionSections);
     this.navSections.push(...navSections);
-    this.machineSections.push(...machineSections);
       if (registration.machineId === undefined) {
         this.gatewayPluginIds.add(runtimePluginId);
         if (machineSpecific) this.gatewayMachineSpecificPluginIds.add(runtimePluginId);
@@ -205,12 +202,6 @@ export class PluginRegistry {
       .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.localId.localeCompare(right.localId));
   }
 
-  getMachineSections(selectedMachineId: string | undefined): QualifiedMachineSectionContribution[] {
-    return this.machineSections
-      .filter((section) => selectedMachineId !== undefined && this.isContributionActive(section.pluginId, section.machineId, selectedMachineId, section.sourcePluginId))
-      .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.localId.localeCompare(right.localId));
-  }
-
   private qualifyNavSection(
     pluginId: string,
     section: NavSectionContribution,
@@ -218,23 +209,6 @@ export class PluginRegistry {
     sourcePluginId: string | undefined,
     contributionIds: Set<QualifiedContributionId>,
   ): QualifiedNavSectionContribution {
-    return {
-      ...section,
-      id: this.qualify(pluginId, section.id, contributionIds),
-      pluginId,
-      localId: section.id,
-      ...(machineId === undefined ? {} : { machineId }),
-      ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
-    };
-  }
-
-  private qualifyMachineSection(
-    pluginId: string,
-    section: MachineSectionContribution,
-    machineId: string | undefined,
-    sourcePluginId: string | undefined,
-    contributionIds: Set<QualifiedContributionId>,
-  ): QualifiedMachineSectionContribution {
     return {
       ...section,
       id: this.qualify(pluginId, section.id, contributionIds),
@@ -325,7 +299,6 @@ export class PluginRegistry {
     this.activityNotes = this.activityNotes.filter((entry) => entry.pluginId !== runtimePluginId);
     this.sessionSections = this.sessionSections.filter((entry) => entry.pluginId !== runtimePluginId);
     this.navSections = this.navSections.filter((entry) => entry.pluginId !== runtimePluginId);
-    this.machineSections = this.machineSections.filter((entry) => entry.pluginId !== runtimePluginId);
     for (const contributionId of [...this.contributionIds]) {
       if (contributionId.startsWith(`${runtimePluginId}:`)) this.contributionIds.delete(contributionId);
     }

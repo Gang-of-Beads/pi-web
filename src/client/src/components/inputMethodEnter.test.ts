@@ -21,7 +21,6 @@ const NOT_A_TEXT_FIELD: Readonly<Record<string, string>> = {
   "src/client/src/components/ChatView.ts": "Enter opens an image tile, a role=button",
   "src/client/src/components/selectableRow.ts": "row activation defers to inputs inside the row",
   "pi-web-plugins/workspaces/browser/selectableRow.ts": "row activation defers to inputs inside the row",
-  "pi-web-plugins/machines/browser/selectableRow.ts": "row activation defers to inputs inside the row",
   "src/client/src/sessionTreeModel.ts": "a pure key model; SessionTreeNavigator checks before calling it",
 };
 

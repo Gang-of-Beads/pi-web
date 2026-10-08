@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { render, type TemplateResult } from "lit";
-import { renderActionActivityIndicator } from "../../../../pi-web-plugins/machines/browser/activityBadge.js";
+import { renderActionActivityIndicator } from "../../../../pi-web-plugins/workspaces/browser/activityBadge.js";
 
 function rendered(template: TemplateResult): HTMLElement {
   const host = document.createElement("div");

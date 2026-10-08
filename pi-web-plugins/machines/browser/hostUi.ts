@@ -6,7 +6,7 @@ import type { PluginHostUi } from "@gang-of-beads/pi-web/plugin-api";
  * the plugin's real dependencies visible and lets tests stand a host in with
  * just these faces.
  */
-type MachinesHostUi = Pick<PluginHostUi, "surfaceStyles" | "renderDisclosureIcon" | "renderCloseIcon" | "listStyles" | "showDialog" | "adoptSheets">;
+type MachinesHostUi = Pick<PluginHostUi, "surfaceStyles" | "renderCloseIcon" | "listStyles" | "showDialog" | "adoptSheets">;
 
 /**
  * The host utilities and context actions this plugin was activated with.
@@ -39,15 +39,6 @@ export function adoptMachinesHostStyles(root: ShadowRoot): void {
 
 export function machinesHostUi(): MachinesHostUi | undefined {
   return hostUi;
-}
-
-/**
- * The shell's disclosure chevron, so a contributed list spells "this section
- * opens" the way the built-in lists and the chrome spell it.
- */
-export function renderHostDisclosureIcon(collapsed: boolean): unknown {
-  const host = machinesHostUi();
-  return host?.renderDisclosureIcon?.(collapsed);
 }
 
 /** The shell's close mark, so a contributed dialog draws the same × as the

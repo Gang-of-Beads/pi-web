@@ -1,5 +1,4 @@
 export type MachineKind = "local" | "remote";
-export type MachineStatus = "unknown" | "online" | "offline" | "error";
 /**
  * The machine DTOs the server contract hands plugins. They are type-only
  * re-exports: the shapes live beside the host's own client types so one

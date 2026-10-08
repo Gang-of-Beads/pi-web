@@ -261,6 +261,8 @@ export interface Project {
     name: string;
     path: string;
     createdAt: string;
+    /** The project's folder is certainly gone, as the project list read it (`projectFolderPresence.ts`). */
+    folderMissing?: true;
 }
 export interface WorkspaceEffectiveConfig {
     readonly uploads?: Readonly<PiWebUploadsConfig>;
@@ -1210,6 +1212,12 @@ export interface SessionStatus {
      * elapsed readout here instead of clocking from when it first looked.
      */
     turnStartedAt?: string;
+    /**
+     * The timestamp of the session's leaf entry, the newest on its current branch (B28). A session
+     * list orders by when a session last changed; carried on every status frame, it moves a row when
+     * the run ends instead of at the next whole read of the list. Absent from a daemon that predates it.
+     */
+    lastActivityAt?: string;
     model?: SessionModel;
     thinkingLevel?: string;
     isStreaming: boolean;
