@@ -87,6 +87,8 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
 ### 5. Version skew is a state, not an accident
 
 - The daemon advertises `protocolVersion`. On a mismatch, the web process and the page show "The session service is on an older build. Restart it to finish the update". The page then falls back to polling heads and re-reading the tail. Only the fields both builds have are needed for that.
+  - Owner, 2026-10-07 (ask `37dfa387`): a daemon that needs a restart is said on the Updates page only ("restart needed · running X · installed Y", with Restart session daemon), not in the top row. The fallback for an older daemon is the quiet window's: it ignores `quiet=` and keeps 20 s keepalives, and the page checks once per keepalive gap (state-diagram D5). No `protocolVersion` is added.
+  - A restart cut off a run (checked live 2026-10-07): the tool call that was running shows as interrupted, the run is recorded for the session rows, and pi supplies the missing result on the next request.
 - **The update restarts the daemon too, as the owner ruled.** The restart-when-idle watcher goes away. A daemon restart settles in-flight tool calls as interrupted (owed work, now required), so an interruption leaves an honest record.
 
 ## Owner decisions (2026-09-30 01:20)
