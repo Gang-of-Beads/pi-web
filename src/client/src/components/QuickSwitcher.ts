@@ -7,7 +7,7 @@ import type { BoardAnswer } from "../sync/sessionBoard";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, Project, SessionInfo, Workspace } from "../api";
-import { quickSwitcherFilterSessions, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, type QuickSwitcherFilter, type QuickSwitcherGroup } from "../quickSwitcher";
+import { quickSwitcherFilterSessions, quickSwitcherModel, quickSwitcherProjectName, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, type QuickSwitcherFilter, type QuickSwitcherGroup } from "../quickSwitcher";
 import { LongPressTracker } from "../longPress";
 import { renderSessionRowIndicator, sessionRowIndicator } from "./sessionRowIndicator";
 import type { SessionStateBadgeKind } from "./activityBadge";
@@ -285,12 +285,12 @@ export class QuickSwitcher extends LitElement {
   }
 
   private renderCreateRow() {
-    const workspaceLabel = this.selectedWorkspace?.label;
+    const workspace = this.selectedWorkspace;
     const subtitle = this.browsingElsewhere
       ? "Open a session on this machine first"
-      : workspaceLabel === undefined
+      : workspace === undefined
         ? "Select a project first"
-        : `In ${workspaceLabel}`;
+        : `In ${quickSwitcherProjectName(workspace, this.projects) ?? workspace.path}`;
     return html`
       <button
         class="row create-row"
@@ -366,7 +366,7 @@ export class QuickSwitcher extends LitElement {
           @pointercancel=${() => { this.longPress.cancel(); }}
         >
           <span class="row-title" dir="auto">${pinned ? html`<span class="pin-mark" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span> ` : nothing}${sessionLabel(session)}</span>
-          <span class="row-subtitle">${renderOpeningWords(this.opening, this.rowKey(session)) ?? quickSwitcherSessionSubtitle(session, this.workspaces)}</span>
+          <span class="row-subtitle">${renderOpeningWords(this.opening, this.rowKey(session)) ?? quickSwitcherSessionSubtitle(session, this.workspaces, this.projects)}</span>
           ${isOpeningKey(this.opening, this.rowKey(session)) ? html`<span class="row-state">${renderOpeningSpinner()}</span>` : interrupted ? html`<span class="row-flag interrupted" title="A restart interrupted this run" aria-label="A restart interrupted this run"></span>` : html`<span class="row-state">${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread))}</span>`}
         </button>
         <button

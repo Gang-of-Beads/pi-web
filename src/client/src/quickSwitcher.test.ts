@@ -67,14 +67,15 @@ describe("quickSwitcherWorkspaces", () => {
 });
 
 describe("quickSwitcherSessionSubtitle", () => {
-  it("names the owning workspace alongside the message count", () => {
+  it("names the owning project alongside the message count", () => {
     const workspaces = [workspace("main", { path: "/repo/main", label: "main" })];
+    const projects = [{ id: "project-1", name: "repo", path: "/repo/main", createdAt: "" }];
 
-    expect(quickSwitcherSessionSubtitle(session("a", { cwd: "/repo/main", messageCount: 3 }), workspaces)).toBe("main · 3 messages");
+    expect(quickSwitcherSessionSubtitle(session("a", { cwd: "/repo/main", messageCount: 3 }), workspaces, projects)).toBe("repo · 3 messages");
   });
 
   it("falls back to the message count when the workspace is not listed", () => {
-    expect(quickSwitcherSessionSubtitle(session("a", { cwd: "/elsewhere", messageCount: 1 }), [])).toBe("1 message");
+    expect(quickSwitcherSessionSubtitle(session("a", { cwd: "/elsewhere", messageCount: 1 }), [], [])).toBe("1 message");
   });
 });
 

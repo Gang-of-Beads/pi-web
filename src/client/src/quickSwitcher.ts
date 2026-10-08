@@ -1,4 +1,4 @@
-import type { SessionActivity, SessionInfo, SessionStatus, Workspace } from "./api";
+import type { Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "./api";
 import { sessionActivityCategory } from "../../shared/sessionActivityState";
 import type { SessionStateBadgeKind } from "./components/activityBadge";
 import { sessionMatchesSearch } from "./sessionSearch";
@@ -159,10 +159,18 @@ export function quickSwitcherWorkspaces(workspaces: readonly Workspace[], query:
   });
 }
 
-export function quickSwitcherSessionSubtitle(session: SessionInfo, workspaces: readonly Workspace[]): string {
-  const workspace = workspaces.find((candidate) => candidate.path === session.cwd);
+/**
+ * The project a folder belongs to, by its name: the place the reader knows (R5, owner 2026-10-08).
+ * The session subtitle names this project rather than the folder's own worktree label ("main").
+ */
+export function quickSwitcherProjectName(workspace: Workspace | undefined, projects: readonly Project[]): string | undefined {
+  return workspace === undefined ? undefined : projects.find((project) => project.id === workspace.projectId)?.name;
+}
+
+export function quickSwitcherSessionSubtitle(session: SessionInfo, workspaces: readonly Workspace[], projects: readonly Project[]): string {
+  const project = quickSwitcherProjectName(workspaces.find((candidate) => candidate.path === session.cwd), projects);
   const messages = `${String(session.messageCount)} ${session.messageCount === 1 ? "message" : "messages"}`;
-  return workspace === undefined ? messages : `${workspace.label} · ${messages}`;
+  return project === undefined ? messages : `${project} · ${messages}`;
 }
 
 /**
