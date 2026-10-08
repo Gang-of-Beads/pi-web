@@ -28,12 +28,14 @@
  */
 
 /**
- * `pending`: accepted and not yet consumed by the agent. `succeeded`: consumed. `failed`: the
+ * `pending`: accepted and not yet read by the agent. `succeeded`: read. `consumed`: an input
+ * handler or extension command took it and wrote no user entry, so no transcript copy will come
+ * (D1). `failed`: the
  * runtime refused it for good, so a retry may run it. `withdrawn`: the reader took it back, so
  * a retry of the same identity must not resurrect it. `unknown`: a restart lost the process
  * that could have said which.
  */
-export type OperationOutcome = "pending" | "succeeded" | "failed" | "withdrawn" | "unknown";
+export type OperationOutcome = "pending" | "succeeded" | "consumed" | "failed" | "withdrawn" | "unknown";
 
 export type OperationRefusalCode = "invalid" | "conflict" | "expired" | "capacity";
 

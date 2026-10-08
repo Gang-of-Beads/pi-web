@@ -1714,6 +1714,7 @@ type SessionUiEventBody =
   | { type: "ask.closed"; askId: string; reason: AskUserCloseReason; revision?: number; daemonInstanceId?: string }
   | { type: "prompt.accepted"; clientMessageId: string }
   | { type: "prompt.withdrawn"; clientMessageId: string }
+  | { type: "prompt.consumed"; clientMessageId: string }
   | { type: "prompt.refused"; clientMessageId: string; message: string }
   | { type: "activity.changed" }
   | { type: "dialog.opened"; dialog: PendingExtensionDialog; revision?: number; daemonInstanceId?: string }

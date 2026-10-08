@@ -1065,6 +1065,8 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
       return { type: "prompt.accepted", clientMessageId: requireString(record, "clientMessageId") };
     case "prompt.withdrawn":
       return { type: "prompt.withdrawn", clientMessageId: requireString(record, "clientMessageId") };
+    case "prompt.consumed":
+      return { type: "prompt.consumed", clientMessageId: requireString(record, "clientMessageId") };
     case "prompt.refused":
       return { type: "prompt.refused", clientMessageId: requireString(record, "clientMessageId"), message: requireString(record, "message") };
     case "activity.changed":

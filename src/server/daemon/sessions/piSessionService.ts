@@ -107,6 +107,7 @@ import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
+import type { OperationOutcome } from "./operationDecision.js";
 import { HANDOFF_RUN_STATE, HANDOFF_WAKE_EVENTS, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffVerdict, type RunState } from "./promptHandoff.js";
 import { SETTLEABLE, createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
 import { CommandHandlerScope } from "./commandHandlerScope.js";
@@ -346,10 +347,28 @@ function partitionLanes(session: PiAgentSession, records: readonly HeldSteerReco
 }
 
 /**
- * Whether a handoff's prompt resolving means the agent has taken the message: a run has, and so
- * has a command or input handler that consumed it. A message in pi's lane has not been read yet.
+ * What a handoff's prompt resolving settles, by where pi put the message: a run has read it; a
+ * command or input handler that consumed it wrote no user entry, so it is `consumed` and its row
+ * goes (D1); a message in pi's lane has not been read yet.
  */
-const READ_WHEN_RESOLVED: Readonly<Record<HandoffLanding, boolean>> = { lane: false, run: true, handled: true };
+type ResolvedSettlement = "none" | "read" | "consumed";
+
+const SETTLED_WHEN_RESOLVED: Readonly<Record<HandoffLanding, ResolvedSettlement>> = { lane: "none", run: "read", handled: "consumed" };
+
+type RepeatAnswerFrame = "prompt.accepted" | "prompt.withdrawn" | "prompt.consumed";
+
+/**
+ * The frame that answers a repeat of an identity the ledger already holds: what became of it, so
+ * the sender's row settles. Failed and unknown rows are admitted again, so never repeat here.
+ */
+const REPEAT_ANSWER_FRAME: Readonly<Record<OperationOutcome, RepeatAnswerFrame>> = {
+  pending: "prompt.accepted",
+  succeeded: "prompt.accepted",
+  failed: "prompt.accepted",
+  unknown: "prompt.accepted",
+  withdrawn: "prompt.withdrawn",
+  consumed: "prompt.consumed",
+};
 
 /** How many messages pi's steering lane holds, per a `queue_update` event. */
 function queueUpdateSize(event: unknown): number {
@@ -3358,7 +3377,8 @@ export class PiSessionService implements SessionRouteService {
     // fresh id for every deliberate send. Answer with what became of it - the
     // frame rides the ring, so the outbox settles - and run nothing twice.
     if (clientMessageId !== undefined && this.acceptanceLedger.has(sessionId, clientMessageId)) {
-      this.events.publish(sessionId, { type: this.acceptanceLedger.outcomesFor(sessionId, [clientMessageId])[clientMessageId] === "withdrawn" ? "prompt.withdrawn" : "prompt.accepted", clientMessageId });
+      const outcome = this.acceptanceLedger.outcomesFor(sessionId, [clientMessageId])[clientMessageId];
+      this.events.publish(sessionId, { type: outcome === undefined ? "prompt.accepted" : REPEAT_ANSWER_FRAME[outcome], clientMessageId });
       this.publishActivity(session, "duplicate message ignored", "active");
       this.publishStatus(session);
       return;
@@ -3699,7 +3719,7 @@ export class PiSessionService implements SessionRouteService {
     const sessionId = session.sessionId;
     this.forgetHandoffWatchers(sessionId, watchers);
     if (result.verdict === "handed") {
-      if (result.landed !== undefined && READ_WHEN_RESOLVED[result.landed]) this.settleSucceeded(sessionId, entryKey(entry));
+      if (result.landed !== undefined) this.settleResolved(session, entryKey(entry), SETTLED_WHEN_RESOLVED[result.landed]);
       return;
     }
     if (result.verdict === "transient" && !result.committed) {
@@ -3742,6 +3762,24 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /** `key` is the message's sender id, or its local hold id (`entryKey`) when it was sent without one. */
+  private settleResolved(session: PiAgentSession, key: string | undefined, settlement: ResolvedSettlement): void {
+    const settle: Record<ResolvedSettlement, () => void> = {
+      none: () => undefined,
+      read: () => { this.settleSucceeded(session.sessionId, key); },
+      consumed: () => { this.settleConsumed(session.sessionId, key); },
+    };
+    settle[settlement]();
+  }
+
+  /** Taken without a user entry: the ledger says so, and the page drops the row it was waiting on (D1). */
+  private settleConsumed(sessionId: string, key: string | undefined): void {
+    this.settleHanded(sessionId, key);
+    const id = publishedId(key);
+    if (id === undefined) return;
+    this.acceptanceLedger.settle(sessionId, id, "consumed");
+    this.events.publish(sessionId, { type: "prompt.consumed", clientMessageId: id });
+  }
+
   private settleSucceeded(sessionId: string, key: string | undefined): void {
     this.settleHanded(sessionId, key);
     const id = publishedId(key);

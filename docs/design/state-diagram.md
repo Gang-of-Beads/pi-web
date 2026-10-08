@@ -38,7 +38,7 @@ stateDiagram-v2
     sending --> notSent: definite refusal (4xx)
     unverifiable --> queued: ledger says accepted
     unverifiable --> committed: ledger says committed
-    unverifiable --> consumed: ledger says handled
+    unverifiable --> consumed: ledger says consumed
     unverifiable --> refused: ledger says refused
     unverifiable --> withdrawn: ledger says withdrawn
     unverifiable --> notSent: ledger says never received
@@ -66,7 +66,8 @@ stateDiagram-v2
   - The pre-start client queue and the durable outbox are persistences of `sending` and `notSent`, not extra states.
   - There is **one** state per record. The row mark, the pending block and the status queue are all views of it.
 - **Wire (new under rule 6).** A frame is how the page learns each daemon arrow. The page never infers a state from an id leaving or entering a list.
-  - Existing today: `prompt.accepted`, `prompt.refused`, `prompt.withdrawn`.
+  - Existing today: `prompt.accepted`, `prompt.refused`, `prompt.withdrawn`, and `prompt.consumed`.
+  - **`consumed` built (2026-10-09).** A message an input handler or an extension command took (pi's preflight says `handled`) writes no user entry, so no transcript copy ever settled its row: it read "Received" under later messages until a reload, where it vanished. The daemon now settles its ledger row `consumed` and publishes `prompt.consumed`; the page drops the row and its outbox record, as for a withdrawal. A repeat send of that identity is answered with the same frame, and the ledger's `consumed` answer drops an unverifiable or proven row the same way.
   - New: `prompt.handed`, `prompt.returned`, `prompt.committed` (carries `entryId`) and `prompt.consumed`.
   - Every frame carries `seq` and `acceptedAt`. `seq` is a new persisted inbox field, and take-back and `restoreFront` keep it.
   - A duplicate send is answered with the ledger's actual outcome, not always `accepted`.

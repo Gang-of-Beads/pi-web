@@ -131,19 +131,20 @@ function isStoredRow(value: unknown): value is StoredRow {
 }
 
 function isOutcome(value: unknown): value is OperationOutcome {
-  return value === "pending" || value === "succeeded" || value === "failed" || value === "withdrawn" || value === "unknown";
+  return value === "pending" || value === "succeeded" || value === "consumed" || value === "failed" || value === "withdrawn" || value === "unknown";
 }
 
 /**
  * The session service's view of accepted prompts, by sender identity.
  *
  * A row is written when a prompt is accepted and moves forward only: pending until the agent
- * consumes it, then succeeded; failed when the runtime refuses it for good; withdrawn when the
+ * reads it, then succeeded, or consumed when an input handler or command took it without a user
+ * entry; failed when the runtime refuses it for good; withdrawn when the
  * reader takes it back. Nothing deletes a row - stopping a session, recalling a message or a
  * refused handoff used to, and each deletion turned an outbox retry of that identity into a
  * second run. Rows leave only by age, past the retention window.
  */
-export type SettledOutcome = "succeeded" | "failed" | "withdrawn";
+export type SettledOutcome = "succeeded" | "consumed" | "failed" | "withdrawn";
 
 export interface AcceptanceFace {
   /** Whether a request carrying this identity repeats one already accepted, so must not run again. */
@@ -171,6 +172,7 @@ export interface AcceptanceFace {
 export const READMITTED: Record<OperationOutcome, boolean> = {
   pending: false,
   succeeded: false,
+  consumed: false,
   withdrawn: false,
   failed: true,
   unknown: true,
@@ -181,6 +183,7 @@ export const SETTLEABLE: Record<OperationOutcome, boolean> = {
   pending: true,
   unknown: true,
   succeeded: false,
+  consumed: false,
   failed: false,
   withdrawn: false,
 };

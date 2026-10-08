@@ -2656,6 +2656,21 @@ export class SessionController {
     return LEDGER_ANSWERED;
   }
 
+  /**
+   * A message that leaves no row (D1): the reader took it back, here or on another device, or an
+   * input handler or extension command consumed it without a user entry. No transcript copy is
+   * coming, so without the frame the row would wait at "Queued" or "Received" forever, and a retry
+   * would send it again. Terminal: the row goes, and its outbox record with it.
+   */
+  private dropPromptRow(clientMessageId: string): void {
+    const current = this.getState();
+    const selected = current.selectedSession;
+    if (selected === undefined) return;
+    forgetPendingPrompt(machineSessionKey(selectedMachineId(current), selected.id), clientMessageId);
+    const messages = withdrawDeliveryLine(current.messages, clientMessageId);
+    if (messages.length !== current.messages.length) this.setState({ messages });
+  }
+
   private markDelivery(sessionId: string, clientMessageId: string, state: MessageDeliveryState): void {
     const current = this.getState();
     if (current.selectedSession?.id !== sessionId) return;
@@ -2948,19 +2963,8 @@ export class SessionController {
       if (selected !== undefined) this.onBackgroundRunCountChanged?.(selected.id);
       return;
     }
-    if (event.type === "prompt.withdrawn") {
-      // The reader took this message back - here or on another device. The
-      // daemon deleted the queue entry, so no transcript claim is coming;
-      // without this frame the row would wait at "Queued" forever, and a
-      // retry would re-send what was explicitly recalled. Terminal: the line
-      // goes, and the outbox entry goes with it.
-      const current = this.getState();
-      const selected = current.selectedSession;
-      if (selected !== undefined) {
-        forgetPendingPrompt(machineSessionKey(selectedMachineId(current), selected.id), event.clientMessageId);
-        const messages = withdrawDeliveryLine(current.messages, event.clientMessageId);
-        if (messages.length !== current.messages.length) this.setState({ messages });
-      }
+    if (event.type === "prompt.withdrawn" || event.type === "prompt.consumed") {
+      this.dropPromptRow(event.clientMessageId);
       return;
     }
     if (event.type === "prompt.refused") {

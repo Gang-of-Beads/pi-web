@@ -715,12 +715,12 @@ describe("gate-lane findings", () => {
     await service.prompt(ref, "/goal-pause", undefined, undefined, { clientMessageId: "p11-cmd-01" });
     fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect(texts(fake.calls.prompt)).toEqual(["S1", "/goal-pause"]); });
-    await vi.waitFor(() => { expect(service.operationOutcomes("p11-command", ["p11-cmd-01"])).toEqual({ "p11-cmd-01": "succeeded" }); });
+    await vi.waitFor(() => { expect(service.operationOutcomes("p11-command", ["p11-cmd-01"])).toEqual({ "p11-cmd-01": "consumed" }); });
     expect((await service.status(ref)).queuedMessages.map((entry) => entry.clientMessageId)).toEqual(["p11-s1-001"]);
     const { discarded } = await service.abort(ref);
     const withdrawn = hub.sessionEvents.filter(({ event }) => event.type === "prompt.withdrawn").map(({ event }): unknown => Reflect.get(event, "clientMessageId"));
     expect({ discarded: discarded.map((entry) => entry.clientMessageId), withdrawn, outcomes: service.operationOutcomes("p11-command", ["p11-s1-001", "p11-cmd-01"]) })
-      .toEqual({ discarded: ["p11-s1-001"], withdrawn: ["p11-s1-001"], outcomes: { "p11-s1-001": "withdrawn", "p11-cmd-01": "succeeded" } });
+      .toEqual({ discarded: ["p11-s1-001"], withdrawn: ["p11-s1-001"], outcomes: { "p11-s1-001": "withdrawn", "p11-cmd-01": "consumed" } });
     await service.dispose();
   });
 
@@ -777,7 +777,7 @@ describe("second gate-lane findings", () => {
     };
     await service.prompt(ref, "/kickoff now", undefined, undefined, { clientMessageId: "g1-cmd-001" });
     fake.emit({ type: "turn_end" });
-    await vi.waitFor(() => { expect(service.operationOutcomes("g1-inject", ["g1-cmd-001"])).toEqual({ "g1-cmd-001": "succeeded" }); });
+    await vi.waitFor(() => { expect(service.operationOutcomes("g1-inject", ["g1-cmd-001"])).toEqual({ "g1-cmd-001": "consumed" }); });
     expect((await service.status(ref)).queuedMessages.map((entry) => entry.clientMessageId)).toEqual([undefined]);
     await service.dispose();
   });
@@ -805,7 +805,7 @@ describe("second gate-lane findings", () => {
     const { fake, service, ref } = await inboxService("g3-expect", { isStreaming: false });
     fake.session.extensionRunner.getRegisteredCommands = () => [{ invocationName: "tidy" }];
     await service.prompt(ref, "/tidy", undefined, undefined, { clientMessageId: "g3-cmd-001" });
-    await vi.waitFor(() => { expect(service.operationOutcomes("g3-expect", ["g3-cmd-001"])).toEqual({ "g3-cmd-001": "succeeded" }); });
+    await vi.waitFor(() => { expect(service.operationOutcomes("g3-expect", ["g3-cmd-001"])).toEqual({ "g3-cmd-001": "consumed" }); });
     const later: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "/tidy" }] };
     fake.emit({ type: "message_start", message: later });
     expect(later["clientMessageId"]).toBeUndefined();
