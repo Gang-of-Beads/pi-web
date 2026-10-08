@@ -19,7 +19,7 @@ stdenv.mkDerivation (finalAttrs: {
   };
 
   nativeBuildInputs = [ nodejs pnpm_12 pnpmConfigHook makeWrapper python3 pkg-config ]
-    ++ lib.optionals stdenv.isLinux [ stdenv.cc ];
+    ++ lib.optionals stdenv.hostPlatform.isLinux [ stdenv.cc ];
 
   buildPhase = ''
     runHook preBuild

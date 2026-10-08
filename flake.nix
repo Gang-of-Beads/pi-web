@@ -27,7 +27,7 @@
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
           packages = with pkgs; [ nodejs python3 pkg-config ]
-            ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ stdenv.cc ];
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ stdenv.cc ];
         };
       });
 

@@ -56,7 +56,7 @@ in {
     (mkIf (cfg.settings != null) {
       home.file.${configRelativePath}.text = builtins.toJSON cfg.settings;
     })
-    (mkIf pkgs.stdenv.isLinux {
+    (mkIf pkgs.stdenv.hostPlatform.isLinux {
       systemd.user.services.pi-web-sessiond = {
         Unit.Description = "PI WEB session daemon";
         Service = {
@@ -79,7 +79,7 @@ in {
         Install.WantedBy = [ "default.target" ];
       };
     })
-    (mkIf pkgs.stdenv.isDarwin {
+    (mkIf pkgs.stdenv.hostPlatform.isDarwin {
       launchd.agents.pi-web-sessiond = {
         enable = true;
         config = {
