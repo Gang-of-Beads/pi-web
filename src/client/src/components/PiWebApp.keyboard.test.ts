@@ -144,8 +144,9 @@ function dispatchShortcutThroughApp(app: PiWebApp, target: HTMLElement): Keyboar
   if (!isAppKeyDownHandler(handler)) throw new Error("PiWebApp shortcut handler was unavailable");
   window.addEventListener("keydown", handler, { capture: true });
   const event = new KeyboardEvent("keydown", {
-    key: "k",
+    key: "P",
     ctrlKey: true,
+    shiftKey: true,
     bubbles: true,
     cancelable: true,
     composed: true,

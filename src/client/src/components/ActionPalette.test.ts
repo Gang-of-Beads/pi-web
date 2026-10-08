@@ -32,7 +32,7 @@ describe("filterActionPaletteActions", () => {
   /**
    * The palette's first entry was "Show Actions / Open the command palette",
    * one of 36: an offer to open the surface the reader is already looking at.
-   * The action itself stays registered because it owns the Ctrl+K shortcut
+   * The action itself stays registered because it owns the Mod+Shift+P shortcut
    * that opens the palette from everywhere else - it just does not list
    * itself.
    */

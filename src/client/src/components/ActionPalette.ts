@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing, type PropertyValues, unsafeCSS } from "
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../actions";
-import { formatShortcut } from "../keyboardShortcuts";
+import { formatShortcut, searchPlaceholder } from "../keyboardShortcuts";
 import { keyBelongsToInputMethod, keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import { matchesAllQueryWords, normalizeSearchQuery } from "../searchMatching";
 import "./ModalSurface";
@@ -12,6 +12,8 @@ import { interactiveSurfaceStyles } from "./shared";
 @customElement("action-palette")
 export class ActionPalette extends LitElement {
   @property({ attribute: false }) actions: AppAction[] = [];
+  /** The key that opens the palette, as the reader has it bound; shown in the search box. */
+  @property({ attribute: false }) openerShortcut: string | undefined;
   @property({ attribute: false }) onRun?: (action: AppAction) => void;
   @property({ attribute: false }) onCancel?: () => void;
   @state() private queryText = "";
@@ -29,7 +31,7 @@ export class ActionPalette extends LitElement {
         <header>
           <input
             .value=${this.queryText}
-            placeholder="Search actions…"
+            placeholder=${searchPlaceholder("Search actions…", this.openerShortcut)}
             @input=${(event: Event) => {
               if (event.target instanceof HTMLInputElement) {
                 this.queryText = event.target.value;

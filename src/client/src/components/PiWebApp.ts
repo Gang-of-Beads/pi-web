@@ -282,7 +282,7 @@ const SOCKET_LIVENESS_CHECK_MS = 5_000;
 const INTERACTION_LIVENESS_THROTTLE_MS = 2_000;
 
 const PI_WEB_STATUS_DEFER_MS = 750;
-/** The Go to sheet's command line: opens the action palette, the touch opener ⌘K never had (B39). */
+/** The Go to sheet's command line: opens the action palette on touch, where its keyboard shortcut cannot reach (B39). */
 const GO_TO_ACTIONS = "actions";
 /** Go to's Settings line: on the phone it is the way to Settings from every screen (owner, 2026-10-04). */
 const GO_TO_SETTINGS = "settings";
@@ -3954,6 +3954,11 @@ export class PiWebApp extends LitElement {
     return this.plugins.invalidateWorkspacePanels(this.createWorkspacePanelContext(workspace), panelId);
   }
 
+  /** The key the reader has bound to an action now, or undefined when it has none. */
+  private shortcutOf(actionId: string): string | undefined {
+    return this.getActions().find((action) => action.id === actionId)?.shortcut;
+  }
+
   private getActions(): AppAction[] {
     return applyActiveShortcutPreferences(this.getDefaultActions(), this.shortcutConfig);
   }
@@ -3979,8 +3984,8 @@ export class PiWebApp extends LitElement {
         id: "app.sessions.quick-switch",
         title: "Open session",
         description: "Search and open a session, or start a new one, without walking the navigation panel",
-        // mod+k already opens the action palette (core plugin); mod+p keeps the
-        // familiar "quick open" meaning for jumping straight to a session.
+        // VS Code's keys (owner, 2026-10-08): mod+p is quick open, straight to a
+        // session; mod+shift+p opens the action palette (core plugin).
         shortcut: "mod+p",
         group: "Sessions",
         run: () => { this.openQuickSwitcher(); },
@@ -5100,6 +5105,7 @@ export class PiWebApp extends LitElement {
           .sessionStates=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_STATE_MAP : this.sessionStateKinds()}
           .waitingSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.waitingSessionIds()}
           .unreadSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.unreadSessionIds}
+          .openerShortcut=${this.shortcutOf("app.sessions.quick-switch")}
           .heldOpenSessionId=${this.quickSwitcherBrowsingElsewhere() ? undefined : heldOpenSessionIn(this.openRowHold, selectedMachineId(state))}
           .sessionSections=${sessionSections(this.plugins.getSessionSections(this.rowsMachineId()))}
           .failedSendSessionIds=${this.failedSendSessionIds}
@@ -5126,7 +5132,7 @@ export class PiWebApp extends LitElement {
           }}
           .onClose=${() => { this.navigation.cancel(); this.quickSwitcherOpen = false; }}
         ></quick-switcher>` : null}
-        ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
+        ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .openerShortcut=${this.shortcutOf("core:actions.show")} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
         ${this.renderSessionTreeNavigator(state)}
         ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onConfirm=${(request: ConfirmRequest) => this.confirm(request)} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}

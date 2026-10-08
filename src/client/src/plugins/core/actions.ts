@@ -10,7 +10,7 @@ export function createCoreActions(): PluginAction[] {
       id: "actions.show",
       title: "Show actions",
       description: "Open the command palette",
-      shortcut: "mod+k",
+      shortcut: "mod+shift+p",
       group: "General",
       run: (context) => { context.openActionPalette(); },
     },

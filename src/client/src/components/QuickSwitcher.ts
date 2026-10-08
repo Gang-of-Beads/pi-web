@@ -1,3 +1,4 @@
+import { searchPlaceholder } from "../keyboardShortcuts";
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { renderCheckIcon, renderChevronRightIcon, renderCrossIcon, renderPinIcon, uiIconStyle } from "./uiIcons.js";
 import { reconcileBreadcrumbFilter, switcherBreadcrumb, type BreadcrumbLevel } from "../switcherBreadcrumb";
@@ -39,6 +40,8 @@ export class QuickSwitcher extends LitElement {
   /** How much of the machine-wide board has answered; emptiness is claimed only for a complete one. */
   @property({ attribute: false }) boardAnswer: BoardAnswer = "none";
   @property({ attribute: false }) sessions: readonly SessionInfo[] = [];
+  /** The key that opens the switcher, as the reader has it bound; shown in the search box. */
+  @property({ attribute: false }) openerShortcut: string | undefined;
   @property({ attribute: false }) workspaces: readonly Workspace[] = [];
   @property({ attribute: false }) selectedSession?: SessionInfo;
   @property({ attribute: false }) selectedWorkspace?: Workspace;
@@ -127,7 +130,7 @@ export class QuickSwitcher extends LitElement {
             spellcheck="false"
             enterkeyhint="search"
             aria-label="Search sessions and projects"
-            placeholder="Search sessions"
+            placeholder=${searchPlaceholder("Search sessions", this.openerShortcut)}
             .value=${this.query}
             @input=${(event: Event) => { this.onQueryInput(event); }}
           >

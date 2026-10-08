@@ -489,7 +489,7 @@ describe("PluginRegistry", () => {
       .map((action) => [action.id, action.shortcut]);
 
     expect(shortcuts).toEqual([
-      ["core:actions.show", "mod+k"],
+      ["core:actions.show", "mod+shift+p"],
       ["core:prompt.focus", "mod+g c"],
       ["core:settings.open", "mod+,"],
       ["core:view.chat", "mod+1"],

@@ -157,6 +157,14 @@ export function normalizeShortcut(shortcut: string): string[] {
   return parsed.ok ? parsed.tokens : [];
 }
 
+/**
+ * A search box's placeholder with the key that opens it (owner, 2026-10-08: VS Code's keys, and say
+ * them where they are used), e.g. "Search sessions (⌘+P)". Without a bound key, the words alone.
+ */
+export function searchPlaceholder(words: string, shortcut: string | undefined): string {
+  return shortcut === undefined ? words : `${words} (${formatShortcut(shortcut)})`;
+}
+
 export function formatShortcut(shortcut: string): string {
   return normalizeShortcut(shortcut)
     .map((token) => token
