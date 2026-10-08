@@ -42,6 +42,7 @@ import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
 import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, isCutAssistant, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, stoppedTurnMessage, transcriptHead, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
 import { runTranscriptMessages } from "../../../shared/subagentRunTranscript.js";
 import { readableMessageCount } from "./readableMessageCount.js";
+import { BranchStateMemo, branchStateKey } from "./branchStateMemo.js";
 import { pluginSurfacePresence } from "./pluginSurfaces.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import { BUILTIN_COMMANDS } from "./builtinCommands.js";
@@ -526,6 +527,15 @@ interface BulkDeletePlanItem {
 
 type AgentModel = NonNullable<SpawnSessionInvocation["model"]>;
 
+/** What a status reads off a session's entries; `BranchStateMemo` keeps it per state of them. */
+interface BranchFacts {
+  readonly messageCount: number;
+  readonly tokens: ClientSessionStatus["tokens"];
+  readonly cost: number;
+  readonly contextUsage: ClientSessionStatus["contextUsage"] | undefined;
+  readonly turnStartedAt: string | undefined;
+}
+
 export interface PiSessionManager {
   getCwd(): string;
   getSessionId(): string;
@@ -620,6 +630,8 @@ export interface PiAgentSession {
    */
   readonly state: { readonly streamingMessage?: unknown };
   model: AgentModel | undefined;
+  /** Under a virtual selection, the physical model of the latest response; pi measures the context window against it. */
+  readonly routedModel?: { readonly model: AgentModel } | undefined;
   thinkingLevel: ClientThinkingLevel;
   isStreaming: boolean;
   isCompacting: boolean;
@@ -1362,6 +1374,7 @@ export class PiSessionService implements SessionRouteService {
   /** Per-session tail of the queue-rewrite chain; see withQueueLock. */
   private readonly queueLocks = new Map<string, Promise<void>>();
   private readonly activities = new Map<string, { phase: "active" | "idle" | "error"; label: string; detail?: string; at: string }>();
+  private readonly branchFacts = new BranchStateMemo<BranchFacts>();
   /** What each session's agent is doing (B25), and since when; every activity it publishes carries it. */
   private readonly steps = new Map<string, { step: SessionStep; since: string }>();
   /** Last counted background runs per open session; see refreshBackgroundRunCounts. */
@@ -6171,9 +6184,8 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private statusFromSession(session: PiAgentSession): ClientSessionStatus {
-    const stats = session.getSessionStats();
     const model = session.model === undefined ? undefined : modelToClientModel(session.model);
-    const contextUsage = session.getContextUsage();
+    const facts = this.branchFacts.read(session, branchStateKey(session), () => branchFactsOf(session));
     const warnings = this.warningsForSession(session);
     this.fileWarningNotifications(session, warnings);
     const pendingAsks = this.pendingAskStore.pendingAsks(session.sessionId);
@@ -6184,7 +6196,7 @@ export class PiSessionService implements SessionRouteService {
     const activity = this.currentActivity(session.sessionId);
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
     const working = session.isStreaming || session.isCompacting || session.isBashRunning;
-    const turnStartedAt = working ? turnStartedAtFromBranch(session.sessionManager.getBranch()) : undefined;
+    const turnStartedAt = working ? facts.turnStartedAt : undefined;
     const lastActivityAt = leafEntryAt(session.sessionManager);
     const surfaces = pluginSurfacePresence(session.resourceLoader);
     const extensionUi = this.extensionStanding.get(session)?.snapshot();
@@ -6208,10 +6220,10 @@ export class PiSessionService implements SessionRouteService {
       queuedMessages: visibleQueued,
       ...(queuedAnswers.length === 0 ? {} : { queuedAnswers }),
       ...(activity === undefined ? {} : { activity }),
-      messageCount: readableMessageCount(session.sessionManager.getBranch()),
-      tokens: stats.tokens,
-      cost: stats.cost,
-      ...(contextUsage === undefined ? {} : { contextUsage }),
+      messageCount: facts.messageCount,
+      tokens: facts.tokens,
+      cost: facts.cost,
+      ...(facts.contextUsage === undefined ? {} : { contextUsage: facts.contextUsage }),
       ...(warnings.length === 0 ? {} : { warnings }),
       ...(pendingAsk === undefined ? {} : { pendingAsk }),
       ...(pendingAsks.length === 0 ? {} : { pendingAsks }),
@@ -6793,6 +6805,18 @@ function clearParentSessionHeader(sessionManager: PiSessionManager): void {
 function leafEntryAt(manager: PiSessionManager): string | undefined {
   const timestamp = manager.getLeafEntry?.()?.timestamp;
   return typeof timestamp === "string" ? timestamp : undefined;
+}
+
+function branchFactsOf(session: PiAgentSession): BranchFacts {
+  const branch = session.sessionManager.getBranch();
+  const stats = session.getSessionStats();
+  return {
+    messageCount: readableMessageCount(branch),
+    tokens: stats.tokens,
+    cost: stats.cost,
+    contextUsage: session.getContextUsage(),
+    turnStartedAt: turnStartedAtFromBranch(branch),
+  };
 }
 
 /**
