@@ -22,6 +22,8 @@ import { SESSION_STATE_LABELS } from "../activityBadge";
 import { actionMenuPanelStyle, actionMenuPanelStyleAtPointer, contextMenuFromMouse } from "../actionMenu";
 import { navigateBulkActions, navigateRowActions, type NavigateBulkActionId, type NavigateBulkGroup, type NavigateRowActionId, type NavigateRowFacts, type NavigateRowKind } from "../../navigateRowActions";
 import { NavigateSelection, type NavigateSelectionState } from "../../navigateSelection";
+import { NavigateReorder } from "../../navigateReorder";
+import type { ReorderPoint } from "../../listReorder";
 import { isSelecting, type SelectionOutcome } from "../../selectionModel";
 import { renderSelectionActions, renderSelectionHeader, selectionBarStyles } from "./navigateSelectionBar";
 import { sessionLabel } from "../../sessionLabels";
@@ -162,6 +164,20 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onSelectingChange?: (exit: (() => void) | undefined) => void;
   /** Selecting many rows (state diagram D9); the page draws what it says. */
   private readonly selection = new NavigateSelection((next, previous) => { this.selectionChanged(next, previous); });
+  /** The reader put the Pinned section in a new order (R11): the whole order, for the scope the list stands in. */
+  @property({ attribute: false }) onReorderPins?: (order: readonly string[], scopeProjectId: string | undefined) => void;
+  /** Dragging a pinned row to another place (R11, state diagram D9). */
+  private readonly reorder = new NavigateReorder({
+    order: () => this.pinOrderIds(),
+    rowAt: (point, dragged) => this.pinRowAt(point, dragged),
+    changed: () => { this.requestUpdate(); },
+    drop: (order) => { this.onReorderPins?.(order, this.pathProjectId); },
+    settleHold: () => { this.selection.pointerEnd(); },
+  });
+  /** The row lifted by the last render, so the next one can set it down. */
+  private liftedKey: string | undefined;
+  /** Where the pointer held the lifted row, relative to its box, measured on its first lifted render. */
+  private dragGrab: ReorderPoint | undefined;
   @state() private query = "";
   /** What a tap on a session row does: open it, or continue it in a new session after New session's "Continue from…". */
   @state() private rowTap: SessionRowTap = "open";
@@ -184,12 +200,15 @@ export class AppNavigatePage extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    document.addEventListener("keydown", this.cancelDragOnEscape, { capture: true });
     document.addEventListener("pointerdown", this.noteReaderInput, { capture: true, passive: true });
     document.addEventListener("keydown", this.noteReaderInput, { capture: true, passive: true });
   }
 
   override disconnectedCallback(): void {
     this.exitSelection();
+    this.reorder.cancel();
+    document.removeEventListener("keydown", this.cancelDragOnEscape, { capture: true });
     document.removeEventListener("pointerdown", this.noteReaderInput, { capture: true });
     document.removeEventListener("keydown", this.noteReaderInput, { capture: true });
     this.rowOrder.release();
@@ -206,12 +225,78 @@ export class AppNavigatePage extends LitElement {
     if (changed.has("kind") || changed.has("pathProjectId") || machineId !== this.shownMachineId) this.exitSelection();
     else this.selection.dispatch({ type: "rows", ids: new Set(this.selectableRows().map((row) => row.id)) });
     this.shownMachineId = machineId;
-    this.motion.prepare(this.listBody(), this.view.rowKeys, { scopeChanged, readerActive: Date.now() < this.readerQuietUntil });
+    this.motion.prepare(this.listBody(), this.view.rowKeys, { scopeChanged, readerActive: Date.now() < this.readerQuietUntil || this.reorder.state.phase !== "idle" });
   }
 
   protected override updated(): void {
     this.motion.play(this.listBody());
+    this.placeLiftedRow();
   }
+
+  /**
+   * The lifted row follows the pointer: its box is measured where the list now puts it, and a
+   * transform carries it to the pointer, keeping the spot it was held by under the finger. The row
+   * the last render lifted is set down first.
+   */
+  private placeLiftedRow(): void {
+    const state = this.reorder.state;
+    const key = state.phase === "dragging" ? this.pinRowKey(state.id) : undefined;
+    if (this.liftedKey !== undefined && this.liftedKey !== key) {
+      const previous = this.rowWrap(this.liftedKey);
+      previous?.classList.remove("lifted");
+      previous?.style.removeProperty("transform");
+      this.dragGrab = undefined;
+    }
+    this.liftedKey = key;
+    if (state.phase !== "dragging" || key === undefined) return;
+    const element = this.rowWrap(key);
+    if (element === null) return;
+    element.classList.add("lifted");
+    element.style.removeProperty("transform");
+    const box = element.getBoundingClientRect();
+    const origin = this.reorder.pressOrigin ?? state.at;
+    this.dragGrab ??= { x: origin.x - box.left, y: origin.y - box.top };
+    element.style.transform = `translate(${String(Math.round(state.at.x - this.dragGrab.x - box.left))}px, ${String(Math.round(state.at.y - this.dragGrab.y - box.top))}px)`;
+  }
+
+  private rowWrap(key: string): HTMLElement | null {
+    return this.renderRoot.querySelector<HTMLElement>(`.row-wrap[data-motion-key="${CSS.escape(key)}"]`);
+  }
+
+  private pinRowKey(id: string): string {
+    return `session:${this.view?.listed.scope.machineId ?? ""}:${id}`;
+  }
+
+  /** The pin-ordered section's rows of this machine, in the order the list draws them. */
+  private pinOrderIds(): readonly string[] {
+    const machineId = this.view?.listed.scope.machineId;
+    const section = this.view?.sections.find((candidate) => candidate.ordering === "pins");
+    return section === undefined ? [] : section.rows.filter((row) => row.machineId === machineId).map((row) => row.session.id);
+  }
+
+  private pinRowAt(point: ReorderPoint, dragged: string): string | undefined {
+    return this.pinOrderIds().find((id) => {
+      if (id === dragged) return false;
+      const box = this.rowWrap(this.pinRowKey(id))?.getBoundingClientRect();
+      return box !== undefined && point.x >= box.left && point.x <= box.right && point.y >= box.top && point.y <= box.bottom;
+    });
+  }
+
+  private readonly cancelDragOnEscape = (event: KeyboardEvent): void => {
+    if (event.key !== "Escape" || this.reorder.state.phase !== "dragging") return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.reorder.cancel();
+  };
+
+  private readonly touchDrag = {
+    handleEvent: (event: TouchEvent): void => {
+      const touch = event.touches[0];
+      if (touch === undefined) return;
+      if (this.reorder.move({ x: touch.clientX, y: touch.clientY })) event.preventDefault();
+    },
+    passive: false,
+  };
 
   private listBody(): HTMLElement | null {
     return this.renderRoot.querySelector<HTMLElement>(".body");
@@ -231,7 +316,7 @@ export class AppNavigatePage extends LitElement {
       folderPath: undefined,
     }).filter((segment) => segment.level !== "folder");
     if (this.kind === "sessions") {
-      const sections = this.orderedSections(model.sections);
+      const sections = this.draggedSections(this.orderedSections(model.sections));
       return { listed, model, segments, sections, choices: [], rowKeys: sections.flatMap((section) => section.rows.map(sessionRowKey)) };
     }
     const levelChoices = model.sections.flatMap((section) => section.choices).filter((choice) => choice.level === this.kind);
@@ -360,8 +445,12 @@ export class AppNavigatePage extends LitElement {
         <div
           class=${this.tilesPerRow === undefined ? "body" : `body tiles-${String(this.tilesPerRow)}`}
           @pointerdown=${() => { this.rowOrder.hold(); }}
-          @pointerup=${() => { this.letGoOfRows(); }}
-          @pointercancel=${() => { this.letGoOfRows(); }}
+          @pointermove=${(event: PointerEvent) => { if (event.pointerType === "mouse") this.reorder.move({ x: event.clientX, y: event.clientY }); }}
+          @pointerup=${(event: PointerEvent) => { this.letGoOfRows(); if (event.pointerType === "mouse") this.reorder.release(); }}
+          @pointercancel=${(event: PointerEvent) => { this.letGoOfRows(); if (event.pointerType === "mouse") this.reorder.cancel(); }}
+          @touchmove=${this.touchDrag}
+          @touchend=${() => { this.reorder.release(); }}
+          @touchcancel=${() => { this.reorder.cancel(); }}
         >
           ${showsSessions
             ? html`
@@ -492,6 +581,7 @@ export class AppNavigatePage extends LitElement {
     if (isSelecting(next) === isSelecting(previous)) return;
     if (isSelecting(next)) {
       this.openMenuRowId = undefined;
+      this.reorder.heldBySelection();
       document.addEventListener("keydown", this.escapeSelection, { capture: true });
       this.onSelectingChange?.(() => { this.exitSelection(); });
       return;
@@ -500,9 +590,9 @@ export class AppNavigatePage extends LitElement {
     this.onSelectingChange?.(undefined);
   }
 
-  private readonly pressGuard = { handleEvent: (): void => { this.selection.pressStarted(); }, capture: true };
+  private readonly pressGuard = { handleEvent: (): void => { this.selection.pressStarted(); this.reorder.pressStarted(); }, capture: true };
 
-  private readonly holdReleaseGuard = { handleEvent: (event: MouseEvent): void => { this.selection.swallowHoldRelease(event); }, capture: true };
+  private readonly holdReleaseGuard = { handleEvent: (event: MouseEvent): void => { this.selection.swallowHoldRelease(event); this.reorder.swallowDropClick(event); }, capture: true };
 
   private readonly escapeSelection = (event: KeyboardEvent): void => {
     if (event.key !== "Escape") return;
@@ -574,6 +664,15 @@ export class AppNavigatePage extends LitElement {
     return sections
       .filter((section) => section.id !== "choices" && (section.rows.length > 0 || section.emptyText !== undefined))
       .map((section) => ({ ...section, rows: [...section.rows].sort((left, right) => (placeOf.get(`${left.machineId}:${left.session.id}`) ?? 0) - (placeOf.get(`${right.machineId}:${right.session.id}`) ?? 0)) }));
+  }
+
+  /** While a pinned row is dragged, the Pinned section stands in the order the drag would drop. */
+  private draggedSections(sections: NavigateSection[]): NavigateSection[] {
+    const state = this.reorder.state;
+    if (state.phase !== "dragging") return sections;
+    const place = new Map(state.order.map((id, index) => [id, index]));
+    const placeOf = (row: NavigateSessionRow) => place.get(row.session.id) ?? state.order.length;
+    return sections.map((section) => section.ordering === "pins" ? { ...section, rows: [...section.rows].sort((left, right) => placeOf(left) - placeOf(right)) } : section);
   }
 
   /**
@@ -768,7 +867,7 @@ export class AppNavigatePage extends LitElement {
 
   /** The name alone: the owner's call, after a row of hashes and then a line of
    *  state proved to be noise on a list whose job is to be scanned. */
-  private renderSession(row: NavigateSessionRow) {
+  private renderSession(row: NavigateSessionRow, draggable: boolean) {
     const label = sessionLabel(row.session);
     const key = machineSessionKey(row.machineId, row.session.id);
     const opening = isOpeningKey(this.opening, key);
@@ -783,10 +882,11 @@ export class AppNavigatePage extends LitElement {
         aria-busy=${opening ? "true" : "false"}
         aria-pressed=${selected === undefined ? nothing : String(selected)}
         title=${label}
-        @pointerdown=${(event: PointerEvent) => { this.selection.pointerDown(group, id, event); }}
+        @pointerdown=${(event: PointerEvent) => { this.selection.pointerDown(group, id, event); if (draggable) this.reorder.mouseDown(id, event); }}
         @pointermove=${(event: PointerEvent) => { this.selection.pointerMove(event); }}
         @pointerup=${() => { this.selection.pointerEnd(); }}
         @pointercancel=${() => { this.selection.pointerEnd(); }}
+        @touchstart=${draggable ? (event: TouchEvent) => { this.reorder.touchStart(id, event, isSelecting(this.selection.state)); } : nothing}
         @click=${(event: MouseEvent) => { if (this.selection.click(group, id, event) === "row") this.tapSessionRow(row); }}
       >
         <span class="row-title"><span class="row-icon" data-kind="session">${this.rowIcon(group, id, renderChatIcon())}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>
@@ -819,7 +919,7 @@ export class AppNavigatePage extends LitElement {
       ><span class="section-fold" aria-hidden="true">${renderDisclosureIcon(folded)}</span>${title}</button>
       ${folded ? nothing : section.rows.length === 0 && section.emptyText !== undefined
         ? html`<p class="empty section-empty" role="status" data-motion-key=${`empty:${section.id}`}>${section.emptyText}</p>`
-        : repeat(section.rows, sessionRowKey, (row) => this.renderSession(row))}
+        : repeat(section.rows, sessionRowKey, (row) => this.renderSession(row, section.ordering === "pins" && row.machineId === this.view?.listed.scope.machineId))}
     `;
   }
 
@@ -858,6 +958,8 @@ export class AppNavigatePage extends LitElement {
        it was acting on. */
     .row-wrap.menu-open > .row { border-color: var(--pi-accent); }
     .row-wrap.selected > .row { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+    .row-wrap.lifted { z-index: 3; }
+    .row-wrap.lifted > .row { border-color: var(--pi-accent); outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 0; cursor: grabbing; }
     .head-stack { position: relative; flex: 0 0 auto; }
     .list-head { display: flex; flex-direction: column; }
     .selection-overlay { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; background: var(--pi-bg-overlay); }

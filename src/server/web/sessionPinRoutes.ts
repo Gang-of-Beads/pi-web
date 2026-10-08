@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { adoptedPins, globalPin, projectPin, type PinChange, type SessionPinStore, type SessionPins } from "../shared/storage/sessionPinStore.js";
+import { adoptedPins, globalPin, pinOrder, projectPin, type PinChange, type SessionPinStore, type SessionPins } from "../shared/storage/sessionPinStore.js";
 
 class SessionPinRequestError extends Error {}
 
@@ -37,7 +37,7 @@ function pinAnswer(pins: SessionPins): { pinnedSessionIds: readonly string[]; pr
   return { pinnedSessionIds: pins.global, projectPins: pins.projects };
 }
 
-/** `{ adopt }`, `{ sessionId, pinned }` for the global pin, or `{ sessionId, pinned, projectId }` for that project's. */
+/** `{ adopt }`, `{ order }` or `{ order, projectId }` for a dragged order, `{ sessionId, pinned }` for the global pin, or `{ sessionId, pinned, projectId }` for that project's. */
 function parsePinRequest(body: unknown): PinChange {
   if (typeof body !== "object" || body === null || Array.isArray(body)) throw new SessionPinRequestError("A pin change needs a body");
   const adopt: unknown = Reflect.get(body, "adopt");
@@ -45,6 +45,8 @@ function parsePinRequest(body: unknown): PinChange {
     if (!Array.isArray(adopt) || adopt.some((id) => typeof id !== "string")) throw new SessionPinRequestError("adopt must be a list of session ids");
     return adoptedPins(adopt.filter((id): id is string => typeof id === "string" && id !== ""));
   }
+  const order: unknown = Reflect.get(body, "order");
+  if (order !== undefined) return parseOrderRequest(order, Reflect.get(body, "projectId"));
   const sessionId: unknown = Reflect.get(body, "sessionId");
   const pinned: unknown = Reflect.get(body, "pinned");
   const projectId: unknown = Reflect.get(body, "projectId");
@@ -53,6 +55,14 @@ function parsePinRequest(body: unknown): PinChange {
   if (projectId === undefined) return globalPin(sessionId, pinned);
   if (typeof projectId !== "string" || projectId === "") throw new SessionPinRequestError("projectId must name a project");
   return projectPin(projectId, sessionId, pinned);
+}
+
+function parseOrderRequest(order: unknown, projectId: unknown): PinChange {
+  if (!Array.isArray(order) || order.some((id) => typeof id !== "string" || id === "")) throw new SessionPinRequestError("order must be a list of session ids");
+  const ids = order.filter((id): id is string => typeof id === "string");
+  if (projectId === undefined) return pinOrder(ids);
+  if (typeof projectId !== "string" || projectId === "") throw new SessionPinRequestError("projectId must name a project");
+  return pinOrder(ids, projectId);
 }
 
 function failed(reply: FastifyReply, error: unknown): FastifyReply {

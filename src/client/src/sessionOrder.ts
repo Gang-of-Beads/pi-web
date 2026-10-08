@@ -59,11 +59,20 @@ export interface SessionSectionSubject {
   readonly archived: boolean;
 }
 
+/**
+ * How a section orders its rows: by rank, then latest activity, or in the order the reader put
+ * the pins in (R11: Pinned is a fixed place the reader arranges, so a working or unread pinned
+ * session no longer moves).
+ */
+export type SectionOrdering = "activity" | "pins";
+
 export interface SessionSectionDefinition {
   readonly id: string;
   readonly title: string;
   /** Where the section sits: Pinned 100, Active 500, Archived 900. */
   readonly order: number;
+  /** How its rows are ordered; activity when absent. */
+  readonly ordering?: SectionOrdering;
   /** Folded until the reader opens it, the first time a list shows it. */
   readonly foldedByDefault?: boolean;
   /** Shown even with no session in it, saying so (Archived: "Nothing archived yet"). */
@@ -72,7 +81,7 @@ export interface SessionSectionDefinition {
 }
 
 export const CORE_SESSION_SECTIONS: readonly SessionSectionDefinition[] = [
-  { id: "pinned", title: "Pinned", order: 100, claims: (subject) => subject.pinned && !subject.archived },
+  { id: "pinned", title: "Pinned", order: 100, ordering: "pins", claims: (subject) => subject.pinned && !subject.archived },
   { id: "active", title: "Active", order: 500, claims: (subject) => !subject.archived },
   { id: "archived", title: "Archived", order: 900, foldedByDefault: true, emptyText: "Nothing archived yet", claims: (subject) => subject.archived },
 ];

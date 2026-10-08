@@ -106,6 +106,7 @@ import "./appShell/AppNavigatePage";
 import type { AppNavigatePage, NavigateKind } from "./appShell/AppNavigatePage";
 import type { NavigateBulkActionId, NavigateBulkActionIds, NavigateBulkGroup, NavigateRowActionId, NavigateRowKind } from "../navigateRowActions";
 import type { SelectionOutcome } from "../selectionModel";
+import { orderedPins } from "../../../shared/pinOrder";
 import { sessionLabel } from "../sessionLabels";
 import { NavigationIntents, openingAnnouncement } from "../navigationIntent";
 import { writeClipboardText } from "../clipboard";
@@ -2760,6 +2761,29 @@ export class PiWebApp extends LitElement {
       .catch((error: unknown) => { this.setState(errorNoticePatch(error)); });
   }
 
+  /**
+   * The reader dragged the Pinned section into a new order (R11): the global pins on the machine-wide
+   * list, the project's own where the list stands in a project that keeps them (B49), as the section
+   * shows them. Optimistic, then the machine's answer, as a pin toggle is.
+   */
+  private reorderPinnedSessions(order: readonly string[], scopeProjectId: string | undefined): void {
+    const machineId = this.browsedMachineId();
+    const projectPins = this.projectPinnedSessionIdsFor(machineId, scopeProjectId);
+    const cached = this.pinCache;
+    if (projectPins === undefined || scopeProjectId === undefined) {
+      const ids = new Set(orderedPins([...this.pinnedSessionIdsFor(machineId)], order));
+      this.pinCache = cached?.machineId === machineId ? { ...cached, ids } : { machineId, ids };
+      writePinnedSessionIds(machineId, ids);
+    } else if (cached?.projects !== undefined) {
+      this.pinCache = { ...cached, projects: new Map([...cached.projects, [scopeProjectId, new Set(orderedPins([...projectPins], order))]]) };
+    }
+    this.requestUpdate();
+    const projectId = projectPins === undefined ? undefined : scopeProjectId;
+    void sessionPinsApi.setOrder(order, machineId, projectId)
+      .then((answered) => { this.applyMachinePins(machineId, answered); })
+      .catch((error: unknown) => { this.setState(errorNoticePatch(error)); });
+  }
+
   /** The project pin's toggle: optimistic, then the machine's answer, as the global pin's. */
   private toggleProjectPinnedSession(session: SessionInfo, projectId: string): void {
     const machineId = this.browsedMachineId();
@@ -3038,6 +3062,7 @@ export class PiWebApp extends LitElement {
       .readerChanging=${this.readerListChanges > 0}
       .onBulkAction=${(group: NavigateBulkGroup, action: NavigateBulkActionId, ids: readonly string[]) => this.asReaderListChange(() => this.runNavigateBulkAction(group, action, ids))}
       .onSelectingChange=${(exit: (() => void) | undefined) => { this.noteNavigateSelecting(exit); }}
+      .onReorderPins=${(order: readonly string[], scopeProjectId: string | undefined) => { this.reorderPinnedSessions(order, scopeProjectId); }}
     >${this.renderAppRowSlot(overlay ? "navigate-overlay" : "navigation-view")}</app-navigate-page>`;
   }
 

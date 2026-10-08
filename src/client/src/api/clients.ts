@@ -209,6 +209,12 @@ export const sessionPinsApi = {
     parseMachinePins,
     { method: "POST", body: JSON.stringify({ sessionId, pinned, projectId }) },
   ),
+  /** The whole order of a pinned list the reader dragged; a project id orders that project's pins. */
+  setOrder: (order: readonly string[], machineId = "local", projectId?: string) => request(
+    `${machinePrefix(machineId)}/session-pins`,
+    parseMachinePins,
+    { method: "POST", body: JSON.stringify(projectId === undefined ? { order: [...order] } : { order: [...order], projectId }) },
+  ),
   adopt: (sessionIds: readonly string[], machineId = "local") => request(
     `${machinePrefix(machineId)}/session-pins`,
     parseMachinePins,

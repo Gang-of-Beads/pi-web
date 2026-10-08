@@ -14,7 +14,7 @@
  */
 
 import { presentProjectsFirst, projectDetail, projectFolderFlag } from "./projectFolder";
-import { CORE_SESSION_SECTIONS, compareRanked, modifiedMs, sectionOf, sessionRank, type SessionRank, type SessionSectionDefinition } from "./sessionOrder";
+import { CORE_SESSION_SECTIONS, compareRanked, modifiedMs, sectionOf, sessionRank, type SectionOrdering, type SessionRank, type SessionSectionDefinition } from "./sessionOrder";
 import type { SessionInfo } from "./api";
 import type { SessionActivityCategory } from "../../shared/sessionActivityState";
 
@@ -82,6 +82,8 @@ export interface NavigateSection {
   choices: NavigateChoice[];
   foldedByDefault?: boolean;
   emptyText?: string;
+  /** How the rows are ordered; a pin-ordered section is the one a reader can drag (R11). */
+  ordering?: SectionOrdering;
 }
 
 export interface NavigateModel {
@@ -176,8 +178,9 @@ function sessionSectionsFor(rows: readonly NavigateSessionRow[], input: Navigate
     list.push({ row: entry, rank, at });
     bySection.set(id, list);
   }
+  const compare = sectionComparators(input);
   return definitions
-    .map((definition) => ({ definition, ranked: (bySection.get(definition.id) ?? []).sort(compareRanked) }))
+    .map((definition) => ({ definition, ranked: (bySection.get(definition.id) ?? []).sort(compare[definition.ordering ?? "activity"]) }))
     .filter(({ definition, ranked }) => ranked.length > 0 || definition.emptyText !== undefined)
     .map(({ definition, ranked }) => ({
       id: definition.id,
@@ -185,8 +188,30 @@ function sessionSectionsFor(rows: readonly NavigateSessionRow[], input: Navigate
       rows: ranked.map((entry) => entry.row),
       choices: [],
       ...(definition.foldedByDefault === true ? { foldedByDefault: true } : {}),
+      ...(definition.ordering === undefined ? {} : { ordering: definition.ordering }),
       ...(definition.emptyText === undefined ? {} : { emptyText: definition.emptyText }),
     }));
+}
+
+interface SectionEntry {
+  readonly row: NavigateSessionRow;
+  readonly rank: SessionRank;
+  readonly at: number;
+}
+
+/**
+ * One comparator per ordering. "pins" follows the pin list the Pinned section shows: the scoped
+ * project's own pins in a project, the machine's global pins on the machine-wide list (B49); a
+ * pinned row that list does not hold (one pinned on another machine) follows, by rank and activity.
+ */
+function sectionComparators(input: NavigateInput): Readonly<Record<SectionOrdering, (left: SectionEntry, right: SectionEntry) => number>> {
+  const pins = [...((input.scope.projectId === undefined ? undefined : input.projectPinnedSessionIds) ?? input.pinnedSessionIds)];
+  const place = new Map(pins.map((id, index) => [`${input.scope.machineId}:${id}`, index]));
+  const placeOf = (entry: SectionEntry) => place.get(`${entry.row.machineId}:${entry.row.session.id}`) ?? pins.length;
+  return {
+    activity: compareRanked,
+    pins: (left, right) => placeOf(left) - placeOf(right) || compareRanked(left, right),
+  };
 }
 
 /** The tags a session carries without anyone typing one. */
