@@ -306,13 +306,15 @@ function describeServiceShell(): string {
 
 /**
  * The environment a managed service is installed with: the config path when
- * one was chosen, plus the deployment variables only the installing
- * environment knows. A service manager does not inherit the installing
+ * one was chosen, the log directory the service manager is pointed at (so the
+ * process trims the file it is actually given), plus the deployment variables
+ * only the installing environment knows. A service manager does not inherit the installing
  * shell's environment, so anything left out here is lost at service start.
  */
 function serviceEnvironment(options: InstallOptions, configPath: string): Record<string, string> {
   return {
     ...deploymentServiceEnvironment(process.env),
+    PI_WEB_LOG_DIR: logDir,
     ...(options.config === undefined ? {} : { PI_WEB_CONFIG: configPath }),
   };
 }

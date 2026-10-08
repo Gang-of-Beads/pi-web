@@ -257,9 +257,9 @@ The per-request size limit is still controlled by `maxUploadBytes` / `PI_WEB_MAX
 ```
 
 - `level`: `errors` (default) records requests that failed with a server error or took a second or more; `requests` records every request; `debug` records every request and the processes' debug messages. Startup, shutdown, and error messages are recorded at every level.
-- `maxFileMb` (default 50) and `keepFiles` (default 3): once `$PI_WEB_DATA_DIR/logs/web.log` or `sessiond.log` grows past `maxFileMb`, its last `maxFileMb` is copied to `web.log.1` (older copies move to `.2`, `.3`, …, and the oldest beyond `keepFiles` is removed), then the file is emptied in place. Only the tail is copied, so trimming a very large log does not need that much free disk.
+- `maxFileMb` (default 50) and `keepFiles` (default 3): once `web.log` or `sessiond.log` in the log directory grows past `maxFileMb`, its last `maxFileMb` is copied to `web.log.1` (older copies move to `.2`, `.3`, …, and the oldest beyond `keepFiles` is removed), then the file is emptied in place. Only the tail is copied, so trimming a very large log does not need that much free disk.
 
-Both processes check the setting and the file sizes once a minute. Retention applies to the log files the installed launchd services write; on systemd, output that goes to the journal is kept by journald's own settings instead.
+Both processes check the setting and the file sizes once a minute. The log directory is the one `pi-web install` points the service manager at, `~/.pi-web/logs`, which it records in the service as `PI_WEB_LOG_DIR`; a process started without it uses `$PI_WEB_DATA_DIR/logs`. A service installed before this setting existed keeps watching `$PI_WEB_DATA_DIR/logs` until it is installed again. Retention applies to the log files the installed launchd services write; on systemd, output that goes to the journal is kept by journald's own settings instead.
 
 ### Updates
 

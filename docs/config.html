@@ -687,14 +687,18 @@ worktree_path="$1"
                   request and the processes' debug messages. Startup, shutdown, and error messages are recorded at every
                   level.</li>
                 <li><code>maxFileMb</code> (default 50) and <code>keepFiles</code> (default 3): once
-                  <code>$PI_WEB_DATA_DIR/logs/web.log</code> or <code>sessiond.log</code> grows past
+                  <code>web.log</code> or <code>sessiond.log</code> in the log directory grows past
                   <code>maxFileMb</code>, its last <code>maxFileMb</code> is copied to <code>web.log.1</code> (older copies
                   move to <code>.2</code>, <code>.3</code>, …, and the oldest beyond <code>keepFiles</code> is removed),
                   then the file is emptied in place. Only the tail is copied, so trimming a very large log does not need
                   that much free disk.</li>
               </ul>
               <p>
-                Both processes check the setting and the file sizes once a minute. Retention applies to the log files the
+                Both processes check the setting and the file sizes once a minute. The log directory is the one
+                <code>pi-web install</code> points the service manager at, <code>~/.pi-web/logs</code>, which it records in
+                the service as <code>PI_WEB_LOG_DIR</code>; a process started without it uses
+                <code>$PI_WEB_DATA_DIR/logs</code>. A service installed before this setting existed keeps watching
+                <code>$PI_WEB_DATA_DIR/logs</code> until it is installed again. Retention applies to the log files the
                 installed launchd services write; on systemd, output that goes to the journal is kept by journald's own
                 settings instead.
               </p>

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import { DEFAULT_LOGGING, effectivePiWebConfig, piWebDataDir } from "../../../config.js";
+import { ownEnvironmentValue } from "../../../environment.js";
 import type { PiWebLoggingConfig } from "../../../shared/apiTypes.js";
 import { startLogRetention } from "./logRetention.js";
 import { installRequestLogging, loggerLevel, type LogLevelChoice } from "./requestLogPolicy.js";
@@ -32,12 +33,23 @@ export function startProcessLogging(app: FastifyInstance, logName: "web.log" | "
   app.log.level = loggerLevel(settings.level);
   installRequestLogging(app, () => settings.level);
   startLogRetention({
-    path: join(piWebDataDir(), "logs", logName),
+    path: join(logDirectory(), logName),
     settings: () => settings,
     onTick: refresh,
     onError: (error) => { app.log.warn({ error: String(error) }, "log retention failed"); },
   });
   return { level: () => settings.level };
+}
+
+/**
+ * Where this process's service manager writes its log. The installer points launchd at the default
+ * data directory's logs and records that directory in the service as `PI_WEB_LOG_DIR`; a process
+ * whose `PI_WEB_DATA_DIR` came from a login shell's profile would otherwise watch a file nothing
+ * writes, and the log grew without a bound (review 1005). Without the variable (the dev stack), the
+ * data directory's logs.
+ */
+function logDirectory(): string {
+  return ownEnvironmentValue(process.env, "PI_WEB_LOG_DIR") ?? join(piWebDataDir(), "logs");
 }
 
 /**
