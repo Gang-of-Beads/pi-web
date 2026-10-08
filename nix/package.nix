@@ -1,4 +1,4 @@
-{ lib, fetchPnpmDeps, makeWrapper, nodejs, pnpm_12, pnpmConfigHook, python3, pkg-config, stdenv }:
+{ lib, fetchPnpmDeps, makeWrapper, node-gyp, nodejs, pnpm_12, pnpmConfigHook, python3, pkg-config, stdenv }:
 
 let
   packageJson = builtins.fromJSON (builtins.readFile ../package.json);
@@ -19,10 +19,17 @@ stdenv.mkDerivation (finalAttrs: {
   };
 
   nativeBuildInputs = [ nodejs pnpm_12 pnpmConfigHook makeWrapper python3 pkg-config ]
-    ++ lib.optionals stdenv.hostPlatform.isLinux [ stdenv.cc ];
+    ++ lib.optionals stdenv.hostPlatform.isLinux [ stdenv.cc node-gyp ];
 
   buildPhase = ''
     runHook preBuild
+    # pnpmConfigHook installs with --ignore-scripts, and node-pty ships prebuilds only for
+    # darwin and win32: on Linux nothing produced build/Release/pty.node, so the session
+    # daemon died at startup with "Failed to load native module: pty.node".
+    ${lib.optionalString stdenv.hostPlatform.isLinux ''
+      npm_config_nodedir=${nodejs} pnpm rebuild node-pty
+      test -f node_modules/node-pty/build/Release/pty.node
+    ''}
     pnpm run build
     runHook postBuild
   '';
