@@ -485,7 +485,7 @@ export class PiWebApp extends LitElement {
   private readonly plugins = createPluginRegistry({ showDialog: (dialog) => this.openPluginDialog(dialog) }, (machineId) => this.piWebStatusController.read(machineId), (pageId) => { this.goTo(pageId); });
   private readonly loadedMachinePluginIds = new Set<string>();
   /** Plugins this browser could not load or register, per machine id, then source plugin id, for their Settings cards (B38). */
-  private readonly pluginLoadFailures = new Map<string, Map<string, string>>();
+  private pluginLoadFailures: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map();
   private readonly machinePluginLoadPromises = new Map<string, Promise<void>>();
   private gatewayPluginLoadPromise: Promise<void> | undefined;
   private themePreference: ThemePreference = readStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
@@ -4170,6 +4170,7 @@ export class PiWebApp extends LitElement {
         if (this.plugins.hasPlugin(registration.id)) continue;
         try {
           this.plugins.register(registration);
+          this.setPluginLoadFailure(machineId, registration.sourcePluginId ?? registration.id, undefined);
         } catch (error) {
           complete = false;
           console.warn(`Failed to register PI WEB plugin ${registration.id}`, error);
@@ -4186,9 +4187,19 @@ export class PiWebApp extends LitElement {
   }
 
   private notePluginLoadFailure(machineId: string, pluginId: string, error: unknown): void {
-    const failures = this.pluginLoadFailures.get(machineId) ?? new Map<string, string>();
-    failures.set(pluginId, describeError(error));
-    this.pluginLoadFailures.set(machineId, failures);
+    this.setPluginLoadFailure(machineId, pluginId, describeError(error));
+  }
+
+  /** Record or clear one plugin's load failure; each change is a new map, so the open Settings sees it. */
+  private setPluginLoadFailure(machineId: string, pluginId: string, failure: string | undefined): void {
+    if (failure === undefined && this.pluginLoadFailures.get(machineId)?.has(pluginId) !== true) return;
+    const failures = new Map(this.pluginLoadFailures.get(machineId));
+    if (failure === undefined) failures.delete(pluginId);
+    else failures.set(pluginId, failure);
+    const next = new Map(this.pluginLoadFailures);
+    next.set(machineId, failures);
+    this.pluginLoadFailures = next;
+    this.requestUpdate();
   }
 
   private createPromptEditor(): PluginPromptEditor {

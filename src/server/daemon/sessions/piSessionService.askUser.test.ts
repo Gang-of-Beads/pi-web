@@ -66,14 +66,14 @@ function askRevisions(events: CapturingSessionEventHub): unknown[] {
 
 
 describe("ask_user registration", () => {
-  it("loads ask_user as an extension whenever the capability is configured", () => {
+  it("piWebResourceLoaderOptions forwards the given extension factories", () => {
     const options = piWebResourceLoaderOptions([], [askUserExtension({ open: vi.fn() })]);
 
-    expect(options?.extensionFactories).toEqual([expect.objectContaining({ name: "pi-web-ask-user" })]);
+    expect(options?.extensionFactories).toEqual([expect.objectContaining({ name: "pi-web-ask-user", replaceable: true })]);
     expect(createPiWebCustomToolDefinitions("/workspace").map((definition) => definition.name)).toEqual(["edit"]);
   });
 
-  it("omits ask_user when the capability is disabled", () => {
+  it("piWebResourceLoaderOptions returns undefined with no sections and no extensions", () => {
     expect(piWebResourceLoaderOptions([], [])).toBeUndefined();
     expect(createPiWebCustomToolDefinitions("/workspace").map((definition) => definition.name)).toEqual(["edit"]);
   });
