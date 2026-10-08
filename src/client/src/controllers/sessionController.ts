@@ -2,7 +2,7 @@ import { withLaterActivity } from "../sync/sessionBoard";
 import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Project, type Workspace } from "../api";
 import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
-import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
+import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair, type GapReplayResult, type StreamFrontier } from "../sessionGapRepair";
 import { nextTranscriptSync, transcriptRetryAction, type TranscriptSyncEvent } from "../transcriptSync";
@@ -749,7 +749,7 @@ export class SessionController {
     await this.deliverShellToSession(session, text, selectedMachineId(this.getState()), { optimisticLine: true });
   }
 
-  async runCommand(text: string, source: CommandLedgerSource = "typed") {
+  async runCommand(text: string) {
     const session = this.getState().selectedSession;
     if (!session || session.archived === true) return;
     const machineId = selectedMachineId(this.getState());
@@ -758,7 +758,6 @@ export class SessionController {
     const issued = issueCommand(this.getState().commandLedger, {
       sessionKey: machineSessionKey(machineId, session.id),
       text,
-      source,
       now: Date.now(),
     });
     this.setState({ commandLedger: issued.entries });

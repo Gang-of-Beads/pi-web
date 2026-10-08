@@ -122,19 +122,6 @@ export class SessionPinStore {
     return [...(await this.read()).global];
   }
 
-  async pin(sessionId: string): Promise<string[]> {
-    return [...(await this.apply(globalPin(sessionId, true))).global];
-  }
-
-  async unpin(sessionId: string): Promise<string[]> {
-    return [...(await this.apply(globalPin(sessionId, false))).global];
-  }
-
-  /** Adopt pins a device made before pins were machine-owned, losing none. */
-  async adopt(sessionIds: readonly string[]): Promise<string[]> {
-    return [...(await this.apply(adoptedPins(sessionIds))).global];
-  }
-
   async apply(change: PinChange): Promise<SessionPins> {
     const run = this.tail.then(async () => {
       const before = await this.read();

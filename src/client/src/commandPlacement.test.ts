@@ -7,7 +7,7 @@ import type { CommandLedgerEntry } from "./commandLedger";
  * drawn after every message, under the reply it caused, and read as pending.
  */
 function command(id: string, issuedAt: number): CommandLedgerEntry {
-  return { id, sessionKey: "s", text: `/goal ${id}`, source: "typed", state: "ok", issuedAt, settledAt: issuedAt };
+  return { id, sessionKey: "s", text: `/goal ${id}`, state: "ok", issuedAt, settledAt: issuedAt };
 }
 
 describe("placing command bubbles in the transcript", () => {

@@ -21,14 +21,14 @@ describe("a command whose answer is a dialog", () => {
   });
 
   it("leaves no row behind once withdrawn", () => {
-    const issued = issueCommand([], { sessionKey: "m:s", text: "/model", source: "typed", now: 1 });
+    const issued = issueCommand([], { sessionKey: "m:s", text: "/model", now: 1 });
 
     expect(withdrawCommand(issued.entries, issued.id)).toHaveLength(0);
   });
 
   it("withdraws only the row named, leaving other commands alone", () => {
-    const first = issueCommand([], { sessionKey: "m:s", text: "/model", source: "typed", now: 1 });
-    const second = issueCommand(first.entries, { sessionKey: "m:s", text: "/new", source: "typed", now: 2 });
+    const first = issueCommand([], { sessionKey: "m:s", text: "/model", now: 1 });
+    const second = issueCommand(first.entries, { sessionKey: "m:s", text: "/new", now: 2 });
 
     const remaining = withdrawCommand(second.entries, first.id);
 
@@ -36,7 +36,7 @@ describe("a command whose answer is a dialog", () => {
   });
 
   it("ignores an id that is not there", () => {
-    const issued = issueCommand([], { sessionKey: "m:s", text: "/model", source: "typed", now: 1 });
+    const issued = issueCommand([], { sessionKey: "m:s", text: "/model", now: 1 });
 
     expect(withdrawCommand(issued.entries, "absent")).toHaveLength(1);
   });

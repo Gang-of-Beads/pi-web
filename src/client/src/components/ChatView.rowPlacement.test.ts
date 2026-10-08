@@ -75,7 +75,7 @@ describe("a waiting message is placed by its state, never by where its line happ
   });
 
   it("draws a command issued after a waiting message below it, and one issued before above it", async () => {
-    const command = (id: string, text: string, issuedAt: string): CommandLedgerEntry => ({ id, sessionKey: "m::s", text, source: "typed", state: "pending", issuedAt: Date.parse(issuedAt) });
+    const command = (id: string, text: string, issuedAt: string): CommandLedgerEntry => ({ id, sessionKey: "m::s", text, state: "pending", issuedAt: Date.parse(issuedAt) });
     const texts = await drawnTexts([
       settled("assistant", "a reply"),
       sent("cut off", "u", "unverifiable", "2026-10-02T10:00:01.000Z"),

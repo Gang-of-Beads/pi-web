@@ -10,13 +10,13 @@ describe("the browser's record of an issued command", () => {
    * once, not when the daemon eventually answers.
    */
   it("records the press before the daemon answers", () => {
-    const { entries, id } = issueCommand([], { sessionKey: KEY, text: "/goal-resume", source: "goal-panel", now: 1000 });
+    const { entries, id } = issueCommand([], { sessionKey: KEY, text: "/goal-resume", now: 1000 });
     expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({ id, state: "pending", text: "/goal-resume", source: "goal-panel" });
+    expect(entries[0]).toMatchObject({ id, state: "pending", text: "/goal-resume" });
   });
 
   it("settles the row with the outcome, success or failure alike", () => {
-    const issued = issueCommand([], { sessionKey: KEY, text: "/goal-pause", source: "typed", now: 1000 });
+    const issued = issueCommand([], { sessionKey: KEY, text: "/goal-pause", now: 1000 });
     const ok = settleCommand(issued.entries, issued.id, { state: "ok", now: 2000 });
     expect(ok[0]).toMatchObject({ state: "ok", settledAt: 2000 });
 
@@ -31,7 +31,7 @@ describe("the browser's record of an issued command", () => {
    * first and never a pending one.
    */
   it("keeps a settled row for the session's record instead of expiring it", () => {
-    const issued = issueCommand([], { sessionKey: KEY, text: "/goal-resume", source: "typed", now: 0 });
+    const issued = issueCommand([], { sessionKey: KEY, text: "/goal-resume", now: 0 });
     const settled = settleCommand(issued.entries, issued.id, { state: "ok", now: 100 });
     // No linger expiry: the receipt stays readable long after the command ran.
     expect(settled.some((row) => row.text === "/goal-resume" && row.state === "ok")).toBe(true);
@@ -39,16 +39,16 @@ describe("the browser's record of an issued command", () => {
 
   /** Retained data renders only under the key it was fetched for. */
   it("keeps rows to the session that issued them", () => {
-    const a = issueCommand([], { sessionKey: "local:a", text: "/one", source: "typed", now: 0 });
-    const both = issueCommand(a.entries, { sessionKey: "local:b", text: "/two", source: "typed", now: 0 });
+    const a = issueCommand([], { sessionKey: "local:a", text: "/one", now: 0 });
+    const both = issueCommand(a.entries, { sessionKey: "local:b", text: "/two", now: 0 });
     expect(commandsForSession(both.entries, "local:a").map((row) => row.text)).toEqual(["/one"]);
     expect(commandsForSession(both.entries, "local:b").map((row) => row.text)).toEqual(["/two"]);
   });
 
   it("caps the ledger by dropping settled rows, never pending ones", () => {
-    let entries = issueCommand([], { sessionKey: KEY, text: "/pending-forever", source: "typed", now: 0 }).entries;
+    let entries = issueCommand([], { sessionKey: KEY, text: "/pending-forever", now: 0 }).entries;
     for (let index = 0; index < 25; index += 1) {
-      const issued = issueCommand(entries, { sessionKey: KEY, text: `/n${String(index)}`, source: "typed", now: index });
+      const issued = issueCommand(entries, { sessionKey: KEY, text: `/n${String(index)}`, now: index });
       entries = settleCommand(issued.entries, issued.id, { state: "ok", now: index });
     }
     expect(entries.length).toBeLessThanOrEqual(20);
@@ -88,8 +88,8 @@ describe("accepted rows are live work", () => {
   });
 
   it("settle to ok for their own session when its runtime is idle, leaving other sessions alone", () => {
-    const mine = issueCommand([], { sessionKey: KEY, text: "/goal-resume", source: "goal-panel", now: 1 });
-    const theirs = issueCommand(mine.entries, { sessionKey: "m::other", text: "/reload", source: "typed", now: 2 });
+    const mine = issueCommand([], { sessionKey: KEY, text: "/goal-resume", now: 1 });
+    const theirs = issueCommand(mine.entries, { sessionKey: "m::other", text: "/reload", now: 2 });
     let entries = settleCommand(theirs.entries, mine.id, { state: "accepted", now: 3 });
     entries = settleCommand(entries, theirs.id, { state: "accepted", now: 3 });
 
@@ -100,7 +100,7 @@ describe("accepted rows are live work", () => {
   });
 
   it("returns an equal list untouched when nothing is accepted", () => {
-    const issued = issueCommand([], { sessionKey: KEY, text: "/session", source: "typed", now: 1 });
+    const issued = issueCommand([], { sessionKey: KEY, text: "/session", now: 1 });
     expect(settleAcceptedCommands(issued.entries, KEY, 9)).toEqual(issued.entries);
   });
 });

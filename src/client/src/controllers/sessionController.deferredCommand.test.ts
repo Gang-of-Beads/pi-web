@@ -31,10 +31,9 @@ describe("a command accepted while a reply streams", () => {
     const runCommand = vi.fn<RunCommand>(() => Promise.resolve({ type: "done" as const, deferred: true as const }));
     const { controller, state } = harness(runCommand, true);
 
-    await controller.runCommand("/goal-resume", "goal-panel");
+    await controller.runCommand("/goal-resume");
 
     const row = state().commandLedger[state().commandLedger.length - 1];
-    expect(row?.source).toBe("goal-panel");
     expect(row?.state).toBe("accepted");
     expect(row?.resultText).toBe("Runs after the current reply finishes.");
   });
@@ -52,7 +51,7 @@ describe("a command accepted while a reply streams", () => {
     const runCommand = vi.fn<RunCommand>(() => Promise.resolve({ type: "done" as const }));
     const { controller, state } = harness(runCommand, true);
 
-    await controller.runCommand("/goal-resume", "goal-panel");
+    await controller.runCommand("/goal-resume");
 
     expect(state().commandLedger.at(-1)).toMatchObject({ state: "ok" });
   });
@@ -60,7 +59,7 @@ describe("a command accepted while a reply streams", () => {
   it("settles every accepted row of the session once its runtime is idle", async () => {
     const runCommand = vi.fn<RunCommand>(() => Promise.resolve({ type: "done" as const, deferred: true as const }));
     const { controller, state } = harness(runCommand, true);
-    await controller.runCommand("/goal-resume", "goal-panel");
+    await controller.runCommand("/goal-resume");
     expect(state().commandLedger.at(-1)?.state).toBe("accepted");
 
     controller.applySessionStatus({ ...status(oldSession.id), isStreaming: false });
@@ -72,7 +71,7 @@ describe("a command accepted while a reply streams", () => {
     const runCommand = vi.fn<RunCommand>(() => Promise.resolve({ type: "done" as const }));
     const { controller, state } = harness(runCommand, false);
 
-    await controller.runCommand("/goal-resume", "goal-panel");
+    await controller.runCommand("/goal-resume");
 
     const row = state().commandLedger[state().commandLedger.length - 1];
     expect(row?.state).toBe("ok");

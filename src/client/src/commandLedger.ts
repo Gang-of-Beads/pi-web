@@ -18,8 +18,6 @@
 
 import type { CommandResult } from "../../shared/apiTypes";
 
-export type CommandLedgerSource = "typed" | "goal-panel";
-
 /**
  * `accepted` is a command the daemon took but has not run: a runtime command
  * forwarded as a prompt behind the reply in flight, or one parked until its
@@ -55,7 +53,6 @@ export interface CommandLedgerEntry {
   /** machine+session identity the command was issued under. */
   readonly sessionKey: string;
   readonly text: string;
-  readonly source: CommandLedgerSource;
   readonly state: CommandLedgerState;
   readonly issuedAt: number;
   /** Failure text, or a one-line result when the command produced one. */
@@ -70,14 +67,13 @@ let nextLedgerId = 0;
 
 export function issueCommand(
   entries: readonly CommandLedgerEntry[],
-  input: { sessionKey: string; text: string; source: CommandLedgerSource; now: number },
+  input: { sessionKey: string; text: string; now: number },
 ): { entries: CommandLedgerEntry[]; id: string } {
   const id = `cmd-${String(++nextLedgerId)}`;
   const entry: CommandLedgerEntry = {
     id,
     sessionKey: input.sessionKey,
     text: input.text,
-    source: input.source,
     state: "pending",
     issuedAt: input.now,
   };
@@ -139,17 +135,13 @@ export interface CommandDeliveryPresentation {
   readonly tone: "pending" | "received" | "delivered" | "failed";
 }
 
-/**
- * How a command row reads, in the vocabulary of a sent message: a pending
- * command is queued behind the reply in flight or running now; a settled one
- * was read by the daemon, or was not taken at all. The result text, when the
- * command produced one, is shown beneath the bubble rather than in the mark.
- */
 const QUEUED: CommandDeliveryPresentation = { glyph: "single", text: "Queued", label: "Queued - the daemon has this command and runs it after the current reply", tone: "received" };
 
 /**
- * A command that ran carries no mark, like a message the agent took: its result line says what
- * happened, and "Read" was a status the owner ruled out (2026-09-30).
+ * How a command row reads, in the vocabulary of a sent message: a pending command is queued
+ * behind the reply in flight or running now; a failed one was not taken. A command that ran
+ * carries no mark, like a message the agent took: its result line, shown beneath the bubble,
+ * says what happened, and "Read" was a status the owner ruled out (2026-09-30).
  */
 export function commandDeliveryPresentation(entry: Pick<CommandLedgerEntry, "state">, streaming: boolean): CommandDeliveryPresentation | undefined {
   if (entry.state === "pending" && streaming) return QUEUED;

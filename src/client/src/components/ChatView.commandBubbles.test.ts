@@ -12,7 +12,7 @@ import { ChatView } from "./ChatView";
  */
 
 function row(patch: Partial<CommandLedgerEntry>): CommandLedgerEntry {
-  return { id: "cmd-1", sessionKey: "m::s", text: "/session", source: "typed", state: "pending", issuedAt: 1, ...patch };
+  return { id: "cmd-1", sessionKey: "m::s", text: "/session", state: "pending", issuedAt: 1, ...patch };
 }
 
 async function mount(commandLedger: CommandLedgerEntry[], streaming = false): Promise<ChatView> {
