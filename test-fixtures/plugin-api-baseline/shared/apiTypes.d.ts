@@ -119,7 +119,7 @@ export interface PiWebConfigValues {
     listTiles?: PiWebListTilesConfig;
     /**
      * When true, LLMs can post a question set to the browser via the ask_user
-     * tool. On by default; set to `false` to remove the tool from the runtime.
+     * tool. Off by default; set to `true` to add the tool to the runtime.
      */
     askUser?: boolean;
     /**
@@ -1642,6 +1642,9 @@ type SessionUiEventBody =
     clientMessageId: string;
 } | {
     type: "prompt.withdrawn";
+    clientMessageId: string;
+} | {
+    type: "prompt.consumed";
     clientMessageId: string;
 } | {
     type: "prompt.refused";

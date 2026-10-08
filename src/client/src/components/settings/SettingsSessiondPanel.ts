@@ -50,7 +50,7 @@ export class SettingsSessiondPanel extends LitElement {
               >
               <span>Enable the <code>ask_user</code> tool</span>
             </label>
-            <small>Agents can post a structured question form and pause until the user responds. On by default.</small>
+            <small>Agents can post a structured question form and pause until the user responds. Off by default.</small>
           </div>
           <section class="effective-card" aria-label="Desired session daemon configuration summary">
             <h3>Desired after environment overrides</h3>

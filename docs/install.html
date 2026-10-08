@@ -428,14 +428,12 @@ server {
   "port": 8504,
   "pathAccess": {
     "allowedPaths": ["~/SDKs", "/opt/reference"]
-  },
-  "spawnSessions": true,
-  "subsessions": true
+  }
 }</code></pre>
               </div>
               <p>
                 Use <strong>Settings → General</strong> for host, port, and external filesystem roots; <strong>Settings → Session daemon</strong>
-                for agent-spawn tools; <strong>Settings → Pi packages</strong> for Pi package install/remove/update;
+                for the <code>ask_user</code> tool; <strong>Settings → Pi packages</strong> for Pi package install/remove/update;
                 <strong>Settings → PI WEB plugins</strong> for desired plugin state; and <strong>Settings → Keyboard</strong>
                 for shortcut overrides. Browser-only plugin changes apply when Settings closes, which reloads the page; server-backed changes follow the
                 <a href="plugins#lifecycle-recovery">documented sessiond restart and recovery flow</a>.
