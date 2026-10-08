@@ -5755,13 +5755,13 @@ export class PiSessionService implements SessionRouteService {
     // session that goes quiet without another event still gets its reload.
     if (eventType === "agent_end" || eventType === "turn_end") this.commandService.runQueuedReload(session);
     this.commandService.observeSessionEvent(session.sessionId, event);
-    // Delta-only events (streaming text/thinking) carry no status change:
-    // publishing the full status for every token would synchronously
-    // re-serialize and broadcast the session state on the agent's own event
-    // loop, which measurably slows streaming relative to the TUI. Status is
-    // published on structural events below and on a trailing throttle timer
-    // so a burst of deltas still settles into a fresh status.
-    if (!isStreamingDeltaEvent(event)) this.publishStatus(session);
+    // Delta-only events (streaming text, thinking and tool-call arguments) carry
+    // no status change: publishing the full status for every token would
+    // synchronously re-serialize and broadcast the session state on the agent's
+    // own event loop, which measurably slows streaming relative to the TUI. The
+    // other events publish only a status that changed; the heartbeat settles a
+    // burst into a fresh status.
+    if (!isStreamingDeltaEvent(event)) this.publishStatus(session, "if-changed");
     this.updateSubsessionTracking(session);
   }
 
@@ -6077,10 +6077,12 @@ export class PiSessionService implements SessionRouteService {
 
   /**
    * Bring everything that follows a session's status up to date and broadcast the status. The 2 s
-   * heartbeat asks `if-changed`: it broadcasts only a status that differs from the last one
-   * broadcast for the session, while its other work runs either way. Measured on 8505 (B28), 9 of
-   * every 10 heartbeat frames of a working session were identical, 1.7 KB each, on the session's
-   * socket and again on every machine socket; a frame lost meanwhile is a gap the seq checks find.
+   * heartbeat and pi's own events ask `if-changed`: they broadcast only a status that differs from
+   * the last one broadcast for the session, while their other work runs either way. Measured on
+   * 8505 (B28), 9 of every 10 heartbeat frames of a working session were identical, 1.7 KB each, on
+   * the session's socket and again on every machine socket; one bash call whose arguments streamed
+   * in 176 deltas sent 218 status frames on each socket, 207 the same as the one before. A frame
+   * lost meanwhile is a gap the seq checks find.
    */
   private publishStatus(session: PiAgentSession, when: StatusBroadcast = "always"): void {
     const status = this.statusFromSession(session);
@@ -7072,7 +7074,7 @@ function isStreamingDeltaEvent(event: unknown): boolean {
   if (getString(event, "type") !== "message_update") return false;
   const assistantMessageEvent = getProperty(event, "assistantMessageEvent");
   const deltaType = getString(assistantMessageEvent, "type");
-  return deltaType === "text_delta" || deltaType === "thinking_delta";
+  return deltaType === "text_delta" || deltaType === "thinking_delta" || deltaType === "toolcall_delta";
 }
 
 /** The events that end work a reader's Stop can land in without a reply to carry it. */
