@@ -46,6 +46,8 @@ export interface QuickSwitcherModelInput {
   waitingSessionIds?: ReadonlySet<string>;
   /** Sessions that finished work the user has not looked at yet. */
   unreadSessionIds?: ReadonlySet<string>;
+  /** The open session, ranked as still unread while its row holds its place (`openRowHold.ts`). */
+  heldOpenSessionId?: string | undefined;
   /** Sessions whose run a restart cut off, from the daemon's interrupted record. */
   interruptedSessionIds?: ReadonlySet<string>;
   /** Sessions the user pinned. */
@@ -81,7 +83,7 @@ export function quickSwitcherModel(input: QuickSwitcherModelInput): QuickSwitche
   for (const session of matches) {
     const archived = session.archived === true;
     const id = sectionOf({ sessionId: session.id, machineId: input.machineId ?? "", cwd: session.cwd, name: session.name, pinned: pinned.has(session.id), archived }, definitions);
-    const rank = sessionRank({ category: switcherCategory(session.id, input), unread: (input.unreadSessionIds ?? EMPTY_IDS).has(session.id), interrupted: (input.interruptedSessionIds ?? EMPTY_IDS).has(session.id) });
+    const rank = sessionRank({ category: switcherCategory(session.id, input), unread: (input.unreadSessionIds ?? EMPTY_IDS).has(session.id) || input.heldOpenSessionId === session.id, interrupted: (input.interruptedSessionIds ?? EMPTY_IDS).has(session.id) });
     const at = input.activityAt?.(session, rank) ?? modifiedMs(session.modified);
     const list = bySection.get(id) ?? [];
     list.push({ session, rank, at });

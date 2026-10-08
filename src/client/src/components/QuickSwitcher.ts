@@ -45,6 +45,8 @@ export class QuickSwitcher extends LitElement {
   @property({ attribute: false }) activeSessionIds: ReadonlySet<string> = new Set();
   @property({ attribute: false }) waitingSessionIds: ReadonlySet<string> = new Set();
   @property({ attribute: false }) unreadSessionIds: ReadonlySet<string> = new Set();
+  /** The open session, ranked as still unread while its row holds its place (`openRowHold.ts`). */
+  @property({ attribute: false }) heldOpenSessionId: string | undefined;
   /** Core's and the plugins' session sections, in order (navigation-lists.md section 4). */
   @property({ attribute: false }) sessionSections: readonly SessionSectionDefinition[] = CORE_SESSION_SECTIONS;
   /** Holds a working session's place while it runs; see `ActivityClock`. */
@@ -460,6 +462,7 @@ export class QuickSwitcher extends LitElement {
       errorSessionIds: this.errorSessionIds,
       waitingSessionIds: this.waitingSessionIds,
       unreadSessionIds: this.unreadSessionIds,
+      heldOpenSessionId: this.heldOpenSessionId,
       interruptedSessionIds: this.interruptedSessionIds,
       pinnedSessionIds: this.pinnedSessionIds,
       query: this.query,

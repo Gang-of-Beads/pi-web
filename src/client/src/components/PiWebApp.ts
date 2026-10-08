@@ -60,6 +60,7 @@ import { routedWorkspaceTool } from "../routedWorkspaceTool";
 import { shownWorkspacePanel, workspacePanelHoldsCanvas, workspacePanelMayHoldCanvas } from "../workspacePanelCanvas";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { SessionUnreadController } from "../sessionUnread";
+import { heldOpenSessionIn, nextOpenRowHold, type OpenRow } from "../openRowHold";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
@@ -347,6 +348,8 @@ export class PiWebApp extends LitElement {
   private interruptedRunsBootReadByMachine = new Set<string>();
   @state() private failedSendSessionIds: ReadonlySet<string> = sessionsWithFailedSends();
   @state() private unreadSessionIds: ReadonlySet<string> = this.sessionUnread.unreadSessionIds(selectedMachineId(this.state), this.state.sessions);
+  /** The open session whose row keeps its unread place until the reader leaves it (`openRowHold.ts`). */
+  @state() private openRowHold: OpenRow | undefined;
   private unreadConnected = false;
   private readonly onOutboxChanged = (): void => {
     const next = sessionsWithFailedSends();
@@ -908,12 +911,25 @@ export class PiWebApp extends LitElement {
     this.fleetSectionShown = showing;
   }
 
+  /**
+   * Mark the open session read once the reader can see it. The open row's hold is taken first:
+   * it is decided on the unread set as it stands, so an acknowledgement made before it would leave
+   * the row nothing to hold (`openRowHold.ts`).
+   */
   private syncSelectedSessionReadState(): void {
+    this.syncOpenRowHold();
     const session = this.state.selectedSession;
     if (session === undefined) return;
     const machineId = selectedMachineId(this.state);
     if (!this.isSessionSeen(machineId, session)) return;
     void this.sessionUnread.acknowledge(machineId, session);
+  }
+
+  private syncOpenRowHold(): void {
+    const session = this.state.selectedSession;
+    const open = session === undefined ? undefined : { machineId: selectedMachineId(this.state), sessionId: session.id };
+    const next = nextOpenRowHold(this.openRowHold, open, this.unreadSessionIds);
+    if (next !== this.openRowHold) this.openRowHold = next;
   }
 
   private markSessionsRead(sessions: readonly SessionInfo[]): void {
@@ -2959,6 +2975,7 @@ export class PiWebApp extends LitElement {
       pinnedSessionIds: pinnedIds,
       projectPinnedSessionIds: projectPinnedIds,
       unreadSessionIds: browsingElsewhere ? EMPTY_ID_SET : this.unreadSessionIds,
+      heldOpenSessionId: heldOpenSessionIn(this.openRowHold, machineId),
       interruptedSessionIds: browsingElsewhere ? EMPTY_ID_SET : this.interruptedRunsByMachine.get(selectedMachineId(state)) ?? EMPTY_ID_SET,
       sections: sessionSections(this.plugins.getSessionSections(machineId)),
     };
@@ -5076,6 +5093,7 @@ export class PiWebApp extends LitElement {
           .sessionStates=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_STATE_MAP : this.sessionStateKinds()}
           .waitingSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.waitingSessionIds()}
           .unreadSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.unreadSessionIds}
+          .heldOpenSessionId=${this.quickSwitcherBrowsingElsewhere() ? undefined : heldOpenSessionIn(this.openRowHold, selectedMachineId(state))}
           .sessionSections=${sessionSections(this.plugins.getSessionSections(this.rowsMachineId()))}
           .failedSendSessionIds=${this.failedSendSessionIds}
           .interruptedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.interruptedRunsByMachine.get(selectedMachineId(state)) ?? EMPTY_ID_SET}

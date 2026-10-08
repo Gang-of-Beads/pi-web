@@ -112,6 +112,8 @@ export interface NavigateInput {
   manualTags?: Readonly<Record<string, readonly string[]>>;
   /** Sessions with a finished reply the reader has not seen. */
   unreadSessionIds?: ReadonlySet<string>;
+  /** The open session, ranked as still unread while its row holds its place (`openRowHold.ts`). */
+  heldOpenSessionId?: string | undefined;
   /** Sessions whose run a restart cut off. */
   interruptedSessionIds?: ReadonlySet<string>;
   /** Core's and the plugins' sections, in order; core's alone when absent. */
@@ -165,7 +167,7 @@ function sessionSectionsFor(rows: readonly NavigateSessionRow[], input: Navigate
     seen.add(key);
     const archived = entry.session.archived === true;
     const id = sectionOf({ sessionId: entry.session.id, machineId: entry.machineId, cwd: entry.session.cwd, name: entry.session.name, pinned: entry.pinned, archived }, definitions);
-    const rank = sessionRank({ category: entry.state, unread: input.unreadSessionIds?.has(entry.session.id) === true, interrupted: input.interruptedSessionIds?.has(entry.session.id) === true });
+    const rank = sessionRank({ category: entry.state, unread: input.unreadSessionIds?.has(entry.session.id) === true || input.heldOpenSessionId === entry.session.id, interrupted: input.interruptedSessionIds?.has(entry.session.id) === true });
     const at = input.activityAt?.(entry, rank) ?? modifiedMs(entry.session.modified);
     const list = bySection.get(id) ?? [];
     list.push({ row: entry, rank, at });
