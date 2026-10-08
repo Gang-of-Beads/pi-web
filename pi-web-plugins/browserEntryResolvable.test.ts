@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { mkdirSync, mkdtempSync } from "node:fs";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { isRelativeSpecifier, moduleSpecifiers, staticModuleSpecifiers } from "../scripts/pluginModuleSpecifiers.mjs";
 
 /**
@@ -23,7 +24,14 @@ const npm = process.platform === "win32" ? { command: "npm.cmd", shell: true } :
  * entry unbundled, and the plugin never activated while this test passed.
  */
 
-const distRoot = resolve("dist", "pi-web-plugins");
+/**
+ * The entries are built in the repository's ignored test-results, where their packages and the
+ * package's own plugin API resolve as they do from dist, and not into dist/pi-web-plugins: rebuilding that under a running stack made a plugin that runs in both
+ * processes read as stale, and the web withheld it from the page until the daemon restarted.
+ */
+const resultsRoot = resolve("test-results");
+mkdirSync(resultsRoot, { recursive: true });
+const distRoot = mkdtempSync(join(resultsRoot, "pi-web-browser-entries-"));
 
 /** Every declared browser entry under the built plugins, at any depth, as the build finds them. */
 async function browserEntries(directory = distRoot): Promise<string[]> {
@@ -55,8 +63,13 @@ function declaredPlugins(metadata: unknown): Record<string, unknown>[] {
 
 describe("shipped browser plugin entries", () => {
   beforeAll(() => {
-    execFileSync(npm.command, ["run", "build:plugins"], { stdio: "ignore", shell: npm.shell });
+    execFileSync(npm.command, ["run", "build:plugin-api"], { stdio: "ignore", shell: npm.shell });
+    execFileSync(process.execPath, ["scripts/build-plugins.mjs", "--out", distRoot], { stdio: "ignore" });
   }, 120_000);
+
+  afterAll(async () => {
+    await rm(distRoot, { recursive: true, force: true });
+  });
 
   it("carry no specifier a browser could not resolve", async () => {
     const entries = await browserEntries();

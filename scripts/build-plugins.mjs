@@ -6,7 +6,8 @@ import ts from "typescript";
 import * as esbuild from "esbuild";
 
 const rootDir = resolve("pi-web-plugins");
-const outDir = resolve("dist/pi-web-plugins");
+const outFlag = process.argv.indexOf("--out");
+const outDir = resolve(outFlag < 0 ? "dist/pi-web-plugins" : process.argv[outFlag + 1] ?? "dist/pi-web-plugins");
 const watchMode = process.argv.includes("--watch");
 const cwd = process.cwd();
 
