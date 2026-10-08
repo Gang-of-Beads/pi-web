@@ -13,6 +13,7 @@ import { css } from "lit";
  */
 export const settingsControlStyles = css`
   button, input, select, textarea { box-sizing: border-box; font: inherit; }
+  code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: inherit; overflow-wrap: anywhere; }
   button { box-sizing: border-box; min-height: var(--pi-control-height); padding-block: var(--pi-space-2); }
   /* Inputs and selects pin their height (a select's UA padding out-grew the
      input beside it); buttons keep min-height - the Appearance theme cards
