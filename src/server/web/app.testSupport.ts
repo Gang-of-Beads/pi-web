@@ -206,10 +206,10 @@ async function appTestServerPluginRuntime(): Promise<ServerPluginRuntime> {
 /**
  * A web plugin runtime with nothing in it, for a test whose subject is not a server plugin.
  * Without one, buildApp scans this machine's real plugin catalog and imports every web plugin's
- * server module: 115-240 ms a build alone against 10-20 ms empty (measured 2026-10-08), which the
- * full suite's load stretched past the 5 s test timeout (app.staticAssets, app.piWebStatus,
- * app.plugins; app.activeAgentProfile passed even 30 s), and the test read whatever plugins this
- * machine had.
+ * server module: 115-240 ms a build alone against 10-20 ms empty (measured 2026-10-08), which
+ * under full-suite load stretched app.staticAssets, app.piWebStatus and app.plugins past the 5 s
+ * test timeout. It also isolates the test from whatever plugins this machine has installed,
+ * including the real runtime's startup read of the active agent profile provider.
  */
 export async function noServerPlugins(): Promise<ServerPluginRuntime> {
   return await createServerPluginRuntime({
