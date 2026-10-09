@@ -30,6 +30,7 @@ function createApp(search = ""): PiWebApp {
     vi.stubGlobal("document", { baseURI: "https://pi.example.test/", visibilityState: "visible", hasFocus: () => true, addEventListener: () => undefined, removeEventListener: () => undefined });
   }
   vi.stubGlobal("requestAnimationFrame", () => 1);
+  vi.stubGlobal("fetch", () => new Promise<Response>(() => undefined));
   const app = new PiWebApp();
   replace(app, "updateUrl", () => undefined);
   replace(app, "ensureGatewayPluginsLoaded", () => Promise.resolve());

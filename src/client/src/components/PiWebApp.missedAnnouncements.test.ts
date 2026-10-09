@@ -130,6 +130,7 @@ function createApp(visibility: "visible" | "hidden" = "visible"): PiWebApp {
   });
   vi.stubGlobal("document", { baseURI: "https://pi.example.test/", visibilityState: visibility, hasFocus: () => true, addEventListener: () => undefined, removeEventListener: () => undefined });
   vi.stubGlobal("requestAnimationFrame", () => 1);
+  vi.stubGlobal("fetch", () => new Promise<Response>(() => undefined));
   return new PiWebApp();
 }
 

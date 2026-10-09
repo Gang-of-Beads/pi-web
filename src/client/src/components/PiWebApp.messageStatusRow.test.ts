@@ -87,6 +87,7 @@ function stubbedApp(): PiWebApp {
     vi.stubGlobal("document", { baseURI: "https://pi.example.test/", visibilityState: "visible", hasFocus: () => true, addEventListener: () => undefined, removeEventListener: () => undefined });
   }
   vi.stubGlobal("requestAnimationFrame", () => 1);
+  vi.stubGlobal("fetch", () => new Promise<Response>(() => undefined));
   return new PiWebApp();
 }
 

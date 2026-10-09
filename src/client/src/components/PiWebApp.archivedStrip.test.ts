@@ -50,6 +50,7 @@ function createApp(): PiWebApp {
     vi.stubGlobal("document", { baseURI: "https://pi.example.test/", visibilityState: "visible", hasFocus: () => true, addEventListener: () => undefined, removeEventListener: () => undefined });
   }
   vi.stubGlobal("requestAnimationFrame", () => 1);
+  vi.stubGlobal("fetch", () => new Promise<Response>(() => undefined));
   const app = new PiWebApp();
   Object.defineProperty(app, "getBoundingClientRect", { value: () => ({ width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => ({}) }) });
   return app;
