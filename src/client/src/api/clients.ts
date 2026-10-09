@@ -9,6 +9,7 @@ import { transportClaimOf } from "./transportClaim";
 import {
   arrayOf,
   parseAborted,
+  parseShortcutStarted,
   parseAskUserCloseResponse,
   parseAccepted,
   parseArchived,
@@ -426,6 +427,7 @@ export const sessionsApi = {
       body: sessionBody(session, { operationIds: [...operationIds] }),
     }),
   abort: (session: SessionRef, machineId = "local") => request(sessionPath(session, "abort", machineId), parseAborted, { method: "POST", body: sessionBody(session) }),
+  runExtensionShortcut: (session: SessionRef, key: string, machineId = "local") => request(sessionPath(session, "extension-shortcuts/run", machineId), parseShortcutStarted, { method: "POST", body: sessionBody(session, { key }) }),
   stop: (session: SessionRef, machineId = "local") => request(sessionPath(session, "stop", machineId), parseStopped, { method: "POST", body: sessionBody(session) }),
   archive: (session: SessionRef, machineId = "local") => request(sessionPath(session, "archive", machineId), parseArchived, { method: "POST", body: sessionBody(session) }),
   archiveWithDescendants: (session: SessionRef, machineId = "local") => request(sessionPath(session, "archive-tree", machineId), parseArchived, { method: "POST", body: sessionBody(session) }),

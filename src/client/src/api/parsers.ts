@@ -740,7 +740,29 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     ...optionalPendingDialogs(record["pendingDialogs"]),
     ...optionalStreamPosition(record["streamPosition"]),
     ...optionalExtensionUi(record["extensionUi"]),
+    ...optionalExtensionShortcuts(record["extensionShortcuts"]),
   };
+}
+
+/** The session's extension shortcuts; an entry that cannot be read is left out, the rest stand. */
+function optionalExtensionShortcuts(value: unknown): Pick<SessionStatus, "extensionShortcuts"> | object {
+  if (!Array.isArray(value)) return {};
+  const shortcuts = value.flatMap((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const key: unknown = Reflect.get(entry, "key");
+    const extension: unknown = Reflect.get(entry, "extension");
+    const description: unknown = Reflect.get(entry, "description");
+    if (typeof key !== "string" || key === "" || typeof extension !== "string") return [];
+    return [{ key, extension, ...(typeof description === "string" && description !== "" ? { description } : {}) }];
+  });
+  return shortcuts.length === 0 ? {} : { extensionShortcuts: shortcuts };
+}
+
+/** A started extension shortcut: its handler runs on the daemon, and what it shows arrives as it does in pi. */
+export function parseShortcutStarted(value: unknown): { started: true } {
+  const record = requireRecord(value);
+  if (record["started"] !== true) throw new Error("Expected a started extension shortcut");
+  return { started: true };
 }
 
 /**

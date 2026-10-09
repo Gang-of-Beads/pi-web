@@ -868,6 +868,14 @@ export interface ExtensionWidgetStanding {
         surface?: string;
     };
 }
+/** An extension's `registerShortcut`, as a session offers it (pi-insertion-points.md slice 4). */
+export interface ExtensionShortcutInfo {
+    /** pi's key id, such as `ctrl+shift+p`. */
+    key: string;
+    description?: string;
+    /** The extension that registered it, by its package or file name. */
+    extension: string;
+}
 /**
  * What a session's extensions left standing through `ctx.ui` (extension-ui-counterpart.md):
  * footer statuses, widgets, the working row's words, mark and visibility, the hidden-thinking label and the
@@ -1328,6 +1336,8 @@ export interface SessionStatus {
      * server/sessions/backgroundRunCount.ts for how it is counted.
      */
     backgroundRunCount?: number;
+    /** The session's extension shortcuts; absent when it has none or its runtime is not open. */
+    extensionShortcuts?: ExtensionShortcutInfo[];
     extensionUi?: ExtensionUiStanding;
 }
 export interface SlashCommand {

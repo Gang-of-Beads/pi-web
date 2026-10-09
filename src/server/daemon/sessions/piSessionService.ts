@@ -130,6 +130,7 @@ import { ExtensionOrigins, type LoadedExtensionFile } from "./extensionOrigin.js
 import { declaredAgentFacts } from "./declaredAgentFacts.js";
 import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
 import { drawCustomRow, drawToolCall, drawToolResult, showsCustomEntry, transformedMarkdown, type ExtensionRenderers, type MarkdownKind } from "./extensionDrawings.js";
+import { ExtensionShortcuts, type ExtensionShortcutRunner } from "./extensionShortcuts.js";
 import { DECLARABLE_SCREENS, declaredScreen, refusedDeclarationSummary } from "./declaredScreen.js";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
@@ -657,7 +658,7 @@ export interface PiAgentSession {
   isCompacting: boolean;
   isBashRunning: boolean;
   pendingMessageCount: number;
-  extensionRunner: ExtensionRenderers & {
+  extensionRunner: ExtensionRenderers & ExtensionShortcutRunner & {
     getRegisteredCommands(): readonly { invocationName: string; description?: string }[];
     getUIContext(): ExtensionUIContext;
     setUIContext(uiContext?: ExtensionUIContext, mode?: "rpc"): void;
@@ -6214,6 +6215,7 @@ export class PiSessionService implements SessionRouteService {
     const lastActivityAt = leafEntryAt(session.sessionManager);
     const surfaces = pluginSurfacePresence(session.resourceLoader);
     const extensionUi = this.extensionStanding.get(session)?.snapshot();
+    const extensionShortcuts = this.extensionShortcuts.list(session.extensionRunner, (path) => this.extensionOrigins.titleOf(path, loadedExtensionFiles(session)));
     return {
       sessionId: session.sessionId,
       persisted: sessionFileExists(session.sessionFile),
@@ -6250,7 +6252,22 @@ export class PiSessionService implements SessionRouteService {
       daemonInstanceId: this.notificationStore.daemonInstanceId,
       ...(backgroundRunCount === 0 ? {} : { backgroundRunCount }),
       ...(extensionUi === undefined ? {} : { extensionUi }),
+      ...(extensionShortcuts.length === 0 ? {} : { extensionShortcuts: [...extensionShortcuts] }),
     };
+  }
+
+  private readonly extensionShortcuts = new ExtensionShortcuts();
+
+  /**
+   * Run one of the session's extension shortcuts (slice 4). The handler runs as pi's editor runs
+   * it, in the background; a failure is published to the session as an error notification, as pi reports a shortcut handler error.
+   */
+  async runExtensionShortcut(ref: PiSessionRef, key: string): Promise<"started" | "unknown-shortcut"> {
+    const session = await this.getOrOpen(ref);
+    const started = this.extensionShortcuts.run(session.extensionRunner, key, (message) => {
+      this.events.publish(session.sessionId, { type: "extension.ui", kind: "notify", level: "error", message });
+    });
+    return started ?? "unknown-shortcut";
   }
 
   /**

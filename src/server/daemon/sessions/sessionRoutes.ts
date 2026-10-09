@@ -632,6 +632,19 @@ app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unkn
     }
   });
 
+  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; key?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/extension-shortcuts/run`, async (request, reply) => {
+    const body = optionalRecord(request.body);
+    const key = body["key"];
+    if (typeof key !== "string" || key === "") return reply.code(400).send({ error: "key is required" });
+    try {
+      const outcome = await sessions.runExtensionShortcut(sessionRefFromBody(request.params.sessionId, body), key);
+      if (outcome === "unknown-shortcut") return await reply.code(404).send({ error: `This session has no extension shortcut on ${key}`, code: "unknown-shortcut" });
+      return { started: true };
+    } catch (error) {
+      return sendError(reply, sessionErrorReply(error, 400));
+    }
+  });
+
   app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/stop`, async (request, reply) => {
     try {
       await sessions.stop(sessionRefFromBody(request.params.sessionId, optionalRecord(request.body)));

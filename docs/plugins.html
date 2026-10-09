@@ -306,7 +306,9 @@
                 An extension tool's <code>renderCall</code> and <code>renderResult</code>, and a
                 <code>registerToolRenderer</code> resolver, draw that tool's card: the call as its input, the result as its
                 result. Markdown transformers registered with <code>registerMarkdownTransformer</code> change how a finished
-                user message, reply or thinking is drawn; copying it still takes what was said.
+                user message, reply or thinking is drawn; copying it still takes what was said. Each
+                <code>registerShortcut</code> of the open session is an action in the Actions palette, its key bound unless
+                PI WEB or the browser already uses it.
                 A session read without starting it has no renderers yet, so its rows fall back to the content.
               </p>
               <p>

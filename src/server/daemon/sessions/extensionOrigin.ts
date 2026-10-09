@@ -85,6 +85,16 @@ export class ExtensionOrigins {
     return undefined;
   }
 
+  /**
+   * The title of the loaded extension at `path`, as its Go to page is named; undefined when no
+   * loaded extension has that path. pi names an extension by its path in what it registers
+   * (`ExtensionShortcut.extensionPath`), and a path's file or folder is often `dist` or `src`.
+   */
+  titleOf(path: string, extensions: readonly LoadedExtensionFile[]): string | undefined {
+    const extension = extensions.find((candidate) => candidate.path === path || candidate.resolvedPath === path);
+    return extension === undefined ? undefined : this.packageOf(extension).title;
+  }
+
   /** Forgets every extent and title read, so a reloaded extension's renamed package is read again. */
   forget(): void {
     this.packages.clear();

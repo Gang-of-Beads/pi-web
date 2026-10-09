@@ -134,6 +134,8 @@ export interface SessionRouteService {
   continueInNewSession(ref: SessionRouteRef): Promise<ClientSessionTreeForkResult>;
   /** Stops current work and returns whatever was queued, so it is not lost. */
   abort(ref: SessionRouteRef): Promise<{ discarded: QueuedSessionMessage[] }>;
+  /** Start one of the session's extension shortcuts; `unknown-shortcut` when it has none on that key. */
+  runExtensionShortcut(ref: SessionRouteRef, key: string): Promise<"started" | "unknown-shortcut">;
   stop(ref: SessionRouteRef): void | Promise<void>;
   archive(ref: SessionRouteRef): Promise<void>;
   archiveTree(ref: SessionRouteRef): Promise<ClientArchiveSessionsResponse>;

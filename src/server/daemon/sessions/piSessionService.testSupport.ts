@@ -186,6 +186,8 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
       getToolDefinition: () => undefined,
       resolveToolRenderers: (_toolName: string, base: () => unknown) => base(),
       getMarkdownTransformers: () => [],
+      getShortcuts: () => new Map(),
+      createContext: () => ({}),
       getUIContext: () => extensionUiContext,
       setUIContext: (uiContext) => { extensionUiContext = uiContext ?? testExtensionUiContext; },
     },

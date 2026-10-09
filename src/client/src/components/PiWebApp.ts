@@ -87,6 +87,7 @@ import { PanelResizeController, type PanelResizeConstraints, type ResizablePanel
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
 import { readSettingsOpen, readSettingsSection, writeSettingsOpen, writeSettingsSection, type SettingsReveal, type SettingsSection } from "../settingsRoute";
 import { applyActiveShortcutPreferences } from "../shortcutPreferences";
+import { extensionShortcutActions } from "../extensionShortcutActions";
 import { createTerminalCommandRunsRuntime } from "../runtime/terminalRuntime";
 import { canDeleteWorkspace, isWorkspaceDeletionPending, isWorkspaceDeletionRunPending, latestWorkspaceDeletionRuns, pendingWorkspaceDeletionIds, targetWorkspaceIdForRun, workspaceDeletionRunFilter, workspaceRemovalConfirmation } from "../workspaceDeletion";
 import "./SessionCleanupDialog";
@@ -4058,7 +4059,30 @@ export class PiWebApp extends LitElement {
   }
 
   private getDefaultActions(): AppAction[] {
-    return [...this.plugins.getActions(this.createPluginRuntimeContext()), ...this.workspaceSurfaceActions(), ...this.sessionActions(), ...this.navigationFocusActions(), ...this.panelLayoutActions()];
+    const actions = [...this.plugins.getActions(this.createPluginRuntimeContext()), ...this.workspaceSurfaceActions(), ...this.sessionActions(), ...this.navigationFocusActions(), ...this.panelLayoutActions()];
+    return [...actions, ...this.extensionShortcutActionsFor(actions)];
+  }
+
+  /**
+   * The open session's pi extension shortcuts (slice 4), from the status read for that session
+   * only: another session's shortcuts are never offered. A key PI WEB or the reader already uses
+   * stays theirs.
+   */
+  private extensionShortcutActionsFor(actions: readonly AppAction[]): AppAction[] {
+    const session = this.state.selectedSession;
+    const status = this.state.status;
+    if (session === undefined || status?.sessionId !== session.id) return [];
+    const shortcuts = status.extensionShortcuts ?? [];
+    if (shortcuts.length === 0) return [];
+    const machineId = selectedMachineId(this.state);
+    const taken = applyActiveShortcutPreferences([...actions], this.shortcutConfig).flatMap((action) => (action.shortcut === undefined ? [] : [action.shortcut]));
+    return extensionShortcutActions(shortcuts, taken, async (key) => {
+      try {
+        await api.runExtensionShortcut(session, key, machineId);
+      } catch (error) {
+        this.setState(errorNoticePatch(error));
+      }
+    });
   }
 
   private workspaceSurfaceActions(): AppAction[] {
