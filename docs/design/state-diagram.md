@@ -892,7 +892,7 @@ Selecting is a page of its own (owner, 2026-10-09): a header with the way out (â
 
 **Why the whole order.** A move ("put X after Y") replayed twice or applied against a list another device has changed scrambles it; the full order is idempotent, and the server answers with the order it kept.
 
-**Where the order lives.** With the data it orders, so every device sees it: session pins in the pin file's arrays; projects in `projects.json`; machines in the machines plugin's `machines.json` (`order`, the local machine's id among them, so it can move too). Pinned projects are still this browser's, in their pin set's order; moving them to the machine's pin file (adopted once) is a later step. A pinned section stands in its pin order; its rows still show state marks but no longer move on activity.
+**Where the order lives.** With the data it orders, so every device sees it: session pins in the pin file's arrays; projects in `projects.json`; machines in the machines plugin's `machines.json` (`order`, the local machine's id among them, so it can move too). Pinned projects are in the pin file too (`pinnedProjectIds`, in their order); a machine that answers without the field keeps them in this browser. A browser hands its old pins to a machine once per kind and remembers it (`pi-web.pinsHandedOver`), so a pin removed on another device while this browser was closed does not come back from this browser's stale copy. A pinned section stands in its pin order; its rows still show state marks but no longer move on activity.
 
 ## Methodology folded in (research run `e7c7403c`, `uiux-methodology.md`)
 

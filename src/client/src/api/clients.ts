@@ -222,23 +222,44 @@ export const sessionPinsApi = {
     parseMachinePins,
     { method: "POST", body: JSON.stringify({ adopt: [...sessionIds] }) },
   ),
+  /** Pin or unpin a project on its machine (R11). */
+  setProjectPinnedFlag: (projectId: string, pinned: boolean, machineId = "local") => request(
+    `${machinePrefix(machineId)}/session-pins`,
+    parseMachinePins,
+    { method: "POST", body: JSON.stringify({ pinnedProject: projectId, pinned }) },
+  ),
+  /** The whole order of the pinned projects the reader dragged. */
+  setPinnedProjectOrder: (order: readonly string[], machineId = "local") => request(
+    `${machinePrefix(machineId)}/session-pins`,
+    parseMachinePins,
+    { method: "POST", body: JSON.stringify({ pinnedProjectOrder: [...order] }) },
+  ),
+  /** This browser's pinned projects from before the machine kept them, handed over once. */
+  adoptProjects: (projectIds: readonly string[], machineId = "local") => request(
+    `${machinePrefix(machineId)}/session-pins`,
+    parseMachinePins,
+    { method: "POST", body: JSON.stringify({ adoptProjects: [...projectIds] }) },
+  ),
 };
 
 /**
  * A machine's pins (B49): the global ones, and each project's own by project id. `projects` is
  * undefined when the machine answered without them, an older build that keeps no project pins, so
- * the page offers no project pin there rather than one that would vanish.
+ * the page offers no project pin there rather than one that would vanish. `pinnedProjects` is
+ * undefined from a machine that keeps no pinned projects (R11), where this browser keeps them.
  */
 export interface MachinePins {
   readonly global: readonly string[];
   readonly projects: ReadonlyMap<string, ReadonlySet<string>> | undefined;
+  readonly pinnedProjects: readonly string[] | undefined;
 }
 
 function parseMachinePins(value: unknown): MachinePins {
   if (typeof value !== "object" || value === null) throw new Error("The machine did not answer with its pins");
   const pinned: unknown = Reflect.get(value, "pinnedSessionIds");
   if (!Array.isArray(pinned)) throw new Error("The machine did not answer with its pins");
-  return { global: stringsOf(pinned), projects: parseProjectPins(Reflect.get(value, "projectPins")) };
+  const pinnedProjects: unknown = Reflect.get(value, "pinnedProjectIds");
+  return { global: stringsOf(pinned), projects: parseProjectPins(Reflect.get(value, "projectPins")), pinnedProjects: Array.isArray(pinnedProjects) ? stringsOf(pinnedProjects) : undefined };
 }
 
 function parseProjectPins(value: unknown): ReadonlyMap<string, ReadonlySet<string>> | undefined {

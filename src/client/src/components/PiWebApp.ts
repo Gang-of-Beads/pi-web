@@ -121,6 +121,7 @@ import { reloadOffer } from "../versionSkew";
 import { oneRowPerIdentity } from "../transcriptInvariant";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { readPinnedProjectIds, togglePinnedProjectId, writePinnedProjectIds } from "../projectPins";
+import { markPinsHandedOver, pinsHandedOver } from "../pinHandover";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { ackWatch } from "../api/ackWatch";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
@@ -256,6 +257,16 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
 // Surface backed up: the pi-web runtime status readout (header health, self-
 // update banner). Nothing events it; the tab re-reads on this slow cadence.
 const EMPTY_ID_SET: ReadonlySet<string> = new Set();
+
+/** What the page shows of one machine's pins, from that machine's answer. */
+function machinePinView(machineId: string, answered: MachinePins): { machineId: string; ids: ReadonlySet<string>; projects?: ReadonlyMap<string, ReadonlySet<string>>; pinnedProjects?: ReadonlySet<string> } {
+  return {
+    machineId,
+    ids: new Set(answered.global),
+    ...(answered.projects === undefined ? {} : { projects: answered.projects }),
+    ...(answered.pinnedProjects === undefined ? {} : { pinnedProjects: new Set(answered.pinnedProjects) }),
+  };
+}
 
 /**
  * A panel whose data has not answered yet says nothing (owner, 2026-09-30): no
@@ -530,9 +541,17 @@ export class PiWebApp extends LitElement {
    * ids are unique per machine; the cache is re-read whenever the selection
    * moves, so machine A's pins can never mark or act on machine B's rows.
    */
-  @state() private pinCache: { machineId: string; ids: ReadonlySet<string>; projects?: ReadonlyMap<string, ReadonlySet<string>> } | undefined;
+  @state() private pinCache: { machineId: string; ids: ReadonlySet<string>; projects?: ReadonlyMap<string, ReadonlySet<string>>; pinnedProjects?: ReadonlySet<string> } | undefined;
   private pinReadsInFlight = new Set<string>();
   private pinsAdopted = new Set<string>();
+  private projectPinsAdopted = new Set<string>();
+  /**
+   * Each machine's last answer. The page shows one machine's pins at a time; browsing another and
+   * coming back used to rebuild the view from this browser alone, without the machine's project
+   * pins and pinned projects, and no read followed (the machine was already adopted), so a project
+   * pinned after coming back was written to this browser only.
+   */
+  private readonly machinePinAnswers = new Map<string, MachinePins>();
 
   private get pinnedSessionIds(): ReadonlySet<string> {
     return this.pinnedSessionIdsFor(selectedMachineId(this.state));
@@ -552,10 +571,11 @@ export class PiWebApp extends LitElement {
       void this.ensureMachinePins(machineId);
       return cached.ids;
     }
-    const ids = readPinnedSessionIds(machineId);
-    this.pinCache = { machineId, ids };
+    const known = this.machinePinAnswers.get(machineId);
+    const view = known === undefined ? { machineId, ids: readPinnedSessionIds(machineId) } : machinePinView(machineId, known);
+    this.pinCache = view;
     void this.ensureMachinePins(machineId);
-    return ids;
+    return view.ids;
   }
 
   /**
@@ -584,11 +604,12 @@ export class PiWebApp extends LitElement {
     this.pinsStale.delete(machineId);
     try {
       const local = readPinnedSessionIds(machineId);
-      const answered = this.pinsAdopted.has(machineId) || local.size === 0
+      const answered = this.pinsAdopted.has(machineId) || local.size === 0 || pinsHandedOver("sessions", machineId)
         ? await sessionPinsApi.pins(machineId)
         : await sessionPinsApi.adopt([...local], machineId);
       this.pinsAdopted.add(machineId);
-      this.applyMachinePins(machineId, answered);
+      markPinsHandedOver("sessions", machineId);
+      this.applyMachinePins(machineId, await this.adoptLocalProjectPins(machineId, answered));
     } catch {
       // The machine could not answer: the local set keeps standing in, and the
       // next read tries again. A pin is never invented or silently dropped.
@@ -610,9 +631,24 @@ export class PiWebApp extends LitElement {
     void this.ensureMachinePins(machineId);
   }
 
+  /**
+   * This browser's pinned projects from before the machine kept them (R11), handed to a machine
+   * that keeps them once, so none is lost; a machine that keeps none leaves them in this browser.
+   */
+  private async adoptLocalProjectPins(machineId: string, answered: MachinePins): Promise<MachinePins> {
+    if (answered.pinnedProjects === undefined || this.projectPinsAdopted.has(machineId) || pinsHandedOver("projects", machineId)) return answered;
+    const local = [...readPinnedProjectIds(machineId)].filter((id) => !(answered.pinnedProjects ?? []).includes(id));
+    const adopted = local.length === 0 ? answered : await sessionPinsApi.adoptProjects(local, machineId);
+    this.projectPinsAdopted.add(machineId);
+    markPinsHandedOver("projects", machineId);
+    return adopted;
+  }
+
   private applyMachinePins(machineId: string, answered: MachinePins): void {
     writePinnedSessionIds(machineId, new Set(answered.global));
-    if (this.pinCache?.machineId === machineId) this.pinCache = { machineId, ids: new Set(answered.global), ...(answered.projects === undefined ? {} : { projects: answered.projects }) };
+    if (answered.pinnedProjects !== undefined) writePinnedProjectIds(machineId, new Set(answered.pinnedProjects));
+    this.machinePinAnswers.set(machineId, answered);
+    if (this.pinCache?.machineId === machineId) this.pinCache = machinePinView(machineId, answered);
     this.requestUpdate();
   }
 
@@ -2733,8 +2769,14 @@ export class PiWebApp extends LitElement {
 
   private pinnedProjectCache: { machineId: string; ids: ReadonlySet<string> } | undefined;
 
+  /**
+   * The pinned projects of the machine being browsed, in the reader's order (R11): the machine's,
+   * once it answered with them; until then, or from a machine that keeps none, this browser's.
+   */
   private get pinnedProjectIds(): ReadonlySet<string> {
     const machineId = this.browsedMachineId();
+    const machine = this.machinePinnedProjects(machineId);
+    if (machine !== undefined) return machine;
     const cached = this.pinnedProjectCache;
     if (cached?.machineId === machineId) return cached.ids;
     const fresh = { machineId, ids: readPinnedProjectIds(machineId) };
@@ -2742,9 +2784,16 @@ export class PiWebApp extends LitElement {
     return fresh.ids;
   }
 
+  private machinePinnedProjects(machineId: string): ReadonlySet<string> | undefined {
+    this.pinnedSessionIdsFor(machineId);
+    const cached = this.pinCache;
+    return cached?.machineId === machineId ? cached.pinnedProjects : undefined;
+  }
+
   /**
-   * The reader dragged the projects into a new order (R11): the pinned ones are this device's
-   * list, kept in its order; the rest are the machine's, written to its projects file.
+   * The reader dragged the projects into a new order (R11): the pinned ones are written to the
+   * machine's pin file (or this browser's, for a machine that keeps none); the rest to its
+   * projects file.
    */
   private reorderProjects(pinned: boolean, order: readonly string[]): void {
     if (!pinned) {
@@ -2753,14 +2802,29 @@ export class PiWebApp extends LitElement {
     }
     const machineId = this.browsedMachineId();
     const ids = new Set(orderedIds([...this.pinnedProjectIds], order));
-    this.pinnedProjectCache = { machineId, ids };
-    writePinnedProjectIds(machineId, ids);
-    this.requestUpdate();
+    this.showPinnedProjects(machineId, ids, (target) => sessionPinsApi.setPinnedProjectOrder([...ids], target));
   }
 
   private togglePinnedProject(projectId: string): void {
     const machineId = this.browsedMachineId();
     const ids = togglePinnedProjectId(this.pinnedProjectIds, projectId);
+    this.showPinnedProjects(machineId, ids, (target) => sessionPinsApi.setProjectPinnedFlag(projectId, ids.has(projectId), target));
+  }
+
+  /**
+   * Show the pinned projects at once, then write them where they live: the machine, which answers
+   * with the set every device reads; or this browser, for a machine that keeps none. A write the
+   * machine refused is followed by a read, so the mark never stays on a pin it does not hold.
+   */
+  private showPinnedProjects(machineId: string, ids: ReadonlySet<string>, write: (machineId: string) => Promise<MachinePins>): void {
+    const cached = this.pinCache;
+    if (cached?.machineId === machineId && cached.pinnedProjects !== undefined) {
+      this.pinCache = { ...cached, pinnedProjects: ids };
+      write(machineId)
+        .then((answered) => { this.applyMachinePins(machineId, answered); })
+        .catch(() => { this.refreshMachinePins(machineId); });
+      return;
+    }
     this.pinnedProjectCache = { machineId, ids };
     writePinnedProjectIds(machineId, ids);
     this.requestUpdate();

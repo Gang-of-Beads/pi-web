@@ -5,7 +5,7 @@ import { PiWebApp } from "./PiWebApp";
 
 /** A machine's pins answer with no project pins: what these tests are about is the global set. */
 function pinAnswer(ids: string[]): MachinePins {
-  return { global: ids, projects: undefined };
+  return { global: ids, projects: undefined, pinnedProjects: undefined };
 }
 
 /**
