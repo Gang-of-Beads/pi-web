@@ -3,6 +3,8 @@ import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, t
 import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand } from "../commandLedger";
+import { lastLastingRowKey } from "../rowIdentity";
+import { queuedUserLine } from "../userMessageRegister";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair, type GapReplayResult, type StreamFrontier } from "../sessionGapRepair";
 import { nextTranscriptSync, transcriptRetryAction, type TranscriptSyncEvent } from "../transcriptSync";
@@ -755,10 +757,13 @@ export class SessionController {
     const machineId = selectedMachineId(this.getState());
     // The command's invisible route is what made pressed buttons read as dead:
     // the ledger row is the receipt, created before the daemon is even asked.
-    const issued = issueCommand(this.getState().commandLedger, {
+    const state = this.getState();
+    const waiting = (state.clientQueuedSessionMessages[session.id] ?? []).map((message, position) => queuedUserLine(message, position));
+    const issued = issueCommand(state.commandLedger, {
       sessionKey: machineSessionKey(machineId, session.id),
       text,
       now: Date.now(),
+      afterRowKey: lastLastingRowKey([...state.messages, ...waiting]),
     });
     this.setState({ commandLedger: issued.entries });
     if (isClientPendingStartSessionInfo(session)) {

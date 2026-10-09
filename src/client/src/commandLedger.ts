@@ -55,6 +55,8 @@ export interface CommandLedgerEntry {
   readonly text: string;
   readonly state: CommandLedgerState;
   readonly issuedAt: number;
+  /** The key of the last row the page held when the command was issued, which the row is drawn after (D1, #226). */
+  readonly afterRowKey?: string;
   /** Failure text, or a one-line result when the command produced one. */
   readonly resultText?: string;
   readonly settledAt?: number;
@@ -67,7 +69,7 @@ let nextLedgerId = 0;
 
 export function issueCommand(
   entries: readonly CommandLedgerEntry[],
-  input: { sessionKey: string; text: string; now: number },
+  input: { sessionKey: string; text: string; now: number; afterRowKey?: string | undefined },
 ): { entries: CommandLedgerEntry[]; id: string } {
   const id = `cmd-${String(++nextLedgerId)}`;
   const entry: CommandLedgerEntry = {
@@ -76,6 +78,7 @@ export function issueCommand(
     text: input.text,
     state: "pending",
     issuedAt: input.now,
+    ...(input.afterRowKey === undefined ? {} : { afterRowKey: input.afterRowKey }),
   };
   const kept = [...entries, entry];
   const overflow = kept.length - LEDGER_CAP;

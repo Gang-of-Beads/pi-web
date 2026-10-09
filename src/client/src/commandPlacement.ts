@@ -17,23 +17,28 @@ import type { CommandLedgerEntry } from "./commandLedger";
  * ended and a committed message the time it was sent, so "before the first group
  * stamped later" drew a command typed during a bash run above that run and above
  * a message sent before it (B2, probe-row-order.mjs).
+ *
+ * So a command that recorded the row before it is drawn right after that row,
+ * found by key among the slots, and the timestamp rule is left to a command whose
+ * row is not on the page (D1, #226).
  */
 export interface CommandPlacement {
-  /** Rows to draw immediately before the group at this index. */
+  /** Rows to draw immediately before the slot (settled group or waiting row) at this index. */
   before: Map<number, CommandLedgerEntry[]>;
-  /** Rows issued after everything on screen, or with nothing to order against. */
+  /** Rows anchored after the last slot, issued after every slot, or with nothing to order against. */
   tail: CommandLedgerEntry[];
 }
 
 export function placeCommands(
   entries: readonly CommandLedgerEntry[],
   groupTimestamps: readonly (number | undefined)[],
+  groupKeys: readonly (readonly string[])[] = [],
 ): CommandPlacement {
   const before = new Map<number, CommandLedgerEntry[]>();
   const tail: CommandLedgerEntry[] = [];
   for (const entry of entries) {
-    const lastBefore = groupTimestamps.reduce<number>((last, at, position) => (at !== undefined && at <= entry.issuedAt ? position : last), -1);
-    const index = groupTimestamps.findIndex((at, position) => position > lastBefore && at !== undefined);
+    const anchor = entry.afterRowKey === undefined ? -1 : groupKeys.reduce<number>((last, keys, position) => (keys.includes(entry.afterRowKey ?? "") ? position : last), -1);
+    const index = anchor === -1 ? issueTimeSlot(entry, groupTimestamps) : anchor + 1 < groupTimestamps.length ? anchor + 1 : -1;
     if (index === -1) {
       tail.push(entry);
       continue;
@@ -43,4 +48,9 @@ export function placeCommands(
     else rows.push(entry);
   }
   return { before, tail };
+}
+
+function issueTimeSlot(entry: CommandLedgerEntry, groupTimestamps: readonly (number | undefined)[]): number {
+  const lastBefore = groupTimestamps.reduce<number>((last, at, position) => (at !== undefined && at <= entry.issuedAt ? position : last), -1);
+  return groupTimestamps.findIndex((at, position) => position > lastBefore && at !== undefined);
 }

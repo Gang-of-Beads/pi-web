@@ -57,6 +57,11 @@ export function rowKeys(segments: readonly RowKeySegment[]): string[][] {
   }));
 }
 
+/** The key of the last row in `lines` that names what it is, which a later rebuild keeps. */
+export function lastLastingRowKey(lines: readonly ChatLine[]): string | undefined {
+  return [...(rowKeys([{ lines, firstIndex: 0 }])[0] ?? [])].reverse().find((key) => !isPositionalRowKey(key));
+}
+
 /** The key of a row known only by its place in the transcript. */
 export function positionalRowKey(index: number): string {
   return `${POSITION_PREFIX}${String(index)}`;

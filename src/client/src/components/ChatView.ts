@@ -26,7 +26,7 @@ import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
 import { deliveryWordKey, deliveryWords } from "../deliveryWords";
 import { commandDeliveryPresentation, commandResultLine, type CommandLedgerEntry } from "../commandLedger";
-import { placeCommands } from "../commandPlacement";
+import { placeCommands, type CommandPlacement } from "../commandPlacement";
 import { IDENTITY_ZOOM, pinchZoom, panZoom, wheelZoom, type PinchPoint, type PinchStart, type ZoomTransform } from "../imageZoomGesture";
 import { isScrollKey, wheelReachesScroller } from "../readerScrollInput";
 
@@ -1271,7 +1271,13 @@ export class ChatView extends LitElement {
     const pendingStart = this.messageStart + this.messages.length;
     const [settledKeys = [], pendingKeys = []] = rowKeys([{ lines: split.settled, firstIndex: this.messageStart }, { lines: split.pending, firstIndex: pendingStart }]);
     const keyOf = (index: number) => settledKeys[index - this.messageStart] ?? positionalRowKey(index);
-    const commands = placeCommands(this.commandLedger, groups.map((group) => this.groupTimestamp(group)));
+    const pendingRows = split.pending.map((line, index) => ({ line, key: pendingKeys[index] ?? positionalRowKey(pendingStart + index) }));
+    const groupKeys = groups.map((group) => group.kind === "group" ? group.messages.map((_, offset) => keyOf(group.startIndex + offset)) : [keyOf(group.index)]);
+    const commands = placeCommands(
+      this.commandLedger,
+      [...groups.map((group) => this.groupTimestamp(group)), ...split.pending.map((line) => lineTimestamp(line))],
+      [...groupKeys, ...pendingRows.map((row) => [row.key])],
+    );
     return html`
       ${this.renderQuoteChip()}
       <div class="chat-wrap">
@@ -1282,14 +1288,14 @@ export class ChatView extends LitElement {
             (group) => group.kind === "group" ? groupRowKey(keyOf(group.startIndex)) : keyOf(group.index),
             (group, index) => {
               const before = this.renderCommandRows(commands.before.get(index) ?? []);
-              if (group.kind === "group") return html`${before}${this.renderMessageGroup(group, group.messages.map((_, offset) => keyOf(group.startIndex + offset)), this.isLiveTailGroup(groups, index))}`;
+              if (group.kind === "group") return html`${before}${this.renderMessageGroup(group, groupKeys[index] ?? [], this.isLiveTailGroup(groups, index))}`;
               if (group.kind === "tool-image") return html`${before}${this.renderToolImageOutput(group.message, group.index, keyOf(group.index), group.toolName)}`;
               return html`${before}${this.renderMessage(group.message, group.index, keyOf(group.index))}`;
             },
           )}
           ${this.renderNewerBoundary()}
           ${this.renderSessionActivity()}
-          ${this.renderPendingMessages(commands.tail, split.pending, pendingStart, pendingKeys)}
+          ${this.renderPendingMessages(commands, groups.length, pendingRows, pendingStart)}
           ${this.renderQueuedMessages()}
           ${this.renderClosedDialogs()}
           ${this.renderWaitingForYou()}
@@ -1582,14 +1588,12 @@ export class ChatView extends LitElement {
   }
 
   /**
-   * The waiting messages, with every command row issued after the last settled group placed among
-   * them by issue time, the rule `placeCommands` already applies to the settled groups. Drawn before
-   * the whole block, a command issued after a waiting message stood above it (B2 review 1b6f1553).
+   * The waiting messages. They follow the settled groups in the one sequence the command rows are
+   * placed in (`slotOffset` slots before them), so a command issued after a waiting message stands
+   * after it, not above the whole block (B2 review 1b6f1553, #226).
    */
-  private renderPendingMessages(tailCommands: readonly CommandLedgerEntry[], pending: readonly ChatLine[], base: number, keys: readonly string[]) {
-    const commands = placeCommands(tailCommands, pending.map((line) => lineTimestamp(line)));
-    const keyOf = (index: number) => keys[index] ?? positionalRowKey(base + index);
-    return html`${repeat(pending, (_line, index) => keyOf(index), (line, index) => html`${this.renderCommandRows(commands.before.get(index) ?? [])}${this.renderMessage(line, base + index, keyOf(index))}`)}${this.renderCommandRows(commands.tail)}`;
+  private renderPendingMessages(commands: CommandPlacement, slotOffset: number, rows: readonly { line: ChatLine; key: string }[], base: number) {
+    return html`${repeat(rows, (row) => row.key, (row, index) => html`${this.renderCommandRows(commands.before.get(slotOffset + index) ?? [])}${this.renderMessage(row.line, base + index, row.key)}`)}${this.renderCommandRows(commands.tail)}`;
   }
 
   private renderQueuedMessages() {
