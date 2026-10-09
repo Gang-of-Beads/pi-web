@@ -15,7 +15,7 @@ import type { AgentFactDeclarations } from "../../shared/plugins/agentSurfaceDec
  * rather than as an error.
  */
 
-const empty: AgentFactDeclarations = { surfaces: [], injectedTurns: [] };
+const empty: AgentFactDeclarations = { surfaces: [], injectedTurns: [], workPaths: [], workTools: [] };
 
 let declared: AgentFactDeclarations = empty;
 

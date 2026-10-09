@@ -8,7 +8,9 @@ class FakeWatch extends EventEmitter implements BackgroundWorkWatchHandle {
   close(): void { this.closed = true; }
 }
 
-function target(sessionId = "s1") { return { sessionId, cwd: "/workspace", sessionFile: "/sessions/s1.jsonl" }; }
+const workPaths = [{ root: "cwd", path: ".pi/tasks" }, { root: "session-dir", path: "subagent-artifacts" }, { root: "session-stem", path: "" }] as const;
+
+function target(sessionId = "s1") { return { sessionId, cwd: "/workspace", sessionFile: "/sessions/s1.jsonl", workPaths }; }
 
 function fixture() {
   const watches = new Map<string, FakeWatch>();
@@ -39,7 +41,7 @@ describe("BackgroundWorkWatcher", () => {
     watcher.update(target("s2"));
     const pi = watches.get(join("/workspace", ".pi"));
     if (pi === undefined) throw new Error("expected workspace watch");
-    expect(watches.size).toBe(4);
+    expect(watches.size).toBe(5);
     watcher.forget("s1");
     expect(pi.closed).toBe(false);
     watcher.forget("s2");

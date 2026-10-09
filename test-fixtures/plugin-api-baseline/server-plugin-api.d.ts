@@ -95,9 +95,9 @@ export type ServerPluginOperation = (input: unknown, context: {
 }) => JsonValue | Promise<JsonValue>;
 /**
  * Facts about the agent-side feature this plugin fronts: the tools that prove
- * its surface is backed, and the markers its injected turns carry. The host
- * used to hold these as constants and had to be edited whenever the feature
- * changed.
+ * its surface is backed, the markers its injected turns carry, and where and
+ * through which tools its extension does background work. The host used to
+ * hold these as constants and had to be edited whenever the feature changed.
  */
 export interface ServerPluginAgentFacts {
     surfaces?: readonly {
@@ -109,6 +109,19 @@ export interface ServerPluginAgentFacts {
         marker: string;
         producer: string;
     }[];
+    /**
+     * Directories the extension writes background work into (B20). While the plugin runs, the
+     * daemon watches each one and its parent, and recounts the session's background runs when they
+     * change. `cwd` is the session's working directory, `session-dir` the directory holding its
+     * transcript, `session-stem` the directory named after the transcript file; `path` is relative
+     * and stays inside its root, and may be empty only under `session-stem`.
+     */
+    workPaths?: readonly {
+        root: "cwd" | "session-dir" | "session-stem";
+        path: string;
+    }[];
+    /** Tools whose start or end changes the session's background work; the open page reads it again. */
+    workTools?: readonly string[];
 }
 /** One open session a plugin is asked about: where it lives and whether its own turn is still running. */
 export interface BackgroundWorkSession {

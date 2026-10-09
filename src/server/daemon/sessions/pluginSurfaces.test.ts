@@ -13,7 +13,7 @@ beforeEach(() => {
       { surface: "goals", tools: ["create_goal", "get_goal", "update_goal", "focus_goal"] },
       { surface: "subagents", tools: ["subagent"] },
     ],
-    injectedTurns: [],
+    injectedTurns: [], workPaths: [], workTools: [],
   });
 });
 
@@ -82,7 +82,7 @@ describe("what a plugin-backed surface can say about itself", () => {
   it("backs a surface declared twice by either declaration's tools", () => {
     recordDeclaredAgentFacts({
       surfaces: [{ surface: "notes", tools: ["note_add"] }, { surface: "notes", tools: ["note_list"] }],
-      injectedTurns: [],
+      injectedTurns: [], workPaths: [], workTools: [],
     });
 
     expect(pluginSurfacePresence(loader([{ path: "/x/notes.ts", tools: ["note_list"] }]))).toEqual({ notes: "present" });

@@ -42,6 +42,8 @@ const plugin: PiWebServerPlugin = {
   activate: () => ({
     agentFacts: {
       surfaces: [{ surface: "subagents", tools: ["subagent"] }],
+      workPaths: [{ root: "session-dir", path: "subagent-artifacts" }, { root: "session-stem", path: "" }],
+      workTools: ["subagent"],
     },
     backgroundWork: async (session) => {
       const runs = await listSubagentRuns(dirname(session.sessionFile), basename(session.sessionFile, ".jsonl"), Date.now(), { parentActive: session.parentActive });

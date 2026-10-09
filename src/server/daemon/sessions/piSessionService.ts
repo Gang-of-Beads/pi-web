@@ -104,7 +104,7 @@ import type { DelegationRequest, SpawnSessionInvocation, SpawnSessionResult, Spa
 import { backgroundTaskProbes, createBackgroundRunCountCycle } from "./backgroundRunCount.js";
 import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
-import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
+import { BACKGROUND_TASK_WORK, listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
 import type { OperationOutcome } from "./operationDecision.js";
@@ -4033,7 +4033,7 @@ export class PiSessionService implements SessionRouteService {
     const eventType = getString(event, "type");
     if (eventType !== "tool_execution_start" && eventType !== "tool_execution_end") return;
     const toolName = getString(event, "toolName") ?? "";
-    if (!ACTIVITY_TOOL_NAMES.has(toolName)) return;
+    if (!workTools().has(toolName)) return;
     this.events.publish(session.sessionId, { type: "activity.changed" });
   }
 
@@ -6324,6 +6324,7 @@ export class PiSessionService implements SessionRouteService {
       sessionId: session.sessionId,
       cwd: session.sessionManager.getCwd(),
       sessionFile: session.sessionManager.getSessionFile(),
+      workPaths: [...BACKGROUND_TASK_WORK.workPaths, ...declaredAgentFacts().workPaths],
     };
   }
 
@@ -6979,7 +6980,10 @@ function committedMessageShape(content: unknown): { text: string; imageCount: nu
   return { text: texts.join("\n\n"), imageCount };
 }
 
-const ACTIVITY_TOOL_NAMES = new Set(["subagent", "bg_run", "bg_run_pi_attested", "bg_kill", "spawn_subsession", "fusion_reason", "fusion_investigate", "fusion_research", "fusion_validate"]);
+/** The tools whose start or end changes background work: core's task reader's and the running plugins' declared ones. */
+function workTools(): ReadonlySet<string> {
+  return new Set([...BACKGROUND_TASK_WORK.workTools, ...declaredAgentFacts().workTools]);
+}
 
 function parseClientMessageId(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;

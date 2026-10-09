@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { open, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { SessionBackgroundTaskInfo } from "../../../shared/apiTypes.js";
+import type { WorkPathDeclaration } from "../../shared/plugins/agentSurfaceDeclarations.js";
 
 /**
  * Background-task runs, read from the registry the task tool leaves on disk.
@@ -36,8 +37,19 @@ import type { SessionBackgroundTaskInfo } from "../../../shared/apiTypes.js";
  * output path must not be able to claim its task.
  */
 
-/** A record claiming to run whose process is gone is reported as it is, not as running. */
-const TASKS_SUBDIR = join(".pi", "tasks");
+/** The extension's registry directory, relative to the session's working directory. */
+const TASKS_SUBDIR = ".pi/tasks";
+
+/**
+ * Where this reader's extension does its work, declared the way a plugin declares its own, so the
+ * daemon's watcher and activity events name nothing. The reader itself is core's last support for
+ * one extension and moves whole to the Background runs plugin (B20b, design section 3).
+ */
+export const BACKGROUND_TASK_WORK: { readonly workPaths: readonly WorkPathDeclaration[]; readonly workTools: readonly string[] } = {
+  workPaths: [{ root: "cwd", path: TASKS_SUBDIR }],
+  workTools: ["bg_run", "bg_run_pi_attested", "bg_kill", "fusion_reason", "fusion_investigate", "fusion_research", "fusion_validate"],
+};
+
 /** Enough of the tail to show what a task is doing without reading a long log. */
 const TAIL_BYTES = 16 * 1024;
 

@@ -1,11 +1,14 @@
 import { watch } from "node:fs";
 import { watchablePath } from "../workspaces/watchPath.js";
 import { basename, dirname, join } from "node:path";
+import type { WorkPathDeclaration, WorkPathRoot } from "../../shared/plugins/agentSurfaceDeclarations.js";
 
 export interface BackgroundWorkWatchTarget {
   sessionId: string;
   cwd: string;
   sessionFile: string | undefined;
+  /** Where the running features declare their background work; nothing is watched by name. */
+  workPaths: readonly WorkPathDeclaration[];
 }
 
 export interface BackgroundWorkWatchHandle {
@@ -111,18 +114,25 @@ export class BackgroundWorkWatcher {
   }
 }
 
+/** Each declared work directory, which may not exist yet, and its parent, which must. */
 function watchedPaths(target: BackgroundWorkWatchTarget): Set<string> {
-  const paths = requiredWatchPaths(target);
-  if (target.sessionFile === undefined) return paths;
-  const sessionDir = dirname(target.sessionFile);
-  paths.add(join(sessionDir, "subagent-artifacts"));
-  paths.add(join(sessionDir, basename(target.sessionFile, ".jsonl")));
-  return paths;
+  return new Set([...declaredDirectories(target), ...requiredWatchPaths(target)]);
 }
 
-/** Parent directories exist before their optional task/artifact children. */
+/** A parent exists before its optional work directory, so watching it is how new work is discovered. */
 function requiredWatchPaths(target: BackgroundWorkWatchTarget): Set<string> {
-  const paths = new Set([join(target.cwd, ".pi")]);
-  if (target.sessionFile !== undefined) paths.add(dirname(target.sessionFile));
-  return paths;
+  return new Set(declaredDirectories(target).map((path) => dirname(path)));
+}
+
+const ROOT_DIRECTORIES: Readonly<Record<WorkPathRoot, (target: BackgroundWorkWatchTarget) => string | undefined>> = {
+  cwd: (target) => target.cwd,
+  "session-dir": (target) => (target.sessionFile === undefined ? undefined : dirname(target.sessionFile)),
+  "session-stem": (target) => (target.sessionFile === undefined ? undefined : join(dirname(target.sessionFile), basename(target.sessionFile, ".jsonl"))),
+};
+
+function declaredDirectories(target: BackgroundWorkWatchTarget): string[] {
+  return target.workPaths.flatMap(({ root, path }) => {
+    const base = ROOT_DIRECTORIES[root](target);
+    return base === undefined ? [] : [join(base, path)];
+  });
 }

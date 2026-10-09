@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { recordDeclaredAgentFacts, resetDeclaredAgentFacts } from "./declaredAgentFacts.js";
 import { PiSessionService } from "./piSessionService.js";
 import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
 
@@ -32,6 +33,7 @@ function publishedMessageEnds(hub: CapturingSessionEventHub): unknown[] {
 
 describe("activity changes are pushed, not polled", () => {
   it("publishes activity.changed when a subagent tool starts", async () => {
+    recordDeclaredAgentFacts({ surfaces: [], injectedTurns: [], workPaths: [], workTools: ["subagent"] });
     const { hub, fake, service } = idleService("activity-push");
     await service.status(sessionRef("activity-push"));
 
@@ -41,6 +43,7 @@ describe("activity changes are pushed, not polled", () => {
     const pushed = hub.sessionEvents.filter(({ event }) => Reflect.get(event, "type") === "activity.changed");
     expect(pushed).toHaveLength(1);
     await service.dispose();
+    resetDeclaredAgentFacts();
   });
 });
 

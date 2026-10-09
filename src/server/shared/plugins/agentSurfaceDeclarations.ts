@@ -27,9 +27,33 @@ export interface InjectedTurnDeclaration {
   readonly producer: string;
 }
 
+/**
+ * Where a work path is anchored: the session's working directory, the directory holding its
+ * transcript, or the directory named after the transcript file (where a tool keeps one session's
+ * runs).
+ */
+export type WorkPathRoot = "cwd" | "session-dir" | "session-stem";
+
+/** Whether a root may be declared on its own: a session's own run directory may, a whole workspace or session directory may not. */
+const WORK_PATH_ROOTS: Readonly<Record<WorkPathRoot, { readonly bareAllowed: boolean }>> = {
+  cwd: { bareAllowed: false },
+  "session-dir": { bareAllowed: false },
+  "session-stem": { bareAllowed: true },
+};
+
+/** A directory the feature's extension writes background work into, relative to its root. */
+export interface WorkPathDeclaration {
+  readonly root: WorkPathRoot;
+  readonly path: string;
+}
+
 export interface AgentFactDeclarations {
   readonly surfaces: readonly AgentSurfaceDeclaration[];
   readonly injectedTurns: readonly InjectedTurnDeclaration[];
+  /** Directories the daemon watches to recount a session's background work (B20 slice 3). */
+  readonly workPaths: readonly WorkPathDeclaration[];
+  /** Tools whose start or end changes a session's background work. */
+  readonly workTools: readonly string[];
 }
 
 export class InvalidAgentFactDeclarationError extends Error {}
@@ -40,7 +64,43 @@ export function parseAgentFactDeclarations(value: unknown): AgentFactDeclaration
   return {
     surfaces: parseSurfaces(value["surfaces"]),
     injectedTurns: parseInjectedTurns(value["injectedTurns"]),
+    workPaths: parseWorkPaths(value["workPaths"]),
+    workTools: parseWorkTools(value["workTools"]),
   };
+}
+
+function parseWorkPaths(value: unknown): readonly WorkPathDeclaration[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new InvalidAgentFactDeclarationError("Declared work paths must be an array");
+  return value.map((entry) => {
+    if (!isRecord(entry)) throw new InvalidAgentFactDeclarationError("A declared work path must be an object");
+    const root = entry["root"];
+    const path = entry["path"];
+    if (!isWorkPathRoot(root)) throw new InvalidAgentFactDeclarationError("A declared work path needs a root: cwd, session-dir or session-stem");
+    if (typeof path !== "string") throw new InvalidAgentFactDeclarationError(`Declared work path under ${root} needs a path`);
+    if (isBareRelativePath(path) && !WORK_PATH_ROOTS[root].bareAllowed) throw new InvalidAgentFactDeclarationError(`A declared work path cannot be the whole ${root}`);
+    if (!isContainedRelativePath(path)) throw new InvalidAgentFactDeclarationError(`Declared work path ${path} must stay inside its root`);
+    return { root, path };
+  });
+}
+
+function parseWorkTools(value: unknown): readonly string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || !isToolList(value)) throw new InvalidAgentFactDeclarationError("Declared work tools must be tool names");
+  return value;
+}
+
+function isWorkPathRoot(value: unknown): value is WorkPathRoot {
+  return typeof value === "string" && Object.hasOwn(WORK_PATH_ROOTS, value);
+}
+
+function isBareRelativePath(path: string): boolean {
+  return path.replaceAll("\\", "/").split("/").every((segment) => segment === "" || segment === ".");
+}
+
+function isContainedRelativePath(path: string): boolean {
+  const segments = path.replaceAll("\\", "/").split("/");
+  return !path.startsWith("/") && !/^[A-Za-z]:/u.test(path) && !segments.includes("..");
 }
 
 function parseSurfaces(value: unknown): readonly AgentSurfaceDeclaration[] {
