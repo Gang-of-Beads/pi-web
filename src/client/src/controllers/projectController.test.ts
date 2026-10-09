@@ -262,14 +262,15 @@ describe("addProjectFailureMessage", () => {
   it("names the folder and the checkbox that would create it", () => {
     // The server reports this as "ENOENT ... realpath '/path'", which
     // describes a system call rather than the choice in front of the reader.
-    expect(addProjectFailureMessage(new Error("ENOENT: no such file or directory, realpath '/x'")))
+    expect(addProjectFailureMessage(new HttpError("ENOENT: no such file or directory, realpath '/x'", 400)))
       .toMatch(/folder does not exist.*Create the folder/u);
   });
 
   it("distinguishes a file and a permission problem", () => {
-    expect(addProjectFailureMessage(new Error("ENOTDIR: not a directory"))).toMatch(/file, not a folder/u);
-    expect(addProjectFailureMessage(new Error("EACCES: permission denied"))).toMatch(/permissions/u);
+    expect(addProjectFailureMessage(new HttpError("ENOTDIR: not a directory", 400))).toMatch(/file, not a folder/u);
+    expect(addProjectFailureMessage(new HttpError("EACCES: permission denied", 400))).toMatch(/permissions/u);
   });
+
 
   it("passes anything else through without the Error prefix", () => {
     expect(addProjectFailureMessage(new Error("Machine is offline"))).toBe("Machine is offline");

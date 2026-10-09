@@ -1,4 +1,5 @@
 import { mkdir, realpath, stat } from "node:fs/promises";
+import type { ProjectFolderRefusal } from "../../../shared/apiTypes.js";
 import type { ProjectStore } from "../storage/projectStore.js";
 import type { Project } from "../types.js";
 import { expandUserPath } from "./directorySuggestions.js";
@@ -16,6 +17,29 @@ export class ProjectNotFoundError extends Error {
   }
 }
 
+/** A folder that cannot become a project, and why; the add route answers 400 with the kind as its code (B16). */
+export class ProjectFolderError extends Error {
+  override name = "ProjectFolderError";
+
+  constructor(readonly refusal: ProjectFolderRefusal, cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+  }
+}
+
+/** The refusal behind a file-system error code; an error with none of these codes is not a folder refusal. */
+const FOLDER_REFUSAL_BY_ERRNO: Readonly<Record<string, ProjectFolderRefusal>> = {
+  ENOENT: "folder-missing",
+  ENOTDIR: "not-a-folder",
+  EACCES: "folder-unreadable",
+  EPERM: "folder-unreadable",
+};
+
+function folderRefusal(error: unknown): ProjectFolderError | undefined {
+  const code: unknown = typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;
+  const refusal = typeof code === "string" && Object.hasOwn(FOLDER_REFUSAL_BY_ERRNO, code) ? FOLDER_REFUSAL_BY_ERRNO[code] : undefined;
+  return refusal === undefined ? undefined : new ProjectFolderError(refusal, error);
+}
+
 export class ProjectService {
   constructor(private readonly store: ProjectStore) {}
 
@@ -28,10 +52,19 @@ export class ProjectService {
     // trimmed key the trust lookup (projectTrustRoutes) previews decisions for.
     const requestedPath = expandUserPath(input.path.trim());
     if (input.create === true) await mkdir(requestedPath, { recursive: true });
-    const resolved = await realpath(requestedPath);
-    const s = await stat(resolved);
-    if (!s.isDirectory()) throw new Error("Project path must be a directory");
+    const resolved = await this.readableFolder(requestedPath);
     return this.store.add(input.name === undefined ? { path: resolved } : { name: input.name, path: resolved });
+  }
+
+  private async readableFolder(requestedPath: string): Promise<string> {
+    try {
+      const resolved = await realpath(requestedPath);
+      const s = await stat(resolved);
+      if (!s.isDirectory()) throw new ProjectFolderError("not-a-folder", "Project path must be a directory");
+      return resolved;
+    } catch (error) {
+      throw error instanceof ProjectFolderError ? error : folderRefusal(error) ?? error;
+    }
   }
 
   reorder(order: readonly string[]): Promise<Project[]> {

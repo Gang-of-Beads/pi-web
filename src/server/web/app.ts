@@ -9,7 +9,7 @@ import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import { piWebDataDir } from "../../config.js";
 import { ProjectStore } from "../shared/storage/projectStore.js";
-import { ProjectService } from "../shared/projects/projectService.js";
+import { ProjectFolderError, ProjectService } from "../shared/projects/projectService.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
 import { SessionDaemonWorkspaceCatalog } from "./workspaces/sessionDaemonWorkspaceCatalog.js";
 import { resolveWorkspaceContext } from "../shared/workspaces/workspaceContext.js";
@@ -86,6 +86,7 @@ function registerLocalProjectRoutes(app: FastifyInstance, projects: ProjectServi
     try {
       return await projects.add(request.body);
     } catch (error) {
+      if (error instanceof ProjectFolderError) return reply.code(400).send({ error: error.message, code: error.refusal });
       return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
     }
   });

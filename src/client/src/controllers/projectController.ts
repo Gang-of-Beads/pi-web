@@ -1,6 +1,8 @@
 import { api as defaultApi, type Project } from "../api";
 import { errorNoticePatch } from "../errorNotice";
 import { describeError } from "../notice";
+import { HttpError } from "../api/http";
+import { PROJECT_FOLDER_REFUSALS, type ProjectFolderRefusal } from "../../../shared/apiTypes";
 import { QUIET_WINDOW_MS, type ReadFact } from "../sync/readPhase";
 import { ScopedResource, type ResourceClock, type Unanswered } from "../sync/scopedResource";
 import { selectedMachineId, type GetState, type SetState } from "./types";
@@ -220,19 +222,36 @@ export class ProjectController {
   }
 }
 
+const FOLDER_REFUSAL_WORDS: Readonly<Record<ProjectFolderRefusal, string>> = {
+  "folder-missing": "That folder does not exist. Tick \u201cCreate the folder if it does not exist\u201d to make it, or correct the path.",
+  "not-a-folder": "That path is a file, not a folder.",
+  "folder-unreadable": "That folder cannot be read with this account's permissions.",
+};
+
 /**
  * What went wrong, in words that name the next action.
  *
- * The server reports a missing folder as a raw `ENOENT ... realpath` string,
- * which describes a system call rather than the choice in front of the user:
- * the folder is not there, and the dialog has a checkbox that would create it.
+ * The machine answers a folder it cannot add with a typed code (B16): the folder is not there (and
+ * the dialog has a checkbox that would create it), it is a file, or this account cannot read it.
+ * A machine that predates the code sends only the raw errno text (ENOENT, ENOTDIR, EACCES or EPERM), which is still read
+ * until every machine carries the code (rolling compatibility, like `sessionNotFound.ts`).
  */
 export function addProjectFailureMessage(error: unknown): string {
-  const text = describeError(error);
-  if (/ENOENT|no such file or directory/u.test(text)) {
-    return "That folder does not exist. Tick \u201cCreate the folder if it does not exist\u201d to make it, or correct the path.";
-  }
-  if (text.includes("ENOTDIR")) return "That path is a file, not a folder.";
-  if (/EACCES|EPERM/u.test(text)) return "That folder cannot be read with this account's permissions.";
-  return text.replace(/^Error:\s*/u, "");
+  const refusal = folderRefusalOf(error);
+  if (refusal !== undefined) return FOLDER_REFUSAL_WORDS[refusal];
+  return describeError(error).replace(/^Error:\s*/u, "");
+}
+
+function folderRefusalOf(error: unknown): ProjectFolderRefusal | undefined {
+  if (!(error instanceof HttpError)) return undefined;
+  const typed = PROJECT_FOLDER_REFUSALS.find((refusal) => refusal === error.code);
+  if (typed !== undefined) return typed;
+  return error.code === undefined ? legacyFolderRefusal(describeError(error)) : undefined;
+}
+
+function legacyFolderRefusal(text: string): ProjectFolderRefusal | undefined {
+  if (/ENOENT|no such file or directory/u.test(text)) return "folder-missing";
+  if (text.includes("ENOTDIR")) return "not-a-folder";
+  if (/EACCES|EPERM/u.test(text)) return "folder-unreadable";
+  return undefined;
 }
