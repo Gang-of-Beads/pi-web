@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { NetworkError } from "./api/requestDeadline";
 import { advancePendingPrompt, AUTOMATIC_RESEND_WINDOW_MS, clearPendingPrompts, forgetReservedPrompt, failPendingPrompt, replaysRecord, reserveAcceptedPrompt, isNetworkFailure, loadPendingPrompts, moveOutbox, NetworkSendError, savePendingPrompt, sessionsWithFailedSends, type PendingPrompt } from "./pendingOutbox";
 
 function memoryStorage(): Storage & { data: Map<string, string> } {
@@ -39,8 +40,8 @@ describe("pendingOutbox", () => {
   });
 
   it("classifies network failures", () => {
-    expect(isNetworkFailure(new TypeError("Failed to fetch"))).toBe(true);
-    expect(isNetworkFailure(new TypeError("NetworkError when attempting to fetch resource."))).toBe(true);
+    expect(isNetworkFailure(new NetworkError("api/sessions/s1/prompt", new TypeError("Failed to fetch")))).toBe(true);
+    expect(isNetworkFailure(new NetworkError("api/sessions/s1/prompt", new TypeError("NetworkError when attempting to fetch resource.")))).toBe(true);
     expect(isNetworkFailure(new Error("ECONNREFUSED connect"))).toBe(true);
     expect(isNetworkFailure(new Error("400 Bad Request"))).toBe(false);
     expect(isNetworkFailure(new Error("boom"))).toBe(false);

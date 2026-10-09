@@ -7,7 +7,7 @@ import { applyQueueToDelivery, removeDeliveryLine } from "../messageDelivery";
 import { advancePendingPrompt, isNetworkFailure, loadPendingPrompts, savePendingPrompt, sessionsWithFailedSends } from "../pendingOutbox";
 import { pendingPromptActions } from "../pendingPromptActions";
 import { classifySubmission, deliveryAfterUnanswered, handleOutcome, transportFactsFor } from "../messageLifecycle";
-import { isRequestTimeout } from "../api/requestDeadline";
+import { isRequestTimeout, NetworkError } from "../api/requestDeadline";
 import { HttpError } from "../api/http";
 import { settlementSentence } from "../../../shared/operationSettlement";
 import { OUTGOING_EVENTS, OUTGOING_STATES, outgoingVerdict } from "../outgoingMessages";
@@ -53,7 +53,7 @@ describe("an answer that names no verdict", () => {
 
 describe("the words for a message nobody answered for", () => {
   it("does not claim it may be running when the bytes never left", () => {
-    const offline = new TypeError("Failed to fetch");
+    const offline = new NetworkError("api/sessions/s1/prompt", new TypeError("Failed to fetch"));
     const outcome = classifySubmission(offline, isDefiniteRefusal, transportFactsFor(offline, { isTimeout: false, linkOffline: true }));
     const bubble = chatDeliveryPresentation({ clientMessageId: "cm-1", ...(outcome.settlement.outcome === "unverifiable" ? deliveryAfterUnanswered(outcome.settlement) : { state: "unverifiable" as const }) });
 

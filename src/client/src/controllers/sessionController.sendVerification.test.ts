@@ -6,6 +6,7 @@ import { defaultApi, FakeSocket, oldSession, status, workspace, type AppState } 
 import { loadPendingPrompts, savePendingPrompt } from "../pendingOutbox";
 import type { ChatLine } from "../components/shared";
 import { VERIFY_AFTER_MS, VERIFY_RETRY_MS, messageStatusUnanswered } from "../sendVerification";
+import { NetworkError } from "../api/requestDeadline";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -29,11 +30,11 @@ async function unansweredSend(answer: LedgerAnswers, overrides: Partial<typeof d
   const asked: string[][] = [];
   const api: typeof defaultApi = {
     ...defaultApi,
-    prompt: () => Promise.reject(new TypeError("Failed to fetch")),
+    prompt: () => Promise.reject(new NetworkError("api/sessions/s1/prompt", new TypeError("Failed to fetch"))),
     operationOutcomes: (_session, ids) => {
       asked.push([...ids]);
       const answered = answer(ids, asked.length);
-      return answered === undefined ? Promise.reject(new TypeError("Failed to fetch")) : Promise.resolve(answered);
+      return answered === undefined ? Promise.reject(new NetworkError("api/sessions/s1/prompt", new TypeError("Failed to fetch"))) : Promise.resolve(answered);
     },
     ...overrides,
   };
@@ -90,7 +91,7 @@ describe("an unanswered send whose ledger cannot be reached", () => {
 describe("the message status claim (P1 slice 6)", () => {
   it("is withdrawn when a later send to the same session is answered: the link to its machine is up", async () => {
     let fail = true;
-    const send = await unansweredSend(() => undefined, { prompt: () => (fail ? Promise.reject(new TypeError("Failed to fetch")) : Promise.resolve({ accepted: true as const })) });
+    const send = await unansweredSend(() => undefined, { prompt: () => (fail ? Promise.reject(new NetworkError("api/sessions/s1/prompt", new TypeError("Failed to fetch"))) : Promise.resolve({ accepted: true as const })) });
     const before = send.claim()?.miss.kind;
     fail = false;
     await send.controller.send("this one is answered");
@@ -204,7 +205,7 @@ describe("phase 5 gate 5: an ask that answers after the reader moved on", () => 
     const send = await unansweredSend(() => ({}), { operationOutcomes: () => new Promise((_resolve, reject) => { fail = reject; }) });
     await vi.advanceTimersByTimeAsync(VERIFY_AFTER_MS[0] ?? 0);
     send.showSession({ ...oldSession, id: "another-session", path: "/tmp/another-session.jsonl" });
-    fail(new TypeError("Failed to fetch"));
+    fail(new NetworkError("api/sessions/s1/prompt", new TypeError("Failed to fetch")));
     await vi.advanceTimersByTimeAsync(0);
 
     expect({ claim: send.claim(), notice: send.notice() }).toEqual({ claim: undefined, notice: "" });

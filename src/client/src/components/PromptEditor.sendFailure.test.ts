@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PromptEditor } from "./PromptEditor";
 import { savePendingPrompt } from "../pendingOutbox";
+import { NetworkError } from "../api/requestDeadline";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -46,7 +47,7 @@ describe("prompt-editor send failure", () => {
   });
 
   it("saves a network-dropped send to the outbox instead of restoring the draft", async () => {
-    const onSend = vi.fn(() => Promise.reject(new TypeError("Failed to fetch")));
+    const onSend = vi.fn(() => Promise.reject(new NetworkError("api/sessions/s1/prompt", new TypeError("Failed to fetch"))));
     const editor = await mount(onSend);
     editor.replaceText("typed while offline");
 

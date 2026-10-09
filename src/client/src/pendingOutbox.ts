@@ -4,6 +4,7 @@ import type { PromptAttachmentDelivery } from "../../shared/apiTypes";
 import type { OutgoingEvent, OutgoingState } from "./outgoingMessages";
 import { outgoingStateFromStorage, outgoingStopped, outgoingVerdict } from "./outgoingMessages";
 import type { DeliveryFailureCause } from "./deliveryWords";
+import { NetworkError } from "./api/requestDeadline";
 /**
  * Pending-message outbox: survives network drops so a send is never silently
  * lost. Every prompt is persisted per session before it is sent. One that was
@@ -103,10 +104,14 @@ function withKnownState(prompt: PendingPrompt): PendingPrompt {
   return unknown;
 }
 
-/** Whether an error looks like connectivity loss rather than a server verdict. */
+/**
+ * Whether a send failed on the link rather than on a server verdict. The page's own fetch says so by
+ * its type (`NetworkError`, B16); it used to be read from the browser's words on a TypeError. A
+ * server's words for a connection it could not make (ECONNREFUSED, ENOTFOUND) are still read, since
+ * a machine of any age sends them inside its answer.
+ */
 export function isNetworkFailure(error: unknown): boolean {
-  if (error instanceof NetworkSendError) return true;
-  if (error instanceof TypeError && /fetch|network|load failed|failed to fetch/i.test(error.message)) return true;
+  if (error instanceof NetworkSendError || error instanceof NetworkError) return true;
   if (error instanceof Error && /ECONNREFUSED|ENOTFOUND|socket hang up|network.*down/i.test(error.message)) return true;
   return false;
 }

@@ -5,6 +5,7 @@ import { defaultApi, FakeSocket, oldSession, status, workspace, type AppState } 
 import { NetworkSendError, SendScopeChangedError } from "../pendingOutbox";
 import { HttpError } from "../api/http";
 import { SEND_TO_MISSING_SESSION } from "../sessionNotFound";
+import { NetworkError } from "../api/requestDeadline";
 
 /**
  * A send that fails leaves the message in exactly one place the user can act
@@ -34,7 +35,7 @@ function controllerWith(api: typeof defaultApi): { controller: SessionController
 
 describe("SessionController send failure", () => {
   it("keeps the bubble marked not sent on a dropped connection, says which id the outbox owns, and leaves the banner to the row's claim (P1 slice 6)", async () => {
-    const api: typeof defaultApi = { ...defaultApi, prompt: () => Promise.reject(new TypeError("Failed to fetch")) };
+    const api: typeof defaultApi = { ...defaultApi, prompt: () => Promise.reject(new NetworkError("api/sessions/s1/prompt", new TypeError("Failed to fetch"))) };
     const { controller, read } = controllerWith(api);
 
     let error: unknown;
@@ -58,7 +59,7 @@ describe("SessionController send failure", () => {
   });
 
   it("revives the same bubble on an outbox retry and advances it once the server takes the message", async () => {
-    const api: typeof defaultApi = { ...defaultApi, prompt: () => Promise.reject(new TypeError("Failed to fetch")) };
+    const api: typeof defaultApi = { ...defaultApi, prompt: () => Promise.reject(new NetworkError("api/sessions/s1/prompt", new TypeError("Failed to fetch"))) };
     const { controller, read } = controllerWith(api);
 
     let error: unknown;
@@ -117,7 +118,7 @@ describe("SessionController send failure", () => {
   it("calls a send the browser says never left Not sent, and a gateway's answer while offline still unverifiable", async () => {
     vi.stubGlobal("navigator", { onLine: false });
     try {
-      const offline = controllerWith({ ...defaultApi, prompt: () => Promise.reject(new TypeError("Failed to fetch")) });
+      const offline = controllerWith({ ...defaultApi, prompt: () => Promise.reject(new NetworkError("api/sessions/s1/prompt", new TypeError("Failed to fetch"))) });
       await expect(offline.controller.send("typed on a train")).rejects.toBeInstanceOf(NetworkSendError);
       const answered = controllerWith({ ...defaultApi, prompt: () => Promise.reject(new HttpError("Remote machine timeout", 504, "prod")) });
       await expect(answered.controller.send("maybe running already")).rejects.toBeInstanceOf(NetworkSendError);
