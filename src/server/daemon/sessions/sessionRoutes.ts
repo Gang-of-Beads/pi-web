@@ -3,6 +3,7 @@ import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_
   EXTENSION_DIALOG_KEY_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type AskUserAnswer, type AskUserSubmission, type ExtensionDialogAnswerRequest, type ExtensionDialogCancelRequest, type SessionBulkMutationRequest, type SessionSubsessionsSnapshot, type SessionBulkMutationRef, type SessionCleanupRequest, type SessionTreeForkRequest, type SessionTreeNavigateRequest, type SessionTreeSummaryChoice, type SessionUnreadAcknowledgeRequest } from "../../../shared/apiTypes.js";
 import { projectBrowserMessageResponse } from "../browserMessageProjection.js";
 import { normalizeRequestCwd } from "../workingDirectory.js";
+import { readCompletionItem } from "./extensionCompletions.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { SessionRouteRef, SessionRouteService } from "./sessionService.js";
 import { clearInterruptedRuns, readInterruptedRuns } from "./interruptedRunStore.js";
@@ -627,6 +628,34 @@ app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unkn
       // puts them in the composer rather than letting stop delete work.
       const { discarded } = await sessions.abort(sessionRefFromBody(request.params.sessionId, optionalRecord(request.body)));
       return { aborted: true, discarded };
+    } catch (error) {
+      return sendError(reply, sessionErrorReply(error, 400));
+    }
+  });
+
+  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; text?: unknown; cursor?: unknown; force?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/extension-completions`, async (request, reply) => {
+    const body = optionalRecord(request.body);
+    const text = body["text"];
+    const cursor = body["cursor"];
+    if (typeof text !== "string" || !Number.isInteger(cursor) || typeof cursor !== "number") return reply.code(400).send({ error: "text and cursor are required" });
+    try {
+      return await sessions.extensionCompletions(sessionRefFromBody(request.params.sessionId, body), text, cursor, body["force"] === true);
+    } catch (error) {
+      return sendError(reply, sessionErrorReply(error, 400));
+    }
+  });
+
+  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; text?: unknown; cursor?: unknown; prefix?: unknown; item?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/extension-completions/apply`, async (request, reply) => {
+    const body = optionalRecord(request.body);
+    const text = body["text"];
+    const cursor = body["cursor"];
+    const completionPrefix = body["prefix"];
+    const item = readCompletionItem(body["item"]);
+    if (typeof text !== "string" || !Number.isInteger(cursor) || typeof cursor !== "number" || typeof completionPrefix !== "string" || item === undefined) {
+      return reply.code(400).send({ error: "text, cursor, prefix and item are required" });
+    }
+    try {
+      return sessions.applyExtensionCompletion(sessionRefFromBody(request.params.sessionId, body), text, cursor, completionPrefix, item);
     } catch (error) {
       return sendError(reply, sessionErrorReply(error, 400));
     }

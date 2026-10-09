@@ -5,7 +5,7 @@ import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTIO
   EXTENSION_DIALOG_SCREEN_MAX_LINES, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_SCREEN_DETAIL_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserAnswer, type AskUserCloseReason, type AskUserCloseResponse, type AskUserOutcome, type AskUserQuestion, type AskUserQuestionOption, type AskUserQuestionRecord, type PendingAskUser, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type ExtensionDialogScreen, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionTranscriptTail, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type WorkspaceChangedUiEvent, type PinsChangedUiEvent, type PluginsChangedUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
 import { parseMachineStatusSnapshot, type MachineStatusSnapshot, type MachineStatusUiEvent } from "../../../shared/machineStatus";
 import type { JsonValue, PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionsRevisionResponse, SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot, WorkspaceProviderDiagnostic, WorkspaceProviderDiagnosticCode, WorkspaceProviderResolution, WorkspaceProviderResolutionStatus, WorkspaceProviderTier } from "../../../shared/apiTypes";
-import type { ExtensionWidgetPlacement, PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport, PiWebSelfUpdateStatus } from "../../../shared/apiTypes";
+import type { ExtensionCompletionApplied, ExtensionCompletionSuggestions, ExtensionWidgetPlacement, PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport, PiWebSelfUpdateStatus } from "../../../shared/apiTypes";
 import { parseKnownPiWebCapabilities } from "../../../shared/capabilities";
 import { parseDeprecatedAgentInputs } from "../../../shared/piWebStatusParsing";
 import { PI_WEB_PLUGIN_RECOVERY_COMMANDS, pluginDisableRecoveryCommand } from "../../../shared/pluginRecoveryCommands";
@@ -769,6 +769,33 @@ function optionalExtensionShortcuts(value: unknown): Pick<SessionStatus, "extens
   return shortcuts.length === 0 ? {} : { extensionShortcuts: shortcuts };
 }
 
+/** What a session's extension autocomplete providers suggest; an item that cannot be read is left out. */
+export function parseExtensionCompletions(value: unknown): ExtensionCompletionSuggestions {
+  const record = requireRecord(value);
+  const prefix = record["prefix"];
+  const items = record["items"];
+  if (typeof prefix !== "string" || !Array.isArray(items)) throw new Error("Expected extension completions");
+  return {
+    prefix,
+    items: items.flatMap((entry: unknown) => {
+      if (typeof entry !== "object" || entry === null) return [];
+      const itemValue: unknown = Reflect.get(entry, "value");
+      const label: unknown = Reflect.get(entry, "label");
+      const description: unknown = Reflect.get(entry, "description");
+      if (typeof itemValue !== "string" || typeof label !== "string") return [];
+      return [{ value: itemValue, label, ...(typeof description === "string" ? { description } : {}) }];
+    }),
+  };
+}
+
+export function parseExtensionCompletionApplied(value: unknown): ExtensionCompletionApplied {
+  const record = requireRecord(value);
+  const text = record["text"];
+  const cursor = record["cursor"];
+  if (typeof text !== "string" || typeof cursor !== "number") throw new Error("Expected an applied extension completion");
+  return { text, cursor };
+}
+
 /** A started extension shortcut: its handler runs on the daemon, and what it shows arrives as it does in pi. */
 export function parseShortcutStarted(value: unknown): { started: true } {
   const record = requireRecord(value);
@@ -808,6 +835,8 @@ function optionalExtensionUi(value: unknown): Pick<SessionStatus, "extensionUi">
   const workingFrames = strings(Reflect.get(value, "workingFrames"));
   const hiddenThinkingLabel = text("hiddenThinkingLabel");
   const title = text("title");
+  const completionValue: unknown = Reflect.get(value, "completion");
+  const triggerCharacters = typeof completionValue === "object" && completionValue !== null ? strings(Reflect.get(completionValue, "triggerCharacters")) : undefined;
   const standing: NonNullable<SessionStatus["extensionUi"]> = {
     ...(statuses.length === 0 ? {} : { statuses }),
     ...(widgets.length === 0 ? {} : { widgets }),
@@ -816,6 +845,7 @@ function optionalExtensionUi(value: unknown): Pick<SessionStatus, "extensionUi">
     ...(workingFrames === undefined ? {} : { workingFrames }),
     ...(hiddenThinkingLabel === undefined ? {} : { hiddenThinkingLabel }),
     ...(title === undefined ? {} : { title }),
+    ...(triggerCharacters === undefined ? {} : { completion: { triggerCharacters } }),
   };
   return Object.keys(standing).length === 0 ? {} : { extensionUi: standing };
 }

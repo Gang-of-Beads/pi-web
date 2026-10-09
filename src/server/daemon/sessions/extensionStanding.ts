@@ -1,4 +1,5 @@
 import type { ExtensionUiStanding, ExtensionWidgetPlacement } from "../../../shared/apiTypes.js";
+import { ExtensionCompletionStack } from "./extensionCompletions.js";
 import type { ExtensionOrigin } from "./extensionOrigin.js";
 import { StandingWidgets } from "./standingWidgets.js";
 
@@ -35,6 +36,8 @@ export class ExtensionStanding {
   private readonly widgets: StandingWidgets;
   private readonly header: StandingWidgets;
   private readonly footer: StandingWidgets;
+  /** pi's `addAutocompleteProvider` stack; cleared with the widgets, header and footer when the session's extensions reload or end. */
+  readonly completions = new ExtensionCompletionStack();
 
   /** `changed` is told after every write; `theme` is what a widget factory draws with. */
   constructor(private readonly changed: () => void, options: { readonly theme?: unknown; readonly now?: () => number } = {}) {
@@ -58,6 +61,12 @@ export class ExtensionStanding {
 
   setFooter(content: unknown, origin: ExtensionOrigin | undefined, footerData: unknown): void {
     this.footer.set("footer", content, "footer", origin, [footerData]);
+    this.changed();
+  }
+
+  /** pi's `addAutocompleteProvider`: the factory wraps the session's stack; the status then names its trigger characters. */
+  addCompletionProvider(factory: unknown): void {
+    this.completions.add(factory);
     this.changed();
   }
 
@@ -112,6 +121,7 @@ export class ExtensionStanding {
     this.widgets.clear();
     this.header.clear();
     this.footer.clear();
+    this.completions.clear();
     this.workingMessage = undefined;
     this.workingHidden = false;
     this.workingFrames = undefined;
@@ -144,6 +154,7 @@ export class ExtensionStanding {
   /** The wire snapshot, or undefined when nothing stands; a component widget draws now if it is due. */
   snapshot(): ExtensionUiStanding | undefined {
     const widgets = [...this.header.snapshot(), ...this.widgets.snapshot(), ...this.footer.snapshot()];
+    const triggerCharacters = this.completions.triggerCharacters();
     const standing: ExtensionUiStanding = {
       ...(widgets.length === 0 ? {} : { widgets }),
       ...(this.statuses.size === 0 ? {} : { statuses: [...this.statuses].sort(([left], [right]) => left.localeCompare(right)).map(([key, text]) => ({ key, text })) }),
@@ -152,6 +163,7 @@ export class ExtensionStanding {
       ...(this.workingFrames === undefined ? {} : { workingFrames: [...this.workingFrames] }),
       ...(this.hiddenThinkingLabel === undefined ? {} : { hiddenThinkingLabel: this.hiddenThinkingLabel }),
       ...(this.title === undefined ? {} : { title: this.title }),
+      ...(triggerCharacters === undefined ? {} : { completion: { triggerCharacters } }),
     };
     return Object.keys(standing).length === 0 ? undefined : standing;
   }

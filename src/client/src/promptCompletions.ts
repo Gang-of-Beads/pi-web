@@ -30,6 +30,19 @@ export function detectPromptCompletionTrigger(draft: string, cursor = draft.leng
   return undefined;
 }
 
+/**
+ * Whether pi's editor would ask its autocomplete providers at the cursor (pi-insertion-points.md
+ * slice 6): a `/` opening the line, or `@`, `#` or one of the providers' trigger characters opening
+ * the token at the cursor, after a space or an opening bracket, quote or backtick.
+ */
+export function asksExtensionCompletion(draft: string, cursor: number, triggerCharacters: readonly string[]): boolean {
+  const line = draft.slice(draft.lastIndexOf("\n", cursor - 1) + 1, cursor);
+  if (/^\s*\/\S*$/u.test(line)) return true;
+  const token = /(?:^|\s)[([{<`"']*(\S*)$/u.exec(line)?.[1] ?? "";
+  const opener = token.charAt(0);
+  return opener !== "" && (opener === "@" || opener === "#" || triggerCharacters.includes(opener));
+}
+
 export interface ModelCompletionChoice {
   insertText: string;
   detail: string;

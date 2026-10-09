@@ -36,7 +36,7 @@ import {
   parseSessionEntries,
   type FileEntry,
 } from "@earendil-works/pi-coding-agent";
-import type { TranscriptHead } from "../../../shared/apiTypes.js";
+import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, TranscriptHead } from "../../../shared/apiTypes.js";
 import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
@@ -132,6 +132,7 @@ import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type C
 import { drawCustomRow, drawToolCall, drawToolResult, showsCustomEntry, transformedMarkdown, type ExtensionRenderers, type MarkdownKind } from "./extensionDrawings.js";
 import { ExtensionShortcuts, type ExtensionShortcutRunner } from "./extensionShortcuts.js";
 import { extensionFooterData } from "./extensionFooterData.js";
+import { ExtensionCompletionStack } from "./extensionCompletions.js";
 import { DECLARABLE_SCREENS, declaredScreen, refusedDeclarationSummary } from "./declaredScreen.js";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
@@ -5500,6 +5501,7 @@ export class PiSessionService implements SessionRouteService {
       setWidget,
       setHeader,
       setFooter,
+      addAutocompleteProvider: (factory: unknown) => { standing.addCompletionProvider(factory); },
       setWorkingMessage: (message?: string) => { standing.setWorkingMessage(message); },
       setWorkingVisible: (visible: boolean) => { standing.setWorkingVisible(visible); },
       setWorkingIndicator: (options?: { frames?: string[] }) => { standing.setWorkingIndicator(options); },
@@ -6276,6 +6278,25 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private readonly extensionShortcuts = new ExtensionShortcuts();
+
+  /**
+   * What the session's extension autocomplete providers suggest (pi-insertion-points.md slice 6).
+   * Only a running runtime has providers; asking never starts one, and a session without one
+   * suggests nothing, so the composer shows its own completions.
+   */
+  async extensionCompletions(ref: PiSessionRef, text: string, cursor: number, force: boolean): Promise<ExtensionCompletionSuggestions> {
+    return this.completionStackFor(ref).suggest(text, cursor, force);
+  }
+
+  /** The providers' `applyCompletion`; without a stack, pi's plain-token replacement. */
+  applyExtensionCompletion(ref: PiSessionRef, text: string, cursor: number, prefix: string, item: ExtensionCompletionItem): ExtensionCompletionApplied {
+    return this.completionStackFor(ref).apply(text, cursor, item, prefix);
+  }
+
+  private completionStackFor(ref: PiSessionRef): ExtensionCompletionStack {
+    const session = this.activeForRef(ref)?.runtime.session;
+    return session === undefined ? new ExtensionCompletionStack() : this.standingFor(session).completions;
+  }
 
   /**
    * Run one of the session's extension shortcuts (slice 4). The handler runs as pi's editor runs

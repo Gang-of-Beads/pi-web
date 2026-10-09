@@ -1,6 +1,6 @@
 import { css } from "lit";
 import type { ChatRole } from "../chatRole";
-import type { AskUserOutcome, ExtensionNoticeLevel } from "../../../shared/apiTypes";
+import type { AskUserOutcome, ExtensionCompletionItem, ExtensionNoticeLevel } from "../../../shared/apiTypes";
 
 /**
  * What every interactive control in this app owes a touch.
@@ -164,13 +164,15 @@ export interface ChatLine {
 }
 
 export interface CompletionItem {
-  kind: "command" | "file" | "model";
+  kind: "command" | "file" | "model" | "extension";
   replaceFrom: number;
   replaceTo: number;
   insertText: string;
   detail: string;
   description?: string;
   cursorOffset?: number;
+  /** An extension provider's item, applied by the session's providers against the text it was suggested for. */
+  extension?: { item: ExtensionCompletionItem; prefix: string; text: string; cursor: number };
 }
 
 /** The full-size attachment dialog, drawn the same wherever an attachment can be opened (five stylesheets carried their own copy). */

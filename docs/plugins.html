@@ -225,7 +225,7 @@
                 there); <code>getEditorText</code> returns what the session's extensions wrote, or <code>""</code>, since
                 it cannot read a browser's draft. A browser loaded before PI WEB knew <code>editor</code> draws no card for
                 it: reload the page. <code>setHeader</code> and <code>setFooter</code> show on the extension's page in Go to
-                with its widgets. <code>setEditorComponent</code>, <code>onTerminalInput</code>, autocomplete, themes and
+                with its widgets, and <code>addAutocompleteProvider</code> completes in the composer. <code>setEditorComponent</code>, <code>onTerminalInput</code>, themes and
                 tool expansion remain no-ops despite <code>hasUI === true</code>.
               </p>
               <div class="table-scroll" role="region" aria-label="ctx.ui members in PI WEB" tabindex="0">
@@ -287,7 +287,11 @@
                       <td>On the extension's page in Go to with its widgets, header first and footer last; one of each per session, the last set winning, as in pi.</td>
                     </tr>
                     <tr>
-                      <td><code>onTerminalInput</code>, <code>setEditorComponent</code>, <code>getEditorComponent</code>, <code>addAutocompleteProvider</code></td>
+                      <td><code>addAutocompleteProvider</code></td>
+                      <td>The composer's completions, asked where pi's editor would ask; the providers' items win when there are any.</td>
+                    </tr>
+                    <tr>
+                      <td><code>onTerminalInput</code>, <code>setEditorComponent</code>, <code>getEditorComponent</code></td>
                       <td>No effect: they replace pi's terminal chrome, and PI WEB draws its own.</td>
                     </tr>
                     <tr>

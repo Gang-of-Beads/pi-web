@@ -38,7 +38,7 @@ import type {
   SessionTranscriptTail,
   SessionStreamSync,
 } from "../../shared/types.js";
-import type { QueuedSessionMessage } from "../../../shared/apiTypes.js";
+import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, QueuedSessionMessage } from "../../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 import type { DelegationRequest, SpawnSessionResult, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionSummary } from "./delegation.js";
 
@@ -136,6 +136,10 @@ export interface SessionRouteService {
   abort(ref: SessionRouteRef): Promise<{ discarded: QueuedSessionMessage[] }>;
   /** Start one of the session's extension shortcuts; `unknown-shortcut` when it has none on that key. */
   runExtensionShortcut(ref: SessionRouteRef, key: string): Promise<"started" | "unknown-shortcut">;
+  /** Only a running runtime has providers: asking never starts one, and a session without one suggests nothing. */
+  extensionCompletions(ref: SessionRouteRef, text: string, cursor: number, force: boolean): Promise<ExtensionCompletionSuggestions>;
+  /** The providers' applyCompletion; without a running runtime's providers, pi's plain-token replacement. */
+  applyExtensionCompletion(ref: SessionRouteRef, text: string, cursor: number, prefix: string, item: ExtensionCompletionItem): ExtensionCompletionApplied;
   stop(ref: SessionRouteRef): void | Promise<void>;
   archive(ref: SessionRouteRef): Promise<void>;
   archiveTree(ref: SessionRouteRef): Promise<ClientArchiveSessionsResponse>;

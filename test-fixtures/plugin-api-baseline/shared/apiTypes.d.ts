@@ -876,6 +876,27 @@ export interface ExtensionShortcutInfo {
     /** The extension that registered it, by its package or file name. */
     extension: string;
 }
+/** One suggestion of a session's extension autocomplete providers: pi's `AutocompleteItem` (pi-insertion-points.md slice 6). */
+export interface ExtensionCompletionItem {
+    value: string;
+    label: string;
+    description?: string;
+}
+/**
+ * What a session's extension autocomplete providers suggest at the cursor. No items covers every case
+ * the composer treats alike, by showing its own completions: nothing suggested, a newer ask, an answer
+ * later than 2 s, a provider that failed, and a session without a running runtime.
+ */
+export interface ExtensionCompletionSuggestions {
+    /** The text before the cursor the items would replace, as the provider counts it. */
+    prefix: string;
+    items: ExtensionCompletionItem[];
+}
+/** A completion applied by the session's providers: the composer's whole text and its cursor offset. */
+export interface ExtensionCompletionApplied {
+    text: string;
+    cursor: number;
+}
 /**
  * What a session's extensions left standing through `ctx.ui` (extension-ui-counterpart.md):
  * footer statuses, widgets, the working row's words, mark and visibility, the hidden-thinking label and the
@@ -896,6 +917,10 @@ export interface ExtensionUiStanding {
     workingFrames?: string[];
     hiddenThinkingLabel?: string;
     title?: string;
+    /** Present while the session's extensions stack an autocomplete provider; the characters it also triggers on. */
+    completion?: {
+        triggerCharacters: string[];
+    };
 }
 /** The level of an extension's `ctx.ui.notify`, as pi's terminal draws it. */
 export type ExtensionNoticeLevel = "info" | "warning" | "error";

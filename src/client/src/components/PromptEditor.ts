@@ -17,7 +17,7 @@ import { capturePromptAttachments, effectivePromptAttachmentDelivery, isInlinePr
 import { dataTransferHasFiles, filesFromDataTransfer } from "../fileDrop";
 import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputModes";
 import { machineSessionKey } from "../machineKeys";
-import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
+import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { addToHeldComposerAttachments, holdComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
 import { advancePendingPrompt, isNetworkFailure, linkReportedOffline, loadPendingPrompts, markUnansweredPrompt, NetworkSendError, replaysRecord, reserveAcceptedPrompt, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
@@ -964,18 +964,58 @@ export class PromptEditor extends LitElement {
     void this.refreshCompletions();
   }
 
+  /**
+   * The list at the cursor. A session whose extensions stack an autocomplete provider is asked
+   * alongside the composer's own completions, and its items win when it has any, as pi's editor
+   * asks the stack before its built-in provider (pi-insertion-points.md slice 6).
+   */
   private async refreshCompletions() {
     const trigger = this.currentTrigger();
     const version = ++this.requestVersion;
     this.selectedIndex = 0;
-    if (trigger === undefined) {
+    const extensionAsk = this.extensionCompletionAsk();
+    if (trigger === undefined && extensionAsk === undefined) {
       this.completions = [];
       return;
     }
+    const [extension, own] = await Promise.all([extensionAsk ?? Promise.resolve([]), this.ownCompletions(trigger)]);
+    if (version !== this.requestVersion) return;
+    if (extension.length > 0) this.completions = extension;
+    else if (own !== undefined) this.completions = own;
+  }
+
+  /** The session's extension autocomplete providers' items at the cursor; undefined when pi's editor would not ask them here. */
+  private extensionCompletionAsk(): Promise<CompletionItem[]> | undefined {
+    const status = this.status;
+    const triggerCharacters = status?.sessionId === this.sessionId ? status?.extensionUi?.completion?.triggerCharacters : undefined;
+    const sessionId = this.sessionId;
+    const cwd = this.cwd;
+    const text = this.draft;
+    const cursor = this.editor?.state.selection.main.head ?? text.length;
+    if (triggerCharacters === undefined || sessionId === undefined || sessionId === "" || cwd === undefined || cwd === "" || !asksExtensionCompletion(text, cursor, triggerCharacters)) return undefined;
+    return api.extensionCompletions({ id: sessionId, cwd }, { text, cursor }, this.machineId)
+      .then((answer) => answer.items.map((item): CompletionItem => ({
+        kind: "extension",
+        replaceFrom: cursor,
+        replaceTo: cursor,
+        insertText: item.label,
+        detail: "",
+        ...(item.description === undefined ? {} : { description: item.description }),
+        extension: { item, prefix: answer.prefix, text, cursor },
+      })))
+      .catch((): CompletionItem[] => []);
+  }
+
+  /**
+   * The composer's own completions for the trigger: none without a trigger, which clears the list;
+   * undefined when the trigger needs a session or workspace the composer does not have, which leaves
+   * the list as it is, as before extension providers were asked.
+   */
+  private async ownCompletions(trigger: PromptCompletionTrigger | undefined): Promise<CompletionItem[] | undefined> {
+    if (trigger === undefined) return [];
     if (trigger.kind === "command" && this.sessionId !== undefined && this.sessionId !== "" && this.cwd !== undefined && this.cwd !== "") {
       const commands = await api.commands({ id: this.sessionId, cwd: this.cwd }, this.machineId).catch(emptySlashCommands);
-      if (version !== this.requestVersion) return;
-      this.completions = commands
+      return commands
         .filter((command) => command.name.toLowerCase().includes(trigger.query.toLowerCase()))
         .slice(0, 12)
         .map((command) => ({
@@ -988,8 +1028,7 @@ export class PromptEditor extends LitElement {
         }));
     } else if (trigger.kind === "file" && this.projectId !== undefined && this.workspaceId !== undefined) {
       const files = await api.files(trigger.query, { scope: trigger.fileScope, machineId: this.machineId, projectId: this.projectId, workspaceId: this.workspaceId }).catch(emptyFileSuggestions);
-      if (version !== this.requestVersion) return;
-      this.completions = files
+      return files
         .slice(0, 12)
         .map((file) => {
           const insertText = fileCompletionInsertText(file.path, trigger.quoted === true, file.path.endsWith("/") ? trigger.allPrefix : undefined);
@@ -1004,13 +1043,40 @@ export class PromptEditor extends LitElement {
         });
     } else if (trigger.kind === "model" && this.sessionId !== undefined && this.sessionId !== "" && this.cwd !== undefined && this.cwd !== "") {
       const models = await api.models({ id: this.sessionId, cwd: this.cwd }, this.machineId).then((response) => response.models).catch(emptySessionModels);
-      if (version !== this.requestVersion) return;
-      this.completions = modelCompletionChoices(models, trigger.query).map((choice) => ({
+      return modelCompletionChoices(models, trigger.query).map((choice) => ({
         kind: "model",
         replaceFrom: trigger.from,
         replaceTo: trigger.to,
         ...choice,
       }));
+    }
+    return undefined;
+  }
+
+  /**
+   * Applies an extension item through the session's providers, against the text it was suggested
+   * for; a draft or session changed meanwhile keeps the reader's typing, and a failed apply says so.
+   */
+  private async pickExtension(choice: NonNullable<CompletionItem["extension"]>) {
+    this.completions = [];
+    const sessionId = this.sessionId;
+    const cwd = this.cwd;
+    const machineId = this.machineId;
+    if (sessionId === undefined || cwd === undefined) {
+      this.onPluginNotice?.("The completion could not be applied: no session is selected.", "error");
+      return;
+    }
+    try {
+      const applied = await api.applyExtensionCompletion({ id: sessionId, cwd }, { text: choice.text, cursor: choice.cursor, prefix: choice.prefix, item: choice.item }, machineId);
+      const editor = this.editor;
+      if (editor === undefined || this.sessionId !== sessionId || this.cwd !== cwd || this.machineId !== machineId || this.draft !== choice.text) return;
+      editor.dispatch({
+        changes: { from: 0, to: editor.state.doc.length, insert: applied.text },
+        selection: this.cm !== undefined ? this.cm.cursorAt(applied.cursor) : undefined,
+        scrollIntoView: true,
+      });
+    } catch (error) {
+      this.onPluginNotice?.(`The completion could not be applied: ${error instanceof Error ? error.message : String(error)}`, "error");
     }
   }
 
@@ -1127,6 +1193,10 @@ export class PromptEditor extends LitElement {
   }
 
   private pick(item: CompletionItem) {
+    if (item.extension !== undefined) {
+      void this.pickExtension(item.extension);
+      return;
+    }
     const editor = this.editor;
     if (!editor) return;
     const suffix = item.kind === "file" && (item.insertText.endsWith("/") || item.cursorOffset !== undefined) ? "" : " ";
