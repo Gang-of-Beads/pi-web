@@ -61,10 +61,40 @@ Enable and disable run the plugin's hooks **live**, in a fixed order, with no re
 - **Disabling Subagents** hides its drawer section and its supervisor card, and stops its reads and its count. Enabling it brings them back, live.
 - The pi extension (`pi-subagents`) is a separate thing the user installs in pi. The plugin reports it as `absent` when no loaded extension registers the `subagent` tool.
 
+### 3. Background tasks move out of core too (owner, 2026-10-09)
+
+Owner, on `PiWebApp.refreshSubagents`: "你是不是又在pi web代码里对特定的extension做兼容了？" and "如果只是命名问题，要重视一下边界" (are we again special-casing a specific extension in core; a wrong name is a boundary problem). The name was wrong: the method reads background tasks, not subagents. Behind it, core reads the private registry of one third-party extension, **pi-background-tasks** (the npm package behind `bg_run`; its `src/core/registry.ts` owns `<cwd>/.pi/tasks/<sessionId | session-<pid>>-<pid>/<taskId>.json`).
+
+**The boundary.** Core knows pi (its session files, events, `.pi/sessions`) and PI WEB's own features (subsessions, ask_user, the delegation routes). It never parses an extension's private files, never names an extension's tools, and never carries an extension's record shape in its own types or in the plugin API. Support for a particular extension is a plugin, which a reader can turn off, and turning it off removes every trace of it: panel, count, watch, reads. A name in core that says what it does not do is a boundary leak too, and is fixed with it.
+
+Every place core crossed it, found 2026-10-09:
+
+| Core today | Moves to |
+|---|---|
+| `daemon/sessions/backgroundTasks.ts` (427 lines): the registry reader, process liveness, the ownership file it writes beside the registry | `pi-web-plugins/background-runs/server/tasks.ts` |
+| Routes `GET /sessions/:id/background-tasks` and `/background-tasks/:taskId/output`, the `SessionService` methods, the closed-session read | Operations `tasks.list` and `tasks.output` of the plugin's server half |
+| `backgroundTaskProbes` in `backgroundRunCount.ts`: core counts the tasks | The plugin's `backgroundWork` answer (slice 1's hook) |
+| `backgroundWorkWatcher` watches `<cwd>/.pi` for the registry and the session directory for subagent artifacts | Plugin-declared work paths (below), shared with Subagents (B20 slice 3) |
+| `ACTIVITY_TOOL_NAMES` in `piSessionService.ts`: `subagent`, `bg_run`, `bg_run_pi_attested`, `bg_kill`, `fusion_*`, and `spawn_subsession` (a PI WEB tool removed by no-builtin-agent-tools) | Plugin-declared work tools (below); the dead name goes |
+| `workspaceChangeFilter` ignores `.pi/tasks` and `.pi/delegate` by name | Ignores every declared work path; `.pi/sessions` (pi's own) stays core |
+| `SessionBackgroundTaskInfo`, `BackgroundTasksRead` in `apiTypes`; `PluginRuntimeState.backgroundTasks` / `backgroundTasksRead` in the plugin API | The plugin's own types; the two `PluginRuntimeState` fields are removed (a plugin-API change; only background-runs reads them) |
+| `PiWebApp`: `refreshSubagents`, `updateSubagentPolling`, `subagentRefreshArmedFor`, `readBackgroundTasks`; `AppState.backgroundTasks` / `backgroundTasksRead`; `onBackgroundRunCountChanged` | The plugin's own read loop, polling only while the session works, as the Subagents panel does (`runsPolling`) |
+| Two docstrings left from the subagent rows (`PiWebApp` above `handleRecallQueuedMessage`, `ChatView` above `renderImageZoom`) | Deleted: they describe code that is gone and sit on the wrong members |
+
+**What a plugin declares** (extends `agentFacts`, which already carries `surfaces` and `injectedTurns`):
+
+- `workPaths`: where its extension writes background work, as `{ root: "cwd" | "session-dir" | "session-stem", path }`. The daemon watches them to recount (`recountBackgroundRuns`), and the workspace watcher treats them as noise. Background runs: `{ root: "cwd", path: ".pi/tasks" }`, `{ root: "cwd", path: ".pi/delegate" }`. Subagents: `{ root: "session-dir", path: "subagent-artifacts" }`, `{ root: "session-stem", path: "" }`.
+- `workTools`: tools whose start or end changes background work. The daemon recounts and publishes `activity.changed` when one of them starts or ends, for any active plugin; with none declared, nothing is named. Background runs: `bg_run`, `bg_run_pi_attested`, `bg_kill`, `fusion_reason`, `fusion_investigate`, `fusion_research`, `fusion_validate`. Subagents: `subagent`.
+
+**What the reader sees does not change**: the Background panel lists the same tasks, the count says the same number, and output opens. Turning the Background runs plugin off removes its panel and its share of the count at once (slice 1's recount), and turning it on brings both back.
+
+**Slices.** (a) The declarations and the watcher reading them, Subagents moved onto them (B20 slice 3). (b) The background-runs server half with `tasks.list`, `tasks.output` and `backgroundWork`; the browser half reads through it. (c) Core's reader, routes, types, state and the misnamed poll deleted. Each slice keeps the panel and the count working on 8505, checked old against new.
+
 ## Order
 
 1. The lifecycle contract, the live toggle, the documentation and the conformance kit. Every plugin gains from them, and Subagents is their first real customer.
 2. The `backgroundWork` contribution, then the Subagents extraction, with a guard test that fails if core names subagents again.
+3. Work paths and work tools declared by plugins (B20 slice 3), then background tasks out of core (§3).
 
 ## Slices (2026-10-09)
 
