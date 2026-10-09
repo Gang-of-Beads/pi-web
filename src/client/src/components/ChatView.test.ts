@@ -4,9 +4,6 @@ import type { QueuedSessionMessage, SessionStatus } from "../api";
 import type { ChatLine } from "./shared";
 import {
   ChatView,
-  chatEventAnchorKey,
-  chatGroupAnchorKey,
-  chatGroupScrollMarkerId,
   chatMessageGroupClassName,
   chatMessageGroupLabel,
   chatMessageMetadataLabel,
@@ -14,6 +11,7 @@ import {
   chatDeliveryPresentation,
 } from "./ChatView";
 import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker, templateText } from "../templateInspection.testSupport";
+import { groupEventKey, groupMarkerKey, groupRowKey } from "../rowIdentity";
 
 describe("chatDeliveryPresentation", () => {
   it("reads Received once the server has it, and has no words once the agent took it", () => {
@@ -233,10 +231,10 @@ describe("chat event-group content seams", () => {
   // content/structure derived from pure exported seams rather than scraped from
   // rendered markup.
   it("derives stable group and event scroll-anchor keys and marker ids", () => {
-    expect(chatGroupAnchorKey(40)).toBe("g:40");
-    expect(chatEventAnchorKey(40)).toBe("e:40");
-    expect(chatEventAnchorKey(41)).toBe("e:41");
-    expect(chatGroupScrollMarkerId(41)).toBe("g:41");
+    expect(groupRowKey("e:entry-40")).toBe("g:e:entry-40");
+    expect(groupEventKey("e:entry-40")).toBe("ev:e:entry-40");
+    expect(groupEventKey("t:call-41")).toBe("ev:t:call-41");
+    expect(groupMarkerKey("t:call-41")).toBe("g:t:call-41");
   });
 
   it("distinguishes the live tail group by class and disclosure label", () => {
@@ -303,8 +301,8 @@ interface GroupBodyRenderCall {
 }
 
 type RenderQueuedMessages = (this: ChatView) => TemplateResult;
-type RenderMessageGroup = (this: ChatView, messages: ChatLine[], startIndex: number, endIndex: number, defaultOpen: boolean) => TemplateResult;
-type RenderMessageGroupBody = (this: ChatView, messages: ChatLine[], startIndex: number) => TemplateResult;
+type RenderMessageGroup = (this: ChatView, group: { kind: "group"; messages: ChatLine[]; startIndex: number; endIndex: number }, memberKeys: readonly string[], defaultOpen: boolean) => TemplateResult;
+type RenderMessageGroupBody = (this: ChatView, messages: ChatLine[], startIndex: number, memberKeys: readonly string[]) => TemplateResult;
 type TemplateEventHandler = (event: Event) => void;
 
 /** The transcript half of the split, reached the same way as the dock half. */
@@ -353,7 +351,8 @@ function renderQueuedMessages(view: ChatView): TemplateResult {
 function renderMessageGroup(view: ChatView, messages: ChatLine[], startIndex: number, endIndex: number, defaultOpen: boolean): TemplateResult {
   const method: unknown = Reflect.get(view, "renderMessageGroup");
   if (!isRenderMessageGroup(method)) throw new Error("ChatView.renderMessageGroup is not callable");
-  return method.call(view, messages, startIndex, endIndex, defaultOpen);
+  const memberKeys = messages.map((_, offset) => `p:${String(startIndex + offset)}`);
+  return method.call(view, { kind: "group", messages, startIndex, endIndex }, memberKeys, defaultOpen);
 }
 
 
@@ -361,9 +360,9 @@ function observeGroupBodyRenders(view: ChatView): GroupBodyRenderCall[] {
   const method: unknown = Reflect.get(view, "renderMessageGroupBody");
   if (!isRenderMessageGroupBody(method)) throw new Error("ChatView.renderMessageGroupBody is not callable");
   const calls: GroupBodyRenderCall[] = [];
-  const observed: RenderMessageGroupBody = function (messages, startIndex) {
+  const observed: RenderMessageGroupBody = function (messages, startIndex, memberKeys) {
     calls.push({ messages, startIndex });
-    return method.call(this, messages, startIndex);
+    return method.call(this, messages, startIndex, memberKeys);
   };
   if (!Reflect.set(view, "renderMessageGroupBody", observed)) throw new Error("Could not observe ChatView.renderMessageGroupBody");
   return calls;

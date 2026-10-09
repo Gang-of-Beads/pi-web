@@ -1,4 +1,5 @@
 import { browserLocalStorage } from "./browserLocalStorage";
+import { isPositionalRowKey } from "./rowIdentity";
 
 export type ChatScrollPosition = ChatBottomScrollPosition | ChatAnchorScrollPosition;
 
@@ -231,7 +232,16 @@ export function captureScrollPosition(scroller: ChatScrollViewport, anchor: Chat
   };
 }
 
+/**
+ * The row a save names. A row known only by its place (a reply still streaming, a live custom message)
+ * is named only when no other row is in view: its key does not survive a reload (rowIdentity.ts).
+ */
 export function findVisibleScrollAnchor<T extends ChatScrollElement>(scroller: ChatScrollViewport, anchors: T[]): T | undefined {
+  const lasting = anchors.filter((anchor) => !isPositionalRowKey(anchorIdForElement(anchor) ?? ""));
+  return nearestVisibleAnchor(scroller, lasting) ?? nearestVisibleAnchor(scroller, anchors);
+}
+
+function nearestVisibleAnchor<T extends ChatScrollElement>(scroller: ChatScrollViewport, anchors: readonly T[]): T | undefined {
   const scrollerRect = scroller.getBoundingClientRect();
   let nearestAbove: T | undefined;
   let nearestAboveOffset = Number.NEGATIVE_INFINITY;

@@ -122,6 +122,8 @@ export interface ChatLine {
     timestamp?: string;
     /** The provider's id for the reply this line belongs to; see messageIdentity.ts. */
     responseId?: string;
+    /** The daemon's id for the history entry this line was read from; a row with no other identity is keyed by it (rowIdentity.ts). */
+    entryId?: string;
     /** Built from an assistant reply that ended in an error; see retriedAttempt.ts. */
     failedAttempt?: true;
     /** A model error's provider text, whole, shown behind Details under the row's sentence (B34). */

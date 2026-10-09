@@ -4,11 +4,11 @@ import type { ChatLine } from "./shared";
 import {
   ChatView,
   chatImagePartSource,
-  chatMessageAnchorKey,
   chatToolOutputLabel,
   withRetryNonce,
 } from "./ChatView";
 import { templateEventHandlerAfterMarker, templateStrings, templateValuesAfterMarker } from "../templateInspection.testSupport";
+import { rowKeys } from "../rowIdentity";
 
 describe("ChatView image content derivation", () => {
   // Content/attribute derivation (image src/alt, the tool-output header label,
@@ -41,7 +41,8 @@ describe("ChatView image content derivation", () => {
   });
 
   it("keys a tool image message to its stable scroll anchor", () => {
-    expect(chatMessageAnchorKey(7)).toBe("m:7");
+    const image: ChatLine = { role: "tool", parts: [{ type: "image", mimeType: "image/png", data: "AA==" }], meta: { entryId: "entry-7" } };
+    expect(rowKeys([{ lines: [image], firstIndex: 7 }])).toEqual([["e:entry-7"]]);
   });
 });
 

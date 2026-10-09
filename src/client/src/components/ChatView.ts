@@ -12,6 +12,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { ChatDisclosureController } from "../chatDisclosure";
 import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type ChatGroup } from "../chatGroups";
+import { groupEventKey, groupMarkerKey, groupRowKey, positionalRowKey, rowKeys } from "../rowIdentity";
 import { extensionNoticeOf, NOTICE_PREFIX, type ExtensionNoticePart } from "../extensionNotices";
 import { writeClipboardText } from "../clipboard";
 import { followScrollVerdict } from "../followScrollAdoption.js";
@@ -574,26 +575,6 @@ export function chatImagePartSource(part: ChatImagePart, scope?: { session: Sess
 /** The message-header label used when a tool message renders as an image output. */
 export function chatToolOutputLabel(toolName?: string): string {
   return toolName === undefined || toolName === "" ? "tool output" : `${toolName} output`;
-}
-
-/** The stable scroll-anchor/render key for a top-level message at `index`. */
-export function chatMessageAnchorKey(index: number): string {
-  return `m:${String(index)}`;
-}
-
-/** The stable scroll-anchor/render key for a collapsed event group starting at `startIndex`. */
-export function chatGroupAnchorKey(startIndex: number): string {
-  return `g:${String(startIndex)}`;
-}
-
-/** The stable scroll-anchor key for an event inside a group at `index`. */
-export function chatEventAnchorKey(index: number): string {
-  return `e:${String(index)}`;
-}
-
-/** The stable scroll-marker id emitted before an event group ending at `endIndex`. */
-export function chatGroupScrollMarkerId(endIndex: number): string {
-  return `g:${String(endIndex)}`;
 }
 
 /** The CSS class list for an event-group `<details>`, distinguishing the live tail. */
@@ -1285,7 +1266,11 @@ export class ChatView extends LitElement {
   }
 
   override render() {
-    const groups = this.groupedMessages();
+    const split = this.transcriptSplit();
+    const groups = this.groupedMessages(split.settled);
+    const pendingStart = this.messageStart + this.messages.length;
+    const [settledKeys = [], pendingKeys = []] = rowKeys([{ lines: split.settled, firstIndex: this.messageStart }, { lines: split.pending, firstIndex: pendingStart }]);
+    const keyOf = (index: number) => settledKeys[index - this.messageStart] ?? positionalRowKey(index);
     const commands = placeCommands(this.commandLedger, groups.map((group) => this.groupTimestamp(group)));
     return html`
       ${this.renderQuoteChip()}
@@ -1294,17 +1279,17 @@ export class ChatView extends LitElement {
           ${this.renderHistoryBoundary()}
           ${repeat(
             groups,
-            (group) => group.kind === "group" ? this.groupRenderKey(group.startIndex) : this.messageAnchorKey(group.index),
+            (group) => group.kind === "group" ? groupRowKey(keyOf(group.startIndex)) : keyOf(group.index),
             (group, index) => {
               const before = this.renderCommandRows(commands.before.get(index) ?? []);
-              if (group.kind === "group") return html`${before}${this.renderMessageGroup(group.messages, group.startIndex, group.endIndex, this.isLiveTailGroup(groups, index))}`;
-              if (group.kind === "tool-image") return html`${before}${this.renderToolImageOutput(group.message, group.index, group.toolName)}`;
-              return html`${before}${this.renderMessage(group.message, group.index)}`;
+              if (group.kind === "group") return html`${before}${this.renderMessageGroup(group, group.messages.map((_, offset) => keyOf(group.startIndex + offset)), this.isLiveTailGroup(groups, index))}`;
+              if (group.kind === "tool-image") return html`${before}${this.renderToolImageOutput(group.message, group.index, keyOf(group.index), group.toolName)}`;
+              return html`${before}${this.renderMessage(group.message, group.index, keyOf(group.index))}`;
             },
           )}
           ${this.renderNewerBoundary()}
           ${this.renderSessionActivity()}
-          ${this.renderPendingMessages(commands.tail)}
+          ${this.renderPendingMessages(commands.tail, split.pending, pendingStart, pendingKeys)}
           ${this.renderQueuedMessages()}
           ${this.renderClosedDialogs()}
           ${this.renderWaitingForYou()}
@@ -1436,8 +1421,7 @@ export class ChatView extends LitElement {
     return now > was;
   }
 
-  private groupedMessages(): ChatGroup[] {
-    const source = this.transcriptMessages();
+  private groupedMessages(source: ChatLine[]): ChatGroup[] {
     if (this.groupedMessagesInput === source && this.groupedMessagesStart === this.messageStart) return this.groupedMessagesCache;
     const previous = this.groupedMessagesInput;
     if (this.groupedMessagesStart === this.messageStart && previous !== undefined) {
@@ -1602,11 +1586,10 @@ export class ChatView extends LitElement {
    * them by issue time, the rule `placeCommands` already applies to the settled groups. Drawn before
    * the whole block, a command issued after a waiting message stood above it (B2 review 1b6f1553).
    */
-  private renderPendingMessages(tailCommands: readonly CommandLedgerEntry[]) {
-    const pending = this.transcriptSplit().pending;
+  private renderPendingMessages(tailCommands: readonly CommandLedgerEntry[], pending: readonly ChatLine[], base: number, keys: readonly string[]) {
     const commands = placeCommands(tailCommands, pending.map((line) => lineTimestamp(line)));
-    const base = this.messageStart + this.messages.length;
-    return html`${repeat(pending, (line, index) => this.messageAnchorKey(base + index), (line, index) => html`${this.renderCommandRows(commands.before.get(index) ?? [])}${this.renderMessage(line, base + index)}`)}${this.renderCommandRows(commands.tail)}`;
+    const keyOf = (index: number) => keys[index] ?? positionalRowKey(base + index);
+    return html`${repeat(pending, (_line, index) => keyOf(index), (line, index) => html`${this.renderCommandRows(commands.before.get(index) ?? [])}${this.renderMessage(line, base + index, keyOf(index))}`)}${this.renderCommandRows(commands.tail)}`;
   }
 
   private renderQueuedMessages() {
@@ -1980,17 +1963,17 @@ export class ChatView extends LitElement {
     }
   }
 
-  private renderMessage(message: ChatLine, index: number) {
+  private renderMessage(message: ChatLine, index: number, key: string) {
     const notice = extensionNoticeOf(message);
-    if (notice !== undefined) return html`${this.renderScrollMarker(this.messageScrollMarkerId(index))}<div class="msg-notice" data-index=${index} data-scroll-anchor-id=${this.messageAnchorKey(index)}>${this.renderExtensionNotice(notice)}</div>`;
+    if (notice !== undefined) return html`${this.renderScrollMarker(key)}<div class="msg-notice" data-index=${index} data-scroll-anchor-id=${key}>${this.renderExtensionNotice(notice)}</div>`;
     const toolOnly = this.isToolExecutionOnlyMessage(message);
     const askUserRecordOnly = this.isAskUserRecordOnlyMessage(message);
     const shellClass = toolOnly ? "msg tool-execution-shell" : "msg ask-user-record-shell";
     const queuedClass = this.isQueuedLine(message) ? " queued" : "";
     return html`
-      ${this.renderScrollMarker(this.messageScrollMarkerId(index))}
-      <article class=${toolOnly || askUserRecordOnly ? shellClass : `msg ${message.role}${queuedClass}`} data-index=${index} data-scroll-anchor-id=${this.messageAnchorKey(index)}>
-        ${toolOnly || askUserRecordOnly ? null : this.renderMessageHeader(message, String(index))}
+      ${this.renderScrollMarker(key)}
+      <article class=${toolOnly || askUserRecordOnly ? shellClass : `msg ${message.role}${queuedClass}`} data-index=${index} data-scroll-anchor-id=${key}>
+        ${toolOnly || askUserRecordOnly ? null : this.renderMessageHeader(message, key)}
         ${message.parts.map((part) => this.renderPart(part, message))}
         ${this.renderFailureDetail(message)}
         ${this.renderDeliveryMark(message)}
@@ -1998,12 +1981,12 @@ export class ChatView extends LitElement {
     `;
   }
 
-  private renderToolImageOutput(message: ChatLine, index: number, toolName?: string) {
+  private renderToolImageOutput(message: ChatLine, index: number, key: string, toolName?: string) {
     const label = chatToolOutputLabel(toolName);
     return html`
-      ${this.renderScrollMarker(this.messageScrollMarkerId(index))}
-      <article class="msg tool-image-output" data-index=${index} data-scroll-anchor-id=${this.messageAnchorKey(index)}>
-        ${this.renderMessageHeader(message, String(index), label)}
+      ${this.renderScrollMarker(key)}
+      <article class="msg tool-image-output" data-index=${index} data-scroll-anchor-id=${key}>
+        ${this.renderMessageHeader(message, key, label)}
         ${message.parts.map((part) => this.renderPart(part, message))}
       </article>
     `;
@@ -2017,29 +2000,33 @@ export class ChatView extends LitElement {
     return message.parts.length > 0 && message.parts.every((part) => part.type === "askUserRecord");
   }
 
-  private renderMessageGroup(messages: ChatLine[], startIndex: number, endIndex: number, defaultOpen: boolean) {
-    const disclosureKey = this.groupDisclosureKey(startIndex, endIndex, defaultOpen);
+  private renderMessageGroup(group: Extract<ChatGroup, { kind: "group" }>, memberKeys: readonly string[], defaultOpen: boolean) {
+    const { messages, startIndex } = group;
+    const firstKey = memberKeys[0] ?? positionalRowKey(startIndex);
+    const lastKey = memberKeys.at(-1) ?? positionalRowKey(group.endIndex);
+    const disclosureKey = this.groupDisclosureKey(firstKey, lastKey, defaultOpen);
     const open = this.disclosures.isOpen(disclosureKey, defaultOpen);
     return html`
-      ${this.renderScrollMarker(this.groupScrollMarkerId(endIndex))}
-      <details class=${chatMessageGroupClassName(defaultOpen)} data-index=${startIndex} data-scroll-anchor-id=${this.groupAnchorKey(startIndex)} ?open=${open} @toggle=${(event: Event) => { this.onGroupToggle(disclosureKey, event, defaultOpen); }}>
+      ${this.renderScrollMarker(groupMarkerKey(lastKey))}
+      <details class=${chatMessageGroupClassName(defaultOpen)} data-index=${startIndex} data-scroll-anchor-id=${groupRowKey(firstKey)} ?open=${open} @toggle=${(event: Event) => { this.onGroupToggle(disclosureKey, event, defaultOpen); }}>
         <summary>
           <b class="label">${chatMessageGroupLabel(defaultOpen)}</b>
           <span>${summarizeChatGroup(messages)}</span>
         </summary>
-        ${open ? this.renderMessageGroupBody(messages, startIndex) : null}
+        ${open ? this.renderMessageGroupBody(messages, startIndex, memberKeys) : null}
       </details>
     `;
   }
 
-  private renderMessageGroupBody(messages: ChatLine[], startIndex: number) {
+  private renderMessageGroupBody(messages: ChatLine[], startIndex: number, memberKeys: readonly string[]) {
     return html`
       <div class="group-body">
         ${messages.map((message, offset) => {
           const toolOnly = this.isToolExecutionOnlyMessage(message);
+          const key = groupEventKey(memberKeys[offset] ?? positionalRowKey(startIndex + offset));
           return html`
-            <section class=${toolOnly ? "group-msg tool-execution-shell" : `group-msg ${message.role}`} data-index=${startIndex + offset} data-scroll-anchor-id=${this.eventAnchorKey(startIndex + offset)}>
-              ${toolOnly ? null : this.renderMessageHeader(message, `${String(startIndex)}:${String(offset)}`)}
+            <section class=${toolOnly ? "group-msg tool-execution-shell" : `group-msg ${message.role}`} data-index=${startIndex + offset} data-scroll-anchor-id=${key}>
+              ${toolOnly ? null : this.renderMessageHeader(message, key)}
               ${message.parts.map((part) => this.renderPart(part, message))}
               ${this.renderFailureDetail(message)}
             </section>
@@ -2873,32 +2860,9 @@ export class ChatView extends LitElement {
     });
   }
 
-  private groupDisclosureKey(startIndex: number, endIndex: number, defaultOpen: boolean): string {
-    return defaultOpen ? `${this.sessionId}:live:${String(startIndex)}` : `${this.sessionId}:${String(endIndex)}`;
-  }
-
-  private messageAnchorKey(index: number): string {
-    return chatMessageAnchorKey(index);
-  }
-
-  private groupRenderKey(startIndex: number): string {
-    return chatGroupAnchorKey(startIndex);
-  }
-
-  private groupAnchorKey(startIndex: number): string {
-    return chatGroupAnchorKey(startIndex);
-  }
-
-  private eventAnchorKey(index: number): string {
-    return chatEventAnchorKey(index);
-  }
-
-  private messageScrollMarkerId(index: number): string {
-    return chatMessageAnchorKey(index);
-  }
-
-  private groupScrollMarkerId(endIndex: number): string {
-    return chatGroupScrollMarkerId(endIndex);
+  /** The live group is named by its first event, which stays put while events join; a finished group by its last, which stays put while older events join. */
+  private groupDisclosureKey(firstKey: string, lastKey: string, defaultOpen: boolean): string {
+    return defaultOpen ? `${this.sessionId}:live:${firstKey}` : `${this.sessionId}:${lastKey}`;
   }
 
   static override styles = chatStyles;

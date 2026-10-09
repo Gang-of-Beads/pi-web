@@ -9,7 +9,8 @@ import { ChatView } from "./ChatView";
  * per-row UI state that hangs off it (expanded metadata, the copied-message
  * highlight).
  *
- * Settled rows are keyed from the window's absolute offset, `messageStart + i`.
+ * A row with no identity of its own is keyed by its place, `p:<messageStart + i>`; a queued row by
+ * the id the register gives it (rowIdentity.ts).
  * Pending rows were keyed from `messages.length + i` with no offset, so the two
  * ranges overlapped as soon as the reader had loaded earlier history once:
  * anchors resolved to the wrong row, and a message moving from pending to
@@ -56,25 +57,21 @@ describe("pending rows share one key space with settled rows", () => {
   it("gives every rendered row a distinct anchor id after earlier history was loaded", async () => {
     const view = await mount(40, [userLine("one"), userLine("two")], [{ kind: "steer", text: "three" }]);
 
-    const ids = anchorIds(view).filter((id) => id.startsWith("m:"));
+    const ids = anchorIds(view);
 
+    expect(ids).toHaveLength(3);
     expect(new Set(ids).size, `duplicate anchor ids: ${ids.join(", ")}`).toBe(ids.length);
   });
 
   it("keys a pending row beyond the window's own offset", async () => {
     const view = await mount(40, [userLine("one"), userLine("two")], [{ kind: "steer", text: "three" }]);
 
-    const ids = anchorIds(view).filter((id) => id.startsWith("m:"));
-    const indexes = ids.map((id) => Number(id.slice(2)));
-
-    expect(Math.min(...indexes)).toBeGreaterThanOrEqual(40);
+    expect(anchorIds(view)).toEqual(["p:40", "p:41", "u:queued:steer:0"]);
   });
 
   it("keeps distinct ids when the window starts at zero", async () => {
     const view = await mount(0, [userLine("one")], [{ kind: "steer", text: "two" }]);
 
-    const ids = anchorIds(view).filter((id) => id.startsWith("m:"));
-
-    expect(new Set(ids).size).toBe(ids.length);
+    expect(anchorIds(view)).toEqual(["p:0", "u:queued:steer:0"]);
   });
 });

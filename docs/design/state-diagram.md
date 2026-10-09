@@ -349,12 +349,14 @@ stateDiagram-v2
   2. `t:<toolCallId>`: a tool row.
   3. `r:<responseId>`: an assistant reply that carries the provider's response id.
   4. `e:<entryId>`: any other row read from history. The daemon already sends each history message's entry id (`withEntryId`); the page keeps it on the line instead of dropping it.
-  5. `p:<index>`: only a live row with none of these yet, such as a streaming reply before its `message_end` or a live custom message.
+  5. `p:<index>`: only a live row with none of these yet, such as a streaming reply before its response id arrives or a live custom message. A provider that sends the id only at the end changes the row's key once, at `message_end`.
 
-  - **Collisions.** Two rows can share an identity (two lines of one reply carry one `responseId`). The second and later get `#<n>`, counted in transcript order, so keys stay unique and stable as long as rows are only appended.
-  - **A group** is keyed by its first member's key, prefixed `g:`.
+  - **Collisions.** Two rows share an identity only when they come from one message (the lines a reply is split into carry its `responseId` and entry id). The second and later get `#<n>`, counted in transcript order, so keys stay unique. A page never splits a message, so a page of older history loaded above does not renumber them; a provider that reused one response id across replies would (the 8505 probe model does).
+  - **A queued message with no id of its own** (sent by a client that mints none) keeps the register's synthesized id `queued:<kind>:<position>`, so its key moves when the queue ahead of it drains, as it did before.
+  - **A group** is keyed by its first member's key, prefixed `g:`: events join a group at its end. The scroll marker before it is named by its last member, also `g:`, because a prepended page joins older events at its start. An event inside a group is `ev:` plus its line's key, since the same line can also draw a readable row, which owns the plain key.
+  - **Per-row state follows the key**: the copy highlight, the open metadata, and a group's disclosure (the live group by its first member, a finished group by its last). The code is `rowIdentity.ts`.
   - **Saving a position** prefers a visible row whose key is not `p:`, because a `p:` key does not survive a reload.
-  - **Migration.** A saved `m:<index>` or `g:<index>` anchor no longer matches anything. The restore finds the anchor gone and lands at the bottom once (`restoring --> following`), as for any missing anchor.
+  - **Migration.** A saved `m:<index>` or `g:<index>` anchor no longer matches anything. The restore finds the anchor gone and lands at the bottom once (`restoring --> following`), as for any missing anchor. A group opened under its old position key shows closed once.
 
 ## D5. Page sync and the socket
 
