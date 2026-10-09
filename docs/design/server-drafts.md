@@ -17,11 +17,76 @@ Review 1005 found the loss; the owner asked whether caching on the server would 
 - **Coverage: everything** - the text draft, composer attachments, and an open extension input dialog's typed answer.
 - **Order: after** the extension UI counterpart, the PI WEB updates plugin and message states.
 
-## Shape (to be designed in full when it is scheduled)
+## Shape (summary, 2026-10-05)
 
 - The draft lives on the daemon of the machine that owns the session (data carries its scope: machine + session). Attachment bytes under `$PI_WEB_DATA_DIR/drafts/<sessionId>/`, the record beside them; an extension input's draft rides the open dialog's record and dies with the dialog.
 - Writes are debounced from the composer and the dialog card; reads happen on session open and after a reload. A change is announced on the session's socket so other devices update.
 - Sending clears the draft atomically with the prompt's acceptance, so a sent message never comes back as a draft; closing a dialog clears its input draft.
 - A session's draft is deleted with the session; an orphaned draft is removed after 30 days, matching the message ledger's retention in `message-states.md`.
 - Offline, the device keeps its own copy and writes it when the link returns; the local copy is not authoritative once the server has a newer write.
-- Open questions for the full design: conflict rule per field (text vs attachment list), the size cap per draft, and how the outbox's queued sends relate to a draft that was sent from another device.
+- Open questions for the full design: conflict rule per field (text vs attachment list), the size cap per draft, and how the outbox's queued sends relate to a draft that was sent from another device. Answered or proposed in the design below.
+
+## Design (2026-10-09, for the owner to correct before code)
+
+### What it fixes, measured against today
+
+| Unsent thing | Today | After |
+|---|---|---|
+| Composer text | `localStorage` per machine + session (`promptDraftStorage.ts`); survives a reload on that browser only | on the session's daemon; every device shows it and follows edits live |
+| Composer attachments | memory only (`composerAttachmentHold.ts`); a reload, a Settings close or another device loses them | on the session's daemon as files; a reload gets them back |
+| An extension input dialog's typed answer | component state (`ExtensionDialogCard.inputValue`); a reload loses it | on the open dialog's daemon record; dies with the dialog |
+
+Out of scope unless the owner adds it: ask-card answers (`askDrafts.ts`, already survive a reload in local storage, one device), prompt history, the outbox (those are sends, not drafts).
+
+### Module boundary
+
+- **Daemon `src/server/daemon/sessions/drafts/`** (new, sessiond only). `SessionDraftStore` owns `$PI_WEB_DATA_DIR/drafts/<sessionId>/draft.json` and its attachment files, the revision counter, the size cap and retention. It exposes `read`, `write`, `putAttachment`, `readAttachment`, `clearOnAccept`, `forget`. Nothing else touches the directory.
+- **Daemon routes** (beside the session routes; the web proxies `/sessions/*` already, so the web process changes nothing):
+  - `GET /sessions/:id/draft` → `{ revision, text, attachments: [{ id, kind, name, mimeType, size }], updatedAt, deviceId }`, or `{ revision: 0 }` for none;
+  - `PUT /sessions/:id/draft` `{ baseRevision, deviceId, text, attachmentIds }` → `{ revision }`; a stale `baseRevision` still writes (later write wins, owner) and answers `{ revision, overwrote: <previous revision> }` so the writer knows it replaced another device's edit;
+  - `PUT /sessions/:id/draft/attachments/:attachmentId` `{ kind, name, mimeType, data }` (base64, as a send carries it today) → `{ id, size }`; the id is minted by the page as a UUID and checked to be one, so it is a safe file name;
+  - `GET /sessions/:id/draft/attachments/:attachmentId` → the bytes, `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`.
+- **Wire frame** `draft.changed { sessionId, revision, deviceId, cause: "edited" | "sent" | "cleared" }` on the session socket. It carries no text: a device that did not write it reads the draft once.
+- **Page `src/client/src/sessionDraftSync.ts`** (new). Owns one session's sync state and the debounced writes; `PromptEditor` asks it for the draft on open and hands it edits, and keeps owning the editor. `promptDraftStorage.ts` stays as the offline copy.
+- **Extension input**: the dialog record in `pendingExtensionDialogStore.ts` gains `draft?: { text, revision }`; `PUT /sessions/:id/extension-dialogs/:dialogId/draft`; the dialog card reads it on render. Closing or answering the dialog drops it with the record.
+
+### The page's sync states (one classifier, `draftSyncStep(state, event)`)
+
+| State | Meaning |
+|---|---|
+| `unsupported` | the daemon answers 404 `route-missing` (older machine): today's local-only behaviour, said nowhere because nothing changed for the reader |
+| `loading` | first read in flight; the local copy shows meanwhile, marked as not yet checked |
+| `synced(revision)` | what is shown is the server's revision |
+| `dirty(base)` | the reader typed; a write goes out 500 ms after the last keystroke |
+| `writing(base)` | a write is in flight; further typing returns to `dirty` |
+| `offline-dirty(base)` | the write could not reach the daemon; kept locally, written when the link returns |
+| `replaced(base, theirs)` | on return, the server had moved past `base` while this device was offline |
+
+Events: `typed`, `write-answered`, `write-failed`, `draft-changed(foreign)`, `link-up`, `sent-here`, `sent-elsewhere`. A `draft-changed` from this device's own `deviceId` is ignored; a foreign one in `synced` reads and shows the new revision; in `dirty`/`writing` it is ignored, because this device's write lands later and wins (owner: later write wins).
+
+### Sending
+
+- The send carries `draftRevision` (the revision the composer showed). When the daemon accepts the prompt (the acceptance ledger records its `clientMessageId`), it clears the draft in the same step if the draft's revision is still `draftRevision`, and publishes `draft.changed { cause: "sent" }`. A draft another device edited after that revision is kept: it is not what was sent.
+- A failed send restores the composer as today (`deliverAndRestoreOnFailure`), and the restore is written back as the draft.
+- The attachments of a sent draft are deleted after acceptance; their bytes already travelled with the prompt.
+
+### Limits, retention, safety
+
+- Text up to 1 MB; attachments up to `maxUploadBytes` in total (64 MB by default, the same cap a send has). An attachment over the cap stays in this browser only, and its chip says "Not saved on <machine>: too large", so nobody believes it is shared.
+- Deleting a session deletes its draft directory; archiving keeps it. A draft untouched for 30 days is removed (the ledger's retention, `message-states.md`). A draft directory whose session no longer exists is removed at daemon start.
+- Writes are atomic (temp file + rename). A draft read that fails says so in the composer ("Could not read the saved draft") and keeps the local copy; it never shows an empty composer as if there were no draft.
+
+### Slices
+
+1. Text: store, routes, frame, `sessionDraftSync`, send clears. Daemon restart.
+2. Attachments: files, chips that show "saving" and "saved", the size rule.
+3. Extension input dialog drafts.
+4. Offline: `offline-dirty`, `replaced`, link-up writes.
+
+Each slice: state-diagram entries in the same commit (rule 6), bob review, 8505 with two browser contexts (desktop + phone 393x850): type on one, see it on the other; reload keeps an image; send on one clears the other; a dialog's half answer survives a reload.
+
+### Open questions (asked one at a time when the slice needs them)
+
+- **D1 (slice 1). Another device sent while this one was typing.** This device keeps its text (its write recreates the draft). Should it also say "The draft was sent from another device", so the reader does not send the same thing twice? Proposed: yes, a one-line note under the composer until the next keystroke.
+- **D2 (slice 2). Attachments edited on two devices at once.** Text follows "later write wins". For attachments the later write's list wins too, so an image added on the phone while the desktop removed another can vanish. Proposed: attachment adds and removes are applied one by one, so both survive; text stays later-write-wins.
+- **D3 (slice 4). Back online after editing offline, and the server moved meanwhile.** Proposed: show the server's draft and keep this device's offline text one tap away ("Your offline edit · Use it"), rather than either silently winning.
