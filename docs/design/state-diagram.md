@@ -570,6 +570,14 @@ Done so far: projects on a machine (P1 slice 1); workspaces, and placing a sessi
 | wire | `{error}` | `{error, code}`; the text is kept for older clients |
 | client | `message.includes("session not found")` | `HttpError.code`; `classifyReadError` gives the fact `gone`, and a 404 without a code is a server error. The text match remains only for a coded-less 404 from an older daemon |
 
+**A route the machine does not have** (B16, 2026-10-09) is one typed answer too. A page newer than the machine it asks (a remote on an older release, or a web process restarted before its daemon) calls routes the machine lacks:
+
+| where | before | after |
+|---|---|---|
+| daemon | Fastify's default 404 envelope, `{message: "Route POST:/x not found", error, statusCode}` | the same envelope with `code: "route-missing"` (`routeMissingBody`) |
+| web | the envelope for an unknown `/api` path; a release before `unknown-api-says-not-found` answers the app's HTML at 200 | the envelope with the code |
+| client | the HTML was parsed as JSON and the panel showed the parse error; the envelope's "Route POST:... not found" was shown as it was | `request()` throws `HttpError` with `code: "route-missing"` and the words "This machine runs an older PI WEB that cannot do this yet. Update PI WEB there and restart its session daemon." for the code, for an envelope without it (an older machine, read by its shape), and for an HTML answer to an API call. The per-route checks (`readNewerDaemonRoute`, the fork routes) keep their own fallbacks. |
+
 **The session board** (P1 slice 5) is read from many sources: the projects, each project's workspaces, and each workspace's sessions. It answers in three degrees, `BoardAnswer`:
 - `none`: nothing answered yet;
 - `partial`: rows from the sources that answered, while others did not;

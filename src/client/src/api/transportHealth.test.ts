@@ -55,6 +55,7 @@ describe("the request boundary reports reachability", () => {
     observeTransportRecovery(onRecovered);
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
+      headers: new Headers({ "content-type": "application/json" }),
       json: () => Promise.resolve({ value: 1 }),
     });
     vi.stubGlobal("fetch", fetchMock);

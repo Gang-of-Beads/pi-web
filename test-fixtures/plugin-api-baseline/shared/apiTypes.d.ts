@@ -337,6 +337,8 @@ export declare const SESSION_UNREAD_CATALOG_ID_MAX_LENGTH = 512;
 export declare const SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH = 64;
 /** The code a daemon answers with for a session it does not have (object model §1.6). */
 export declare const SESSION_NOT_FOUND_CODE = "session-not-found";
+/** The code the web and the daemon answer with for a route they do not have: the machine is older than the page (B16). */
+export declare const ROUTE_MISSING_CODE = "route-missing";
 /**
  * Why a folder cannot become a project, as the code of the 400 the add route answers (B16): the
  * page words it from the code, where it used to search the error text for ENOENT and EACCES.

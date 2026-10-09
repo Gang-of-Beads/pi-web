@@ -4,6 +4,7 @@ import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { deadlineSignal, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
 import { dedupeKey, shareInFlight } from "./inFlight";
 import { watchedFetch } from "./ackWatch";
+import { ROUTE_MISSING_CODE } from "../../../shared/apiTypes";
 
 /**
  * Who answered with the error, when it is known. Only PI WEB's gateway names
@@ -81,10 +82,35 @@ async function readResponse(url: string, response: Response): Promise<unknown> {
     const namedMachineId = typeof fields["machineId"] === "string" ? fields["machineId"] : undefined;
     const machineId = namedMachineId ?? machineIdFromUrl(url);
     const text = detail === undefined || detail === "" ? label : `${label} (${detail})`;
+    const missing = routeMissingCode(response.status, body);
+    if (missing !== undefined) throw new HttpError(ROUTE_MISSING_WORDS, response.status, machineId, undefined, missing);
     throw new HttpError(apiErrorMessage({ error: text }) ?? text, response.status, machineId, namedMachineId === undefined ? undefined : "gateway", errorCode(body));
   }
+  if (answeredWithPage(response)) throw new HttpError(ROUTE_MISSING_WORDS, 404, machineIdFromUrl(url), undefined, ROUTE_MISSING_CODE);
   const body: unknown = await response.json();
   return body;
+}
+
+/** What a page says when the machine it asked is older than the page and has no such route. */
+export const ROUTE_MISSING_WORDS = "This machine runs an older PI WEB that cannot do this yet. Update PI WEB there and restart its session daemon.";
+
+/**
+ * A machine whose web process predates a route answers its path with the app's own page, at 200: the
+ * document, not data. Read as JSON it threw a parse error that the page showed as it was.
+ */
+function answeredWithPage(response: Response): boolean {
+  return (response.headers.get("content-type") ?? "").includes("text/html");
+}
+
+/**
+ * The route-missing answer, typed: a newer machine names the code; an older one sends Fastify's own
+ * not-found envelope, read by its shape until every machine carries the code (rolling compatibility).
+ */
+function routeMissingCode(status: number, body: unknown): typeof ROUTE_MISSING_CODE | undefined {
+  if (status !== 404 || !isRecord(body)) return undefined;
+  if (body["code"] === ROUTE_MISSING_CODE) return ROUTE_MISSING_CODE;
+  const message = body["message"];
+  return body["code"] === undefined && body["statusCode"] === 404 && body["error"] === "Not Found" && typeof message === "string" && /^Route [A-Z]+:\S+ not found$/u.test(message) ? ROUTE_MISSING_CODE : undefined;
 }
 
 /** The typed code an error body names, such as the daemon's missing session (object model §1.6). */

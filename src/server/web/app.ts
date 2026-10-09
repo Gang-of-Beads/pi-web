@@ -10,6 +10,7 @@ import fastifyWebsocket from "@fastify/websocket";
 import { piWebDataDir } from "../../config.js";
 import { ProjectStore } from "../shared/storage/projectStore.js";
 import { ProjectFolderError, ProjectService } from "../shared/projects/projectService.js";
+import { routeMissingBody } from "../shared/routeMissing.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
 import { SessionDaemonWorkspaceCatalog } from "./workspaces/sessionDaemonWorkspaceCatalog.js";
 import { resolveWorkspaceContext } from "../shared/workspaces/workspaceContext.js";
@@ -416,9 +417,11 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     const notFoundReplies: Record<NotFoundAnswer, (request: FastifyRequest, reply: FastifyReply) => FastifyReply> = {
       document: (_request, reply) => reply.sendFile("index.html"),
       "missing-asset": (_request, reply) => reply.code(404).type("text/plain").send("Not found"),
-      "missing-api": (request, reply) => reply.code(404).send({ message: `Route ${request.method}:${request.url} not found`, error: "Not Found", statusCode: 404 }),
+      "missing-api": (request, reply) => reply.code(404).send(routeMissingBody(request.method, request.url)),
     };
     app.setNotFoundHandler((request, reply) => notFoundReplies[notFoundAnswer(request.url)](request, reply));
+  } else {
+    app.setNotFoundHandler((request, reply) => reply.code(404).send(routeMissingBody(request.method, request.url)));
   }
 
   return app;
