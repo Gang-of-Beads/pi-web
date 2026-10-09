@@ -252,7 +252,7 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
   if (isHiddenCustomMessage(message)) return [];
   const custom = customPart(message);
   if (custom !== undefined) return [custom];
-  if (typeof content === "string") return content !== "" ? [{ type: "text", text: content }] : [];
+  if (typeof content === "string") return content !== "" ? [withDisplay({ type: "text", text: content }, getString(message, "displayText"))] : [];
   if (!Array.isArray(content)) return objectFallback(content);
 
   return content.flatMap((part): ChatPart[] => {
@@ -264,11 +264,11 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
       // is the whole point: a stump the reader mistakes for the end of the
       // output is worse than a large one they can choose to open.
       const truncatedBytes = getNumber(part, "truncatedBytes");
-      return [{ type: "text", text: truncatedBytes === undefined ? text : `${text}\n\n[output truncated \u2014 ${formatByteSize(truncatedBytes)} in total]` }];
+      return [withDisplay({ type: "text", text: truncatedBytes === undefined ? text : `${text}\n\n[output truncated \u2014 ${formatByteSize(truncatedBytes)} in total]` }, getString(part, "displayText"))];
     }
     if (type === "thinking") {
       const thinking = getString(part, "thinking") ?? text;
-      return thinking !== undefined && thinking !== "" ? [{ type: "thinking", text: thinking }] : [];
+      return thinking !== undefined && thinking !== "" ? [withDisplay({ type: "thinking", text: thinking }, getString(part, "displayText"))] : [];
     }
     if (type === "toolCall") {
       const toolName = getString(part, "name") ?? "tool";
@@ -301,6 +301,11 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
  */
 function isHiddenCustomMessage(message: unknown): boolean {
   return getString(message, "role") === "custom" && getProperty(message, "display") === false;
+}
+
+/** A text or thinking part with how an extension's markdown transformer has it drawn, when one changed it. */
+function withDisplay<Part extends Extract<ChatPart, { type: "text" | "thinking" }>>(part: Part, display: string | undefined): Part {
+  return display === undefined || display === "" ? part : { ...part, display };
 }
 
 /**

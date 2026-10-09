@@ -305,7 +305,8 @@
                 <code>registerEntryRenderer</code>. A PI WEB plugin that renders the type draws it its own way instead.
                 An extension tool's <code>renderCall</code> and <code>renderResult</code>, and a
                 <code>registerToolRenderer</code> resolver, draw that tool's card: the call as its input, the result as its
-                result.
+                result. Markdown transformers registered with <code>registerMarkdownTransformer</code> change how a finished
+                user message, reply or thinking is drawn; copying it still takes what was said.
                 A session read without starting it has no renderers yet, so its rows fall back to the content.
               </p>
               <p>

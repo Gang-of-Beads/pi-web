@@ -22,6 +22,8 @@ export interface ExtensionRenderers {
   getToolDefinition(toolName: string): unknown;
   /** The renderers the extensions' `registerToolRenderer` resolvers choose, `base` being the tool's own. */
   resolveToolRenderers(toolName: string, base: () => unknown): unknown;
+  /** The extensions' `registerMarkdownTransformer` transformers, in load order. */
+  getMarkdownTransformers(): readonly unknown[];
 }
 
 export type CustomRowKind = "message" | "entry";
@@ -161,4 +163,33 @@ export function drawToolResult(renderers: ExtensionRenderers, call: ToolDrawingC
   const renderResult = toolRendererMember(renderers, call.toolName, "renderResult");
   if (!isToolResultRenderer(renderResult)) return undefined;
   return drawnOrNothing(() => renderResult(result.result, { expanded: false, isPartial: result.isPartial }, plainTextTheme, toolRenderContext(call, result)));
+}
+
+/** Which text pi transforms: a user message, an assistant reply, or its thinking. */
+export type MarkdownKind = "user" | "assistant" | "assistant-thinking";
+
+type MarkdownTransformer = (markdown: string, context: { messageType: MarkdownKind; isStreaming: boolean; availableWidth: number }) => unknown;
+
+function isMarkdownTransformer(value: unknown): value is MarkdownTransformer {
+  return typeof value === "function";
+}
+
+/**
+ * A finished text as the extensions' markdown transformers would have pi draw it (slice 3): each in
+ * load order, one that throws or answers something other than a string skipped, as pi's
+ * `applyMarkdownTransformers` does. Undefined when none changed it. The width is the one PI WEB
+ * draws extension lines at; the browser lays the markdown out itself.
+ */
+export function transformedMarkdown(renderers: ExtensionRenderers, markdown: string, messageType: MarkdownKind): string | undefined {
+  let transformed = markdown;
+  for (const transformer of renderers.getMarkdownTransformers()) {
+    if (!isMarkdownTransformer(transformer)) continue;
+    try {
+      const next = transformer(transformed, { messageType, isStreaming: false, availableWidth: CUSTOM_SCREEN_WIDTH });
+      if (typeof next === "string") transformed = next;
+    } catch {
+      continue;
+    }
+  }
+  return transformed === markdown ? undefined : transformed;
 }

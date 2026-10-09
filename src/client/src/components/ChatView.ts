@@ -2210,8 +2210,8 @@ export class ChatView extends LitElement {
   private renderPart(part: ChatPart, message?: ChatLine) {
     if (part.type === "extensionNotice") return this.renderExtensionNotice(part);
     if (part.type === "text" && message?.role === "bash") return html`<pre class="part shell-output">${part.text}</pre>`;
-    if (part.type === "text") return html`<formatted-text class="part" .text=${part.text} .findCodeFenceRenderer=${this.findCodeFenceRenderer} .streaming=${this.status?.isStreaming === true}></formatted-text>`;
-    if (part.type === "thinking") return html`<details class="part thinking"><summary>${this.status?.extensionUi?.hiddenThinkingLabel ?? "thinking"}</summary><formatted-text .text=${part.text}></formatted-text></details>`;
+    if (part.type === "text") return html`<formatted-text class="part" .text=${part.display ?? part.text} .findCodeFenceRenderer=${this.findCodeFenceRenderer} .streaming=${this.status?.isStreaming === true}></formatted-text>`;
+    if (part.type === "thinking") return html`<details class="part thinking"><summary>${this.status?.extensionUi?.hiddenThinkingLabel ?? "thinking"}</summary><formatted-text .text=${part.display ?? part.text}></formatted-text></details>`;
     if (part.type === "skillInvocation") return html`
       <details class="part skill-invocation">
         <summary><b>[skill]</b> ${part.name}</summary>

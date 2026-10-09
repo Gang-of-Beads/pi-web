@@ -129,7 +129,7 @@ import { ExtensionStanding } from "./extensionStanding.js";
 import { ExtensionOrigins, type LoadedExtensionFile } from "./extensionOrigin.js";
 import { declaredAgentFacts } from "./declaredAgentFacts.js";
 import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
-import { drawCustomRow, drawToolCall, drawToolResult, showsCustomEntry, type ExtensionRenderers } from "./extensionDrawings.js";
+import { drawCustomRow, drawToolCall, drawToolResult, showsCustomEntry, transformedMarkdown, type ExtensionRenderers, type MarkdownKind } from "./extensionDrawings.js";
 import { DECLARABLE_SCREENS, declaredScreen, refusedDeclarationSummary } from "./declaredScreen.js";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
@@ -5795,7 +5795,7 @@ export class PiSessionService implements SessionRouteService {
    */
   private withExtensionDrawing(session: PiAgentSession, raw: unknown, event: SessionUiEvent): SessionUiEvent {
     const drawing = drawingOf(session);
-    if (event.type === "message.end") return withCustomDrawing(event, drawing.renderers);
+    if (event.type === "message.end") return withMarkdownDisplay(withCustomDrawing(event, drawing.renderers), drawing.renderers);
     if (event.type !== "tool.start" && event.type !== "tool.update" && event.type !== "tool.end") return event;
     const args = this.toolCallArgs(session, event, getProperty(raw, "args"));
     const call = { toolName: event.toolName, toolCallId: event.toolCallId, args, cwd: drawing.cwd };
@@ -7111,9 +7111,45 @@ function transcriptPage(entries: readonly unknown[], page?: { before?: number; l
   const argsByCall = drawing === undefined ? new Map<string, unknown>() : toolCallArgsOf(paged.messages);
   const messages = paged.messages.map((message, index) => {
     const entryId = rows[paged.start + index]?.entryId;
-    return withEntryId(drawing === undefined ? message : withToolDrawing(withDrawing(message, drawing.renderers, entryId), drawing, argsByCall), entryId);
+    return withEntryId(drawing === undefined ? message : withDisplayText(withToolDrawing(withDrawing(message, drawing.renderers, entryId), drawing, argsByCall), drawing.renderers), entryId);
   });
   return { ...paged, messages, head: transcriptHead(rows) };
+}
+
+/** A live message with its transformed markdown, as the same message read from history carries it. */
+function withMarkdownDisplay(event: SessionUiEvent, renderers: ExtensionRenderers): SessionUiEvent {
+  if (event.type !== "message.end" || event.message === undefined) return event;
+  const displayed = withDisplayText(event.message, renderers);
+  return displayed === event.message ? event : { ...event, message: displayed };
+}
+
+const MARKDOWN_KIND_OF_ROLE: Readonly<Record<string, MarkdownKind>> = { user: "user", assistant: "assistant" };
+
+/**
+ * A user or assistant message with `displayText` beside each text the session's markdown
+ * transformers change (slice 3): on a string content, the message; otherwise the text or thinking
+ * part. The text itself is kept: copying, quoting and history read what was said, and the page
+ * draws `displayText`.
+ */
+function withDisplayText(message: unknown, renderers: ExtensionRenderers): unknown {
+  if (!isRecord(message)) return message;
+  const kind = MARKDOWN_KIND_OF_ROLE[getString(message, "role") ?? ""];
+  if (kind === undefined) return message;
+  const content = message["content"];
+  if (typeof content === "string") {
+    const displayText = transformedMarkdown(renderers, content, kind);
+    return displayText === undefined ? message : { ...message, displayText };
+  }
+  if (!isUnknownArray(content)) return message;
+  const displayed = content.map((part) => {
+    if (!isRecord(part)) return part;
+    const thinking = getString(part, "type") === "thinking";
+    const text = thinking ? getString(part, "thinking") : getString(part, "type") === "text" ? getString(part, "text") : undefined;
+    if (text === undefined) return part;
+    const displayText = transformedMarkdown(renderers, text, thinking ? "assistant-thinking" : kind);
+    return displayText === undefined ? part : { ...part, displayText };
+  });
+  return displayed.some((part, index) => part !== content[index]) ? { ...message, content: displayed } : message;
 }
 
 /** Each tool call's arguments on a page, so its result can be drawn with them; a call on an earlier page is not known. */

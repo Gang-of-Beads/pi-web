@@ -88,10 +88,11 @@ export interface ToolResultImageRef {
 export type CustomRowKind = "message" | "entry";
 
 export type ChatPart =
-  | { type: "text"; text: string }
+  /** `display`: how an extension's markdown transformer has the text drawn; `text` stays what was said. */
+  | { type: "text"; text: string; display?: string }
   | { type: "image"; mimeType: string; data: string }
   | { type: "image"; mimeType: string; ref: ToolResultImageRef }
-  | { type: "thinking"; text: string }
+  | { type: "thinking"; text: string; display?: string }
   | { type: "skillInvocation"; name: string; location: string; content: string }
   | { type: "skillRead"; name: string; path: string; toolCallId?: string }
   | { type: "askUserRecord"; outcome: AskUserOutcome }
