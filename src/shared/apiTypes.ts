@@ -1723,9 +1723,10 @@ type SessionUiEventBody =
   | { type: "message.append"; message: unknown; clientMessageId?: string; echo?: boolean }
   | { type: "assistant.delta"; text: string }
   | { type: "assistant.thinking.delta"; text: string }
-  | { type: "tool.start"; toolName: string; toolCallId: string; summary: string; args?: unknown }
-  | { type: "tool.update"; toolName: string; toolCallId: string; text: string; content?: unknown; details?: unknown }
-  | { type: "tool.end"; toolName: string; toolCallId: string; text: string; isError: boolean; content?: unknown; details?: unknown }
+  /** `drawnCall`/`drawnResult`: the lines pi's resolved tool renderers draw - extensions' `registerToolRenderer` resolvers in load order, then the extension tool's own `renderCall`/`renderResult` (pi-insertion-points.md slice 2). */
+  | { type: "tool.start"; toolName: string; toolCallId: string; summary: string; args?: unknown; drawnCall?: string[] }
+  | { type: "tool.update"; toolName: string; toolCallId: string; text: string; content?: unknown; details?: unknown; drawnResult?: string[] }
+  | { type: "tool.end"; toolName: string; toolCallId: string; text: string; isError: boolean; content?: unknown; details?: unknown; drawnResult?: string[] }
   | { type: "shell.start"; command: string; excludeFromContext?: boolean }
   | { type: "shell.chunk"; chunk: string }
   | { type: "shell.end"; output?: string; exitCode?: number | null; cancelled?: boolean; truncated?: boolean; fullOutputPath?: string; isError?: boolean }

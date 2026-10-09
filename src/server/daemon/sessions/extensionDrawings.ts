@@ -18,6 +18,10 @@ import { boundedLines } from "./standingWidgets.js";
 export interface ExtensionRenderers {
   getMessageRenderer(customType: string): unknown;
   getEntryRenderer(customType: string): unknown;
+  /** An extension tool's definition; pi's built-in tools have none, so only a `registerToolRenderer` resolver can draw them, otherwise PI WEB's own card stays. */
+  getToolDefinition(toolName: string): unknown;
+  /** The renderers the extensions' `registerToolRenderer` resolvers choose, `base` being the tool's own. */
+  resolveToolRenderers(toolName: string, base: () => unknown): unknown;
 }
 
 export type CustomRowKind = "message" | "entry";
@@ -67,4 +71,94 @@ export function drawCustomRow(renderers: ExtensionRenderers, kind: CustomRowKind
   } catch (error) {
     return ROW_KINDS[kind].whenRendererFails(customType, error);
   }
+}
+
+/** A tool call as a tool renderer is told about it: the facts of pi's `ToolRenderContext` the daemon has. */
+export interface ToolDrawingCall {
+  readonly toolName: string;
+  readonly toolCallId: string;
+  readonly args: unknown;
+  readonly cwd: string;
+}
+
+/** A tool's result, partial while it runs. */
+export interface ToolDrawingResult {
+  readonly result: unknown;
+  readonly isError: boolean;
+  readonly isPartial: boolean;
+}
+
+type ToolCallRenderer = (args: unknown, theme: unknown, context: unknown) => unknown;
+type ToolResultRenderer = (result: unknown, options: { expanded: boolean; isPartial: boolean }, theme: unknown, context: unknown) => unknown;
+
+function isToolCallRenderer(value: unknown): value is ToolCallRenderer {
+  return typeof value === "function";
+}
+
+function isToolResultRenderer(value: unknown): value is ToolResultRenderer {
+  return typeof value === "function";
+}
+
+/**
+ * How an extension draws a tool, as pi's terminal resolves it (slice 2): the extensions'
+ * `registerToolRenderer` resolvers in load order, then the extension tool's own `renderCall` and
+ * `renderResult`. A built-in tool is not an extension tool, so only a resolver draws it.
+ * A resolver that throws draws nothing, so PI WEB's own card stays.
+ */
+function toolRendererMember(renderers: ExtensionRenderers, toolName: string, member: "renderCall" | "renderResult"): unknown {
+  try {
+    const resolved = renderers.resolveToolRenderers(toolName, () => renderers.getToolDefinition(toolName));
+    return typeof resolved === "object" && resolved !== null ? Reflect.get(resolved, member) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The render context pi builds for a tool row, from what the daemon knows. Each drawing starts
+ * from fresh renderer state: pi shares `state` between the call and the result of one row in one
+ * terminal, and a page is drawn from many reads, so a renderer that keeps state across them sees
+ * none.
+ */
+function toolRenderContext(call: ToolDrawingCall, result: ToolDrawingResult | undefined): Record<string, unknown> {
+  return {
+    args: call.args,
+    toolCallId: call.toolCallId,
+    invalidate: () => undefined,
+    lastComponent: undefined,
+    state: {},
+    cwd: call.cwd,
+    executionStarted: true,
+    argsComplete: true,
+    isPartial: result?.isPartial ?? false,
+    expanded: false,
+    showImages: false,
+    isError: result?.isError ?? false,
+  };
+}
+
+/** A renderer's component as bounded lines; undefined when it drew nothing or threw, so PI WEB's own card stays. */
+function drawnOrNothing(draw: () => unknown): string[] | undefined {
+  try {
+    const component = draw();
+    if (!isScreenComponent(component)) return undefined;
+    const lines = boundedLines(renderCustomScreen(component, CUSTOM_SCREEN_WIDTH, Number.POSITIVE_INFINITY));
+    return lines.length === 0 ? undefined : lines;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The lines an extension draws for a tool call's arguments; undefined leaves PI WEB's own card. */
+export function drawToolCall(renderers: ExtensionRenderers, call: ToolDrawingCall): string[] | undefined {
+  const renderCall = toolRendererMember(renderers, call.toolName, "renderCall");
+  if (!isToolCallRenderer(renderCall)) return undefined;
+  return drawnOrNothing(() => renderCall(call.args, plainTextTheme, toolRenderContext(call, undefined)));
+}
+
+/** The lines an extension draws for a tool's result; undefined leaves PI WEB's own result text. */
+export function drawToolResult(renderers: ExtensionRenderers, call: ToolDrawingCall, result: ToolDrawingResult): string[] | undefined {
+  const renderResult = toolRendererMember(renderers, call.toolName, "renderResult");
+  if (!isToolResultRenderer(renderResult)) return undefined;
+  return drawnOrNothing(() => renderResult(result.result, { expanded: false, isPartial: result.isPartial }, plainTextTheme, toolRenderContext(call, result)));
 }

@@ -303,6 +303,9 @@
                 <code>registerMessageRenderer</code>, and without one shows its type and its content. A custom entry
                 written with <code>appendEntry</code> is shown only when an extension registered a renderer for it with
                 <code>registerEntryRenderer</code>. A PI WEB plugin that renders the type draws it its own way instead.
+                An extension tool's <code>renderCall</code> and <code>renderResult</code>, and a
+                <code>registerToolRenderer</code> resolver, draw that tool's card: the call as its input, the result as its
+                result.
                 A session read without starting it has no renderers yet, so its rows fall back to the content.
               </p>
               <p>

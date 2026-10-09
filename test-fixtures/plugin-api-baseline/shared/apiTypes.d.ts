@@ -1563,12 +1563,15 @@ type SessionUiEventBody =
 } | {
     type: "assistant.thinking.delta";
     text: string;
-} | {
+}
+/** `drawnCall`/`drawnResult`: the lines pi's resolved tool renderers draw - extensions' `registerToolRenderer` resolvers in load order, then the extension tool's own `renderCall`/`renderResult` (pi-insertion-points.md slice 2). */
+ | {
     type: "tool.start";
     toolName: string;
     toolCallId: string;
     summary: string;
     args?: unknown;
+    drawnCall?: string[];
 } | {
     type: "tool.update";
     toolName: string;
@@ -1576,6 +1579,7 @@ type SessionUiEventBody =
     text: string;
     content?: unknown;
     details?: unknown;
+    drawnResult?: string[];
 } | {
     type: "tool.end";
     toolName: string;
@@ -1584,6 +1588,7 @@ type SessionUiEventBody =
     isError: boolean;
     content?: unknown;
     details?: unknown;
+    drawnResult?: string[];
 } | {
     type: "shell.start";
     command: string;

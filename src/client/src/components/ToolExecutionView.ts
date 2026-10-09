@@ -37,8 +37,8 @@ export class ToolExecutionView extends LitElement {
     const diffStats = visibleDiff === undefined ? undefined : countDiffLines(visibleDiff);
     const previewMismatch = actualDiff !== undefined && preview?.diff !== undefined && actualDiff !== preview.diff;
     const errorText = execution.status === "error" ? execution.resultText : preview?.error;
-    const bodyText = visibleDiff === undefined ? execution.resultText : undefined;
-    const target = toolTarget(execution, path);
+    const bodyText = visibleDiff === undefined ? execution.drawnResult?.join("\n") ?? execution.resultText : undefined;
+    const target = execution.drawnCall === undefined ? toolTarget(execution, path) : { label: "Input" as const, text: execution.drawnCall.join("\n") };
 
     return html`
       <section class=${`tool-card ${displayedStatus}`}>

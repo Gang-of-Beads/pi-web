@@ -25,6 +25,7 @@ interface ToolResultUpdate {
   isError: boolean;
   content: unknown;
   details: unknown;
+  drawnResult?: readonly string[];
   presentation: ToolResultPresentation;
 }
 
@@ -62,6 +63,7 @@ export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent
       isError: event.isError,
       content: event.content,
       details: event.details,
+      ...(event.drawnResult === undefined ? {} : { drawnResult: event.drawnResult }),
       presentation: toolResultPresentation({ role: "toolResult", content: event.content }),
     });
   }
@@ -245,6 +247,7 @@ function appendToolExecutionStart(messages: ChatLine[], event: Extract<SessionUi
     toolName: event.toolName,
     summary: event.summary || summarizeArgs(event.args),
     ...(event.args === undefined ? {} : { args: event.args }),
+    ...(event.drawnCall === undefined ? {} : { drawnCall: event.drawnCall }),
     status: "running",
   };
   return [...messages, { role: "tool", parts: [part] }];
@@ -259,11 +262,12 @@ function mergeToolExecutionUpdate(part: ToolExecutionPart, event: Extract<Sessio
     ...(event.content === undefined ? {} : { content: event.content }),
     ...(event.details === undefined ? {} : { details: event.details }),
     ...(preview === undefined ? {} : { preview }),
+    ...(event.drawnResult === undefined ? {} : { drawnResult: event.drawnResult }),
   };
 }
 
 function finalizeToolExecution(messages: ChatLine[], result: ToolResultUpdate): ChatLine[] {
-  const { toolCallId, toolName, text, isError, content, details, presentation } = result;
+  const { toolCallId, toolName, text, isError, content, details, drawnResult, presentation } = result;
   const updated = updateToolExecution(messages, toolCallId, (part) => {
     const preview = previewFromDetails(details) ?? part.preview;
     return {
@@ -273,6 +277,7 @@ function finalizeToolExecution(messages: ChatLine[], result: ToolResultUpdate): 
       ...(content === undefined ? {} : { content }),
       ...(details === undefined ? {} : { details }),
       ...(preview === undefined ? {} : { preview }),
+      ...(drawnResult === undefined ? {} : { drawnResult }),
     };
   }, (line) => reconcileToolResultPresentation(line, presentation));
 

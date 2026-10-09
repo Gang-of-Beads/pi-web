@@ -129,7 +129,7 @@ import { ExtensionStanding } from "./extensionStanding.js";
 import { ExtensionOrigins, type LoadedExtensionFile } from "./extensionOrigin.js";
 import { declaredAgentFacts } from "./declaredAgentFacts.js";
 import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
-import { drawCustomRow, showsCustomEntry, type ExtensionRenderers } from "./extensionDrawings.js";
+import { drawCustomRow, drawToolCall, drawToolResult, showsCustomEntry, type ExtensionRenderers } from "./extensionDrawings.js";
 import { DECLARABLE_SCREENS, declaredScreen, refusedDeclarationSummary } from "./declaredScreen.js";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
@@ -2854,12 +2854,12 @@ export class PiSessionService implements SessionRouteService {
 
   async messages(ref: PiSessionRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage> {
     const open = this.activeForRef(ref)?.runtime.session;
-    if (open !== undefined) return transcriptPage(open.sessionManager.getBranch(), page, open.extensionRunner);
+    if (open !== undefined) return transcriptPage(open.sessionManager.getBranch(), page, drawingOf(open));
     const closed = await this.closedSessionFile(ref);
     const branch = closed === undefined ? undefined : await closedBranch(closed.path);
     if (branch !== undefined) return transcriptPage(branch, page);
     const session = await this.getOrOpen(ref);
-    return transcriptPage(session.sessionManager.getBranch(), page, session.extensionRunner);
+    return transcriptPage(session.sessionManager.getBranch(), page, drawingOf(session));
   }
 
   /**
@@ -2940,7 +2940,7 @@ export class PiSessionService implements SessionRouteService {
    */
   async messagesPassive(ref: PiSessionRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage | undefined> {
     const active = this.activeForRef(ref);
-    if (active !== undefined) return transcriptPage(active.runtime.session.sessionManager.getBranch(), page, active.runtime.session.extensionRunner);
+    if (active !== undefined) return transcriptPage(active.runtime.session.sessionManager.getBranch(), page, drawingOf(active.runtime.session));
     const listed = await this.sessionManager.findSession(ref.cwd, ref.id);
     if (listed === undefined) return undefined;
     const entries = await readSessionFileEntries(listed.path);
@@ -2963,7 +2963,7 @@ export class PiSessionService implements SessionRouteService {
    */
   async transcriptTail(ref: PiSessionRef, page?: { limit?: number }): Promise<SessionTranscriptTail> {
     const open = this.activeForRef(ref)?.runtime.session;
-    if (open !== undefined) return { page: transcriptPage(open.sessionManager.getBranch(), page, open.extensionRunner), stream: this.streamSnapshotOf(open) };
+    if (open !== undefined) return { page: transcriptPage(open.sessionManager.getBranch(), page, drawingOf(open)), stream: this.streamSnapshotOf(open) };
     const file = await this.closedSessionFile(ref);
     const stream = file === undefined ? undefined : { ...this.streamPosition(file.id), partial: null };
     const branch = file === undefined ? undefined : await closedBranch(file.path);
@@ -5763,7 +5763,7 @@ export class PiSessionService implements SessionRouteService {
       this.commandService.observeSessionEvent(session.sessionId, settledStop);
     }
     this.observeInboxFacts(session, event);
-    this.events.publish(session.sessionId, withCustomDrawing(toClientEvent(event, session.thinkingLevel), session.extensionRunner));
+    this.events.publish(session.sessionId, this.withExtensionDrawing(session, event, toClientEvent(event, session.thinkingLevel)));
     const shownEntry = shownAppendedEntry(event, session.extensionRunner);
     if (shownEntry !== undefined) this.events.publish(session.sessionId, { type: "message.end", message: shownEntry });
     this.publishActivityForEvent(session, event);
@@ -5786,6 +5786,42 @@ export class PiSessionService implements SessionRouteService {
     if (!isStreamingDeltaEvent(event)) this.publishStatus(session, "if-changed");
     this.updateSubsessionTracking(session);
   }
+
+  /**
+   * A live frame with what the session's extensions draw for it (pi-insertion-points.md slices 1
+   * and 2): a custom message's drawing, a tool call's drawn arguments, a tool result's drawn
+   * output. pi's tool end event does not repeat the call's arguments, so they are kept from its
+   * start until its end.
+   */
+  private withExtensionDrawing(session: PiAgentSession, raw: unknown, event: SessionUiEvent): SessionUiEvent {
+    const drawing = drawingOf(session);
+    if (event.type === "message.end") return withCustomDrawing(event, drawing.renderers);
+    if (event.type !== "tool.start" && event.type !== "tool.update" && event.type !== "tool.end") return event;
+    const args = this.toolCallArgs(session, event, getProperty(raw, "args"));
+    const call = { toolName: event.toolName, toolCallId: event.toolCallId, args, cwd: drawing.cwd };
+    if (event.type === "tool.start") {
+      const drawnCall = drawToolCall(drawing.renderers, call);
+      return drawnCall === undefined ? event : { ...event, drawnCall };
+    }
+    const isPartial = event.type === "tool.update";
+    const result = getProperty(raw, isPartial ? "partialResult" : "result");
+    const drawnResult = drawToolResult(drawing.renderers, call, { result, isError: event.type === "tool.end" && event.isError, isPartial });
+    return drawnResult === undefined ? event : { ...event, drawnResult };
+  }
+
+  private toolCallArgs(session: PiAgentSession, event: Extract<SessionUiEvent, { type: "tool.start" | "tool.update" | "tool.end" }>, args: unknown): unknown {
+    let calls = this.liveToolCallArgs.get(session);
+    if (calls === undefined) {
+      calls = new Map();
+      this.liveToolCallArgs.set(session, calls);
+    }
+    if (event.type === "tool.start") calls.set(event.toolCallId, args);
+    const known = args ?? calls.get(event.toolCallId);
+    if (event.type === "tool.end") calls.delete(event.toolCallId);
+    return known;
+  }
+
+  private readonly liveToolCallArgs = new WeakMap<PiAgentSession, Map<string, unknown>>();
 
   private maybeGenerateSessionName(session: PiAgentSession, firstMessage: string): void {
     if (session.sessionName !== undefined || session.messages.length !== 0 || session.isStreaming || session.isCompacting) return;
@@ -7053,19 +7089,72 @@ async function readSessionFileEntries(path: string): Promise<FileEntry[] | undef
   }
 }
 
+/** What a session's extensions draw with, when its runtime is open: their renderers and its directory. */
+interface TranscriptDrawing {
+  readonly renderers: ExtensionRenderers;
+  readonly cwd: string;
+}
+
+function drawingOf(session: PiAgentSession): TranscriptDrawing {
+  return { renderers: session.extensionRunner, cwd: session.sessionManager.getCwd() };
+}
+
 /**
- * `renderers` are the session's extension renderers when its runtime is open: the custom entries
- * they draw become rows, and the page's custom rows carry what the extension draws for them. Only
- * the page's slice is drawn. A session read without its runtime has none (pi-insertion-points.md).
+ * `drawing` is the session's when its runtime is open: the custom entries its extensions draw
+ * become rows, and the page's custom rows and extension tool rows carry what the extensions draw
+ * for them. Only the page's slice is drawn. A session read without its runtime has none
+ * (pi-insertion-points.md).
  */
-function transcriptPage(entries: readonly unknown[], page?: { before?: number; limit?: number }, renderers?: ExtensionRenderers): ClientMessagePage {
-  const rows = branchTranscript(entries, shownEntriesOf(renderers));
+function transcriptPage(entries: readonly unknown[], page?: { before?: number; limit?: number }, drawing?: TranscriptDrawing): ClientMessagePage {
+  const rows = branchTranscript(entries, shownEntriesOf(drawing?.renderers));
   const paged = pageMessagesAtSafeBoundary(rows.map((row) => boundToolResultMessage(row.message)), page);
+  const argsByCall = drawing === undefined ? new Map<string, unknown>() : toolCallArgsOf(paged.messages);
   const messages = paged.messages.map((message, index) => {
     const entryId = rows[paged.start + index]?.entryId;
-    return withEntryId(renderers === undefined ? message : withDrawing(message, renderers, entryId), entryId);
+    return withEntryId(drawing === undefined ? message : withToolDrawing(withDrawing(message, drawing.renderers, entryId), drawing, argsByCall), entryId);
   });
   return { ...paged, messages, head: transcriptHead(rows) };
+}
+
+/** Each tool call's arguments on a page, so its result can be drawn with them; a call on an earlier page is not known. */
+function toolCallArgsOf(messages: readonly unknown[]): Map<string, unknown> {
+  const args = new Map<string, unknown>();
+  for (const message of messages) {
+    if (!isRecord(message) || message["role"] !== "assistant") continue;
+    const content = message["content"];
+    if (!isUnknownArray(content)) continue;
+    for (const part of content) {
+      const id = getString(part, "id");
+      if (getString(part, "type") === "toolCall" && id !== undefined) args.set(id, getProperty(part, "arguments"));
+    }
+  }
+  return args;
+}
+
+/**
+ * An assistant message's tool calls with `drawnCall` where an extension draws them, and a tool
+ * result with `drawnResult` (slice 2). A call or result without its tool name or call id is left
+ * to PI WEB's card: a renderer is told the call it draws, and an invented id is not one.
+ */
+function withToolDrawing(message: unknown, drawing: TranscriptDrawing, argsByCall: ReadonlyMap<string, unknown>): unknown {
+  if (!isRecord(message)) return message;
+  if (message["role"] === "toolResult") {
+    const toolName = getString(message, "toolName");
+    const toolCallId = getString(message, "toolCallId");
+    if (toolName === undefined || toolCallId === undefined) return message;
+    const drawnResult = drawToolResult(drawing.renderers, { toolName, toolCallId, args: argsByCall.get(toolCallId), cwd: drawing.cwd }, { result: message, isError: message["isError"] === true, isPartial: false });
+    return drawnResult === undefined ? message : { ...message, drawnResult };
+  }
+  const content = message["content"];
+  if (message["role"] !== "assistant" || !isUnknownArray(content)) return message;
+  const drawnContent = content.map((part) => {
+    const toolName = getString(part, "name");
+    const toolCallId = getString(part, "id");
+    if (getString(part, "type") !== "toolCall" || toolName === undefined || toolCallId === undefined || !isRecord(part)) return part;
+    const drawnCall = drawToolCall(drawing.renderers, { toolName, toolCallId, args: part["arguments"], cwd: drawing.cwd });
+    return drawnCall === undefined ? part : { ...part, drawnCall };
+  });
+  return drawnContent.some((part, index) => part !== content[index]) ? { ...message, content: drawnContent } : message;
 }
 
 function shownEntriesOf(renderers: ExtensionRenderers | undefined): ((customType: string) => boolean) | undefined {

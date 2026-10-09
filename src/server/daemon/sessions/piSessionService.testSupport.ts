@@ -183,6 +183,8 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
       getRegisteredCommands: () => [],
       getMessageRenderer: () => undefined,
       getEntryRenderer: () => undefined,
+      getToolDefinition: () => undefined,
+      resolveToolRenderers: (_toolName: string, base: () => unknown) => base(),
       getUIContext: () => extensionUiContext,
       setUIContext: (uiContext) => { extensionUiContext = uiContext ?? testExtensionUiContext; },
     },

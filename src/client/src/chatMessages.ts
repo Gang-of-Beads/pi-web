@@ -1,3 +1,4 @@
+import { drawnLines } from "./drawnLines";
 import { isRecord } from "../../shared/unknownValues";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE } from "../../shared/apiTypes";
 import { deliverySettled } from "./messageDelivery";
@@ -275,7 +276,8 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
       const toolCallId = getString(part, "id");
       const skillRead = toolName === "read" ? parseSkillReadPath(getString(args, "path")) : undefined;
       if (skillRead !== undefined) return [{ type: "skillRead", ...skillRead, ...(toolCallId === undefined ? {} : { toolCallId }) }];
-      return [{ type: "toolCall", ...(toolCallId === undefined ? {} : { toolCallId }), toolName, summary: summarizeArgs(args), ...(args === undefined ? {} : { args }) }];
+      const drawnCall = drawnLines(getProperty(part, "drawnCall"));
+      return [{ type: "toolCall", ...(toolCallId === undefined ? {} : { toolCallId }), toolName, summary: summarizeArgs(args), ...(args === undefined ? {} : { args }), ...(drawnCall === undefined ? {} : { drawnCall }) }];
     }
     if (type === "image") {
       const data = getString(part, "data");
@@ -311,15 +313,14 @@ function customPart(message: unknown): Extract<ChatPart, { type: "custom" }> | u
   if (getString(message, "role") !== "custom") return undefined;
   const tag = getString(message, "customType");
   if (tag === undefined || tag === "" || tag === ASK_USER_ANSWERS_CUSTOM_TYPE) return undefined;
-  const drawn = getProperty(message, "drawn");
-  const lines = Array.isArray(drawn) ? drawn.filter((line): line is string => typeof line === "string") : [];
+  const lines = drawnLines(getProperty(message, "drawn"));
   const text = customContentText(getProperty(message, "content"));
   return {
     type: "custom",
     tag,
     payload: getProperty(message, "details"),
     kind: getString(message, "source") === "entry" ? "entry" : "message",
-    ...(lines.length === 0 ? {} : { drawn: lines }),
+    ...(lines === undefined ? {} : { drawn: lines }),
     ...(text === "" ? {} : { text }),
   };
 }
@@ -356,6 +357,7 @@ function toolResultPartFromText(text: string, message: unknown): Extract<ChatPar
   const toolCallId = getString(message, "toolCallId");
   const content = getProperty(message, "content");
   const details = getProperty(message, "details");
+  const drawnResult = drawnLines(getProperty(message, "drawnResult"));
   return {
     type: "toolResult",
     ...(toolCallId === undefined ? {} : { toolCallId }),
@@ -363,6 +365,7 @@ function toolResultPartFromText(text: string, message: unknown): Extract<ChatPar
     text,
     ...(content === undefined ? {} : { content }),
     ...(details === undefined ? {} : { details }),
+    ...(drawnResult === undefined ? {} : { drawnResult }),
     isError: getBoolean(message, "isError") === true,
   };
 }
@@ -423,6 +426,7 @@ function toolExecutionFromCall(part: Extract<ChatPart, { type: "toolCall" }>): T
     toolName: part.toolName,
     summary: part.summary,
     ...(part.args === undefined ? {} : { args: part.args }),
+    ...(part.drawnCall === undefined ? {} : { drawnCall: part.drawnCall }),
     status: "pending",
   };
 }
@@ -439,6 +443,7 @@ function mergeToolResultInto(lines: ChatLine[], target: { lineIndex: number; par
     ...(result.content === undefined ? {} : { content: result.content }),
     ...(result.details === undefined ? {} : { details: result.details }),
     ...(preview === undefined ? {} : { preview }),
+    ...(result.drawnResult === undefined ? {} : { drawnResult: result.drawnResult }),
   };
   lines[target.lineIndex] = { ...line, parts: [...line.parts.slice(0, target.partIndex), next, ...line.parts.slice(target.partIndex + 1)] };
   return true;

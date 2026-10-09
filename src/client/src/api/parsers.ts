@@ -1,3 +1,4 @@
+import { drawnLines } from "../drawnLines";
 import { isRecord } from "../../../shared/unknownValues";
 import { parseSessionStep } from "./sessionStepParser";
 import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, ASK_USER_TEXT_MAX_LENGTH, EXTENSION_DIALOG_EDITOR_MAX_LENGTH, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH,
@@ -993,6 +994,7 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
         toolCallId: requireString(record, "toolCallId"),
         summary: requireString(record, "summary"),
         ...optionalField("args", record["args"]),
+        ...optionalField("drawnCall", drawnLines(record["drawnCall"])),
       };
     case "tool.update":
       return {
@@ -1002,6 +1004,7 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
         text: requireString(record, "text"),
         ...optionalField("content", record["content"]),
         ...optionalField("details", record["details"]),
+        ...optionalField("drawnResult", drawnLines(record["drawnResult"])),
       };
     case "tool.end":
       return {
@@ -1012,6 +1015,7 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
         isError: requireBoolean(record, "isError"),
         ...optionalField("content", record["content"]),
         ...optionalField("details", record["details"]),
+        ...optionalField("drawnResult", drawnLines(record["drawnResult"])),
       };
     case "shell.start":
       return {
