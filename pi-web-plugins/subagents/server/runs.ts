@@ -683,13 +683,25 @@ export async function readSubagentRunOutput(
     : await readRunProgress(join(sessionDir, options.parentSessionId), runId, maxChars);
 }
 
-/** Directory entries, or none when the directory does not exist yet. */
+/**
+ * Directory entries, or none when the directory does not exist yet. Any other failure is thrown:
+ * an unreadable directory (EACCES, EIO) is not an empty one, and answering none made the count read
+ * 0 running and the panel read "no runs" for runs it could not see.
+ */
 async function listNames(dir: string): Promise<string[]> {
   try {
     return await readdir(dir);
-  } catch {
-    return [];
+  } catch (error) {
+    if (isMissing(error)) return [];
+    throw error;
   }
+}
+
+/** No such directory: nothing there yet, or a file where a directory would be. */
+function isMissing(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code: unknown = Reflect.get(error, "code");
+  return code === "ENOENT" || code === "ENOTDIR";
 }
 
 /** What a run has said so far, newest last, for a run with no result file. */
@@ -748,12 +760,14 @@ async function firstLineOfOutput(artifactsDir: string, names: readonly string[],
   return line === undefined ? undefined : summarize(line);
 }
 
+/** The subdirectories of a directory, none when it does not exist yet; other failures throw, as in `listNames`. */
 async function listDirectories(path: string): Promise<string[]> {
   try {
     const entries = await readdir(path, { withFileTypes: true });
     return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  } catch {
-    return [];
+  } catch (error) {
+    if (isMissing(error)) return [];
+    throw error;
   }
 }
 
