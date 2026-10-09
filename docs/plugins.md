@@ -26,7 +26,7 @@ Use **Settings → Pi packages** to view configured Pi packages or install/remov
 
 When machine federation is enabled, **Settings → Pi packages** targets the currently selected machine. The panel labels whether changes will run on the local/gateway machine or on a selected remote PI WEB machine.
 
-Use **Settings → PI WEB plugins** to edit the desired enablement of discovered plugins on the selected machine. Browser-only changes apply after a page reload. A server-backed change also requires a session-daemon restart before its paired browser module can load against the new active revision. If an older or unavailable remote PI WEB server does not support the versioned plugin lifecycle, PI WEB reports plugin settings as unsupported or unavailable instead of silently falling back to the gateway.
+Use **Settings → PI WEB plugins** to turn discovered plugins on or off on the selected machine. A plugin's server entry starts or stops at once in the process that runs it, without a restart; closing Settings then reloads the page to load or unload its browser module. A plugin that supplies the workspace provider or the machine registry (Workspaces, Machines, or a replacement), a changed plugin `settings` object, and a new package revision of a running plugin still need a session-daemon restart, and their cards say **Restart required** until it happens. See [Turning a plugin on or off](#turning-a-plugin-on-or-off). If an older or unavailable remote PI WEB server does not support the versioned plugin lifecycle, PI WEB reports plugin settings as unsupported or unavailable instead of silently falling back to the gateway.
 
 After installing, removing, or updating a Pi package, type `/reload` in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. For PI WEB plugins, manually restart the target session daemon when the package has a server entry, then reload the browser page. A provider-registering Pi extension follows a separate daemon-start policy; see [Pi extension provider baseline](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/config.md#pi-extension-provider-baseline).
 
@@ -249,7 +249,7 @@ The remote manifest and backend bridge use a versioned lifecycle contract. A fut
 
 Plugin/provider compatibility is intentionally all-or-nothing during a mixed-version fleet rollout. A newer gateway rejects an older target's whole remote plugin manifest when the target lacks the current lifecycle contract, so even that target's browser-only plugin contributions and Git panel are unavailable. In the other upgrade order, an older gateway still calls the legacy core Git routes removed by an updated target, so remote Git status/diff requests return `404`. Upgrade the gateway and target together, restart their updated web/API processes and the target session daemon, then reload the gateway tab. Other machine features remain subject to their own capability negotiation.
 
-Remote desired enablement is stored in the remote machine's PI WEB config. Select that machine in **Settings → PI WEB plugins** to edit it, or open the machine directly/edit its config. Browser-only changes need a page reload. Server-backed changes need a restart of that remote session daemon followed by a page reload.
+Remote desired enablement is stored in the remote machine's PI WEB config. Select that machine in **Settings → PI WEB plugins** to edit it, or open the machine directly/edit its config. Browser-only changes need a page reload. A server entry turned on or off applies on that machine at once when it runs a PI WEB with live plugin toggles; the exceptions above, and an older remote, need a restart of that remote session daemon followed by a page reload.
 
 Plugin package metadata may set `machineSpecific: true` when the plugin's meaning is tied to the selected PI WEB machine:
 
@@ -292,18 +292,36 @@ Plugin enablement is separate from package installation. Use **Settings → Pi p
 }
 ```
 
-Plugins are enabled by default. `plugins.<id>.enabled: false` removes a browser-only entry on the next page load and prevents a server entry from loading on the next sessiond start. The optional `settings` object must be JSON-compatible and is captured for a server entry only at sessiond startup.
+Plugins are enabled by default. `plugins.<id>.enabled: false` removes a browser-only entry on the next page load. Saved through Settings or the config API, it stops a server entry at once; edited into the file by hand, it takes effect at the next sessiond start. The optional `settings` object must be JSON-compatible and is captured for a server entry only when it starts.
 
 ### Desired versus active state
 
-Sessiond resolves one immutable enabled server-plugin snapshot at startup and remains the workspace authority for its lifetime. Saving config or replacing package files changes **desired** state only. The existing backend can remain active until sessiond restarts; conversely, its paired browser module is withheld when active and desired revisions no longer match. A web/API restart or browser reload does not change sessiond's active provider registry.
+Sessiond resolves the enabled server plugins at startup and remains the workspace authority for its lifetime. A toggle saved through Settings or the config API is applied live, in the web process and in sessiond. Anything else (a settings change, replaced package files, a hand edit of the file, or a toggle of a workspace-provider or machine-registry plugin) changes **desired** state only. The existing backend can remain active until sessiond restarts; conversely, its paired browser module is withheld when active and desired revisions no longer match. A web/API restart or browser reload does not change sessiond's active provider registry.
 
 Use this sequence:
 
 1. Install or update the package on the target machine.
 2. Set the desired plugin enablement/settings.
 3. For a browser-only plugin, close Settings: the page reloads itself to load or unload it. After editing the config file by hand, reload the browser tab.
-4. For a server-backed plugin, manually restart sessiond, wait for it to become available, then reload the browser tab.
+4. For a server-backed plugin, a toggle in Settings applies at once. After a settings change or a package update, or for a plugin that supplies the workspace provider or the machine registry, manually restart sessiond, wait for it to become available, then reload the browser tab.
+
+### Turning a plugin on or off
+
+When a toggle is saved, each process that runs the plugin's server entry applies it before the save answers:
+
+| Event | What the host does, in order |
+|---|---|
+| Turned on | Imports the module, calls `activate(context)`, then `start(signal)`. Its operations and routes answer once `start` resolved. |
+| Turned off | Its operations and routes stop accepting calls and answer `409` with `code: "plugin-not-active"`. The signal of every call still running is aborted, and the host waits for those calls to settle, up to the lifecycle timeout. Then `stop(signal)` runs once, bounded by the same timeout. |
+
+A plugin can rely on these guarantees:
+
+- `stop` runs exactly once after every `start` that resolved, whether the plugin is turned off or the process shuts down.
+- No operation or route handler starts after `stop` begins.
+- Turning a plugin on again calls `activate` again; nothing from the earlier activation is reused.
+- A `stop` that throws or times out leaves the plugin `failed` in phase `stop`.
+
+The signal an operation or route handler receives fires when the caller goes away and when the plugin is turned off; a handler that holds work open should listen to it.
 
 > **Manual session-daemon restart:** for the native systemd user service, run `systemctl --user restart pi-web-sessiond` (the unit is `pi-web-sessiond.service`). Restarting sessiond may interrupt active sessions and runtime ownership. Web/UI autoreload, restarting only the web/API service, browser reload, and Pi's `/reload` command do not activate server-plugin changes.
 

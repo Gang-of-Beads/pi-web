@@ -80,7 +80,10 @@ export interface ServerPluginExecFileResult {
 /**
  * Signals passed to lifecycle callbacks are scoped to that single invocation
  * and are aborted when it times out or settles. They are not plugin-lifetime
- * shutdown signals; the host invokes `stop()` explicitly during shutdown.
+ * shutdown signals; the host invokes `stop()` explicitly, when the plugin is
+ * turned off in Settings and during shutdown. An operation or route handler's
+ * signal also fires when the plugin is turned off (docs/plugins.md, "Turning a
+ * plugin on or off").
  */
 /**
  * A named JSON operation the host exposes as

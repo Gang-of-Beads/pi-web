@@ -56,6 +56,7 @@ import { sessionServiceDependencies } from "./daemon/sessionServiceDependencies.
 import { registerWorkspaceCatalogRoutes } from "./daemon/workspaces/workspaceCatalogRoutes.js";
 import { registerPluginBackendRoutes } from "./daemon/workspaces/pluginBackendRoutes.js";
 import { registerPluginOperationRoutes } from "./daemon/plugins/pluginOperationRoutes.js";
+import { registerPluginReconcileRoute } from "./daemon/plugins/pluginReconcileRoute.js";
 import { registerWorkspaceRemovalRoutes } from "./daemon/workspaces/workspaceRemovalRoutes.js";
 import { createWorkspaceProviderRuntimeSnapshot } from "./shared/workspaces/workspaceCatalog.js";
 import { WorkspaceRemovalService } from "./daemon/workspaces/workspaceRemovalService.js";
@@ -106,7 +107,7 @@ const daemonProjectStore = new ProjectStore(projectStorePath(daemonEnvironment))
 const serverPluginCatalog = new PiWebPluginCatalog({
   cwd: process.cwd(),
   agentDir: activeAgentProfile.dir,
-  configProvider: () => config,
+  configProvider: () => effectivePiWebConfig({ env: daemonEnvironment }).config,
   projectPlugins: () => projectPluginRoots({
     projectPaths: async () => (await daemonProjectStore.list()).map((project) => project.path),
     agentDir: () => activeAgentProfile.dir,
@@ -244,7 +245,7 @@ async function createSessionDaemonRuntime() {
       contributions: eligibleWorkspaceProviderContributions(serverPlugins.providerContributions(), providerHealth),
       logger: app.log,
     });
-    const workspaceProviderRuntime = createWorkspaceProviderRuntimeSnapshot(
+    const workspaceProviderRuntime = () => createWorkspaceProviderRuntimeSnapshot(
       serverPlugins.healthRecords(),
       providerHealth,
       serverPlugins.safeStartLevel(),
@@ -441,6 +442,10 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
     providerRuntime: workspaceProviderRuntime,
   });
   registerPluginOperationRoutes(app, serverPlugins);
+  registerPluginReconcileRoute(app, async () => {
+    await serverPlugins.reconcile();
+    recordDeclaredAgentFacts(serverPlugins.declaredAgentFacts());
+  });
   registerPluginBackendRoutes(app, {
     projects,
     backends: workspaceProviders,

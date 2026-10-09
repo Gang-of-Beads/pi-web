@@ -4,6 +4,8 @@ import type { ServerPluginReply, ServerPluginRouteBody, ServerPluginRouteContrib
 import type { JsonValue } from "../../../shared/pluginApiTypes.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
 import type { ServerPluginRuntime } from "../../shared/plugins/serverPluginRuntime.js";
+import { PluginNotActiveError } from "../../shared/plugins/pluginCallGate.js";
+import { routeMissingBody } from "../../shared/routeMissing.js";
 import { isRecord } from "../../../shared/unknownValues.js";
 
 /**
@@ -15,24 +17,32 @@ import { isRecord } from "../../../shared/unknownValues.js";
  * family gets. The plugin never sees fastify types: requests are narrowed
  * to the three input faces the contract names, replies to code/header/send,
  * and the handler's signal is request cancellation - aborted when the
- * client disconnects before the response finished, never by a lifecycle
- * bound.
+ * client disconnects before the response finished - joined by the plugin's
+ * own signal, which fires when the plugin is turned off (B19).
+ *
+ * Fastify takes routes only at boot, so each mounted handler asks the runtime
+ * for the plugin's live route on every request: a plugin turned off answers
+ * 409 `plugin-not-active`, and one turned on again answers with its new
+ * activation, not the stopped one.
  */
-export function mountServerPluginRoutes(app: FastifyInstance, runtime: Pick<ServerPluginRuntime, "routeContributions">, prefix: string): void {
+type LiveRoutes = Pick<ServerPluginRuntime, "routeContributions" | "liveRoute">;
+
+export function mountServerPluginRoutes(app: FastifyInstance, runtime: LiveRoutes, prefix: string): void {
   registerPluginRouteBodyParsers(app);
   for (const { pluginId, route } of runtime.routeContributions()) {
-    mountOne(app, pluginId, route, prefix);
+    mountOne(app, runtime, pluginId, route, prefix);
   }
 }
 
-function mountOne(app: FastifyInstance, pluginId: string, route: ServerPluginRouteContribution, prefix: string): void {
+function mountOne(app: FastifyInstance, runtime: LiveRoutes, pluginId: string, route: ServerPluginRouteContribution, prefix: string): void {
   const mountedPath = `${prefix}${route.path}`;
+  const handler = toFastifyHandler(runtime, pluginId, route);
   const register = {
-    GET: () => app.get(mountedPath, toFastifyHandler(route)),
-    POST: () => app.post(mountedPath, toFastifyHandler(route)),
-    PUT: () => app.put(mountedPath, toFastifyHandler(route)),
-    PATCH: () => app.patch(mountedPath, toFastifyHandler(route)),
-    DELETE: () => app.delete(mountedPath, toFastifyHandler(route)),
+    GET: () => app.get(mountedPath, handler),
+    POST: () => app.post(mountedPath, handler),
+    PUT: () => app.put(mountedPath, handler),
+    PATCH: () => app.patch(mountedPath, handler),
+    DELETE: () => app.delete(mountedPath, handler),
   }[route.method];
   try {
     register();
@@ -44,24 +54,42 @@ function mountOne(app: FastifyInstance, pluginId: string, route: ServerPluginRou
 type FastifyLikeRequest = FastifyRequest;
 type FastifyLikeReply = FastifyReply;
 
-function toFastifyHandler(route: ServerPluginRouteContribution): (request: FastifyLikeRequest, reply: FastifyLikeReply) => Promise<void> {
+function toFastifyHandler(runtime: LiveRoutes, pluginId: string, mounted: ServerPluginRouteContribution): (request: FastifyLikeRequest, reply: FastifyLikeReply) => Promise<void> {
   return async (request, reply) => {
+    const live = runtime.liveRoute(pluginId, mounted.method, mounted.path);
+    if (live instanceof PluginNotActiveError) {
+      await refuseInactive(reply, live);
+      return;
+    }
+    if (live === undefined) {
+      await reply.code(404).send(routeMissingBody(request.method, request.url));
+      return;
+    }
     const cancellation = requestCancellation(request, reply);
     try {
-      await route.handle(
-        {
-          params: stringRecord(request.params),
-          query: singleValuedQuery(request.query),
-          headers: singleValuedHeaders(request.headers),
-          body: routeBody(request.body),
-        },
-        pluginReply(reply),
-        { signal: cancellation.signal },
-      );
+      await live.gate.run(cancellation.signal, async (signal) => {
+        await live.route.handle(
+          {
+            params: stringRecord(request.params),
+            query: singleValuedQuery(request.query),
+            headers: singleValuedHeaders(request.headers),
+            body: routeBody(request.body),
+          },
+          pluginReply(reply),
+          { signal },
+        );
+      });
+    } catch (error) {
+      if (!(error instanceof PluginNotActiveError) || reply.sent) throw error;
+      await refuseInactive(reply, error);
     } finally {
       cancellation.dispose();
     }
   };
+}
+
+async function refuseInactive(reply: FastifyLikeReply, error: PluginNotActiveError): Promise<void> {
+  await reply.code(409).send({ error: error.message, code: error.code, pluginId: error.pluginId, state: error.state });
 }
 
 function routeBody(body: unknown): ServerPluginRouteBody | undefined {

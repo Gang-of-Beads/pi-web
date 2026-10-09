@@ -15,7 +15,8 @@ export interface WorkspaceCatalogResolver {
 export interface WorkspaceCatalogRouteDependencies {
   projects: WorkspaceCatalogProjectReader;
   workspaces: WorkspaceCatalogResolver;
-  providerRuntime: WorkspaceProviderRuntimeSnapshot;
+  /** Built on each ask from the live plugin records, so a plugin turned on or off is reported as it is. */
+  providerRuntime: () => WorkspaceProviderRuntimeSnapshot;
 }
 
 /** Internal sessiond protocol; browser-facing routes consume it through a typed client. */
@@ -24,7 +25,7 @@ export function registerWorkspaceCatalogRoutes(
   dependencies: WorkspaceCatalogRouteDependencies,
   prefix = "/workspace-catalog",
 ): void {
-  app.get(`${prefix}/provider-runtime`, () => dependencies.providerRuntime);
+  app.get(`${prefix}/provider-runtime`, () => dependencies.providerRuntime());
 
   app.get<{ Params: { projectId: string } }>(`${prefix}/projects/:projectId/workspaces`, async (request, reply) => {
     try {

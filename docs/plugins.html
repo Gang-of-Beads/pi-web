@@ -162,9 +162,11 @@
                 PI WEB machine.
               </p>
               <p>
-                Use <strong>Settings → PI WEB plugins</strong> to edit desired plugin enablement on the selected
-                machine and compare it with sessiond's active startup snapshot. Browser-only changes apply after a page
-                reload. Server-backed changes require a session-daemon restart and then a page reload. Unsupported or
+                Use <strong>Settings → PI WEB plugins</strong> to turn plugins on or off on the selected machine. A
+                plugin's server entry starts or stops at once in the process that runs it; closing Settings then
+                reloads the page for its browser module. A plugin that supplies the workspace provider or the machine
+                registry, a changed <code>settings</code> object, and a new package revision of a running plugin still
+                need a session-daemon restart and say <strong>Restart required</strong>. Unsupported or
                 unavailable remote settings are reported instead of silently falling back to the gateway.
               </p>
               <p>
@@ -593,9 +595,10 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@gang-of-beads/pi-web
 }</code></pre>
               </div>
               <p>
-                Plugins default to enabled. A browser-only change applies after a page reload. A server entry captures
-                enablement and JSON settings only at sessiond startup; replacing package files or saving config changes
-                desired state without hot-reloading the active provider registry.
+                Plugins default to enabled. A browser-only change applies after a page reload. A server entry turned
+                on or off through Settings or the config API starts or stops at once; a hand edit of the file waits for
+                the next sessiond start. JSON settings are captured when a server entry starts, and replacing package
+                files never hot-reloads a running one or the active provider registry.
               </p>
             </section>
 
@@ -605,8 +608,16 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@gang-of-beads/pi-web
                 <li>Install or update the plugin package on the target machine.</li>
                 <li>Set its desired enablement/settings.</li>
                 <li>For a browser-only plugin, close Settings: the page reloads itself to load or unload it. After editing the config file by hand, reload the browser tab.</li>
-                <li>For a server-backed plugin, restart sessiond, wait for it, then reload the browser tab.</li>
+                <li>For a server-backed plugin, a toggle in Settings applies at once. After a settings change or a package update, or for a workspace-provider or machine-registry plugin, restart sessiond, wait for it, then reload the browser tab.</li>
               </ol>
+              <p>
+                Turned on, a server entry is imported, then <code>activate(context)</code> and <code>start(signal)</code>
+                run; its operations and routes answer once <code>start</code> resolved. Turned off, its operations and
+                routes refuse new calls with <code>409</code> and <code>code: "plugin-not-active"</code>, every running
+                call's signal is aborted and given up to the lifecycle timeout to settle, and then <code>stop(signal)</code>
+                runs once. <code>stop</code> runs exactly once after every <code>start</code> that resolved, no handler
+                starts after <code>stop</code> begins, and turning a plugin on again calls <code>activate</code> again.
+              </p>
               <div class="callout warning">
                 <strong>Manual session-daemon restart:</strong> for the native systemd user service, run
                 <code>systemctl --user restart pi-web-sessiond</code> (unit <code>pi-web-sessiond.service</code>).

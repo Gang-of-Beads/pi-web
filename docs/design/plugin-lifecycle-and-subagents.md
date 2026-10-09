@@ -2,7 +2,7 @@
 
 Owner, 2026-09-30: "Have we not extracted the pi subagents plugin into our own plugin? Make it an official plugin that can be enabled and disabled in plugin management. Check whether enable/disable can always call the plugin's init and teardown, with a fixed injection point, so plugin developers know exactly what each behavior does."
 
-## What exists today
+## What existed (2026-09-30, before the slices below)
 
 **The hooks exist, but a toggle calls none of them.**
 
@@ -65,6 +65,42 @@ Enable and disable run the plugin's hooks **live**, in a fixed order, with no re
 
 1. The lifecycle contract, the live toggle, the documentation and the conformance kit. Every plugin gains from them, and Subagents is their first real customer.
 2. The `backgroundWork` contribution, then the Subagents extraction, with a guard test that fails if core names subagents again.
+
+## Slices (2026-10-09)
+
+**Slice A: a server half toggles live in its own process.** Owner question 22 is open; until it is
+answered, a plugin that hands core a face (a workspace provider or a machine registry) keeps
+"Restart required", and every other server half toggles live.
+
+- `ServerPluginRuntime.reconcile(snapshot)`, serialised through one tail, compares each server
+  entry's desired state (`disabledReason`) with the active list:
+  - active and no longer wanted, no face: **disable**.
+  - wanted and not active, no face: **enable**, the same `activateEntry` a process start runs.
+  - a face either way, or a new revision of an active plugin: left as it is; the reconciliation
+    (`piWebPluginLifecycle`) keeps reporting "Restart required" for it, as today.
+- **Disable**, in this order:
+  1. the plugin leaves the callable set: a new operation call or route request is refused with
+     409 `{ code: "plugin-not-active", state }`;
+  2. its own abort signal fires, which every in-flight operation and route handler of the plugin
+     receives beside the request's cancellation;
+  3. the host waits for those calls to settle, bounded by the lifecycle timeout;
+  4. `stop(signal)` runs, bounded, exactly once;
+  5. the record reads `disabled`; a throwing or timed-out stop reads `failed` with phase `stop`.
+- **Who learns of it:** the config write path in the web process (a decorator beside
+  `invalidatePiWebStatusOnWrite`) sees the `plugins` section change, reconciles the web runtime,
+  and asks the daemon to reconcile (`POST /plugins/reconcile`). The daemon re-reads its config,
+  reconciles its runtime and re-records its agent facts. No frame is published yet: the page's
+  realtime parser refuses unknown frames, so `plugins.changed` lands in slice C with its parser.
+- Route requests for a plugin disabled after boot are refused by its mounted handler; a plugin
+  enabled after boot cannot mount routes yet (Fastify does not add routes after listen): slice B.
+
+**Slice B: routes of a plugin enabled after boot** answer through the not-found handler, which
+consults the live route table before answering route-missing.
+
+**Slice C: the page follows `plugins.changed`**, disposing and loading browser halves against the
+manifest, instead of reloading when Settings closes.
+
+**Slice D: the lifecycle section of docs/plugins.md.** Its server half ("Turning a plugin on or off") landed with slice A; slice D adds the browser half and the conformance checks (owner question 23).
 
 ## Proof
 

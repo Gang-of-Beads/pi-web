@@ -692,6 +692,11 @@ stateDiagram-v2
 ```
 
 - **Owner.** The plugin runtime of each process, reconciled against config. A toggle takes effect live (owner, 2026-09-30). In-flight work is aborted.
+- **Live today for server halves (B19 slice A, 2026-10-09).**
+  - A config write through Settings or the config API that changes `plugins` reconciles the web runtime, then asks the daemon (`POST /plugins/reconcile` on its socket), and answers after both.
+  - `reconcileStep` decides each plugin: `enable`, `disable`, `keep`, or `awaits-restart`. The last applies to a plugin that hands core a face (workspace provider or machine registry; owner question 22) and to a new revision of a running plugin, and the card keeps saying Restart required.
+  - `disabling` is the call gate closing: new operation and route calls answer 409 `plugin-not-active` (with the state), running calls get the plugin's abort signal and up to the lifecycle timeout to settle, then `stop` runs once.
+  - A route mounted at boot asks the runtime for the live route on every request; a plugin first enabled after boot has no routes until slice B. Browser halves still follow on the page reload when Settings closes (slice C).
 - For a plugin that runs in both processes, the page shows the worse of the two states (`failed` beats `enabled`) and names the process.
 - **Where a plugin shows, and nowhere else** (owner, 2026-09-30: "once a plugin declares it, a new plugin button appears, and tapping it opens the plugin's own custom display"):
   - **A page.** A declared entry in the ≡ Go to page. Tapping it opens the plugin's own page, which the plugin draws.

@@ -26,6 +26,7 @@ import { registerMachineTerminalRoutes } from "./machineTerminalRoutes.js";
 import { registerWorkspaceDeletionRoutes } from "./workspaces/workspaceDeletionRoutes.js";
 import { createFilePiWebConfigService, registerConfigRoutes, registerLocalMachineConfigRoutes, type PiWebConfigService } from "./configRoutes.js";
 import { PiWebPluginService } from "./piWebPluginService.js";
+import { askDaemonToReconcilePlugins } from "../shared/plugins/pluginReconcile.js";
 import { PiWebPluginCatalog, filterCatalogEntriesByRuns } from "../shared/piWebPluginCatalog.js";
 import { createServerPluginRuntime, type ServerPluginRuntime } from "../shared/plugins/serverPluginRuntime.js";
 import type { ServerPluginRuntimeLogger } from "../shared/plugins/serverPluginRuntime.js";
@@ -178,6 +179,25 @@ async function desiredPluginAgentDir(
   }
 }
 
+/**
+ * A write that changes the `plugins` section applies live (B19 slice A): the web process
+ * reconciles its own plugin runtime, then asks its daemon to reconcile its. The write already
+ * happened, so a failure to apply it is only logged: the plugin list compares desired and running
+ * state in each process, so a plugin a reconcile did not reach still reads "Restart required".
+ * The answer waits for both, so the plugin list read after it shows what is running.
+ */
+function reconcilePluginsOnWrite(config: PiWebConfigService, apply: () => Promise<void>, log: (error: unknown) => void): PiWebConfigService {
+  return {
+    read: () => config.read(),
+    write: async (nextConfig) => {
+      const before = JSON.stringify((await config.read()).config.plugins ?? {});
+      const response = await config.write(nextConfig);
+      if (JSON.stringify(response.config.plugins ?? {}) !== before) await apply().catch(log);
+      return response;
+    },
+  };
+}
+
 function invalidatePiWebStatusOnWrite(config: PiWebConfigService, statusCache: Pick<PiWebStatusCache, "invalidate">): PiWebConfigService {
   return {
     read: () => config.read(),
@@ -216,14 +236,12 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   const daemonWorkspaces = new SessionDaemonWorkspaceCatalog(sessionDaemon);
   const workspaces = deps.workspaceCatalog ?? daemonWorkspaces;
   const agentProfileProvider = deps.agentProfileProvider ?? new SessionDaemonActiveAgentProfileProvider(sessionDaemon);
-  // Frozen at web-process startup, the same law as the daemon's handshake
-  // snapshot: drift discovered later is exactly what restartRequired reports.
-  let webProviderRuntimeSnapshot: WorkspaceProviderRuntimeSnapshot | undefined;
+  let webProviderRuntimeSnapshot: (() => WorkspaceProviderRuntimeSnapshot) | undefined;
   const piWebPlugins = deps.piWebPlugins ?? new PiWebPluginService({
     configProvider: readConfig,
     agentDirProvider: () => desiredPluginAgentDir(agentProfileProvider, configService),
     runtimeProvider: daemonWorkspaces,
-    webRuntimeProvider: () => Promise.resolve(webProviderRuntimeSnapshot),
+    webRuntimeProvider: () => Promise.resolve(webProviderRuntimeSnapshot?.()),
     recoveryProvider: () => loadServerPluginRecoveryConfig(),
   });
   // The web runtime reads the same config and agent-dir sources the plugin
@@ -280,7 +298,11 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   const sessionPins = deps.sessionPins ?? new SessionPinStore(sessionPinStorePath(), pinsChanged);
   registerSessionPinRoutes(app, sessionPins);
   registerSessionPinRoutes(app, sessionPins, "/api/machines/local");
-  const invalidatingConfigService = invalidatePiWebStatusOnWrite(configService, piWebStatusCache);
+  const reconcilingConfigService = reconcilePluginsOnWrite(configService, async () => {
+    await webServerPluginRuntime?.reconcile();
+    await askDaemonToReconcilePlugins(sessionDaemon);
+  }, (error) => { app.log.warn({ err: error }, "A plugin toggle could not be applied live; it takes effect after a restart"); });
+  const invalidatingConfigService = invalidatePiWebStatusOnWrite(reconcilingConfigService, piWebStatusCache);
   registerConfigRoutes(app, invalidatingConfigService);
   registerLocalMachineConfigRoutes(app, invalidatingConfigService);
   registerLocalProjectRoutes(app, projects, workspaces, "/api", { config: configService });
@@ -371,16 +393,17 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     }
   }
   if (webServerPluginRuntime !== undefined) {
-    webProviderRuntimeSnapshot = createWorkspaceProviderRuntimeSnapshot(
-      webServerPluginRuntime.healthRecords(),
-      await webServerPluginRuntime.inspectHealth(),
-      webServerPluginRuntime.safeStartLevel(),
-      webServerPluginRuntime.catalogDiagnostics(),
+    const runtime = webServerPluginRuntime;
+    const bootHealth = await runtime.inspectHealth();
+    webProviderRuntimeSnapshot = () => createWorkspaceProviderRuntimeSnapshot(
+      runtime.healthRecords(),
+      bootHealth,
+      runtime.safeStartLevel(),
+      runtime.catalogDiagnostics(),
     );
-    const mounted = webServerPluginRuntime;
-    app.addHook("onClose", () => mounted.stop());
-    mountServerPluginRoutes(app, mounted, "/api");
-    mountServerPluginRoutes(app, mounted, "/api/machines/local");
+    app.addHook("onClose", () => runtime.stop());
+    mountServerPluginRoutes(app, runtime, "/api");
+    mountServerPluginRoutes(app, runtime, "/api/machines/local");
   }
 
   const machines = deps.machines

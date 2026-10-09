@@ -18,7 +18,7 @@ describe("settings-plugins-panel layout", () => {
 
     expectTextOrder(rendered, [
       "PI WEB plugins",
-      "Compare desired plugin config with the active sessiond startup snapshot on ",
+      "Turn PI WEB plugins on or off on ",
       "Lab Mac (remote machine)",
       "Failed to load PI WEB plugin settings from Lab Mac: PI WEB plugins: timed out.",
       "Config saved.",

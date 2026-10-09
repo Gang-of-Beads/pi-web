@@ -47,7 +47,7 @@ describe("session daemon workspace catalog routes", () => {
     registerWorkspaceCatalogRoutes(app, {
       projects,
       workspaces: registry,
-      providerRuntime: createWorkspaceProviderRuntimeSnapshot([], []),
+      providerRuntime: () => createWorkspaceProviderRuntimeSnapshot([], []),
     });
     const spawnTargets = new ProjectScopedSpawnTargetResolver({ projects, workspaces: registry });
 
@@ -112,7 +112,7 @@ describe("session daemon workspace catalog routes", () => {
     registerWorkspaceCatalogRoutes(app, {
       projects: projectReader(),
       workspaces: registry,
-      providerRuntime: createWorkspaceProviderRuntimeSnapshot([], []),
+      providerRuntime: () => createWorkspaceProviderRuntimeSnapshot([], []),
     });
 
     const degraded = await app.inject({ method: "GET", url: "/workspace-catalog/projects/p1/workspaces" });
@@ -140,7 +140,7 @@ describe("session daemon workspace catalog routes", () => {
     registerWorkspaceCatalogRoutes(app, {
       projects: projectReader(),
       workspaces: registryFor({ probe: () => Promise.resolve("pass"), list: () => Promise.resolve([]) }),
-      providerRuntime: snapshot,
+      providerRuntime: () => snapshot,
     });
 
     const response = await app.inject({ method: "GET", url: "/workspace-catalog/provider-runtime" });

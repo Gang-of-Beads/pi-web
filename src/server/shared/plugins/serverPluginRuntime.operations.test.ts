@@ -77,7 +77,8 @@ describe("calling a declared plugin operation", () => {
 
     await runtime.callOperation("voice", "speech.token", null, controller.signal);
 
-    expect(seen[0]).toBe(controller.signal);
+    controller.abort();
+    expect(seen[0]?.aborted).toBe(true);
     await runtime.stop();
   });
 

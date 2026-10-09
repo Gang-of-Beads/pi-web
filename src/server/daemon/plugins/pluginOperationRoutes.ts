@@ -3,6 +3,7 @@ import { isPiWebPluginId } from "../../../shared/pluginIds.js";
 import { operationNamePattern, UnknownPluginOperationError } from "../../shared/plugins/pluginOperations.js";
 import { PLUGIN_OPERATION_BODY_MAX_BYTES } from "../../shared/plugins/pluginOperationContract.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
+import { PluginNotActiveError } from "../../shared/plugins/pluginCallGate.js";
 
 /**
  * The daemon half of a plugin's declared operations.
@@ -41,6 +42,7 @@ export function registerPluginOperationRoutes(
         return await reply.code(200).type("application/json; charset=utf-8").send(JSON.stringify(result ?? null));
       } catch (error) {
         if (error instanceof UnknownPluginOperationError) return await refuse(reply, 404, error.message, pluginId, operation);
+        if (error instanceof PluginNotActiveError) return await reply.code(409).send({ error: error.message, code: error.code, pluginId, operation, state: error.state });
         return await refuse(reply, 500, error instanceof Error ? error.message : String(error), pluginId, operation);
       } finally {
         cancellation.dispose();

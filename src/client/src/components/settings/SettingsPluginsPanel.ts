@@ -134,7 +134,7 @@ export class SettingsPluginsPanel extends LitElement {
       `;
     }
     return html`
-      <div class="plugin-note">Config key on ${this.targetLabel}: <code>plugins</code>. Browser-only changes apply after a tab reload; server-backed changes follow sessiond's startup snapshot and can require a manual restart.</div>
+      <div class="plugin-note">Config key on ${this.targetLabel}: <code>plugins</code>. A plugin's server part starts or stops as soon as it is turned on or off; Workspaces, Machines, a changed settings object and a new plugin version still need a session-daemon restart, and their cards say so.</div>
       <div class="plugin-list">
         ${plugins.map((plugin) => this.renderPlugin(plugin))}
       </div>
@@ -305,5 +305,5 @@ function healthTone(status: NonNullable<NonNullable<PiWebPluginInfo["server"]>["
 }
 
 function pluginsDescription(targetLabel: string): TemplateResult {
-  return html`Compare desired plugin config with the active sessiond startup snapshot on <strong>${targetLabel}</strong>. This is separate from installing Pi packages.`;
+  return html`Turn PI WEB plugins on or off on <strong>${targetLabel}</strong>, and see what each one is running. This is separate from installing Pi packages.`;
 }

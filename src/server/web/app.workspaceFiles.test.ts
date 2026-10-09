@@ -11,6 +11,7 @@ import { loadEffectiveProjectPathAccess } from "./workspaces/projectPiWebConfig.
 import { mountServerPluginRoutes } from "./plugins/serverPluginRouteMount.js";
 import type { ServerPluginActivationContext, ServerPluginExecFileResult } from "../../server-plugin-api.js";
 import workspacesPlugin from "../../../pi-web-plugins/workspaces/server-plugin.js";
+import { PluginCallGate } from "../shared/plugins/pluginCallGate.js";
 
 registerAppTestHooks();
 
@@ -52,7 +53,14 @@ async function mountWorkspaceFileRoutes(): Promise<void> {
   };
   const activation = await workspacesPlugin.activate(context);
   const routes = activation.routes ?? [];
-  const runtime = { routeContributions: () => routes.map((route) => ({ pluginId: "workspaces", route })) };
+  const gate = new PluginCallGate("workspaces");
+  const runtime = {
+    routeContributions: () => routes.map((route) => ({ pluginId: "workspaces", route })),
+    liveRoute: (_pluginId: string, method: string, path: string) => {
+      const route = routes.find((candidate) => candidate.method === method && candidate.path === path);
+      return route === undefined ? undefined : { route, gate };
+    },
+  };
   mountServerPluginRoutes(appTestContext.app, runtime, "/api");
   mountServerPluginRoutes(appTestContext.app, runtime, "/api/machines/local");
 }

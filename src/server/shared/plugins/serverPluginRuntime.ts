@@ -35,6 +35,8 @@ import type {
   PiWebPluginRuns,
 } from "../piWebPluginCatalog.js";
 import { createServerPluginExecFile } from "./serverPluginExec.js";
+import { PluginCallGate, PluginNotActiveError } from "./pluginCallGate.js";
+import { reconcileStep, type ReconcileStep } from "./pluginReconcileStep.js";
 import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
 
 export type ServerPluginRuntimeState = "active" | "failed" | "incompatible" | "disabled";
@@ -100,6 +102,7 @@ interface ActiveServerPlugin {
   entry: PiWebPluginCatalogEntry;
   plugin: PiWebServerPlugin;
   activation: ServerPluginActivation;
+  gate: PluginCallGate;
   operations?: PluginOperationMap;
   agentFacts?: AgentFactDeclarations;
   contribution?: ServerPluginProviderContribution;
@@ -109,24 +112,28 @@ interface ActiveServerPlugin {
 const DEFAULT_LIFECYCLE_TIMEOUT_MS = 10_000;
 
 /**
- * Resolves exactly one desired catalog snapshot and activates its server
- * entries. The resulting runtime is immutable except for explicit shutdown;
- * v1 intentionally has no hot reload or unload path.
+ * Resolves the desired catalog snapshot and activates its server entries. A later `reconcile`
+ * reads the catalog again and turns plugins on or off live (B19 slice A); a new revision of a
+ * running plugin, and a plugin that hands core a face, still wait for a restart.
  */
 export async function createServerPluginRuntime(
   options: CreateServerPluginRuntimeOptions,
 ): Promise<ServerPluginRuntime> {
-  if (options.safeStart === "none") {
-    return await ServerPluginRuntime.activate({ plugins: [], diagnostics: [] }, options);
-  }
-  const snapshot = await options.catalog.snapshot(options.safeStart === "bundled-only" ? { scope: "bundled" } : undefined);
-  return await ServerPluginRuntime.activate(snapshot, options);
+  const desired = (): Promise<PiWebPluginCatalogSnapshot> => options.safeStart === "none"
+    ? Promise.resolve({ plugins: [], diagnostics: [] })
+    : options.catalog.snapshot(options.safeStart === "bundled-only" ? { scope: "bundled" } : undefined);
+  return await ServerPluginRuntime.activate(await desired(), options, desired);
 }
+
+/** The text of a plugin a live reconcile could not turn on because core takes its face only at boot. */
+const AWAITS_RESTART_MESSAGE = "turned on; takes effect after PI WEB restarts";
 
 export class ServerPluginRuntime {
   private readonly recordsById = new Map<string, ServerPluginRuntimeRecord>();
   private activePlugins: ActiveServerPlugin[] = [];
   private stopped = false;
+  private reconcileTail: Promise<unknown> = Promise.resolve();
+  private desiredSnapshot: (() => Promise<PiWebPluginCatalogSnapshot>) | undefined;
 
   private constructor(
     private readonly safeStart: ServerPluginSafeStart | undefined,
@@ -142,6 +149,7 @@ export class ServerPluginRuntime {
   static async activate(
     snapshot: PiWebPluginCatalogSnapshot,
     options: Omit<CreateServerPluginRuntimeOptions, "catalog">,
+    desiredSnapshot?: () => Promise<PiWebPluginCatalogSnapshot>,
   ): Promise<ServerPluginRuntime> {
     const runtime = new ServerPluginRuntime(
       options.safeStart,
@@ -153,6 +161,7 @@ export class ServerPluginRuntime {
       options.storageBaseDir ?? piWebDataDir(),
       options.hostPorts,
     );
+    runtime.desiredSnapshot = desiredSnapshot;
     try {
       await runtime.start(snapshot.plugins);
       return runtime;
@@ -202,9 +211,92 @@ export class ServerPluginRuntime {
    */
   async callOperation(pluginId: string, operation: string, input: unknown, signal: AbortSignal): Promise<JsonValue> {
     const active = this.activePlugins.find((candidate) => candidate.entry.id === pluginId);
-    if (active === undefined) throw new UnknownPluginOperationError(`No server plugin named ${pluginId} is active`);
+    if (active === undefined) throw this.notRunning(pluginId) ?? new UnknownPluginOperationError(`No server plugin named ${pluginId} is active`);
     const handler = requirePluginOperation(active.operations, operation);
-    return await handler(input, { signal });
+    return await active.gate.run(signal, async (gated) => await handler(input, { signal: gated }));
+  }
+
+  /**
+   * The route a running plugin declares for this method and path, behind its gate; or why it
+   * cannot answer. A handler mounted at boot asks on every request, because a plugin turned off
+   * and on again is a new activation with new route objects.
+   */
+  liveRoute(pluginId: string, method: ServerPluginRouteContribution["method"], path: string): { route: ServerPluginRouteContribution; gate: PluginCallGate } | PluginNotActiveError | undefined {
+    const active = this.activePlugins.find((candidate) => candidate.entry.id === pluginId);
+    if (active === undefined) return this.notRunning(pluginId);
+    const route = active.activation.routes?.find((candidate) => candidate.method === method && candidate.path === path);
+    return route === undefined ? undefined : { route, gate: active.gate };
+  }
+
+  private notRunning(pluginId: string): PluginNotActiveError | undefined {
+    const state = this.recordsById.get(pluginId)?.state;
+    return state === undefined || state === "active" ? undefined : new PluginNotActiveError(pluginId, state);
+  }
+
+  /**
+   * Read the catalog again and apply it live: plugins turned off stop, plugins turned on start
+   * (`reconcileStep` decides each). Runs one at a time; a runtime built without a catalog, or one
+   * already shut down, does nothing.
+   */
+  async reconcile(): Promise<void> {
+    const run = this.reconcileTail.then(async () => {
+      if (this.stopped || this.desiredSnapshot === undefined) return;
+      await this.applySnapshot(await this.desiredSnapshot());
+    });
+    this.reconcileTail = run.catch(() => undefined);
+    await run;
+  }
+
+  private async applySnapshot(snapshot: PiWebPluginCatalogSnapshot): Promise<void> {
+    const desiredById = new Map(snapshot.plugins.filter((entry) => entry.serverModule !== undefined).map((entry) => [entry.id, entry]));
+    const ids = [...new Set([...desiredById.keys(), ...this.activePlugins.map((active) => active.entry.id)])].sort((left, right) => left.localeCompare(right));
+    for (const pluginId of ids) {
+      if (this.stopped) return;
+      const desired = desiredById.get(pluginId);
+      const active = this.activePlugins.find((candidate) => candidate.entry.id === pluginId);
+      const step = reconcileStep({
+        wanted: desired !== undefined && disabledReason(desired, this.safeStart) === undefined,
+        active: active === undefined ? undefined : { hasFace: active.contribution !== undefined || active.machineRegistry !== undefined, revision: requireServerModule(active.entry).revision },
+        desiredRevision: desired?.serverModule?.revision,
+      });
+      await this.reconcileExecutors[step](desired, active);
+    }
+  }
+
+  private readonly reconcileExecutors: Readonly<Record<ReconcileStep, (desired: PiWebPluginCatalogEntry | undefined, active: ActiveServerPlugin | undefined) => Promise<void>>> = {
+    keep: () => Promise.resolve(),
+    "awaits-restart": () => Promise.resolve(),
+    enable: async (desired) => { if (desired !== undefined) await this.activateEntry(desired, "live"); },
+    disable: async (desired, active) => { if (active !== undefined) await this.deactivate(active, desired); },
+  };
+
+  /**
+   * Turn one running plugin off: its gate refuses new calls and aborts the running ones, which get
+   * up to the lifecycle timeout to settle; then `stop` runs once, bounded; then it leaves the
+   * active list. A stop that throws or times out leaves the plugin `failed` in phase `stop`.
+   */
+  private async deactivate(active: ActiveServerPlugin, desired: PiWebPluginCatalogEntry | undefined): Promise<void> {
+    const pluginId = active.entry.id;
+    const drained = await active.gate.close(this.lifecycleTimeoutMs);
+    if (drained === "timed-out") this.logger.warn({ pluginId }, "server plugin calls did not settle before stop");
+    const stop = active.activation.stop?.bind(active.activation);
+    let stopError: unknown;
+    if (stop !== undefined) {
+      try {
+        await runBounded(pluginId, "stop", this.lifecycleTimeoutMs, (signal) => stop(signal));
+      } catch (error) {
+        stopError = error;
+      }
+    }
+    this.activePlugins = this.activePlugins.filter((candidate) => candidate !== active);
+    const entry = desired ?? active.entry;
+    if (stopError === undefined) {
+      this.recordsById.set(pluginId, recordFor(entry, { state: "disabled", name: active.plugin.name, message: disabledReason(entry, this.safeStart) ?? "no server module in the current plugin catalog" }));
+      this.logger.info({ pluginId }, "server plugin turned off");
+      return;
+    }
+    this.recordsById.set(pluginId, recordFor(entry, { state: "failed", name: active.plugin.name, phase: "stop", message: errorMessage(stopError) }));
+    this.logger.error({ err: stopError, pluginId, phase: "stop" }, "server plugin stop failed");
   }
 
   /** What every active plugin says about the agent-side facts it fronts. */
@@ -245,10 +337,15 @@ export class ServerPluginRuntime {
     return Object.freeze(inspections);
   }
 
-  /** Stops every successfully published plugin in reverse activation order. */
+  /**
+   * Stops every successfully published plugin in reverse activation order. A reconcile already
+   * running finishes first, so a plugin it was turning off is not stopped twice and one it was
+   * turning on is stopped too.
+   */
   async stop(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
+    await this.reconcileTail;
     const activePlugins = [...this.activePlugins].reverse();
     this.activePlugins = [];
     for (const active of activePlugins) {
@@ -280,7 +377,7 @@ export class ServerPluginRuntime {
     for (const entry of serverEntries) await this.activateEntry(entry);
   }
 
-  private async activateEntry(entry: PiWebPluginCatalogEntry): Promise<void> {
+  private async activateEntry(entry: PiWebPluginCatalogEntry, when: "boot" | "live" = "boot"): Promise<void> {
     const disabledMessage = disabledReason(entry, this.safeStart);
     if (disabledMessage !== undefined) {
       this.recordsById.set(entry.id, recordFor(entry, { state: "disabled", message: disabledMessage }));
@@ -326,6 +423,12 @@ export class ServerPluginRuntime {
         await runBounded(entry.id, phase, this.lifecycleTimeoutMs, (signal) => start(signal));
       }
 
+      if (when === "live" && (loadedActivation.workspaceProvider !== undefined || loadedActivation.machineRegistry !== undefined)) {
+        const rollbackError = await this.rollbackStart(entry.id, loadedActivation);
+        this.recordsById.set(entry.id, recordFor(entry, { state: "disabled", name: loadedPlugin.name, message: AWAITS_RESTART_MESSAGE }));
+        this.logger.info({ pluginId: entry.id, ...(rollbackError === undefined ? {} : { rollbackError }) }, "server plugin hands core a face; it starts at the next restart");
+        return;
+      }
       const contribution = loadedActivation.workspaceProvider === undefined
         ? undefined
         : Object.freeze({
@@ -347,6 +450,7 @@ export class ServerPluginRuntime {
         entry,
         plugin: loadedPlugin,
         activation: loadedActivation,
+        gate: new PluginCallGate(entry.id),
         ...(operations === undefined ? {} : { operations }),
         ...(agentFacts === undefined ? {} : { agentFacts }),
         ...(contribution === undefined ? {} : { contribution }),
