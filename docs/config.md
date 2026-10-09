@@ -379,7 +379,7 @@ PI WEB gives agents no tools of its own. Starting other sessions is a session-da
 |---|---|
 | `POST /api/sessions/:id/spawn` | Start an independent session. Body: `cwd` (this session's workspace), `prompt`, and optionally `targetCwd` (any workspace of the same project) and `model`. |
 | `POST /api/sessions/:id/subsessions` | Start a tracked child in this session's own workspace. Body: `cwd`, `prompt`, and optionally `model`. |
-| `GET /api/sessions/:id/subsessions?cwd=…` | List this session's tracked children and subagent runs. |
+| `GET /api/sessions/:id/subsessions?cwd=…` | List this session's tracked children. Runs started with pi's subagent tool belong to the Subagents plugin: `POST /api/plugins/subagents/runs.list` with `{ "sessionFile": … }`. |
 | `GET /api/sessions/:id/subsessions/:child?cwd=…` | A child's status and last reply. |
 | `GET /api/sessions/:id/subsessions/:child/transcript?cwd=…` | A child's transcript. Optional filters: `roles`, `include` (comma-separated), `search`, `maxChars`, `includeToolArgs=true`, `before`, `limit`. |
 

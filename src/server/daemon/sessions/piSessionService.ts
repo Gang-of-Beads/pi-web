@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { sessionActivityLabel } from "./sessionActivityLabel.js";
 import { EMPTY_HOST_CONTRIBUTIONS, type HostContributions } from "./hostContributions.js";
 import { takeUnfiledWarnings } from "./warningFiling.js";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
@@ -36,13 +36,12 @@ import {
   parseSessionEntries,
   type FileEntry,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo, TranscriptHead } from "../../../shared/apiTypes.js";
+import type { SessionBackgroundTaskInfo, TranscriptHead } from "../../../shared/apiTypes.js";
 import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
 import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, isCutAssistant, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, stoppedTurnMessage, transcriptHead, TURN_STOP_SETTLED_CUSTOM_TYPE, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
-import { runTranscriptMessages } from "../../../shared/subagentRunTranscript.js";
 import { readableMessageCount } from "./readableMessageCount.js";
 import { BranchStateMemo, branchStateKey } from "./branchStateMemo.js";
 import { pluginSurfacePresence } from "./pluginSurfaces.js";
@@ -115,7 +114,6 @@ import { CommandHandlerScope } from "./commandHandlerScope.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { messageSentAt } from "./messageSentAt.js";
 import { LOCAL_HOLD_ID_PREFIX, OwnedPromptQueue, dataDirInboxLocation, entryKey, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry } from "./ownedPromptQueue.js";
-import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { branchFromFileEntries, isCurrentVersionFile } from "./fileBranch.js";
 import { applyProviderSafeToolSchemas } from "./providerSafeToolSchema.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
@@ -3228,59 +3226,6 @@ export class PiSessionService implements SessionRouteService {
   async subsessionTranscript(ref: PiSessionRef, childSessionId: string, query: SubsessionReadQuery): Promise<SubsessionReadResult> {
     const session = await this.getOrOpen(ref);
     return this.readSubsession(session.sessionId, childSessionId, query, session.sessionManager.getSessionFile());
-  }
-
-  async subagentRunOutput(ref: PiSessionRef, runId: string): Promise<string | undefined> {
-    const session = await this.getOrOpen(ref);
-    const sessionFile = session.sessionManager.getSessionFile();
-    if (sessionFile === undefined) return undefined;
-    // The run directories sit next to the session file, under a directory named
-    // after it, so a run with no artifact can still be read from its transcript.
-    return readSubagentRunOutput(dirname(sessionFile), runId, { parentSessionId: basename(sessionFile, ".jsonl") });
-  }
-
-  /**
-   * A child run's conversation, in the shape the chat view already renders.
-   *
-   * The transcript is an ordinary session file, so it is projected with the
-   * same walk as a live session rather than a second projection written for
-   * children. Pi does not hold the child open - the run may still be writing,
-   * and its process is owned by the subagent tool - so this reads the file
-   * rather than registering a session.
-   */
-  async subagentRunMessages(ref: PiSessionRef, runId: string, page?: { before?: number; limit?: number }): Promise<ClientMessagePage | undefined> {
-    const session = await this.getOrOpen(ref);
-    const sessionFile = session.sessionManager.getSessionFile();
-    if (sessionFile === undefined) return undefined;
-    const transcript = await findSubagentRunTranscript(dirname(sessionFile), runId, { parentSessionId: basename(sessionFile, ".jsonl") });
-    if (transcript === undefined) return undefined;
-    const entries = await readSessionEntries(transcript);
-    if (entries === undefined) return undefined;
-    // Two kinds of child write two different files under names that look alike;
-    // the records say which this is. See subagentRunTranscript.ts.
-    return pageMessagesAtSafeBoundary(runTranscriptMessages(entries, historyMessagesFromEntries), page);
-  }
-
-  /**
-   * Subagent-tool runs for this session. The directory they live in is the one
-   * holding the session file, so it is derived from the session rather than
-   * recomputed from the cwd - the encoding of a cwd into a directory name
-   * belongs to the agent, not here.
-   */
-  async subagentRuns(ref: PiSessionRef): Promise<SessionSubagentRunInfo[]> {
-    const session = await this.getOrOpen(ref);
-    const sessionFile = session.sessionManager.getSessionFile();
-    if (sessionFile === undefined) return [];
-    // Keyed on the session *file* name, not the session id. The subagent tool
-    // names its run directory after the transcript file - the timestamped form,
-    // "2026-08-20T17-27-53-830Z_01a0...". Looking it up by the bare id found
-    // nothing on every real session, and the unit tests missed it because they
-    // built the fixture with the same key they read it back with: self
-    // consistent, and wrong about the disk.
-    // The parent's own state settles what a silent child means: while the turn
-    // that spawned them is still running, a run without a result is still
-    // running too, however long it has been thinking.
-    return listSubagentRuns(dirname(sessionFile), basename(sessionFile, ".jsonl"), Date.now(), { parentActive: session.isStreaming });
   }
 
   /**

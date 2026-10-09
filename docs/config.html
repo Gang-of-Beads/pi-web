@@ -948,7 +948,7 @@ PI_CODING_AGENT_SESSION_DIR=/opt/pi-profiles/lab-sessions</code></pre>
                     </tr>
                     <tr>
                       <td><code>GET /api/sessions/:id/subsessions?cwd=…</code></td>
-                      <td>List this session's tracked children and subagent runs.</td>
+                      <td>List this session's tracked children. Runs started with pi's subagent tool belong to the Subagents plugin: <code>POST /api/plugins/subagents/runs.list</code> with <code>{ "sessionFile": … }</code>.</td>
                     </tr>
                     <tr>
                       <td><code>GET /api/sessions/:id/subsessions/:child?cwd=…</code></td>

@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH } from "../../../shared/apiTypes.js";
-import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes.js";
+import type { SessionBackgroundTaskInfo } from "../../../shared/apiTypes.js";
 import type {
   AskUserCloseResponse,
   AskUserSubmission,
@@ -149,14 +149,11 @@ describe("session routes", () => {
       const response = await routeApp.inject({ method: "GET", url: "/sessions/session-1/subsessions?cwd=%2Frepo" });
 
       expect(response.statusCode).toBe(200);
-      // Both kinds of child ride in this payload; a session with no
-      // subagent-tool runs reports an empty list rather than omitting it.
       expect(response.json()).toEqual({
         subsessions: [
           { sessionId: "child-1", cwd: "/repo/.subagents", status: "working" },
           { sessionId: "child-2", cwd: "/repo/.subagents", status: "idle" },
         ],
-        toolRuns: [],
       });
       // The route resolves the query cwd, which is drive-qualified on Windows;
       // asserting the raw POSIX string passed only where "/repo" resolves to
@@ -164,65 +161,6 @@ describe("session routes", () => {
       expect(routeService.subsessionsCalls).toEqual([{ id: "session-1", cwd: resolve("/repo") }]);
     } finally {
       await routeService.dispose();
-      await routeApp.close();
-    }
-  });
-
-  it("serves subagent-tool runs and the output of a finished one", async () => {
-    const routeService = new CapturingRouteSessionService();
-    routeService.subagentRunsResponse = [
-      { runId: "run-1", agent: "scout", status: "running", elapsedMs: 12_000, startedAt: "2026-08-21T10:00:00.000Z", lastActivity: "grep", hasOutput: false },
-    ];
-    routeService.subagentRunOutputResponse = "# findings";
-    const routeApp = Fastify({ logger: false });
-    await routeApp.register(fastifyWebsocket);
-    registerSessionRoutes(routeApp, routeService, new SessionEventHub());
-
-    try {
-      const list = await routeApp.inject({ method: "GET", url: "/sessions/session-1/subsessions?cwd=%2Frepo" });
-      expect(list.json()).toMatchObject({ toolRuns: [{ runId: "run-1", agent: "scout", status: "running", lastActivity: "grep" }] });
-
-      const output = await routeApp.inject({ method: "GET", url: "/sessions/session-1/subagent-runs/run-1/output?cwd=%2Frepo" });
-      expect(output.statusCode).toBe(200);
-      expect(output.json()).toEqual({ output: "# findings" });
-
-      // A run that never wrote a result is a 404, not an empty document: the
-      // caller shows an artifact or says there is none.
-      routeService.subagentRunOutputResponse = undefined;
-      const missing = await routeApp.inject({ method: "GET", url: "/sessions/session-1/subagent-runs/run-1/output?cwd=%2Frepo" });
-      expect(missing.statusCode).toBe(404);
-    } finally {
-      await routeApp.close();
-    }
-  });
-
-  /**
-   * A subsession row opens the session it names; an agent-run row used to open
-   * a block of text. The run's transcript is an ordinary session file, so it is
-   * served as a message page and the browser renders it as a conversation.
-   */
-  it("serves a subagent run's conversation, and says so when it has none yet", async () => {
-    const routeService = new CapturingRouteSessionService();
-    routeService.subagentRunMessagesResponse = {
-      messages: [{ role: "assistant", content: [{ type: "text", text: "looked around" }] }],
-      start: 0,
-      total: 1,
-    };
-    const routeApp = Fastify({ logger: false });
-    await routeApp.register(fastifyWebsocket);
-    registerSessionRoutes(routeApp, routeService, new SessionEventHub());
-
-    try {
-      const page = await routeApp.inject({ method: "GET", url: "/sessions/session-1/subagent-runs/run-1/messages?cwd=%2Frepo" });
-      expect(page.statusCode).toBe(200);
-      expect(page.json()).toMatchObject({ total: 1, messages: [{ role: "assistant" }] });
-
-      // A run that has not opened a transcript is a 404 rather than an empty
-      // conversation, which would read as a child that had said nothing.
-      routeService.subagentRunMessagesResponse = undefined;
-      const missing = await routeApp.inject({ method: "GET", url: "/sessions/session-1/subagent-runs/run-1/messages?cwd=%2Frepo" });
-      expect(missing.statusCode).toBe(404);
-    } finally {
       await routeApp.close();
     }
   });
@@ -1667,30 +1605,12 @@ class CapturingRouteSessionService implements SessionRouteService {
     });
   }
 
-  subagentRunsResponse: SessionSubagentRunInfo[] = [];
-
-  subagentRuns(): Promise<SessionSubagentRunInfo[]> {
-    return Promise.resolve(this.subagentRunsResponse);
-  }
-
-  subagentRunOutputResponse: string | undefined = undefined;
-
   backgroundTasks(): Promise<SessionBackgroundTaskInfo[]> {
     return Promise.resolve([]);
   }
 
   backgroundTaskOutput(): Promise<string | undefined> {
     return Promise.resolve(undefined);
-  }
-
-  subagentRunOutput(): Promise<string | undefined> {
-    return Promise.resolve(this.subagentRunOutputResponse);
-  }
-
-  subagentRunMessagesResponse: MessagePage | undefined = undefined;
-
-  subagentRunMessages(): Promise<MessagePage | undefined> {
-    return Promise.resolve(this.subagentRunMessagesResponse);
   }
 
   messages(): Promise<MessagePage> {
@@ -1913,7 +1833,7 @@ function unusedRouteMethod(name: string): Error {
  * answered 404 for any failure, so a daemon error read as a deleted session.
  */
 describe("what a session read answers when it fails", () => {
-  const readRoutes = ["messages", "status", "stream-snapshot", "models", "models/catalog", "thinking-levels", "commands", "subsessions", "background-tasks", "subagent-runs/run-1/messages", "subagent-runs/run-1/output", "locate", "transcript-tail"];
+  const readRoutes = ["messages", "status", "stream-snapshot", "models", "models/catalog", "thinking-levels", "commands", "subsessions", "background-tasks", "locate", "transcript-tail"];
 
   it("answers 404 with the code for a session the daemon does not have, on every read route", async () => {
     const answers: Record<string, unknown> = {};

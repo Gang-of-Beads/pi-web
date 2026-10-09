@@ -38,7 +38,7 @@ import type {
   SessionTranscriptTail,
   SessionStreamSync,
 } from "../../shared/types.js";
-import type { QueuedSessionMessage, SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes.js";
+import type { QueuedSessionMessage, SessionBackgroundTaskInfo } from "../../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 import type { DelegationRequest, SpawnSessionResult, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionSummary } from "./delegation.js";
 
@@ -80,12 +80,6 @@ export interface SessionRouteService {
   notificationInbox(ref: SessionRouteRef): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
   dismissNotification(ref: SessionRouteRef, request: Omit<SessionNotificationDismissRequest, "cwd">): SessionNotificationDismissResponse | Promise<SessionNotificationDismissResponse>;
   dismissAllNotifications(ref: SessionRouteRef, request: Omit<SessionNotificationDismissAllRequest, "cwd">): SessionNotificationDismissResponse | Promise<SessionNotificationDismissResponse>;
-  /** Subagent-tool runs started by this session; see subagentRuns.ts. */
-  subagentRuns(ref: SessionRouteRef): Promise<SessionSubagentRunInfo[]>;
-  /** The result artifact of one finished run, if it wrote one. */
-  subagentRunOutput(ref: SessionRouteRef, runId: string): Promise<string | undefined>;
-  /** One run's conversation, projected like any other transcript; undefined when it has none yet. */
-  subagentRunMessages(ref: SessionRouteRef, runId: string, page?: { before?: number; limit?: number }): Promise<ClientMessagePage | undefined>;
   /** Background-task runs started by this session; see backgroundTasks.ts. */
   backgroundTasks(ref: SessionRouteRef): Promise<SessionBackgroundTaskInfo[]>;
   /** Tail of a background task's log. */

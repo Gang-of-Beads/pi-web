@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, EXTENSION_DIALOG_ID_MAX_LENGTH,
-  EXTENSION_DIALOG_KEY_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type AskUserAnswer, type AskUserSubmission, type ExtensionDialogAnswerRequest, type ExtensionDialogCancelRequest, type SessionBulkMutationRequest, type SessionSubagentsSnapshot, type SessionBulkMutationRef, type SessionCleanupRequest, type SessionTreeForkRequest, type SessionTreeNavigateRequest, type SessionTreeSummaryChoice, type SessionUnreadAcknowledgeRequest } from "../../../shared/apiTypes.js";
+  EXTENSION_DIALOG_KEY_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type AskUserAnswer, type AskUserSubmission, type ExtensionDialogAnswerRequest, type ExtensionDialogCancelRequest, type SessionBulkMutationRequest, type SessionSubsessionsSnapshot, type SessionBulkMutationRef, type SessionCleanupRequest, type SessionTreeForkRequest, type SessionTreeNavigateRequest, type SessionTreeSummaryChoice, type SessionUnreadAcknowledgeRequest } from "../../../shared/apiTypes.js";
 import { projectBrowserMessageResponse } from "../browserMessageProjection.js";
 import { normalizeRequestCwd } from "../workingDirectory.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
@@ -397,16 +397,12 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
   });
 
   // Child sessions this session spawned, for a parent conversation that keeps
-  // living while its subagents run.
+  // living while its children run.
   app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/subsessions`, async (request, reply) => {
     const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
     if (ref === undefined) return reply;
     try {
-      // Both kinds of child in one payload: a spawned subsession is a session,
-      // a subagent-tool run is a directory of artifacts, and the chat view has
-      // one question about them - who is working for this conversation.
-      const [subsessions, toolRuns] = await Promise.all([sessions.subsessions(ref), sessions.subagentRuns(ref)]);
-      const snapshot: SessionSubagentsSnapshot = { subsessions, toolRuns };
+      const snapshot: SessionSubsessionsSnapshot = { subsessions: await sessions.subsessions(ref) };
       return snapshot;
     } catch (error) {
       return sendError(reply, sessionErrorReply(error, 503));
@@ -453,38 +449,9 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
-  // The run's conversation, not its result: a subsession row opens the real
-  // session it names, and an agent-run row had only ever offered a block of
-  // text. The transcript is an ordinary session file, so it is paged and
-  // projected exactly like the parent's own.
-  app.get<{ Params: { sessionId: string; runId: string }; Querystring: MessageQuery }>(`${prefix}/sessions/:sessionId/subagent-runs/:runId/messages`, async (request, reply) => {
-    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
-    if (ref === undefined) return reply;
-    try {
-      const page = { ...optionalField("before", optionalNumber(request.query.before)), ...optionalField("limit", optionalNumber(request.query.limit)) };
-      const messages = await sessions.subagentRunMessages(ref, request.params.runId, page);
-      if (messages === undefined) return await reply.code(404).send({ error: "No transcript for this subagent run" });
-      return projectBrowserMessageResponse(messages);
-    } catch (error) {
-      return sendError(reply, sessionErrorReply(error, 503));
-    }
-  });
-
-  app.get<{ Params: { sessionId: string; runId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/subagent-runs/:runId/output`, async (request, reply) => {
-    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
-    if (ref === undefined) return reply;
-    try {
-      const output = await sessions.subagentRunOutput(ref, request.params.runId);
-      if (output === undefined) return await reply.code(404).send({ error: "No output for this subagent run" });
-      return { output };
-    } catch (error) {
-      return sendError(reply, sessionErrorReply(error, 503));
-    }
-  });
-
   // Shell commands this session left running outside the turn. Separate from
   // /subsessions because the two answer different questions and a task list
-  // that is usually empty should not make the subagent call slower.
+  // that is usually empty should not make the subsessions call slower.
   app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/background-tasks`, async (request, reply) => {
     const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
     if (ref === undefined) return reply;

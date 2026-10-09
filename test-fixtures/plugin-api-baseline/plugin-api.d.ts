@@ -497,8 +497,8 @@ export interface PluginRuntimeState {
 }
 /**
  * The part of the selected session's status a plugin may read. `isStreaming` says a turn is
- * running; `backgroundRunCount` counts its subagent runs, working subsessions and background
- * tasks that are still going, and is absent when there are none.
+ * running; `backgroundRunCount` counts its working subsessions, background tasks and the runs
+ * server plugins report through `backgroundWork` that are still going, and is absent when there are none.
  */
 export interface PluginSessionStatus {
     readonly isStreaming: boolean;

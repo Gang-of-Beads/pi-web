@@ -14,7 +14,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 });
 
 const { readFile, readdir } = await import("node:fs/promises");
-const { listSubagentRuns, readSubagentRunOutput } = await import("./subagentRuns");
+const { listSubagentRuns, readSubagentRunOutput } = await import("./runs.js");
 
 const PARENT = "2026-08-20T17-27-53-830Z_01a02037-0ce6-730d-95f5-625c398ae884";
 /** Larger than every window the module reads, so a whole-file read is visible. */

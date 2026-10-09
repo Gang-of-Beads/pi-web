@@ -1813,26 +1813,17 @@ export interface InterruptedRunSnapshot {
   readonly runs: readonly InterruptedRunInfo[];
 }
 
-/** A child session spawned by a parent session (subagent), as shown to the web UI. */
-export interface SessionSubagentInfo {
+/** A child session a parent session started through PI WEB's subsession routes. */
+export interface SessionSubsessionInfo {
   readonly sessionId: string;
   readonly cwd: string;
   readonly status: "working" | "idle" | "error" | "unknown";
 }
 
-export interface SessionSubagentsSnapshot {
-  readonly subsessions: readonly SessionSubagentInfo[];
-  /**
-   * Runs started through the subagent tool, which are not sessions.
-   *
-   * A spawned subsession is a session and shows up wherever sessions do; a
-   * subagent run only ever left artifacts on disk, so the parent conversation
-   * had no way to say what its children were doing - or that it had any.
-   */
-  readonly toolRuns: readonly SessionSubagentRunInfo[];
+export interface SessionSubsessionsSnapshot {
+  readonly subsessions: readonly SessionSubsessionInfo[];
 }
 
-/** One subagent-tool run belonging to a parent session. */
 /**
  * A shell command the background-task tool is running outside the turn.
  *
@@ -1858,23 +1849,6 @@ export interface SessionBackgroundTaskInfo {
   readonly durationMs?: number | undefined;
   readonly exitCode?: number | undefined;
   readonly bytesWritten: number;
-  readonly hasOutput: boolean;
-}
-
-export interface SessionSubagentRunInfo {
-  readonly runId: string;
-  readonly agent: string;
-  /** "lost": started, wrote, went silent without an outcome. Not "failed", which reported one. */
-  readonly status: "running" | "done" | "failed" | "lost" | "unknown";
-  /** Wall-clock milliseconds: reported when finished, elapsed while running. */
-  readonly elapsedMs: number;
-  readonly startedAt: string;
-  /** The child's most recent step, so "running" can say what it is running. */
-  readonly lastActivity?: string;
-  readonly task?: string;
-  readonly model?: string;
-  readonly toolCount?: number;
-  /** Present once the run has written its result. */
   readonly hasOutput: boolean;
 }
 
