@@ -7,8 +7,8 @@
 
 /**
  * The entry a session-file line carries, or undefined when the line is blank,
- * not JSON, or not a JSON object. Scalars are not entries: the SDK's readers
- * index into the parsed value, so only objects can be classified.
+ * not JSON, or a JSON scalar. Arrays count as entries, matching the SDK: its
+ * readers index into any parsed non-null object.
  */
 export function tryParseEntry(line: string): Record<string, unknown> | undefined {
   if (line.trim() === "") return undefined;

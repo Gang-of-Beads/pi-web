@@ -1981,7 +1981,7 @@ function optionalPlugins(value: unknown): PiWebPluginConfigMap | undefined {
     const enabled = config["enabled"];
     if (enabled !== undefined && typeof enabled !== "boolean") throw new Error("Invalid PI WEB plugin enabled field");
     const settings = config["settings"];
-    if (settings !== undefined && (!isRecord(settings))) throw new Error("Invalid PI WEB plugin settings field");
+    if (settings !== undefined && !isRecord(settings)) throw new Error("Invalid PI WEB plugin settings field");
     return [pluginId, config];
   }));
 }
