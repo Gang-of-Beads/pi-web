@@ -20,6 +20,8 @@ export class ToolExecutionView extends LitElement {
   /** Whether the turn is streaming right now. A pending execution with no
    * live turn is an interrupted one — the result is never coming. */
   @property({ type: Boolean }) streaming = false;
+  /** The session's extensions expanded tool output (pi's `setToolsExpanded`): the output opens as an error's does. */
+  @property({ type: Boolean }) expanded = false;
   @state() private showFullDiff = false;
   @state() private copied = false;
   @state() private diffOpen = true;
@@ -60,7 +62,7 @@ export class ToolExecutionView extends LitElement {
           : html`<pre class="target-block" aria-label=${`${target.label}: ${target.text}`}>${target.text}</pre>`}
         ${previewMismatch ? html`<p class="notice">Applied diff differs from the preview.</p>` : null}
         ${errorText === undefined || errorText === "" ? null : html`<pre class="error-text">${errorText}</pre>`}
-        ${visibleDiff === undefined ? this.renderTextBody(bodyText, execution.status === "error", target) : this.renderDiffBody(visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff", target)}
+        ${visibleDiff === undefined ? this.renderTextBody(bodyText, execution.status === "error" || this.expanded, target) : this.renderDiffBody(visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff", target)}
       </section>
     `;
   }

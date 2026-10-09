@@ -225,8 +225,9 @@
                 there); <code>getEditorText</code> returns what the session's extensions wrote, or <code>""</code>, since
                 it cannot read a browser's draft. A browser loaded before PI WEB knew <code>editor</code> draws no card for
                 it: reload the page. <code>setHeader</code> and <code>setFooter</code> show on the extension's page in Go to
-                with its widgets, and <code>addAutocompleteProvider</code> completes in the composer. <code>setEditorComponent</code>, <code>onTerminalInput</code>, themes and
-                tool expansion remain no-ops despite <code>hasUI === true</code>.
+                with its widgets, and <code>addAutocompleteProvider</code> completes in the composer. <code>setToolsExpanded</code> opens the session's tool output;
+                <code>setTheme</code> answers that PI WEB's own themes apply. <code>setEditorComponent</code> and
+                <code>onTerminalInput</code> remain no-ops despite <code>hasUI === true</code>.
               </p>
               <div class="table-scroll" role="region" aria-label="ctx.ui members in PI WEB" tabindex="0">
                 <table class="narrow-table">
@@ -295,12 +296,16 @@
                       <td>No effect: they replace pi's terminal chrome, and PI WEB draws its own.</td>
                     </tr>
                     <tr>
-                      <td><code>getAllThemes</code>, <code>getTheme</code>, <code>setTheme</code></td>
-                      <td>pi's headless defaults: PI WEB's look is chosen in Settings.</td>
+                      <td><code>getAllThemes</code>, <code>getTheme</code></td>
+                      <td>pi's headless defaults (none): PI WEB's look is chosen in Settings.</td>
+                    </tr>
+                    <tr>
+                      <td><code>setTheme</code></td>
+                      <td><code>{ success: false }</code>, saying PI WEB draws with its own themes, chosen in its Settings.</td>
                     </tr>
                     <tr>
                       <td><code>getToolsExpanded</code>, <code>setToolsExpanded</code></td>
-                      <td>pi's headless defaults.</td>
+                      <td>The session's tool cards open their output while it is set, and what the extensions draw from then on is drawn expanded.</td>
                     </tr>
                   </tbody>
                 </table>

@@ -58,15 +58,16 @@ export function showsCustomEntry(renderers: ExtensionRenderers, customType: stri
 
 /**
  * The lines the extension's renderer draws for one custom message or entry, collapsed as pi's
- * terminal first shows them, and bounded as a widget is. Undefined: no renderer, or it drew
+ * terminal first shows them unless the session's extensions expanded tool output (pi's
+ * `setToolsExpanded`, which pi's terminal applies to these rows too), and bounded as a widget is. Undefined: no renderer, or it drew
  * nothing, so the row falls back to pi's default. A renderer that throws leaves what its kind
  * leaves (`ROW_KINDS`).
  */
-export function drawCustomRow(renderers: ExtensionRenderers, kind: CustomRowKind, customType: string, value: unknown): string[] | undefined {
+export function drawCustomRow(renderers: ExtensionRenderers, kind: CustomRowKind, customType: string, value: unknown, expanded: boolean): string[] | undefined {
   const renderer = ROW_KINDS[kind].rendererOf(renderers, customType);
   if (!isRenderer(renderer)) return undefined;
   try {
-    const component: unknown = renderer(value, { expanded: false, outputPad: 1 }, plainTextTheme);
+    const component: unknown = renderer(value, { expanded, outputPad: 1 }, plainTextTheme);
     if (!isScreenComponent(component)) return undefined;
     const lines = boundedLines(renderCustomScreen(component, CUSTOM_SCREEN_WIDTH, Number.POSITIVE_INFINITY));
     return lines.length === 0 ? undefined : lines;
@@ -81,6 +82,8 @@ export interface ToolDrawingCall {
   readonly toolCallId: string;
   readonly args: unknown;
   readonly cwd: string;
+  /** Whether the session's extensions expanded tool output (pi's `setToolsExpanded`). */
+  readonly expanded: boolean;
 }
 
 /** A tool's result, partial while it runs. */
@@ -133,7 +136,7 @@ function toolRenderContext(call: ToolDrawingCall, result: ToolDrawingResult | un
     executionStarted: true,
     argsComplete: true,
     isPartial: result?.isPartial ?? false,
-    expanded: false,
+    expanded: call.expanded,
     showImages: false,
     isError: result?.isError ?? false,
   };
@@ -162,7 +165,7 @@ export function drawToolCall(renderers: ExtensionRenderers, call: ToolDrawingCal
 export function drawToolResult(renderers: ExtensionRenderers, call: ToolDrawingCall, result: ToolDrawingResult): string[] | undefined {
   const renderResult = toolRendererMember(renderers, call.toolName, "renderResult");
   if (!isToolResultRenderer(renderResult)) return undefined;
-  return drawnOrNothing(() => renderResult(result.result, { expanded: false, isPartial: result.isPartial }, plainTextTheme, toolRenderContext(call, result)));
+  return drawnOrNothing(() => renderResult(result.result, { expanded: call.expanded, isPartial: result.isPartial }, plainTextTheme, toolRenderContext(call, result)));
 }
 
 /** Which text pi transforms: a user message, an assistant reply, or its thinking. */

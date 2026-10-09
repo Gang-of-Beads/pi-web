@@ -1087,6 +1087,8 @@ export interface ExtensionUiStanding {
   title?: string;
   /** Present while the session's extensions stack an autocomplete provider; the characters it also triggers on. */
   completion?: { triggerCharacters: string[] };
+  /** The session's extensions expanded tool output (pi's `setToolsExpanded`): its tool cards open their output. */
+  toolsExpanded?: true;
 }
 
 /** The level of an extension's `ctx.ui.notify`, as pi's terminal draws it. */

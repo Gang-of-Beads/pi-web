@@ -30,6 +30,7 @@ export class ExtensionStanding {
   private workingFrames: readonly string[] | undefined;
   private hiddenThinkingLabel: string | undefined;
   private title: string | undefined;
+  private expandedTools = false;
   /** The standing values the last broadcast status carried, serialized; see noteSent. */
   private lastSent: string | undefined;
 
@@ -62,6 +63,20 @@ export class ExtensionStanding {
   setFooter(content: unknown, origin: ExtensionOrigin | undefined, footerData: unknown): void {
     this.footer.set("footer", content, "footer", origin, [footerData]);
     this.changed();
+  }
+
+  /**
+   * pi's `setToolsExpanded` (pi-insertion-points.md slice 7): the session's tool cards open their
+   * output, and rows the extensions draw after the change are drawn expanded. Unlike pi, rows already
+   * drawn are not redrawn; they keep their drawing until they are read again.
+   */
+  setToolsExpanded(expanded: boolean): void {
+    this.expandedTools = expanded;
+    this.changed();
+  }
+
+  toolsExpanded(): boolean {
+    return this.expandedTools;
   }
 
   /** pi's `addAutocompleteProvider`: the factory wraps the session's stack; the status then names its trigger characters. */
@@ -127,6 +142,7 @@ export class ExtensionStanding {
     this.workingFrames = undefined;
     this.hiddenThinkingLabel = undefined;
     this.title = undefined;
+    this.expandedTools = false;
     this.changed();
   }
 
@@ -164,6 +180,7 @@ export class ExtensionStanding {
       ...(this.hiddenThinkingLabel === undefined ? {} : { hiddenThinkingLabel: this.hiddenThinkingLabel }),
       ...(this.title === undefined ? {} : { title: this.title }),
       ...(triggerCharacters === undefined ? {} : { completion: { triggerCharacters } }),
+      ...(this.expandedTools ? { toolsExpanded: true as const } : {}),
     };
     return Object.keys(standing).length === 0 ? undefined : standing;
   }

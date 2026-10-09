@@ -846,6 +846,7 @@ function optionalExtensionUi(value: unknown): Pick<SessionStatus, "extensionUi">
     ...(hiddenThinkingLabel === undefined ? {} : { hiddenThinkingLabel }),
     ...(title === undefined ? {} : { title }),
     ...(triggerCharacters === undefined ? {} : { completion: { triggerCharacters } }),
+    ...(Reflect.get(value, "toolsExpanded") === true ? { toolsExpanded: true as const } : {}),
   };
   return Object.keys(standing).length === 0 ? {} : { extensionUi: standing };
 }
