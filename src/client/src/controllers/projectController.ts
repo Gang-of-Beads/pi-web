@@ -226,15 +226,17 @@ const FOLDER_REFUSAL_WORDS: Readonly<Record<ProjectFolderRefusal, string>> = {
   "folder-missing": "That folder does not exist. Tick \u201cCreate the folder if it does not exist\u201d to make it, or correct the path.",
   "not-a-folder": "That path is a file, not a folder.",
   "folder-unreadable": "That folder cannot be read with this account's permissions.",
+  "folder-not-created": "That folder could not be created there. Check the path and this account's permissions.",
 };
 
 /**
  * What went wrong, in words that name the next action.
  *
  * The machine answers a folder it cannot add with a typed code (B16): the folder is not there (and
- * the dialog has a checkbox that would create it), it is a file, or this account cannot read it.
- * A machine that predates the code sends only the raw errno text (ENOENT, ENOTDIR, EACCES or EPERM), which is still read
- * until every machine carries the code (rolling compatibility, like `sessionNotFound.ts`).
+ * the dialog has a checkbox that would create it), it is a file, this account cannot read it, or the
+ * folder could not be created. A machine that predates the code sends only the raw error text, which is
+ * still read: ENOTDIR or EEXIST first (not a folder), then a failed `mkdir` (could not be created), then
+ * ENOENT, EACCES or EPERM, until every machine carries the code (rolling compatibility, like `sessionNotFound.ts`).
  */
 export function addProjectFailureMessage(error: unknown): string {
   const refusal = folderRefusalOf(error);
@@ -250,8 +252,9 @@ function folderRefusalOf(error: unknown): ProjectFolderRefusal | undefined {
 }
 
 function legacyFolderRefusal(text: string): ProjectFolderRefusal | undefined {
+  if (/ENOTDIR|EEXIST/u.test(text)) return "not-a-folder";
+  if (/\bmkdir\b/u.test(text)) return "folder-not-created";
   if (/ENOENT|no such file or directory/u.test(text)) return "folder-missing";
-  if (text.includes("ENOTDIR")) return "not-a-folder";
   if (/EACCES|EPERM/u.test(text)) return "folder-unreadable";
   return undefined;
 }

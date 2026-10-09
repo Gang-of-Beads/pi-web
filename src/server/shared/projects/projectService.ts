@@ -35,9 +35,33 @@ const FOLDER_REFUSAL_BY_ERRNO: Readonly<Record<string, ProjectFolderRefusal>> = 
 };
 
 function folderRefusal(error: unknown): ProjectFolderError | undefined {
-  const code: unknown = typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;
-  const refusal = typeof code === "string" && Object.hasOwn(FOLDER_REFUSAL_BY_ERRNO, code) ? FOLDER_REFUSAL_BY_ERRNO[code] : undefined;
+  const code = errnoOf(error);
+  const refusal = code !== undefined && Object.hasOwn(FOLDER_REFUSAL_BY_ERRNO, code) ? FOLDER_REFUSAL_BY_ERRNO[code] : undefined;
   return refusal === undefined ? undefined : new ProjectFolderError(refusal, error);
+}
+
+const NOT_A_FOLDER_ON_CREATE: readonly string[] = ["ENOTDIR", "EEXIST"];
+
+/**
+ * Creates the project folder and maps a failed mkdir to a ProjectFolderError by errno: a file
+ * standing in the path (ENOTDIR, EEXIST) makes it not a folder; any other file-system refusal (no
+ * permission, a read-only volume, no space) means it could not be created. An error without an errno
+ * is rethrown unchanged. The page used to word every one of these as "cannot be read", from the
+ * EACCES in the text.
+ */
+async function createFolder(path: string): Promise<void> {
+  try {
+    await mkdir(path, { recursive: true });
+  } catch (error) {
+    const code = errnoOf(error);
+    if (code === undefined) throw error;
+    throw new ProjectFolderError(NOT_A_FOLDER_ON_CREATE.includes(code) ? "not-a-folder" : "folder-not-created", error);
+  }
+}
+
+function errnoOf(error: unknown): string | undefined {
+  const code: unknown = typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;
+  return typeof code === "string" ? code : undefined;
 }
 
 export class ProjectService {
@@ -51,7 +75,7 @@ export class ProjectService {
     // Trim so stray whitespace cannot diverge the stored path from the
     // trimmed key the trust lookup (projectTrustRoutes) previews decisions for.
     const requestedPath = expandUserPath(input.path.trim());
-    if (input.create === true) await mkdir(requestedPath, { recursive: true });
+    if (input.create === true) await createFolder(requestedPath);
     const resolved = await this.readableFolder(requestedPath);
     return this.store.add(input.name === undefined ? { path: resolved } : { name: input.name, path: resolved });
   }

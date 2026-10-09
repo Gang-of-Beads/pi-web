@@ -356,7 +356,7 @@ export declare function workspaceFileRefusalOf(error: unknown): WorkspaceFileRef
  * Why a folder cannot become a project, as the code of the 400 the add route answers (B16): the
  * page words it from the code, where it used to search the error text for ENOENT and EACCES.
  */
-export type ProjectFolderRefusal = "folder-missing" | "not-a-folder" | "folder-unreadable";
+export type ProjectFolderRefusal = "folder-missing" | "not-a-folder" | "folder-unreadable" | "folder-not-created";
 export declare const PROJECT_FOLDER_REFUSALS: readonly ProjectFolderRefusal[];
 export interface SessionUnreadSummary {
     sessionId: string;

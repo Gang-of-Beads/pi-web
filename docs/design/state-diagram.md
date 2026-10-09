@@ -578,6 +578,17 @@ Done so far: projects on a machine (P1 slice 1); workspaces, and placing a sessi
 | web | the envelope for an unknown `/api` path; a release before `unknown-api-says-not-found` answers the app's HTML at 200 | the envelope with the code |
 | client | the HTML was parsed as JSON and the panel showed the parse error; the envelope's "Route POST:... not found" was shown as it was | `request()` throws `HttpError` with `code: "route-missing"` and the words "This machine runs an older PI WEB that cannot do this yet. Update PI WEB there and restart its session daemon." for the code, for an envelope without it (an older machine, read by its shape), and for an HTML answer to an API call. The per-route checks (`readNewerDaemonRoute`, the fork routes) keep their own fallbacks. |
 
+**A folder that cannot become a project** (B16, 2026-10-09) is refused with a kind, `ProjectFolderRefusal`, as the code of the add route's 400; the page words it from a `Record` over the kinds:
+
+| kind | produced by | page words |
+|---|---|---|
+| `folder-missing` | reading the folder: ENOENT | That folder does not exist. Tick “Create the folder if it does not exist” to make it, or correct the path. |
+| `not-a-folder` | reading it: ENOTDIR, or a file at the path; creating it: ENOTDIR or EEXIST | That path is a file, not a folder. |
+| `folder-unreadable` | reading it: EACCES or EPERM | That folder cannot be read with this account's permissions. |
+| `folder-not-created` | creating it (“Create the folder” ticked): any other file-system refusal, such as EACCES, EPERM, EROFS or ENOSPC | That folder could not be created there. Check the path and this account's permissions. |
+
+Before `folder-not-created`, a failed mkdir answered without a code, and the page read the EACCES in its text as "cannot be read". An answer without a code (an older machine) is still read by its errno words: ENOTDIR or EEXIST first, then a failed `mkdir`, then ENOENT, EACCES or EPERM.
+
 **A failure that claims the link is down** (B16, 2026-10-09) carries its kind, `TransportClaim`. A claim's notice is retired by the next answer (reply lifetime, 6 s expiry, held through the grace window), and the row words it by a `Record` over the kinds. A notice without a claim keeps its own words and the reader's lifetime. Before this, both the lifetime and the words were decided by matching the failure's text against seven phrasings, so a producer whose words drifted kept its line on screen after the link was back.
 
 | claim | produced by | row words |
