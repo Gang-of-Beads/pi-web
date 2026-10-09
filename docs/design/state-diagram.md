@@ -342,6 +342,20 @@ stateDiagram-v2
 - **The back-to-newest key asks for the newest page wherever the reader is.** Its read went through the forward end's prefetch distance (1.5 screens), so pressed mid-window in an older window it asked nothing and moved nothing, and the viewport waited on a page nobody had asked for (seen 2026-10-03 on 8505, `probe-jump-far.mjs`: 0 reads, `fromBottom` unchanged at 56,856 px). A newest page that lands short of the newest asks again (the walk is the decision's, not a flag's), and the last one lands the reader at the newest. A jump pressed while an older page is on its way goes on to the newest when that page lands (review 9f8186d0: it was lost).
 - **No inline region traps the wheel or a swipe** (see D2).
 
+- **A row is keyed by what it is, not where it sits (designed 2026-10-09; CHECKLIST, B2 review 1b6f1553 items 6-7).** Today a row's scroll anchor, render key, copy highlight and info-panel key are its position: `m:<index>` for a message, `g:<startIndex>` for an event group. A plain append keeps them. But a message that leaves the pending block for its committed place, a retried attempt hidden mid-list, or a withdrawn row shifts every later position by one, so every later row changes key: Lit rebuilds those rows, the saved anchor names a different row, and the reading anchor holds the wrong row in place.
+
+  The key is the row's identity, the same live and after a reload, from the first of:
+  1. `u:<clientMessageId>`: a user message sent with an id. The daemon stamps the id on the entry at `message_start`, so the optimistic bubble, the echo and the committed copy share it.
+  2. `t:<toolCallId>`: a tool row.
+  3. `r:<responseId>`: an assistant reply that carries the provider's response id.
+  4. `e:<entryId>`: any other row read from history. The daemon already sends each history message's entry id (`withEntryId`); the page keeps it on the line instead of dropping it.
+  5. `p:<index>`: only a live row with none of these yet, such as a streaming reply before its `message_end` or a live custom message.
+
+  - **Collisions.** Two rows can share an identity (two lines of one reply carry one `responseId`). The second and later get `#<n>`, counted in transcript order, so keys stay unique and stable as long as rows are only appended.
+  - **A group** is keyed by its first member's key, prefixed `g:`.
+  - **Saving a position** prefers a visible row whose key is not `p:`, because a `p:` key does not survive a reload.
+  - **Migration.** A saved `m:<index>` or `g:<index>` anchor no longer matches anything. The restore finds the anchor gone and lands at the bottom once (`restoring --> following`), as for any missing anchor.
+
 ## D5. Page sync and the socket
 
 What the page holds of the selected session's transcript is one value with one owner, `transcriptSync` in `SessionController` (sync-convergence.md, phase B). It is not drawn; the reader sees the session's line and, when a request went unanswered for the ack timeout, the top row's "Trying to sync with the server…".
