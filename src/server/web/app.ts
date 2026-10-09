@@ -54,7 +54,7 @@ import { registerPluginBackendProxyRoutes } from "./plugins/pluginBackendProxyRo
 import { registerPluginOperationProxyRoutes } from "./plugins/pluginOperationProxyRoutes.js";
 import { withFolderPresence } from "./projectFolderPresence.js";
 import { proxyMachinePluginAsset, registerMachinePluginProxyRoutes } from "./machines/machinePluginProxyRoutes.js";
-import { localMachineFallback, type MachineRegistryFace } from "./machines/localMachineRegistry.js";
+import { localMachineFallback, registerFallbackMachineRoutes, type MachineRegistryFace } from "./machines/localMachineRegistry.js";
 import type { Project, WorkspaceEffectiveConfig, WorkspaceProviderResolution } from "../shared/types.js";
 
 export interface AppDependencies {
@@ -415,9 +415,11 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     mountServerPluginRoutes(app, runtime, "/api/machines/local");
   }
 
+  const pluginMachineRegistry = webServerPluginRuntime?.machineRegistry()?.registry;
   const machines = deps.machines
-    ?? webServerPluginRuntime?.machineRegistry()?.registry
+    ?? pluginMachineRegistry
     ?? localMachineFallback(() => getPiWebRuntime(sessionDaemon));
+  if (pluginMachineRegistry === undefined) registerFallbackMachineRoutes(app, machines);
 
   registerMachinePluginProxyRoutes(app, machines);
   // One service instance per concern, shared by the single-machine routes and

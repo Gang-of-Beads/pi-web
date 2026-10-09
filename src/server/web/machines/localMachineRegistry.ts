@@ -1,4 +1,5 @@
 import { hostname } from "node:os";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import type { Machine, MachineClient, MachineHealth, MachineRuntime, PiWebRuntimeResponse, PluginMachineCreateInput, PluginMachineUpdateInput } from "../../../server-plugin-api.js";
 
 /**
@@ -22,6 +23,26 @@ export function localMachineFallback(localRuntime: () => Promise<PiWebRuntimeRes
     runtime: (id) => Promise.resolve(id === "local" ? localRuntimeSnapshot(localRuntime) : undefined),
     remoteClient: () => Promise.resolve(undefined),
   };
+}
+
+/**
+ * The machine reads the page makes, answered by core when no plugin supplies the registry: the
+ * list, one machine, its health and its runtime, from the fallback, in the shapes the machines
+ * plugin's own routes answer. Without them a PI WEB with no machines plugin answered each with
+ * route-missing, the page read that as "this machine runs an older PI WEB" and asked again every
+ * few seconds (owner, 2026-10-09, on a PI WEB with no plugins at all). Adding, renaming, ordering
+ * and removing machines stay the plugin's: only its own pages offer them.
+ */
+export function registerFallbackMachineRoutes(app: FastifyInstance, machines: Pick<MachineRegistryFace, "list" | "get" | "health" | "runtime">): void {
+  app.get("/api/machines", async () => ({ machines: await machines.list() }));
+  app.get<{ Params: { machineId: string } }>("/api/machines/:machineId", async (request, reply) => answerOrNotFound(reply, await machines.get(request.params.machineId)));
+  app.get<{ Params: { machineId: string } }>("/api/machines/:machineId/health", async (request, reply) => answerOrNotFound(reply, await machines.health(request.params.machineId)));
+  app.get<{ Params: { machineId: string }; Querystring: { refresh?: string } }>("/api/machines/:machineId/runtime", async (request, reply) => answerOrNotFound(reply, await machines.runtime(request.params.machineId, request.query.refresh === "1")));
+}
+
+async function answerOrNotFound(reply: FastifyReply, value: unknown): Promise<unknown> {
+  if (value !== undefined) return value;
+  return await reply.code(404).send({ error: "Machine not found" });
 }
 
 export interface MachineRegistryFace {
