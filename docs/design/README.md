@@ -14,6 +14,7 @@ How PI WEB is built and why. These documents are the design of record; code cite
 - [Long press selects: one bulk mode for every list](bulk-selection.md): selection on every list with actions, with the states it adds.
 - [Extension screens: native when declared, a parsed card otherwise](extension-screens-plugin-entry.md): how an extension's `ui.custom` screen renders.
 - [The navigation state machine](navigation-state-machine.md): places and transitions of the app shell; the state diagram's D8 indexes its bugs.
+- [pi's insertion points in PI WEB](pi-insertion-points.md): every pi extension insertion point works without a PI WEB plugin, plugins add web ones on top; the audit and the slices that close the gaps.
 - [PI WEB gives the agent no tools of its own](no-builtin-agent-tools.md): why the daemon registers no agent tools, and where delegation lives instead.
 - [One message, one row](one-message-one-row.md): how duplicate message rows are made unrepresentable.
 - [Plugin architecture: a minimal core, everything else a plugin](plugin-architecture.md): the core and plugin boundary the plugin system is built on.
