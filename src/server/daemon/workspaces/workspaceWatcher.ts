@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { watchablePath } from "./watchPath.js";
 import { classifyWorkspaceChange, type WorkspaceChange } from "./workspaceChangeFilter.js";
+import { declaredAgentFacts } from "../sessions/declaredAgentFacts.js";
 
 /**
  * Tells the room a workspace's files moved.
@@ -40,6 +41,8 @@ export interface WorkspaceWatcherDependencies {
   now(): number;
   /** Where a linked worktree keeps its git state: the `gitdir:` of a `.git` file, when `.git` is one. */
   linkedGitDir(path: string): string | undefined;
+  /** Directories the running plugins declare their extensions write background work into, relative to the workspace. */
+  workPaths(): readonly string[];
 }
 
 const defaultDependencies: WorkspaceWatcherDependencies = {
@@ -48,6 +51,7 @@ const defaultDependencies: WorkspaceWatcherDependencies = {
   clearTimer: (timer) => { clearTimeout(timer); },
   now: () => performance.now(),
   linkedGitDir: readLinkedGitDir,
+  workPaths: () => declaredAgentFacts().workPaths.filter((entry) => entry.root === "cwd").map((entry) => entry.path),
 };
 
 function readLinkedGitDir(path: string): string | undefined {
@@ -136,7 +140,7 @@ export class WorkspaceWatcher {
    * changes ride along, and a kind with a shorter window brings it forward.
    */
   private markChanged(cwd: string, relativePath: string | undefined): void {
-    const change = classifyWorkspaceChange(relativePath);
+    const change = classifyWorkspaceChange(relativePath, this.dependencies.workPaths());
     if (change === "noise") return;
     const delayMs = WORKSPACE_CHANGE_WINDOW_MS[change];
     const due = this.dependencies.now() + delayMs;

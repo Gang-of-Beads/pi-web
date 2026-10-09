@@ -12,27 +12,38 @@
  *   so a commit made in a terminal still shows at once;
  * - lock files, objects and logs are git's own churn and never news;
  * - a submodule's git directory (`.git/modules/<name>/`) follows the same rules;
- * - the working tree is news, except dependency folders, pi's runtime state
- *   (`.pi/tasks`, `.pi/delegate`, `.pi/sessions`, at any depth) and the git
- *   directories of nested clones. Build output is news on purpose: the
- *   tree and git panels show it, and a busy build publishes at most once per
- *   2.5 s window.
+ * - the working tree is news, except dependency folders, pi's own sessions
+ *   (`.pi/sessions`), the directories the running plugins declare their
+ *   extensions write background work into (`workPaths` under `cwd`, such as
+ *   pi-background-tasks' `.pi/tasks`; core names none), each at any depth, and
+ *   the git directories of nested clones. Build output is news on purpose:
+ *   the tree and git panels show it, and a busy build publishes at most once
+ *   per 2.5 s window.
  */
 export type WorkspaceChange = "git-state" | "tree" | "noise";
 
 const GIT_STATE_FILES = new Set(["HEAD", "index", "packed-refs", "config", "shallow"]);
 const GIT_STATE_TREES = ["refs", "rebase-apply", "rebase-merge", "sequencer"];
 const NOISE_SEGMENTS = new Set(["node_modules", "fsmonitor--daemon"]);
-const PI_RUNTIME_DIRS = new Set(["tasks", "delegate", "sessions"]);
+const PI_SESSIONS = [".pi", "sessions"];
 
-export function classifyWorkspaceChange(relativePath: string | undefined): WorkspaceChange {
+export function classifyWorkspaceChange(relativePath: string | undefined, workPaths: readonly string[] = []): WorkspaceChange {
   if (relativePath === undefined || relativePath === "") return "tree";
   const path = relativePath.replaceAll("\\", "/");
   const segments = path.split("/");
   if (segments.some((segment) => NOISE_SEGMENTS.has(segment) || segment.startsWith(".watchman-cookie-"))) return "noise";
   if (segments[0] === ".git") return gitChange(segments.slice(1));
   if (segments.includes(".git")) return "noise";
-  return segments.some((segment, index) => segment === ".pi" && PI_RUNTIME_DIRS.has(segments[index + 1] ?? "")) ? "noise" : "tree";
+  const runs = [PI_SESSIONS, ...workPaths.map(pathSegments)].filter((run) => run.length > 0);
+  return runs.some((run) => containsRun(segments, run)) ? "noise" : "tree";
+}
+
+function pathSegments(path: string): string[] {
+  return path.replaceAll("\\", "/").split("/").filter((segment) => segment !== "" && segment !== ".");
+}
+
+function containsRun(segments: readonly string[], run: readonly string[]): boolean {
+  return segments.some((_, index) => run.every((part, offset) => segments[index + offset] === part));
 }
 
 function gitChange(inside: readonly string[]): WorkspaceChange {

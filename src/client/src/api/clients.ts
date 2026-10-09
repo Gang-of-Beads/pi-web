@@ -51,7 +51,6 @@ import {
   parseSessionStatus,
   parseSessionStatusCatalogSnapshot,
   parseRecallQueuedMessageResult,
-  parseBackgroundTasks,
   parseInterruptedRunSnapshot,
   parseSessionUnreadAcknowledgeResponse,
   parseSessionUnreadCatalogSnapshot,
@@ -375,8 +374,6 @@ export const sessionsApi = {
   /** Gap repair: replay frames after the client's last seen seq in its epoch, or resync. */
   streamSync: (session: SessionRef, sinceSeq: number, machineId = "local", epoch?: string) =>
     request(`${sessionPath(session, "stream-snapshot", machineId)}${sessionQuery(session)}&sinceSeq=${String(sinceSeq)}${epoch === undefined ? "" : `&epoch=${encodeURIComponent(epoch)}`}`, parseSessionStreamSync),
-  backgroundTasks: (session: SessionRef, machineId = "local") =>
-    request(`${sessionPath(session, "background-tasks", machineId)}?cwd=${encodeURIComponent(session.cwd)}`, parseBackgroundTasks, { cache: "no-store" }),
   clearQueue: (session: SessionRef, machineId = "local") => request(sessionPath(session, "queue/clear", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session) }),
   // Same route as clearQueue: a body carrying `text` means "take this one
   // back", an empty one still means "empty the queue".

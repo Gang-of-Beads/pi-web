@@ -50,10 +50,12 @@ export interface WorkPathDeclaration {
 export interface AgentFactDeclarations {
   readonly surfaces: readonly AgentSurfaceDeclaration[];
   readonly injectedTurns: readonly InjectedTurnDeclaration[];
-  /** Directories the daemon watches to recount a session's background work (B20 slice 3). */
+  /**
+   * Directories the feature's extension writes background work into (B20): the daemon watches
+   * them to recount a session's background work, and the workspace watcher ignores those under
+   * `cwd` as churn.
+   */
   readonly workPaths: readonly WorkPathDeclaration[];
-  /** Tools whose start or end changes a session's background work. */
-  readonly workTools: readonly string[];
 }
 
 export class InvalidAgentFactDeclarationError extends Error {}
@@ -65,7 +67,6 @@ export function parseAgentFactDeclarations(value: unknown): AgentFactDeclaration
     surfaces: parseSurfaces(value["surfaces"]),
     injectedTurns: parseInjectedTurns(value["injectedTurns"]),
     workPaths: parseWorkPaths(value["workPaths"]),
-    workTools: parseWorkTools(value["workTools"]),
   };
 }
 
@@ -82,12 +83,6 @@ function parseWorkPaths(value: unknown): readonly WorkPathDeclaration[] {
     if (!isContainedRelativePath(path)) throw new InvalidAgentFactDeclarationError(`Declared work path ${path} must stay inside its root`);
     return { root, path };
   });
-}
-
-function parseWorkTools(value: unknown): readonly string[] {
-  if (value === undefined) return [];
-  if (!Array.isArray(value) || !isToolList(value)) throw new InvalidAgentFactDeclarationError("Declared work tools must be tool names");
-  return value;
 }
 
 function isWorkPathRoot(value: unknown): value is WorkPathRoot {

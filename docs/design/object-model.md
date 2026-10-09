@@ -152,7 +152,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
     - A locate matches the whole id, else the one id it begins (the precedence `resolveSessionFileInDir` uses), so a prefix link the listing accepts is not called gone.
     - A locate that went unanswered is a claim for the app row (`targetUnanswered`), dated from its first miss, so the row says why after its grace. A coded-less 404 from it is unanswered, never gone.
     - "The session this place names" is one value, `placeSessionId` (the selected session, else the target in scope): the URL, the popstate match, the route restore's early return and the machine memory all read it, and on the phone every "is there a chat behind this page" check asks `hasChatSubject`.
-- **Events**: `status.update`, `activity.update`, `activity.changed`, `session.startup|stopped|error` [S §2.1]. Silent: inbox pushes between heartbeats (2 s, `publishHeartbeats`, `piSessionService.ts:5529`).
+- **Events**: `status.update`, `activity.update`, `session.startup|stopped|error` (`activity.changed` only from a daemon older than B20b, read and ignored) [S §2.1]. Silent: inbox pushes between heartbeats (2 s, `publishHeartbeats`, `piSessionService.ts:5529`).
 - **Read**: `GET /sessions/:id/status` (opens the session if cold, O(branch) [S §2.6, §5.3]); `GET /sessions/statuses` (in the batched boot read).
 - **Cache**: memory, seeded synchronously on select from the catalog map (`sessionController.ts:401-409`).
 - **Arbitration**: `readVerdict` (§2.1), taken from `statusOrder.statusReadVerdict`.

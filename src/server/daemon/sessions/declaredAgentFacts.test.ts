@@ -15,11 +15,11 @@ function loader(tools: string[]) {
 
 describe("the agent facts this daemon's plugins declare", () => {
   it("reports nothing before any plugin has declared anything", () => {
-    expect(declaredAgentFacts()).toEqual({ surfaces: [], injectedTurns: [], workPaths: [], workTools: [] });
+    expect(declaredAgentFacts()).toEqual({ surfaces: [], injectedTurns: [], workPaths: [] });
   });
 
   it("keeps the tools the declaring plugin named", () => {
-    recordDeclaredAgentFacts({ surfaces: [{ surface: "goals", tools: ["get_goal"] }], injectedTurns: [], workPaths: [], workTools: [] });
+    recordDeclaredAgentFacts({ surfaces: [{ surface: "goals", tools: ["get_goal"] }], injectedTurns: [], workPaths: [] });
 
     expect(declaredAgentFacts().surfaces).toEqual([{ surface: "goals", tools: ["get_goal"] }]);
   });
@@ -34,7 +34,7 @@ describe("the agent facts this daemon's plugins declare", () => {
   });
 
   it("reports a declared surface present once the tool it names is loaded", () => {
-    recordDeclaredAgentFacts({ surfaces: [{ surface: "goals", tools: ["create_goal"] }], injectedTurns: [], workPaths: [], workTools: [] });
+    recordDeclaredAgentFacts({ surfaces: [{ surface: "goals", tools: ["create_goal"] }], injectedTurns: [], workPaths: [] });
 
     expect(pluginSurfacePresence(loader(["create_goal"]))?.["goals"]).toBe("present");
   });

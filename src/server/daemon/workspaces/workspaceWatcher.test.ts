@@ -26,6 +26,7 @@ function harness(options: { failPaths?: readonly string[]; gitDirs?: Readonly<Re
     },
     now: () => now,
     linkedGitDir: (path) => options.gitDirs?.[path],
+    workPaths: () => [".pi/tasks", ".pi/delegate"],
     clearTimer: (timer) => {
       clearTimeout(timer);
       const index = timers.findIndex((entry) => entry.handle === timer);

@@ -3,7 +3,6 @@ import Fastify, { type FastifyInstance } from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH } from "../../../shared/apiTypes.js";
-import type { SessionBackgroundTaskInfo } from "../../../shared/apiTypes.js";
 import type {
   AskUserCloseResponse,
   AskUserSubmission,
@@ -1605,14 +1604,6 @@ class CapturingRouteSessionService implements SessionRouteService {
     });
   }
 
-  backgroundTasks(): Promise<SessionBackgroundTaskInfo[]> {
-    return Promise.resolve([]);
-  }
-
-  backgroundTaskOutput(): Promise<string | undefined> {
-    return Promise.resolve(undefined);
-  }
-
   messages(): Promise<MessagePage> {
     return Promise.resolve(this.messagesResponse);
   }
@@ -1833,7 +1824,7 @@ function unusedRouteMethod(name: string): Error {
  * answered 404 for any failure, so a daemon error read as a deleted session.
  */
 describe("what a session read answers when it fails", () => {
-  const readRoutes = ["messages", "status", "stream-snapshot", "models", "models/catalog", "thinking-levels", "commands", "subsessions", "background-tasks", "locate", "transcript-tail"];
+  const readRoutes = ["messages", "status", "stream-snapshot", "models", "models/catalog", "thinking-levels", "commands", "subsessions", "locate", "transcript-tail"];
 
   it("answers 404 with the code for a session the daemon does not have, on every read route", async () => {
     const answers: Record<string, unknown> = {};

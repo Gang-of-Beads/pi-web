@@ -13,7 +13,7 @@ describe("classifyWorkspaceChange", () => {
       "sub/.pi/tasks/x.output", ".pi/sessions/s.jsonl", "apps/web/.pi/sessions/s.jsonl", ".pi/settings.json",
       ".git/modules/lib/HEAD", ".git/modules/lib/refs/heads/main", ".git/modules/lib/objects/ab/cd", ".git/modules/lib/index.lock", ".git/modules/lib/modules/inner/index",
       "", undefined,
-    ].map((path) => [String(path), classifyWorkspaceChange(path)]));
+    ].map((path) => [String(path), classifyWorkspaceChange(path, [".pi/tasks", ".pi/delegate"])]));
     expect(table).toEqual({
       ".git/HEAD": "git-state", ".git/index": "git-state", ".git/packed-refs": "git-state", ".git/config": "git-state", ".git/ORIG_HEAD": "git-state", ".git/FETCH_HEAD": "git-state", ".git/MERGE_MSG": "git-state",
       ".git/refs/heads/main": "git-state", ".git/refs/remotes/origin/main": "git-state", ".git/rebase-merge/done": "git-state", ".git/sequencer/todo": "git-state", ".git/info/exclude": "git-state",

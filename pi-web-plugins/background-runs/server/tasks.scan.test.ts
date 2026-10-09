@@ -2,7 +2,7 @@ import { mkdtemp, appendFile, writeFile, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { resetTranscriptScanCache, taskIdsForSession } from "./backgroundTasks.js";
+import { resetTranscriptScanCache, taskIdsForSession } from "./tasks.js";
 
 /**
  * The transcript scan ran in full on every poll: a 169MB session file was

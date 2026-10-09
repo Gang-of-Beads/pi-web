@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile, utimes, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { listBackgroundTasks, resetTaskRecordCache, resetTranscriptScanCache } from "./backgroundTasks.js";
+import { listBackgroundTasks, resetTaskRecordCache, resetTranscriptScanCache } from "./tasks.js";
 
 /**
  * The poll's remaining costs after the transcript watermark: every registry

@@ -57,25 +57,23 @@ function texts(page: { messages: unknown[] }): string[] {
 }
 
 describe("reading a closed session never opens it (P3 slice d)", () => {
-  it("reads a closed session's transcript page and background tasks from its file", async () => {
+  it("reads a closed session's transcript page from its file", async () => {
     const path = await file("closed.jsonl", [header("closed"), userEntry("e1", "hello")]);
     const { service, createAgentRuntime } = serviceFor([{ ...sessionRecord("closed"), path }]);
 
     const page = await service.messages({ id: "closed", cwd: "/workspace" }, { limit: 50 });
-    const tasks = await service.backgroundTasks({ id: "closed", cwd: "/workspace" });
 
-    expect({ texts: texts(page), tasks, opened: createAgentRuntime.mock.calls.length }).toEqual({ texts: ["hello"], tasks: [], opened: 0 });
+    expect({ texts: texts(page), opened: createAgentRuntime.mock.calls.length }).toEqual({ texts: ["hello"], opened: 0 });
   });
 
-  it("reads an archived session from its archive file, for the page, the tail and the background tasks", async () => {
+  it("reads an archived session from its archive file, for the page and the tail", async () => {
     const archivePath = await file("archived.jsonl", [header("old"), userEntry("e1", "from the archive")]);
     const { service, createAgentRuntime } = serviceFor([], [{ sessionId: "old", cwd: "/workspace", archivedAt: "2026-01-02T00:00:00.000Z", archivePath }]);
 
     const page = await service.messages({ id: "old", cwd: "/workspace" }, { limit: 50 });
     const tail = await service.transcriptTail({ id: "old", cwd: "/workspace" }, { limit: 50 });
-    const tasks = await service.backgroundTasks({ id: "old", cwd: "/workspace" });
 
-    expect({ page: texts(page), tail: texts(tail.page), tasks, opened: createAgentRuntime.mock.calls.length }).toEqual({ page: ["from the archive"], tail: ["from the archive"], tasks: [], opened: 0 });
+    expect({ page: texts(page), tail: texts(tail.page), opened: createAgentRuntime.mock.calls.length }).toEqual({ page: ["from the archive"], tail: ["from the archive"], opened: 0 });
   });
 
   it("waits for a runtime still closing before it reads the file, so the close's last entries are on it", async () => {
@@ -141,9 +139,8 @@ describe("reading a closed session never opens it (P3 slice d)", () => {
 
     const outcomes = await Promise.all([
       service.messages({ id: "gone", cwd: "/workspace" }).then(() => "answered", (error: unknown) => (error instanceof SessionNotFoundError ? "session-not-found" : String(error))),
-      service.backgroundTasks({ id: "gone", cwd: "/workspace" }).then(() => "answered", (error: unknown) => (error instanceof SessionNotFoundError ? "session-not-found" : String(error))),
     ]);
 
-    expect({ outcomes, opened: createAgentRuntime.mock.calls.length }).toEqual({ outcomes: ["session-not-found", "session-not-found"], opened: 0 });
+    expect({ outcomes, opened: createAgentRuntime.mock.calls.length }).toEqual({ outcomes: ["session-not-found"], opened: 0 });
   });
 });

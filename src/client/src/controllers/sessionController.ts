@@ -47,7 +47,6 @@ import type { ExtensionEditorTextMode, PromptAttachmentDelivery, SessionStartupP
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, type SessionSelectionMemory, isOpenableSession } from "./sessionSelection"
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
-import { backgroundRunCountChanged } from "../backgroundRunCountSignal";
 import { ParkedNotices } from "../parkedNotices";
 
 /** What a start in a project whose folder is gone says, wherever it is refused. */
@@ -137,13 +136,6 @@ export interface SessionControllerDependencies {
    * than on a timer.
    */
   onSelectedSessionIdle?: () => void;
-  /**
-   * D8: the daemon's status frame carries the background run count. A change
-   * is the one moment the activity lists can have changed — the callback fires
-   * once per count change so the strip can refetch on demand instead of on a
-   * timer.
-   */
-  onBackgroundRunCountChanged?: (sessionId: string) => void;
   /**
    * Where a session opened from another project is placed from: the host's
    * projects and workspaces listings, which keep reading until they answer
@@ -275,7 +267,6 @@ export class SessionController {
   private readonly replacePromptEditorText: SessionControllerDependencies["replacePromptEditorText"];
   private readonly onSelectedSessionReady: SessionControllerDependencies["onSelectedSessionReady"];
   private readonly onSelectedSessionIdle: SessionControllerDependencies["onSelectedSessionIdle"];
-  private readonly onBackgroundRunCountChanged: SessionControllerDependencies["onBackgroundRunCountChanged"];
   private readonly catalogue: SessionCatalogue;
   private selectionSeq = 0;
   /**
@@ -367,7 +358,6 @@ export class SessionController {
     this.replacePromptEditorText = deps.replacePromptEditorText;
     this.onSelectedSessionReady = deps.onSelectedSessionReady;
     this.onSelectedSessionIdle = deps.onSelectedSessionIdle;
-    this.onBackgroundRunCountChanged = deps.onBackgroundRunCountChanged;
     this.catalogue = deps.catalogue ?? directCatalogue;
     this.urlSessionId = deps.urlSessionId;
     this.targets = new SessionTargetResolver({
@@ -2457,17 +2447,6 @@ export class SessionController {
     // re-reading the goal directory for, and every other status update would
     // make it a poll.
     const becameIdle = isSelected && isSessionActive(state.status ?? status) && !isSessionActive(status);
-    // D8: the run count in the status frame is the signal that the background
-    // task list can have changed — the strip refetches on demand instead of on
-    // a timer. The count is per session; a change for any open session fires
-    // once, and the same count again fires nothing.
-    if (backgroundRunCountChanged({
-      hadPreviousStatus: state.sessionStatuses[status.sessionId] !== undefined,
-      previousCount: state.sessionStatuses[status.sessionId]?.backgroundRunCount,
-      currentCount: status.backgroundRunCount,
-    })) {
-      this.onBackgroundRunCountChanged?.(status.sessionId);
-    }
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
       ...sessionRowPatch(state, status),
@@ -2963,11 +2942,7 @@ export class SessionController {
       if (selected !== undefined) void this.replacePromptEditorText?.({ machineId: selectedMachineId(current), sessionId: selected.id, text: event.text, mode: event.mode });
       return;
     }
-    if (event.type === "activity.changed") {
-      const selected = this.getState().selectedSession;
-      if (selected !== undefined) this.onBackgroundRunCountChanged?.(selected.id);
-      return;
-    }
+    if (event.type === "activity.changed") return;
     if (event.type === "prompt.withdrawn" || event.type === "prompt.consumed") {
       this.dropPromptRow(event.clientMessageId);
       return;

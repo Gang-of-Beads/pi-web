@@ -3,7 +3,13 @@
   "private": true,
   "piWeb": {
     "plugins": [
-      { "id": "background-runs", "browserRoot": ".", "module": "pi-web-plugin.js" }
+      {
+        "id": "background-runs",
+        "browserRoot": ".",
+        "module": "pi-web-plugin.js",
+        "serverModule": "server-plugin.js"
+      }
     ]
-  }
+  },
+  "type": "module"
 }

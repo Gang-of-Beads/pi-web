@@ -1,9 +1,5 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { open, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { SessionBackgroundTaskInfo } from "../../../shared/apiTypes.js";
-import type { WorkPathDeclaration } from "../../shared/plugins/agentSurfaceDeclarations.js";
 
 /**
  * Background-task runs, read from the registry the task tool leaves on disk.
@@ -40,18 +36,32 @@ import type { WorkPathDeclaration } from "../../shared/plugins/agentSurfaceDecla
 /** The extension's registry directory, relative to the session's working directory. */
 const TASKS_SUBDIR = ".pi/tasks";
 
-/**
- * Where this reader's extension does its work, declared the way a plugin declares its own, so the
- * daemon's watcher and activity events name nothing. The reader itself is core's last support for
- * one extension and moves whole to the Background runs plugin (B20b, design section 3).
- */
-export const BACKGROUND_TASK_WORK: { readonly workPaths: readonly WorkPathDeclaration[]; readonly workTools: readonly string[] } = {
-  workPaths: [{ root: "cwd", path: TASKS_SUBDIR }],
-  workTools: ["bg_run", "bg_run_pi_attested", "bg_kill", "fusion_reason", "fusion_investigate", "fusion_research", "fusion_validate"],
-};
+/** One background task, as the panel lists it. */
+export interface BackgroundTaskInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly command: string;
+  /** The tool's own status, except that a running record with a dead process reads "lost". */
+  readonly status: string;
+  readonly startedAt?: string | undefined;
+  readonly endedAt?: string | undefined;
+  /** Wall-clock milliseconds: final when finished, elapsed while running. */
+  readonly durationMs?: number | undefined;
+  readonly exitCode?: number | undefined;
+  readonly bytesWritten: number;
+  readonly hasOutput: boolean;
+}
 
-/** Enough of the tail to show what a task is doing without reading a long log. */
-const TAIL_BYTES = 16 * 1024;
+/**
+ * How many of a session's tasks are still running: the running ids in the workspace's registry
+ * that the session's transcript started. With none running anywhere, no transcript is read.
+ */
+export async function runningTasksForSession(cwd: string, transcriptPath: string, probeProcessStart: (pid: number) => Promise<number | undefined>): Promise<number> {
+  const running = await runningTaskIds(cwd, probeProcessStart);
+  if (running.size === 0) return 0;
+  const owned = await ownedTaskIds(cwd, transcriptPath);
+  return [...running].filter((id) => owned.has(id)).length;
+}
 
 interface StoredTask {
   id?: unknown;
@@ -74,28 +84,31 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-/**
- * Whether a process is still alive.
- *
- * A task killed by a machine restart keeps `status: "running"` in its file
- * forever, because nothing runs to correct it. Reporting that as running would
- * mean the UI shows a spinner for a task that died days ago, so a running
- * record is only believed while its process exists.
- */
+/** How far a process's start may sit from the task's own start and still be the task's process. */
 const PID_REUSE_TOLERANCE_MS = 60_000;
 
-const execFileAsync = promisify(execFile);
+/** Runs `ps` with these arguments: the host's bounded command helper, so the plugin spawns nothing itself. */
+export type RunPs = (args: readonly string[]) => Promise<{ readonly exitCode: number | null; readonly stdout: string }>;
 
-/** When the process behind `pid` was born, or undefined if there is none. */
-async function processStartMs(pid: number | undefined): Promise<number | undefined> {
-  if (pid === undefined) return undefined;
-  try {
-    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "lstart="]);
-    const born = new Date(stdout.trim()).getTime();
-    return Number.isFinite(born) ? born : undefined;
-  } catch {
-    return undefined;
-  }
+/**
+ * When the process behind a pid was born, asked of `ps`; undefined when there is none (`ps` exits
+ * non-zero).
+ *
+ * A task killed by a machine restart keeps `status: "running"` in its file forever, because nothing
+ * runs to correct it. Reporting that as running would show a spinner for a task that died days ago,
+ * so a running record is only believed while its process exists.
+ */
+export function processStartProbe(runPs: RunPs): (pid: number) => Promise<number | undefined> {
+  return async (pid) => {
+    try {
+      const { exitCode, stdout } = await runPs(["-p", String(pid), "-o", "lstart="]);
+      if (exitCode !== 0) return undefined;
+      const born = new Date(stdout.trim()).getTime();
+      return Number.isFinite(born) ? born : undefined;
+    } catch {
+      return undefined;
+    }
+  };
 }
 
 /**
@@ -123,8 +136,9 @@ export function taskProcessIsOriginal(
 /**
  * Task ids this session started, taken from the output paths in its transcript.
  *
- * The transcript is read incrementally. This function sits on a client poll
- * timer, and reading a long-lived session's file in full on every poll -
+ * The transcript is read incrementally. Its callers run on every recount of a
+ * session's background work and every read of its task list, and reading a
+ * long-lived session's file in full each time -
  * hundreds of megabytes, regex-swept, per session, every few seconds - was
  * the event-loop stall behind "pi web is always stuck": 67k calls averaging
  * 2.4s each, with everything else queued behind them. A transcript only
@@ -132,6 +146,9 @@ export function taskProcessIsOriginal(
  * per transcript remembers how far the scan got and only the growth is read,
  * with a small overlap so a line torn across the boundary is still seen. A
  * file that shrank was replaced, and is rescanned from the start.
+ *
+ * The tool reports "Output: .pi/tasks/<dir>/<id>.output" when a task starts, and that line is what
+ * lands in the transcript, so the ids are read from it.
  */
 export async function taskIdsForSession(transcriptPath: string): Promise<Set<string>> {
   let size: number;
@@ -151,8 +168,6 @@ export async function taskIdsForSession(transcriptPath: string): Promise<Set<str
     return new Set(state === undefined ? [] : state.ids);
   }
   const ids = fromScratch ? new Set<string>() : state.ids;
-  // The tool reports "Output: .pi/tasks/<dir>/<id>.output" when a task starts,
-  // and that line is what lands in the transcript.
   const pattern = /\.pi[/\\]tasks[/\\][^"'\s]+?[/\\]([A-Za-z0-9_-]+)\.output/g;
   for (const match of text.matchAll(pattern)) {
     const id = match[1];
@@ -219,7 +234,10 @@ async function readAttributions(cwd: string): Promise<Map<string, string>> {
   }
 }
 
-/** Atomic replace, so a poll landing mid-write cannot hand back a torn file. */
+/**
+ * Atomic replace, so a read landing mid-write cannot hand back a torn file. A failed write costs only
+ * durability until the next sighting records again; it never fails the read that keeps it.
+ */
 async function writeAttributions(cwd: string, attributions: Map<string, string>): Promise<void> {
   const path = attributionPath(cwd);
   const staged = `${path}.${String(process.pid)}.tmp`;
@@ -227,8 +245,7 @@ async function writeAttributions(cwd: string, attributions: Map<string, string>)
     await writeFile(staged, JSON.stringify(Object.fromEntries(attributions), null, 2));
     await rename(staged, path);
   } catch {
-    // A failed write costs only durability until the next sighting re-records;
-    // it must never fail the list that was trying to maintain it.
+    return;
   }
 }
 
@@ -253,6 +270,13 @@ export function resetTaskRecordCache(): void {
   taskRecordCache.clear();
 }
 
+/**
+ * One registry file, parsed. A file torn mid-write, or whose writer crashed before it was parsed, is
+ * held as an empty record and not cached, so the next read sees it once the writer finishes. Every
+ * consumer reads fields through asString/asNumber, so an empty record is safe: it claims no running
+ * process and lists as status "unknown" under the identity anyone can prove, the file name. Dropping
+ * it instead answered "this session never started anything" for a task the reader had started.
+ */
 async function readTaskRecordFile(full: string): Promise<StoredTask | undefined> {
   let sizeBytes: number;
   let mtimeMs: number;
@@ -270,8 +294,6 @@ async function readTaskRecordFile(full: string): Promise<StoredTask | undefined>
     const parsed: unknown = JSON.parse(await readFile(full, "utf8"));
     task = typeof parsed === "object" && parsed !== null ? parsed : {};
   } catch {
-    // Torn mid-write or crashed before parsing: held as an empty record and
-    // not cached, so the next poll re-reads once the writer finishes.
     return {};
   }
   if (taskRecordCache.size >= TASK_RECORD_CACHE_LIMIT && !taskRecordCache.has(full)) taskRecordCache.clear();
@@ -298,13 +320,6 @@ export async function readTaskRecords(cwd: string): Promise<Map<string, { task: 
     }
     for (const file of files) {
       const full = join(root, dir, file);
-      // Every consumer reads fields through asString/asNumber, so an unreadable
-      // body is safe to hold as an empty record: runningTaskIds skips anything
-      // without status "running" (an unreadable record claims no process), and
-      // listBackgroundTasks renders it as status "unknown" under the identity
-      // anyone can actually prove - the filename. Dropping it instead answered
-      // "this session never started anything" for a task the reader had
-      // started, which is how a running task vanished from the panel.
       const task = await readTaskRecordFile(full);
       if (task === undefined) continue;
       const id = asString(task.id) ?? basename(file, ".json");
@@ -325,7 +340,7 @@ export async function readTaskRecords(cwd: string): Promise<Map<string, { task: 
  */
 export async function runningTaskIds(
   cwd: string,
-  probeProcessStart: (pid: number) => Promise<number | undefined> = processStartMs,
+  probeProcessStart: (pid: number) => Promise<number | undefined>,
 ): Promise<Set<string>> {
   const running = new Set<string>();
   for (const [id, record] of await readTaskRecords(cwd)) {
@@ -338,54 +353,14 @@ export async function runningTaskIds(
   return running;
 }
 
-/** The tail of a task's log, for showing what it is doing without opening a file. */
-export async function readTaskOutput(cwd: string, taskId: string, maxBytes = TAIL_BYTES): Promise<string | undefined> {
-  const records = await readTaskRecords(cwd);
-  const record = records.get(taskId);
-  const outputPath = record === undefined ? undefined : asString(record.task.outputPath);
-  if (outputPath === undefined) return undefined;
-  const absolute = outputPath.startsWith("/") ? outputPath : join(cwd, outputPath);
-  try {
-    const info = await stat(absolute);
-    const handle = await readFile(absolute, "utf8");
-    return info.size > maxBytes ? handle.slice(-maxBytes) : handle;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
- * The transitions between the last seen task states and a fresh registry read:
- * added or changed tasks carry their current status; tasks that vanished from
- * the registry are reported as removed so the client can drop its row.
+ * The task ids a session owns. What its transcript proves is recorded first, then ownership
+ * is read from the record. The key is the transcript's base name, the one session identity this
+ * reader is handed; first writer wins, so a session that quotes another's output path cannot
+ * claim a task it did not start, and the record outvotes a quoted mention.
  */
-export function diffTaskStates(
-  previous: ReadonlyMap<string, string>,
-  current: readonly { id: string; status: string }[],
-): { id: string; status: string }[] {
-  const transitions: { id: string; status: string }[] = [];
-  for (const task of current) {
-    if (previous.get(task.id) === task.status) continue;
-    transitions.push({ id: task.id, status: task.status });
-  }
-  for (const id of previous.keys()) {
-    if (current.some((task) => task.id === id)) continue;
-    transitions.push({ id, status: "removed" });
-  }
-  return transitions;
-}
-
-export async function listBackgroundTasks(
-  cwd: string,
-  transcriptPath: string,
-  now = Date.now(),
-  probeProcessStart: (pid: number) => Promise<number | undefined> = processStartMs,
-): Promise<SessionBackgroundTaskInfo[]> {
-  const [ids, records] = await Promise.all([taskIdsForSession(transcriptPath), readTaskRecords(cwd)]);
-  // Record what this transcript just proved, then attribute from the record.
-  // The key is the transcript's base name, the one session identity this reader
-  // is handed; first writer wins, so a session that quotes another's output
-  // path cannot claim a task it did not start.
+async function ownedTaskIds(cwd: string, transcriptPath: string): Promise<Set<string>> {
+  const ids = await taskIdsForSession(transcriptPath);
   const session = basename(transcriptPath);
   const attributions = await readAttributions(cwd);
   let recorded = false;
@@ -399,9 +374,27 @@ export async function listBackgroundTasks(
   const owned = new Set(ids);
   for (const [id, owner] of attributions) {
     if (owner === session) owned.add(id);
-    else owned.delete(id); // the record outvotes a quoted mention
+    else owned.delete(id);
   }
-  const tasks: SessionBackgroundTaskInfo[] = [];
+  return owned;
+}
+
+/**
+ * A session's tasks, newest first, the one someone opened the panel to check being the recent one.
+ *
+ * A "running" record whose process is gone died without being able to record it (a restart, an
+ * OOM kill) and is reported as lost rather than spinning forever. Only a running record is probed:
+ * spawning `ps` for every finished task ever recorded, on every read, was a process storm for
+ * answers that cannot change.
+ */
+export async function listBackgroundTasks(
+  cwd: string,
+  transcriptPath: string,
+  now: number,
+  probeProcessStart: (pid: number) => Promise<number | undefined>,
+): Promise<BackgroundTaskInfo[]> {
+  const [owned, records] = await Promise.all([ownedTaskIds(cwd, transcriptPath), readTaskRecords(cwd)]);
+  const tasks: BackgroundTaskInfo[] = [];
   for (const id of owned) {
     const record = records.get(id);
     if (record === undefined) continue;
@@ -410,12 +403,6 @@ export async function listBackgroundTasks(
     const pid = asNumber(task.pid);
     const startedAt = asNumber(task.startTime);
     const endedAt = asNumber(task.endTime);
-
-    // A "running" record whose process is gone died without being able to
-    // record it - a restart, an OOM kill - and is reported as lost rather than
-    // spinning forever. Only a running record needs the probe: spawning ps for
-    // every finished task ever recorded, on every poll, was a per-poll process
-    // storm for answers that cannot change.
     const alive = rawStatus === "running"
       && pid !== undefined
       && taskProcessIsOriginal(await probeProcessStart(pid), pid, startedAt);
@@ -433,7 +420,6 @@ export async function listBackgroundTasks(
       hasOutput: asString(task.outputPath) !== undefined,
     });
   }
-  // Newest first: the task someone opened the page to check is the recent one.
   tasks.sort((left, right) => (right.startedAt ?? "").localeCompare(left.startedAt ?? ""));
   return tasks;
 }

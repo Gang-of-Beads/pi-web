@@ -1673,7 +1673,9 @@ type SessionUiEventBody =
     type: "prompt.refused";
     clientMessageId: string;
     message: string;
-} | {
+}
+/** Sent by an older daemon when a background-work tool started or ended; read and ignored. */
+ | {
     type: "activity.changed";
 } | {
     type: "dialog.opened";
@@ -1744,32 +1746,6 @@ export interface SessionSubsessionInfo {
 }
 export interface SessionSubsessionsSnapshot {
     readonly subsessions: readonly SessionSubsessionInfo[];
-}
-/**
- * A shell command the background-task tool is running outside the turn.
- *
- * Reported per session even though the tool's own directory is per server
- * process: ownership comes from the session transcript, which records the
- * task's output path when it starts.
- */
-/**
- * Whether this session's background runs have been read. An empty list alone cannot say
- * "none" - it is also what an unread or failed read looks like - so the read carries its state.
- */
-export type BackgroundTasksRead = "unread" | "read" | "failed";
-export interface SessionBackgroundTaskInfo {
-    readonly id: string;
-    readonly name: string;
-    readonly command: string;
-    /** The tool's own status, except that a running record with a dead process reads "lost". */
-    readonly status: string;
-    readonly startedAt?: string | undefined;
-    readonly endedAt?: string | undefined;
-    /** Wall-clock milliseconds: final when finished, elapsed while running. */
-    readonly durationMs?: number | undefined;
-    readonly exitCode?: number | undefined;
-    readonly bytesWritten: number;
-    readonly hasOutput: boolean;
 }
 /**
  * Whether a newer build of this checkout is available on the fork remote.

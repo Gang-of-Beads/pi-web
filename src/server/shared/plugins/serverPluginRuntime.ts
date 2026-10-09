@@ -333,7 +333,6 @@ export class ServerPluginRuntime {
       surfaces: this.activePlugins.flatMap((active) => active.agentFacts?.surfaces ?? []),
       injectedTurns: this.activePlugins.flatMap((active) => active.agentFacts?.injectedTurns ?? []),
       workPaths: this.activePlugins.flatMap((active) => active.agentFacts?.workPaths ?? []),
-      workTools: this.activePlugins.flatMap((active) => active.agentFacts?.workTools ?? []),
     };
   }
 

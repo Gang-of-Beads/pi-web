@@ -19,8 +19,8 @@ import { autoFocusesComposer } from "../appShell/appShellController";
 import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
 import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
-  type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
-import type { BackgroundTasksRead, ExtensionUiStanding, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig, PluginSurfacePresence } from "../../../shared/apiTypes";
+  type QueuedSessionMessage, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
+import type { ExtensionUiStanding, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig, PluginSurfacePresence } from "../../../shared/apiTypes";
 import type { AppAction } from "../actions";
 import { composerCwd, initialAppState, type AppState } from "../appState";
 import { isSessionNotFoundError } from "../sessionNotFound";
@@ -57,7 +57,6 @@ import { LOCAL_MACHINE_ID, machineSessionKey, machineWorkspaceKey } from "../mac
 import { askConfirmation, confirmationText, type ConfirmRequest } from "../confirmDialog";
 import { modifiedMs, sessionSections } from "../sessionOrder";
 import { commandsForSession } from "../commandLedger";
-import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
 import { routedWorkspaceTool } from "../routedWorkspaceTool";
 import { shownWorkspacePanel, workspacePanelHoldsCanvas, workspacePanelMayHoldCanvas } from "../workspacePanelCanvas";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
@@ -383,10 +382,6 @@ export class PiWebApp extends LitElement {
     new SessionStorageSessionSelectionMemory(),
     {
       urlSessionId: () => readRoute().sessionId,
-      onBackgroundRunCountChanged: (sessionId: string) => {
-        if (this.state.selectedSession?.id !== sessionId) return;
-        void this.refreshSubagents();
-      },
       onSelectedSessionReady: ({ machineId, session }) => {
         void this.commitReadyChatAfterRender(machineId, session);
         void this.refreshSelfUpdate();
@@ -468,7 +463,6 @@ export class PiWebApp extends LitElement {
   private piWebStatusTimer: number | undefined;
   private piWebStatusDeferredTimer: number | undefined;
   private workspaceDeletionPollTimer: number | undefined;
-  private subagentRefreshArmedFor: string | undefined;
   private restoringSessionId: string | undefined;
   private livenessTimer: number | undefined;
   private unansweredShown: ShownUnanswered | undefined;
@@ -834,7 +828,6 @@ export class PiWebApp extends LitElement {
   };
 
   private readonly onDocumentVisibilityChange = () => {
-    this.updateSubagentPolling();
     if (document.visibilityState === "visible") {
       this.pluginRetry.wake();
       void this.sessions.recheckTranscript();
@@ -843,7 +836,6 @@ export class PiWebApp extends LitElement {
       this.machines.wake();
       this.sessionBoards.wake();
       this.refreshWorkspaceChangedWhileHidden();
-      void this.refreshSubagents();
       // Coming back to the tab is the moment a stale bundle bites next; a
       // server upgraded while the phone slept should be offered, not hidden.
       void this.checkClientFreshness();
@@ -920,14 +912,6 @@ export class PiWebApp extends LitElement {
     // Recheck after every rendered transition; the unread controller
     // deduplicates acknowledgements for the observed completion order.
     const chatIdentity = selectedChatIdentity(this.state);
-    if (chatIdentity !== this.committedChatIdentity) {
-      // A failed activity read keeps the rows it last saw, but those rows are
-      // facts about the chat they were read for: carrying them under another
-      // selection would render one chat's frozen work on another's dock.
-      if (this.state.backgroundTasks.length > 0 || this.state.backgroundTasksRead !== "unread") {
-        this.setState({ backgroundTasks: [], backgroundTasksRead: "unread" });
-      }
-    }
     this.committedChatIdentity = chatIdentity;
     this.syncSelectedSessionReadState();
     this.syncFleetOnSettingsSection();
@@ -1040,55 +1024,6 @@ export class PiWebApp extends LitElement {
       }
     });
   }
-
-  /**
-   * Poll the selected session's activity while its tab is on screen.
-   *
-   * Fetch-on-select was not enough. The usual way to get a subagent is to ask
-   * for one in the session you are already reading, and nothing re-read the
-   * list afterwards, so the drawer stayed empty until the reader happened to
-   * switch sessions and come back. The 4s poll that covered this was removed
-   * by D8: the strip refetches on the count-change signal, on selection, and
-   * on visibility recovery.
-   */
-  private updateSubagentPolling(): void {
-    const shouldPoll = shouldPollSessionActivity({
-      hasSelectedSession: this.state.selectedSession !== undefined,
-      documentVisible: document.visibilityState === "visible",
-    });
-    // D8/4.2: the 4s poll is gone. The strip refetches on the count-change
-    // signal (the daemon's status frames carry it), on selection, and on
-    // visibility recovery — no timer backs it up.
-    if (shouldPoll && this.subagentRefreshArmedFor !== this.state.selectedSession?.id) {
-      this.subagentRefreshArmedFor = this.state.selectedSession?.id;
-      void this.refreshSubagents();
-      return;
-    }
-    if (!shouldPoll) this.subagentRefreshArmedFor = undefined;
-  }
-
-  private readonly refreshSubagents = oneReadAtATime(() => this.readBackgroundTasks());
-
-  /**
-   * The session's background runs, for the dock and the Background panel. It also read
-   * `/subsessions` - child sessions and subagent-tool runs - which nothing has rendered since
-   * the chip strip went: the Subagents panel reads its own runs. The dead read fired twice
-   * within 250ms on every selection (reads F9), so it is gone rather than kept for a surface
-   * that no longer exists.
-   */
-  private async readBackgroundTasks(): Promise<void> {
-    const session = this.state.selectedSession;
-    if (session === undefined) return;
-    const machineId = selectedMachineId(this.state);
-    const [tasks] = await Promise.allSettled([sessionsApi.backgroundTasks(session, machineId)]);
-    if (this.state.selectedSession?.id !== session.id || selectedMachineId(this.state) !== machineId) return;
-    const patch: Partial<AppState> = {};
-    if (tasks.status === "fulfilled" && !sameBackgroundTasks(tasks.value, this.state.backgroundTasks)) patch.backgroundTasks = tasks.value;
-    const read: BackgroundTasksRead = tasks.status === "fulfilled" ? "read" : "failed";
-    if (read !== this.state.backgroundTasksRead) patch.backgroundTasksRead = read;
-    if (Object.keys(patch).length > 0) this.setState(patch);
-  }
-
 
   /**
    * Interactive self-update: check the fork remote (cheap, daemon-cached) and
@@ -1286,7 +1221,6 @@ export class PiWebApp extends LitElement {
     this.livenessTimer = window.setInterval(() => { this.checkSocketLiveness(); }, SOCKET_LIVENESS_CHECK_MS);
     window.addEventListener("online", this.onBrowserOnline);
     window.addEventListener("pointerdown", this.onInteractionLivenessProbe, { passive: true, capture: true });
-    this.updateSubagentPolling();
     void this.loadClientConfig();
     void this.refreshSelfUpdate();
     void this.checkClientFreshness();
@@ -1436,10 +1370,6 @@ export class PiWebApp extends LitElement {
     this.handleMachineChange(previous, this.state);
     if (machineActivitySubscriptionInputsChanged(previous, this.state)) this.syncMachineActivitySubscriptions();
     if (machineUnreadInputsChanged(previous, this.state)) this.syncSessionUnreadMachines();
-    // Only the timer here: the selection paths that can afford an immediate
-    // read already ask for one, and the poll picks up every other path within
-    // its interval.
-    if (previous.selectedSession?.id !== this.state.selectedSession?.id) this.updateSubagentPolling();
   }
 
   /**
@@ -5614,15 +5544,6 @@ export function restoreOpenedUnnamedSession(restored: RouteScope, inUrl: RouteSc
  */
 export function supersededMoveOwesUrl(facts: { readonly restoring: boolean; readonly opening: boolean; readonly urlMachineId: string | undefined; readonly pageMachineId: string }): boolean {
   return !facts.restoring && !facts.opening && (facts.urlMachineId ?? "local") !== facts.pageMachineId;
-}
-
-/** Only the fields the strip shows: a byte counter ticking must not re-render. */
-export function sameBackgroundTasks(left: readonly SessionBackgroundTaskInfo[], right: readonly SessionBackgroundTaskInfo[]): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((entry, index) => {
-    const other = right[index];
-    return other?.id === entry.id && other.status === entry.status && other.exitCode === entry.exitCode && other.durationMs === entry.durationMs;
-  });
 }
 
 function sameStringSet(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {

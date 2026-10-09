@@ -14,7 +14,7 @@ describe("what a plugin declares about its own agent-side facts", () => {
 
   it("treats a plugin declaring nothing as declaring nothing, not as broken", () => {
     expect(parseAgentFactDeclarations(undefined)).toBeUndefined();
-    expect(parseAgentFactDeclarations({})).toEqual({ surfaces: [], injectedTurns: [], workPaths: [], workTools: [] });
+    expect(parseAgentFactDeclarations({})).toEqual({ surfaces: [], injectedTurns: [], workPaths: [] });
   });
 
   it("refuses a surface with no tools behind it", () => {

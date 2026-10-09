@@ -94,7 +94,6 @@ describe("calling a declared plugin operation", () => {
       surfaces: [{ surface: "goals", tools: ["get_goal"] }],
       injectedTurns: [{ id: "goal-continuation", marker: "<pi_goal_continuation", producer: "pi-goal" }],
       workPaths: [],
-      workTools: [],
     });
     await runtime.stop();
   });
@@ -102,7 +101,7 @@ describe("calling a declared plugin operation", () => {
   it("reports nothing for a plugin that declares no agent facts", async () => {
     const runtime = await runtimeWith({});
 
-    expect(runtime.declaredAgentFacts()).toEqual({ surfaces: [], injectedTurns: [], workPaths: [], workTools: [] });
+    expect(runtime.declaredAgentFacts()).toEqual({ surfaces: [], injectedTurns: [], workPaths: [] });
     await runtime.stop();
   });
 });

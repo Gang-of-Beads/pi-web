@@ -1,4 +1,4 @@
-import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, BackgroundTasksRead, SessionBackgroundTaskInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
+import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
 import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
 import { RetiredBy } from "./notice";
@@ -75,8 +75,6 @@ export interface AppState {
   sessionTarget: ScopedSessionTarget | undefined;
   /** The daemon's ledger went unanswered for the session on screen; the row says so after the grace. */
   messageStatusUnanswered: MessageStatusUnanswered | undefined;
-  backgroundTasks: readonly SessionBackgroundTaskInfo[];
-  backgroundTasksRead: BackgroundTasksRead;
   /**
    * The selected session's transcript read failed, with the daemon's own words.
    * An empty transcript after a failed read must render this, never the empty
@@ -280,8 +278,6 @@ export function initialAppState(): AppState {
     selectedSession: undefined,
     sessionTarget: undefined,
     messageStatusUnanswered: undefined,
-    backgroundTasks: [],
-    backgroundTasksRead: "unread",
     transcriptFailed: undefined,
     statusReadFailed: undefined,
     status: undefined,

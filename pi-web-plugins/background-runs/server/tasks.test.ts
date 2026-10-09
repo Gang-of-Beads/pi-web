@@ -2,9 +2,8 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listBackgroundTasks, readTaskOutput, runningTaskIds, taskIdsForSession } from "./backgroundTasks.js";
-import { diffTaskStates } from "./backgroundTasks.js";
-import { taskProcessIsOriginal } from "./backgroundTasks";
+import { listBackgroundTasks, runningTaskIds, taskIdsForSession } from "./tasks.js";
+import { taskProcessIsOriginal } from "./tasks.js";
 
 /**
  * These fixtures copy a real registry directory rather than the reader's own
@@ -196,14 +195,7 @@ describe("background tasks", () => {
   it("returns nothing for a session with no transcript and no tasks", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "bgtasks-empty-"));
 
-    expect(await listBackgroundTasks(cwd, join(cwd, "missing.jsonl"))).toEqual([]);
-  });
-
-  it("reads a task's log through its recorded output path", async () => {
-    const cwd = await fixture();
-
-    expect(await readTaskOutput(cwd, "b96da5ec8")).toBe("deploying...\n");
-    expect(await readTaskOutput(cwd, "no-such-task")).toBeUndefined();
+    expect(await listBackgroundTasks(cwd, join(cwd, "missing.jsonl"), Date.now(), fakeProbe)).toEqual([]);
   });
 });
 
@@ -267,36 +259,5 @@ describe("a running record whose pid was recycled", () => {
     const tasks = await listBackgroundTasks(cwd, await transcript(cwd), Date.now(), fakeProbe);
 
     expect(tasks.find((task) => task.id === "b96da5ec8")?.status).toBe("lost");
-  });
-});
-
-describe("diffTaskStates", () => {
-  /**
-   * D8's registry watcher: the transitions between the last seen task states
-   * and the current read become activity.changed frames. A task that appears
-   * or changes status is a transition; a task that vanished from the registry
-   * is reported as removed so the client can drop its row.
-   */
-  it("reports added, changed and removed tasks", () => {
-    const previous = new Map([["t1", "running"], ["t2", "running"]]);
-    const current = [
-      { id: "t1", status: "completed" },
-      { id: "t3", status: "running" },
-    ];
-
-    expect(diffTaskStates(previous, current)).toEqual([
-      { id: "t1", status: "completed" },
-      { id: "t3", status: "running" },
-      { id: "t2", status: "removed" },
-    ]);
-  });
-
-  it("is empty when nothing changed", () => {
-    const previous = new Map([["t1", "running"]]);
-    expect(diffTaskStates(previous, [{ id: "t1", status: "running" }])).toEqual([]);
-  });
-
-  it("treats a fresh registry as all-added", () => {
-    expect(diffTaskStates(new Map(), [{ id: "t1", status: "running" }])).toEqual([{ id: "t1", status: "running" }]);
   });
 });

@@ -36,7 +36,7 @@ import {
   parseSessionEntries,
   type FileEntry,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionBackgroundTaskInfo, TranscriptHead } from "../../../shared/apiTypes.js";
+import type { TranscriptHead } from "../../../shared/apiTypes.js";
 import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
@@ -101,10 +101,9 @@ import type { ExtensionNoticeLevel, PendingExtensionDialog } from "../../../shar
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../../config.js";
 import type { DelegationRequest, SpawnSessionInvocation, SpawnSessionResult, SpawnSubsessionInvocation, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionStatus, SubsessionSummary } from "./delegation.js";
-import { backgroundTaskProbes, createBackgroundRunCountCycle } from "./backgroundRunCount.js";
+import { countBackgroundRuns } from "./backgroundRunCount.js";
 import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
-import { BACKGROUND_TASK_WORK, listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
 import type { OperationOutcome } from "./operationDecision.js";
@@ -3228,30 +3227,6 @@ export class PiSessionService implements SessionRouteService {
     return this.readSubsession(session.sessionId, childSessionId, query, session.sessionManager.getSessionFile());
   }
 
-  /**
-   * Background-task runs for this session.
-   *
-   * Keyed on the transcript rather than the task tool's own directory: that
-   * directory is named after the server process, so every session in this
-   * server shares it and the records carry no session field. The transcript
-   * records each task's output path when it starts, which is what makes the
-   * answer per session rather than per server.
-   */
-  async backgroundTasks(ref: PiSessionRef): Promise<SessionBackgroundTaskInfo[]> {
-    const open = this.activeForRef(ref)?.runtime.session;
-    if (open !== undefined) {
-      const sessionFile = open.sessionManager.getSessionFile();
-      return sessionFile === undefined ? [] : listBackgroundTasks(ref.cwd, sessionFile);
-    }
-    const closed = await this.closedSessionFile(ref);
-    if (closed === undefined) throw new SessionNotFoundError();
-    return listBackgroundTasks(ref.cwd, closed.path);
-  }
-
-  async backgroundTaskOutput(ref: PiSessionRef, taskId: string): Promise<string | undefined> {
-    return readTaskOutput(ref.cwd, taskId);
-  }
-
   async commands(ref: PiSessionRef): Promise<ClientCommand[]> {
     const session = await this.getOrOpen(ref);
     const commands: ClientCommand[] = [...BUILTIN_COMMANDS];
@@ -4027,14 +4002,6 @@ export class PiSessionService implements SessionRouteService {
       console.error("[stop] could not record where the reader's stop settled", String(error));
     }
     return { type: "message_end", message: stoppedTurnMessage(at) };
-  }
-
-  private publishActivityChangeForToolEvent(session: PiAgentSession, event: unknown): void {
-    const eventType = getString(event, "type");
-    if (eventType !== "tool_execution_start" && eventType !== "tool_execution_end") return;
-    const toolName = getString(event, "toolName") ?? "";
-    if (!workTools().has(toolName)) return;
-    this.events.publish(session.sessionId, { type: "activity.changed" });
   }
 
   async saveAttachments(ref: PiSessionRef, attachments: unknown, folder?: string): Promise<SavedPromptAttachment[]> {
@@ -5794,7 +5761,6 @@ export class PiSessionService implements SessionRouteService {
       this.commandService.observeSessionEvent(session.sessionId, settledStop);
     }
     this.observeInboxFacts(session, event);
-    this.publishActivityChangeForToolEvent(session, event);
     this.events.publish(session.sessionId, toClientEvent(event, session.thinkingLevel));
     this.publishActivityForEvent(session, event);
     const eventType = getString(event, "type");
@@ -6282,15 +6248,14 @@ export class PiSessionService implements SessionRouteService {
       for (const sessionId of [...this.backgroundRunCounts.keys()]) {
         if (!openIds.has(sessionId)) this.backgroundRunCounts.delete(sessionId);
       }
-      const counter = createBackgroundRunCountCycle({ ...backgroundTaskProbes, pluginBackgroundWork: this.pluginBackgroundWork });
       for (const session of open) {
-        const count = await counter.count({
+        const count = await countBackgroundRuns({
           sessionId: session.sessionId,
           cwd: session.sessionManager.getCwd(),
           sessionFile: session.sessionManager.getSessionFile(),
           parentActive: session.isStreaming,
           workingSubsessionCount: this.workingSubsessionIds(session.sessionId).length,
-        }).catch(() => this.backgroundRunCounts.get(session.sessionId) ?? 0);
+        }, { pluginBackgroundWork: this.pluginBackgroundWork }).catch(() => this.backgroundRunCounts.get(session.sessionId) ?? 0);
         if (count === (this.backgroundRunCounts.get(session.sessionId) ?? 0)) continue;
         this.backgroundRunCounts.set(session.sessionId, count);
         // The session may have been closed while the scan was reading disk.
@@ -6324,7 +6289,7 @@ export class PiSessionService implements SessionRouteService {
       sessionId: session.sessionId,
       cwd: session.sessionManager.getCwd(),
       sessionFile: session.sessionManager.getSessionFile(),
-      workPaths: [...BACKGROUND_TASK_WORK.workPaths, ...declaredAgentFacts().workPaths],
+      workPaths: declaredAgentFacts().workPaths,
     };
   }
 
@@ -6978,11 +6943,6 @@ function committedMessageShape(content: unknown): { text: string; imageCount: nu
     if (part["type"] === "image") imageCount += 1;
   }
   return { text: texts.join("\n\n"), imageCount };
-}
-
-/** The tools whose start or end changes background work: core's task reader's and the running plugins' declared ones. */
-function workTools(): ReadonlySet<string> {
-  return new Set([...BACKGROUND_TASK_WORK.workTools, ...declaredAgentFacts().workTools]);
 }
 
 function parseClientMessageId(value: unknown): string | undefined {

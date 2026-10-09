@@ -38,7 +38,7 @@ import type {
   SessionTranscriptTail,
   SessionStreamSync,
 } from "../../shared/types.js";
-import type { QueuedSessionMessage, SessionBackgroundTaskInfo } from "../../../shared/apiTypes.js";
+import type { QueuedSessionMessage } from "../../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 import type { DelegationRequest, SpawnSessionResult, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionSummary } from "./delegation.js";
 
@@ -80,10 +80,6 @@ export interface SessionRouteService {
   notificationInbox(ref: SessionRouteRef): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
   dismissNotification(ref: SessionRouteRef, request: Omit<SessionNotificationDismissRequest, "cwd">): SessionNotificationDismissResponse | Promise<SessionNotificationDismissResponse>;
   dismissAllNotifications(ref: SessionRouteRef, request: Omit<SessionNotificationDismissAllRequest, "cwd">): SessionNotificationDismissResponse | Promise<SessionNotificationDismissResponse>;
-  /** Background-task runs started by this session; see backgroundTasks.ts. */
-  backgroundTasks(ref: SessionRouteRef): Promise<SessionBackgroundTaskInfo[]>;
-  /** Tail of a background task's log. */
-  backgroundTaskOutput(ref: SessionRouteRef, taskId: string): Promise<string | undefined>;
   clearQueue(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   /** Remove one queued message, leaving the rest of the queue in order. */
   recallQueuedMessage(ref: SessionRouteRef, target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }>;
