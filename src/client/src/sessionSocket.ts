@@ -43,33 +43,26 @@ export function jitteredReconnectDelay(delay: number, random: () => number = Mat
   return Math.round(delay * (0.5 + random() * 0.5));
 }
 
-export class SessionSocket {
-  private socket: WebSocket | undefined;
-  private session: SessionRef | undefined;
-  private onEvent: ((event: SessionUiEvent) => void) | undefined;
-  private seqMonitor = new ScopeSeqMonitor("session");
+/**
+ * The reconnect machinery both sockets share (ponytail audit fe60310c): two near-identical
+ * copies that differed only in what a quiet window and a drop mean.
+ * It owns the backoff, the liveness check against the quiet window and the silence budget, the
+ * drop of a dead connection with its reconnect, and the retry when the network returns. A socket
+ * opens its own connection and says what a quiet window and a dropped connection mean to it.
+ */
+abstract class ReconnectingSocket {
+  protected socket: WebSocket | undefined;
+  protected machineId = "local";
+  protected shouldReconnect = false;
+  protected reconnectDelay = 500;
+  protected lastFrameAt = 0;
+  protected connectStartedAt = 0;
+  /** The quiet window T this connection checks against; undefined while it has none to check. */
+  protected quietMs: number | undefined;
+  protected lastCheckAt = 0;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
-  private reconnectDelay = 500;
-  private shouldReconnect = false;
-  private hasOpened = false;
-  private onReconnect: (() => void) | undefined;
-  private onInitialOpen: (() => void) | undefined;
-  private onMalformed: ((frameType: string) => void) | undefined;
-  private onDisconnect: (() => void) | undefined;
-  private onQuiet: (() => void) | undefined;
-  /** The connection that opened, so losing it is told apart from an attempt that never connected. */
-  private openedSocket: WebSocket | undefined;
-  private machineId = "local";
-  private lastFrameAt = 0;
-  private connectStartedAt = 0;
-  /** The quiet window T the open connection named, read from this browser's setting when it opened. */
-  private quietMs: number | undefined;
-  private lastCheckAt = 0;
-  private readonly quietWindowSeconds: () => number;
 
-  constructor(quietWindowSeconds: () => number = readQuietWindowSeconds) {
-    this.quietWindowSeconds = quietWindowSeconds;
-  }
+  constructor(protected readonly quietWindowSeconds: () => number) {}
 
   /**
    * Ask for what was missed after the quiet window T of silence, and drop a connection that has
@@ -99,12 +92,12 @@ export class SessionSocket {
     "leave-alone": () => undefined,
     check: ({ now }) => {
       this.lastCheckAt = now;
-      this.onQuiet?.();
+      this.quietWindowPassed();
     },
-    "drop-and-reconnect": ({ socket }) => { this.dropSilent(socket); },
+    "drop-and-reconnect": ({ socket, now }) => { this.dropSilent(socket, now); },
   };
 
-  private dropSilent(socket: WebSocket): void {
+  private dropSilent(socket: WebSocket, now: number): void {
     // closeSocketQuietly detaches onclose before closing, so the close that
     // normally schedules the reconnect cannot: dropping a dead socket without
     // this left nothing connected and nothing trying, which is a worse stall
@@ -113,6 +106,67 @@ export class SessionSocket {
     this.socket = undefined;
     closeSocketQuietly(socket);
     this.scheduleReconnect();
+    this.dropped(socket, now);
+  }
+
+  protected scheduleReconnect(): void {
+    if (!this.shouldReconnect) return;
+    globalThis.clearTimeout(this.reconnectTimer);
+    const delay = jitteredReconnectDelay(this.reconnectDelay);
+    this.reconnectDelay = Math.min(this.reconnectDelay * 1.6, 5000);
+    this.reconnectTimer = globalThis.setTimeout(() => { this.open(); }, delay);
+  }
+
+  /**
+   * The network is back: retry now instead of sitting out the rest of a
+   * backoff window that was measured against a network that no longer exists.
+   */
+  reconnectNow(): void {
+    if (!this.shouldReconnect || this.socket !== undefined) return;
+    globalThis.clearTimeout(this.reconnectTimer);
+    this.reconnectDelay = 500;
+    this.open();
+  }
+
+  /** Stop wanting a connection and close the one there is; a socket resets its own handlers. */
+  protected stopReconnecting(): void {
+    this.shouldReconnect = false;
+    globalThis.clearTimeout(this.reconnectTimer);
+    closeSocketQuietly(this.socket);
+    this.socket = undefined;
+    this.machineId = "local";
+    this.quietMs = undefined;
+  }
+
+  protected abstract open(): void;
+  /** Silence for the quiet window T: what this socket keeps live is to be asked for again. */
+  protected abstract quietWindowPassed(): void;
+  /** A dead connection was dropped; the reconnect is already scheduled. */
+  protected abstract dropped(socket: WebSocket, now: number): void;
+}
+
+export class SessionSocket extends ReconnectingSocket {
+  private session: SessionRef | undefined;
+  private onEvent: ((event: SessionUiEvent) => void) | undefined;
+  private seqMonitor = new ScopeSeqMonitor("session");
+  private hasOpened = false;
+  private onReconnect: (() => void) | undefined;
+  private onInitialOpen: (() => void) | undefined;
+  private onMalformed: ((frameType: string) => void) | undefined;
+  private onDisconnect: (() => void) | undefined;
+  private onQuiet: (() => void) | undefined;
+  /** The connection that opened, so losing it is told apart from an attempt that never connected. */
+  private openedSocket: WebSocket | undefined;
+
+  constructor(quietWindowSeconds: () => number = readQuietWindowSeconds) {
+    super(quietWindowSeconds);
+  }
+
+  protected quietWindowPassed(): void {
+    this.onQuiet?.();
+  }
+
+  protected dropped(socket: WebSocket): void {
     this.lost(socket);
   }
 
@@ -156,10 +210,7 @@ export class SessionSocket {
   }
 
   close(): void {
-    this.shouldReconnect = false;
-    globalThis.clearTimeout(this.reconnectTimer);
-    closeSocketQuietly(this.socket);
-    this.socket = undefined;
+    this.stopReconnecting();
     this.session = undefined;
     this.onEvent = undefined;
     this.onReconnect = undefined;
@@ -169,11 +220,9 @@ export class SessionSocket {
     this.onQuiet = undefined;
     this.openedSocket = undefined;
     this.hasOpened = false;
-    this.machineId = "local";
-    this.quietMs = undefined;
   }
 
-  private open(): void {
+  protected open(): void {
     const session = this.session;
     if (session === undefined || session.id === "" || session.cwd === "" || !this.shouldReconnect) return;
     const quietSeconds = this.quietWindowSeconds();
@@ -205,25 +254,6 @@ export class SessionSocket {
     };
   }
 
-  private scheduleReconnect(): void {
-    if (!this.shouldReconnect) return;
-    globalThis.clearTimeout(this.reconnectTimer);
-    const delay = jitteredReconnectDelay(this.reconnectDelay);
-    this.reconnectDelay = Math.min(this.reconnectDelay * 1.6, 5000);
-    this.reconnectTimer = globalThis.setTimeout(() => { this.open(); }, delay);
-  }
-
-  /**
-   * The network is back: retry now instead of sitting out the rest of a
-   * backoff window that was measured against a network that no longer exists.
-   */
-  reconnectNow(): void {
-    if (!this.shouldReconnect || this.socket !== undefined) return;
-    globalThis.clearTimeout(this.reconnectTimer);
-    this.reconnectDelay = 500;
-    this.open();
-  }
-
   private async handleMessage(data: MessageEvent["data"], socket: WebSocket, session: SessionRef): Promise<void> {
     // Any frame is proof of life, including the keepalive, which parses to
     // nothing and is dropped below. It is also the first proof the session's
@@ -253,30 +283,26 @@ export class SessionSocket {
   }
 }
 
-export class RealtimeSocket {
-  private socket: WebSocket | undefined;
+/**
+ * SessionSocket's reconnect machinery, differing in what a quiet window and a drop mean: the
+ * quiet window is checked only once the daemon confirmed it in the join frame, silence for it
+ * counts as a missed announcement so the page reads again what this socket keeps live (B28),
+ * and a dropped connection marks the socket waiting and reports the phase instead of losing it.
+ */
+export class RealtimeSocket extends ReconnectingSocket {
   private onEvent: ((event: BrowserRealtimeEvent) => void) | undefined;
   private readonly seqMonitor = new ScopeSeqMonitor("global", () => { this.onMissed?.(); });
   private onOpen: (() => void) | undefined;
   private onMissed: (() => void) | undefined;
-  private reconnectTimer?: ReturnType<typeof setTimeout>;
-  private reconnectDelay = 500;
-  private shouldReconnect = false;
-  private machineId = "local";
-  private lastFrameAt = 0;
-  private connectStartedAt = 0;
   private openedSocket: WebSocket | undefined;
   private waitingSince = 0;
   private reachedServer = false;
   private phaseListener: (() => void) | undefined;
-  /** The quiet window this connection named, and the one its daemon confirmed in the join frame. */
+  /** The quiet window this connection named; the base's is the one its daemon confirmed in the join frame. */
   private requestedQuietMs: number | undefined;
-  private quietMs: number | undefined;
-  private lastCheckAt = 0;
-  private readonly quietWindowSeconds: () => number;
 
   constructor(quietWindowSeconds: () => number = readQuietWindowSeconds) {
-    this.quietWindowSeconds = quietWindowSeconds;
+    super(quietWindowSeconds);
   }
 
   /**
@@ -307,43 +333,12 @@ export class RealtimeSocket {
     this.phaseListener = listener;
   }
 
-  /**
-   * SessionSocket's contract, with one difference: the quiet window is checked only once the
-   * daemon confirmed it in the join frame, and silence for it counts as a missed announcement, so
-   * the page reads again what this socket keeps live (B28).
-   */
-  checkLiveness(now = Date.now()): void {
-    const socket = this.socket;
-    if (socket === undefined) return;
-    const verdict = socketLivenessVerdict({
-      readyState: readyStateOf(socket),
-      wantsConnection: this.shouldReconnect,
-      lastFrameAt: this.lastFrameAt,
-      connectStartedAt: this.connectStartedAt,
-      now,
-      silenceBudgetMs: LIVENESS_TIMEOUT_MS,
-      handshakeBudgetMs: HANDSHAKE_TIMEOUT_MS,
-      quietMs: this.quietMs,
-      lastCheckAt: this.lastCheckAt,
-    });
-    this.livenessActions[verdict]({ socket, now });
+  protected quietWindowPassed(): void {
+    this.onMissed?.();
   }
 
-  private readonly livenessActions: Record<SocketLivenessVerdict, (check: { socket: WebSocket; now: number }) => void> = {
-    "leave-alone": () => undefined,
-    check: ({ now }) => {
-      this.lastCheckAt = now;
-      this.onMissed?.();
-    },
-    "drop-and-reconnect": ({ socket, now }) => { this.dropSilent(socket, now); },
-  };
-
-  /** Same as SessionSocket: the quiet close detaches onclose, so this must schedule the reconnect itself or the drop is permanent. */
-  private dropSilent(socket: WebSocket, now: number): void {
-    this.socket = undefined;
+  protected dropped(socket: WebSocket, now: number): void {
     if (this.openedSocket === socket) this.waitingSince = now;
-    closeSocketQuietly(socket);
-    this.scheduleReconnect();
     this.phaseListener?.();
   }
 
@@ -370,18 +365,13 @@ export class RealtimeSocket {
   }
 
   close(): void {
-    this.shouldReconnect = false;
-    globalThis.clearTimeout(this.reconnectTimer);
-    closeSocketQuietly(this.socket);
-    this.socket = undefined;
+    this.stopReconnecting();
     this.onEvent = undefined;
     this.onOpen = undefined;
     this.onMissed = undefined;
-    this.machineId = "local";
-    this.quietMs = undefined;
   }
 
-  private open(): void {
+  protected open(): void {
     if (!this.shouldReconnect) return;
     const quietSeconds = this.quietWindowSeconds();
     const socket = realtimeEvents(this.machineId, quietSeconds);
@@ -408,25 +398,6 @@ export class RealtimeSocket {
       this.scheduleReconnect();
       this.phaseListener?.();
     };
-  }
-
-  private scheduleReconnect(): void {
-    if (!this.shouldReconnect) return;
-    globalThis.clearTimeout(this.reconnectTimer);
-    const delay = jitteredReconnectDelay(this.reconnectDelay);
-    this.reconnectDelay = Math.min(this.reconnectDelay * 1.6, 5000);
-    this.reconnectTimer = globalThis.setTimeout(() => { this.open(); }, delay);
-  }
-
-  /**
-   * The network is back: retry now instead of sitting out the rest of a
-   * backoff window that was measured against a network that no longer exists.
-   */
-  reconnectNow(): void {
-    if (!this.shouldReconnect || this.socket !== undefined) return;
-    globalThis.clearTimeout(this.reconnectTimer);
-    this.reconnectDelay = 500;
-    this.open();
   }
 
   private async handleMessage(data: MessageEvent["data"], socket: WebSocket): Promise<void> {
