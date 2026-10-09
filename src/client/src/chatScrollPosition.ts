@@ -91,6 +91,7 @@ const browserScrollScheduler: ChatScrollScheduler = {
 
 export class ChatScrollController {
   private saveTimer: number | undefined;
+  private pendingSave: (() => void) | undefined;
 
   constructor(
     private readonly storage: ChatScrollStorage = browserScrollStorage,
@@ -102,6 +103,7 @@ export class ChatScrollController {
   }
 
   clearScheduledSave(): void {
+    this.pendingSave = undefined;
     if (this.saveTimer === undefined) return;
     this.scheduler.clearTimeout(this.saveTimer);
     this.saveTimer = undefined;
@@ -109,10 +111,27 @@ export class ChatScrollController {
 
   scheduleSave(sessionId: string, save: (sessionId: string) => void, delayMs = DEFAULT_SAVE_DELAY_MS): void {
     this.clearScheduledSave();
-    this.saveTimer = this.scheduler.setTimeout(() => {
+    const run = () => {
       this.saveTimer = undefined;
+      this.pendingSave = undefined;
       save(sessionId);
-    }, delayMs);
+    };
+    this.pendingSave = run;
+    this.saveTimer = this.scheduler.setTimeout(run, delayMs);
+  }
+
+  /**
+   * Run a save still waiting for its delay, now; nothing when none waits.
+   *
+   * For a page being hidden. Re-measuring there named the wrong row: by then the page had begun
+   * tearing down, and on 8505 nine cards above the reader were 20 px shorter than the reader had
+   * seen them, so the save named a row 120 px further on and the reload opened there. The position
+   * the reader last scrolled to was already saved; only one still waiting is owed.
+   */
+  flushScheduledSave(): void {
+    const save = this.pendingSave;
+    this.clearScheduledSave();
+    save?.();
   }
 
   savePosition(sessionId: string, scroller: ChatScrollViewport | undefined, anchors: ChatScrollElement[], bottomThreshold = DEFAULT_BOTTOM_SAVE_THRESHOLD): ChatScrollSaveResult {

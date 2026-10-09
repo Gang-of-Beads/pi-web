@@ -918,7 +918,7 @@ export class ChatView extends LitElement {
     this.closeImageZoom();
   };
   private readonly onPageHide = () => {
-    this.saveScrollPosition();
+    this.scrollController.flushScheduledSave();
   };
   private readonly handleClearServerQueue = (): void => {
     this.onClearServerQueue?.(this.status?.queuedMessages ?? []);
