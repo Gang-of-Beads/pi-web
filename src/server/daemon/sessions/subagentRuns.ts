@@ -145,27 +145,6 @@ interface SubagentArtifactSnapshot {
   running: Map<string, RunningArtifact>;
 }
 
-export type SubagentRunLister = typeof listSubagentRuns;
-
-/**
- * One scan-cycle lister that shares the project-wide artifact snapshot between
- * every open parent session. The artifacts directory has no parent ownership,
- * so reading it once per parent only repeats the same work.
- */
-export function createSubagentRunLister(): SubagentRunLister {
-  const snapshots = new Map<string, Promise<SubagentArtifactSnapshot>>();
-  return async (sessionDir, parentSessionId, now, options) => {
-    const candidates = await parentRunCandidates(sessionDir, parentSessionId);
-    if (candidates.directoryRunIds.length === 0 && candidates.named.size === 0) return [];
-    let snapshot = snapshots.get(sessionDir);
-    if (snapshot === undefined) {
-      snapshot = readArtifactSnapshot(join(sessionDir, "subagent-artifacts"));
-      snapshots.set(sessionDir, snapshot);
-    }
-    return describeParentRuns(sessionDir, parentSessionId, now ?? Date.now(), options ?? {}, candidates, await snapshot);
-  };
-}
-
 export async function listSubagentRuns(
   sessionDir: string,
   parentSessionId: string,

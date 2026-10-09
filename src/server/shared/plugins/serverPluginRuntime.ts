@@ -4,6 +4,7 @@ import { createPluginScopedStorage } from "./pluginScopedStorage.js";
 import { parsePluginOperations, requirePluginOperation, UnknownPluginOperationError, type PluginOperationMap } from "./pluginOperations.js";
 import { parseAgentFactDeclarations, type AgentFactDeclarations } from "./agentSurfaceDeclarations.js";
 import type {
+  BackgroundWorkSession,
   JsonObject,
   JsonValue,
   PiWebServerPlugin,
@@ -299,6 +300,33 @@ export class ServerPluginRuntime {
     this.logger.error({ err: stopError, pluginId, phase: "stop" }, "server plugin stop failed");
   }
 
+  /**
+   * The runs every running plugin says this session still has going (B20), added together. The
+   * plugins are asked one after another, each answer through the plugin's gate and the lifecycle bound. One that fails, or is not a count,
+   * fails the sum: the caller keeps the count it last knew rather than one missing a plugin's share.
+   * A failure is logged once per plugin and message, since the heartbeat asks again and again.
+   */
+  async backgroundWork(session: BackgroundWorkSession): Promise<number> {
+    let total = 0;
+    for (const active of this.activePlugins) {
+      const ask = active.activation.backgroundWork?.bind(active.activation);
+      if (ask === undefined) continue;
+      try {
+        const answer = await active.gate.run(new AbortController().signal, (gated) => runBounded(active.entry.id, "background work", this.lifecycleTimeoutMs, (bounded) => ask(session, AbortSignal.any([gated, bounded]))));
+        total += runningCount(answer);
+        this.backgroundWorkFailures.delete(active.entry.id);
+      } catch (error) {
+        const message = errorMessage(error);
+        if (this.backgroundWorkFailures.get(active.entry.id) !== message) this.logger.warn({ err: error, pluginId: active.entry.id }, "server plugin background work count failed");
+        this.backgroundWorkFailures.set(active.entry.id, message);
+        throw error;
+      }
+    }
+    return total;
+  }
+
+  private readonly backgroundWorkFailures = new Map<string, string>();
+
   /** What every active plugin says about the agent-side facts it fronts. */
   declaredAgentFacts(): AgentFactDeclarations {
     return {
@@ -493,6 +521,12 @@ export class ServerPluginRuntime {
   }
 }
 
+function runningCount(answer: unknown): number {
+  const running: unknown = isRecord(answer) ? answer["running"] : undefined;
+  if (typeof running !== "number" || !Number.isInteger(running) || running < 0) throw new IncompatibleServerPluginError("Server plugin backgroundWork must answer { running: a whole number }");
+  return running;
+}
+
 function disabledReason(entry: PiWebPluginCatalogEntry, safeStart: ServerPluginSafeStart | undefined): string | undefined {
   if (!entry.enabled) return "disabled in PI WEB config";
   if (safeStart === "none") return "disabled by no-server-plugin safe start";
@@ -585,8 +619,9 @@ function parseActivation(value: unknown): ServerPluginActivation {
     start: value["start"],
     stop: value["stop"],
     health: value["health"],
+    backgroundWork: value["backgroundWork"],
   };
-  for (const callback of ["start", "stop", "health"] as const) {
+  for (const callback of ["start", "stop", "health", "backgroundWork"] as const) {
     const callbackValue = candidate[callback];
     if (callbackValue !== undefined && typeof callbackValue !== "function") {
       throw new IncompatibleServerPluginError(`Server plugin ${callback} must be a function`);
@@ -596,6 +631,7 @@ function parseActivation(value: unknown): ServerPluginActivation {
   const start = candidate.start?.bind(value);
   const stop = candidate.stop?.bind(value);
   const health = candidate.health?.bind(value);
+  const backgroundWork = candidate.backgroundWork?.bind(value);
   return Object.freeze({
     ...(candidate.workspaceProvider === undefined ? {} : { workspaceProvider: candidate.workspaceProvider }),
     ...(candidate.machineRegistry === undefined ? {} : { machineRegistry: candidate.machineRegistry }),
@@ -605,6 +641,7 @@ function parseActivation(value: unknown): ServerPluginActivation {
     ...(start === undefined ? {} : { start: (signal: AbortSignal) => start(signal) }),
     ...(stop === undefined ? {} : { stop: (signal: AbortSignal) => stop(signal) }),
     ...(health === undefined ? {} : { health: (signal: AbortSignal) => health(signal) }),
+    ...(backgroundWork === undefined ? {} : { backgroundWork: (session: BackgroundWorkSession, signal: AbortSignal) => backgroundWork(session, signal) }),
   });
 }
 
@@ -646,7 +683,7 @@ function isOperationRecord(value: unknown): value is Readonly<Record<string, Ser
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const KNOWN_ACTIVATION_KEYS = new Set<string>(["workspaceProvider", "machineRegistry", "operations", "routes", "agentFacts", "start", "stop", "health"]);
+const KNOWN_ACTIVATION_KEYS = new Set<string>(["workspaceProvider", "machineRegistry", "operations", "routes", "agentFacts", "start", "stop", "health", "backgroundWork"]);
 
 /** An old host reading a newer plugin's activation must not drop fields silently. */
 function unknownActivationKeys(value: unknown): readonly string[] {
@@ -660,10 +697,12 @@ function isServerPluginActivation(value: unknown): value is ServerPluginActivati
   const start = value["start"];
   const stop = value["stop"];
   const health = value["health"];
+  const backgroundWork = value["backgroundWork"];
   return (workspaceProvider === undefined || isWorkspaceProvider(workspaceProvider))
     && (start === undefined || typeof start === "function")
     && (stop === undefined || typeof stop === "function")
-    && (health === undefined || typeof health === "function");
+    && (health === undefined || typeof health === "function")
+    && (backgroundWork === undefined || typeof backgroundWork === "function");
 }
 
 function snapshotWorkspaceProvider(value: unknown): WorkspaceProvider {
@@ -763,7 +802,7 @@ function createScopedLogger(pluginId: string, logger: ServerPluginRuntimeLogger)
 
 async function runBounded<T>(
   pluginId: string,
-  phase: ServerPluginLifecyclePhase,
+  phase: ServerPluginLifecyclePhase | "background work",
   timeoutMs: number,
   operation: (signal: AbortSignal) => T | Promise<T>,
 ): Promise<T> {

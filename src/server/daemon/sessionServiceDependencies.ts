@@ -32,6 +32,8 @@ export interface SessionServiceDependencyInput {
   hostContributions: HostContributions;
   /** Auto-cancel delay for extension dialogs whose extension set no timeout; `0` waits forever. */
   extensionDialogsTimeoutMs: number;
+  /** The runs the running plugins report for a session (B20); omitted in tests that count none. */
+  pluginBackgroundWork?: NonNullable<PiSessionServiceDependencies["pluginBackgroundWork"]>;
 }
 
 /**
@@ -63,5 +65,6 @@ export function sessionServiceDependencies(input: SessionServiceDependencyInput)
     // model lists are refreshing at the same time.
     catalogRefreshStatus: input.catalogRefreshStatus,
     sessionManager: input.sessionManager,
+    ...(input.pluginBackgroundWork === undefined ? {} : { pluginBackgroundWork: input.pluginBackgroundWork }),
   };
 }

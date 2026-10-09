@@ -284,6 +284,7 @@ async function createSessionDaemonRuntime() {
       logger: app.log,
       spawnTargets,
       askUserEnabled: config.askUser,
+      pluginBackgroundWork: (session) => serverPlugins.backgroundWork(session),
       hostContributions: {
         // Sessions always run nested in this daemon, so they always get the
         // session environment facts; Docker deployments add their container
@@ -445,6 +446,7 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
   registerPluginReconcileRoute(app, async () => {
     await serverPlugins.reconcile();
     recordDeclaredAgentFacts(serverPlugins.declaredAgentFacts());
+    sessions.recountBackgroundRuns();
     eventHub.publishRealtime({ type: "plugins.changed" });
   });
   registerPluginBackendRoutes(app, {

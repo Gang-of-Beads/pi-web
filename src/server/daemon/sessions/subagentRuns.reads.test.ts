@@ -14,7 +14,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 });
 
 const { readFile, readdir } = await import("node:fs/promises");
-const { createSubagentRunLister, listSubagentRuns, readSubagentRunOutput } = await import("./subagentRuns");
+const { listSubagentRuns, readSubagentRunOutput } = await import("./subagentRuns");
 
 const PARENT = "2026-08-20T17-27-53-830Z_01a02037-0ce6-730d-95f5-625c398ae884";
 /** Larger than every window the module reads, so a whole-file read is visible. */
@@ -76,23 +76,6 @@ describe("what the activity listing pulls off disk", () => {
 
     expect(await listSubagentRuns(dir, PARENT)).toEqual([]);
     expect(vi.mocked(readdir).mock.calls.some(([path]) => path === join(dir, "subagent-artifacts"))).toBe(false);
-  });
-
-  it("shares one artifact snapshot between parents in the same scan cycle", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "pi-web-subagent-reads-"));
-    const otherParent = "2026-08-20T17-27-54-830Z_11a02037-0ce6-730d-95f5-625c398ae884";
-    await writeLongTranscript(dir, LIVE_RUN);
-    const otherRun = "4f2b1c04-9a7e-4f21-8b55-0c6d7e8f9a02";
-    const otherPath = join(dir, otherParent, otherRun, "run-0");
-    await mkdir(otherPath, { recursive: true });
-    await writeFile(join(otherPath, "session.jsonl"), JSON.stringify({ type: "session_info", name: `subagent-scout-${otherRun}-0` }), "utf8");
-    await mkdir(join(dir, "subagent-artifacts"), { recursive: true });
-    const list = createSubagentRunLister();
-
-    await Promise.all([list(dir, PARENT), list(dir, otherParent)]);
-
-    const artifactsDir = join(dir, "subagent-artifacts");
-    expect(vi.mocked(readdir).mock.calls.filter(([path]) => path === artifactsDir)).toHaveLength(1);
   });
 
   it("reads the first line of a result rather than the whole document", async () => {

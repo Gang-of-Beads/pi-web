@@ -112,6 +112,16 @@ export interface ServerPluginAgentFacts {
   injectedTurns?: readonly { id: string; marker: string; producer: string }[];
 }
 
+/** One open session a plugin is asked about: where it lives and whether its own turn is still running. */
+export interface BackgroundWorkSession {
+  readonly sessionId: string;
+  readonly cwd: string;
+  /** The session's transcript; a session with no transcript yet is not asked about. */
+  readonly sessionFile: string;
+  /** Whether the session's own turn is still streaming; decides what a silent run means. */
+  readonly parentActive: boolean;
+}
+
 export interface ServerPluginActivation {
   workspaceProvider?: WorkspaceProvider;
   operations?: Readonly<Record<string, ServerPluginOperation>>;
@@ -130,6 +140,14 @@ export interface ServerPluginActivation {
    */
   routes?: readonly ServerPluginRouteContribution[];
   agentFacts?: ServerPluginAgentFacts;
+  /**
+   * How many runs this plugin knows the session still has going after its own turn (B20). The
+   * daemon adds every running plugin's answer into the session's "N background runs", which the
+   * status line shows and goal continuation waits on; a plugin turned off stops counting. Asked on
+   * the daemon's heartbeat while background work is known or being watched for, so keep it cheap
+   * when the answer is zero. Bounded by the lifecycle timeout.
+   */
+  backgroundWork?(session: BackgroundWorkSession, signal: AbortSignal): MaybePromise<{ running: number }>;
   /** Initialize resources within one host-bounded start invocation. */
   start?(signal: AbortSignal): MaybePromise<void>;
   /** Release resources within one host-bounded stop invocation. */

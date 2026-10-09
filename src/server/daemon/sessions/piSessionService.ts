@@ -37,6 +37,7 @@ import {
   type FileEntry,
 } from "@earendil-works/pi-coding-agent";
 import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo, TranscriptHead } from "../../../shared/apiTypes.js";
+import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
@@ -101,7 +102,7 @@ import type { ExtensionNoticeLevel, PendingExtensionDialog } from "../../../shar
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../../config.js";
 import type { DelegationRequest, SpawnSessionInvocation, SpawnSessionResult, SpawnSubsessionInvocation, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionStatus, SubsessionSummary } from "./delegation.js";
-import { createBackgroundRunCountCycle } from "./backgroundRunCount.js";
+import { backgroundTaskProbes, createBackgroundRunCountCycle } from "./backgroundRunCount.js";
 import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
@@ -1311,6 +1312,11 @@ export interface PiSessionServiceDependencies {
    */
   askUserEnabled?: boolean;
   /**
+   * The runs the running plugins report for an open session, added together (B20): the plugin
+   * runtime's `backgroundWork`. Omitted, plugins add nothing to "N background runs".
+   */
+  pluginBackgroundWork?: (session: BackgroundWorkSession) => Promise<number>;
+  /**
    * Everything the host adds to what sessions receive - prompt sections and
    * unsupported-surface handling - as data. THE seam: a contribution added
    * anywhere else cannot reach the model, and the deviation list is derived
@@ -1514,6 +1520,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly dialogRevisionBySession = new Map<string, number>();
   private readonly unreadStore: SessionUnreadStore;
   private readonly hostContributions: HostContributions;
+  private readonly pluginBackgroundWork: (session: BackgroundWorkSession) => Promise<number>;
   private readonly pendingAskStore: PendingAskStore;
   private readonly pendingExtensionDialogStore: PendingExtensionDialogStore;
   private readonly extensionDialogsTimeoutMs: number;
@@ -1564,6 +1571,7 @@ export class PiSessionService implements SessionRouteService {
     this.ownedQueue = new OwnedPromptQueue(deps.operationLedgerDir === undefined ? memoryInboxLocation : dataDirInboxLocation(deps.operationLedgerDir));
     this.inboxDataDir = deps.operationLedgerDir;
     this.hostContributions = deps.hostContributions ?? EMPTY_HOST_CONTRIBUTIONS;
+    this.pluginBackgroundWork = deps.pluginBackgroundWork ?? (() => Promise.resolve(0));
     this.archiveStore = deps.archiveStore ?? new SessionArchiveStore();
     this.agentDir = deps.agentDir;
     this.sessionManager = deps.sessionManager;
@@ -1591,10 +1599,7 @@ export class PiSessionService implements SessionRouteService {
     );
     this.createAgentRuntime = deps.createAgentRuntime ?? defaultCreateAgentRuntime;
     this.workspaceActivity = deps.workspaceActivity;
-    this.backgroundWorkWatcher = new BackgroundWorkWatcher(() => {
-      this.backgroundRunRefreshRequested = true;
-      void this.refreshBackgroundRunCounts();
-    });
+    this.backgroundWorkWatcher = new BackgroundWorkWatcher(() => { this.recountBackgroundRuns(); });
     this.workspaceWatcher = new WorkspaceWatcher((event) => { this.events.publishRealtime(event); });
     this.heartbeat = setInterval(() => { this.publishHeartbeats(); }, deps.heartbeatIntervalMs ?? 2000);
     this.commandService = new SessionCommandService(
@@ -5463,8 +5468,7 @@ export class PiSessionService implements SessionRouteService {
       this.active.set(runtime.session.sessionId, active);
       this.watchBackgroundWork(runtime.session);
       this.holdWorkspaceWatch(runtime.session);
-      this.backgroundRunRefreshRequested = true;
-      void this.refreshBackgroundRunCounts();
+      this.recountBackgroundRuns();
       if (notificationOwnership === "replacement" && notificationGeneration !== undefined) {
         this.publishNotificationMutations(this.notificationStore.commitReplacement(notificationGeneration));
         notificationOwnership = "external";
@@ -6299,13 +6303,24 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
+   * Count every open session's background runs again on the next pass: something they are counted
+   * from changed. A file the watcher saw, a session opened, or the plugins that count turned on or
+   * off (B20), since no file changes when a plugin's share starts or stops counting.
+   */
+  recountBackgroundRuns(): void {
+    this.backgroundRunRefreshRequested = true;
+    void this.refreshBackgroundRunCounts();
+  }
+
+  /**
    * Recount work that outlives each open session's turn, and publish the
    * sessions whose count moved.
    *
-   * Driven off the heartbeat rather than events because nothing tells this
-   * process when a detached child finishes: a subagent run and a background
-   * shell task both report only by writing files. The counting itself is
-   * written to be cheap when the answer is zero, which is the normal case, and
+   * Triggered by recountBackgroundRuns when a watched file changes, a session
+   * opens, or counting plugins toggle, and by the heartbeat as a fallback when
+   * a watcher is unhealthy or work is known to be running, because a detached
+   * subagent run or background shell task reports only by writing files. The
+   * counting itself is written to be cheap when the answer is zero, which is the normal case, and
    * only one scan is ever in flight so a slow disk cannot pile them up.
    */
   private async refreshBackgroundRunCounts(): Promise<void> {
@@ -6322,9 +6337,10 @@ export class PiSessionService implements SessionRouteService {
       for (const sessionId of [...this.backgroundRunCounts.keys()]) {
         if (!openIds.has(sessionId)) this.backgroundRunCounts.delete(sessionId);
       }
-      const counter = createBackgroundRunCountCycle();
+      const counter = createBackgroundRunCountCycle({ ...backgroundTaskProbes, pluginBackgroundWork: this.pluginBackgroundWork });
       for (const session of open) {
         const count = await counter.count({
+          sessionId: session.sessionId,
           cwd: session.sessionManager.getCwd(),
           sessionFile: session.sessionManager.getSessionFile(),
           parentActive: session.isStreaming,

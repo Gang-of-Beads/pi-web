@@ -1,28 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
-import type { SessionSubagentRunInfo } from "../../../shared/apiTypes.js";
 import { countBackgroundRuns, createBackgroundRunCountCycle, type BackgroundRunCountDeps } from "./backgroundRunCount.js";
-
-function run(over: Partial<SessionSubagentRunInfo>): SessionSubagentRunInfo {
-  return { runId: "r", agent: "reviewer", status: "running", elapsedMs: 0, startedAt: "", hasOutput: false, ...over };
-}
 
 function deps(over: Partial<BackgroundRunCountDeps> = {}): BackgroundRunCountDeps {
   return {
     runningTaskIds: () => Promise.resolve(new Set<string>()),
     taskIdsForSession: () => Promise.resolve(new Set<string>()),
-    listSubagentRuns: () => Promise.resolve([]),
+    pluginBackgroundWork: () => Promise.resolve(0),
     ...over,
   };
 }
 
-const session = { cwd: "/w", sessionFile: "/w/.pi/sessions/2026-08-25_abc.jsonl", parentActive: false, workingSubsessionCount: 0 };
+const session = { sessionId: "abc", cwd: "/w", sessionFile: "/w/.pi/sessions/2026-08-25_abc.jsonl", parentActive: false, workingSubsessionCount: 0 };
 
 describe("counting the work that outlives a turn", () => {
-  it("adds up subsessions, tool runs and shell tasks", async () => {
+  it("adds up subsessions, plugin runs and shell tasks", async () => {
     const count = await countBackgroundRuns({ ...session, workingSubsessionCount: 2 }, deps({
       runningTaskIds: () => Promise.resolve(new Set(["t1", "t2"])),
       taskIdsForSession: () => Promise.resolve(new Set(["t1", "t2", "t3"])),
-      listSubagentRuns: () => Promise.resolve([run({ runId: "a" }), run({ runId: "b", status: "done" })]),
+      pluginBackgroundWork: () => Promise.resolve(1),
     }));
 
     expect(count).toBe(5);
@@ -75,27 +70,20 @@ describe("counting the work that outlives a turn", () => {
   });
 
   it("counts only subsessions for a session with no transcript yet", async () => {
-    const listSubagentRuns = vi.fn(() => Promise.resolve([]));
+    const pluginBackgroundWork = vi.fn(() => Promise.resolve(0));
     const count = await countBackgroundRuns(
       { ...session, sessionFile: undefined, workingSubsessionCount: 1 },
-      deps({ listSubagentRuns }),
+      deps({ pluginBackgroundWork }),
     );
 
     expect(count).toBe(1);
-    expect(listSubagentRuns).not.toHaveBeenCalled();
+    expect(pluginBackgroundWork).not.toHaveBeenCalled();
   });
 
-  it("asks for runs beside the transcript, keyed by its file name", async () => {
-    const listSubagentRuns = vi.fn(() => Promise.resolve([]));
-    await countBackgroundRuns({ ...session, parentActive: true }, deps({ listSubagentRuns }));
+  it("asks the plugins about the session by its transcript and whether its turn runs", async () => {
+    const pluginBackgroundWork = vi.fn(() => Promise.resolve(0));
+    await countBackgroundRuns({ ...session, parentActive: true }, deps({ pluginBackgroundWork }));
 
-    // The tool names its run directory after the transcript file, not the
-    // session id; looking it up by the bare id finds nothing on a real session.
-    expect(listSubagentRuns).toHaveBeenCalledWith(
-      "/w/.pi/sessions",
-      "2026-08-25_abc",
-      expect.any(Number),
-      { parentActive: true },
-    );
+    expect(pluginBackgroundWork).toHaveBeenCalledWith({ sessionId: "abc", cwd: "/w", sessionFile: "/w/.pi/sessions/2026-08-25_abc.jsonl", parentActive: true });
   });
 });

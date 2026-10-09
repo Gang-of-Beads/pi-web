@@ -43,6 +43,10 @@ const plugin: PiWebServerPlugin = {
     agentFacts: {
       surfaces: [{ surface: "subagents", tools: ["subagent"] }],
     },
+    backgroundWork: async (session) => {
+      const runs = await listSubagentRuns(dirname(session.sessionFile), basename(session.sessionFile, ".jsonl"), Date.now(), { parentActive: session.parentActive });
+      return { running: runs.filter((run) => run.status === "running").length };
+    },
     operations: {
       "runs.list": async (input): Promise<JsonValue> => {
         const sessionFile = sessionFileFrom(input);

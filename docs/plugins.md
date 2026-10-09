@@ -674,8 +674,11 @@ interface ServerPluginActivation {
   start?(signal: AbortSignal): void | Promise<void>;
   stop?(signal: AbortSignal): void | Promise<void>;
   health?(signal: AbortSignal): ServerPluginHealth | Promise<ServerPluginHealth>;
+  backgroundWork?(session: BackgroundWorkSession, signal: AbortSignal): { running: number } | Promise<{ running: number }>;
 }
 ```
+
+`backgroundWork` answers how many runs the plugin knows a session still has going after its own turn. The session daemon adds every running plugin's answer into that session's "N background runs": the status line shows it and goal continuation waits for it to reach zero. `BackgroundWorkSession` names the session (`sessionId`, `cwd`, `sessionFile`) and whether its own turn is still active (`parentActive`). The daemon asks while background work is known or being watched for, so keep the call cheap when the answer is zero; `running` must be a non-negative integer. A failed or late answer keeps the last count. A plugin turned off stops counting at once, and turning it on counts again without waiting for a file change. The bundled Subagents plugin counts its own subagent runs this way.
 
 A server plugin may contribute at most one `workspaceProvider`. The host-owned frozen activation context contains its `pluginId`, `packageRoot`, JSON settings snapshot, scoped logger, activation `AbortSignal`, and an argv-based `execFile()` helper. `execFile()` has host-owned timeout/output bounds; pass the current callback's signal into every command request. The API exposes no shell parser, Fastify instance, route registration, concrete service, event bus, or service locator.
 
