@@ -28,6 +28,8 @@ import type { TranscriptHead } from "./apiTypes.js";
  * live reply, so every device and every reload says the same.
  */
 export const TURN_STOPPED_CUSTOM_TYPE = "pi-web.turn.stopped";
+/** Written when the daemon settled the reader's Stop on its own, so history ends it there too (D1, B30). */
+export const TURN_STOP_SETTLED_CUSTOM_TYPE = "pi-web.turn.stop-settled";
 
 /**
  * Custom entry the daemon appends when it cannot show an extension's dialog (B10): the only case
@@ -69,7 +71,8 @@ export function stoppedTurnMessage(at: string | undefined): Record<string, unkno
 
 /**
  * Where each Stop the reader pressed settles: on the first reply it cut, or on its own when a
- * user message or the end of the branch comes first. One walk owns this so the transcript and
+ * user message, the daemon's recorded settlement (TURN_STOP_SETTLED_CUSTOM_TYPE), or the end of the
+ * branch comes first. One walk owns this so the transcript and
  * the sidebar count read the same rule.
  */
 export function stopOutcomes(entries: readonly unknown[]): { cutReplies: Set<string>; alone: Map<string, string | undefined> } {
@@ -82,6 +85,10 @@ export function stopOutcomes(entries: readonly unknown[]): { cutReplies: Set<str
     if (entry["type"] === "custom" && entry["customType"] === TURN_STOPPED_CUSTOM_TYPE) {
       settleAlone();
       pending = entry;
+      continue;
+    }
+    if (entry["type"] === "custom" && entry["customType"] === TURN_STOP_SETTLED_CUSTOM_TYPE) {
+      settleAlone();
       continue;
     }
     if (entry["type"] !== "message" || pending === undefined) continue;

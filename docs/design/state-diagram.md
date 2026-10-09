@@ -246,6 +246,10 @@ stateDiagram-v2
   1. **On the reply it cut:** a reply pi ended as aborted (or errored with an abort) after the entry. That reply carries the mark (`stoppedBy: "you"`), and its streamed part stays above the row.
   2. **On its own,** when no cut reply follows it before the next user message or the end of the branch. The case: Stop during pi's retry backoff. pi only emits `auto_retry_end {success: false, finalError: "Retry cancelled"}`, and the failed attempt was already hidden as retried. History renders the lone entry as the settled row. Live, the daemon publishes the same row when the stopped work ends with the mark unconsumed: at `agent_end`, or at `auto_retry_end`, because pi schedules a retry after the failed run's `agent_end`.
 
+  **The settlement is recorded, not re-derived (owed review A F2-1 and C 4, 2026-10-09).** History used to find where a Stop settled by walking the branch again, and the walk disagreed with what the reader had seen live:
+  - **A Stop settled on its own stays on its own.** With no user message after it (a goal continuation, an extension's turn), the walk attached a Stop that had settled alone live to a later turn's cut reply, which then read "You stopped this turn" while the lone row vanished. When the daemon settles a Stop on its own it now appends `pi-web.turn.stop-settled` (`{outcome: "alone", at}`), and the walk ends the Stop there. A file written before this keeps the old walk.
+  - **A Stop during the compaction after a finished reply settles when the compaction ends** (`compaction_end`), on its own. It never settled live before (pi's `agent_end` had already passed), so the row appeared only with the next message, while a reload drew it right after the finished reply. Live and a reload now agree. Whether that row should read "You stopped this turn" or name the compaction is the owner's call (question 18).
+
   Producers enumerated (review run 6cc25868):
   - an `aborted` reply with no row (fixed);
   - a Stop during a direct handoff, which aborts the run the handoff starts but did not record the Stop. The daemon now records it once the handoff's message commits;

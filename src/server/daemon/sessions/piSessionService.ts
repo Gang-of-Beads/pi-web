@@ -40,7 +40,7 @@ import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo, TranscriptHead 
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
-import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, isCutAssistant, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, stoppedTurnMessage, transcriptHead, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
+import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, isCutAssistant, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, stoppedTurnMessage, transcriptHead, TURN_STOP_SETTLED_CUSTOM_TYPE, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
 import { runTranscriptMessages } from "../../../shared/subagentRunTranscript.js";
 import { readableMessageCount } from "./readableMessageCount.js";
 import { BranchStateMemo, branchStateKey } from "./branchStateMemo.js";
@@ -4055,7 +4055,8 @@ export class PiSessionService implements SessionRouteService {
    * cut carries the mark; a user message or the end of the work it stopped, reached first, settles
    * it on its own, returned here as the message_end the transcript and the command watch both
    * receive. pi schedules a retry after the failed run's `agent_end`, so a Stop during that wait
-   * is ended by `auto_retry_end`.
+   * is ended by `auto_retry_end`; a Stop during the compaction after a finished reply, by
+   * `compaction_end`. Settled on its own, the outcome is appended for history to honour (D1, B30).
    */
   private settleStopByReader(session: PiAgentSession, event: unknown): unknown {
     const at = this.stoppedByReader.get(session.sessionId);
@@ -4070,6 +4071,11 @@ export class PiSessionService implements SessionRouteService {
     const reachedFirst = STOP_SETTLING_EVENTS.has(eventType ?? "") || (eventType === "message_end" && getString(message, "role") === "user");
     if (!reachedFirst) return undefined;
     this.stoppedByReader.delete(session.sessionId);
+    try {
+      session.sessionManager.appendCustomEntry?.(TURN_STOP_SETTLED_CUSTOM_TYPE, { outcome: "alone", at });
+    } catch (error) {
+      console.error("[stop] could not record where the reader's stop settled", String(error));
+    }
     return { type: "message_end", message: stoppedTurnMessage(at) };
   }
 
@@ -7190,7 +7196,7 @@ function isStreamingDeltaEvent(event: unknown): boolean {
 }
 
 /** The events that end work a reader's Stop can land in without a reply to carry it. */
-const STOP_SETTLING_EVENTS: ReadonlySet<string> = new Set(["agent_end", "auto_retry_end"]);
+const STOP_SETTLING_EVENTS: ReadonlySet<string> = new Set(["agent_end", "auto_retry_end", "compaction_end"]);
 
 function toClientEvent(event: unknown, thinkingLevel?: string): SessionUiEvent {
   const eventType = getString(event, "type");
