@@ -181,12 +181,12 @@ export type AuthDialogState =
 export type SessionsLoadState = "unloaded" | "loading" | "loaded";
 
 /**
- * Whether the projects listing has completed, and how it ended. `failed` is
- * deliberately sticky until a later load succeeds: a silent recovery is how a
- * missing project list read as "no projects".
+ * Whether the selected machine's projects listing has answered. There is no "failed", as for the
+ * machines roster below: a listing read without an answer stays "loading" while it is read again by
+ * itself (B48), so a missing list never reads as "no projects". The plugin API's `NavProjectsLoad`
+ * keeps "failed": a plugin may run under a page released before B48, which sends it.
  */
-
-export type ProjectsLoadState = "unloaded" | "loading" | "loaded" | "failed";
+export type ProjectsLoadState = "unloaded" | "loading" | "loaded";
 
 /**
  * Whether the machines roster has answered. There is no "failed": a roster
