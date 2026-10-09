@@ -7,7 +7,7 @@ import type { ChatLine } from "./shared";
 import type { QualifiedMessageRendererContribution } from "../plugins/types";
 
 function customLine(tag: string, payload: unknown = { question: "Ship it?" }): ChatLine {
-  return { role: "assistant", parts: [{ type: "custom", tag, payload }] };
+  return { role: "assistant", parts: [{ type: "custom", tag, payload, kind: "message" }] };
 }
 
 function renderer(patch: Partial<QualifiedMessageRendererContribution> = {}): QualifiedMessageRendererContribution {
@@ -39,22 +39,21 @@ describe("plugin message renderers in the transcript", () => {
     const card = view.shadowRoot?.querySelector(".custom-card");
 
     expect(card?.querySelector(".poll-body")?.textContent).toBe("Ship it?");
-    expect(card?.classList.contains("custom-card-unknown")).toBe(false);
+    expect(card?.classList.contains("custom-card-default")).toBe(false);
   });
 
-  it("renders an honest unknown card when nobody claims the tag", async () => {
+  it("draws pi's default, the type, when nobody claims the tag", async () => {
     const view = await viewWith([customLine("chart")], () => undefined);
 
-    const card = view.shadowRoot?.querySelector(".custom-card-unknown");
+    const card = view.shadowRoot?.querySelector(".custom-card-default");
 
-    expect(card?.textContent).toContain("Unrecognized message");
-    expect(card?.textContent).toContain("chart");
+    expect(card?.textContent).toContain("[chart]");
   });
 
-  it("renders the unknown card when no registry is wired at all", async () => {
+  it("draws the default when no registry is wired at all", async () => {
     const view = await viewWith([customLine("poll")]);
 
-    expect(view.shadowRoot?.querySelector(".custom-card-unknown")).not.toBeNull();
+    expect(view.shadowRoot?.querySelector(".custom-card-default")).not.toBeNull();
   });
 
   it("tells the renderer what the reader said after the card, and only after it", async () => {

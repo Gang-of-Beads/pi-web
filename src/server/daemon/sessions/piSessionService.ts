@@ -41,7 +41,7 @@ import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
-import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, isCutAssistant, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, stoppedTurnMessage, transcriptHead, TURN_STOP_SETTLED_CUSTOM_TYPE, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
+import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, customEntryRow, isCutAssistant, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, stoppedTurnMessage, transcriptHead, TURN_STOP_SETTLED_CUSTOM_TYPE, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
 import { readableMessageCount } from "./readableMessageCount.js";
 import { BranchStateMemo, branchStateKey } from "./branchStateMemo.js";
 import { pluginSurfacePresence } from "./pluginSurfaces.js";
@@ -129,6 +129,7 @@ import { ExtensionStanding } from "./extensionStanding.js";
 import { ExtensionOrigins, type LoadedExtensionFile } from "./extensionOrigin.js";
 import { declaredAgentFacts } from "./declaredAgentFacts.js";
 import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
+import { drawCustomRow, showsCustomEntry, type ExtensionRenderers } from "./extensionDrawings.js";
 import { DECLARABLE_SCREENS, declaredScreen, refusedDeclarationSummary } from "./declaredScreen.js";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
@@ -656,7 +657,7 @@ export interface PiAgentSession {
   isCompacting: boolean;
   isBashRunning: boolean;
   pendingMessageCount: number;
-  extensionRunner: {
+  extensionRunner: ExtensionRenderers & {
     getRegisteredCommands(): readonly { invocationName: string; description?: string }[];
     getUIContext(): ExtensionUIContext;
     setUIContext(uiContext?: ExtensionUIContext, mode?: "rpc"): void;
@@ -2853,12 +2854,12 @@ export class PiSessionService implements SessionRouteService {
 
   async messages(ref: PiSessionRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage> {
     const open = this.activeForRef(ref)?.runtime.session;
-    if (open !== undefined) return transcriptPage(open.sessionManager.getBranch(), page);
+    if (open !== undefined) return transcriptPage(open.sessionManager.getBranch(), page, open.extensionRunner);
     const closed = await this.closedSessionFile(ref);
     const branch = closed === undefined ? undefined : await closedBranch(closed.path);
     if (branch !== undefined) return transcriptPage(branch, page);
     const session = await this.getOrOpen(ref);
-    return transcriptPage(session.sessionManager.getBranch(), page);
+    return transcriptPage(session.sessionManager.getBranch(), page, session.extensionRunner);
   }
 
   /**
@@ -2899,12 +2900,13 @@ export class PiSessionService implements SessionRouteService {
    * not hold the session: a head it cannot see is unknown, not empty.
    */
   transcriptHeadFor(sessionId: string): TranscriptHead | undefined {
-    const manager = this.active.get(sessionId)?.runtime.session.sessionManager;
-    if (manager === undefined) return undefined;
+    const session = this.active.get(sessionId)?.runtime.session;
+    if (session === undefined) return undefined;
+    const manager = session.sessionManager;
     const leafId = manager.getLeafId();
     const cached = this.transcriptHeads.get(manager);
     if (cached?.leafId === leafId) return cached.head;
-    const head = transcriptHead(branchTranscript(manager.getBranch()));
+    const head = transcriptHead(branchTranscript(manager.getBranch(), shownEntriesOf(session.extensionRunner)));
     this.transcriptHeads.set(manager, { leafId, head });
     return head;
   }
@@ -2938,7 +2940,7 @@ export class PiSessionService implements SessionRouteService {
    */
   async messagesPassive(ref: PiSessionRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage | undefined> {
     const active = this.activeForRef(ref);
-    if (active !== undefined) return transcriptPage(active.runtime.session.sessionManager.getBranch(), page);
+    if (active !== undefined) return transcriptPage(active.runtime.session.sessionManager.getBranch(), page, active.runtime.session.extensionRunner);
     const listed = await this.sessionManager.findSession(ref.cwd, ref.id);
     if (listed === undefined) return undefined;
     const entries = await readSessionFileEntries(listed.path);
@@ -2961,7 +2963,7 @@ export class PiSessionService implements SessionRouteService {
    */
   async transcriptTail(ref: PiSessionRef, page?: { limit?: number }): Promise<SessionTranscriptTail> {
     const open = this.activeForRef(ref)?.runtime.session;
-    if (open !== undefined) return { page: transcriptPage(open.sessionManager.getBranch(), page), stream: this.streamSnapshotOf(open) };
+    if (open !== undefined) return { page: transcriptPage(open.sessionManager.getBranch(), page, open.extensionRunner), stream: this.streamSnapshotOf(open) };
     const file = await this.closedSessionFile(ref);
     const stream = file === undefined ? undefined : { ...this.streamPosition(file.id), partial: null };
     const branch = file === undefined ? undefined : await closedBranch(file.path);
@@ -5761,7 +5763,9 @@ export class PiSessionService implements SessionRouteService {
       this.commandService.observeSessionEvent(session.sessionId, settledStop);
     }
     this.observeInboxFacts(session, event);
-    this.events.publish(session.sessionId, toClientEvent(event, session.thinkingLevel));
+    this.events.publish(session.sessionId, withCustomDrawing(toClientEvent(event, session.thinkingLevel), session.extensionRunner));
+    const shownEntry = shownAppendedEntry(event, session.extensionRunner);
+    if (shownEntry !== undefined) this.events.publish(session.sessionId, { type: "message.end", message: shownEntry });
     this.publishActivityForEvent(session, event);
     const eventType = getString(event, "type");
     if (eventType === "agent_end") this.abortRunScopedExtensionDialogs(session.sessionId);
@@ -7049,11 +7053,63 @@ async function readSessionFileEntries(path: string): Promise<FileEntry[] | undef
   }
 }
 
-function transcriptPage(entries: readonly unknown[], page?: { before?: number; limit?: number }): ClientMessagePage {
-  const rows = branchTranscript(entries);
+/**
+ * `renderers` are the session's extension renderers when its runtime is open: the custom entries
+ * they draw become rows, and the page's custom rows carry what the extension draws for them. Only
+ * the page's slice is drawn. A session read without its runtime has none (pi-insertion-points.md).
+ */
+function transcriptPage(entries: readonly unknown[], page?: { before?: number; limit?: number }, renderers?: ExtensionRenderers): ClientMessagePage {
+  const rows = branchTranscript(entries, shownEntriesOf(renderers));
   const paged = pageMessagesAtSafeBoundary(rows.map((row) => boundToolResultMessage(row.message)), page);
-  const messages = paged.messages.map((message, index) => withEntryId(message, rows[paged.start + index]?.entryId));
+  const messages = paged.messages.map((message, index) => {
+    const entryId = rows[paged.start + index]?.entryId;
+    return withEntryId(renderers === undefined ? message : withDrawing(message, renderers, entryId), entryId);
+  });
   return { ...paged, messages, head: transcriptHead(rows) };
+}
+
+function shownEntriesOf(renderers: ExtensionRenderers | undefined): ((customType: string) => boolean) | undefined {
+  return renderers === undefined ? undefined : (customType) => showsCustomEntry(renderers, customType);
+}
+
+/**
+ * A custom row with the extension's drawing beside it (`drawn`). The renderer gets the custom
+ * message as pi hands it; a custom entry is rebuilt from its row (`type`, `customType`, `data`,
+ * `id`, `timestamp`), which is what an entry renderer reads, without the tree fields the
+ * projection does not carry.
+ */
+function withDrawing(message: unknown, renderers: ExtensionRenderers, entryId: string | undefined): unknown {
+  if (!isRecord(message) || message["role"] !== "custom") return message;
+  const customType = getString(message, "customType");
+  if (customType === undefined) return message;
+  const fromEntry = message["source"] === "entry";
+  const value = fromEntry
+    ? { type: "custom", customType, data: message["details"], ...(entryId === undefined ? {} : { id: entryId }), ...(getString(message, "timestamp") === undefined ? {} : { timestamp: getString(message, "timestamp") }) }
+    : { display: true, ...message };
+  const drawn = drawCustomRow(renderers, fromEntry ? "entry" : "message", customType, value);
+  return drawn === undefined ? message : { ...message, drawn };
+}
+
+/** A live custom message carries the extension's drawing, as the same row read from history does. */
+function withCustomDrawing(event: SessionUiEvent, renderers: ExtensionRenderers): SessionUiEvent {
+  if (event.type !== "message.end" || event.message === undefined) return event;
+  const drawn = withDrawing(event.message, renderers, undefined);
+  return drawn === event.message ? event : { ...event, message: drawn };
+}
+
+/**
+ * The row a custom entry appended during the run makes, when the session shows it: pi's terminal
+ * draws it on `entry_appended`, and the page learns it the same way rather than at the next read.
+ */
+function shownAppendedEntry(event: unknown, renderers: ExtensionRenderers): unknown {
+  if (getString(event, "type") !== "entry_appended") return undefined;
+  const entry = getProperty(event, "entry");
+  if (getString(entry, "type") !== "custom") return undefined;
+  const customType = getString(entry, "customType");
+  if (customType === undefined || !showsCustomEntry(renderers, customType)) return undefined;
+  const entryId = getString(entry, "id");
+  const row = customEntryRow(entry, customType);
+  return withEntryId(withDrawing(row, renderers, entryId), entryId);
 }
 
 function withEntryId(message: unknown, entryId: string | undefined): unknown {

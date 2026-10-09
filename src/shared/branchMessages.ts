@@ -174,8 +174,14 @@ export function transcriptHead(transcript: readonly TranscriptRow[]): Transcript
   return { n: transcript.length, leaf: transcript.at(-1)?.entryId ?? null };
 }
 
-/** {@link branchMessages}, with each message's entry id beside it. */
-export function branchTranscript(entries: Iterable<unknown>): TranscriptRow[] {
+/**
+ * {@link branchMessages}, with each message's entry id beside it.
+ *
+ * `showsEntry` names the custom entry types the session's extensions registered a renderer for: pi
+ * draws a custom entry only then, so only those become rows (`source: "entry"`). Without it (a
+ * session read with no runtime) no extension entry is shown.
+ */
+export function branchTranscript(entries: Iterable<unknown>, showsEntry?: (customType: string) => boolean): TranscriptRow[] {
   const branch = [...entries];
   const retried = retriedAttemptIds(branch);
   const stops = stopOutcomes(branch);
@@ -196,10 +202,23 @@ export function branchTranscript(entries: Iterable<unknown>): TranscriptRow[] {
     }
     else if (entry["type"] === "custom_message" && entry["display"] === true) push(entry, { role: "custom", content: entry["content"], customType: entry["customType"], details: entry["details"] });
     else if (isRefusedDialogEntry(entry)) push(entry, refusedDialogMessage(getString(entry["data"], "reason") ?? "", getString(entry["data"], "at") ?? getString(entry, "timestamp")));
+    else if (entry["type"] === "custom" && showsEntry !== undefined) pushShownEntry(entry, showsEntry, push);
     else if (entry["type"] === "compaction") push(entry, { role: "system", source: "compaction", content: `Compacted history:\n\n${stringValue(entry["summary"])}` });
     else if (entry["type"] === "branch_summary") push(entry, { role: "system", source: "branch_summary", content: `Branch summary:\n\n${stringValue(entry["summary"])}` });
   }
   return rows;
+}
+
+function pushShownEntry(entry: Record<string, unknown>, showsEntry: (customType: string) => boolean, push: (entry: Record<string, unknown>, message: unknown) => void): void {
+  const customType = getString(entry, "customType");
+  if (customType === undefined || !showsEntry(customType)) return;
+  push(entry, customEntryRow(entry, customType));
+}
+
+/** The row a shown custom entry becomes; the live row and its history copy must be identical so they dedupe. */
+export function customEntryRow(entry: unknown, customType: string): Record<string, unknown> {
+  const timestamp = getString(entry, "timestamp");
+  return { role: "custom", source: "entry", customType, details: isRecord(entry) ? entry["data"] : undefined, ...(timestamp === undefined ? {} : { timestamp }) };
 }
 
 /**

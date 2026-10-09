@@ -50,6 +50,11 @@ export function customScreenHarness(hooks: { readonly requestRender?: () => void
   return { tui: make(requestRender === undefined ? {} : { requestRender: () => { requestRender(); } }), keybindings: make() };
 }
 
+/** Whether an extension handed back something that draws: a TUI component has a `render(width)`. */
+export function isScreenComponent(value: unknown): value is CustomScreenComponent {
+  return typeof value === "object" && value !== null && "render" in value && typeof value.render === "function";
+}
+
 /** Render, bounded and free of a trailing blank tail. */
 export function renderCustomScreen(component: CustomScreenComponent, width = CUSTOM_SCREEN_WIDTH, maxLines: number = EXTENSION_DIALOG_SCREEN_MAX_LINES): string[] {
   const lines = component.render(width);

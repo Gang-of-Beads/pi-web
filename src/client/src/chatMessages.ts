@@ -292,27 +292,43 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
 }
 
 /**
- * A custom entry the core does not itself understand becomes a tagged part so
- * the transcript can offer it to a plugin renderer, and render an honest
- * unknown card when nobody claims the tag. Before this, an unrecognized custom
- * entry fell through to its model-facing text, which reads as if the message
- * were ordinary prose.
- */
-/**
  * A custom entry whose author set `display: false` is addressed to the model,
  * not to the reader - goal continuations are the standing example. Rendering
- * it as an unknown card told the reader that something was broken about a
- * message they were never meant to see.
+ * it told the reader that something was broken about a message they were
+ * never meant to see.
  */
 function isHiddenCustomMessage(message: unknown): boolean {
   return getString(message, "role") === "custom" && getProperty(message, "display") === false;
 }
 
+/**
+ * A custom message or a drawn custom entry becomes a tagged part, so the transcript can offer it
+ * to a plugin renderer and otherwise draw what the extension drew or pi's default (the type and
+ * the content). Before parts, an unrecognized custom entry fell through to its model-facing text,
+ * which read as ordinary prose.
+ */
 function customPart(message: unknown): Extract<ChatPart, { type: "custom" }> | undefined {
   if (getString(message, "role") !== "custom") return undefined;
   const tag = getString(message, "customType");
   if (tag === undefined || tag === "" || tag === ASK_USER_ANSWERS_CUSTOM_TYPE) return undefined;
-  return { type: "custom", tag, payload: getProperty(message, "details") };
+  const drawn = getProperty(message, "drawn");
+  const lines = Array.isArray(drawn) ? drawn.filter((line): line is string => typeof line === "string") : [];
+  const text = customContentText(getProperty(message, "content"));
+  return {
+    type: "custom",
+    tag,
+    payload: getProperty(message, "details"),
+    kind: getString(message, "source") === "entry" ? "entry" : "message",
+    ...(lines.length === 0 ? {} : { drawn: lines }),
+    ...(text === "" ? {} : { text }),
+  };
+}
+
+/** A custom message's text content, as pi's default rendering joins its text parts. */
+function customContentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.flatMap((part) => (getString(part, "type") === "text" ? [getString(part, "text") ?? ""] : [])).join("\n");
 }
 
 function askUserRecordPart(message: unknown): Extract<ChatPart, { type: "askUserRecord" }> | undefined {

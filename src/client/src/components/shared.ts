@@ -81,6 +81,9 @@ export interface ToolResultImageRef {
   index: number;
 }
 
+/** Where a custom row comes from: a custom message, or a custom session entry an extension draws. */
+export type CustomRowKind = "message" | "entry";
+
 export type ChatPart =
   | { type: "text"; text: string }
   | { type: "image"; mimeType: string; data: string }
@@ -92,7 +95,11 @@ export type ChatPart =
   | { type: "toolCall"; toolCallId?: string; toolName: string; summary: string; args?: unknown }
   | ToolExecutionPart
   | { type: "toolResult"; toolCallId?: string; toolName: string; text: string; isError: boolean; content?: unknown; details?: unknown }
-  | { type: "custom"; tag: string; payload: unknown }
+  /**
+   * An extension's custom message or entry. `drawn`: the lines the extension's own pi renderer
+   * draws, from the daemon; `text`: a message's content, pi's default when nothing draws it.
+   */
+  | { type: "custom"; tag: string; payload: unknown; kind: CustomRowKind; drawn?: readonly string[]; text?: string }
   /** An extension's notify, live only; see extensionNotices.ts. */
   | { type: "extensionNotice"; id: string; level: ExtensionNoticeLevel; text: string; count: number; at: number }
   | { type: "empty" };

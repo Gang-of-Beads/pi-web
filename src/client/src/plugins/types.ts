@@ -407,9 +407,10 @@ export interface QualifiedActivityNoteContribution extends ActivityNoteContribut
 /**
  * A message renderer claims one custom payload tag in the transcript.
  *
- * The transcript asks the registry before its built-in renderers and falls
- * back to the honest card when nobody claims a tag, so an unknown payload
- * renders as unknown rather than disappearing. A renderer receives a frozen
+ * The transcript asks the registry before its built-in renderers; when nobody
+ * claims a tag it draws the extension's own pi drawing or pi's default (the type
+ * and the content), so an unclaimed row never disappears. The tag's custom
+ * entries reach the renderer too (`kind`). A renderer receives a frozen
  * view model and returns a body only: the runtime supplies the card chrome,
  * which is what keeps the corner and settled-outcome contracts true for
  * plugin cards by construction rather than by each plugin remembering.
@@ -444,6 +445,19 @@ export interface MessageRendererViewModel {
    * Only what is loaded: a transcript whose newest messages are not loaded yet says less.
    */
   readonly followingUserTexts?: readonly string[] | undefined;
+  /**
+   * What the row is: an extension's custom message, or a custom session entry an extension
+   * registered a pi renderer for (`pi.registerEntryRenderer`). Absent on hosts older than entry rows,
+   * where every row is a message.
+   */
+  readonly kind?: "message" | "entry" | undefined;
+  /**
+   * The lines the extension's own pi renderer draws for this row, as pi's terminal shows it. Absent
+   * means no drawing is available: the session's runtime was not open when the row was read, no
+   * extension registered a renderer for the type, or it drew nothing. A plugin may show the lines,
+   * or draw the row its own way.
+   */
+  readonly drawn?: readonly string[] | undefined;
 }
 
 export interface MessageRendererContribution {

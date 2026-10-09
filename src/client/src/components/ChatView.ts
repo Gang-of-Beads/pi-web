@@ -245,8 +245,9 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   @media (max-width: 640px) { .chat { --pi-row-gutter: var(--pi-space-5); --pi-row-inset: var(--pi-space-5); --pi-row-rhythm: var(--pi-space-5); } }
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
   .custom-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-5); background: var(--pi-surface); overflow: hidden; overflow: clip; display: grid; gap: var(--pi-space-3); }
-  .custom-card-unknown { color: var(--pi-muted); }
-  .custom-card-unknown small, .part > small { font-size: var(--pi-text-2xs); }
+  .custom-type { color: var(--pi-muted); font-family: var(--pi-font-mono); font-size: var(--pi-text-xs); }
+  .custom-waiting, .part > small { color: var(--pi-muted); font-size: var(--pi-text-2xs); }
+  .custom-drawn pre { margin: 0; overflow-x: auto; color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-mono); line-height: 1.45; white-space: pre; }
   .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
   /* Held by the server, not yet read: the same warning colour the queue panel
      uses, so "waiting" looks the same wherever it appears. It reverts to the
@@ -595,17 +596,10 @@ export function chatMessageMetadataLabel(message: ChatLine): string {
   return parts.join(" · ");
 }
 
-type UndrawnMessage = "plugins-incomplete" | "unclaimed";
-
-/**
- * What a message no plugin draws says. "Nothing renders it" is true only when every plugin
- * loaded; while one failed to load in this tab the message may be that plugin's, so it says so
- * (absence is not negation).
- */
-const UNDRAWN_MESSAGE_WORDS: Readonly<Record<UndrawnMessage, { title: string; detail: (tag: string) => string }>> = {
-  "plugins-incomplete": { title: "Not drawn yet", detail: (tag) => `A plugin did not load in this tab, so "${tag}" is not drawn yet. PI WEB will try again; reloading the page tries now.` },
-  unclaimed: { title: "Unrecognized message", detail: (tag) => `Nothing on this machine renders "${tag}".` },
-};
+/** Said under a custom row a plugin may draw its own way once it loads (R19: a failed module load is retried). */
+function pluginNotLoadedWords(tag: string): string {
+  return `A plugin did not load in this tab, so "${tag}" may not be drawn its own way yet. PI WEB will try again; reloading the page tries now.`;
+}
 
 function formatMessageTimestamp(timestamp: string): string | undefined {
   const date = new Date(timestamp);
@@ -1935,17 +1929,22 @@ export class ChatView extends LitElement {
     return this.followingIndex;
   }
 
+  /**
+   * A custom row, drawn by the first that can (docs/design/pi-insertion-points.md): a PI WEB
+   * plugin's renderer for its tag, the lines the extension's own pi renderer drew, then pi's
+   * default for a message (its type and its content). A plugin that has not loaded yet says so
+   * under whichever of the last two draws.
+   */
   private renderCustomPart(part: Extract<ChatPart, { type: "custom" }>) {
     const renderer = this.findMessageRenderer?.(part.tag);
-    if (renderer === undefined) {
-      const words = UNDRAWN_MESSAGE_WORDS[this.pluginsIncomplete ? "plugins-incomplete" : "unclaimed"];
-      return html`<div class="part custom-card custom-card-unknown">
-        <strong>${words.title}</strong>
-        <small>${words.detail(part.tag)}</small>
-      </div>`;
-    }
-    const body = this.renderCustomBody(renderer, part);
-    return html`<div class="part custom-card">${body}</div>`;
+    if (renderer !== undefined) return html`<div class="part custom-card">${this.renderCustomBody(renderer, part)}</div>`;
+    const waiting = this.pluginsIncomplete ? html`<small class="custom-waiting">${pluginNotLoadedWords(part.tag)}</small>` : null;
+    if (part.drawn !== undefined) return html`<div class="part custom-card custom-drawn"><pre>${part.drawn.join("\n")}</pre>${waiting}</div>`;
+    return html`<div class="part custom-card custom-card-default">
+      <strong class="custom-type">[${part.tag}]</strong>
+      ${part.text === undefined ? null : html`<formatted-text .text=${part.text} .findCodeFenceRenderer=${this.findCodeFenceRenderer}></formatted-text>`}
+      ${waiting}
+    </div>`;
   }
 
   private renderCustomBody(renderer: QualifiedMessageRendererContribution, part: Extract<ChatPart, { type: "custom" }>) {
@@ -1960,6 +1959,8 @@ export class ChatView extends LitElement {
         insertIntoComposer: this.onInsertIntoComposer,
         sendMessage: this.onSendMessage,
         followingUserTexts: this.followingUserTexts(part),
+        kind: part.kind,
+        ...(part.drawn === undefined ? {} : { drawn: part.drawn }),
       });
     } catch (error) {
       console.error(`Plugin ${renderer.pluginId} failed rendering ${part.tag}`, error);

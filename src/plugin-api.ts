@@ -427,9 +427,10 @@ export interface ActivityNoteContext {
 }
 
 /**
- * Claims one custom payload tag in the transcript. The runtime supplies the
- * card chrome so plugin cards keep the corner and settled-outcome contracts;
- * an unclaimed tag renders as an honest unknown card, never as nothing.
+ * Claims one custom payload tag in the transcript: the custom messages of that type and, since
+ * entry rows, the custom entries of that type an extension draws (`kind` tells them apart). The
+ * runtime supplies the card chrome so plugin cards keep the corner and settled-outcome contracts;
+ * an unclaimed tag is drawn by the extension's own pi renderer or as pi's default, never as nothing.
  */
 export interface MessageRendererViewModel {
   readonly sessionId: string;
@@ -457,6 +458,19 @@ export interface MessageRendererViewModel {
    * Only what is loaded: a transcript whose newest messages are not loaded yet says less.
    */
   readonly followingUserTexts?: readonly string[] | undefined;
+  /**
+   * What the row is: an extension's custom message, or a custom session entry an extension
+   * registered a pi renderer for (`pi.registerEntryRenderer`). Absent on hosts older than entry rows,
+   * where every row is a message.
+   */
+  readonly kind?: "message" | "entry" | undefined;
+  /**
+   * The lines the extension's own pi renderer draws for this row, as pi's terminal shows it. Absent
+   * means no drawing is available: the session's runtime was not open when the row was read, no
+   * extension registered a renderer for the type, or it drew nothing. A plugin may show the lines,
+   * or draw the row its own way.
+   */
+  readonly drawn?: readonly string[] | undefined;
 }
 
 export interface MessageRendererContribution {

@@ -84,7 +84,7 @@ describe("chat message normalization", () => {
       content: "<background-task-notification/>",
       display: true,
       details: { id: "t1", name: "build", status: "completed" },
-    })).toEqual([{ role: "system", parts: [{ type: "custom", tag: "background-task-notification", payload: { id: "t1", name: "build", status: "completed" } }] }]);
+    })).toEqual([{ role: "system", parts: [{ type: "custom", tag: "background-task-notification", payload: { id: "t1", name: "build", status: "completed" }, kind: "message", text: "<background-task-notification/>" }] }]);
   });
 
   it("falls back to model-facing text when an ask_user answer record is malformed", () => {

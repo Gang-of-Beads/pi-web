@@ -69,6 +69,14 @@ Pi extensions running under PI WEB's session daemon can ask the user questions w
 | `getAllThemes`, `getTheme`, `setTheme` | pi's headless defaults: PI WEB's look is chosen in Settings. |
 | `getToolsExpanded`, `setToolsExpanded` | pi's headless defaults. |
 
+### Custom messages and entries
+
+An extension's own renderers draw its rows, as in pi's terminal:
+
+- **`registerMessageRenderer`**: a custom message sent with `display: true` is drawn by the extension's renderer, as plain lines. Without one it shows its type and its content, as pi's default does. A PI WEB plugin that renders the type draws it its own way instead.
+- **`registerEntryRenderer`**: a custom entry written with `appendEntry` is shown only when an extension registered a renderer for its type, drawn by that renderer, live and after a reload. Other custom entries stay extension state and are not shown.
+- The renderers live in the session's runtime. A session PI WEB reads without starting it (a closed session) has none: its custom messages show their content, and its custom entries are not shown until the session runs and the page reads it again.
+
 One browser-local caveat: reloading the browser while a new session is still being created loses the browser-local pending-start row, so the dialog card disappears from view. The daemon-side dialog still settles at its deadline and the session appears in the sidebar once creation completes.
 
 ## Trust model

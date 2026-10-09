@@ -181,6 +181,8 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
     setScopedModels: () => undefined,
     extensionRunner: {
       getRegisteredCommands: () => [],
+      getMessageRenderer: () => undefined,
+      getEntryRenderer: () => undefined,
       getUIContext: () => extensionUiContext,
       setUIContext: (uiContext) => { extensionUiContext = uiContext ?? testExtensionUiContext; },
     },

@@ -298,6 +298,14 @@
                 </table>
               </div>
               <p>
+                An extension's own renderers draw its rows, as in pi's terminal. A custom message sent with
+                <code>display: true</code> is drawn by the renderer it registered with
+                <code>registerMessageRenderer</code>, and without one shows its type and its content. A custom entry
+                written with <code>appendEntry</code> is shown only when an extension registered a renderer for it with
+                <code>registerEntryRenderer</code>. A PI WEB plugin that renders the type draws it its own way instead.
+                A session read without starting it has no renderers yet, so its rows fall back to the content.
+              </p>
+              <p>
                 For the full behavior notes and author guidance, read <a href="plugins.md">plugins.md</a>; for the
                 timeout key, see <a href="config#extension-dialogs">Extension dialogs</a> in the configuration reference.
               </p>

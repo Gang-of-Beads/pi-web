@@ -1,5 +1,5 @@
 import type { ExtensionWidgetPlacement, ExtensionWidgetStanding } from "../../../shared/apiTypes.js";
-import { customScreenHarness, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
+import { customScreenHarness, isScreenComponent, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
 import type { ExtensionOrigin } from "./extensionOrigin.js";
 
 /**
@@ -121,7 +121,7 @@ export class StandingWidgets {
     const harness = customScreenHarness({ requestRender: () => { if (widget?.invalidate() === true) this.changed(); } });
     try {
       const component: unknown = Reflect.apply(content, undefined, [harness.tui, this.theme]);
-      if (!isComponent(component)) return undefined;
+      if (!isScreenComponent(component)) return undefined;
       widget = StandingWidget.ofComponent(placement, origin, component);
       return widget;
     } catch (error) {
@@ -131,12 +131,8 @@ export class StandingWidgets {
   }
 }
 
-function isComponent(value: unknown): value is CustomScreenComponent {
-  return typeof value === "object" && value !== null && "render" in value && typeof value.render === "function";
-}
-
 /** Each line cut at LINE_MAX_LENGTH with its indentation kept, then the count cut, saying how much. */
-function boundedLines(lines: readonly string[]): string[] {
+export function boundedLines(lines: readonly string[]): string[] {
   const cut = lines.map((line) => (line.length <= LINE_MAX_LENGTH ? line : `${line.slice(0, LINE_MAX_LENGTH - 1)}…`));
   if (cut.length <= WIDGET_MAX_LINES) return cut;
   return [...cut.slice(0, WIDGET_MAX_LINES - 1), `… ${String(cut.length - WIDGET_MAX_LINES + 1)} more lines not shown`];

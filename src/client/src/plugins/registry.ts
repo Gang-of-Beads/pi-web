@@ -227,7 +227,7 @@ export class PluginRegistry {
 
   /**
    * The renderer that claims a tag, or undefined when nobody does - which
-   * the transcript must render as an honest unknown card, never as nothing.
+   * the transcript then draws with the extension's own pi drawing or pi's default, never as nothing.
    */
   findMessageRenderer(tag: string, selectedMachineId: string | undefined): QualifiedMessageRendererContribution | undefined {
     return this.messageRenderers.find((renderer) => renderer.tag === tag
