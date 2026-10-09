@@ -35,6 +35,28 @@ export class RequestTimeoutError extends Error {
   }
 }
 
+/**
+ * The link failed under a request: fetch() itself rejected, and neither the deadline nor the
+ * caller aborted it. Browsers say so only in words on a TypeError ("Failed to fetch", "Load
+ * failed", "NetworkError when attempting to fetch resource"); this names it by where it happened.
+ * It stays a TypeError, so a check written for the browser's own failure still holds.
+ */
+export class NetworkError extends TypeError {
+  constructor(readonly url: string, cause: TypeError) {
+    super(cause.message, { cause });
+    this.name = "NetworkError";
+  }
+}
+
+/** fetch(), with a rejection that is the link failing named as one; an abort passes as it came. */
+export async function fetchNamingLinkFailure(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    throw error instanceof TypeError ? new NetworkError(url, error) : error;
+  }
+}
+
 /** Whether nobody answered in time, as opposed to answering with a refusal. */
 export function isRequestTimeout(error: unknown): boolean {
   return error instanceof RequestTimeoutError;
@@ -79,7 +101,7 @@ export function timeoutForBody(body: BodyInit | null | undefined): number {
 export async function fetchWithDeadline<T>(url: string, init: RequestInit | undefined, read: (response: Response) => Promise<T>, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const deadline = deadlineSignal(timeoutMs, init?.signal);
   try {
-    const response = await watchedFetch(() => fetch(url, { ...init, signal: deadline.signal }), { upload: init?.body instanceof FormData, callerAborted: () => init?.signal?.aborted === true });
+    const response = await watchedFetch(() => fetchNamingLinkFailure(url, { ...init, signal: deadline.signal }), { upload: init?.body instanceof FormData, callerAborted: () => init?.signal?.aborted === true });
     return await read(response);
   } catch (error) {
     if (deadline.signal.aborted && init?.signal?.aborted !== true) throw new RequestTimeoutError(url, timeoutMs);

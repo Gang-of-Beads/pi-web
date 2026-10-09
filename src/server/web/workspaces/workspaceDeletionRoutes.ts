@@ -5,6 +5,7 @@ import {
 } from "../../../shared/workspaceRemovalProtocol.js";
 import { SessionDaemonClient } from "../../shared/sessiondClient/sessionDaemonClient.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
+import { daemonTransport } from "../../shared/transportFailure.js";
 import type { SessionProxyDaemon } from "../sessionProxyRoutes.js";
 import { errorMessage } from "../../../shared/unknownValues.js";
 
@@ -37,6 +38,7 @@ export function registerWorkspaceDeletionRoutes(
       } catch (error) {
         return await reply.code(502).send({
           error: `Session daemon unavailable: ${errorMessage(error)}`,
+          ...daemonTransport(error),
         });
       } finally {
         cancellation.dispose();

@@ -17,22 +17,23 @@ import { noticeFromError, type Notice } from "./notice";
  *   the code that withdraws a transport complaint after a successful reply
  *   returned early every time. The banner stayed until dismissed by hand.
  *
- * Returning both fields together makes the pair impossible to set apart, so a
- * call site added later cannot reintroduce either half.
+ * Returning every notice field together (`NoticeFields`: words, lifetime,
+ * machine and claim) makes them impossible to set apart, so a call site added
+ * later cannot reintroduce half of a notice.
  */
-export function errorNoticePatch(
-  error: unknown,
-): Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId"> {
-  const notice = noticeFromError(error);
-  return { error: notice.text, errorRetiredBy: notice.retiredBy, errorMachineId: notice.machineId ?? "page" };
+export function errorNoticePatch(error: unknown): NoticeFields {
+  return noticePatch(noticeFromError(error));
 }
 
+/** The notice's fields in the app state: its words, lifetime, machine and claim always move together. */
+export type NoticeFields = Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId" | "errorClaim">;
+
 /** An AppState patch carrying a Notice with its retirement semantics. */
-export function noticePatch(notice: Notice): Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId"> {
-  return { error: notice.text, errorRetiredBy: notice.retiredBy, errorMachineId: notice.machineId ?? "page" };
+export function noticePatch(notice: Notice): NoticeFields {
+  return { error: notice.text, errorRetiredBy: notice.retiredBy, errorMachineId: notice.machineId ?? "page", errorClaim: notice.claim };
 }
 
 /** The one way to clear: a cleared banner carries no stranger's mark or scope. */
-export function clearErrorPatch(): Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId"> {
-  return { error: "", errorRetiredBy: "reader", errorMachineId: "page" };
+export function clearErrorPatch(): NoticeFields {
+  return { error: "", errorRetiredBy: "reader", errorMachineId: "page", errorClaim: undefined };
 }

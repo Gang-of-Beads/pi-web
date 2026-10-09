@@ -1,10 +1,11 @@
 import { isRecord } from "../../../shared/unknownValues";
 import { resolveAppUrl } from "../appUrl";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
-import { deadlineSignal, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
+import { deadlineSignal, fetchNamingLinkFailure, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
+import type { TransportClaim } from "./transportClaim";
 import { dedupeKey, shareInFlight } from "./inFlight";
 import { watchedFetch } from "./ackWatch";
-import { ROUTE_MISSING_CODE } from "../../../shared/apiTypes";
+import { ROUTE_MISSING_CODE, TRANSPORT_FAILURES, type TransportFailure } from "../../../shared/apiTypes";
 
 /**
  * Who answered with the error, when it is known. Only PI WEB's gateway names
@@ -14,7 +15,7 @@ import { ROUTE_MISSING_CODE } from "../../../shared/apiTypes";
 export type HttpErrorOrigin = "gateway";
 
 export class HttpError extends Error {
-  constructor(message: string, readonly status: number, readonly machineId?: string, readonly answeredBy?: HttpErrorOrigin, readonly code?: string) {
+  constructor(message: string, readonly status: number, readonly machineId?: string, readonly answeredBy?: HttpErrorOrigin, readonly code?: string, readonly transport?: TransportClaim) {
     super(message);
     this.name = "HttpError";
   }
@@ -49,7 +50,7 @@ async function fetchBody(url: string, init?: RequestInit): Promise<unknown> {
   const timeoutMs = timeoutForBody(init?.body);
   const deadline = deadlineSignal(timeoutMs, init?.signal);
   try {
-    const response = await watchedFetch(() => fetch(resolveAppUrl(url), { ...init, headers, signal: deadline.signal }), { upload: init?.body instanceof FormData, callerAborted: () => init?.signal?.aborted === true });
+    const response = await watchedFetch(() => fetchNamingLinkFailure(resolveAppUrl(url), { ...init, headers, signal: deadline.signal }), { upload: init?.body instanceof FormData, callerAborted: () => init?.signal?.aborted === true });
     return await readResponse(url, response);
   } catch (error) {
     // An abort that was ours is a deadline, and says so. An abort the caller
@@ -84,7 +85,7 @@ async function readResponse(url: string, response: Response): Promise<unknown> {
     const text = detail === undefined || detail === "" ? label : `${label} (${detail})`;
     const missing = routeMissingCode(response.status, body);
     if (missing !== undefined) throw new HttpError(ROUTE_MISSING_WORDS, response.status, machineId, undefined, missing);
-    throw new HttpError(apiErrorMessage({ error: text }) ?? text, response.status, machineId, namedMachineId === undefined ? undefined : "gateway", errorCode(body));
+    throw new HttpError(apiErrorMessage({ error: text }) ?? text, response.status, machineId, namedMachineId === undefined ? undefined : "gateway", errorCode(body), transportFailureOf(body));
   }
   if (answeredWithPage(response)) throw new HttpError(ROUTE_MISSING_WORDS, 404, machineIdFromUrl(url), undefined, ROUTE_MISSING_CODE);
   const body: unknown = await response.json();
@@ -118,6 +119,13 @@ export function errorCode(value: unknown): string | undefined {
   if (!isRecord(value)) return undefined;
   const code = value["code"];
   return typeof code === "string" ? code : undefined;
+}
+
+/** The `transport` field of an error body (B16), when it names one this page knows. */
+export function transportFailureOf(value: unknown): TransportFailure | undefined {
+  if (!isRecord(value)) return undefined;
+  const transport = value["transport"];
+  return TRANSPORT_FAILURES.find((failure) => failure === transport);
 }
 
 /** The `error` text of an API failure body, when it carries one. */

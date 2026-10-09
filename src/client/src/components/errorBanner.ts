@@ -1,5 +1,6 @@
 import { html, type TemplateResult } from "lit";
 import type { RetiredBy } from "../notice.js";
+import type { TransportClaim } from "../api/transportClaim.js";
 import type { ReadMiss } from "../sync/readPhase.js";
 
 /**
@@ -15,21 +16,26 @@ import type { ReadMiss } from "../sync/readPhase.js";
  * the phone UI.
  */
 /**
- * The wording table only rewrites a reply-retired transport claim. A
- * reader-retired failure keeps its own words: rewriting "Update failed: …"
- * into "Reconnecting to the session daemon…" presented a permanent failure as
- * a self-healing one and deleted the operation the reader needs to retry.
+ * The row's words for a failure that claims the link is down (B16): short, and saying it heals,
+ * because it does. Any other failure keeps its own words, so "Update failed: …" is never presented
+ * as a self-healing hiccup and the operation the reader needs to retry stays named.
  */
+const TRANSPORT_WORDS: Readonly<Record<TransportClaim, string>> = {
+  "daemon-not-listening": "Trying to sync with the server…",
+  "machine-unreachable": "Trying to sync with the machine…",
+  network: "Trying to sync with the server…",
+  deadline: "Trying to sync with the server…",
+  aborted: "Previous request was interrupted. Retry if the message did not finish.",
+  "server-error": "Connection problem. Retrying in the background…",
+};
+
 export function errorBanner(
   error: string,
-  retiredBy: RetiredBy = "reply",
+  claim: TransportClaim | undefined,
   onRetry?: () => void,
 ): TemplateResult | null {
   if (error === "") return null;
-  const transient = retiredBy === "reply" ? normalizeTransientError(error) : undefined;
-  // A failure the reader has to retire keeps a way to try again: a red line
-  // with nothing but a cross is a dead end, and the owner met one on a
-  // session read that answered "Session not found".
+  const transient = claim === undefined ? undefined : TRANSPORT_WORDS[claim];
   const retry = transient === undefined && onRetry !== undefined
     ? html`<button type="button" class="error-retry" @click=${() => { onRetry(); }}>Retry</button>`
     : null;
@@ -74,17 +80,6 @@ export function syncingRow(): TemplateResult {
   return html`<div class="error transient syncing" role="status"><span class="error-text">Syncing…</span></div>`;
 }
 
-/**
- * Whether a message is one of the self-healing transport failures.
- *
- * The classification seam: notice.ts asks it whether an error's text carries
- * transport evidence (retirement follows the evidence, not the exception's
- * class), and the banner asks it how to shorten a reply-retired string for
- * display. A reader-retired failure is never rewritten.
- */
-export function isTransientError(error: string): boolean {
-  return normalizeTransientError(error) !== undefined;
-}
 
 /**
  * How long a self-healing message stays before it withdraws itself.
@@ -98,80 +93,14 @@ export const TRANSIENT_ERROR_TIMEOUT_MS = 6000;
 export const READER_NOTICE_TIMEOUT_MS = 10_000;
 
 /**
- * When a row message leaves by itself. A self-healing transport claim goes after
- * `TRANSIENT_ERROR_TIMEOUT_MS`; a notice about an operation after
- * `READER_NOTICE_TIMEOUT_MS`; a claim that asserts a machine's state (a composed
- * "X is unavailable; reconnecting…") stays until that machine answers, so it is
- * never undefined while true.
+ * When a row message leaves by itself. A notice carrying a transport claim goes
+ * after `TRANSIENT_ERROR_TIMEOUT_MS`; a notice about an operation after
+ * `READER_NOTICE_TIMEOUT_MS`; a reply-retired notice with no claim (the page's
+ * own "Trying to sync with X…" about a machine) stays until that machine
+ * answers, so it is never undefined while true.
  */
-export function noticeExpiryMs(retiredBy: RetiredBy, error: string): number | undefined {
+export function noticeExpiryMs(retiredBy: RetiredBy, claim: TransportClaim | undefined, error: string): number | undefined {
   if (error === "") return undefined;
   if (retiredBy === "reader") return READER_NOTICE_TIMEOUT_MS;
-  return normalizeTransientError(error) === undefined ? undefined : TRANSIENT_ERROR_TIMEOUT_MS;
-}
-
-export function normalizeTransientError(error: string): string | undefined {
-  // ENOENT when the socket file is gone, ECONNREFUSED while the daemon is
-  // restarting and nothing is listening on it yet. The second is the one a user
-  // is guaranteed to meet, because it is what an update looks like.
-  //
-  // The wording between "session daemon" and "unavailable" varies by the route
-  // that reports it: the workspace catalog says "workspace authority", while
-  // the session proxy, the plugin backend proxy and workspace deletion say
-  // nothing at all. Naming one of them, as this rule first did, left the
-  // commonest banner sitting on the screen long after the daemon was back.
-  // A composed message already names its machine ("X is unavailable;
-  // reconnecting… <detail>"): shortening it would erase the machine, so only
-  // uncomposed claims reach the rewrites below. Three producers compose the
-  // prefix today - machineDownNotice and the explicit-selection path in the
-  // machine controller, and the restore ladder's retry sentence in
-  // PiWebApp - keep that count true when adding a fourth.
-  const composed = /^trying to sync with /i.test(error);
-  // A TCP-endpoint deployment has no socket path in the error text, so the
-  // socket-path requirement missed the same outage there; the daemon's own
-  // phrase ("session daemon") carries the identification instead.
-  if (!composed && /unavailable: connect (enoent|econnrefused)/i.test(error) && (/sessiond\.sock/i.test(error) || /session daemon/i.test(error))) {
-    return "Trying to sync with the server…";
-  }
-  // Matches the DOMException text a cancelled fetch stringifies to. The
-  // earlier rule required "model response failed:", which only ever prefixes
-  // a transcript system line, so it never fired on the banner it was
-  // written for.
-  if (!composed && /\boperation was aborted\b/i.test(error)) {
-    return "Previous request was interrupted. Retry if the message did not finish.";
-  }
-  if (!composed && /remote machine request cancelled/i.test(error)) {
-    return "Connection changed while the request was in flight. Retrying is usually enough.";
-  }
-  // A deadline miss says so in its own words (requestDeadline.ts). The polls
-  // re-issue themselves and a session that was streaming goes on replying, so
-  // this heals like a reconnect, not like a failed action.
-  if (!composed && /did not answer within/i.test(error)) {
-    return "Trying to sync with the server…";
-  }
-  // What a dropped connection looks like from `fetch`: Chrome says "Failed to
-  // fetch", Safari "Load failed", Firefox "NetworkError when attempting to
-  // fetch resource". A phone that slept, a tunnel that blinked, or a web
-  // process being restarted all land here, and all of them heal by themselves -
-  // the raw TypeError text stayed on screen long after the connection was back.
-  // The match is anchored to the whole message: this family's phrases also
-  // appear as the detail of a composed message ("X is unavailable; reconnecting…
-  // Failed to fetch"), and rewriting that would erase the machine's name.
-  if (/^(failed to fetch|load failed|networkerror when attempting to fetch resource)[.!]?$/i.test(error)) {
-    return "Trying to sync with the server…";
-  }
-  // The gateway's own two labels, whole-message (its detail arrives inside
-  // parentheses). Same claim as the local daemon's: the hop in between is
-  // down, and it heals.
-  if (/^remote machine (unavailable|timeout)/i.test(error)) {
-    return "Trying to sync with the machine…";
-  }
-  // An HTTP 5xx from the web process (a proxy answering while the daemon or
-  // upstream is mid-restart) heals like a dropped socket: the polls re-issue
-  // and a later answer withdraws the claim. Whole-message, so "The request
-  // failed (409)" - a real refusal - keeps its own words.
-  if (/^the request failed \(5\d\d\)$/i.test(error)) {
-    return "Connection problem. Retrying in the background…";
-  }
-  return undefined;
+  return claim === undefined ? undefined : TRANSIENT_ERROR_TIMEOUT_MS;
 }

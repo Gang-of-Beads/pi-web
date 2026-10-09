@@ -5,6 +5,7 @@ import {
   utf8ByteLength,
 } from "../../../shared/pluginBackendProtocol.js";
 import type { SessionDaemonRequestClient } from "../../shared/sessiondClient/sessionDaemonClient.js";
+import { daemonTransport } from "../../shared/transportFailure.js";
 import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
 
 interface PluginBackendProxyParams {
@@ -32,6 +33,7 @@ export function registerPluginBackendProxyRoutes(
         return reply.code(502).send({
           error: `Session daemon unavailable: ${errorMessage(error)}`,
           code: "daemon-unavailable",
+          ...daemonTransport(error),
           pluginId: request.params.pluginId,
           operation: request.params.operation,
         });

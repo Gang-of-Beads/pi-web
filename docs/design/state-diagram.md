@@ -578,6 +578,19 @@ Done so far: projects on a machine (P1 slice 1); workspaces, and placing a sessi
 | web | the envelope for an unknown `/api` path; a release before `unknown-api-says-not-found` answers the app's HTML at 200 | the envelope with the code |
 | client | the HTML was parsed as JSON and the panel showed the parse error; the envelope's "Route POST:... not found" was shown as it was | `request()` throws `HttpError` with `code: "route-missing"` and the words "This machine runs an older PI WEB that cannot do this yet. Update PI WEB there and restart its session daemon." for the code, for an envelope without it (an older machine, read by its shape), and for an HTML answer to an API call. The per-route checks (`readNewerDaemonRoute`, the fork routes) keep their own fallbacks. |
 
+**A failure that claims the link is down** (B16, 2026-10-09) carries its kind, `TransportClaim`. A claim's notice is retired by the next answer (reply lifetime, 6 s expiry, held through the grace window), and the row words it by a `Record` over the kinds. A notice without a claim keeps its own words and the reader's lifetime. Before this, both the lifetime and the words were decided by matching the failure's text against seven phrasings, so a producer whose words drifted kept its line on screen after the link was back.
+
+| claim | produced by | row words |
+|---|---|---|
+| `daemon-not-listening` | the web process's error body `transport` field, set from the errno (ECONNREFUSED or ENOENT) when it could not reach its session daemon: session proxy, plugin backend and operation proxies, workspace deletion, workspace catalog | Trying to sync with the server… |
+| `machine-unreachable` | the gateway's `transport` field on its 502/504 for a remote machine | Trying to sync with the machine… |
+| `network` | `NetworkError`: fetch() itself rejected, by the call site (`fetchNamingLinkFailure`), not by the browser's words | Trying to sync with the server… |
+| `deadline` | `RequestTimeoutError`, the page's own deadline | Trying to sync with the server… |
+| `aborted` | an error whose platform type is `AbortError` | Previous request was interrupted. Retry if the message did not finish. |
+| `server-error` | an `HttpError` 5xx whose body said nothing | Connection problem. Retrying in the background… |
+
+An `HttpError` without the field (a machine older than it) is read by the old phrasings, `legacyTransportClaim`, until every machine carries the field (rolling compatibility). A notice composed by the page about a machine ("Trying to sync with X…") is reply-retired with no claim and keeps its words. The claim travels with the notice's other fields (`noticePatch`: words, lifetime, machine, claim), so none can be set without the rest.
+
 **The session board** (P1 slice 5) is read from many sources: the projects, each project's workspaces, and each workspace's sessions. It answers in three degrees, `BoardAnswer`:
 - `none`: nothing answered yet;
 - `partial`: rows from the sources that answered, while others did not;

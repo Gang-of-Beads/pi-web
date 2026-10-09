@@ -1,16 +1,19 @@
 // @vitest-environment happy-dom
 import { render } from "lit";
 import { afterEach, describe, expect, it } from "vitest";
-import { errorBanner, isTransientError, unansweredRowText } from "./errorBanner";
+import { errorBanner, unansweredRowText } from "./errorBanner";
+import { legacyTransportClaim, type TransportClaim } from "../api/transportClaim";
+
+const isTransientError = (text: string): boolean => legacyTransportClaim(text) !== undefined;
 
 afterEach(() => {
   document.body.replaceChildren();
 });
 
-function renderBanner(error: string): { host: HTMLElement } {
+function renderBanner(error: string, claim?: TransportClaim): { host: HTMLElement } {
   const host = document.createElement("div");
   document.body.append(host);
-  render(errorBanner(error), host);
+  render(errorBanner(error, claim), host);
   return { host };
 }
 
@@ -59,11 +62,11 @@ describe("isTransientError", () => {
 });
 
 describe("aborted requests", () => {
-  // A cancelled fetch reaches the banner as String(error), i.e. the
-  // DOMException text, with no "Model response failed:" prefix -- that prefix
-  // only ever appears on a transcript system line, so the rule written for it
-  // could never fire here. Navigating away or losing the network mid-request
-  // is self-healing and should not be dressed as a failure.
+  // An older machine's answer can carry the DOMException text of a cancelled
+  // fetch, with no "Model response failed:" prefix -- that prefix only ever
+  // appears on a transcript system line, so the rule written for it could never
+  // fire here. Navigating away or losing the network mid-request is
+  // self-healing and should not be dressed as a failure.
   it("treats a cancelled request as transient", () => {
     expect(isTransientError("AbortError: The operation was aborted.")).toBe(true);
     expect(isTransientError("The operation was aborted")).toBe(true);
@@ -106,7 +109,7 @@ describe("dropped-connection failures", () => {
   it("reads every browser's dropped-fetch wording as self-healing", () => {
     for (const raw of ["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."]) {
       expect(isTransientError(raw)).toBe(true);
-      const { host } = renderBanner(raw);
+      const { host } = renderBanner(raw, legacyTransportClaim(raw));
       expect(host.querySelector(".error")?.getAttribute("role")).toBe("status");
       expect(host.querySelector(".error-text")?.textContent).toContain("Trying to sync with the server");
     }
@@ -160,7 +163,7 @@ describe("a reader-retired banner offers a way to try again", () => {
   it("renders Retry and calls it", () => {
     const retries: number[] = [];
     const host = document.createElement("div");
-    render(errorBanner("Session not found", "reader", () => { retries.push(1); }), host);
+    render(errorBanner("Session not found", undefined, () => { retries.push(1); }), host);
     const retry = host.querySelector<HTMLButtonElement>(".error-retry");
 
     expect(retry).not.toBeNull();
@@ -170,7 +173,7 @@ describe("a reader-retired banner offers a way to try again", () => {
 
   it("does not add Retry to a self-healing transport claim", () => {
     const host = document.createElement("div");
-    render(errorBanner("remote machine request cancelled", "reply", () => undefined), host);
+    render(errorBanner("remote machine request cancelled", "machine-unreachable", () => undefined), host);
 
     expect(host.querySelector(".error-retry")).toBeNull();
   });

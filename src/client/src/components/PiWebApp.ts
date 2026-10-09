@@ -125,7 +125,8 @@ import { markPinsHandedOver, pinsHandedOver } from "../pinHandover";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { ackWatch } from "../api/ackWatch";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
-import { errorBanner, noticeExpiryMs, normalizeTransientError, syncingRow, unansweredRow } from "./errorBanner";
+import { errorBanner, noticeExpiryMs, syncingRow, unansweredRow } from "./errorBanner";
+import type { TransportClaim } from "../api/transportClaim";
 import { rowDecision, type ShownUnanswered } from "../sync/connectionSummary";
 import { messageStatusUnanswered } from "../sendVerification";
 import { earliestUnanswered } from "../sync/scopedResource";
@@ -1333,7 +1334,7 @@ export class PiWebApp extends LitElement {
     // operation and a self-healing transport claim leave by themselves; a
     // composed claim about a machine stays until that machine answers.
     const retiredBy = this.state.errorRetiredBy;
-    const expiry = noticeExpiryMs(retiredBy, error);
+    const expiry = noticeExpiryMs(retiredBy, this.state.errorClaim, error);
     if (expiry === undefined) return;
     this.transientErrorTimer = window.setTimeout(() => {
       this.transientErrorTimer = undefined;
@@ -5032,7 +5033,7 @@ export class PiWebApp extends LitElement {
   }
 
   private renderAppRowAt(place: AppRowPlace) {
-    return this.appRowPlace() === place ? this.renderAppRow(this.state.error, this.state.errorRetiredBy) : null;
+    return this.appRowPlace() === place ? this.renderAppRow(this.state.error, this.state.errorClaim) : null;
   }
 
   private renderAppRowSlot(place: AppRowPlace) {
@@ -5050,8 +5051,8 @@ export class PiWebApp extends LitElement {
    * gone without an answer for the grace period, and held for the minimum
    * visible time after it recovers. One claim at a time (owner, 2026-09-30).
    */
-  private renderAppRow(error: string, retiredBy: RetiredBy) {
-    const notice = this.renderErrorBanner(error, retiredBy);
+  private renderAppRow(error: string, claim: TransportClaim | undefined) {
+    const notice = this.renderErrorBanner(error, claim);
     const row = this.renderUnansweredRow(notice !== null);
     return notice ?? row;
   }
@@ -5079,7 +5080,7 @@ export class PiWebApp extends LitElement {
     return (this.navigateOpen || this.shellPanelOpen()) && this.sessionBoards.drawnFromMemory(this.browsedMachineId());
   }
 
-  private renderErrorBanner(error: string, retiredBy: RetiredBy) {
+  private renderErrorBanner(error: string, claim: TransportClaim | undefined) {
     // The hold window is an anti-churn device for one context. A scope
     // switch resets only this hold bookkeeping - the banner itself survives
     // the switch by the owner's call (see resetWorkspaceScopedState), so a
@@ -5113,7 +5114,7 @@ export class PiWebApp extends LitElement {
     // the screen. The first sighting waits out a grace window; a claim still
     // standing when it elapses shows as "retrying", and the recovery path
     // withdraws it. Reader-visible claims keep the immediate path below.
-    if (error !== "" && normalizeTransientError(error) !== undefined) {
+    if (error !== "" && claim !== undefined) {
       const isNew = error !== this.lastScheduledError || this.state.errorMachineId !== this.lastScheduledMachineId;
       if (isNew) {
         this.lastScheduledError = error;
@@ -5133,7 +5134,7 @@ export class PiWebApp extends LitElement {
         this.bannerShownAt = Date.now();
         this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
       }
-      this.heldErrorBanner = errorBanner(error, "reply");
+      this.heldErrorBanner = errorBanner(error, claim);
       return this.heldErrorBanner;
     }
     this.transientPendingSince = undefined;
@@ -5162,7 +5163,7 @@ export class PiWebApp extends LitElement {
       this.bannerShownAt = Date.now();
       this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
     }
-    this.heldErrorBanner = errorBanner(error, retiredBy, () => { void this.retryAfterError(); });
+    this.heldErrorBanner = errorBanner(error, undefined, () => { void this.retryAfterError(); });
     return this.heldErrorBanner;
   }
 

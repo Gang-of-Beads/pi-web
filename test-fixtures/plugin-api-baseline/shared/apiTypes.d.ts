@@ -339,6 +339,15 @@ export declare const SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH = 64;
 export declare const SESSION_NOT_FOUND_CODE = "session-not-found";
 /** The code the web and the daemon answer with for a route they do not have: the machine is older than the page (B16). */
 export declare const ROUTE_MISSING_CODE = "route-missing";
+/**
+ * What a failed answer says about the link (B16), in the `transport` field of its error body: the
+ * web process found nothing listening where its session daemon should be (the daemon is restarting,
+ * or gone), or the gateway could not reach a remote machine. Either heals by itself and the page
+ * words it as such. The field is set from the errno or the gateway's own failure, never from words;
+ * a failure it does not name keeps its own words and its reader's lifetime.
+ */
+export declare const TRANSPORT_FAILURES: readonly ["daemon-not-listening", "machine-unreachable"];
+export type TransportFailure = (typeof TRANSPORT_FAILURES)[number];
 export type { WorkspaceFileRefusal } from "./pluginApiTypes.js";
 export declare const WORKSPACE_FILE_REFUSALS: readonly WorkspaceFileRefusal[];
 /** The refusal a rejected workspace file call carries, or undefined for any other failure. */

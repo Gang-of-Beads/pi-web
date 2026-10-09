@@ -2,6 +2,7 @@ import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogA
 import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
 import { RetiredBy } from "./notice";
+import type { TransportClaim } from "./api/transportClaim";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { TranscriptSync } from "./transcriptSync";
 import type { QualifiedContributionId } from "./plugins/ids";
@@ -155,6 +156,8 @@ export interface AppState {
   errorRetiredBy: RetiredBy;
   /** Which machine's link the error speaks about; "page" for page-level claims, which any response disproves. */
   errorMachineId: string;
+  /** What a self-healing error claims about the link, which the row words for it (B16); undefined for every other notice. */
+  errorClaim: TransportClaim | undefined;
 }
 
 /** A closed extension dialog paired with the record the browser rendered while it was open. */
@@ -308,5 +311,6 @@ export function initialAppState(): AppState {
     error: "",
     errorRetiredBy: RetiredBy.reader,
     errorMachineId: "page",
+    errorClaim: undefined,
   };
 }

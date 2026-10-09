@@ -1,5 +1,6 @@
 import type { FastifyReply } from "fastify";
-import { WorkspaceCatalogRequestError, workspaceCatalogHttpStatus } from "./workspaceCatalog.js";
+import { WorkspaceCatalogRequestError, WorkspaceCatalogUnavailableError, workspaceCatalogHttpStatus } from "./workspaceCatalog.js";
+import { daemonTransport } from "../transportFailure.js";
 import { ProjectNotFoundError } from "../projects/projectService.js";
 
 /**
@@ -19,5 +20,6 @@ export function sendWorkspaceRequestError(
 ): FastifyReply {
   return reply.code(workspaceCatalogHttpStatus(error, fallbackStatus)).send({
     error: error instanceof Error ? error.message : String(error),
+    ...(error instanceof WorkspaceCatalogUnavailableError ? daemonTransport(error) : {}),
   });
 }

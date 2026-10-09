@@ -1,6 +1,6 @@
 import { api, type Machine, type MachineHealth, type MachineRuntime } from "../api";
-import { resetWorkspaceScopedState, type AppState } from "../appState";
-import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
+import { resetWorkspaceScopedState } from "../appState";
+import { clearErrorPatch, errorNoticePatch, noticePatch, type NoticeFields } from "../errorNotice";
 import { describeError, noticeForReader, noticeFromTransport } from "../notice";
 import { classifyReadError, QUIET_WINDOW_MS, type ReadFact, type ReadMiss, type ReadOutcome } from "../sync/readPhase";
 import { ScopedResource, type Unanswered } from "../sync/scopedResource";
@@ -28,7 +28,6 @@ const ALWAYS = () => true;
 /** Whether the reader asked for this read (Settings), or it runs in the background. */
 type ReadAsker = "reader" | "background";
 
-type NoticePatch = Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId">;
 
 /**
  * What a failed health or runtime read says (review 98e437b2). These are read
@@ -295,7 +294,7 @@ export class MachineController {
    * the anonymous "Reconnecting to the machine…" erased the one fact (which
    * machine) the reader could not see anywhere else.
    */
-  private machineDownNotice(machineId: string, error: unknown): NoticePatch {
+  private machineDownNotice(machineId: string, error: unknown): NoticeFields {
     const machine = this.getState().machines.find((candidate) => candidate.id === machineId);
     const detail = error instanceof Error ? /\((.*)\)/.exec(error.message)?.[1] : undefined;
     const text = `Trying to sync with ${machine?.name ?? machineId}…${detail === undefined ? "" : ` ${detail}`}`;

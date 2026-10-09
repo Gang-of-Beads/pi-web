@@ -5,6 +5,7 @@ import {
   type SessionDaemonRequestOptions,
 } from "../shared/sessiondClient/sessionDaemonClient.js";
 import { boundDaemonRequest, SESSION_PROXY_DEADLINE_MS } from "./boundedDaemonRequest.js";
+import { daemonTransport } from "../shared/transportFailure.js";
 import { bridgeSockets } from "./webSocketBridge.js";
 
 interface DaemonAnswer { statusCode: number; headers: Record<string, string>; body: string }
@@ -119,7 +120,7 @@ function parseJson(text: string): unknown {
 }
 
 function requestFailed(reply: FastifyReply, error: unknown): void {
-  reply.code(502).send({ error: `Session daemon unavailable: ${error instanceof Error ? error.message : String(error)}` });
+  reply.code(502).send({ error: `Session daemon unavailable: ${error instanceof Error ? error.message : String(error)}`, ...daemonTransport(error) });
 }
 
 function toolResultImageBlock(value: unknown): { mimeType: string; data: string } | undefined {

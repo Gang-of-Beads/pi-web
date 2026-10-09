@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpError } from "./api/http";
+import { NetworkError } from "./api/requestDeadline";
 import { RetiredBy } from "./notice";
 import { errorNoticePatch } from "./errorNotice";
 
@@ -50,7 +51,7 @@ describe("the patch that puts a failure on screen", () => {
   });
 
   it("lets a reply withdraw a link failure", () => {
-    expect(errorNoticePatch(new TypeError("Failed to fetch")).errorRetiredBy).toBe(RetiredBy.reply);
+    expect(errorNoticePatch(new NetworkError("api/status", new TypeError("Failed to fetch"))).errorRetiredBy).toBe(RetiredBy.reply);
   });
 
   /**
@@ -61,7 +62,7 @@ describe("the patch that puts a failure on screen", () => {
     expect(errorNoticePatch(new Error("Rename failed")).errorRetiredBy).toBe(RetiredBy.reader);
   });
 
-  it("carries all three fields so none can be set without the others", () => {
-    expect(Object.keys(errorNoticePatch(new Error("x"))).sort()).toEqual(["error", "errorMachineId", "errorRetiredBy"]);
+  it("carries every field so none can be set without the others", () => {
+    expect(Object.keys(errorNoticePatch(new Error("x"))).sort()).toEqual(["error", "errorClaim", "errorMachineId", "errorRetiredBy"]);
   });
 });

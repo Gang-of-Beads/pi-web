@@ -6,6 +6,7 @@ import { requirePluginBackendRevision } from "../../../shared/pluginBackendProto
 import type { MachineClient } from "../../../server-plugin-api.js";
 import { RemoteMachineRequestError } from "../../../server-plugin-api.js";
 import type { MachineRegistryFace } from "./localMachineRegistry.js";
+import { gatewayTransport } from "../../shared/transportFailure.js";
 import { isRecord } from "../../../shared/unknownValues.js";
 
 interface RemotePluginManifestEntry {
@@ -239,6 +240,7 @@ function sendGatewayError(reply: FastifyReply, machineId: string, error: unknown
     error: label,
     machineId,
     statusCode,
+    ...gatewayTransport(error),
     detail: error instanceof Error ? error.message : String(error),
   });
 }

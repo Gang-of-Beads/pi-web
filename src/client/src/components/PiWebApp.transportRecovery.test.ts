@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { observeTransportRecovery, reportTransportReachable } from "../api/transportHealth";
 import { noticeFromError, RetiredBy } from "../notice";
+import { NetworkError } from "../api/requestDeadline";
 
 afterEach(() => { observeTransportRecovery(undefined); });
 
@@ -15,8 +16,8 @@ afterEach(() => { observeTransportRecovery(undefined); });
  */
 describe("a transport complaint is withdrawn by whatever succeeds next", () => {
   it("a link failure is reply-retired: the next answer disproves it", () => {
-    expect(noticeFromError(new TypeError("Failed to fetch")).retiredBy).toBe(RetiredBy.reply);
-    expect(noticeFromError(new TypeError("Load failed")).retiredBy).toBe(RetiredBy.reply);
+    expect(noticeFromError(new NetworkError("api/health", new TypeError("Failed to fetch"))).retiredBy).toBe(RetiredBy.reply);
+    expect(noticeFromError(new NetworkError("api/health", new TypeError("Load failed"))).retiredBy).toBe(RetiredBy.reply);
   });
 
   it("an operation failure is reader-retired: no request can disprove it", () => {

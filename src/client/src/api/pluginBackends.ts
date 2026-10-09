@@ -15,6 +15,7 @@ import {
 import { resolveAppUrl, type AppUrlContext } from "../appUrl";
 import { describeError } from "../notice";
 import { fetchWithDeadline, isTransportFailure } from "./requestDeadline";
+import { transportClaimOf } from "./transportClaim";
 import { isRecord } from "../../../shared/unknownValues";
 
 export interface PluginBackendRequestTarget {
@@ -72,11 +73,7 @@ export async function requestPluginBackend(
       return { response, text: await readBoundedResponseText(response) };
     });
   } catch (error) {
-    // The raw browser text stays raw: the transport family rules are anchored
-    // whole-message, so a composed prefix converts a link failure into a
-    // reader-retired permanent banner. The healing rewrite ("Lost connection
-    // to PI WEB. Reconnecting…") is what the reader sees anyway.
-    if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, target.machineId);
+    if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, target.machineId, undefined, undefined, transportClaimOf(error));
     throw error;
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpError } from "./api/http";
-import { RequestTimeoutError } from "./api/requestDeadline";
+import { NetworkError, RequestTimeoutError } from "./api/requestDeadline";
 import { noticeForReader, noticeFromError, noticeFromTransport } from "./notice";
 
 describe("what retires a notice", () => {
@@ -54,7 +54,7 @@ describe("a notice made from a thrown error", () => {
   });
 
   it("retires a link failure on the next reply", () => {
-    expect(retiresOnReply(noticeFromError(new TypeError("Failed to fetch")))).toBe(true);
+    expect(retiresOnReply(noticeFromError(new NetworkError("api/status", new TypeError("Failed to fetch"))))).toBe(true);
   });
 
   /**

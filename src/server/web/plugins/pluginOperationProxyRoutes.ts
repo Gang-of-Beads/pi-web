@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { SessionDaemonRequestClient } from "../../shared/sessiondClient/sessionDaemonClient.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
+import { daemonTransport } from "../../shared/transportFailure.js";
 import { PLUGIN_OPERATION_BODY_MAX_BYTES } from "../../shared/plugins/pluginOperationContract.js";
 
 /**
@@ -32,6 +33,7 @@ export function registerPluginOperationProxyRoutes(
         return await reply.code(502).send({
           error: `Session daemon unavailable: ${error instanceof Error ? error.message : String(error)}`,
           code: "daemon-unavailable",
+          ...daemonTransport(error),
           pluginId,
           operation,
         });

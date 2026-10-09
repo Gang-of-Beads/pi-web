@@ -2,9 +2,10 @@ import { isRecord } from "../../../shared/unknownValues";
 import type { AskUserSubmission, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse } from "../../../shared/apiTypes";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
-import { apiErrorMessage, errorCode, HttpError, request } from "./http";
+import { apiErrorMessage, errorCode, HttpError, request, transportFailureOf } from "./http";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { fetchWithDeadline, isTransportFailure } from "./requestDeadline";
+import { transportClaimOf } from "./transportClaim";
 import {
   arrayOf,
   parseAborted,
@@ -500,14 +501,14 @@ async function requestSessionFork(session: SessionRef, endpoint: SessionForkEndp
       if (!response.ok) {
         const body: unknown = await response.json().catch((): unknown => ({}));
         if (isMissingDaemonRoute(response.status, body, route.missing)) throw route.unavailable();
-        throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(sessionPath(session, endpoint, machineId)), undefined, errorCode(body));
+        throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(sessionPath(session, endpoint, machineId)), undefined, errorCode(body), transportFailureOf(body));
       }
       return parseSessionTreeForkResult(await response.json());
     });
   } catch (error) {
     // A bare TypeError is the browser's link-failure shape; unscoped, it
     // lands page-level and any other machine's success erases it.
-    if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, machineId);
+    if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, machineId, undefined, undefined, transportClaimOf(error));
     throw error;
   }
 }
@@ -534,10 +535,10 @@ async function readNewerDaemonRoute<T>(path: string, machineId: string, parse: (
       if (response.ok) return { kind: "answered", value: parse(await response.json()) };
       const body: unknown = await response.json().catch((): unknown => ({}));
       if (isMissingDaemonRoute(response.status, body, route)) return { kind: "unsupported" };
-      throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(path), undefined, errorCode(body));
+      throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(path), undefined, errorCode(body), transportFailureOf(body));
     });
   } catch (error) {
-    if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, machineId);
+    if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, machineId, undefined, undefined, transportClaimOf(error));
     throw error;
   }
 }
@@ -563,7 +564,7 @@ async function getOptionalTerminalCommandRun(runId: string, machineId: string): 
       return parseTerminalCommandRun(await response.json());
     });
   } catch (error) {
-    if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, machineId);
+    if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, machineId, undefined, undefined, transportClaimOf(error));
     throw error;
   }
 }

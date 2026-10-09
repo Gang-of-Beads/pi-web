@@ -1,7 +1,7 @@
-import { isTransientError } from "./components/errorBanner";
 import { HttpError } from "./api/http";
 import { machineIdFromUrl } from "./api/transportHealth";
 import { RequestTimeoutError } from "./api/requestDeadline";
+import { transportClaimOf, type TransportClaim } from "./api/transportClaim";
 
 /**
  * What retires a notice.
@@ -25,13 +25,13 @@ export interface Notice {
   readonly retiredBy: RetiredBy;
   /** The machine a transport claim is about; "page" when the claim is global. */
   readonly machineId?: string;
+  /** What a self-healing failure claims about the link (B16); the row words it, and the next answer retires it. */
+  readonly claim?: TransportClaim;
 }
 
 
-export function noticeFromTransport(text: string, machineId?: string): Notice {
-  return machineId === undefined
-    ? { text, retiredBy: RetiredBy.reply }
-    : { text, retiredBy: RetiredBy.reply, machineId };
+export function noticeFromTransport(text: string, machineId?: string, claim?: TransportClaim): Notice {
+  return { text, retiredBy: RetiredBy.reply, ...(machineId === undefined ? {} : { machineId }), ...(claim === undefined ? {} : { claim }) };
 }
 
 export function noticeForReader(text: string, machineId?: string): Notice {
@@ -67,53 +67,25 @@ export function describeError(error: unknown): string {
 }
 
 /**
- * Whether a failed request should raise a page-level notice at all.
+ * The notice a failure raises.
  *
- * The page banner speaks about the link. An operation that went unanswered is
- * a fact about that operation, and it now says so on its own row: a red bar
- * reading "the server did not answer within 30s" over a transcript that was
- * still receiving output made the app look broken while it was working.
+ * The page row speaks about the link. A failure that claims the link is down (`transportClaimOf`:
+ * by its type, never its words) is retired by the next answer from that link; anything else,
+ * an HTTP refusal included, is the outcome of one operation and only the reader retires it.
+ * Measured live: a remote machine answered /status at 30.007s against a 30.000s browser
+ * deadline, and the timeout notice outlived the working session on the reader's lifetime.
  *
- * A deadline miss is rewritten by the wording table to a line that withdraws
- * itself. (The live-link suppression branch - raise nothing while the socket
- * is proven live - is the recorded open seam from the round-19 triage: no
- * production caller can prove liveness yet, so no such branch ships here.)
+ * The machine a notice speaks about rides with it: the gateway names the machine it failed for,
+ * and a deadline names the machine its URL asked.
  */
 export function noticeFromError(error: unknown): Notice {
   const text = describeError(error);
-  // An HTTP status is an answer: the link demonstrably works and the operation
-  // failed. Treating it as a transport claim let the next successful poll
-  // erase a real failure 1.5s after it appeared - a red flash, no explanation.
-  // It is the operation's outcome, so only the reader (or a replacing message)
-  // retires it. The exception is a proxy failure whose body is a transport
-  // claim - the gateway answered, but only to say the daemon behind it is
-  // unreachable, which is the commonest banner an update produces. That claim
-  // heals, so it keeps reply retirement and the wording table applies.
-  // Retirement follows the evidence in the message, not the exception's
-  // pedigree: helper wrappers re-throw plain Errors carrying the same words,
-  // and the same text must not get two lifetimes because two HTTP helpers
-  // raised it.
-  // An HttpError goes first, because it may carry the machine in its hand:
-  // the gateway names the machine it failed for, and a text-first branch
-  // would classify the message before that name is read - the scope stamp
-  // the producer chose was being dropped by branch order, not by design.
-  // Classification still follows the message's evidence, so a reader-type
-  // failure that happens to carry a machineId keeps reader retirement.
-  if (error instanceof HttpError) {
-    return isTransientError(text) ? noticeFromTransport(text, error.machineId) : noticeForReader(text, error.machineId);
-  }
-  // The display side owns the phrase table (isTransientError below reads
-  // it); classification asks rather than re-spelling it, so the two cannot
-  // drift - a text the banner would not shorten must not claim a lifetime
-  // only the shortening would spend.
-  if (isTransientError(text)) {
-    return noticeFromTransport(text, error instanceof RequestTimeoutError ? machineIdFromUrl(error.url) : undefined);
-  }
-  // A deadline miss reaches the transport branch above: its fixed text
-  // ("The server did not answer within Ns.") is exactly what the wording
-  // table matches, so the deadline claims a reply lifetime and later answers
-  // disprove it the same way. Measured live: a remote machine answered
-  // /status at 30.007s against a 30.000s browser deadline, and the timeout
-  // banner outlived the working session on the reader lifetime.
-  return noticeForReader(text);
+  const claim = transportClaimOf(error);
+  const machineId = noticeMachineOf(error);
+  return claim === undefined ? noticeForReader(text, machineId) : noticeFromTransport(text, machineId, claim);
+}
+
+function noticeMachineOf(error: unknown): string | undefined {
+  if (error instanceof HttpError) return error.machineId;
+  return error instanceof RequestTimeoutError ? machineIdFromUrl(error.url) : undefined;
 }
