@@ -53,7 +53,7 @@ import { placeSessionId, targetInScope, targetUnanswered, type ScopedSessionTarg
 import { sessionTargetView, type SessionTargetNames } from "../sessionTargetView";
 import { recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { keyboardInset, visualViewportOffsetTop } from "../appShell/keyboardInset";
-import { machineSessionKey, machineWorkspaceKey } from "../machineKeys";
+import { LOCAL_MACHINE_ID, machineSessionKey, machineWorkspaceKey } from "../machineKeys";
 import { askConfirmation, confirmationText, type ConfirmRequest } from "../confirmDialog";
 import { modifiedMs, sessionSections } from "../sessionOrder";
 import { commandsForSession } from "../commandLedger";
@@ -2384,7 +2384,7 @@ export class PiWebApp extends LitElement {
   /**
    * A machine's global socket lost an announcement (state-diagram D5, "A lost announcement is
    * noticed"): read again everything its frames keep live, once. Each frame kind and what heals it:
-   * `sessions.unread` the unread set; `pins.changed` the pins; `machine.status` (projects and
+   * `sessions.unread` the unread set; `pins.changed` the pins; `plugins.changed` the plugin manifest; `machine.status` (projects and
    * workspaces ride it) a fresh snapshot; `session.name` and `session.created` the board and, on
    * the machine in use, its workspace's sessions; `status.update` and `activity.update` its
    * statuses; terminal frames its terminals; `workspace.changed` its open workspace panels.
@@ -2397,6 +2397,7 @@ export class PiWebApp extends LitElement {
   /** One pass of `rereadAnnounced`: a burst of losses on a lossy link shares it, and asks for at most one more after it (review of 2dcf8caa). */
   private async readAnnounced(machineId: string): Promise<void> {
     this.refreshMachinePins(machineId);
+    this.followPluginChanges(machineId);
     this.sessionBoards.missedAnnouncements(machineId);
     const reads: Promise<unknown>[] = [this.sessionUnread.refresh(machineId), this.machineStatus.refresh(machineId)];
     if (machineId === selectedMachineId(this.state)) {
@@ -2473,12 +2474,14 @@ export class PiWebApp extends LitElement {
   private handleMachineActivityEvent(machineId: string, event: BrowserRealtimeEvent): void {
     this.applyBoardEvent(machineId, event);
     if (event.type === "pins.changed") this.refreshMachinePins(machineId);
+    else if (event.type === "plugins.changed") this.followPluginChanges(machineId);
     else if (event.type === "sessions.unread") this.sessionUnread.applyEvent(machineId, event);
     else if (event.type === "machine.status") this.machineStatus.apply(machineId, event.status);
   }
 
   private handleRealtimeEvent(machineId: string, event: BrowserRealtimeEvent): void {
     if (event.type === "pins.changed") this.refreshMachinePins(machineId);
+    else if (event.type === "plugins.changed") this.followPluginChanges(machineId);
     else if (event.type === "sessions.unread") this.sessionUnread.applyEvent(machineId, event);
     else if (event.type === "machine.status") this.machineStatus.apply(machineId, event.status);
     else if (event.type === "workspace.changed") this.applyWorkspaceChanged(machineId, event.cwd);
@@ -4194,6 +4197,62 @@ export class PiWebApp extends LitElement {
     }));
   }
 
+  /** The plugins each machine's manifest loaded into this page, so a toggle can dispose exactly those and never a core one. */
+  private readonly externalPluginIds = new Map<string, Set<string>>();
+  private readonly pluginFollows = new Map<string, Promise<void>>();
+
+  /**
+   * A machine said its running plugins changed (B19 slice C): read its manifest again, load what
+   * was turned on and dispose what was turned off, one follow per machine at a time. A remote
+   * machine whose plugins this page never loaded has nothing on the page to follow.
+   */
+  private followPluginChanges(machineId: string): void {
+    const previous = this.pluginFollows.get(machineId) ?? Promise.resolve();
+    const next = previous.then(() => this.reconcilePagePlugins(machineId)).catch((error: unknown) => { console.warn(`Could not follow the plugin change on ${machineId}`, error); });
+    this.pluginFollows.set(machineId, next);
+  }
+
+  private async reconcilePagePlugins(machineId: string): Promise<void> {
+    if (machineId === LOCAL_MACHINE_ID) {
+      await this.registerExternalPlugins("PI WEB plugins", LOCAL_MACHINE_ID, () => loadExternalPlugins("pi-web-plugins/manifest.json", {
+        shouldLoadPlugin: (entry) => !this.plugins.hasPlugin(entry.id),
+      }));
+      return;
+    }
+    const machine = this.state.machines.find((candidate) => candidate.id === machineId);
+    if (machine?.kind !== "remote" || !this.loadedMachinePluginIds.has(machineId)) return;
+    await this.registerExternalPlugins(`PI WEB plugins from ${machine.name}`, machineId, () => loadExternalPlugins(`api/machines/${encodeURIComponent(machineId)}/pi-web-plugins/manifest.json`, {
+      machineId,
+      shouldLoadPlugin: (entry) => !this.plugins.hasPlugin(machineScopedPluginId(machineId, entry.id))
+        && this.plugins.shouldLoadRemotePlugin(entry.id, entry.machineSpecific),
+    }));
+  }
+
+  /**
+   * Dispose what this machine's manifest loaded and no longer lists, and forget the load failures of
+   * plugins it no longer lists (a plugin that failed and was then turned off has nothing to fail);
+   * a load that read no manifest disposes and forgets nothing.
+   */
+  private disposeUnlistedPlugins(machineId: string, listed: readonly string[] | undefined): void {
+    if (listed === undefined) return;
+    const keep = new Set(listed);
+    const loaded = this.externalPluginIds.get(machineId) ?? new Set<string>();
+    for (const pluginId of [...loaded]) {
+      if (keep.has(pluginId)) continue;
+      this.plugins.disposePlugin(pluginId);
+      loaded.delete(pluginId);
+    }
+    const runtimeIdOf = (sourceId: string): string => (machineId === LOCAL_MACHINE_ID ? sourceId : machineScopedPluginId(machineId, sourceId));
+    for (const sourceId of [...(this.pluginLoadFailures.get(machineId)?.keys() ?? [])]) {
+      if (!keep.has(runtimeIdOf(sourceId))) this.setPluginLoadFailure(machineId, sourceId, undefined);
+    }
+  }
+
+  /** Whether the machine in Settings applies a plugin toggle live, so the page follows it and needs no reload. */
+  private settingsMachineFollowsToggles(): boolean {
+    return supportsPiWebCapability(this.selectedMachineRuntime(), PI_WEB_CAPABILITIES.livePluginToggle);
+  }
+
   /** One retry of every plugin still missing: this machine's, then the selected remote machine's. */
   private async retryMissingPlugins(attempt: number): Promise<boolean> {
     const local = await this.loadExternalPlugins(attempt);
@@ -4242,6 +4301,7 @@ export class PiWebApp extends LitElement {
   private async registerExternalPlugins(label: string, machineId: string, load: () => Promise<ExternalPluginLoadResult>): Promise<boolean> {
     try {
       const result = await load();
+      this.disposeUnlistedPlugins(machineId, result.listed);
       let complete = result.failures.length === 0;
       for (const failure of result.failures) {
         console.warn(`Failed to load PI WEB plugin ${failure.entry.id} (${failure.entry.module})`, failure.error);
@@ -4251,6 +4311,7 @@ export class PiWebApp extends LitElement {
         if (this.plugins.hasPlugin(registration.id)) continue;
         try {
           this.plugins.register(registration);
+          this.externalPluginIds.set(machineId, new Set([...(this.externalPluginIds.get(machineId) ?? []), registration.id]));
           this.setPluginLoadFailure(machineId, registration.sourcePluginId ?? registration.id, undefined);
         } catch (error) {
           complete = false;
@@ -5375,7 +5436,7 @@ export class PiWebApp extends LitElement {
         ${this.renderSessionTreeNavigator(state)}
         ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onConfirm=${(request: ConfirmRequest) => this.confirm(request)} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
-        ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .reveal=${this.settingsReveal} .onRevealed=${() => { this.settingsReveal = undefined; }} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} ?reloadOnClose=${this.reloadAfterSettings} .onPluginsChanged=${() => { this.reloadAfterSettings = true; }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .pluginLoadFailures=${this.pluginLoadFailures} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
+        ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .reveal=${this.settingsReveal} .onRevealed=${() => { this.settingsReveal = undefined; }} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} ?reloadOnClose=${this.reloadAfterSettings} .onPluginsChanged=${() => { if (!this.settingsMachineFollowsToggles()) this.reloadAfterSettings = true; }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .pluginLoadFailures=${this.pluginLoadFailures} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
         ${this.pluginDialogs.map((entry) => html`<div class=${PLUGIN_DIALOG_CLASS[entry.dialog.presentation ?? "overlay"]}><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
       ${this.contextSheetOpen ? html`<context-switcher-sheet

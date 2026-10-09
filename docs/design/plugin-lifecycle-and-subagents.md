@@ -97,7 +97,7 @@ answered, a plugin that hands core a face (a workspace provider or a machine reg
 **Slice B: routes of a plugin enabled after boot** answer through the not-found handler, which
 consults the live route table before answering route-missing.
 
-**Slice C: the page follows `plugins.changed`**, disposing and loading browser halves against the
+**Slice C (done): the page follows `plugins.changed`**, disposing and loading browser halves against the
 manifest, instead of reloading when Settings closes.
 
 **Slice D: the lifecycle section of docs/plugins.md.** Its server half ("Turning a plugin on or off") landed with slice A; slice D adds the browser half and the conformance checks (owner question 23).

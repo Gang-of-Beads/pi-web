@@ -26,7 +26,7 @@ Use **Settings → Pi packages** to view configured Pi packages or install/remov
 
 When machine federation is enabled, **Settings → Pi packages** targets the currently selected machine. The panel labels whether changes will run on the local/gateway machine or on a selected remote PI WEB machine.
 
-Use **Settings → PI WEB plugins** to turn discovered plugins on or off on the selected machine. A plugin's server entry starts or stops at once in the process that runs it, without a restart; closing Settings then reloads the page to load or unload its browser module. A plugin that supplies the workspace provider or the machine registry (Workspaces, Machines, or a replacement), a changed plugin `settings` object, and a new package revision of a running plugin still need a session-daemon restart, and their cards say **Restart required** until it happens. See [Turning a plugin on or off](#turning-a-plugin-on-or-off). If an older or unavailable remote PI WEB server does not support the versioned plugin lifecycle, PI WEB reports plugin settings as unsupported or unavailable instead of silently falling back to the gateway.
+Use **Settings → PI WEB plugins** to turn discovered plugins on or off on the selected machine. A plugin's server entry starts or stops at once in the process that runs it, without a restart; every open page then loads or unloads its browser module at once, with no reload. A machine running an older PI WEB applies the browser half when Settings closes, by reloading the page. A plugin that supplies the workspace provider or the machine registry (Workspaces, Machines, or a replacement), a changed plugin `settings` object, and a new package revision of a running plugin still need a session-daemon restart, and their cards say **Restart required** until it happens. See [Turning a plugin on or off](#turning-a-plugin-on-or-off). If an older or unavailable remote PI WEB server does not support the versioned plugin lifecycle, PI WEB reports plugin settings as unsupported or unavailable instead of silently falling back to the gateway.
 
 After installing, removing, or updating a Pi package, type `/reload` in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. For PI WEB plugins, manually restart the target session daemon when the package has a server entry, then reload the browser page. A provider-registering Pi extension follows a separate daemon-start policy; see [Pi extension provider baseline](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/config.md#pi-extension-provider-baseline).
 
@@ -302,7 +302,7 @@ Use this sequence:
 
 1. Install or update the package on the target machine.
 2. Set the desired plugin enablement/settings.
-3. For a browser-only plugin, close Settings: the page reloads itself to load or unload it. After editing the config file by hand, reload the browser tab.
+3. For a browser-only plugin, the toggle in Settings applies at once on every open page (on a machine running an older PI WEB, closing Settings reloads the page instead). After editing the config file by hand, reload the browser tab.
 4. For a server-backed plugin, a toggle in Settings applies at once. After a settings change or a package update, or for a plugin that supplies the workspace provider or the machine registry, manually restart sessiond, wait for it to become available, then reload the browser tab.
 
 ### Turning a plugin on or off
@@ -322,6 +322,8 @@ A plugin can rely on these guarantees:
 - A `stop` that throws or times out leaves the plugin `failed` in phase `stop`.
 
 The signal an operation or route handler receives fires when the caller goes away and when the plugin is turned off; a handler that holds work open should listen to it.
+
+The machine then announces the change (`plugins.changed`) to every page browsing it. Each page reads that machine's plugin manifest again: it loads the browser modules now listed and disposes the ones no longer listed, calling their `dispose`, without reloading. A page that missed the announcement reads the manifest again when it notices the gap.
 
 > **Manual session-daemon restart:** for the native systemd user service, run `systemctl --user restart pi-web-sessiond` (the unit is `pi-web-sessiond.service`). Restarting sessiond may interrupt active sessions and runtime ownership. Web/UI autoreload, restarting only the web/API service, browser reload, and Pi's `/reload` command do not activate server-plugin changes.
 

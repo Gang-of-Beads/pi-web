@@ -129,7 +129,7 @@ describe("PI WEB status", () => {
 
     const runtime = await getPiWebRuntime(daemon);
 
-    expect(runtime.components.web.capabilities).toEqual(["plugins.lifecycle"]);
+    expect(runtime.components.web.capabilities).toEqual(["plugins.lifecycle", "plugins.live-toggle"]);
     expect(runtime.components.sessiond.capabilities).toEqual([]);
     expect(runtime.capabilities).toEqual(["plugins.lifecycle"]);
   });
@@ -202,7 +202,7 @@ describe("PI WEB status", () => {
     });
 
     expect(runtime.components.web.available).toBe(true);
-    expect(runtime.components.web.capabilities).toEqual(["plugins.lifecycle"]);
+    expect(runtime.components.web.capabilities).toEqual(["plugins.lifecycle", "plugins.live-toggle"]);
     expect(runtime.components.web.runtimeVersion).toBeDefined();
     expect(runtime.components.web).not.toHaveProperty("deprecatedAgentInputs");
     expect(runtime.components.web.error).toContain("Could not check for deprecated agent configuration inputs");

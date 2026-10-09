@@ -82,6 +82,8 @@ export type MachineStatus = "unknown" | "online" | "offline" | "error";
  */
 export const PI_WEB_CAPABILITIES = {
   pluginLifecycle: "plugins.lifecycle",
+  /** A plugin toggle applies live and the machine announces it with `plugins.changed` (B19 slice C). */
+  livePluginToggle: "plugins.live-toggle",
 } as const;
 
 export type PiWebCapability = typeof PI_WEB_CAPABILITIES[keyof typeof PI_WEB_CAPABILITIES];
@@ -1789,7 +1791,16 @@ export interface PinsChangedUiEvent {
   readonly type: "pins.changed";
 }
 
-export type RealtimeEvent = GlobalSessionEvent | TerminalUiEvent | MachineStatusUiEvent | WorkspaceChangedUiEvent | PinsChangedUiEvent;
+/**
+ * The machine's running plugins changed: a toggle was applied in its web process and daemon (B19).
+ * A browser reads that machine's plugin manifest again, loading what was turned on and disposing
+ * what was turned off, instead of reloading the page.
+ */
+export interface PluginsChangedUiEvent {
+  readonly type: "plugins.changed";
+}
+
+export type RealtimeEvent = GlobalSessionEvent | TerminalUiEvent | MachineStatusUiEvent | WorkspaceChangedUiEvent | PinsChangedUiEvent | PluginsChangedUiEvent;
 
 /** A run a restart cut off, as reported once by the daemon and then cleared. */
 export interface InterruptedRunInfo {

@@ -445,6 +445,7 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
   registerPluginReconcileRoute(app, async () => {
     await serverPlugins.reconcile();
     recordDeclaredAgentFacts(serverPlugins.declaredAgentFacts());
+    eventHub.publishRealtime({ type: "plugins.changed" });
   });
   registerPluginBackendRoutes(app, {
     projects,

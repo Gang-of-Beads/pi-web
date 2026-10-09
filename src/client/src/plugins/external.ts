@@ -33,6 +33,8 @@ export interface ExternalPluginLoadFailure {
 export interface ExternalPluginLoadResult {
   registrations: PiWebPluginRegistration[];
   failures: ExternalPluginLoadFailure[];
+  /** Every plugin the manifest lists, by its id on this page; undefined when no manifest was read, which proves nothing about what is running. */
+  listed?: readonly string[];
 }
 
 export async function loadExternalPlugins(manifestUrl = "pi-web-plugins/manifest.json", options: LoadExternalPluginsOptions = {}): Promise<ExternalPluginLoadResult> {
@@ -68,7 +70,8 @@ export async function loadExternalPlugins(manifestUrl = "pi-web-plugins/manifest
     if ("registration" in outcome) registrations.push(outcome.registration);
     else failures.push(outcome.failure);
   }
-  return { registrations, failures };
+  const listed = manifest.plugins.map((entry) => (options.machineId === undefined ? entry.id : machineScopedPluginId(options.machineId, entry.id)));
+  return { registrations, failures, listed };
 }
 
 export function resolvePluginModuleUrl(moduleReference: string, manifestUrl: string, appUrlContext?: AppUrlContext): string {

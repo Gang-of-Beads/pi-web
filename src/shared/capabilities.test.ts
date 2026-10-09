@@ -3,7 +3,7 @@ import { effectivePiWebCapabilities, isPiWebCapability, PI_WEB_CAPABILITIES, SES
 
 describe("PI WEB capabilities", () => {
   it("advertises plugin lifecycle as a web-only capability that does not require session daemon support", () => {
-    expect(WEB_RUNTIME_CAPABILITIES).toEqual([PI_WEB_CAPABILITIES.pluginLifecycle]);
+    expect(WEB_RUNTIME_CAPABILITIES).toEqual([PI_WEB_CAPABILITIES.pluginLifecycle, PI_WEB_CAPABILITIES.livePluginToggle]);
     expect(SESSIOND_RUNTIME_CAPABILITIES).not.toContain(PI_WEB_CAPABILITIES.pluginLifecycle);
 
     expect(effectivePiWebCapabilities({

@@ -163,8 +163,8 @@
               </p>
               <p>
                 Use <strong>Settings → PI WEB plugins</strong> to turn plugins on or off on the selected machine. A
-                plugin's server entry starts or stops at once in the process that runs it; closing Settings then
-                reloads the page for its browser module. A plugin that supplies the workspace provider or the machine
+                plugin's server entry starts or stops at once in the process that runs it, and every open page loads
+                or unloads its browser module at once, with no reload. A plugin that supplies the workspace provider or the machine
                 registry, a changed <code>settings</code> object, and a new package revision of a running plugin still
                 need a session-daemon restart and say <strong>Restart required</strong>. Unsupported or
                 unavailable remote settings are reported instead of silently falling back to the gateway.
@@ -607,7 +607,7 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@gang-of-beads/pi-web
               <ol>
                 <li>Install or update the plugin package on the target machine.</li>
                 <li>Set its desired enablement/settings.</li>
-                <li>For a browser-only plugin, close Settings: the page reloads itself to load or unload it. After editing the config file by hand, reload the browser tab.</li>
+                <li>For a browser-only plugin, the toggle applies at once on every open page (on a machine running an older PI WEB, closing Settings reloads the page instead). After editing the config file by hand, reload the browser tab.</li>
                 <li>For a server-backed plugin, a toggle in Settings applies at once. After a settings change or a package update, or for a workspace-provider or machine-registry plugin, restart sessiond, wait for it, then reload the browser tab.</li>
               </ol>
               <p>
