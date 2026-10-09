@@ -8,6 +8,7 @@ import type { ActiveAgentProfileProvider } from "./activeAgentProfileProvider.js
 import { buildApp } from "./app.js";
 import { noServerPlugins } from "./app.testSupport.js";
 import type { PiWebConfigService } from "./configRoutes.js";
+import type { SessionProxyDaemon } from "./sessionProxyRoutes.js";
 
 let tempDir: string;
 
@@ -50,6 +51,8 @@ describe("buildApp active profile composition", () => {
       config: emptyConfigService(),
       clientDist: false,
       logger: false,
+      pluginRoots: [],
+      sessionDaemon: offlineSessionDaemon(),
       serverPluginRuntime: await noServerPlugins(),
     });
 
@@ -92,12 +95,10 @@ describe("buildApp active profile composition", () => {
     const app = await buildApp({
       agentProfileProvider: { getActiveAgentProfile: () => Promise.resolve({ status: "unavailable", error: "sessiond is offline" }) },
       config: configService,
-      sessionDaemon: {
-        request: () => Promise.reject(new Error("connect ECONNREFUSED")),
-        connectWebSocket: () => { throw new Error("sessiond is offline"); },
-      },
       clientDist: false,
       logger: false,
+      pluginRoots: [],
+      sessionDaemon: offlineSessionDaemon(),
       serverPluginRuntime: await noServerPlugins(),
     });
 
@@ -137,6 +138,8 @@ describe("buildApp active profile composition", () => {
       config: emptyConfigService(),
       clientDist: false,
       logger: false,
+      pluginRoots: [],
+      sessionDaemon: offlineSessionDaemon(),
       serverPluginRuntime: await noServerPlugins(),
     });
 
@@ -156,6 +159,14 @@ describe("buildApp active profile composition", () => {
     }
   });
 });
+
+/** A session daemon that never answers: without one, buildApp asks the machine's real daemon. */
+function offlineSessionDaemon(): SessionProxyDaemon {
+  return {
+    request: () => Promise.reject(new Error("connect ECONNREFUSED")),
+    connectWebSocket: () => { throw new Error("sessiond is offline"); },
+  };
+}
 
 function activeProfile(dir: string): ActiveAgentProfileDescriptor {
   return {

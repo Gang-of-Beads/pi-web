@@ -27,7 +27,7 @@ import { registerWorkspaceDeletionRoutes } from "./workspaces/workspaceDeletionR
 import { createFilePiWebConfigService, registerConfigRoutes, registerLocalMachineConfigRoutes, type PiWebConfigService } from "./configRoutes.js";
 import { PiWebPluginService } from "./piWebPluginService.js";
 import { askDaemonToReconcilePlugins } from "../shared/plugins/pluginReconcile.js";
-import { PiWebPluginCatalog, filterCatalogEntriesByRuns } from "../shared/piWebPluginCatalog.js";
+import { PiWebPluginCatalog, filterCatalogEntriesByRuns, type LocalPluginRoot } from "../shared/piWebPluginCatalog.js";
 import { createServerPluginRuntime, type ServerPluginRuntime } from "../shared/plugins/serverPluginRuntime.js";
 import type { ServerPluginRuntimeLogger } from "../shared/plugins/serverPluginRuntime.js";
 import { createWorkspaceProviderRuntimeSnapshot, type WorkspaceProviderRuntimeSnapshot } from "../shared/workspaces/workspaceCatalog.js";
@@ -65,6 +65,12 @@ export interface AppDependencies {
   agentProfileProvider?: ActiveAgentProfileProvider;
   piWebPlugins?: Pick<PiWebPluginService, "manifest" | "plugins" | "readAsset">;
   piWebPluginCatalog?: PiWebPluginCatalog;
+  /**
+   * Where local plugin packages are found; the bundled build output, a source checkout's plugins
+   * and the data directory's plugins when omitted. A test that reads the catalog passes its own:
+   * the bundled output is rewritten while a build runs beside it, and a scan of it raced that build.
+   */
+  pluginRoots?: LocalPluginRoot[];
   /** Pre-activated web-process plugin runtime; assembled from the catalog when omitted. */
   serverPluginRuntime?: ServerPluginRuntime;
   piPackages?: PiPackageService;
@@ -237,7 +243,9 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   const workspaces = deps.workspaceCatalog ?? daemonWorkspaces;
   const agentProfileProvider = deps.agentProfileProvider ?? new SessionDaemonActiveAgentProfileProvider(sessionDaemon);
   let webProviderRuntimeSnapshot: (() => WorkspaceProviderRuntimeSnapshot) | undefined;
+  const pluginRoots = deps.pluginRoots === undefined ? {} : { roots: deps.pluginRoots };
   const piWebPlugins = deps.piWebPlugins ?? new PiWebPluginService({
+    ...pluginRoots,
     configProvider: readConfig,
     agentDirProvider: () => desiredPluginAgentDir(agentProfileProvider, configService),
     runtimeProvider: daemonWorkspaces,
@@ -248,6 +256,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   // service does; it stays a separate catalog because the service is often a
   // fixture and the runtime must exist even when the daemon is unreachable.
   const piWebPluginCatalog = deps.piWebPluginCatalog ?? new PiWebPluginCatalog({
+    ...pluginRoots,
     configProvider: readConfig,
     agentDirProvider: () => desiredPluginAgentDir(agentProfileProvider, configService),
   });
