@@ -22,6 +22,8 @@ export function registerMachineTerminalRoutes(app: FastifyInstance, daemon: Sess
 
   app.post<{ Params: { terminalId: string } }>(`${prefix}/terminals/:terminalId/continue`, async (request, reply) => proxyJson(daemon, "POST", `/terminals/${encodeURIComponent(request.params.terminalId)}/continue`, undefined, reply));
 
+  app.post<{ Params: { terminalId: string }; Body: unknown }>(`${prefix}/terminals/:terminalId/rename`, async (request, reply) => proxyJson(daemon, "POST", `/terminals/${encodeURIComponent(request.params.terminalId)}/rename`, request.body, reply));
+
   app.delete<{ Params: { terminalId: string } }>(`${prefix}/terminals/:terminalId`, async (request, reply) => proxyJson(daemon, "DELETE", `/terminals/${encodeURIComponent(request.params.terminalId)}`, undefined, reply));
 
   app.get<{ Params: { terminalId: string }; Querystring: { cols?: string; rows?: string } }>(`${prefix}/terminals/:terminalId/socket`, { websocket: true }, (socket, request) => {

@@ -14,7 +14,9 @@ import "./TerminalSoftKeys";
 import type { TerminalSoftKeyInputOptions } from "./TerminalSoftKeys.js";
 import { clampTerminalFontSize, pinchDistance, pinchFontSize, type PinchState } from "./pinchZoom.js";
 import { describeTerminalError } from "./hostUi.js";
-import { adoptTerminalHostStyles } from "./hostUi.js";
+import { adoptTerminalHostStyles, hostActionMenuPlacement } from "./hostUi.js";
+import { TabHold } from "./tabHold.js";
+import { keyBelongsToInputMethod } from "./inputMethodKey.js";
 import { anyModifier, NO_MODIFIERS, toggledModifier, typedInput, type TerminalModifier, type TerminalModifiers } from "./terminalExtraKeys.js";
 
 const TERMINAL_OPTIONS_BASE: ITerminalOptions = {
@@ -25,6 +27,8 @@ const TERMINAL_OPTIONS_BASE: ITerminalOptions = {
 };
 
 const DEFAULT_TERMINAL_SIZE: TerminalSize = { cols: 100, rows: 30 };
+/** The daemon's limit on a shell's name (terminalService.ts). */
+const TERMINAL_NAME_MAX_LENGTH = 80;
 const COMMAND_RUN_POLL_INTERVAL_MS = 1000;
 // Surface backed up: the terminal command-run list. The lifecycle events are
 // revisioned, but the panel predates that and still refreshes on this timer
@@ -63,6 +67,13 @@ export class TerminalPanel extends LitElement {
   @state() private modifiers: TerminalModifiers = NO_MODIFIERS;
   @state() private copySnapshot: TerminalCopySnapshot | undefined;
   @state() private copyStatus: string | undefined;
+  /** The shell whose tab is a name field (R12): reached by a double-click, a held finger, F2, or Rename… in its ⋯ menu. */
+  @state() private editingTerminalId: string | undefined;
+  @state() private menuTerminalId: string | undefined;
+  @state() private menuStyle = "";
+  @query(".tab-name-input") private tabNameInput?: HTMLInputElement | null;
+  private focusTabNameInput = false;
+  private readonly tabHold = new TabHold((terminalId) => { this.editTerminalName(terminalId); });
 
   private terminal: Terminal | undefined;
   private fitAddon: FitAddon | undefined;
@@ -141,6 +152,8 @@ export class TerminalPanel extends LitElement {
       this.selectedId = undefined;
       this.cancellingRunIds = [];
       this.continuingTerminalIds = [];
+      this.editingTerminalId = undefined;
+      this.menuTerminalId = undefined;
       this.updateCommandRunPolling(false);
       this.disposeTerminalView();
       return;
@@ -163,6 +176,11 @@ export class TerminalPanel extends LitElement {
     this.loadVisibleWorkspaceTerminals();
     if (changed.has("selectedTerminalId") && this.shouldReloadForRequestedTerminal()) void this.loadTerminals();
     this.ensureTerminalView();
+    if (this.focusTabNameInput && this.tabNameInput) {
+      this.focusTabNameInput = false;
+      this.tabNameInput.focus();
+      this.tabNameInput.select();
+    }
   }
 
   private loadVisibleWorkspaceTerminals(): void {
@@ -265,6 +283,52 @@ export class TerminalPanel extends LitElement {
   private selectTerminal(id: string): void {
     if (this.selectedId !== id) this.selectTerminalIdInView(id);
     this.onSelectTerminal(id);
+  }
+
+  private editTerminalName(id: string): void {
+    this.menuTerminalId = undefined;
+    this.editingTerminalId = id;
+    this.focusTabNameInput = true;
+  }
+
+  /**
+   * Leave the name field, keeping what it holds. An empty or unchanged name changes nothing; the tab
+   * shows the name the daemon answers with, never the typed text it may have refused.
+   */
+  private async commitTerminalName(id: string, value: string): Promise<void> {
+    if (this.editingTerminalId !== id) return;
+    this.editingTerminalId = undefined;
+    const name = value.trim();
+    const current = this.terminals.find((terminal) => terminal.id === id);
+    if (current === undefined || name === "" || name === current.name) return;
+    try {
+      const renamed = await this.terminalSessions().rename(id, name);
+      this.terminals = this.terminals.map((terminal) => terminal.id === renamed.id ? renamed : terminal);
+    } catch (error) {
+      this.error = describeTerminalError(error);
+    }
+  }
+
+  private onTerminalNameKeydown(event: KeyboardEvent, id: string): void {
+    if (keyBelongsToInputMethod(event)) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      this.editingTerminalId = undefined;
+      return;
+    }
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget instanceof HTMLInputElement) void this.commitTerminalName(id, event.currentTarget.value);
+  }
+
+  private openTabMenu(id: string, event: MouseEvent): void {
+    event.stopPropagation();
+    const place = hostActionMenuPlacement();
+    if (place === undefined || !(event.currentTarget instanceof HTMLElement)) return;
+    this.menuStyle = place(event.currentTarget);
+    this.menuTerminalId = id;
   }
 
   private selectedTerminalInfo(): TerminalInfo | undefined {
@@ -778,12 +842,7 @@ export class TerminalPanel extends LitElement {
         <div class="terminal-tabs">
           ${this.renderCopyModeToggle()}
           ${this.renderSoftKeysToggle()}
-          ${this.terminals.map((terminal) => html`
-            <button class=${this.selectedId === terminal.id ? "selected" : ""} @click=${() => { this.selectTerminal(terminal.id); }}>
-              <span>${terminal.name}${terminal.exited ? " · exited" : ""}</span>
-              <small @click=${(event: Event) => { void this.closeTerminal(terminal.id, event); }}>${renderHostCloseIcon()}</small>
-            </button>
-          `)}
+          ${this.terminals.map((terminal) => this.renderTab(terminal))}
           <button class="new" ?disabled=${this.folder() === undefined} @click=${() => { void this.startTerminal(); }}>+ Shell</button>
         </div>
         ${this.error === undefined ? null : html`<p class="error">${this.error}</p>`}
@@ -795,7 +854,63 @@ export class TerminalPanel extends LitElement {
           ${this.renderCopyMode()}
         </div>
         ${this.renderDockedSoftKeys()}
+        ${this.renderTabMenu()}
       </section>
+    `;
+  }
+
+  private renderTab(terminal: TerminalInfo) {
+    if (this.editingTerminalId === terminal.id) return this.renderTabNameEditor(terminal);
+    const menu = hostActionMenuPlacement() !== undefined;
+    return html`
+      <button
+        class=${this.selectedId === terminal.id ? "selected" : ""}
+        aria-keyshortcuts="F2"
+        @click=${() => { if (!this.tabHold.consumeClick()) this.selectTerminal(terminal.id); }}
+        @dblclick=${() => { this.editTerminalName(terminal.id); }}
+        @keydown=${(event: KeyboardEvent) => { if (event.key === "F2") { event.preventDefault(); this.editTerminalName(terminal.id); } }}
+        @pointerdown=${(event: PointerEvent) => { if (!onTabControl(event)) this.tabHold.start(event, terminal.id); }}
+        @pointermove=${(event: PointerEvent) => { this.tabHold.move(event); }}
+        @pointerup=${() => { this.tabHold.cancel(); }}
+        @pointercancel=${() => { this.tabHold.cancel(); }}
+        @contextmenu=${(event: MouseEvent) => { if (event instanceof PointerEvent && event.pointerType !== "mouse") event.preventDefault(); }}
+      >
+        <span>${terminal.name}${terminal.exited ? " · exited" : ""}</span>
+        ${menu ? html`<small class="tab-more" title=${`More for ${terminal.name}`} @click=${(event: MouseEvent) => { this.openTabMenu(terminal.id, event); }}>⋯</small>` : null}
+        <small @click=${(event: Event) => { void this.closeTerminal(terminal.id, event); }}>${renderHostCloseIcon()}</small>
+      </button>
+    `;
+  }
+
+  private renderTabNameEditor(terminal: TerminalInfo) {
+    return html`
+      <div class=${this.selectedId === terminal.id ? "tab-editing selected" : "tab-editing"}>
+        <input
+          class="tab-name-input"
+          .value=${terminal.name}
+          maxlength=${TERMINAL_NAME_MAX_LENGTH}
+          aria-label=${`Name for ${terminal.name}`}
+          enterkeyhint="done"
+          autocomplete="off"
+          spellcheck="false"
+          @keydown=${(event: KeyboardEvent) => { this.onTerminalNameKeydown(event, terminal.id); }}
+          @blur=${(event: FocusEvent) => { if (event.currentTarget instanceof HTMLInputElement) void this.commitTerminalName(terminal.id, event.currentTarget.value); }}
+        >
+      </div>
+    `;
+  }
+
+  /** The tab's ⋯ menu, the host's own (R12 option A): the shell's name, then Rename… and Close. */
+  private renderTabMenu() {
+    const terminal = this.terminals.find((candidate) => candidate.id === this.menuTerminalId);
+    if (terminal === undefined) return null;
+    return html`
+      <div class="menu-scrim" @click=${() => { this.menuTerminalId = undefined; }}></div>
+      <div class="action-menu-panel" role="menu" aria-label=${`Actions for ${terminal.name}`} style=${this.menuStyle} @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); this.menuTerminalId = undefined; } }}>
+        <p class="action-menu-subject">${terminal.name}</p>
+        <button type="button" role="menuitem" @click=${() => { this.editTerminalName(terminal.id); }}>Rename…</button>
+        <button type="button" role="menuitem" @click=${(event: Event) => { this.menuTerminalId = undefined; void this.closeTerminal(terminal.id, event); }}>Close</button>
+      </div>
     `;
   }
 
@@ -809,7 +924,7 @@ export class TerminalPanel extends LitElement {
     :host { flex: 1 1 auto; min-height: 0; display: flex; }
     .terminal-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--pi-terminal-bg); }
     .terminal-tabs { flex: 0 0 auto; display: flex; gap: var(--pi-space-3); align-items: center; padding: var(--pi-space-3); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); overflow: auto; }
-    .terminal-tabs > button { box-sizing: border-box; height: var(--pi-control-height); line-height: 16px; }
+    .terminal-tabs > button { box-sizing: border-box; flex: 0 0 auto; height: var(--pi-control-height); line-height: 16px; }
     /* Desktop xterm already has mouse selection and hardware keys; keep touch controls to touch/narrow layouts. */
     .copy-mode-toggle, .soft-keys-toggle, terminal-soft-keys { display: none; }
     .copy-mode-toggle.selected { display: inline-flex; }
@@ -825,7 +940,20 @@ export class TerminalPanel extends LitElement {
     .soft-keys-toggle .keyboard-icon { display: block; flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
     button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     button small { color: var(--pi-muted); font-size: var(--pi-text-base); line-height: 1; }
+    .terminal-tabs > button { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    .tab-editing { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; height: var(--pi-control-height); padding: var(--pi-space-1); border: 1px solid var(--pi-accent); border-radius: var(--pi-radius-md); background: var(--pi-selection-bg); }
+    .tab-name-input { box-sizing: border-box; width: 160px; max-width: 40vw; height: 100%; padding: 0 var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text); font: inherit; }
+    @media (pointer: coarse), (max-width: 760px) {
+      .tab-editing { height: var(--pi-control-height-touch); }
+    }
+    .action-menu-panel button { max-width: none; }
     @media (hover: hover) { button small:hover { color: var(--pi-danger); } }
+    .terminal-tabs > button small { align-self: stretch; display: inline-grid; place-items: center; min-width: 24px; margin-block: calc(-1 * var(--pi-space-3)); }
+    @media (pointer: coarse) {
+      .terminal-tabs > button small { min-width: var(--pi-control-height-touch); }
+      .terminal-tabs > button { max-width: 220px; }
+    }
+    @media (hover: hover) { .terminal-tabs > button .tab-more:hover { color: var(--pi-text); } }
     button.danger { color: var(--pi-danger); }
     button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     .command-run-notice { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-5); align-items: center; padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); color: var(--pi-text); }
@@ -877,6 +1005,11 @@ export class TerminalPanel extends LitElement {
     .muted { margin: var(--pi-space-5); color: var(--pi-muted); }
     .xterm { height: 100%; }
   `];
+}
+
+/** Whether a press began on a tab's own ⋯ or ×, which act on their click: holding one is not a rename. */
+function onTabControl(event: PointerEvent): boolean {
+  return event.target instanceof Element && event.target.closest("small") !== null;
 }
 
 function normalizedScrollOffset(sourceOffset: number, sourceRange: number, targetRange: number): number {

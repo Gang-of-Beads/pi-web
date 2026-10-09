@@ -49,6 +49,16 @@ export function registerTerminalProxyRoutes(app: FastifyInstance, projects: Proj
     }
   });
 
+  app.post<{ Params: { projectId: string; workspaceId: string; terminalId: string }; Body: unknown }>(`${prefix}/projects/:projectId/workspaces/:workspaceId/terminals/:terminalId/rename`, async (request, reply) => {
+    try {
+      await resolveWorkspaceContext(projects, workspaces, request.params.projectId, request.params.workspaceId);
+      return await proxyJson(daemon, "POST", `/terminals/${encodeURIComponent(request.params.terminalId)}/rename`, request.body, reply);
+    } catch (error) {
+      requestFailed(reply, error);
+      return undefined;
+    }
+  });
+
   app.delete<{ Params: { projectId: string; workspaceId: string; terminalId: string } }>(`${prefix}/projects/:projectId/workspaces/:workspaceId/terminals/:terminalId`, async (request, reply) => {
     try {
       await resolveWorkspaceContext(projects, workspaces, request.params.projectId, request.params.workspaceId);

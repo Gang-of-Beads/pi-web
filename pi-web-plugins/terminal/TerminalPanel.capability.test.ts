@@ -20,6 +20,7 @@ function sessions(patch: Partial<WorkspaceTerminalSessions> = {}): WorkspaceTerm
     close: () => Promise.resolve(),
     closeAll: () => Promise.resolve(),
     continue: () => Promise.resolve(terminal("t1")),
+    rename: () => Promise.resolve(terminal("t1")),
     connect: () => { throw new Error("not used"); },
     listCommandRuns: (): Promise<TerminalCommandRun[]> => Promise.resolve([]),
     cancelCommandRun: absent,

@@ -143,6 +143,11 @@ class FakeTerminals implements TerminalRouteService {
     return { id, cwd: "/repo", name: "Shell 1", createdAt: "2026-05-13T00:00:00.000Z", exited: false };
   }
 
+  rename(id: string, name: string): TerminalInfo {
+    this.events.push(`rename:${id}:${name}`);
+    return { id, cwd: "/repo", name, createdAt: "2026-05-13T00:00:00.000Z", exited: false };
+  }
+
   runCommand(options: RunTerminalCommandOptions): TerminalCommandRun {
     const run: TerminalCommandRun = {
       id: "run1",

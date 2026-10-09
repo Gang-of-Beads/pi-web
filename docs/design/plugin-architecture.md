@@ -268,7 +268,7 @@ refuses.
 Done in this wave, because both are right regardless of when the panel moves:
 
 - The terminal capability handed to workspace panels now includes the pty
-  sessions themselves - list, start, close, closeAll, continue, connect - with
+  sessions themselves - list, start, close, closeAll, continue, rename, connect - with
   machine, project and workspace bound once by the host. A panel asks for a
   terminal; it does not know how one is reached. This is the seam the owner's
   ruling requires: pty stays core, the panel becomes a plugin.

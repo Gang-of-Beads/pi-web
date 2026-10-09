@@ -20,7 +20,12 @@ export function rememberTerminalHostUi(ui: PluginHostUi | undefined): void {
 
 export function adoptTerminalHostStyles(root: ShadowRoot): void {
   if (hostUi === undefined) return;
-  hostUi.adoptSheets?.(root, [hostUi.surfaceStyles, hostUi.workspacePanelStyles]);
+  hostUi.adoptSheets?.(root, [hostUi.surfaceStyles, hostUi.workspacePanelStyles, ...(hostUi.actionMenuStyles === undefined ? [] : [hostUi.actionMenuStyles])]);
+}
+
+/** Where the host stands a ⋯ menu for its trigger; undefined when the host draws no ⋯ menu, so the tab goes without one. */
+export function hostActionMenuPlacement(): ((trigger: HTMLElement) => string) | undefined {
+  return hostUi?.actionMenuStyles === undefined ? undefined : hostUi.placeActionMenu;
 }
 
 export function copyTerminalText(text: string): Promise<boolean> {

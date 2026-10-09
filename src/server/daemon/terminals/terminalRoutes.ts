@@ -15,6 +15,7 @@ export interface TerminalRouteService {
   write(id: string, data: string): void;
   resize(id: string, cols: number, rows: number): void;
   continue(id: string): TerminalInfo;
+  rename(id: string, name: string): TerminalInfo;
   runCommand(options: RunTerminalCommandOptions): TerminalCommandRun;
   listCommandRuns(filter?: TerminalCommandRunFilter): TerminalCommandRun[];
   getCommandRun(runId: string): TerminalCommandRun | undefined;
@@ -82,6 +83,16 @@ export function registerTerminalRoutes(app: FastifyInstance, terminals: Terminal
   app.post<{ Params: { terminalId: string } }>(`${prefix}/terminals/:terminalId/continue`, (request, reply) => {
     try {
       return terminals.continue(request.params.terminalId);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.post<{ Params: { terminalId: string }; Body: unknown }>(`${prefix}/terminals/:terminalId/rename`, (request, reply) => {
+    const name = isRecord(request.body) ? request.body["name"] : undefined;
+    if (typeof name !== "string") return reply.code(400).send({ error: "name is required" });
+    try {
+      return terminals.rename(request.params.terminalId, name);
     } catch (error) {
       return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
     }

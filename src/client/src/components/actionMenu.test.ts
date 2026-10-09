@@ -12,7 +12,7 @@ describe("actionMenuPanelStyle", () => {
 
     const target = new FakeHTMLElement({ top: 10, right: 390, bottom: 46, left: 354 });
 
-    expect(actionMenuPanelStyle(target, { constrainTo: "viewport" })).toBe("top: 46px; max-height: 754px; right: 10px; max-width: 390px;");
+    expect(actionMenuPanelStyle(target, { constrainTo: "viewport" })).toBe("top: 46px; max-height: 754px; right: 10px; max-width: 390px; --action-menu-room: 390px;");
   });
 });
 

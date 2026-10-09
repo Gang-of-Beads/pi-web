@@ -21,7 +21,7 @@ Read from the working tree, not from memory:
 - The seam is **imperative**: a plugin exports `activate(context)` and returns
   contributions built with `html` at runtime. Everything a plugin can do is a
   function call, which is why each new capability has needed a new host method
-  (`renderDisclosureIcon`, `renderCloseIcon`, `showDialog`, `registerModal`).
+  (`renderDisclosureIcon`, `renderCloseIcon`, `actionMenuStyles` and `placeActionMenu`, `showDialog`, `registerModal`).
 - Bundled plugins are built by `scripts/build-plugins.mjs` into
   `dist/pi-web-plugins/<id>/` and discovered from the data directory. There is
   no packaging boundary that a third party installs in one step.

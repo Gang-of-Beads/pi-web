@@ -434,6 +434,7 @@ export const terminalsApi = {
   closeWorkspaceTerminals: (projectId: string, workspaceId: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/terminals`, parseClosed, { method: "DELETE" }),
   closeTerminal: (projectId: string, workspaceId: string, terminalId: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(terminalId)}`, parseClosed, { method: "DELETE" }),
   continueTerminal: (projectId: string, workspaceId: string, terminalId: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(terminalId)}/continue`, parseTerminalInfo, { method: "POST" }),
+  renameTerminal: (projectId: string, workspaceId: string, terminalId: string, name: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(terminalId)}/rename`, parseTerminalInfo, { method: "POST", body: JSON.stringify({ name }) }),
   runTerminalCommand: (origin: string, input: RunTerminalCommandInput, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(input.workspace.projectId)}/workspaces/${encodeURIComponent(input.workspace.id)}/terminal-command-runs`, parseTerminalCommandRun, { method: "POST", body: JSON.stringify({ origin, title: input.title, command: input.command, metadata: input.metadata ?? {} }) }),
   listCommandRuns: (filter?: TerminalCommandRunFilter, machineId = "local") => request(`${machinePrefix(machineId)}/terminal-command-runs${terminalCommandRunFilterQuery(filter)}`, arrayOf(parseTerminalCommandRun)),
   getCommandRun: (runId: string, machineId = "local") => getOptionalTerminalCommandRun(runId, machineId),
@@ -444,6 +445,7 @@ export const terminalsApi = {
   closeMachineTerminals: (machineId = "local") => request(`${machinePrefix(machineId)}/terminals`, parseClosed, { method: "DELETE" }),
   closeMachineTerminal: (terminalId: string, machineId = "local") => request(`${machinePrefix(machineId)}/terminals/${encodeURIComponent(terminalId)}`, parseClosed, { method: "DELETE" }),
   continueMachineTerminal: (terminalId: string, machineId = "local") => request(`${machinePrefix(machineId)}/terminals/${encodeURIComponent(terminalId)}/continue`, parseTerminalInfo, { method: "POST" }),
+  renameMachineTerminal: (terminalId: string, name: string, machineId = "local") => request(`${machinePrefix(machineId)}/terminals/${encodeURIComponent(terminalId)}/rename`, parseTerminalInfo, { method: "POST", body: JSON.stringify({ name }) }),
 };
 
 /**

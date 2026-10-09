@@ -688,6 +688,22 @@ stateDiagram-v2
   3. Opening another page through the quick switcher kept the flag for the next page.
   4. A link restored into the canvas while the reader had folded the workspace panel away: the fold's rule hid the page and the canvas rule hid everything else, leaving an empty window (review `671724cc`).
 
+### A shell tab's name (R12, owner 2026-10-09: both entries)
+
+```mermaid
+stateDiagram-v2
+    [*] --> showing
+    showing --> editing: double-click, a held finger (500 ms, 10 px), F2, or Rename… in the tab's ⋯ menu
+    editing --> showing: Escape (nothing sent)
+    editing --> showing: Enter or leaving the field with an empty or unchanged name (nothing sent)
+    editing --> saving: Enter or leaving the field with a new name
+    saving --> showing: the daemon answers; the tab shows the name it answered with
+    saving --> showing: the daemon refuses (empty, over 80 characters, the shell gone, a route an older daemon lacks); the old name stays and the panel says why
+```
+
+- **The daemon keeps the name** (`POST /terminals/:id/rename`, federated for a remote machine). Every page that lists the shell reads it. No frame announces it: a page already showing the shell's tabs on another device shows the new name when it next lists them, as it does for a shell opened or closed there. A daemon restart ends its shells, names included.
+- **The ⋯ menu is the host's** (`PluginHostUi.actionMenuStyles` and `placeActionMenu`): its subject line names the shell, then Rename… and Close. A host that offers no menu leaves the ⋯ off; the double-click and the hold still rename.
+
 ## D8. Where the reader is (navigation)
 
 ```mermaid

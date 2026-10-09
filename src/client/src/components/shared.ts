@@ -232,13 +232,20 @@ export const actionMenuStyles = css`
      so it carries the same floor: a 32px column in a sheet whose other
      controls measured 44px was the widest touch-floor split left. */
   @media (pointer: coarse) { .action-menu-toggle { min-width: var(--pi-control-height-touch); } }
-  .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(240px, calc(100vw - 2 * var(--pi-bar-inset))); max-width: calc(100vw - 2 * var(--pi-bar-inset)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
+  /* The placement right-aligns a panel to its trigger when 200px fit there and passes that room as
+     --action-menu-room: a min-width the room cannot hold beat the max-width and pushed the panel
+     past the left edge (terminal tab menu at 393px, R12). */
+  .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(240px, calc(100vw - 2 * var(--pi-bar-inset)), var(--action-menu-room, 100vw)); max-width: calc(100vw - 2 * var(--pi-bar-inset)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
   .action-menu-panel button { box-sizing: border-box; display: block; min-height: var(--pi-control-height-comfort); width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 0; background: transparent; color: var(--pi-text); }
   .action-menu-panel button + button { border-top: 1px solid var(--pi-border-muted); }
   @media (hover: hover) { .action-menu-panel button:hover { background: var(--pi-selection-bg); } }
   /* After the base rule it raises: a media query carries no extra specificity,
      so a coarse floor written earlier loses to a later base declaration. */
   @media (pointer: coarse) { .action-menu-panel button { min-height: var(--pi-control-height-touch); } }
+  /* A menu stays until it is answered or dismissed: a tap anywhere else
+     takes it back, which is what a reader expects of a popup. */
+  .menu-scrim { position: fixed; inset: 0; z-index: calc(var(--pi-layer-popover) - 1); background: transparent; }
+  .action-menu-subject { margin: 0; padding: var(--pi-space-3) var(--pi-space-4); border-bottom: 1px solid var(--pi-border); color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 `;
 
 export const listStyles = css`

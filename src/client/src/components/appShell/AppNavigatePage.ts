@@ -1058,11 +1058,7 @@ export class AppNavigatePage extends LitElement {
       .kind::after, .create::after, .scope::after { content: ""; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch)) / 2) 0; }
       .path-step::after { content: ""; position: absolute; inset: calc((var(--pi-control-height) - var(--pi-control-height-touch)) / 2) 0; }
     }
-    /* A menu stays until it is answered or dismissed: a tap anywhere else
-       takes it back, which is what a reader expects of a popup. */
-    .menu-scrim { position: fixed; inset: 0; z-index: calc(var(--pi-layer-popover) - 1); background: transparent; }
     .action-menu-panel { min-width: 160px; }
-    .action-menu-subject { margin: 0; padding: var(--pi-space-3) var(--pi-space-4); border-bottom: 1px solid var(--pi-border); color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row-wrap > .row { height: 100%; }
     .row-wrap .action-menu-toggle { position: absolute; top: 0; right: 0; box-sizing: border-box; display: grid; place-items: center; width: var(--tile-menu-size); min-width: 0; height: var(--tile-menu-size); padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-ui); }
     .row-wrap .action-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }

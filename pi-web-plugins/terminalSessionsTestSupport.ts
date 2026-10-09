@@ -9,6 +9,7 @@ export function noTerminalSessions(): WorkspaceTerminalSessions {
     close: absent,
     closeAll: absent,
     continue: absent,
+    rename: absent,
     connect: () => { throw new Error("No terminal capability in this test"); },
     listCommandRuns: (): Promise<TerminalCommandRun[]> => Promise.resolve([]),
     cancelCommandRun: absent,

@@ -10,6 +10,8 @@ import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
 
 const MAX_REPLAY_BUFFER = 200_000;
+/** The longest name a shell's tab takes (R12); the tab clamps what it shows, this keeps the record sane. */
+const TERMINAL_NAME_MAX_LENGTH = 80;
 
 export interface TerminalInfo {
   id: string;
@@ -177,6 +179,13 @@ export class TerminalService {
     return info;
   }
 
+  /** Rename a shell (R12): the name lives with the shell, so every page that lists it reads the new one. */
+  rename(id: string, name: string): TerminalInfo {
+    const record = this.require(id);
+    record.name = terminalName(name);
+    return toInfo(record);
+  }
+
   close(id: string): void {
     const terminal = this.terminals.get(id);
     if (terminal === undefined) return;
@@ -283,6 +292,13 @@ function toInfo(record: TerminalRecord): TerminalInfo {
     ...(record.exitCode === undefined ? {} : { exitCode: record.exitCode }),
     ...(record.commandRunId === undefined ? {} : { commandRunId: record.commandRunId }),
   };
+}
+
+function terminalName(value: string): string {
+  const name = value.trim();
+  if (name === "") throw new Error("A shell name cannot be empty");
+  if (name.length > TERMINAL_NAME_MAX_LENGTH) throw new Error(`A shell name is at most ${String(TERMINAL_NAME_MAX_LENGTH)} characters`);
+  return name;
 }
 
 function trimReplayBuffer(buffer: string): string {

@@ -46,6 +46,7 @@ export function actionMenuPanelStyle(target: EventTarget | null, options: Action
       ...placement,
       `right: ${px(Math.max(0, viewportWidth - triggerRight))};`,
       `max-width: ${px(alignedWidth)};`,
+      `--action-menu-room: ${px(alignedWidth)};`,
     ].join(" ");
   }
   // Too little room to the trigger's left: keep the panel its own width and

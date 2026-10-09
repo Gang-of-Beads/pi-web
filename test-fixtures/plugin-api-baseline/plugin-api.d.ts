@@ -95,6 +95,8 @@ export interface WorkspaceTerminalSessions {
     close(terminalId: string): Promise<void>;
     closeAll(): Promise<void>;
     continue(terminalId: string): Promise<TerminalInfo>;
+    /** Give a shell a new name; the daemon keeps it, so every page that lists the shell reads it (R12). */
+    rename(terminalId: string, name: string): Promise<TerminalInfo>;
     connect(terminalId: string, initialSize?: {
         cols: number;
         rows: number;
@@ -121,6 +123,11 @@ export interface PluginHostUi {
     /** The close mark the built-in dialogs draw, so a contributed dialog does not
      *  type the character and ship a different ink size beside them. */
     readonly renderCloseIcon?: () => TemplateResult;
+    /** The ⋯ menu's sheet: its toggle, the floating panel, the subject line naming what it acts on and
+     *  the scrim a tap elsewhere dismisses it through, so a contributed menu is the built-in one. */
+    readonly actionMenuStyles?: CSSResultGroup;
+    /** The inline style that stands a ⋯ menu's panel beside its trigger and inside the viewport. */
+    readonly placeActionMenu?: (trigger: HTMLElement) => string;
     /** The workspace-panel body baseline (toolbar, list, viewer, empty states),
      *  so a contributed panel body matches the built-in panel instead of
      *  inventing its own chrome. Adopt per element instance in createRenderRoot:

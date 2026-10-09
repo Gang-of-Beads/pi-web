@@ -3,7 +3,8 @@ import { COARSE_OR_MOBILE_MEDIA_QUERY, DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_
 import { css, unsafeCSS } from "lit";
 import { disclosureIconStyle, renderDisclosureIcon } from "../components/disclosureIcon.js";
 import { renderCrossIcon, uiIconStyle } from "../components/uiIcons.js";
-import { formattedTextStyles, interactiveSurfaceStyles, listStyles, workspacePanelStyles } from "../components/shared";
+import { actionMenuStyles, formattedTextStyles, interactiveSurfaceStyles, listStyles, workspacePanelStyles } from "../components/shared";
+import { actionMenuPanelStyle } from "../components/actionMenu";
 import { adoptSheets } from "../components/uiShared";
 import { registerRenderedModal } from "../components/modalLayerRegistry";
 import { readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
@@ -48,6 +49,8 @@ export function createPluginHostUi(dialogHost?: PluginDialogHost): PluginHostUi 
     listStyles,
     renderDisclosureIcon,
     renderCloseIcon: renderCrossIcon,
+    actionMenuStyles,
+    placeActionMenu: (trigger) => actionMenuPanelStyle(trigger, { constrainTo: "viewport" }),
     workspacePanelStyles,
     breakpoints: {
       coarseOrMobile: COARSE_OR_MOBILE_MEDIA_QUERY,

@@ -13,6 +13,7 @@ export function machineTerminalSessions(machineId: string): MachineTerminalSessi
     close: async (terminalId) => { await terminalsApi.closeMachineTerminal(terminalId, machineId); },
     closeAll: async () => { await terminalsApi.closeMachineTerminals(machineId); },
     continue: (terminalId) => terminalsApi.continueMachineTerminal(terminalId, machineId),
+    rename: (terminalId, name) => terminalsApi.renameMachineTerminal(terminalId, name, machineId),
     connect: (terminalId, initialSize) => machineTerminalSocket(terminalId, initialSize, machineId),
   };
 }
