@@ -4,6 +4,7 @@ import type { FileSuggestion, ForegroundToken, PluginListModel, LegacyThemeToken
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 export type { FileSuggestion, LegacyThemeToken, SemanticSurfaceToken, TerminalInfo, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineKind, PiWebComponentStatus, PiWebDockerMode, PluginListAction, PluginListGroup, PluginListModel, PluginListRead, PluginListRow, PluginListStatus, PluginListTone, PluginListWords, PiWebInstallationInfo, PiWebInstallationKind, PiWebPackageManager, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceFileUploadProgress, WorkspaceUploadBatchFileProgress, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, DeleteWorkspaceFileResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, } from "./shared/pluginApiTypes.js";
 export { CORE_STATUS_FLAGS } from "./shared/machineStatus.js";
+export { workspaceFileRefusalOf, type WorkspaceFileRefusal } from "./shared/apiTypes.js";
 export type PluginId = string;
 export type LocalContributionId = string;
 export type QualifiedContributionId = `${PluginId}:${LocalContributionId}`;

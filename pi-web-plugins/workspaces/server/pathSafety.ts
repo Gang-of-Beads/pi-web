@@ -2,7 +2,7 @@ import { realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 
 /** Why a path was refused, so callers branch on the kind and never on the words (B16). */
-export type PathRefusalKind = "missing" | "exists" | "traversal" | "escapes-workspace" | "outside-allowed" | "not-absolute";
+export type PathRefusalKind = "missing" | "not-a-directory" | "exists" | "traversal" | "escapes-workspace" | "outside-allowed" | "not-absolute";
 
 export class PathRefusal extends Error {
   override name = "PathRefusal";

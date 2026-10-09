@@ -5,6 +5,7 @@ import type { WebSocket } from "ws";
 export type { JsonObject, JsonPrimitive, JsonValue, WorkspaceRemovalPresentation };
 export type { Machine, MachineHealth, MachineRuntime, PiWebComponentStatus, PiWebDeprecatedAgentInput, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebStatusResponse };
 export { parsePiWebRuntimeResponse };
+export type { WorkspaceFileRefusal } from "./shared/pluginApiTypes.js";
 type MaybePromise<T> = T | Promise<T>;
 /** Public server entry exported by a package's `serverModule`. */
 export interface PiWebServerPlugin {

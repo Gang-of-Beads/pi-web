@@ -296,3 +296,9 @@ export interface PluginListAction {
     readonly disabled?: boolean;
     readonly run: () => void;
 }
+/**
+ * Why a workspace file call was refused, as the code the workspace file routes answer with (B16).
+ * Relays and workspace tasks used to compare the refusal's words ("Path does not exist", "Path is
+ * not a directory") to tell an absent file from a failure.
+ */
+export type WorkspaceFileRefusal = "path-missing" | "path-not-a-directory";

@@ -1,11 +1,10 @@
+import { workspaceFileRefusalOf } from "@gang-of-beads/pi-web/plugin-api";
 import { TASKS_CONFIG_PATH, parseTasksConfigText, type WorkspaceTasksConfig } from "./config.js";
 
 export const tasksConfigMissingMessage = "No workspace tasks configured here.";
 export const tasksConfigMissingHint = `${TASKS_CONFIG_PATH} is optional. Create it in this workspace if you want custom tasks.`;
 export const tasksConfigUnavailableMessage = "Could not load workspace tasks.";
 export const tasksConfigRefreshHint = `Fix ${TASKS_CONFIG_PATH}, then click Refresh.`;
-
-const missingWorkspaceFileError = "Path does not exist";
 
 export interface WorkspaceTasksFileReader {
   readFile(path: string): Promise<WorkspaceTasksFileContent>;
@@ -27,7 +26,7 @@ export async function loadWorkspaceTasksConfig(files: WorkspaceTasksFileReader):
   try {
     file = await files.readFile(TASKS_CONFIG_PATH);
   } catch (error) {
-    if (errorMessage(error) === missingWorkspaceFileError) return missing();
+    if (workspaceFileRefusalOf(error) === "path-missing") return missing();
     return unavailable(`Unable to read ${TASKS_CONFIG_PATH}: ${formatUnknownError(error)}`);
   }
 
@@ -54,10 +53,6 @@ function unavailable(detail: string): WorkspaceTasksConfigLoadResult {
     hint: tasksConfigRefreshHint,
     detail,
   };
-}
-
-function errorMessage(error: unknown): string | undefined {
-  return error instanceof Error ? error.message : undefined;
 }
 
 function formatUnknownError(error: unknown): string {

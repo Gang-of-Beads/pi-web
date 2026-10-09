@@ -26,6 +26,7 @@ import type {
   TerminalCommandRunStatus,
   WorkspaceProviderCapabilities,
   WorkspaceProviderMetadata,
+  WorkspaceFileRefusal,
   WorkspaceRemovalPresentation,
   WriteWorkspaceFileOptions,
   WriteWorkspaceFileResponse,
@@ -453,6 +454,26 @@ export const SESSION_NOT_FOUND_CODE = "session-not-found";
 
 /** The code the web and the daemon answer with for a route they do not have: the machine is older than the page (B16). */
 export const ROUTE_MISSING_CODE = "route-missing";
+
+export type { WorkspaceFileRefusal } from "./pluginApiTypes.js";
+
+export const WORKSPACE_FILE_REFUSALS: readonly WorkspaceFileRefusal[] = ["path-missing", "path-not-a-directory"];
+
+/** What a machine that predates the code answers instead, read until every machine carries it (rolling compatibility). */
+const LEGACY_REFUSAL_WORDS: Readonly<Record<string, WorkspaceFileRefusal>> = {
+  "Path does not exist": "path-missing",
+  "Path is not a directory": "path-not-a-directory",
+};
+
+/** The refusal a rejected workspace file call carries, or undefined for any other failure. */
+export function workspaceFileRefusalOf(error: unknown): WorkspaceFileRefusal | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const code: unknown = Reflect.get(error, "code");
+  const typed = WORKSPACE_FILE_REFUSALS.find((refusal) => refusal === code);
+  if (typed !== undefined || code !== undefined) return typed;
+  const message: unknown = Reflect.get(error, "message");
+  return typeof message === "string" && Object.hasOwn(LEGACY_REFUSAL_WORDS, message) ? LEGACY_REFUSAL_WORDS[message] : undefined;
+}
 
 /**
  * Why a folder cannot become a project, as the code of the 400 the add route answers (B16): the

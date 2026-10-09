@@ -11,7 +11,9 @@ import type {
   PiWebServerPlugin,
   ServerPluginActivationContext,
   ServerPluginReply,
+  WorkspaceFileRefusal,
 } from "@gang-of-beads/pi-web/server-plugin-api";
+import { PathRefusal, type PathRefusalKind } from "./server/pathSafety.js";
 import { deleteWorkspaceFile, moveWorkspaceFile, readWorkspaceFile, writeWorkspaceFile } from "./server/fileContentService.js";
 import { isAbsoluteishFileSuggestionQuery, listFileSuggestions, listPathSuggestions } from "./server/fileSuggestions.js";
 import { listWorkspaceTree } from "./server/fileTreeService.js";
@@ -277,9 +279,21 @@ function stringValuesOnly(env: NodeJS.ProcessEnv): Record<string, string> {
   return Object.fromEntries(entries);
 }
 
+/** The code a refused path answers with, so a reader branches on it and not on the words (B16). */
+const REFUSAL_CODES: Readonly<Record<PathRefusalKind, WorkspaceFileRefusal | undefined>> = {
+  missing: "path-missing",
+  "not-a-directory": "path-not-a-directory",
+  exists: undefined,
+  traversal: undefined,
+  "escapes-workspace": undefined,
+  "outside-allowed": undefined,
+  "not-absolute": undefined,
+};
+
 function sendError(reply: ServerPluginReply, error: unknown, fallbackStatus: number): Promise<void> {
   const message = error instanceof Error ? error.message : String(error);
-  return reply.code(fallbackStatus).header("Content-Type", "application/json").send(JSON.stringify({ error: message }));
+  const code = error instanceof PathRefusal ? REFUSAL_CODES[error.kind] : undefined;
+  return reply.code(fallbackStatus).header("Content-Type", "application/json").send(JSON.stringify({ error: message, ...(code === undefined ? {} : { code }) }));
 }
 
 export default plugin;

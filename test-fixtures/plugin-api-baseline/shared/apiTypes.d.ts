@@ -1,5 +1,5 @@
 import type { MachineStatusUiEvent } from "./machineStatus.js";
-import type { DeleteWorkspaceFileResponse, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebComponentStatus, PiWebDockerMode, PiWebInstallationInfo, PiWebInstallationKind, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./pluginApiTypes.js";
+import type { DeleteWorkspaceFileResponse, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebComponentStatus, PiWebDockerMode, PiWebInstallationInfo, PiWebInstallationKind, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceFileRefusal, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./pluginApiTypes.js";
 export type { DeleteWorkspaceFileResponse, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebComponentStatus, PiWebDockerMode, PiWebInstallationInfo, PiWebInstallationKind, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, };
 /** Internal query shape for PI WEB's terminal-command-runs host protocol. */
 export interface TerminalCommandRunFilter {
@@ -339,6 +339,10 @@ export declare const SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH = 64;
 export declare const SESSION_NOT_FOUND_CODE = "session-not-found";
 /** The code the web and the daemon answer with for a route they do not have: the machine is older than the page (B16). */
 export declare const ROUTE_MISSING_CODE = "route-missing";
+export type { WorkspaceFileRefusal } from "./pluginApiTypes.js";
+export declare const WORKSPACE_FILE_REFUSALS: readonly WorkspaceFileRefusal[];
+/** The refusal a rejected workspace file call carries, or undefined for any other failure. */
+export declare function workspaceFileRefusalOf(error: unknown): WorkspaceFileRefusal | undefined;
 /**
  * Why a folder cannot become a project, as the code of the 400 the add route answers (B16): the
  * page words it from the code, where it used to search the error text for ENOENT and EACCES.

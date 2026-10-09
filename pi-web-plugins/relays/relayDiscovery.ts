@@ -1,4 +1,4 @@
-import type { FileContentResponse, FileTreeEntry, FileTreeResponse } from "@gang-of-beads/pi-web/plugin-api";
+import { workspaceFileRefusalOf, type FileContentResponse, type FileTreeEntry, type FileTreeResponse } from "@gang-of-beads/pi-web/plugin-api";
 
 export const RELAYS_ROOT = ".pi-web/relays";
 
@@ -76,10 +76,6 @@ export type RelayDocumentContent =
   | { kind: "loaded"; content: string; truncated: boolean; binary: boolean }
   | { kind: "missing" }
   | { kind: "unavailable"; detail: string };
-
-// The workspace file API rejects with these messages when a path is absent or
-// is not a directory. For the relays root both mean "zero relays", not a failure.
-const missingListingErrorMessages = new Set(["Path does not exist", "Path is not a directory"]);
 
 interface WalkState {
   documentCount: number;
@@ -307,7 +303,8 @@ function timestampOf(modifiedAt: string | undefined): number | undefined {
   return Number.isNaN(time) ? undefined : time;
 }
 
+/** A path that is absent or is not a directory means zero relays, not a failure. */
 function fileAccessFailure(error: unknown): { kind: "missing" } | { kind: "unavailable"; detail: string } {
-  if (error instanceof Error && missingListingErrorMessages.has(error.message)) return { kind: "missing" };
+  if (workspaceFileRefusalOf(error) !== undefined) return { kind: "missing" };
   return { kind: "unavailable", detail: error instanceof Error ? error.message : String(error) };
 }

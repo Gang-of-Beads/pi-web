@@ -3,13 +3,14 @@ import { isAbsolute, join, win32 } from "node:path";
 import type { FileTreeEntry, FileTreeResponse } from "@gang-of-beads/pi-web/plugin-api";
 import type { PluginPathAccessConfig } from "@gang-of-beads/pi-web/server-plugin-api";
 import { resolveWorkspacePathAccessTarget } from "./pathAccessPolicy.js";
+import { PathRefusal } from "./pathSafety.js";
 
 const MAX_ENTRIES = 1000;
 
 export async function listWorkspaceTree(rootPath: string, path: string | undefined, pathAccess?: PluginPathAccessConfig): Promise<FileTreeResponse> {
   const { target, displayPath } = await resolveWorkspacePathAccessTarget(rootPath, path, pathAccess);
   const stat = await lstat(target);
-  if (!stat.isDirectory()) throw new Error("Path is not a directory");
+  if (!stat.isDirectory()) throw new PathRefusal("not-a-directory", "Path is not a directory");
 
   const dirents = await readdir(target, { withFileTypes: true });
   const sorted = dirents.sort((a, b) => {
