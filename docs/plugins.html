@@ -639,7 +639,10 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@gang-of-beads/pi-web
               </ol>
               <p>
                 Turned on, a server entry is imported, then <code>activate(context)</code> and <code>start(signal)</code>
-                run; its operations and routes answer once <code>start</code> resolved. Turned off, its operations and
+                run; its operations answer once <code>start</code> resolved, and so do its routes, but only the routes it
+                contributed when the web process started: the web server takes routes only at startup, so a route new
+                since then (a plugin that was off at startup, or a new path in a newer version) answers <code>404</code>
+                until the web process restarts. Turned off, its operations and
                 routes refuse new calls with <code>409</code> and <code>code: "plugin-not-active"</code>, every running
                 call's signal is aborted and given up to the lifecycle timeout to settle, and then <code>stop(signal)</code>
                 runs once. <code>stop</code> runs exactly once after every <code>start</code> that resolved, no handler

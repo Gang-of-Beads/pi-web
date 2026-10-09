@@ -328,7 +328,7 @@ When a toggle is saved, each process that runs the plugin's server entry applies
 
 | Event | What the host does, in order |
 |---|---|
-| Turned on | Imports the module, calls `activate(context)`, then `start(signal)`. Its operations and routes answer once `start` resolved. |
+| Turned on | Imports the module, calls `activate(context)`, then `start(signal)`. Its operations answer once `start` resolved, and so do its routes, but only the routes it contributed when the web process started: the web server takes routes only at startup, so a route new since then (a plugin that was off at startup, or a new path in a newer version) answers `404` until the web process restarts. |
 | Turned off | Its operations and routes stop accepting calls and answer `409` with `code: "plugin-not-active"`. The signal of every call still running is aborted, and the host waits for those calls to settle, up to the lifecycle timeout. Then `stop(signal)` runs once, bounded by the same timeout. |
 
 A plugin can rely on these guarantees:
