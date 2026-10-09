@@ -33,10 +33,37 @@ export class ExtensionStanding {
   private lastSent: string | undefined;
 
   private readonly widgets: StandingWidgets;
+  private readonly header: StandingWidgets;
+  private readonly footer: StandingWidgets;
 
   /** `changed` is told after every write; `theme` is what a widget factory draws with. */
   constructor(private readonly changed: () => void, options: { readonly theme?: unknown; readonly now?: () => number } = {}) {
-    this.widgets = new StandingWidgets(changed, options.theme, options.now ?? (() => Date.now()));
+    const now = options.now ?? (() => Date.now());
+    this.widgets = new StandingWidgets(changed, options.theme, now);
+    this.header = new StandingWidgets(changed, options.theme, now);
+    this.footer = new StandingWidgets(changed, options.theme, now);
+  }
+
+  /**
+   * pi's `setHeader` and `setFooter` (pi-insertion-points.md slice 5): one header and one footer
+   * for the session, the last extension to set one replacing the one before as in pi's terminal,
+   * drawn on that extension's Go to page with its widgets (header first, footer last), under the
+   * widget rule: clearing one leaves the extension's page saying it shows nothing now. A footer's
+   * factory also gets pi's `footerData`.
+   */
+  setHeader(content: unknown, origin: ExtensionOrigin | undefined): void {
+    this.header.set("header", content, "header", origin);
+    this.changed();
+  }
+
+  setFooter(content: unknown, origin: ExtensionOrigin | undefined, footerData: unknown): void {
+    this.footer.set("footer", content, "footer", origin, [footerData]);
+    this.changed();
+  }
+
+  /** The statuses as pi's `footerData.getExtensionStatuses()` reports them. */
+  statusTexts(): ReadonlyMap<string, string> {
+    return this.statuses;
   }
 
   /** pi's `setWidget`, kept with the extension that called it, when it could be told. */
@@ -83,6 +110,8 @@ export class ExtensionStanding {
   clear(): void {
     this.statuses.clear();
     this.widgets.clear();
+    this.header.clear();
+    this.footer.clear();
     this.workingMessage = undefined;
     this.workingHidden = false;
     this.workingFrames = undefined;
@@ -114,7 +143,7 @@ export class ExtensionStanding {
 
   /** The wire snapshot, or undefined when nothing stands; a component widget draws now if it is due. */
   snapshot(): ExtensionUiStanding | undefined {
-    const widgets = this.widgets.snapshot();
+    const widgets = [...this.header.snapshot(), ...this.widgets.snapshot(), ...this.footer.snapshot()];
     const standing: ExtensionUiStanding = {
       ...(widgets.length === 0 ? {} : { widgets }),
       ...(this.statuses.size === 0 ? {} : { statuses: [...this.statuses].sort(([left], [right]) => left.localeCompare(right)).map(([key, text]) => ({ key, text })) }),

@@ -83,11 +83,11 @@ export class StandingWidgets {
   /** `changed` is told when a component asks to be drawn again; `theme` is what a factory draws with. */
   constructor(private readonly changed: () => void, private readonly theme: unknown, private readonly now: () => number) {}
 
-  /** pi's `setWidget`: lines or a component factory under `key`, or none. */
-  set(key: string, content: unknown, placement: ExtensionWidgetPlacement, origin: ExtensionOrigin | undefined): void {
+  /** One keyed block for pi's `setWidget`, `setHeader` or `setFooter`: lines or a component factory under `key`, or none; a factory gets `factoryArgs` after the theme. */
+  set(key: string, content: unknown, placement: ExtensionWidgetPlacement, origin: ExtensionOrigin | undefined, factoryArgs: readonly unknown[] = []): void {
     const previous = this.widgets.get(key);
     previous?.dispose();
-    const widget = this.widgetFrom(content, placement, origin);
+    const widget = this.widgetFrom(content, placement, origin, factoryArgs);
     if (widget !== undefined) {
       this.widgets.set(key, widget);
       return;
@@ -114,13 +114,13 @@ export class StandingWidgets {
     }));
   }
 
-  private widgetFrom(content: unknown, placement: ExtensionWidgetPlacement, origin: ExtensionOrigin | undefined): StandingWidget | undefined {
+  private widgetFrom(content: unknown, placement: ExtensionWidgetPlacement, origin: ExtensionOrigin | undefined, factoryArgs: readonly unknown[]): StandingWidget | undefined {
     if (Array.isArray(content)) return StandingWidget.ofLines(placement, origin, content.map((line: unknown) => (typeof line === "string" ? line : String(line))));
     if (typeof content !== "function") return undefined;
     let widget: StandingWidget | undefined;
     const harness = customScreenHarness({ requestRender: () => { if (widget?.invalidate() === true) this.changed(); } });
     try {
-      const component: unknown = Reflect.apply(content, undefined, [harness.tui, this.theme]);
+      const component: unknown = Reflect.apply(content, undefined, [harness.tui, this.theme, ...factoryArgs]);
       if (!isScreenComponent(component)) return undefined;
       widget = StandingWidget.ofComponent(placement, origin, component);
       return widget;

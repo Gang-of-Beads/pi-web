@@ -847,8 +847,8 @@ export declare const EXTENSION_DIALOG_INPUT_MAX_LENGTH = 4000;
 export declare const EXTENSION_DIALOG_EDITOR_MAX_LENGTH = 32000;
 /** How an extension's `setEditorText` / `pasteToEditor` writes a session's composer. */
 export type ExtensionEditorTextMode = "set" | "paste";
-/** Where an extension widget sits: pi's `WidgetPlacement`. */
-export type ExtensionWidgetPlacement = "aboveEditor" | "belowEditor";
+/** Where an extension widget sits: pi's `WidgetPlacement`, or pi's header and footer (`setHeader`, `setFooter`). */
+export type ExtensionWidgetPlacement = "aboveEditor" | "belowEditor" | "header" | "footer";
 /**
  * One `setWidget` block (extension-keys-in-go-to.md). `lines` is empty once the extension
  * cleared it: the extension's key stays until the session's extensions reload.

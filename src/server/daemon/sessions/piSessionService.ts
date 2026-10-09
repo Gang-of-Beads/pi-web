@@ -131,6 +131,7 @@ import { declaredAgentFacts } from "./declaredAgentFacts.js";
 import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
 import { drawCustomRow, drawToolCall, drawToolResult, showsCustomEntry, transformedMarkdown, type ExtensionRenderers, type MarkdownKind } from "./extensionDrawings.js";
 import { ExtensionShortcuts, type ExtensionShortcutRunner } from "./extensionShortcuts.js";
+import { extensionFooterData } from "./extensionFooterData.js";
 import { DECLARABLE_SCREENS, declaredScreen, refusedDeclarationSummary } from "./declaredScreen.js";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
@@ -5473,14 +5474,32 @@ export class PiSessionService implements SessionRouteService {
   ): ExtensionUIContext {
     const baseUiContext = session.extensionRunner.getUIContext();
     const standing = this.standingFor(session);
+    const callerOrigin = (call: { stack?: string }) => this.extensionOrigins.originOf(call.stack, loadedExtensionFiles(session), declaredAgentFacts().surfaces);
     const setWidget = (key: string, content: unknown, options?: { placement?: unknown }): void => {
       const call: { stack?: string } = {};
       Error.captureStackTrace(call, setWidget);
-      standing.setWidget(key, content, options, this.extensionOrigins.originOf(call.stack, loadedExtensionFiles(session), declaredAgentFacts().surfaces));
+      standing.setWidget(key, content, options, callerOrigin(call));
+    };
+    const setHeader = (content: unknown): void => {
+      const call: { stack?: string } = {};
+      Error.captureStackTrace(call, setHeader);
+      standing.setHeader(content, callerOrigin(call));
+    };
+    const setFooter = (content: unknown): void => {
+      const call: { stack?: string } = {};
+      Error.captureStackTrace(call, setFooter);
+      const footerData = extensionFooterData({
+        cwd: session.sessionManager.getCwd(),
+        statuses: () => standing.statusTexts(),
+        providerCount: () => availableProviderCount(session),
+      });
+      standing.setFooter(content, callerOrigin(call), footerData);
     };
     const standingMembers: Readonly<Record<string, unknown>> = {
       setStatus: (key: string, text: unknown) => { standing.setStatus(key, text); },
       setWidget,
+      setHeader,
+      setFooter,
       setWorkingMessage: (message?: string) => { standing.setWorkingMessage(message); },
       setWorkingVisible: (visible: boolean) => { standing.setWorkingVisible(visible); },
       setWorkingIndicator: (options?: { frames?: string[] }) => { standing.setWorkingIndicator(options); },
@@ -7460,6 +7479,12 @@ function stringifyPrimitive(value: unknown): string {
 async function closedBranch(path: string): Promise<ReturnType<typeof branchFromFileEntries> | undefined> {
   const entries = await readSessionFileEntries(path);
   return entries !== undefined && isCurrentVersionFile(entries, CURRENT_SESSION_VERSION) ? branchFromFileEntries(entries) : undefined;
+}
+
+/** As pi's footer counts them: the providers of the session's scoped models, else of every available model. */
+function availableProviderCount(session: PiAgentSession): number {
+  const models = session.scopedModels.length > 0 ? session.scopedModels.map((scoped) => scoped.model) : session.modelRuntime.getAvailableSnapshot();
+  return new Set(models.map((model) => model.provider)).size;
 }
 
 /** The runtime's loaded extensions as attribution reads them; none when it cannot list them. */
