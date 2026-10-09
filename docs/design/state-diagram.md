@@ -812,6 +812,21 @@ stateDiagram-v2
   4. a machine choice whose restore finished after a tap made during it wrote second, inverting the entries and, when the restore preserved an unrestored place, naming that place instead of the tapped one; the choice now keeps the intent it began with and, once overtaken, writes only as an overtaken move does (`nameMachineAfterSupersededMove`).
 
 
+### What the Navigate page acts on while it shows another machine (owner, 2026-10-09)
+
+Choosing a machine on the Machines tab browses it: the header names it, and the Projects and Sessions tabs list its own (R18), while the selected machine stays where it was until something is opened there. Owner, on 8504: "机器选择后就应该显示对应机器的东西啊，这是基本的" (once a machine is chosen, what is shown must be that machine's). The invariant: **every action on the page acts on the machine the page shows** (`browsedMachineId`), never on the selected machine behind it.
+
+`newSessionPlace` decides New session; `newSessionFrom` is its executor table:
+
+| state | when | New session |
+|---|---|---|
+| `here` | the page shows the selected machine and a project is open there | starts in that project |
+| `choose-project` | the page shows another machine, or no project is open | lists the shown machine's projects; choosing one moves to that machine, selects it and starts the session there (`startSessionOnProjectChoice`, as New session from an empty chat) |
+
+The other actions: Add project moves to the shown machine first and awaits that machine's plugins, which own the dialog; Copy path reads the shown machine's listing. Open, Continue from, pins, rename and mark-read already did. Archive, restore and delete are not offered while the page shows another machine (`canArchiveSessions`), and Close project only for the selected machine's projects.
+
+Producers found (8505, phone, 2026-10-09, old build vs new): New session sent `POST /api/machines/local/sessions` while the page showed prod-8504 (new: none until a project is chosen, then `POST /api/machines/prod-8504-waveb/sessions`); Add project opened the dialog on local (new: on prod-8504); Copy path looked the project up in the selected machine's list and copied nothing.
+
 ### The target of a session link (P2 slice b, B31; owner Q8)
 
 A link, a boot restore, a switcher pick or a board pick names one session. Whether it can be opened is one value, `SessionTarget`, decided by one pure classifier from typed answers only:

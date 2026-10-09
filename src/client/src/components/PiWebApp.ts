@@ -259,6 +259,9 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
 // update banner). Nothing events it; the tab re-reads on this slow cadence.
 const EMPTY_ID_SET: ReadonlySet<string> = new Set();
 
+/** What New session on the Navigate page does: start in the open project, or ask for one on the machine on screen. */
+type NewSessionPlace = "here" | "choose-project";
+
 /** What the page shows of one machine's pins, from that machine's answer. */
 function machinePinView(machineId: string, answered: MachinePins): { machineId: string; ids: ReadonlySet<string>; projects?: ReadonlyMap<string, ReadonlySet<string>>; pinnedProjects?: ReadonlySet<string> } {
   return {
@@ -2741,6 +2744,43 @@ export class PiWebApp extends LitElement {
   }
 
   /**
+   * Where New session on the Navigate page starts (owner, 2026-10-09 on 8504: after switching
+   * machine, a new session was created on the machine left behind; "after choosing a machine it
+   * should show that machine's things"). A session starts in the open project of the selected
+   * machine. A page browsing another machine, or one with no project open, has none to start in:
+   * New session lists the projects of the machine on screen, and choosing one moves to that machine
+   * and starts the session there (R18), as New session from an empty chat already did.
+   */
+  private newSessionPlace(): NewSessionPlace {
+    return this.quickSwitcherBrowsingElsewhere() || !this.canStartSession() ? "choose-project" : "here";
+  }
+
+  private readonly newSessionFrom: Readonly<Record<NewSessionPlace, () => void>> = {
+    here: () => { this.closeNavigate(); void this.asReaderListChange(() => this.startSessionAndOpenChat()); },
+    "choose-project": () => {
+      this.startSessionOnProjectChoice = true;
+      this.navigatePage?.showKind("project");
+    },
+  };
+
+  /**
+   * Add project on the Navigate page adds to the machine on screen: a browsed machine is moved to
+   * first, and its plugins, which own the dialog, are awaited, since the move returns before they load.
+   */
+  private async addProjectOnShownMachine(): Promise<void> {
+    this.navigation.begin();
+    if (!(await this.moveToMachine(this.browsedMachineId()))) return;
+    await this.loadPluginsForSelectedMachine();
+    this.closeNavigate();
+    this.openProjectDialog();
+  }
+
+  /** The projects a machine listed last: the selected machine's own list, or the one read while browsing it. */
+  private projectsListedOn(machineId: string): readonly Project[] {
+    return machineId === selectedMachineId(this.state) ? this.state.projects : this.projects.listed(machineId) ?? [];
+  }
+
+  /**
    * Active sessions for the switcher's WORKING group.
    *
    * Based on the machine-wide list the switcher renders, not the selected
@@ -3133,9 +3173,9 @@ export class PiWebApp extends LitElement {
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
       .onOpenSession=${(session: SessionInfo, machineId: string) => { void this.openSessionFromQuickSwitcher(session, machineId); }}
       .opening=${this.navigation.view()}
-      .onCreateSession=${() => { this.closeNavigate(); void this.asReaderListChange(() => this.startSessionAndOpenChat()); }}
+      .onCreateSession=${() => { this.newSessionFrom[this.newSessionPlace()](); }}
       .onContinueFrom=${(session: SessionInfo, machineId: string) => { void this.continueInNewSession(session, machineId); }}
-      .onAddProject=${this.hasAddProjectEntry() ? () => { this.navigation.begin(); this.closeNavigate(); this.openProjectDialog(); } : undefined}
+      .onAddProject=${this.hasAddProjectEntry() ? () => { void this.addProjectOnShownMachine(); } : undefined}
       .machineSessions=${this.quickSwitcherSessions}
       .tilesPerRow=${chosenListTiles(this.listTiles, this.appShell.isMobileNavigationLayout ? "phone" : "desktop")}
       .onOpenSettings=${this.appShell.isMobileNavigationLayout ? undefined : () => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }}
@@ -3221,12 +3261,13 @@ export class PiWebApp extends LitElement {
       if (session !== undefined) await this.changeArchiveState(action, session);
       return;
     }
-    const project = this.state.projects.find((entry) => entry.id === id);
-    if (project === undefined) return;
     if (action === "copy-path") {
-      await writeClipboardText(project.path);
+      const listed = this.projectsListedOn(this.browsedMachineId()).find((entry) => entry.id === id);
+      if (listed !== undefined) await writeClipboardText(listed.path);
       return;
     }
+    const project = this.state.projects.find((entry) => entry.id === id);
+    if (project === undefined) return;
     if (!(await this.confirm({ title: `Close ${project.name}?`, message: "This only removes it from PI WEB; the project folder does not change.", confirmLabel: "Close project", tone: "danger" }))) return;
     await this.projects.closeProject(project.id);
   }
@@ -3307,8 +3348,7 @@ export class PiWebApp extends LitElement {
     this.startSessionOnProjectChoice = false;
     this.navigation.begin();
     const machineId = this.browsedMachineId();
-    const listed = machineId === selectedMachineId(this.state) ? this.state.projects : this.projects.listed(machineId) ?? [];
-    const chosen = listed.find((entry) => entry.id === id);
+    const chosen = this.projectsListedOn(machineId).find((entry) => entry.id === id);
     if (chosen === undefined || !(await this.moveToMachine(machineId, { updateUrl: false }))) return;
     const project = this.state.projects.find((entry) => entry.id === id) ?? chosen;
     if (!startSession) {
