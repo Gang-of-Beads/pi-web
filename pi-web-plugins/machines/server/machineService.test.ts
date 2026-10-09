@@ -13,7 +13,7 @@ let service: MachineService;
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "pi-web-machines-test-"));
   storePath = join(tempDir, "machines.json");
-  service = new MachineService(new MachineStore(storePath), { localRuntime: () => Promise.reject(new Error("unused")) });
+  service = new MachineService(new MachineStore(storePath), { localRuntime: () => Promise.reject(new Error("unused")), defaultLocalName: () => "Local" });
 });
 
 afterEach(async () => {

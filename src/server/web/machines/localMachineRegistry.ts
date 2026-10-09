@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import type { Machine, MachineClient, MachineHealth, MachineRuntime, PiWebRuntimeResponse, PluginMachineCreateInput, PluginMachineUpdateInput } from "../../../server-plugin-api.js";
 
 /**
@@ -38,7 +39,16 @@ export interface MachineRegistryFace {
 const LOCAL_MACHINE_TIMESTAMP = "1970-01-01T00:00:00.000Z";
 
 function localMachine(): Promise<Machine> {
-  return Promise.resolve({ id: "local", name: "Local", kind: "local", createdAt: LOCAL_MACHINE_TIMESTAMP, updatedAt: LOCAL_MACHINE_TIMESTAMP });
+  return Promise.resolve({ id: "local", name: localMachineName(), kind: "local", createdAt: LOCAL_MACHINE_TIMESTAMP, updatedAt: LOCAL_MACHINE_TIMESTAMP });
+}
+
+/**
+ * The local machine's name when no machines plugin runs to keep a renamed one: the computer's host
+ * name without the `.local` macOS adds, as the machines plugin names it before a rename.
+ */
+export function localMachineName(): string {
+  const name = hostname().trim().replace(/\.local$/iu, "");
+  return name === "" ? "Local" : name;
 }
 
 async function localHealth(localRuntime: () => Promise<PiWebRuntimeResponse>): Promise<MachineHealth> {

@@ -1,6 +1,7 @@
 import type { Machine, MachineHealth, MachineRuntime, PiWebComponentStatus, PiWebDeprecatedAgentInput, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebStatusResponse } from "@gang-of-beads/pi-web/server-plugin-api";
 import { parsePiWebRuntimeResponse } from "@gang-of-beads/pi-web/server-plugin-api";
 import { DEFAULT_REMOTE_HEALTH_TIMEOUT_MS, type MachineClient } from "@gang-of-beads/pi-web/server-plugin-api";
+import { hostname } from "node:os";
 import { RemoteMachineClient, validateConfiguredMachineHeaders } from "./machineClient.js";
 import { MachineStore, type StoredMachine } from "./machineStore.js";
 
@@ -15,6 +16,8 @@ export type UpdateMachineInput = Partial<CreateMachineInput>;
 
 export interface MachineServiceDependencies {
   localRuntime: () => Promise<PiWebRuntimeResponse>;
+  /** The local machine's name before the user renames it; the computer's host name by default. */
+  defaultLocalName?: () => string;
   remoteClientFactory?: (machine: StoredMachine) => MachineClient;
   now?: () => Date;
   healthCacheTtlMs?: number;
@@ -56,10 +59,10 @@ export class MachineService {
     return machine === undefined ? undefined : publicMachine(machine);
   }
 
-  /** Local machine with the user's alias applied, if one was set. */
+  /** Local machine with the user's alias applied, if one was set; otherwise named after the computer. */
   async localMachine(): Promise<Machine> {
     const { alias } = await this.store.localAlias();
-    return alias === undefined || alias === "" ? localMachine() : { ...localMachine(), name: alias };
+    return localMachine(alias === undefined || alias === "" ? (this.deps.defaultLocalName ?? defaultLocalMachineName)() : alias);
   }
 
   async add(input: CreateMachineInput): Promise<Machine> {
@@ -199,8 +202,18 @@ export class MachineService {
   }
 }
 
-export function localMachine(): Machine {
-  return { id: "local", name: "Local", kind: "local", createdAt: LOCAL_MACHINE_TIMESTAMP, updatedAt: LOCAL_MACHINE_TIMESTAMP };
+export function localMachine(name: string): Machine {
+  return { id: "local", name, kind: "local", createdAt: LOCAL_MACHINE_TIMESTAMP, updatedAt: LOCAL_MACHINE_TIMESTAMP };
+}
+
+/**
+ * The name a machine goes by until the user renames it (owner, 2026-10-09: every machine gets a
+ * name, not "Local"): the computer's host name, without the `.local` macOS adds for its network.
+ * "Local" only when the host has no name at all.
+ */
+export function defaultLocalMachineName(): string {
+  const name = hostname().trim().replace(/\.local$/iu, "");
+  return name === "" ? "Local" : name;
 }
 
 function publicMachine(machine: StoredMachine): Machine {

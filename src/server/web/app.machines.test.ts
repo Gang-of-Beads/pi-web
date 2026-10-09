@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { MachineClient } from "../../server-plugin-api.js";
 import type { PiWebConfigResponse, PiWebConfigValues } from "../../shared/apiTypes.js";
 import { appTestContext, configFromMachineConfigWriteBody, fakeRemoteClient, fullPiWebConfig, piWebConfigResponse, registerAppTestHooks, selectedMachinePiWebConfig } from "./app.testSupport.js";
+import { localMachineName } from "./machines/localMachineRegistry.js";
 
 registerAppTestHooks();
 
@@ -10,7 +11,7 @@ describe("buildApp machine routes", () => {
     const response = await appTestContext.app.inject({ method: "GET", url: "/api/machines" });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ machines: [{ id: "local", name: "Local", kind: "local", createdAt: "1970-01-01T00:00:00.000Z", updatedAt: "1970-01-01T00:00:00.000Z" }] });
+    expect(response.json()).toEqual({ machines: [{ id: "local", name: localMachineName(), kind: "local", createdAt: "1970-01-01T00:00:00.000Z", updatedAt: "1970-01-01T00:00:00.000Z" }] });
   });
 
   it("adds remote machines without exposing tokens", async () => {
