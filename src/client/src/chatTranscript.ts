@@ -1,3 +1,4 @@
+import { isRecord } from "../../shared/unknownValues";
 import { appendText, appendThinking, askUserRecordFromToolDetails, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
 import { deliverySettled } from "./messageDelivery";
 import { resolveArrival } from "./transcriptArrival";
@@ -540,10 +541,6 @@ function lastUserBoundaryIndex(messages: ChatLine[]): number {
     if (messages[index]?.role === "user") return index;
   }
   return -1;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function getProperty(value: unknown, key: string): unknown {

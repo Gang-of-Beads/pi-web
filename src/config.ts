@@ -583,14 +583,14 @@ function parseShortcuts(value: unknown, path: string): Record<string, string | n
 }
 
 function parsePlugins(value: unknown, path: string): NonNullable<PiWebConfigValues["plugins"]> {
-  if (!isRecord(value) || Array.isArray(value)) throw new PiWebConfigError(`PI WEB config plugins must be an object: ${path}`);
+  if (!isRecord(value)) throw new PiWebConfigError(`PI WEB config plugins must be an object: ${path}`);
   return Object.fromEntries(Object.entries(value).map(([pluginId, config]) => {
     if (!isPiWebPluginId(pluginId)) throw new PiWebConfigError(`PI WEB config plugin ids must match ${piWebPluginIdPattern.source}: ${path}`);
-    if (!isRecord(config) || Array.isArray(config)) throw new PiWebConfigError(`PI WEB config plugin entries must be objects: ${path}`);
+    if (!isRecord(config)) throw new PiWebConfigError(`PI WEB config plugin entries must be objects: ${path}`);
     const enabled = config["enabled"];
     if (enabled !== undefined && typeof enabled !== "boolean") throw new PiWebConfigError(`PI WEB config plugin enabled values must be booleans: ${path}`);
     const settings = config["settings"];
-    if (settings !== undefined && (!isRecord(settings) || Array.isArray(settings))) throw new PiWebConfigError(`PI WEB config plugin settings must be objects: ${path}`);
+    if (settings !== undefined && (!isRecord(settings))) throw new PiWebConfigError(`PI WEB config plugin settings must be objects: ${path}`);
     return [pluginId, config];
   }));
 }

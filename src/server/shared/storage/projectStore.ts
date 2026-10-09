@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues.js";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { piWebDataDir } from "../../../config.js";
@@ -23,10 +24,6 @@ function parseProject(value: unknown): Project {
   const createdAt = value["createdAt"];
   if (typeof id !== "string" || typeof name !== "string" || typeof path !== "string" || typeof createdAt !== "string") throw new Error("Invalid project");
   return { id, name, path, createdAt };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 export function defaultProjectStorePath(env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): string {

@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues";
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
 import { isPiWebPluginId, isReservedPiWebPluginId } from "../../../shared/pluginIds";
@@ -166,6 +167,3 @@ function isPiWebPlugin(value: unknown): value is PiWebPlugin {
   return isRecord(value) && value["apiVersion"] === 2 && typeof value["name"] === "string" && typeof value["activate"] === "function";
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

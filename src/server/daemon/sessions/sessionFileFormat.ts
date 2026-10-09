@@ -20,7 +20,11 @@ export function tryParseEntry(line: string): Record<string, unknown> | undefined
   }
 }
 
-/** Whether `value` can be indexed by key, i.e. a non-null object. */
+/**
+ * Whether `value` can be indexed by key, i.e. a non-null object, arrays included. Deliberately
+ * not the shared strict `isRecord`: pi's SDK takes any parseable JSON line, an array too, as an
+ * entry, so a file whose first entry is an array is not a session file here either.
+ */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }

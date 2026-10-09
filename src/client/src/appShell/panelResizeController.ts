@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues";
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 
 export type ResizablePanelSide = "navigation" | "workspace";
@@ -216,6 +217,3 @@ function browserPanelSizeStorage(): PanelSizeStorage | undefined {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

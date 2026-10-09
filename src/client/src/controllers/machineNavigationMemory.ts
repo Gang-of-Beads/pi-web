@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues";
 import type { AppState } from "../appState";
 import { LOCAL_MACHINE_ID } from "../machineKeys";
 import type { AppRoute } from "../route";
@@ -133,6 +134,3 @@ function optionalStringField(record: Record<string, unknown>, key: string): stri
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

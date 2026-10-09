@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues.js";
 import type { FastifyInstance } from "fastify";
 import type { RawData } from "ws";
 import { normalizeRequestCwd } from "../workingDirectory.js";
@@ -151,7 +152,7 @@ function parseCommandRunStatus(value: string): TerminalCommandRunStatus {
 
 function parseMetadataFilter(value: string): Record<string, string> {
   const parsed: unknown = JSON.parse(value);
-  if (!isRecord(parsed) || Array.isArray(parsed)) throw new Error("metadata filter must be an object");
+  if (!isRecord(parsed)) throw new Error("metadata filter must be an object");
   return Object.fromEntries(Object.entries(parsed).map(([key, metadataValue]) => {
     if (typeof metadataValue !== "string") throw new Error(`metadata filter value must be a string: ${key}`);
     return [key, metadataValue];
@@ -173,6 +174,3 @@ function rawDataToString(data: RawData): string {
   return data.toString("utf8");
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

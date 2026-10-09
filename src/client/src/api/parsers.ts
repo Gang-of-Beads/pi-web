@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues";
 import { parseSessionStep } from "./sessionStepParser";
 import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, ASK_USER_TEXT_MAX_LENGTH, EXTENSION_DIALOG_EDITOR_MAX_LENGTH, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   EXTENSION_DIALOG_SCREEN_MAX_LINES, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_SCREEN_DETAIL_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserAnswer, type AskUserCloseReason, type AskUserCloseResponse, type AskUserOutcome, type AskUserQuestion, type AskUserQuestionOption, type AskUserQuestionRecord, type PendingAskUser, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type ExtensionDialogScreen, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type SessionBackgroundTaskInfo, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionTranscriptTail, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type WorkspaceChangedUiEvent, type PinsChangedUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
@@ -7,10 +8,6 @@ import type { PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse
 import { parseKnownPiWebCapabilities } from "../../../shared/capabilities";
 import { parseDeprecatedAgentInputs } from "../../../shared/piWebStatusParsing";
 import { PI_WEB_PLUGIN_RECOVERY_COMMANDS, pluginDisableRecoveryCommand } from "../../../shared/pluginRecoveryCommands";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 function requireRecord(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) throw new Error("Expected object response");
@@ -212,9 +209,9 @@ function parseWorkspaceProviderTier(value: unknown): WorkspaceProviderTier {
 
 function optionalWorkspaceProviderMetadata(value: unknown): Workspace["provider"] | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value) || Array.isArray(value)) throw new Error("Invalid workspace provider field");
+  if (!isRecord(value)) throw new Error("Invalid workspace provider field");
   const capabilities = value["capabilities"];
-  if (!isRecord(capabilities) || Array.isArray(capabilities)) throw new Error("Invalid workspace provider capabilities field");
+  if (!isRecord(capabilities)) throw new Error("Invalid workspace provider capabilities field");
   const metadata = value["metadata"];
   return Object.freeze({
     pluginId: requireString(value, "pluginId"),
@@ -228,7 +225,7 @@ function optionalWorkspaceProviderMetadata(value: unknown): Workspace["provider"
 
 function optionalWorkspaceRemovalPresentation(value: unknown): Workspace["removal"] | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value) || Array.isArray(value)) throw new Error("Invalid workspace removal field");
+  if (!isRecord(value)) throw new Error("Invalid workspace removal field");
   return Object.freeze({
     actionLabel: requireNonEmptyString(value, "actionLabel"),
     confirmation: requireNonEmptyString(value, "confirmation"),
@@ -237,7 +234,7 @@ function optionalWorkspaceRemovalPresentation(value: unknown): Workspace["remova
 }
 
 function parseJsonObject(value: unknown, field: string): NonNullable<NonNullable<Workspace["provider"]>["metadata"]> {
-  if (!isRecord(value) || Array.isArray(value)) throw new Error(`Invalid ${field} field`);
+  if (!isRecord(value)) throw new Error(`Invalid ${field} field`);
   return Object.freeze(Object.fromEntries(
     Object.entries(value).map(([key, item]) => [key, parseJsonValue(item, field)]),
   ));
@@ -252,7 +249,7 @@ function parseJsonValue(value: unknown, field: string): JsonValue {
 }
 
 function requireWorkspaceEffectiveConfig(value: unknown): WorkspaceEffectiveConfig {
-  if (!isRecord(value) || Array.isArray(value)) throw new Error("Expected workspace effectiveConfig field");
+  if (!isRecord(value)) throw new Error("Expected workspace effectiveConfig field");
   const uploads = optionalUploads(value["uploads"]);
   return Object.freeze({
     ...optionalField("uploads", uploads === undefined ? undefined : Object.freeze({ ...uploads })),
@@ -839,9 +836,6 @@ export function parseSessionStreamSync(value: unknown): SessionStreamSync {
   if (kind === "snapshot") return { kind, seq: requireNumber(record, "seq"), partial: record["partial"] ?? null };
   throw new Error("Invalid stream sync kind");
 }
-
-
-
 
 export function parseSessionStatusCatalogSnapshot(value: unknown): SessionStatusCatalogSnapshot {
   const record = requireRecord(value);
@@ -1807,7 +1801,6 @@ export function requireMachineStatusSnapshot(value: unknown): MachineStatusSnaps
   return snapshot;
 }
 
-
 /** Parse the self-update status endpoint response (tolerant of disabled hosts). */
 export function parsePiWebSelfUpdateStatus(value: unknown): PiWebSelfUpdateStatus {
   const record = requireRecord(value);
@@ -1904,7 +1897,7 @@ function parsePiWebConfigValues(value: unknown): PiWebConfigValues {
 
 function optionalListTiles(value: unknown): PiWebConfigValues["listTiles"] | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value) || Array.isArray(value)) throw new Error("Invalid PI WEB listTiles field");
+  if (!isRecord(value)) throw new Error("Invalid PI WEB listTiles field");
   const phone = value["phone"];
   const desktop = value["desktop"];
   if (phone !== undefined && phone !== 1 && phone !== 2) throw new Error("Invalid PI WEB listTiles.phone");
@@ -1914,7 +1907,7 @@ function optionalListTiles(value: unknown): PiWebConfigValues["listTiles"] | und
 
 function optionalLogging(value: unknown): PiWebConfigValues["logging"] | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value) || Array.isArray(value)) throw new Error("Invalid PI WEB logging field");
+  if (!isRecord(value)) throw new Error("Invalid PI WEB logging field");
   const level = value["level"];
   if (level !== undefined && level !== "errors" && level !== "requests" && level !== "debug") throw new Error("Invalid PI WEB logging level");
   return {
@@ -1926,7 +1919,7 @@ function optionalLogging(value: unknown): PiWebConfigValues["logging"] | undefin
 
 function optionalAgent(value: unknown): PiWebConfigValues["agent"] | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value) || Array.isArray(value)) throw new Error("Invalid PI WEB agent field");
+  if (!isRecord(value)) throw new Error("Invalid PI WEB agent field");
   return {
     ...optionalField("command", optionalString(value, "command")),
     ...optionalField("dir", optionalString(value, "dir")),
@@ -1957,7 +1950,7 @@ function optionalStringArray(value: unknown, field: string): string[] | undefine
 
 function optionalUploads(value: unknown): PiWebConfigValues["uploads"] | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value) || Array.isArray(value)) throw new Error("Invalid PI WEB uploads field");
+  if (!isRecord(value)) throw new Error("Invalid PI WEB uploads field");
   return {
     ...optionalField("defaultFolder", optionalString(value, "defaultFolder")),
   };
@@ -1973,7 +1966,7 @@ function isNonEmptyStringArray(value: unknown): value is string[] {
 
 function optionalShortcuts(value: unknown): PiWebShortcutConfig | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value) || Array.isArray(value)) throw new Error("Invalid PI WEB shortcuts field");
+  if (!isRecord(value)) throw new Error("Invalid PI WEB shortcuts field");
   return Object.fromEntries(Object.entries(value).map(([actionId, shortcut]) => {
     if (shortcut !== null && (typeof shortcut !== "string" || shortcut === "")) throw new Error("Invalid PI WEB shortcut field");
     return [actionId, shortcut];
@@ -1982,13 +1975,13 @@ function optionalShortcuts(value: unknown): PiWebShortcutConfig | undefined {
 
 function optionalPlugins(value: unknown): PiWebPluginConfigMap | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value) || Array.isArray(value)) throw new Error("Invalid PI WEB plugins field");
+  if (!isRecord(value)) throw new Error("Invalid PI WEB plugins field");
   return Object.fromEntries(Object.entries(value).map(([pluginId, config]) => {
-    if (!isRecord(config) || Array.isArray(config)) throw new Error("Invalid PI WEB plugin config field");
+    if (!isRecord(config)) throw new Error("Invalid PI WEB plugin config field");
     const enabled = config["enabled"];
     if (enabled !== undefined && typeof enabled !== "boolean") throw new Error("Invalid PI WEB plugin enabled field");
     const settings = config["settings"];
-    if (settings !== undefined && (!isRecord(settings) || Array.isArray(settings))) throw new Error("Invalid PI WEB plugin settings field");
+    if (settings !== undefined && (!isRecord(settings))) throw new Error("Invalid PI WEB plugin settings field");
     return [pluginId, config];
   }));
 }
@@ -2547,7 +2540,6 @@ export function parseInterruptedRunSnapshot(value: unknown): InterruptedRunSnaps
   }
   return { runs: parsed };
 }
-
 
 /**
  * A recall answers with the queue *and* whether anything was taken back: the

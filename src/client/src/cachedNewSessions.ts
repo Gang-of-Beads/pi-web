@@ -1,3 +1,4 @@
+import { isRecord } from "../../shared/unknownValues";
 import { browserLocalStorage } from "./browserLocalStorage";
 import type { SessionInfo } from "./api";
 
@@ -105,10 +106,6 @@ function parseCachedSession(value: unknown): CachedNewSessionInfo[] {
 
 function hasCachedNewMarker(session: SessionInfo): session is SessionInfo & { browserCachedNew: unknown } {
   return markerProperty in session;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function stringField(record: Record<string, unknown>, key: string): string | undefined {

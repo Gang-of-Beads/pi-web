@@ -140,7 +140,7 @@ import { boundToolResultText } from "./toolResultBounds.js";
 import { correlateQueuedPromptIds } from "./queuedPromptIdentity.js";
 import { SessionNotFoundError } from "./sessionErrors.js";
 import { sessionHasActiveWork } from "./sessionActiveWork.js";
-import { errorMessage } from "../../../shared/unknownValues.js";
+import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
 
 interface ActiveSession<TRuntime> {
   runtime: TRuntime;
@@ -258,7 +258,6 @@ function refMatchesActiveSession(ref: PiSessionRef, active: ActiveSession<PiSess
 function refMatchesStartupSession(ref: PiSessionRef, session: PiAgentSession): boolean {
   return cwdPathsEqual(session.sessionManager.getCwd(), ref.cwd);
 }
-
 
 const WAITING_MESSAGES_BLOCK_ARCHIVE = "Messages are waiting for this session. Open it to deliver them before archiving";
 const WAITING_MESSAGES_BLOCK_DELETE = "Messages are waiting for this session. Restore and open it to deliver them before deleting";
@@ -6494,7 +6493,6 @@ function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values)];
 }
 
-
 function modelToClientModel(model: PiAgentSession["model"]): ClientSessionModel {
   if (model === undefined) return {};
   const name = getString(model, "name");
@@ -7084,7 +7082,6 @@ function buildPromptOptions(behavior: QueuedPromptKind | undefined, images: Imag
   return Object.keys(options).length > 0 ? options : undefined;
 }
 
-
 /**
  * The transcript, as the browser receives it. What this pushes is what the
  * reader can see, so `readableMessageCount` counts exactly this set - the two
@@ -7303,10 +7300,6 @@ function stringifyToolResult(result: unknown): string {
     return JSON.stringify(result);
   }
   return stringifyPrimitive(result);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function getProperty(value: unknown, key: string): unknown {

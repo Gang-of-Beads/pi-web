@@ -1,3 +1,5 @@
+import { isRecord } from "../../../shared/unknownValues.js";
+
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 
@@ -27,10 +29,6 @@ function isTurnBoundary(message: unknown): boolean {
 function getProperty(value: unknown, key: string): unknown {
   if (!isRecord(value)) return undefined;
   return value[key];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function getString(value: unknown, key: string): string | undefined {

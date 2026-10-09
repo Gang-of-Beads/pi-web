@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues";
 import { LitElement, css, html, unsafeCSS, type TemplateResult } from "lit";
 import { toolTargetPlacement } from "./toolTargetPlacement";
 import { renderCheckIcon, renderCrossIcon, renderFilledDotIcon, renderPendingRingIcon, uiIconStyle } from "./uiIcons.js";
@@ -254,10 +255,6 @@ const STATUS_LABEL: Record<ToolExecutionDisplayStatus, string> = {
   error: "failed",
   interrupted: "interrupted",
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 function getProperty(value: unknown, key: string): unknown {
   return isRecord(value) ? value[key] : undefined;

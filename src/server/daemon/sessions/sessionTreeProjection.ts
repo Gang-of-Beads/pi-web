@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues.js";
 import type { SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot } from "../../../shared/apiTypes.js";
 
 const SUMMARY_MAX_LENGTH = 360;
@@ -265,6 +266,3 @@ function isProjectableSessionEntry(value: unknown): value is ProjectableSessionE
     && typeof value["type"] === "string";
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

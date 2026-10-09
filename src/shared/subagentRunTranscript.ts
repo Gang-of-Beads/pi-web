@@ -1,3 +1,5 @@
+import { isRecord } from "./unknownValues.js";
+
 /**
  * The conversation held in a fork-context child's transcript.
  *
@@ -88,6 +90,3 @@ function roleOf(entry: Record<string, unknown>): string {
   return typeof role === "string" ? role : "assistant";
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

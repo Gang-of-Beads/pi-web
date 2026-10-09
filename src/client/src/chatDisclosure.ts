@@ -1,3 +1,5 @@
+import { isRecord } from "../../shared/unknownValues";
+
 export interface ChatDisclosureSnapshot {
   open: string[];
   closedDefaultOpen: string[];
@@ -116,6 +118,3 @@ function setsEqual(left: Set<string>, right: Set<string>): boolean {
   return true;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

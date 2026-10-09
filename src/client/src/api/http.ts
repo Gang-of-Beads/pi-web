@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues";
 import { resolveAppUrl } from "../appUrl";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { deadlineSignal, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
@@ -99,6 +100,3 @@ export function apiErrorMessage(value: unknown): string | undefined {
   return typeof value["error"] === "string" ? value["error"] : undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues";
 import type { AskUserSubmission, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse } from "../../../shared/apiTypes";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
@@ -554,10 +555,6 @@ function terminalCommandRunFilterQuery(filter: TerminalCommandRunFilter | undefi
   if (filter.metadata !== undefined && Object.keys(filter.metadata).length > 0) params.set("metadata", JSON.stringify(filter.metadata));
   const query = params.toString();
   return query === "" ? "" : `?${query}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 export interface FileSuggestionQueryOptions {

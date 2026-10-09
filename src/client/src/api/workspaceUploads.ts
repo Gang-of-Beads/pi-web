@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues";
 import type { WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "../../../shared/apiTypes";
 import { parseWriteWorkspaceFileResponse } from "./parsers";
 import { workspaceFileWriteUrl } from "./urls";
@@ -350,6 +351,3 @@ function safeReadXhrJson(xhr: WorkspaceUploadXhr): unknown {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}

@@ -1,3 +1,4 @@
+import { isRecord } from "../../shared/unknownValues.js";
 import { createHash } from "node:crypto";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -380,10 +381,6 @@ export function configFromMachineConfigWriteBody(body: unknown): PiWebConfigValu
 function isMachineConfigWriteBody(value: unknown): value is MachineConfigWriteBody {
   if (!isRecord(value)) return false;
   return isRecord(value["config"]);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function fakePiPackageService(): PiPackageService {

@@ -1,3 +1,5 @@
+import { isRecord } from "../../../shared/unknownValues.js";
+
 /**
  * Pure helpers for the subsession transcript route: turn a subsession's normalized
  * history (as produced by `historyMessages`) into a filtered, projected,
@@ -296,10 +298,6 @@ function stringifyContent(content: unknown): string {
 function clampInteger(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return max;
   return Math.max(min, Math.min(max, Math.floor(value)));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function getProperty(value: unknown, key: string): unknown {

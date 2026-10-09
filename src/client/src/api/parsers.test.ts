@@ -325,7 +325,7 @@ describe("API parsers", () => {
 
   it("parses paged message responses and rejects legacy array message pages", () => {
     expect(parseMessagePage({ messages: ["c"], start: 3, total: 9 })).toEqual({ messages: ["c"], start: 3, total: 9 });
-    expect(() => parseMessagePage(["a", "b"])).toThrow("Expected array response");
+    expect(() => parseMessagePage(["a", "b"])).toThrow("Expected object response");
   });
 
   it("parses a session stream snapshot, defaulting a missing partial to null", () => {

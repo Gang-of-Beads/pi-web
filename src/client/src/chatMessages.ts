@@ -1,3 +1,4 @@
+import { isRecord } from "../../shared/unknownValues";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE } from "../../shared/apiTypes";
 import { deliverySettled } from "./messageDelivery";
 import { parseAskUserOutcome } from "./api/parsers";
@@ -464,10 +465,6 @@ function shortValue(value: unknown): string {
   if (Array.isArray(value)) return `${String(value.length)} item${value.length === 1 ? "" : "s"}`;
   if (typeof value === "object" && value !== null) return "object";
   return "";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function getProperty(value: unknown, key: string): unknown {

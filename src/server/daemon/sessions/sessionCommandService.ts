@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues.js";
 import crypto from "node:crypto";
 import type { SessionUiEvent } from "../../../shared/apiTypes.js";
 import type { ClientCommandResult, ClientSession, ClientSessionTreeSnapshot } from "../../shared/types.js";
@@ -484,10 +485,6 @@ function extractUserMessageText(message: unknown): string | undefined {
 function normalizedName(name: string | undefined): string | undefined {
   const trimmed = name?.replace(/\s+/g, " ").trim();
   return trimmed === undefined || trimmed === "" ? undefined : trimmed;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function isDefined<T>(value: T | undefined): value is T {

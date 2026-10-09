@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues.js";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import * as pty from "node-pty";
@@ -315,7 +316,7 @@ function validateCommandRunOptions(options: RunTerminalCommandOptions): void {
 
 function parseMetadata(value: unknown): Record<string, string> {
   if (value === undefined || value === null) return {};
-  if (!isRecord(value) || Array.isArray(value)) throw new Error("metadata must be an object");
+  if (!isRecord(value)) throw new Error("metadata must be an object");
   return Object.fromEntries(Object.entries(value).map(([key, metadataValue]) => {
     if (key.trim() === "") throw new Error("metadata keys must not be empty");
     if (typeof metadataValue !== "string") throw new Error("metadata values must be strings");
@@ -340,10 +341,6 @@ function isTerminalCommandRunFinal(status: TerminalCommandRunStatus): boolean {
 
 function copyCommandRun(run: TerminalCommandRun): TerminalCommandRun {
   return { ...run, metadata: { ...run.metadata } };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 /**

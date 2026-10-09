@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues.js";
 import { open, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { SessionSubagentRunInfo } from "../../../shared/apiTypes.js";
@@ -572,10 +573,6 @@ async function lastTranscriptStep(transcript: string): Promise<string | undefine
     if (step !== undefined) return step;
   }
   return undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function stepFromEntry(entry: unknown): string | undefined {

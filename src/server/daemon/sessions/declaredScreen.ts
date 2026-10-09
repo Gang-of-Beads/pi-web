@@ -9,6 +9,7 @@
  * comes from extension code, so junk is not an error: anything that does not fit
  * reads as undeclared and the screen falls back to its drawn lines.
  */
+import { isRecord } from "../../../shared/unknownValues.js";
 import {
   ASK_USER_ID_MAX_LENGTH,
   ASK_USER_OPTION_LIMIT,
@@ -106,6 +107,3 @@ function unique(values: readonly string[]): boolean {
   return new Set(values).size === values.length;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}

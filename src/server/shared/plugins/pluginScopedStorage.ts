@@ -1,3 +1,4 @@
+import { isRecord } from "../../../shared/unknownValues.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
@@ -80,10 +81,6 @@ function isJsonValue(value: unknown): value is JsonValue {
   if (Array.isArray(value)) return value.every(isJsonValue);
   if (!isRecord(value)) return false;
   return Object.values(value).every(isJsonValue);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 async function writeDocument(directory: string, key: string, value: JsonValue): Promise<void> {

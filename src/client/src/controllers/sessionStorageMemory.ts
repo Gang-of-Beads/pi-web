@@ -1,3 +1,5 @@
+import { isRecord } from "../../../shared/unknownValues";
+
 export interface KeyValueStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -85,6 +87,3 @@ function isStoredMapEnvelope(value: unknown): value is StoredMapEnvelope {
   return value["entries"].every((entry) => Array.isArray(entry) && entry.length === 2 && typeof entry[0] === "string" && entry[0] !== "");
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
