@@ -67,3 +67,7 @@ Each slice: state-diagram entries for new rows or frames in the same commit, a b
    - The session's tool cards open their output while it holds, as an error's card does, and fold back when it is cleared.
    - What the extensions draw from then on (tool call and result lines, custom rows) gets `expanded` as pi gives it. Rows the page has already read keep the drawing they were read with until the page reads them again; the card's own fold follows at once.
    - `setTheme` answers `{ success: false }` with the reason: PI WEB draws with its own themes, chosen in its Settings. pi's headless default said only "UI not available". `getAllThemes` and `getTheme` keep pi's headless answers (none).
+
+## Web insertion points on top
+
+- **What became of a row (2026-10-10).** A plugin's message renderer gets `followingRows`: the custom rows after its own in the transcript as loaded (`tag`, `kind`, `payload`), beside `followingUserTexts`. A card can then tell what became of what it shows from the extension's own records instead of from what the reader typed. First user: the Subagents plugin's supervisor card reads pi-subagents' own `subagent_supervisor_reply` entry (journaled when a reply reaches the child, matched by request id) as delivered, and the reader's own reply message to the session only as asked, waiting for the agent to relay it. Before, the reader's message alone marked the card answered before anything was delivered, and a reply written in the composer and relayed by the agent left the card offering a second one.

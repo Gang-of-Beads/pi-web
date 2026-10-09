@@ -4,7 +4,7 @@ import { RunsRead, type RunsView } from "./runsRead.js";
 import { followedAfter, runsActivityOf, runsPollingDecision, UNSEEN_ANSWERS_BEFORE_STOP, type FollowedActivity, type RunsActivity } from "./runsPolling.js";
 import { defineOnScreenMarker } from "./onScreenMarker.js";
 import { defineSupervisorCard } from "./supervisorCardElement.js";
-import { answeredReply, supervisorRequest } from "./supervisorRequest.js";
+import { replyStanding, supervisorRequest } from "./supervisorRequest.js";
 import { noticeSummary } from "./noticeSummary.js";
 
 const NOTICE_TAGS = [
@@ -126,7 +126,7 @@ const plugin: PiWebPlugin = {
               const request = supervisorRequest(view.payload);
               return html`<pi-subagent-supervisor-card
                 .request=${request}
-                .answered=${answeredReply(request, view.followingUserTexts ?? [])}
+                .standing=${replyStanding(request, view.followingRows ?? [], view.followingUserTexts ?? [])}
                 .onSend=${view.sendMessage}
                 .onInsert=${view.insertIntoComposer}
               ></pi-subagent-supervisor-card>`;

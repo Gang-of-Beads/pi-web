@@ -40,7 +40,7 @@ import { sessionActivityCategory } from "../../../shared/sessionActivityState";
 import { isSessionActive } from "../../../shared/activity";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import { attachmentZoomStyles } from "./shared";
-import type { QualifiedActivityNoteContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";
+import type { FollowingCustomRow, QualifiedActivityNoteContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback } from "./ExtensionDialogCard";
@@ -1898,6 +1898,7 @@ export class ChatView extends LitElement {
     queued: readonly unknown[] | undefined;
     rowOfPart: Map<ChatPart, number>;
     userTexts: { row: number; text: string }[];
+    customRows: { row: number; custom: FollowingCustomRow }[];
   } | undefined;
 
   /**
@@ -1914,6 +1915,14 @@ export class ChatView extends LitElement {
     return index.userTexts.filter((entry) => entry.row > at).map((entry) => entry.text);
   }
 
+  /** The custom rows after the one carrying this part, from the same index as `followingUserTexts`. */
+  private followingRows(part: ChatPart): readonly FollowingCustomRow[] {
+    const index = this.followingIndexNow();
+    const at = index.rowOfPart.get(part);
+    if (at === undefined) return [];
+    return index.customRows.filter((entry) => entry.row > at).map((entry) => entry.custom);
+  }
+
   private followingIndexNow(): NonNullable<ChatView["followingIndex"]> {
     const known = this.followingIndex;
     const queued = this.status?.queuedMessages;
@@ -1921,11 +1930,16 @@ export class ChatView extends LitElement {
     const rows = this.transcriptMessages();
     const rowOfPart = new Map<ChatPart, number>();
     const userTexts: { row: number; text: string }[] = [];
+    const customRows: { row: number; custom: FollowingCustomRow }[] = [];
     rows.forEach((line, row) => {
-      for (const part of line.parts) if (part.type === "custom") rowOfPart.set(part, row);
+      for (const part of line.parts) {
+        if (part.type !== "custom") continue;
+        rowOfPart.set(part, row);
+        customRows.push({ row, custom: { tag: part.tag, kind: part.kind, payload: part.payload } });
+      }
       if (line.role === "user") userTexts.push({ row, text: line.parts.map((part) => (part.type === "text" ? part.text : "")).join("") });
     });
-    this.followingIndex = { messages: this.messages, clientQueued: this.clientQueuedMessages, queued, rowOfPart, userTexts };
+    this.followingIndex = { messages: this.messages, clientQueued: this.clientQueuedMessages, queued, rowOfPart, userTexts, customRows };
     return this.followingIndex;
   }
 
@@ -1959,6 +1973,7 @@ export class ChatView extends LitElement {
         insertIntoComposer: this.onInsertIntoComposer,
         sendMessage: this.onSendMessage,
         followingUserTexts: this.followingUserTexts(part),
+        followingRows: this.followingRows(part),
         kind: part.kind,
         ...(part.drawn === undefined ? {} : { drawn: part.drawn }),
       });

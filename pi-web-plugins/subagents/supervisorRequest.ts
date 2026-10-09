@@ -90,11 +90,48 @@ function replyPrefix(request: SupervisorRequest): string {
   return `Reply to ${target}${about.length === 0 ? "" : ` (${about.join(", ")})`}: `;
 }
 
+/** The entry pi-subagents journals when a reply reaches the child (`appendSupervisorReplyEntry`). */
+const REPLY_ENTRY_TAG = "subagent_supervisor_reply";
+
 /**
- * The reply the reader already sent to this request, found in what they said after it: the
- * first later message written the way `replyMessage` writes one for this request. The card
- * remembered a sent reply only in its own state, so a reload or a session switch offered the
- * form again and invited a second reply.
+ * The reply pi-subagents delivered to the child for this request: its own journal entry of it,
+ * matched by request id, whoever wrote the reply (this card, or the reader in the composer). A
+ * record whose message cannot be read is still a delivery, with no text. A request without an id
+ * cannot be matched to a record, so it is never known delivered and stays asked or open.
+ */
+export function deliveredReply(request: SupervisorRequest, followingRows: readonly { readonly tag: string; readonly payload: unknown }[]): { readonly text: string } | undefined {
+  if (request.requestId === undefined) return undefined;
+  const entry = followingRows.find((row) => row.tag === REPLY_ENTRY_TAG && readString(row.payload, "requestId") === request.requestId);
+  return entry === undefined ? undefined : { text: readString(entry.payload, "message") ?? "" };
+}
+
+/** A reply's states on the card: delivered, asked of the agent, open (the form), or not expected. */
+export type ReplyKind = "delivered" | "asked" | "open" | "not-expected";
+
+/** `text` is the reply, for a delivered or asked one; empty otherwise. */
+export interface ReplyStanding {
+  readonly kind: ReplyKind;
+  readonly text: string;
+}
+
+/**
+ * Where a reply to this request stands, as the card shows it: delivered to the child (pi-subagents'
+ * record), else asked of the agent (the reader's message to this session, which the agent relays and
+ * pi-subagents records once it does), else open; or not expected.
+ */
+export function replyStanding(request: SupervisorRequest, followingRows: readonly { readonly tag: string; readonly payload: unknown }[], followingUserTexts: readonly string[]): ReplyStanding {
+  if (!offersReply(request)) return { kind: "not-expected", text: "" };
+  const delivered = deliveredReply(request, followingRows);
+  if (delivered !== undefined) return { kind: "delivered", text: delivered.text };
+  const asked = answeredReply(request, followingUserTexts);
+  return asked === undefined ? { kind: "open", text: "" } : { kind: "asked", text: asked };
+}
+
+/**
+ * The reply the reader asked this session to relay for this request, found in what they said after
+ * it: the first later message written the way `replyMessage` writes one for this request. It means
+ * asked, not delivered: the agent relays it, and pi-subagents' own record (`deliveredReply`) says when
+ * it reached the child. Read from the transcript, so a reload or a session switch keeps it.
  */
 export function answeredReply(request: SupervisorRequest, followingUserTexts: readonly string[]): string | undefined {
   if (!offersReply(request)) return undefined;

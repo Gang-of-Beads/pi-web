@@ -426,6 +426,13 @@ export interface ActivityNoteContext {
   idle: boolean;
 }
 
+/** A custom row after the one being drawn: its tag, what it is, and its payload (`MessageRendererViewModel.followingRows`). */
+export interface FollowingCustomRow {
+  readonly tag: string;
+  readonly kind: "message" | "entry";
+  readonly payload: unknown;
+}
+
 /**
  * Claims one custom payload tag in the transcript: the custom messages of that type and, since
  * entry rows, the custom entries of that type an extension draws (`kind` tells them apart). The
@@ -458,6 +465,13 @@ export interface MessageRendererViewModel {
    * Only what is loaded: a transcript whose newest messages are not loaded yet says less.
    */
   readonly followingUserTexts?: readonly string[] | undefined;
+  /**
+   * The custom rows after this one in the transcript as loaded, oldest first: what the session's
+   * extensions recorded later (a reply one journaled, a result one posted), so a card can tell what
+   * became of what it shows from the extension's own records rather than from what the reader typed.
+   * Only what is loaded, as for `followingUserTexts`. Absent on hosts older than the field.
+   */
+  readonly followingRows?: readonly FollowingCustomRow[] | undefined;
   /**
    * What the row is: an extension's custom message, or a custom session entry an extension
    * registered a pi renderer for (`pi.registerEntryRenderer`). Absent on hosts older than entry rows,

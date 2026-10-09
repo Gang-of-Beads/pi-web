@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit";
 import { property, state } from "lit/decorators.js";
-import { offersReply, replyMessage, supervisorTitle, type SupervisorRequest } from "./supervisorRequest.js";
+import { replyMessage, supervisorTitle, type ReplyKind, type ReplyStanding, type SupervisorRequest } from "./supervisorRequest.js";
 
 /**
  * The card a supervisor request draws in the transcript. It owns the reply
@@ -11,11 +11,20 @@ export class SubagentSupervisorCard extends LitElement {
   @property({ attribute: false }) request?: SupervisorRequest;
   @property({ attribute: false }) onSend?: (text: string) => void | Promise<void>;
   @property({ attribute: false }) onInsert?: (text: string) => void;
-  /** The reply the transcript shows the reader already sent, if any. */
-  @property({ attribute: false }) answered?: string;
+  /** Where a reply stands, from the transcript: delivered, asked of the agent, open, or not expected. */
+  @property({ attribute: false }) standing: ReplyStanding = { kind: "open", text: "" };
 
   @state() private draft = "";
   @state() private sent = false;
+
+  /** The draft and a sent reply belong to one request: a card handed another starts empty. */
+  override willUpdate(changed: Map<PropertyKey, unknown>): void {
+    if (!changed.has("request")) return;
+    const previous = changed.get("request");
+    if (previous === undefined || sameRequest(previous, this.request)) return;
+    this.draft = "";
+    this.sent = false;
+  }
 
   override render() {
     const request = this.request;
@@ -24,13 +33,23 @@ export class SubagentSupervisorCard extends LitElement {
       <strong>${supervisorTitle(request)}</strong>
       ${request.runId === undefined ? null : html`<small class="run">Run ${request.runId}</small>`}
       ${request.body === undefined ? null : html`<p class="body">${request.body}</p>`}
-      ${offersReply(request) ? this.renderReply(request) : html`<small class="quiet">No reply expected.</small>`}
+      ${this.renderStanding(request)}
     `;
   }
 
+  /** One drawing per standing; a reply sent from this card for this request counts as asked until the transcript shows it. */
+  private renderStanding(request: SupervisorRequest) {
+    const standing: ReplyStanding = this.standing.kind === "open" && this.sent ? { kind: "asked", text: "" } : this.standing;
+    const drawings: Record<ReplyKind, (text: string) => unknown> = {
+      "not-expected": () => html`<small class="quiet">No reply expected.</small>`,
+      delivered: (text) => html`<small class="quiet">Delivered to ${request.agent ?? "the subagent"}: ${text}</small>`,
+      asked: (text) => html`<small class="quiet">${text === "" ? "Reply sent to this session" : `Sent to this session: ${text}`}. Waiting for the agent to relay it to the child.</small>`,
+      open: () => this.renderReply(request),
+    };
+    return drawings[standing.kind](standing.text);
+  }
+
   private renderReply(request: SupervisorRequest) {
-    if (this.answered !== undefined) return html`<small class="quiet">Answered: ${this.answered}</small>`;
-    if (this.sent) return html`<small class="quiet">Reply sent to this session, which relays it to the child.</small>`;
     return html`
       <div class="reply">
         <input
@@ -72,6 +91,11 @@ export class SubagentSupervisorCard extends LitElement {
       .reply-input, .reply-actions button { min-height: var(--pi-control-height-touch); }
     }
   `;
+}
+
+function sameRequest(previous: unknown, current: SupervisorRequest | undefined): boolean {
+  if (current === undefined || typeof previous !== "object" || previous === null) return false;
+  return Reflect.get(previous, "requestId") === current.requestId && Reflect.get(previous, "runId") === current.runId && Reflect.get(previous, "childTarget") === current.childTarget;
 }
 
 export function defineSupervisorCard(): void {
