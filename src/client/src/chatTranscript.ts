@@ -3,7 +3,7 @@ import { appendText, appendThinking, askUserRecordFromToolDetails, normalizeMess
 import { deliverySettled } from "./messageDelivery";
 import { resolveArrival } from "./transcriptArrival";
 import { placeByTimestamp } from "./transcriptOrder";
-import { withoutRetriedAttempt } from "./retriedAttempt";
+import { attemptStamps, isAttemptRow, withoutAttempts, withoutRetriedAttempt } from "./retriedAttempt";
 import { withExtensionNotice } from "./extensionNotices";
 import type { ChatLine, ToolExecutionPart } from "./components/shared";
 import { carryDeliveryForward, findTrackedUserLineIndex, isEchoOfTrackedMessage } from "./messageDelivery";
@@ -77,7 +77,27 @@ export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent
   if (event.type === "session.error") return [...messages, textMessage("system", event.message)];
   if (event.type === "message.end") return event.message === undefined ? undefined : applyFinalMessage(messages, event.message);
   if (event.type === "pi.event" && event.eventType === "auto_retry_start") return withoutRetriedAttempt(messages);
+  if (event.type === "attempt.retry") return event.state === "pending" ? withoutAttempts(messages, event.messages) : withUnreplacedAttempts(messages, event.messages);
   return undefined;
+}
+
+/**
+ * Attempts no retry replaced, shown again, then the row saying why (D11). The attempts a frame
+ * names are hidden and shown together, by the daemon and here alike. Rows this page still shows
+ * (it read them from history after a restart) stay where they are, the row joining them; hidden
+ * ones come back in front of the reader's queued messages only, where history draws them, since
+ * no newer reply can have arrived. A frame applied twice adds nothing the second time.
+ */
+function withUnreplacedAttempts(messages: ChatLine[], shown: readonly unknown[]): ChatLine[] | undefined {
+  const stamps = attemptStamps(shown);
+  const rows = shown.flatMap(normalizeMessage).map((line) => (line.role === "assistant" ? withoutToolCalls(line) : line)).filter((line) => line.parts.length > 0);
+  let lastShown = -1;
+  messages.forEach((line, index) => { if (isAttemptRow(line, stamps)) lastShown = index; });
+  const alreadyShown = (row: ChatLine): boolean => (isAttemptRow(row, stamps) ? lastShown >= 0 : messages.some((line) => line.role === row.role && line.meta?.timestamp === row.meta?.timestamp && sameMessageContent(line, row)));
+  const fresh = rows.filter((row) => !alreadyShown(row));
+  if (fresh.length === 0) return undefined;
+  const at = lastShown >= 0 ? lastShown + 1 : queuedTail(messages);
+  return [...messages.slice(0, at), ...fresh, ...messages.slice(at)];
 }
 
 function applyFinalMessage(messages: ChatLine[], rawMessage: unknown): ChatLine[] | undefined {

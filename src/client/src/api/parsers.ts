@@ -1130,6 +1130,8 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
       return { type: "session.created", session: parseSessionInfo(record["session"]) };
     case "pi.event":
       return { type: "pi.event", eventType: requireString(record, "eventType") };
+    case "attempt.retry":
+      return parseAttemptRetryEvent(record);
     case "prompt.accepted":
       return { type: "prompt.accepted", clientMessageId: requireString(record, "clientMessageId") };
     case "prompt.withdrawn":
@@ -1199,6 +1201,12 @@ function optionalNumberOrNull(record: Record<string, unknown>, key: string): num
   if (value === null) return null;
   if (typeof value !== "number") throw new Error(`Expected optional number|null field: ${key}`);
   return value;
+}
+
+function parseAttemptRetryEvent(record: Record<string, unknown>): Extract<SessionUiEvent, { type: "attempt.retry" }> {
+  const state = record["state"];
+  if (state !== "pending" && state !== "unreplaced") throw new Error("Invalid retried attempt state");
+  return { type: "attempt.retry", state, messages: parseUnknownArray(record["messages"]) };
 }
 
 function parseSessionStoppedEvent(record: Record<string, unknown>): Extract<SessionUiEvent, { type: "session.stopped" }> {

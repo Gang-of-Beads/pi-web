@@ -108,7 +108,7 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
 
 1. **Message identity.** Every transcript message carries `entryId`, the id of the pi entry it was projected from. Ids are written into the session file, so they survive daemon restarts; the transcript head needs no epoch.
 2. **Transcript head** `{ n, leaf }`: `n` is the number of messages the branch projects to (the same `total` that `/messages` pages by), and `leaf` is the `entryId` of the last one (`null` when empty).
-   - The projection is not append-only: a later `context_edit` removes a retried attempt, and the Stop mark annotates an earlier reply. So `n` can shrink and `leaf` can change without growing.
+   - The projection is not append-only: a later `context_edit` removes an attempt pi is retrying, a record that no retry replaced it brings it back with a row after it (state-diagram D11), and the Stop mark annotates an earlier reply. So `n` can shrink and `leaf` can change without growing.
    - The page never assumes; it verifies. A catch-up reads from index `n0 - 1` of its old head, and the message there must still be `leaf0`. If it isn't, the verdict is `diverged` and the tail window is reloaded.
    - The head is cached per session and keyed by pi's leaf id, since only an appended entry changes it. A 69k-entry branch is walked once per append, not once per heartbeat.
 3. **`/messages` returns `head`**, computed in the same tick as the page it answers with.

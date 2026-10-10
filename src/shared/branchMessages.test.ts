@@ -38,10 +38,11 @@ describe("a turn the reader stopped, after a reload", () => {
 
   /**
    * B30, review run 6cc25868: a Stop pressed while pi waited to retry a failed attempt writes no
-   * reply at all - pi only ends the retry - and the failed attempt is hidden as retried. The Stop
-   * left nothing, which is the owner's report. The daemon's record of the Stop settles on its own.
+   * reply at all - pi only ends the retry. A failure no retry replaced is never hidden, so the
+   * failed attempt stays shown, followed by the Stop's own row, even with no unreplaced record
+   * (a legacy file).
    */
-  it("settles a Stop pressed during a retry wait as the turn's one row", () => {
+  it("shows the failed attempt then the Stop's row when a Stop in the retry wait left no record", () => {
     const duringBackoff = [
       { type: "message", id: "u1", message: { role: "user", content: "go" } },
       { type: "message", id: "a1", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "503 overloaded" } },
@@ -49,8 +50,8 @@ describe("a turn the reader stopped, after a reload", () => {
       { ...stopped, data: { by: "you", at: "2026-09-30T09:00:00.000Z" } },
     ];
     const transcript = branchTranscript(duringBackoff);
-    expect(transcript.map((row) => row.entryId)).toEqual(["u1", "s1"]);
-    expect(transcript[1]?.message).toEqual({ role: "assistant", content: [], stopReason: "aborted", stoppedBy: "you", timestamp: "2026-09-30T09:00:00.000Z" });
+    expect(transcript.map((row) => row.entryId)).toEqual(["u1", "a1", "s1"]);
+    expect(transcript[2]?.message).toEqual({ role: "assistant", content: [], stopReason: "aborted", stoppedBy: "you", timestamp: "2026-09-30T09:00:00.000Z" });
     expect(readableMessageCount(duringBackoff)).toBe(transcript.length);
   });
 
@@ -77,7 +78,7 @@ describe("retried attempts in the transcript", () => {
   it("moves the head back when a retry removes the attempt it ended on", () => {
     const beforeRetry = [branch[0], failed("a1", "overloaded")];
     expect(transcriptHead(branchTranscript(beforeRetry))).toEqual({ n: 2, leaf: "a1" });
-    expect(transcriptHead(branchTranscript([...beforeRetry, omit("e1", "a1")]))).toEqual({ n: 1, leaf: "u1" });
+    expect(transcriptHead(branchTranscript([...beforeRetry, omit("e1", "a1")], undefined, new Set(["a1"])))).toEqual({ n: 1, leaf: "u1" });
   });
 
   it("has an empty head for an empty branch", () => {

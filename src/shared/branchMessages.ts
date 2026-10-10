@@ -108,25 +108,107 @@ function stopMoment(entry: Record<string, unknown>): string | undefined {
 }
 
 /**
- * The failed attempts pi retried: an assistant message that ended in an error and
- * that a `context_edit` then removed with no replacement. That pair is pi's own
- * recovery signature (`auto_retry_start`, then `_omitRecoveryAttempt`), so nothing
- * else an extension edits out of the model's context is hidden by it.
- *
- * Owner, 2026-09-30: "don't show the errors from before the retries have completely failed" - a failure the retry then
- * replaced is not the turn's outcome; only the attempt nobody retried is.
+ * Custom entry the daemon appends when a failed attempt pi took back to try again was never
+ * replaced: the retry was cancelled (a Stop in the wait), the overflow compaction failed, the run
+ * ended, the session closed, or the daemon restarted during the wait (state-diagram D11). The
+ * attempt is then the turn's outcome and shows; pi itself keeps it out of the model's context.
  */
-export function retriedAttemptIds(entries: readonly unknown[]): Set<string> {
-  const errored = new Set<string>();
-  const retried = new Set<string>();
-  for (const entry of entries) {
-    if (!isRecord(entry)) continue;
+export const RETRY_UNREPLACED_CUSTOM_TYPE = "pi-web.retry.unreplaced";
+
+const NO_PENDING: ReadonlySet<string> = new Set();
+
+/**
+ * The row saying why no retry replaced an attempt: pi's own words when pi gave them ("Retry
+ * cancelled", its compaction failure), else the daemon's. History draws it right after the
+ * attempt and the daemon publishes it live in the same place, so a Stop's own row follows it in
+ * both (D11).
+ */
+export function retryUnreplacedMessage(reason: string, at: string | undefined): Record<string, unknown> {
+  return { role: "system", content: reason, ...(at === undefined ? {} : { timestamp: at }) };
+}
+
+/** The attempts an unreplaced record names; the one place that reads the record's shape. */
+function recordedAttemptIds(entry: Record<string, unknown>): string[] {
+  const data = entry["data"];
+  return stringsOf(isRecord(data) ? data["attemptIds"] : undefined);
+}
+
+/** The record's row, keyed by the last attempt it names: that attempt is where the row is drawn. */
+function retryUnreplacedRow(entry: Record<string, unknown>): { attemptId: string; message: Record<string, unknown> } | undefined {
+  const data = entry["data"];
+  const attemptId = recordedAttemptIds(entry).at(-1);
+  if (attemptId === undefined) return undefined;
+  return { attemptId, message: retryUnreplacedMessage(getString(data, "reason") ?? "", getString(data, "at") ?? getString(entry, "timestamp")) };
+}
+
+function isRetryUnreplacedEntry(entry: Record<string, unknown>): boolean {
+  return entry["type"] === "custom" && entry["customType"] === RETRY_UNREPLACED_CUSTOM_TYPE;
+}
+
+/** Whether a session entry is an assistant reply that ended in an error: the only kind pi takes back to retry that is hidden. */
+export function isErroredReplyEntry(entry: unknown): boolean {
+  return isRecord(entry) && entry["type"] === "message" && isErroredAssistant(entry["message"]);
+}
+
+/** The failed attempts pi took back, where each sits, which the daemon recorded as unreplaced, and where the newest reply sits. */
+interface AttemptsTakenBack {
+  readonly takenBack: ReadonlyMap<string, number>;
+  readonly unreplaced: ReadonlySet<string>;
+  readonly lastReply: number;
+}
+
+/**
+ * An assistant message that ended in an error and that a `context_edit` then removed with no
+ * replacement is pi's own recovery signature (auto-retry's `_prepareRetry` and overflow recovery,
+ * both through `_omitRecoveryAttempt`), so nothing else an extension edits out of the model's
+ * context counts.
+ */
+function attemptsTakenBack(entries: readonly unknown[]): AttemptsTakenBack {
+  const errored = new Map<string, number>();
+  const takenBack = new Map<string, number>();
+  const unreplaced = new Set<string>();
+  let lastReply = -1;
+  entries.forEach((entry, index) => {
+    if (!isRecord(entry)) return;
     const id = getString(entry, "id");
-    if (id !== undefined && entry["type"] === "message" && isErroredAssistant(entry["message"])) errored.add(id);
+    const message = entry["message"];
+    if (entry["type"] === "message" && isRecord(message) && message["role"] === "assistant") lastReply = index;
+    if (id !== undefined && entry["type"] === "message" && isErroredAssistant(message)) errored.set(id, index);
     const target = getString(entry, "targetId");
-    if (entry["type"] === "context_edit" && entry["replacement"] === null && target !== undefined && errored.has(target)) retried.add(target);
+    const at = target === undefined ? undefined : errored.get(target);
+    if (entry["type"] === "context_edit" && entry["replacement"] === null && target !== undefined && at !== undefined) takenBack.set(target, at);
+    if (isRetryUnreplacedEntry(entry)) {
+      for (const attemptId of recordedAttemptIds(entry)) unreplaced.add(attemptId);
+    }
+  });
+  return { takenBack, unreplaced, lastReply };
+}
+
+/**
+ * The failed attempts pi took back that stay hidden (state-diagram D11). Owner, 2026-09-30:
+ * "don't show the errors from before the retries have completely failed"; Q16, 2026-10-10: a
+ * failure no retry replaced is the turn's outcome, a Stop during the wait included. So an attempt
+ * is hidden while `pending` (the daemon's own word for a retry still to come), or once a newer
+ * assistant reply follows it; one the daemon recorded as unreplaced, or with no newer reply after
+ * it and nothing pending, shows.
+ */
+export function retriedAttemptIds(entries: readonly unknown[], pending: ReadonlySet<string> = NO_PENDING): Set<string> {
+  const { takenBack, unreplaced, lastReply } = attemptsTakenBack(entries);
+  const hidden = new Set<string>();
+  for (const [id, at] of takenBack) {
+    if (!unreplaced.has(id) && (pending.has(id) || lastReply > at)) hidden.add(id);
   }
-  return retried;
+  return hidden;
+}
+
+/** Attempts pi took back that no newer reply followed and no record names: with no retry under way, none will come. */
+export function attemptsAwaitingRetry(entries: readonly unknown[]): string[] {
+  const { takenBack, unreplaced, lastReply } = attemptsTakenBack(entries);
+  return [...takenBack].filter(([id, at]) => !unreplaced.has(id) && lastReply <= at).map(([id]) => id);
+}
+
+function stringsOf(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 function isErroredAssistant(message: unknown): boolean {
@@ -143,7 +225,7 @@ const RENDERED_ENTRY_TYPES: ReadonlySet<unknown> = new Set(["message", "compacti
  */
 export function isReadableBranchEntry(entry: unknown): boolean {
   if (!isRecord(entry)) return false;
-  if (RENDERED_ENTRY_TYPES.has(entry["type"]) || isRefusedDialogEntry(entry)) return true;
+  if (RENDERED_ENTRY_TYPES.has(entry["type"]) || isRefusedDialogEntry(entry) || isRetryUnreplacedEntry(entry)) return true;
   return entry["type"] === "custom_message" && entry["display"] === true;
 }
 
@@ -181,10 +263,11 @@ export function transcriptHead(transcript: readonly TranscriptRow[]): Transcript
  * draws a custom entry only then, so only those become rows (`source: "entry"`). Without it (a
  * session read with no runtime) no extension entry is shown.
  */
-export function branchTranscript(entries: Iterable<unknown>, showsEntry?: (customType: string) => boolean): TranscriptRow[] {
+export function branchTranscript(entries: Iterable<unknown>, showsEntry?: (customType: string) => boolean, pending: ReadonlySet<string> = NO_PENDING): TranscriptRow[] {
   const branch = [...entries];
-  const retried = retriedAttemptIds(branch);
+  const retried = retriedAttemptIds(branch, pending);
   const stops = stopOutcomes(branch);
+  const reasons = unreplacedReasonRows(branch);
   const rows: TranscriptRow[] = [];
   const push = (entry: Record<string, unknown>, message: unknown) => { rows.push({ entryId: getString(entry, "id"), message }); };
   let thinkingLevel: string | undefined;
@@ -195,6 +278,8 @@ export function branchTranscript(entries: Iterable<unknown>, showsEntry?: (custo
     if (entry["type"] === "message") {
       const message = entry["message"];
       if (!retried.has(id)) push(entry, annotateAssistantThinkingLevel(stops.cutReplies.has(id) ? stoppedByYou(message) : message, thinkingLevel));
+      const reason = reasons.get(id);
+      if (reason !== undefined) push(reason.entry, reason.message);
     }
     else if (entry["type"] === "thinking_level_change") {
       const level = getString(entry, "thinkingLevel");
@@ -205,6 +290,17 @@ export function branchTranscript(entries: Iterable<unknown>, showsEntry?: (custo
     else if (entry["type"] === "custom" && showsEntry !== undefined) pushShownEntry(entry, showsEntry, push);
     else if (entry["type"] === "compaction") push(entry, { role: "system", source: "compaction", content: `Compacted history:\n\n${stringValue(entry["summary"])}` });
     else if (entry["type"] === "branch_summary") push(entry, { role: "system", source: "branch_summary", content: `Branch summary:\n\n${stringValue(entry["summary"])}` });
+  }
+  return rows;
+}
+
+/** Each unreplaced record's row, by the attempt it is drawn after. */
+function unreplacedReasonRows(branch: readonly unknown[]): Map<string, { entry: Record<string, unknown>; message: Record<string, unknown> }> {
+  const rows = new Map<string, { entry: Record<string, unknown>; message: Record<string, unknown> }>();
+  for (const entry of branch) {
+    if (!isRecord(entry) || !isRetryUnreplacedEntry(entry)) continue;
+    const row = retryUnreplacedRow(entry);
+    if (row !== undefined) rows.set(row.attemptId, { entry, message: row.message });
   }
   return rows;
 }

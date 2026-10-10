@@ -1742,6 +1742,17 @@ type SessionUiEventBody =
 } | {
     type: "session.created";
     session: SessionInfo;
+}
+/**
+ * A failed reply pi took back to try again (state-diagram D11). `pending`: the retry is to
+ * come, so the page hides the reply's rows. `unreplaced`: no retry replaced it, so the page
+ * shows them again with the row saying why after them. `messages` are the replies as history
+ * holds them; for `unreplaced`, the row saying why comes last.
+ */
+ | {
+    type: "attempt.retry";
+    state: "pending" | "unreplaced";
+    messages: unknown[];
 } | {
     type: "pi.event";
     eventType: string;

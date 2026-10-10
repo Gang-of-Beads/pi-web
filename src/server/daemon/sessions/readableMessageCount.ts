@@ -23,8 +23,9 @@ import { isReadableBranchEntry, retriedAttemptIds, stopOutcomes } from "../../..
 
 export { isReadableBranchEntry as isReadableMessageEntry };
 
-export function readableMessageCount(branch: readonly unknown[]): number {
-  const retried = retriedAttemptIds(branch);
+/** `retrying`: the attempts the daemon is about to retry, hidden as the transcript hides them (D11). */
+export function readableMessageCount(branch: readonly unknown[], retrying?: ReadonlySet<string>): number {
+  const retried = retriedAttemptIds(branch, retrying);
   let count = stopOutcomes(branch).alone.size;
   for (const entry of branch) {
     if (isReadableBranchEntry(entry) && !retried.has(entryId(entry))) count += 1;

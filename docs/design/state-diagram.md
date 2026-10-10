@@ -245,7 +245,7 @@ stateDiagram-v2
 - **One `idle` per turn,** published at turn end only. `message_end` inside a turn is not idle.
 - **A cut turn settles visibly (B30); every producer.** The reader's Stop is owned by the daemon's `pi-web.turn.stopped` entry. That entry settles as exactly one row, "You stopped this turn", at one of two places:
   1. **On the reply it cut:** a reply pi ended as aborted (or errored with an abort) after the entry. That reply carries the mark (`stoppedBy: "you"`), and its streamed part stays above the row.
-  2. **On its own,** when no cut reply follows it before the next user message or the end of the branch. The case: Stop during pi's retry backoff. pi only emits `auto_retry_end {success: false, finalError: "Retry cancelled"}`, and the failed attempt was already hidden as retried. History renders the lone entry as the settled row. Live, the daemon publishes the same row when the stopped work ends with the mark unconsumed: at `agent_end`, or at `auto_retry_end`, because pi schedules a retry after the failed run's `agent_end`.
+  2. **On its own,** when no cut reply follows it before the next user message or the end of the branch. The case: Stop during pi's retry backoff. pi only emits `auto_retry_end {success: false, finalError: "Retry cancelled"}`. History renders the lone entry as the settled row, after the failed attempt and its "Retry cancelled" row, which D11 shows because no retry replaced the attempt. Live, the daemon publishes the same row when the stopped work ends with the mark unconsumed: at `agent_end`, or at `auto_retry_end`, because pi schedules a retry after the failed run's `agent_end`.
 
   **The settlement is recorded, not re-derived (owed review A F2-1 and C 4, 2026-10-09).** History used to find where a Stop settled by walking the branch again, and the walk disagreed with what the reader had seen live:
   - **A Stop settled on its own stays on its own.** With no user message after it (a goal continuation, an extension's turn), the walk attached a Stop that had settled alone live to a later turn's cut reply, which then read "You stopped this turn" while the lone row vanished. When the daemon settles a Stop on its own it now appends `pi-web.turn.stop-settled` (`{outcome: "alone", at}`), and the walk ends the Stop there. A file written before this keeps the old walk.
@@ -967,6 +967,31 @@ Owner, 2026-10-10: every draft stays in the browser that typed it, and the daemo
 | a questions screen's half answers | machine + session + ask | every change | the ask is answered from this page |
 
 Invariants: a fresh page never writes over an attachment record it has not read, and shows what it read before anything attached meanwhile; an attachment record it cannot read is never written. A session that was still starting takes its text and attachments to its real id.
+
+## D11. A failed attempt pi retries
+
+Owner, 2026-10-10 (Q16, ask 09f5825f, option "follow-pi"; his 2026-09-30 rule "don't show the errors from before the retries have completely failed"): a reply that failed and that pi took back to try again stays hidden only once a newer attempt replaced it. When none will, it is the turn's outcome and shows, with a row saying why; a Stop during the wait adds "Retry cancelled" before its own row. When every retry failed, only the last failure shows. pi's own TUI prints `Retry failed after N attempts: <reason>` at the end of an unsuccessful retry ("Retry cancelled" for a cancel), and a reload of pi rebuilds without the attempts it took back.
+
+pi takes an attempt back in two places, both by appending a `context_edit` with no replacement for the errored reply, announced as `entry_appended`: auto-retry (`auto_retry_start`, then the edit, then the backoff, all inside the run) and overflow recovery (the edit, then a compaction, then the retry). The last of pi's retries is not taken back: it stays as the turn's failure. A file cannot tell afterwards whether the promised retry came, so the daemon classifies per runtime (`retryRecoveryStep`, pure, in `retryRecovery.ts`):
+
+| State | Meaning |
+|---|---|
+| `clear` | no failed attempt is waiting for its retry |
+| `pending` | pi took these failed attempts back; no newer attempt has landed |
+
+| Event \ state | `clear` | `pending` |
+|---|---|---|
+| pi takes an errored reply back (`entry_appended`, a `context_edit` with no replacement whose target is an errored assistant reply) | `pending` | `pending`, the attempt added |
+| an assistant reply lands (`message_end`, failed or not) | stays | `clear`: replaced, it stays hidden |
+| the recovery ends with no newer attempt: `auto_retry_end` that did not succeed, an overflow `compaction_end` that will not retry, `agent_settled`, the session closing (the daemon shutting down included) | stays | `clear`: unreplaced, the daemon appends `pi-web.retry.unreplaced { attemptIds, reason, at }` |
+
+The first run a runtime starts (`agent_start`) also records any attempt its file left waiting, with no reply after it and no record (the daemon was killed during the wait), before a newer reply could hide it. The step runs before a Stop settles on the same event.
+
+The reason is pi's words when pi gave them ("Retry cancelled", its overflow compaction failure, "Retry cancelled" for an aborted compaction), else the daemon's: the run ended, the session closed, or the session was opened again before the retry.
+
+**Wire.** `attempt.retry { state, messages }`: `pending` when the daemon hides an attempt (the attempt's reply), `unreplaced` when none came (the replies, then the reason row). A replaced attempt needs no frame: the page already hid it. The page finds an attempt's rows by the reply's timestamp: `pending` removes them, and an older daemon's `auto_retry_start` still removes the newest failed rows; `unreplaced` puts them back in front of the reader's queued messages with the reason row after them, or, when the page still shows them (it read them from history), adds the reason row after them. A page that does not know the frame ignores it.
+
+**History** (pages, the transcript head, counts): an attempt pi took back is hidden when no `pi-web.retry.unreplaced` names it and it is pending now or a newer assistant reply follows it in the branch; otherwise it shows. The record's row is drawn right after the last attempt it names, so a Stop's row (drawn at its own earlier entry) follows it, as live. A file from before this has no records: an attempt with a newer reply after it stays hidden, as before, and one with none after it shows. The pending set changes only with an appended entry, so the head stays cached by pi's leaf.
 
 ## Methodology folded in (research run `e7c7403c`, `uiux-methodology.md`)
 

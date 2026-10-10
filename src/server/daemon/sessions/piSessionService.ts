@@ -41,8 +41,9 @@ import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
-import { annotateAssistantThinkingLevel, branchMessages, branchTranscript, customEntryRow, isCutAssistant, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, stoppedTurnMessage, transcriptHead, TURN_STOP_SETTLED_CUSTOM_TYPE, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
+import { annotateAssistantThinkingLevel, attemptsAwaitingRetry, branchMessages, branchTranscript, customEntryRow, isCutAssistant, isErroredReplyEntry, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, RETRY_UNREPLACED_CUSTOM_TYPE, retryUnreplacedMessage, stoppedTurnMessage, transcriptHead, TURN_STOP_SETTLED_CUSTOM_TYPE, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
 import { readableMessageCount } from "./readableMessageCount.js";
+import { RETRY_REASON_SESSION_CLOSED, RetryRecoveries, retryRecoveryEventOf, type RetryRecoveryEffect } from "./retryRecovery.js";
 import { BranchStateMemo, branchStateKey } from "./branchStateMemo.js";
 import { pluginSurfacePresence } from "./pluginSurfaces.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
@@ -565,6 +566,7 @@ export interface PiSessionManager {
   getSessionFile(): string | undefined;
   getBranch(): unknown[];
   getEntries?(): readonly unknown[];
+  getEntry?(id: string): unknown;
   getTree?(): readonly ProjectableSessionTreeNode[];
   getLeafId(): string | null;
   getLeafEntry?(): { readonly timestamp?: unknown } | undefined;
@@ -1523,6 +1525,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly lastBroadcastStatus = new WeakMap<PiAgentSession, string>();
   /** Sessions whose running turn the reader stopped, with the moment recorded; settled once, at the latest when that turn ends. */
   private readonly stoppedByReader = new Map<string, string>();
+  private readonly retryRecoveries = new RetryRecoveries();
   private readonly dialogWaiters = new ExtensionDialogWaiters();
   private readonly catalogRefreshStatus: CatalogRefreshStatus | undefined;
   private readonly unreadPublicationRetryInitialMs: number;
@@ -1768,6 +1771,7 @@ export class PiSessionService implements SessionRouteService {
     this.workspaceWatcher.dispose();
     const activeSessions = Array.from(new Set(this.active.values()));
     for (const active of activeSessions) {
+      this.closeRetryRecovery(active.runtime.session);
       this.forgetUnreadActivity(active.runtime.session);
       this.pendingAskStore.forgetSession(active.runtime.session.sessionId);
       this.endSessionExtensionDialogs(active.runtime.session.sessionId);
@@ -2839,12 +2843,17 @@ export class PiSessionService implements SessionRouteService {
 
   async messages(ref: PiSessionRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage> {
     const open = this.activeForRef(ref)?.runtime.session;
-    if (open !== undefined) return transcriptPage(open.sessionManager.getBranch(), page, this.drawingOf(open));
+    if (open !== undefined) return this.openTranscriptPage(open, page);
     const closed = await this.closedSessionFile(ref);
     const branch = closed === undefined ? undefined : await closedBranch(closed.path);
     if (branch !== undefined) return transcriptPage(branch, page);
     const session = await this.getOrOpen(ref);
-    return transcriptPage(session.sessionManager.getBranch(), page, this.drawingOf(session));
+    return this.openTranscriptPage(session, page);
+  }
+
+  /** A page of a session the daemon holds: drawn as its extensions draw it, with the attempts pi is about to retry hidden (D11). */
+  private openTranscriptPage(session: PiAgentSession, page?: { before?: number; limit?: number }): ClientMessagePage {
+    return transcriptPage(session.sessionManager.getBranch(), page, this.drawingOf(session), this.retryRecoveries.pending(session));
   }
 
   /**
@@ -2891,7 +2900,7 @@ export class PiSessionService implements SessionRouteService {
     const leafId = manager.getLeafId();
     const cached = this.transcriptHeads.get(manager);
     if (cached?.leafId === leafId) return cached.head;
-    const head = transcriptHead(branchTranscript(manager.getBranch(), shownEntriesOf(session.extensionRunner)));
+    const head = transcriptHead(branchTranscript(manager.getBranch(), shownEntriesOf(session.extensionRunner), this.retryRecoveries.pending(session)));
     this.transcriptHeads.set(manager, { leafId, head });
     return head;
   }
@@ -2925,7 +2934,7 @@ export class PiSessionService implements SessionRouteService {
    */
   async messagesPassive(ref: PiSessionRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage | undefined> {
     const active = this.activeForRef(ref);
-    if (active !== undefined) return transcriptPage(active.runtime.session.sessionManager.getBranch(), page, this.drawingOf(active.runtime.session));
+    if (active !== undefined) return this.openTranscriptPage(active.runtime.session, page);
     const listed = await this.sessionManager.findSession(ref.cwd, ref.id);
     if (listed === undefined) return undefined;
     const entries = await readSessionFileEntries(listed.path);
@@ -2948,7 +2957,7 @@ export class PiSessionService implements SessionRouteService {
    */
   async transcriptTail(ref: PiSessionRef, page?: { limit?: number }): Promise<SessionTranscriptTail> {
     const open = this.activeForRef(ref)?.runtime.session;
-    if (open !== undefined) return { page: transcriptPage(open.sessionManager.getBranch(), page, this.drawingOf(open)), stream: this.streamSnapshotOf(open) };
+    if (open !== undefined) return { page: this.openTranscriptPage(open, page), stream: this.streamSnapshotOf(open) };
     const file = await this.closedSessionFile(ref);
     const stream = file === undefined ? undefined : { ...this.streamPosition(file.id), partial: null };
     const branch = file === undefined ? undefined : await closedBranch(file.path);
@@ -3985,6 +3994,52 @@ export class PiSessionService implements SessionRouteService {
     return { type: "message_end", message: stoppedTurnMessage(at) };
   }
 
+  /**
+   * Follow a failed attempt pi took back to retry it (state-diagram D11): hidden while the retry is
+   * to come; when none came, recorded and shown again with the row saying why. It runs before a
+   * Stop settles on the same event, so the Stop's own row follows the attempt live as in history.
+   */
+  private followRetryRecovery(session: PiAgentSession, event: unknown): void {
+    const manager = session.sessionManager;
+    const effects = getString(event, "type") === "agent_start"
+      ? this.retryRecoveries.firstRun(session, () => attemptsAwaitingRetry(manager.getBranch()))
+      : this.observedRetryRecovery(session, event);
+    for (const effect of effects) this.applyRetryRecoveryEffect(session, effect);
+  }
+
+  private observedRetryRecovery(session: PiAgentSession, event: unknown): readonly RetryRecoveryEffect[] {
+    const recovery = retryRecoveryEventOf(event, (entryId) => isErroredReplyEntry(session.sessionManager.getEntry?.(entryId)));
+    return recovery === undefined ? [] : this.retryRecoveries.observe(session, recovery);
+  }
+
+  private applyRetryRecoveryEffect(session: PiAgentSession, effect: RetryRecoveryEffect): void {
+    const attempts = this.attemptMessages(session, effect.attempts);
+    if (effect.kind === "hide") {
+      this.events.publish(session.sessionId, { type: "attempt.retry", state: "pending", messages: attempts });
+      return;
+    }
+    const at = new Date().toISOString();
+    try {
+      session.sessionManager.appendCustomEntry?.(RETRY_UNREPLACED_CUSTOM_TYPE, { attemptIds: effect.attempts, reason: effect.reason, at });
+    } catch (error) {
+      console.error("[retry] could not record an attempt no retry replaced", String(error));
+    }
+    this.events.publish(session.sessionId, { type: "attempt.retry", state: "unreplaced", messages: [...attempts, retryUnreplacedMessage(effect.reason, at)] });
+  }
+
+  /** A runtime closing, the daemon's shutdown included, ends its wait: no retry of it will replace an attempt still waiting (D11). */
+  private closeRetryRecovery(session: PiAgentSession): void {
+    for (const effect of this.retryRecoveries.observe(session, { kind: "ended", reason: RETRY_REASON_SESSION_CLOSED })) this.applyRetryRecoveryEffect(session, effect);
+  }
+
+  /** The attempts' replies as the transcript draws them, for the browsers that drew them live or never did. */
+  private attemptMessages(session: PiAgentSession, attemptIds: readonly string[]): unknown[] {
+    return attemptIds.flatMap((id) => {
+      const entry = session.sessionManager.getEntry?.(id);
+      return isRecord(entry) && entry["message"] !== undefined ? [annotateAssistantThinkingLevel(entry["message"], session.thinkingLevel)] : [];
+    });
+  }
+
   async saveAttachments(ref: PiSessionRef, attachments: unknown, folder?: string): Promise<SavedPromptAttachment[]> {
     const parsed = parsePromptAttachments(attachments, { enforceInlineSizeLimit: false, allowFileAttachments: true });
     if (parsed.length === 0) return [];
@@ -4975,6 +5030,7 @@ export class PiSessionService implements SessionRouteService {
       this.publishNotificationMutations(mutations);
     }
     if (!active) return;
+    this.closeRetryRecovery(active.runtime.session);
     this.forgetUnreadActivity(active.runtime.session);
     // An open ask is meaningful only while the runtime that posted it exists: no
     // one is left to receive the answers, so it is dropped without an outcome.
@@ -5759,6 +5815,7 @@ export class PiSessionService implements SessionRouteService {
 
   private handleRuntimeEvent(session: PiAgentSession, event: unknown): void {
     this.stampCommittedUserMessage(session, event);
+    this.followRetryRecovery(session, event);
     const settledStop = this.settleStopByReader(session, event);
     if (settledStop !== undefined) {
       this.events.publish(session.sessionId, { type: "message.end", message: getProperty(settledStop, "message") });
@@ -6207,7 +6264,7 @@ export class PiSessionService implements SessionRouteService {
 
   private statusFromSession(session: PiAgentSession): ClientSessionStatus {
     const model = session.model === undefined ? undefined : modelToClientModel(session.model);
-    const facts = this.branchFacts.read(session, branchStateKey(session), () => branchFactsOf(session));
+    const facts = this.branchFacts.read(session, branchStateKey(session), () => branchFactsOf(session, this.retryRecoveries.pending(session)));
     const warnings = this.warningsForSession(session);
     this.fileWarningNotifications(session, warnings);
     const pendingAsks = this.pendingAskStore.pendingAsks(session.sessionId);
@@ -6892,11 +6949,11 @@ function leafEntryAt(manager: PiSessionManager): string | undefined {
   return typeof timestamp === "string" ? timestamp : undefined;
 }
 
-function branchFactsOf(session: PiAgentSession): BranchFacts {
+function branchFactsOf(session: PiAgentSession, retrying: ReadonlySet<string>): BranchFacts {
   const branch = session.sessionManager.getBranch();
   const stats = session.getSessionStats();
   return {
-    messageCount: readableMessageCount(branch),
+    messageCount: readableMessageCount(branch, retrying),
     tokens: stats.tokens,
     cost: stats.cost,
     contextUsage: session.getContextUsage(),
@@ -7156,8 +7213,8 @@ interface TranscriptDrawing {
  * for them. Only the page's slice is drawn. A session read without its runtime has none
  * (pi-insertion-points.md).
  */
-function transcriptPage(entries: readonly unknown[], page?: { before?: number; limit?: number }, drawing?: TranscriptDrawing): ClientMessagePage {
-  const rows = branchTranscript(entries, shownEntriesOf(drawing?.renderers));
+function transcriptPage(entries: readonly unknown[], page?: { before?: number; limit?: number }, drawing?: TranscriptDrawing, retrying?: ReadonlySet<string>): ClientMessagePage {
+  const rows = branchTranscript(entries, shownEntriesOf(drawing?.renderers), retrying);
   const paged = pageMessagesAtSafeBoundary(rows.map((row) => boundToolResultMessage(row.message)), page);
   const argsByCall = drawing === undefined ? new Map<string, unknown>() : toolCallArgsOf(paged.messages);
   const messages = paged.messages.map((message, index) => {
