@@ -871,34 +871,16 @@ const ANTHROPIC_EXTRA_USAGE_DISMISS_ID = "anthropicExtraUsage";
  *
  * The stored credential is read synchronously (matching the TUI's `oauth` branch
  * and the documented `sk-ant-oat` key trigger) so warnings stay part of the
- * synchronous live status computation.
+ * synchronous live status computation. Only the provider pi itself names `anthropic` is
+ * checked, as pi's TUI checks it: a provider an extension registers is the extension's to
+ * warn about, and core reads no extension's naming.
  */
-/**
- * The provider a per-account alias stands for.
- *
- * The multi-account extension registers `anthropic-<account>` as real
- * providers, and this service deliberately keeps the alias as the session's
- * provider so the session stays pinned to that account (see setModel). That
- * makes every `provider === "anthropic"` test silently false for anyone using
- * an account, which is not a display detail: the subscription billing warning
- * below simply stopped appearing for exactly the sessions that are billed
- * against a subscription.
- *
- * Prefix-based because that is the alias shape the extension documents
- * (ALIAS_PREFIX = "anthropic-"), and a provider genuinely named
- * `anthropic-something-else` would still be an Anthropic provider.
- */
-export function canonicalProviderId(provider: string | undefined): string | undefined {
-  if (provider === undefined) return undefined;
-  return provider.startsWith("anthropic-") ? "anthropic" : provider;
-}
-
 export function anthropicSubscriptionWarning(
   session: Pick<PiAgentSession, "model" | "settingsManager">,
   authPath?: string,
 ): SessionWarning | undefined {
   if (session.settingsManager.getWarnings().anthropicExtraUsage === false) return undefined;
-  if (canonicalProviderId(session.model?.provider) !== "anthropic") return undefined;
+  if (session.model?.provider !== "anthropic") return undefined;
   const credential = readStoredCredential("anthropic", authPath);
   if (credential === undefined) return undefined;
   const isSubscriptionAuth = credential.type === "oauth"
@@ -3084,21 +3066,14 @@ export class PiSessionService implements SessionRouteService {
    * The reader's switch, saved as pi's default model (owner, 2026-10-06): the next new session
    * starts on the model last switched to, and existing sessions keep the model their own file
    * records. pi's "set as default" does the same, and with an enabled-model scope adds the model
-   * to it, since a new session only starts on a default inside its scope.
+   * to it, since a new session only starts on a default inside its scope. The provider is kept as
+   * chosen, whatever registered it: rewriting it to another, machine-wide choice made every other
+   * session follow, and a concurrent switch could fail an unrelated session with a 401.
    */
   async setModel(ref: PiSessionRef, provider: string, modelId: string): Promise<ClientSessionStatus> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
     this.assertTreeNavigationInactive(session, "change models");
-    // An `anthropic-<account>` provider is kept as the session's provider
-    // rather than being rewritten to the canonical one. The extension registers
-    // each alias as a real provider bound to exactly that account, so keeping it
-    // pins this session to that account.
-    //
-    // This used to rewrite the global active account instead. That made the
-    // choice machine-wide: every other session silently followed, and a session
-    // used whichever account happened to be active when its request went out,
-    // so a concurrent switch could fail an unrelated session with a 401.
     const candidates = await this.sessionModelCandidates(session);
     this.assertTreeNavigationInactive(session, "change models");
     const model = candidates.find((candidate) => candidate.provider === provider && candidate.id === modelId)
