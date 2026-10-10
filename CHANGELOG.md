@@ -1,6 +1,6 @@
 # @gang-of-beads/pi-web
 
-## 2.202610.1
+## 2.202610.2
 
 ### Patch Changes
 

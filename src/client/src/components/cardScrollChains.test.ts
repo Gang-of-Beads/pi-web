@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -36,7 +36,7 @@ const drawnInTheTranscript = [...new Set([chatView, ...chatViewImports, ...rende
 describe("regions drawn in the transcript chain to it", () => {
   /** Review ca45d6ed: a pattern that missed side-effect imports dropped the cards themselves while a count still passed. */
   it("finds the cards, the message text and the renderer plugins it guards", () => {
-    const named = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+    const named = (path: string) => basename(path);
     expect({
       components: ["AskUserCard.ts", "ExtensionDialogCard.ts", "FormattedText.ts", "ToolExecutionView.ts", "uiIcons.ts"].filter((name) => !drawnInTheTranscript.map(named).includes(name)),
       plugins: rendererPlugins.length > 0,
