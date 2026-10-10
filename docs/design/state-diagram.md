@@ -886,7 +886,9 @@ A link that names a workspace but no session lands where the layout puts the rea
 - **Restore is in the composer slot** (owner, 2026-10-01): an archived session shows "This session is archived." and Restore where the composer would be.
 - **Producers before the fix:** `selectPreferredSession` fell through to the latest session (seen on 8505: a link to a deleted id opened "probe warm reply" while the URL kept the deleted id); a refresh of the open session that answered the code read "Couldn't load this session."; a pick of a row deleted since the board was read read "Couldn't open"; an archived session opened with a disabled composer and no reason; Stop on a missing session answered "stopped".
 
-## D7. A goal (our own goal plugin, replacing pi-goal's flow)
+## D7. A goal (pi-goal's flow, as PI WEB shows it)
+
+Owner, 2026-10-09 (Q28): PI WEB is generic, adapts to no particular extension, and follows pi. These are pi-goal's states, then, not a flow PI WEB replaces it with. pi-goal declares its drafting questions and its task confirmation as Questions cards, which PI WEB draws as it draws any extension's; pi-goal records a created goal's focus and keeps focus through a compaction. PI WEB's own part is the Goals page, a plugin that reads pi-goal's files (B27, below).
 
 ```mermaid
 stateDiagram-v2
