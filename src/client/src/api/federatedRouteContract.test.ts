@@ -54,8 +54,6 @@ describe("federated route contract", () => {
     expect(FEDERATED_HTTP_ROUTES.filter((route) => route.path.includes("/dialogs/"))).toEqual([
       { method: "POST", path: "/sessions/:sessionId/dialogs/answer" },
       { method: "POST", path: "/sessions/:sessionId/dialogs/cancel" },
-      { method: "GET", path: "/sessions/:sessionId/dialogs/draft" },
-      { method: "PUT", path: "/sessions/:sessionId/dialogs/draft" },
     ]);
     expect(FEDERATED_WEBSOCKET_ROUTES.some((path) => path.includes("dialogs"))).toBe(false);
   });
@@ -196,10 +194,6 @@ describe("federated route contract", () => {
       ignoreParseFailure(sessionsApi.cycleThinkingLevel(session, machineId)),
       ignoreParseFailure(sessionsApi.commands(session, machineId)),
       ignoreParseFailure(sessionsApi.prompt(session, "hello", "followUp", machineId)),
-      ignoreParseFailure(sessionsApi.readDraft(session, machineId)),
-      ignoreParseFailure(sessionsApi.writeDraft(session, { deviceId: "page-1", seq: 1, text: "hello" }, machineId)),
-      ignoreParseFailure(sessionsApi.readDialogDraft(session, "dialog 1", machineId)),
-      ignoreParseFailure(sessionsApi.writeDialogDraft(session, "dialog 1", { deviceId: "page-1", seq: 1, text: "hello" }, machineId)),
       ignoreParseFailure(sessionsApi.saveAttachments(session, [{ kind: "image", mimeType: "image/png", data: "QUJD", name: "shot.png" }], machineId, "uploads")),
       ignoreParseFailure(sessionsApi.shell(session, "ls", machineId)),
       ignoreParseFailure(sessionsApi.runCommand(session, "/help", machineId)),

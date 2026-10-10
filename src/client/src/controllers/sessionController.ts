@@ -27,6 +27,7 @@ import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessio
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { moveHeldComposerAttachments } from "../composerAttachmentHold";
 import { clearAskDraft } from "../askDrafts";
+import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryLineSentAt, deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import { failPendingPrompt, forgetPendingPrompt, forgetReservedPrompt, isNetworkFailure, linkReportedOffline, moveOutbox, NetworkSendError, reserveAcceptedPrompt, SendScopeChangedError, type SendReplay } from "../pendingOutbox";
@@ -44,8 +45,7 @@ import { classifySubmission, deliveryAfterUnanswered, handleOutcome, transportFa
 import type { DeliveryFailureCause } from "../deliveryWords";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
-import type { DraftSendClaim, ExtensionEditorTextMode, PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
-import { announceDialogDraftChange, announceDraftChange, forgetDialogDraftSync } from "../sessionDraftSync";
+import type { ExtensionEditorTextMode, PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, type SessionSelectionMemory, isOpenableSession } from "./sessionSelection"
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
@@ -721,7 +721,7 @@ export class SessionController {
     // Capture the originating session/machine before any await so the request
     // and its sending indicator stay bound to the right session even if the
     // user navigates elsewhere mid-upload.
-    return await this.deliverPromptToSession(session, text, streamingBehavior, attachments, delivery, selectedMachineId(this.getState()), { markSending: hasAttachments, ...(replay?.clientMessageId === undefined ? {} : { replayClientMessageId: replay.clientMessageId }), ...(replay?.sentAt === undefined ? {} : { sentAt: replay.sentAt }), ...(replay?.draft === undefined ? {} : { draft: replay.draft }) });
+    return await this.deliverPromptToSession(session, text, streamingBehavior, attachments, delivery, selectedMachineId(this.getState()), { markSending: hasAttachments, ...(replay?.clientMessageId === undefined ? {} : { replayClientMessageId: replay.clientMessageId }), ...(replay?.sentAt === undefined ? {} : { sentAt: replay.sentAt }) });
   }
 
   private markSendingPrompt(sessionId: string, sending: boolean): void {
@@ -804,7 +804,7 @@ export class SessionController {
     return this.deliverCommandToSession(session, queued.text, machineId, { applyResult: true, ledgerId: queued.ledgerId });
   }
 
-  private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean; replayClientMessageId?: string; sentAt?: string; draft?: DraftSendClaim }): Promise<boolean> {
+  private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean; replayClientMessageId?: string; sentAt?: string }): Promise<boolean> {
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     if (options.markSending) this.markSendingPrompt(session.id, true);
     // One message carries one id for its whole life. The sender mints it before
@@ -822,9 +822,9 @@ export class SessionController {
         const saved = await this.api.saveAttachments(session, attachments, machineId);
         const references = saved.map((file) => fileCompletionInsertText(file.path, false)).join(" ");
         const body = text === "" ? references : `${text}\n\n${references}`;
-        await this.api.prompt(session, body, streamingBehavior, machineId, undefined, clientMessageId, sentAt, options.draft);
+        await this.api.prompt(session, body, streamingBehavior, machineId, undefined, clientMessageId, sentAt);
       } else {
-        await this.api.prompt(session, text, streamingBehavior, machineId, attachments, clientMessageId, sentAt, options.draft);
+        await this.api.prompt(session, text, streamingBehavior, machineId, attachments, clientMessageId, sentAt);
       }
       if (clientMessageId !== undefined) this.settleAnsweredSend(session, machineId, clientMessageId);
       this.markCachedNewSessionPersisted(session);
@@ -2758,6 +2758,7 @@ export class SessionController {
       dismissedDialogIds: [...state.dismissedDialogIds, closed.dialog.dialogId],
       ...(leavesOutcomeCard(closed) ? { closedDialogs: [...state.closedDialogs, closed] } : {}),
     });
+    if (sessionId !== undefined) clearDialogAnswerDraft(machineSessionKey(selectedMachineId(state), sessionId), closed.dialog.dialogId);
     // The card is gone; the status map must stop listing the dialog too, or
     // the closed question rides the map back on the next selection and the
     // row keeps its asking marker.
@@ -2947,18 +2948,6 @@ export class SessionController {
       return;
     }
     if (event.type === "activity.changed") return;
-    if (event.type === "draft.changed") {
-      const current = this.getState();
-      const selected = current.selectedSession;
-      if (selected !== undefined) announceDraftChange(machineSessionKey(selectedMachineId(current), selected.id), event);
-      return;
-    }
-    if (event.type === "dialog.draft.changed") {
-      const current = this.getState();
-      const selected = current.selectedSession;
-      if (selected !== undefined) announceDialogDraftChange(machineSessionKey(selectedMachineId(current), selected.id), event);
-      return;
-    }
     if (event.type === "prompt.withdrawn" || event.type === "prompt.consumed") {
       this.dropPromptRow(event.clientMessageId);
       return;
@@ -3001,9 +2990,6 @@ export class SessionController {
       return;
     }
     if (event.type === "dialog.closed") {
-      const current = this.getState();
-      const selected = current.selectedSession;
-      if (selected !== undefined) forgetDialogDraftSync(machineSessionKey(selectedMachineId(current), selected.id), event.dialogId);
       this.dialogScope.observe(event, () => { this.applyClosedDialog(event.dialogId, event.reason, event.answer); });
       return;
     }
@@ -3376,7 +3362,7 @@ function replacePendingSessionInList(sessions: readonly SessionInfo[], pendingSe
   return next;
 }
 
-export function isClientPendingStartSessionInfo(session: SessionInfo | undefined): session is ClientPendingStartSessionInfo {
+function isClientPendingStartSessionInfo(session: SessionInfo | undefined): session is ClientPendingStartSessionInfo {
   return session !== undefined && "clientPendingStart" in session && session.clientPendingStart === true;
 }
 

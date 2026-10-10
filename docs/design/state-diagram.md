@@ -955,43 +955,18 @@ Selecting is a page of its own (owner, 2026-10-09): a header with the way out (�
 
 **Where the order lives.** With the data it orders, so every device sees it: session pins in the pin file's arrays; projects in `projects.json`; machines in the machines plugin's `machines.json` (`order`, the local machine's id among them, so it can move too). Pinned projects are in the pin file too (`pinnedProjectIds`, in their order); a machine that answers without the field keeps them in this browser. A browser hands its old pins to a machine once per kind and remembers it (`pi-web.pinsHandedOver`), so a pin removed on another device while this browser was closed does not come back from this browser's stale copy. A pinned section stands in its pin order; its rows still show state marks but no longer move on activity.
 
-## D10. A composer draft (server drafts, slice 1)
+## D10. Drafts (kept in the browser)
 
-One composer's text against the copy on its session's daemon (server-drafts.md; owner 2026-10-05: one draft per session, every device, later write wins; D1 2026-10-10: silent). `draftSyncStep` in `sessionDraftSync.ts` decides every transition; `SessionDraftSync` carries them out. Attachments stay in the browser that added them (slice 2, below), an open dialog's typed answer is slice 3 (below), and the offline states (`offline-dirty`, `replaced`) are slice 4.
+Owner, 2026-10-10: every draft stays in the browser that typed it, and the daemon keeps none (server-drafts.md). There is no sync state: each draft is this browser's copy under the key of its scope.
 
-| State | Meaning |
-|---|---|
-| `local-only` | this browser's copy only: not shown yet, the machine answers `route-missing` (an older PI WEB), or the dialog it kept closed |
-| `unknown` | the daemon's copy is not known: a read is in flight or failed, or a frame announced a newer one; `dirty` says the shown text has edits the daemon has not had |
-| `synced` | the shown text is the daemon's revision |
-| `dirty` | typed since; a write goes when typing pauses for 500 ms |
-| `writing` | a write is on its way; typing meanwhile is written after it |
-| `sent` | sent from here; the composer stays empty until the daemon says what the send left |
+| Draft | Key | Written | Emptied |
+|---|---|---|---|
+| composer text | machine + session | every keystroke | a send (a failed send puts it back) |
+| composer attachments | machine + session | every change, once this page has read the record | a send or a removal (a failed send puts them back) |
+| an input or editor dialog's typed answer | machine + session + dialog | every keystroke | the dialog closes, as this page sees it; else after 30 days |
+| a questions screen's half answers | machine + session + ask | every change | the ask is answered from this page |
 
-| Event \ state | `unknown` | `synced` | `dirty` / `writing` | `sent` |
-|---|---|---|---|---|
-| typed other text | `dirty` | `dirty` | stays (the write that follows carries it) | `dirty` |
-| read answered | the shown text equals it: `synced`; shown text dirty: `dirty` (written); else shown, `synced`; older than a frame announced or the revision this page knew: read once more, and still older means the daemon's copy was reset (a month untouched, or with its session): the shown text wins and is written back | – | ignored: this page's write lands later and wins | newer than the send: shown, `synced`; else ignored |
-| `draft.changed` | read (if none in flight) | newer: `unknown`, read | ignored (D1: silent) | the send's own frame or another page's write, newer: read; this page's earlier writes: ignored |
-| write answered | – | – | `synced`, or `dirty` when typed meanwhile | remembered as this page's latest revision; `superseded`: read |
-| write failed | – | – | `dirty`; written again at the next keystroke | – |
-| sent here | `sent` | `sent` | `sent` (a waiting write is dropped; one on its way is covered by the send) | – |
-| `route-missing` | `local-only` | `local-only` | `local-only` | `local-only` |
-| dialog closed (slice 3) | `local-only` | `local-only` | `local-only` | `local-only` |
-
-Opening the composer on a session: a fresh page starts from this browser's copy and its record (`sent` stays `sent`; otherwise `unknown`) and reads; a page coming back reads again unless a write is on its way.
-
-Wire: `GET /sessions/:id/draft` → `{ revision, text?, updatedAt? }`; `PUT /sessions/:id/draft { cwd, deviceId, seq, text }` → `{ revision }` or `{ revision, superseded: true }`; the prompt route takes `draft: { deviceId, seq, revision? }`; the session socket carries `draft.changed { revision, cause: "edited" | "sent", deviceId }`. Both draft routes are federated for a remote machine.
-
-**Attachments (slice 2, D2)** are not part of the daemon's draft: they stay in the browser that added them, one IndexedDB record per machine + session (`composerAttachmentStore`). The page writes a session's record only after it has read it, and shows what it read before anything attached meanwhile; a record it cannot read is left alone and the attachments stay in memory. A send empties the record, and a session that was still starting takes its record to its real id with its text.
-
-**An open dialog's typed answer (slice 3)** follows the same table with a dialog's routes: `GET`/`PUT /sessions/:id/dialogs/draft` (`dialogId` in the query or body; 404 `dialog-not-open` once it closed) and the frame `dialog.draft.changed { dialogId, revision, deviceId }`. Its opening text counts as synced, not typed; answering or cancelling is `sent here`; nothing is kept in the browser, and the daemon drops it when the dialog closes. The page lets go of it at the `dialog.closed` frame (`closed`): nothing more is written for it, not a waiting write, not one after the answer of a write on its way, and not when the card lets go afterwards. Coming back to either kind of draft puts this page's unwritten typing back on screen, else compares the read with what the screen shows.
-
-Invariants:
-
-- **A sent text never comes back as a draft.** A send empties the draft it was made from when the daemon accepts the message; a write the page made before the send is refused if it arrives after; a page that was not typing reads the empty draft; and the sending page takes nothing older than its send.
-- **Typing is never overwritten.** A page with typing the daemon has not had ignores the daemon's copy and frames, and writes; the later write wins (owner).
-- **A reload knows which copy wins** from the record kept beside the text: unwritten typing wins, a synced copy yields, a sent one stays empty.
+Invariants: a fresh page never writes over an attachment record it has not read, and shows what it read before anything attached meanwhile; an attachment record it cannot read is never written. A session that was still starting takes its text and attachments to its real id.
 
 ## Methodology folded in (research run `e7c7403c`, `uiux-methodology.md`)
 

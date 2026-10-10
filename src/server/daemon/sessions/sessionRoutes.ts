@@ -4,8 +4,6 @@ import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_
 import { projectBrowserMessageResponse } from "../browserMessageProjection.js";
 import { normalizeRequestCwd } from "../workingDirectory.js";
 import { readCompletionItem } from "./extensionCompletions.js";
-import { DraftRefusedError, draftWriteOf } from "./drafts/sessionDraftStore.js";
-import { PendingExtensionDialogValidationError } from "./pendingExtensionDialogStore.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { SessionRouteRef, SessionRouteService } from "./sessionService.js";
 import { clearInterruptedRuns, readInterruptedRuns } from "./interruptedRunStore.js";
@@ -18,8 +16,6 @@ import { isRecord } from "../../../shared/unknownValues.js";
 import type { ExtensionTerminalKey } from "../../../shared/apiTypes.js";
 
 const TERMINAL_KEYS: Readonly<Record<ExtensionTerminalKey, true>> = { escape: true };
-/** The code a dialog draft route answers with when the dialog it names is not open: answered, cancelled, or gone with its runtime. */
-const DIALOG_NOT_OPEN_CODE = "dialog-not-open";
 
 function isTerminalKey(value: string): value is ExtensionTerminalKey {
   return Object.hasOwn(TERMINAL_KEYS, value);
@@ -60,7 +56,6 @@ interface PromptRequestBody {
   attachments?: unknown;
   clientMessageId?: unknown;
   sentAt?: unknown;
-  draft?: unknown;
 }
 
 interface AttachmentsRequestBody {
@@ -478,64 +473,10 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
   app.post<{ Params: { sessionId: string }; Body: PromptRequestBody | undefined }>(`${prefix}/sessions/:sessionId/prompt`, async (request, reply) => {
     try {
       const body = optionalRecord(request.body);
-      await sessions.prompt(sessionRefFromBody(request.params.sessionId, body), body["text"], body["streamingBehavior"], body["attachments"], { clientMessageId: body["clientMessageId"], sentAt: body["sentAt"], draft: body["draft"] });
+      await sessions.prompt(sessionRefFromBody(request.params.sessionId, body), body["text"], body["streamingBehavior"], body["attachments"], { clientMessageId: body["clientMessageId"], sentAt: body["sentAt"] });
       return { accepted: true };
     } catch (error) {
       return sendError(reply, sessionErrorReply(error, 400));
-    }
-  });
-
-  app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/draft`, async (request, reply) => {
-    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
-    if (ref === undefined) return reply;
-    try {
-      return await sessions.readDraft(ref);
-    } catch (error) {
-      return sendError(reply, sessionErrorReply(error, error instanceof DraftRefusedError ? 400 : 500));
-    }
-  });
-
-  app.get<{ Params: { sessionId: string }; Querystring: SessionQuery & { dialogId?: string } }>(`${prefix}/sessions/:sessionId/dialogs/draft`, (request, reply) => {
-    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
-    if (ref === undefined) return reply;
-    const dialogId = request.query.dialogId;
-    if (typeof dialogId !== "string" || dialogId === "") return reply.code(400).send({ error: "dialogId is required" });
-    try {
-      const draft = sessions.readDialogDraft(ref, dialogId);
-      if (draft === undefined) return reply.code(404).send({ error: "No such dialog is open", code: DIALOG_NOT_OPEN_CODE });
-      return draft;
-    } catch (error) {
-      return sendError(reply, sessionErrorReply(error, error instanceof PendingExtensionDialogValidationError ? 400 : 500));
-    }
-  });
-
-  /**
-   * Takes the composer draft's body (`draftWriteOf`), so both writes have one shape. `seq` is
-   * checked but not used: answering closes the dialog and drops its draft, so no write can arrive
-   * after the answer to be ordered against it, and none is answered `superseded`.
-   */
-  app.put<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unknown; deviceId?: unknown; seq?: unknown; text?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/dialogs/draft`, async (request, reply) => {
-    const body = optionalRecord(request.body);
-    const dialogId = body["dialogId"];
-    const write = draftWriteOf(body);
-    if (typeof dialogId !== "string" || dialogId === "" || write === undefined) return reply.code(400).send({ error: "dialogId (text), deviceId (text), seq (a whole number of 0 or more) and text (text) are required" });
-    try {
-      const answer = await sessions.writeDialogDraft(sessionRefFromBody(request.params.sessionId, body), dialogId, write);
-      if (answer === undefined) return await reply.code(404).send({ error: "No such dialog is open", code: DIALOG_NOT_OPEN_CODE });
-      return answer;
-    } catch (error) {
-      return sendError(reply, sessionErrorReply(error, error instanceof PendingExtensionDialogValidationError ? 400 : 500));
-    }
-  });
-
-  app.put<{ Params: { sessionId: string }; Body: { cwd?: unknown; deviceId?: unknown; seq?: unknown; text?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/draft`, async (request, reply) => {
-    const body = optionalRecord(request.body);
-    const write = draftWriteOf(body);
-    if (write === undefined) return reply.code(400).send({ error: "deviceId (text), seq (a whole number of 0 or more) and text (text) are required" });
-    try {
-      return await sessions.writeDraft(sessionRefFromBody(request.params.sessionId, body), write);
-    } catch (error) {
-      return sendError(reply, sessionErrorReply(error, error instanceof DraftRefusedError ? 400 : 500));
     }
   });
 

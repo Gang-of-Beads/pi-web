@@ -4,13 +4,12 @@ import type { CapturedAttachment } from "./promptAttachmentCapture";
 /**
  * This browser's copy of each session's unsent composer attachments, so a reload keeps them.
  *
- * Owner, D2 (2026-10-10): the attachments of an unsent message are not merged between devices;
- * they stay in the browser that added them, while the composer's text follows the session
- * through its daemon (server drafts, slice 1). Images run to megabytes, which local storage
- * cannot hold, so they live in IndexedDB, one record per machine + session key. A browser
- * without IndexedDB, or one that refuses it, keeps them in memory only, as before. A record
- * untouched for 30 days is removed when the database opens, the retention a draft on the
- * daemon has.
+ * Owner, 2026-10-10 (D2, then D3): the attachments of an unsent message stay in the browser
+ * that added them, as every draft does since the owner kept drafts in the browser (the text in
+ * local storage, promptDraftStorage). Images run to megabytes, which local storage cannot hold,
+ * so they live in IndexedDB, one record per machine + session key. A browser without
+ * IndexedDB, or one that refuses it, keeps them in memory only, as before. A record untouched
+ * for 30 days is removed when the database opens.
  */
 
 const DATABASE_NAME = "pi-web-composer-attachments";

@@ -36,7 +36,7 @@ import {
   parseSessionEntries,
   type FileEntry,
 } from "@earendil-works/pi-coding-agent";
-import type { DraftSendClaim, DraftWrite, DraftWriteAnswer, ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, ExtensionTerminalKey, SessionDraft, TranscriptHead } from "../../../shared/apiTypes.js";
+import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, ExtensionTerminalKey, TranscriptHead } from "../../../shared/apiTypes.js";
 import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
@@ -113,7 +113,6 @@ import { CommandHandlerScope } from "./commandHandlerScope.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { messageSentAt } from "./messageSentAt.js";
 import { LOCAL_HOLD_ID_PREFIX, OwnedPromptQueue, dataDirInboxLocation, entryKey, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry } from "./ownedPromptQueue.js";
-import { SessionDraftStore, draftSendClaimOf } from "./drafts/sessionDraftStore.js";
 import { branchFromFileEntries, isCurrentVersionFile } from "./fileBranch.js";
 import { applyProviderSafeToolSchemas } from "./providerSafeToolSchema.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
@@ -1429,7 +1428,6 @@ export class PiSessionService implements SessionRouteService {
    * which turned the browser's correct retry into a second run of the prompt.
    */
   private readonly acceptanceLedger: AcceptanceFace;
-  private readonly drafts: SessionDraftStore;
   private readonly committedExpectations = new CommittedPromptExpectations();
   private readonly ownedQueue: OwnedPromptQueue;
   private readonly inboxDataDir: string | undefined;
@@ -1555,7 +1553,6 @@ export class PiSessionService implements SessionRouteService {
       : createDurableAcceptanceLedger(deps.operationLedgerDir);
     this.ownedQueue = new OwnedPromptQueue(deps.operationLedgerDir === undefined ? memoryInboxLocation : dataDirInboxLocation(deps.operationLedgerDir));
     this.inboxDataDir = deps.operationLedgerDir;
-    this.drafts = new SessionDraftStore(deps.operationLedgerDir);
     this.hostContributions = deps.hostContributions ?? EMPTY_HOST_CONTRIBUTIONS;
     this.pluginBackgroundWork = deps.pluginBackgroundWork ?? (() => Promise.resolve(0));
     this.archiveStore = deps.archiveStore ?? new SessionArchiveStore();
@@ -3250,40 +3247,6 @@ export class PiSessionService implements SessionRouteService {
     return resumed;
   }
 
-  /** An open dialog's typed answer (server-drafts.md, slice 3). A dialog lives in a running session, so this never opens one. */
-  readDialogDraft(ref: PiSessionRef, dialogId: string): SessionDraft | undefined {
-    const session = this.activeForRef(ref)?.runtime.session ?? this.startupSessionForRef(ref);
-    return session === undefined ? undefined : this.pendingExtensionDialogStore.draftOf(session.sessionId, dialogId);
-  }
-
-  /** Keep an open dialog's typed answer; every other page showing the dialog hears of it and reads it. */
-  async writeDialogDraft(ref: PiSessionRef, dialogId: string, write: DraftWrite): Promise<DraftWriteAnswer | undefined> {
-    await this.assertWritable(ref);
-    const session = this.activeForRef(ref)?.runtime.session ?? this.startupSessionForRef(ref);
-    if (session === undefined) return undefined;
-    const answer = this.pendingExtensionDialogStore.writeDraft(session.sessionId, dialogId, write.text);
-    if (answer !== undefined) this.events.publish(session.sessionId, { type: "dialog.draft.changed", dialogId, revision: answer.revision, deviceId: write.deviceId });
-    return answer;
-  }
-
-  /** Removes drafts nobody touched for a month (server-drafts.md, retention); run at daemon start. */
-  sweepDrafts(): Promise<void> {
-    return this.drafts.sweep();
-  }
-
-  /** The session's shared draft (server-drafts.md); reading it never opens the session. */
-  readDraft(ref: PiSessionRef): Promise<SessionDraft> {
-    return this.drafts.read(ref.id);
-  }
-
-  /** Later write wins (owner, 2026-10-05); every other page showing the session hears of it and reads it. */
-  async writeDraft(ref: PiSessionRef, write: DraftWrite): Promise<DraftWriteAnswer> {
-    await this.assertWritable(ref);
-    const answer = await this.drafts.write(ref.id, write);
-    if (answer.superseded !== true) this.events.publish(ref.id, { type: "draft.changed", revision: answer.revision, cause: "edited", deviceId: write.deviceId });
-    return answer;
-  }
-
   /**
    * Accept a prompt into the session's inbox. Nothing here hands it to the runtime: the inbox
    * consumer does, in acceptance order (`pumpInbox`).
@@ -3292,7 +3255,7 @@ export class PiSessionService implements SessionRouteService {
    * are accepted in the order they reached the daemon even when the first carries a photo that
    * takes longer to decode.
    */
-  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown; draft?: unknown }): Promise<void> {
+  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown }): Promise<void> {
     return this.inArrivalOrder(ref.id, () => this.acceptPrompt(ref, text, streamingBehavior, attachments, options));
   }
 
@@ -3303,7 +3266,7 @@ export class PiSessionService implements SessionRouteService {
     return next;
   }
 
-  private async acceptPrompt(ref: PiSessionRef, text: unknown, streamingBehavior: unknown, attachments: unknown, options: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown; draft?: unknown } | undefined): Promise<void> {
+  private async acceptPrompt(ref: PiSessionRef, text: unknown, streamingBehavior: unknown, attachments: unknown, options: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown } | undefined): Promise<void> {
     const promptText = requirePromptText(text);
     const clientMessageId = parseClientMessageId(options?.clientMessageId);
     // Command-forwarded prompts (e.g. /skill:*) are expanded by the agent, which
@@ -3354,8 +3317,6 @@ export class PiSessionService implements SessionRouteService {
       this.acceptanceLedger.record(sessionId, clientMessageId);
       this.events.publish(sessionId, { type: "prompt.accepted", clientMessageId });
     }
-    const draft = draftSendClaimOf(options?.draft);
-    if (draft !== undefined) await this.settleDraftAfterSend(sessionId, draft);
     // Echoed at acceptance, whether or not it waits: a waiting message that
     // shows nothing until the agent reads it reads as "message disappeared".
     const echoed = clientMessageId === undefined ? userMessage(promptText, images) : { ...userMessage(promptText, images), timestamp: Date.parse(sentAt) };
@@ -3363,20 +3324,6 @@ export class PiSessionService implements SessionRouteService {
     this.publishActivity(session, busy ? "message queued" : "prompt accepted", "active");
     this.publishStatus(session);
     this.pumpInbox(session);
-  }
-
-  /**
-   * A send empties the draft it was made from, and every page showing the session hears where the
-   * send left the draft (server-drafts.md, sending). The message is already accepted, so a draft
-   * that cannot be settled is logged, never a failed send.
-   */
-  private async settleDraftAfterSend(sessionId: string, claim: DraftSendClaim): Promise<void> {
-    try {
-      const revision = await this.drafts.settleSend(sessionId, claim);
-      this.events.publish(sessionId, { type: "draft.changed", revision, cause: "sent", deviceId: claim.deviceId });
-    } catch (error: unknown) {
-      this.logger.info({ sessionId, error: error instanceof Error ? error.message : String(error) }, "the draft a send was made from could not be settled");
-    }
   }
 
   /**
@@ -4844,15 +4791,8 @@ export class PiSessionService implements SessionRouteService {
     return records;
   }
 
-  /** Deleting a session deletes its draft (server-drafts.md, retention). */
   private async archiveStoreDeleteArchivedMany(sessionIds: readonly string[]): Promise<string[]> {
     if (sessionIds.length === 0) return [];
-    const deleted = await this.deleteArchivedRecords(sessionIds);
-    await Promise.all(deleted.map((sessionId) => this.drafts.forget(sessionId).catch(() => undefined)));
-    return deleted;
-  }
-
-  private async deleteArchivedRecords(sessionIds: readonly string[]): Promise<string[]> {
     if (this.archiveStore.deleteArchivedMany !== undefined) return this.archiveStore.deleteArchivedMany(sessionIds);
     if (this.archiveStore.deleteArchived === undefined) throw new Error("Archive store does not support deletion");
     for (const sessionId of sessionIds) await this.archiveStore.deleteArchived(sessionId);

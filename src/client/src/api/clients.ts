@@ -1,5 +1,5 @@
 import { isRecord } from "../../../shared/unknownValues";
-import type { AskUserSubmission, DraftSendClaim, DraftWrite, ExtensionCompletionItem, ExtensionTerminalKey, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse } from "../../../shared/apiTypes";
+import type { AskUserSubmission, ExtensionCompletionItem, ExtensionTerminalKey, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse } from "../../../shared/apiTypes";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
 import { apiErrorMessage, errorCode, HttpError, request, transportFailureOf } from "./http";
@@ -13,8 +13,6 @@ import {
   parseExtensionCompletions,
   parseExtensionCompletionApplied,
   parseTerminalInputDelivered,
-  parseSessionDraft,
-  parseDraftWriteAnswer,
   parseAskUserCloseResponse,
   parseAccepted,
   parseArchived,
@@ -96,12 +94,12 @@ function sessionPath(session: SessionRef, endpoint: string, machineId = "local")
   return `${sessionBasePath(session, machineId)}/${endpoint}`;
 }
 
-function sessionQueryPath(session: SessionRef, endpoint: string, machineId = "local", fields: Readonly<Record<string, string>> = {}): string {
-  return `${sessionPath(session, endpoint, machineId)}${sessionQuery(session, fields)}`;
+function sessionQueryPath(session: SessionRef, endpoint: string, machineId = "local"): string {
+  return `${sessionPath(session, endpoint, machineId)}${sessionQuery(session)}`;
 }
 
-function sessionQuery(session: SessionRef, fields: Readonly<Record<string, string>> = {}): string {
-  return `?${new URLSearchParams({ cwd: session.cwd, ...fields }).toString()}`;
+function sessionQuery(session: SessionRef): string {
+  return `?${new URLSearchParams({ cwd: session.cwd }).toString()}`;
 }
 
 function sessionBody(session: SessionRef, fields: Record<string, unknown> = {}): string {
@@ -408,7 +406,7 @@ export const sessionsApi = {
   setThinkingLevel: (session: SessionRef, level: string, machineId = "local") => request(sessionPath(session, "thinking-level", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session, { level }) }),
   cycleThinkingLevel: (session: SessionRef, machineId = "local") => request(sessionPath(session, "thinking-level/cycle", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session) }),
   commands: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "commands", machineId), arrayOf(parseSlashCommand)),
-  prompt: (session: SessionRef, text: string, streamingBehavior?: "steer" | "followUp", machineId = "local", attachments?: PromptAttachment[], clientMessageId?: string, sentAt?: string, draft?: DraftSendClaim) => request(sessionPath(session, "prompt", machineId), parseAccepted, { method: "POST", body: sessionBody(session, { text, ...(streamingBehavior === undefined ? {} : { streamingBehavior }), ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}), ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(sentAt === undefined ? {} : { sentAt }), ...(draft === undefined ? {} : { draft }) }) }),
+  prompt: (session: SessionRef, text: string, streamingBehavior?: "steer" | "followUp", machineId = "local", attachments?: PromptAttachment[], clientMessageId?: string, sentAt?: string) => request(sessionPath(session, "prompt", machineId), parseAccepted, { method: "POST", body: sessionBody(session, { text, ...(streamingBehavior === undefined ? {} : { streamingBehavior }), ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}), ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(sentAt === undefined ? {} : { sentAt }) }) }),
   saveAttachments: (session: SessionRef, attachments: PromptAttachment[], machineId = "local", folder?: string) => request(sessionPath(session, "attachments", machineId), parseSavedAttachments, { method: "POST", body: sessionBody(session, { attachments, ...(folder === undefined ? {} : { folder }) }) }),
   shell: (session: SessionRef, text: string, machineId = "local") => request(sessionPath(session, "shell", machineId), parseAccepted, { method: "POST", body: sessionBody(session, { text }) }),
   runCommand: (session: SessionRef, text: string, machineId = "local") => request(sessionPath(session, "commands/run", machineId), parseCommandResult, { method: "POST", body: sessionBody(session, { text }) }),
@@ -434,10 +432,6 @@ export const sessionsApi = {
   abort: (session: SessionRef, machineId = "local") => request(sessionPath(session, "abort", machineId), parseAborted, { method: "POST", body: sessionBody(session) }),
   runExtensionShortcut: (session: SessionRef, key: string, machineId = "local") => request(sessionPath(session, "extension-shortcuts/run", machineId), parseShortcutStarted, { method: "POST", body: sessionBody(session, { key }) }),
   sendTerminalInput: (session: SessionRef, key: ExtensionTerminalKey, machineId = "local") => request(sessionPath(session, "terminal-input", machineId), parseTerminalInputDelivered, { method: "POST", body: sessionBody(session, { key }) }),
-  readDraft: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "draft", machineId), parseSessionDraft),
-  readDialogDraft: (session: SessionRef, dialogId: string, machineId = "local") => request(sessionQueryPath(session, "dialogs/draft", machineId, { dialogId }), parseSessionDraft),
-  writeDialogDraft: (session: SessionRef, dialogId: string, write: DraftWrite, machineId = "local") => request(sessionPath(session, "dialogs/draft", machineId), parseDraftWriteAnswer, { method: "PUT", body: sessionBody(session, { dialogId, ...write }) }),
-  writeDraft: (session: SessionRef, write: DraftWrite, machineId = "local") => request(sessionPath(session, "draft", machineId), parseDraftWriteAnswer, { method: "PUT", body: sessionBody(session, { ...write }) }),
   extensionCompletions: (session: SessionRef, at: { text: string; cursor: number }, machineId = "local") => request(sessionPath(session, "extension-completions", machineId), parseExtensionCompletions, { method: "POST", body: sessionBody(session, at) }),
   applyExtensionCompletion: (session: SessionRef, choice: { text: string; cursor: number; prefix: string; item: ExtensionCompletionItem }, machineId = "local") => request(sessionPath(session, "extension-completions/apply", machineId), parseExtensionCompletionApplied, { method: "POST", body: sessionBody(session, choice) }),
   stop: (session: SessionRef, machineId = "local") => request(sessionPath(session, "stop", machineId), parseStopped, { method: "POST", body: sessionBody(session) }),

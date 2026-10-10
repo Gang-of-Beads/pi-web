@@ -59,7 +59,6 @@ import { imageLoadScrollCorrection } from "../imageLoadScroll";
 import { quotedPrompt } from "../selectionComposer";
 import { bottomAnchorAction } from "../bottomAnchor";
 import { streamingBottomHold, BOTTOM_SLACK_PX } from "../streamingBottomHold";
-import { draftScopeChanged, type DraftScope } from "../sessionDraftSync";
 
 /** A line's time in milliseconds, or undefined when it carries none it can be ordered by. */
 function lineTimestamp(line: ChatLine): number | undefined {
@@ -697,11 +696,6 @@ export class ChatView extends LitElement {
   @state() private copiedMessageKey: string | undefined;
   @property() machineId = "local";
   @property() sessionCwd?: string;
-  /**
-   * Where the shown session's open dialogs keep their typed answers (server-drafts.md, slice 3);
-   * absent for a session its daemon does not have yet, whose dialogs keep them on the card only.
-   */
-  @property({ attribute: false, hasChanged: draftScopeChanged }) dialogDraftScope?: DraftScope;
   /** When this browser first saw the current turn working, and a clock to age it. */
   @state() private turnStartedAtMs: number | undefined;
   @state() private turnNowMs = 0;
@@ -1666,7 +1660,6 @@ export class ChatView extends LitElement {
             .onCancel=${presence === "live" ? this.onCancelDialog : undefined}
             .onKey=${presence === "live" ? this.onDialogKey : undefined}
             .draftSessionId=${this.askDraftSessionId}
-            .draftScope=${this.dialogDraftScope}
           ></extension-dialog-card>
         `)}
       </div>

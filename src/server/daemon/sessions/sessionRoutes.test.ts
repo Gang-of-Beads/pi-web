@@ -1748,10 +1748,6 @@ class CapturingRouteSessionService implements SessionRouteService {
   extensionCompletions(): never { throw unusedRouteMethod("extensionCompletions"); }
   deliverTerminalInput(): never { throw unusedRouteMethod("deliverTerminalInput"); }
   applyExtensionCompletion(): never { throw unusedRouteMethod("applyExtensionCompletion"); }
-  readDraft(): never { throw unusedRouteMethod("readDraft"); }
-  writeDraft(): never { throw unusedRouteMethod("writeDraft"); }
-  readDialogDraft(): never { throw unusedRouteMethod("readDialogDraft"); }
-  writeDialogDraft(): never { throw unusedRouteMethod("writeDialogDraft"); }
   stop(): never { throw unusedRouteMethod("stop"); }
   archive(): never { throw unusedRouteMethod("archive"); }
   archiveTree(): never { throw unusedRouteMethod("archiveTree"); }
