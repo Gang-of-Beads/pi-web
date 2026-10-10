@@ -35,7 +35,7 @@ Enable and disable run the plugin's hooks **live**, in a fixed order, with no re
 | Event | Server half (in each process the plugin `runs` in) | Browser half (every open page) |
 |---|---|---|
 | **enable** (toggle on, process start, first page load) | import → `activate(context)` → `start(signal)`. Routes and operations answer only after `start` resolves. | import → `activate(context)` → contributions registered; panels appear. |
-| **disable** (toggle off, shutdown) | Routes and operations stop answering first (with `409 plugin disabled`); in-flight operations get their signal aborted; then `stop(signal)`, bounded by the lifecycle timeout. | contributions removed, then `dispose()`. |
+| **disable** (toggle off, shutdown) | Routes and operations stop answering first (with `409 plugin disabled`); in-flight operations get their signal aborted; then `stop(signal)`, bounded by the lifecycle timeout. | listeners dropped, `dispose()` called, contributions removed, in one step. |
 | **update** (a new revision of the plugin) | disable the old one, then enable the new one, as above. | the same, after the server half has switched. |
 
 - **Guarantees a developer can rely on:**
@@ -45,7 +45,7 @@ Enable and disable run the plugin's hooks **live**, in a fixed order, with no re
   - a hook that throws or times out leaves the plugin `failed`, with its phase recorded, and never half-enabled.
 - **The page learns of a toggle** from one global frame, `plugins.changed { revision }`, and reconciles its registry to the manifest. That is the same compare-heads rule as the sync design.
 - **Routes cannot be unmounted from Fastify**, so the host mounts one dispatcher per plugin that consults the live table. It already resolves paths per plugin.
-- **The contract is written for developers** in `docs/plugins.md`, in a "Lifecycle" section with this table. A conformance kit (`scripts/plugin-lifecycle-check.mjs`) toggles a plugin on 8505 and asserts every guarantee against the real processes.
+- **The contract is written for developers** in `docs/plugins.md`, under "Turning a plugin on or off". The conformance checks are a checklist there, "Checking a plugin's lifecycle by hand", which a reviewer or a plugin author follows on a running PI WEB (owner question 23, 2026-10-10: `docs-checklist`; committed probe scripts were removed on 2026-10-03).
 
 ### 2. Subagents moves out of core entirely
 
@@ -134,9 +134,9 @@ consults the live route table before answering route-missing.
 **Slice C (done): the page follows `plugins.changed`**, disposing and loading browser halves against the
 manifest, instead of reloading when Settings closes.
 
-**Slice D: the lifecycle section of docs/plugins.md.** Its server half ("Turning a plugin on or off") landed with slice A; slice D adds the browser half and the conformance checks (owner question 23).
+**Slice D (done 2026-10-10): the lifecycle section of docs/plugins.md.** Its server half ("Turning a plugin on or off") landed with slice A; slice D adds the browser half (what each page does on a toggle, and the guarantees a browser entry can rely on) and the conformance checks as a hand checklist (owner question 23: `docs-checklist`).
 
 ## Proof
 
-- The conformance kit against the old build (a toggle calls nothing; the old build fails) and the new build (every guarantee holds).
+- The checklist in `docs/plugins.md`, followed by hand (owner question 23); no kit script is committed. Slices A and C were checked live on 8505 when they landed.
 - A live 8505 probe: disable Subagents while a run is going. The drawer section and the count disappear without a reload, and nothing is left polling. Enable it again and both come back.

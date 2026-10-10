@@ -653,6 +653,13 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@gang-of-beads/pi-web
                 runs once. <code>stop</code> runs exactly once after every <code>start</code> that resolved, no handler
                 starts after <code>stop</code> begins, and turning a plugin on again calls <code>activate</code> again.
               </p>
+              <p>
+                Every open page follows a toggle without reloading: it activates a browser entry its machine now lists,
+                and for one no longer listed it drops the entry's listeners, calls its <code>dispose</code> once and
+                removes its contributions. Closing or reloading a page does not call <code>dispose</code>. To check a
+                plugin against these promises, follow "Checking a plugin's lifecycle by hand" in
+                <a href="plugins.md">plugins.md</a>.
+              </p>
               <div class="callout warning">
                 <strong>Manual session-daemon restart:</strong> for the native systemd user service, run
                 <code>systemctl --user restart pi-web-sessiond</code> (unit <code>pi-web-sessiond.service</code>).

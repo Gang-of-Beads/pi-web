@@ -311,7 +311,7 @@ Plugin enablement is separate from package installation. Use **Settings → Pi p
 }
 ```
 
-Plugins are enabled by default. `plugins.<id>.enabled: false` removes a browser-only entry on the next page load. Saved through Settings or the config API, it stops a server entry at once; edited into the file by hand, it takes effect at the next sessiond start. The optional `settings` object must be JSON-compatible and is captured for a server entry only when it starts.
+Plugins are enabled by default. Saved through Settings or the config API, `plugins.<id>.enabled: false` turns a plugin off at once: its server entry in every process it runs in, and its browser entry on every open page. A plugin that supplies the workspace provider or the machine registry is the exception (see [Desired versus active state](#desired-versus-active-state)). Edited into the file by hand, the setting removes a browser-only entry on the next page load and stops a server entry at the next sessiond start. The optional `settings` object must be JSON-compatible and is captured for a server entry only when it starts.
 
 ### Desired versus active state
 
@@ -337,14 +337,52 @@ A plugin can rely on these guarantees:
 
 - `stop` runs exactly once after every `start` that resolved, whether the plugin is turned off or the process shuts down.
 - No operation or route handler starts after `stop` begins.
-- Turning a plugin on again calls `activate` again; nothing from the earlier activation is reused.
+- Turning a plugin on again calls `activate` again, and nothing the earlier activation returned is reused. The process keeps a module it imported, for the same revision, so state kept at module scope outlives a toggle; keep what belongs to one activation inside `activate`.
 - A `stop` that throws or times out leaves the plugin `failed` in phase `stop`.
 
 The signal an operation or route handler receives fires when the caller goes away and when the plugin is turned off; a handler that holds work open should listen to it.
 
-The machine then announces the change (`plugins.changed`) to every page browsing it. Each page reads that machine's plugin manifest again: it loads the browser modules now listed and disposes the ones no longer listed, calling their `dispose`, without reloading. A page that missed the announcement reads the manifest again when it notices the gap.
+The machine then announces the change (`plugins.changed`) to every page browsing it, and each page applies it to the plugin's browser entry without reloading:
+
+| Event | What each page does, in order |
+|---|---|
+| Turned on | Reads the machine's plugin manifest again, imports each browser module it now lists and has not loaded, and calls its `activate(context)`. The contributions it returns appear at once. |
+| Turned off | Reads the manifest again. For each browser entry it loaded that the manifest no longer lists, it drops the listeners registered with `context.on`, calls the `dispose` that `activate` returned, and removes the entry's contributions; the page redraws without them. |
+
+A browser entry can rely on these guarantees:
+
+- `dispose` runs at most once per `activate`, when the plugin is turned off or its machine stops listing it. Closing or reloading the page does not call it.
+- Listeners registered with `context.on` are dropped with the plugin, whether or not `dispose` removes them.
+- A `dispose` that throws is reported in the browser console, and the plugin is removed anyway.
+- Turning a plugin on again calls `activate` again with a new context. The browser keeps a module it has evaluated for as long as the page is open, so state kept at module scope outlives a toggle; keep what belongs to one activation inside `activate`.
+- A module that fails to import, an `activate` that throws, or contributions the host refuses leave nothing of the plugin on the page: its listeners are dropped and its `dispose`, if `activate` returned one, is called. Its card in **Settings → PI WEB plugins** says "Did not load in this browser" with the reason, until the plugin loads or is turned off.
+- A page that cannot read the manifest changes nothing, and the plugins built into PI WEB stay.
+- While a plugin stays on, a newer revision of its browser module is used only after the page reloads.
+- A page that missed the announcement, offline or with its connection dropped, reads the manifest again when it reconnects.
+
+`dispose` is where a browser entry stops what it started outside its contributions: timers, polling, sockets, listeners on `window` or `document`, and requests still in flight.
 
 > **Manual session-daemon restart:** for the native systemd user service, run `systemctl --user restart pi-web-sessiond` (the unit is `pi-web-sessiond.service`). Restarting sessiond may interrupt active sessions and runtime ownership. Web/UI autoreload, restarting only the web/API service, browser reload, and Pi's `/reload` command do not activate server-plugin changes.
+
+### Checking a plugin's lifecycle by hand
+
+Before you publish a plugin, and when you review one, turn it on and off on a running PI WEB and check each promise above. Open two pages on the same machine (two tabs, or a desktop and a phone), keep the browser's developer tools open, and follow the logs with `pi-web logs`. While you check, have `activate` and `dispose` log one line each in the browser, and `activate`, `start` and `stop` one line each in a server entry. A plugin that supplies the workspace provider or the machine registry applies a toggle at the next sessiond start instead; check it across that restart.
+
+1. Turn the plugin on in **Settings → PI WEB plugins**. Its panels, actions and sections appear on both pages without a reload, and each page logs `activate` once. A server entry logs `activate` and `start` once in each process it runs in, before the save answers.
+2. Call one of its operations from a page's developer console, with the input it expects. It answers `200`:
+
+   ```js
+   await fetch("api/plugins/<plugin-id>/<operation>", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }).then((response) => response.status);
+   ```
+
+3. Start an operation or route call that waits on its signal, and turn the plugin off while it runs. The call's signal aborts and the call ends, then `stop` logs once and the log says `server plugin turned off`. Nothing the plugin handles logs after `stop` begins.
+4. Call the operation again. It answers `409` with `code: "plugin-not-active"`.
+5. Look at both pages. The plugin's contributions are gone, nothing reloaded (text typed in the composer is still there), each page logged `dispose` once, and the Network panel shows no more requests from the plugin.
+6. Turn it on again. `activate` (and `start`) log again, the contributions come back, and what the plugin keeps inside `activate` starts over.
+7. Set one page offline (developer tools → Network → Offline), toggle the plugin on the other page, and set the first page online again. Once it reconnects, it shows what the other page shows.
+8. With a build whose `stop` throws, or waits past the 10-second lifecycle timeout, turn the plugin off. Its card reads **Failed** with the error, the log says `server plugin stop failed`, and its operations answer `409`.
+9. With a build whose browser `activate` throws, reload a page. Nothing of the plugin is drawn, and its card says "Did not load in this browser" with the reason.
+10. Turn the plugin off, then restart the session daemon. `stop` does not log a second time.
 
 ### Offline disable and safe start
 
@@ -632,10 +670,18 @@ interface PluginActivationContext {
   readonly runtimePluginId: string;
   readonly html: HtmlTemplateTag;
   readonly svg: SvgTemplateTag;
+  readonly on?: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => () => void;
+}
+
+interface PluginActivationResult {
+  contributions: PluginContributions;
+  dispose?: () => void;
 }
 ```
 
-`activate()` is called once when the UI loads the plugin. Keep it cheap and synchronous: define contributions there, but move expensive or async work into actions, custom elements, or explicit user interactions.
+`on(kind, listener)` subscribes to a host fact (`session-selected`, `session-left`, `connection-changed`, `theme-applied`, `session-activity-settled` or `settings-changed`) and returns the function that unsubscribes; it is absent on older hosts. `dispose` releases what the plugin started; see [Turning a plugin on or off](#turning-a-plugin-on-or-off) for when it runs.
+
+`activate()` runs when a page loads the plugin, and again each time the plugin is turned back on while the page stays open. Keep it cheap and synchronous: define contributions there, but move expensive or async work into actions, custom elements, or explicit user interactions.
 
 Browser API v2 is a deliberate break: the host rejects browser v1 entries with the plugin/module identity and expected version; there is no v1 compatibility shim. Migrate a browser entry by setting `apiVersion: 2`, using stable `pluginId` for package/provider ownership, and using `runtimePluginId` when constructing a host-qualified contribution reference. Replace browser-v1 `refreshGit` with `refreshWorkspacePanels()` plus panel `onInvalidate()`. The browser-v1 `isGitRepo`, `isGitWorktree`, and top-level `workspace.branch` aliases were removed; use the provider-authored `workspace.label` for generic presentation, and keep provider-specific facts in `workspace.provider.metadata` or the owning backend. The former `@gang-of-beads/pi-web/plugin-api/unstable` type path is not part of v2 and is no longer exported.
 
