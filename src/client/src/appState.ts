@@ -299,7 +299,7 @@ export function initialAppState(): AppState {
     themeDialog: undefined,
     authDialog: undefined,
     actionPaletteOpen: false,
-    workspaceTool: "files:files",
+    workspaceTool: "core:workspace.files",
     mainView: "chat",
     activeTerminalCount: 0,
     selectedTerminalId: undefined,

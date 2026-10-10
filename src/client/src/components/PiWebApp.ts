@@ -67,7 +67,7 @@ import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
 import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, MachineTerminalSessions, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext } from "../plugins/types";
-import { CORE_PRO_LIGHT_THEME_ID, isNativeThemeId, applyNativeProLightTheme, CORE_PRO_THEME_ID, CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyNativeProTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
+import { CORE_PRO_LIGHT_THEME_ID, isNativeThemeId, applyNativeProLightTheme, CORE_PRO_THEME_ID, DEFAULT_THEME_PREFERENCE, applyNativeProTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
 import { createPluginLoadRetry } from "../plugins/pluginLoadRetry";
@@ -310,8 +310,8 @@ const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
 const THEME_AUTO_ON_VALUE = "auto:on";
 const THEME_AUTO_OFF_VALUE = "auto:off";
 const THEME_OPTION_PREFIX = "theme:";
-const FILES_ROUTE_NAMESPACE = queryNamespace("core:workspace.files");
-const FILES_PANEL_ROUTE_ID: QualifiedContributionId = "files:files";
+const WORKSPACE_FILES_SLOT: QualifiedContributionId = "core:workspace.files";
+const FILES_ROUTE_NAMESPACE = queryNamespace(WORKSPACE_FILES_SLOT);
 const TERMINAL_ROUTE_NAMESPACE = queryNamespace("core:workspace.terminal");
 const WORKSPACE_ROUTE_NAMESPACE = queryNamespace("core:workspace");
 const MIN_RESIZABLE_CHAT_WIDTH_PX = 320;
@@ -495,7 +495,7 @@ export class PiWebApp extends LitElement {
   private gatewayPluginLoadPromise: Promise<void> | undefined;
   private readonly pluginRetry = createPluginLoadRetry((attempt) => this.retryMissingPlugins(attempt));
   private themePreference: ThemePreference = readStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
-  @state() private activeThemeId: QualifiedContributionId = CLASSIC_THEME_ID;
+  @state() private activeThemeId: QualifiedContributionId | undefined;
   @state() private isRefreshingApp = false;
   private transientErrorTimer: number | undefined;
   private bannerShownAt: number | undefined;
@@ -1920,7 +1920,7 @@ export class PiWebApp extends LitElement {
       projectId: this.state.selectedProject?.id,
       workspaceId: this.state.selectedWorkspace?.id,
       sessionId: placeSessionId(this.state),
-      tool: this.state.selectedWorkspace === undefined && !this.isGlobalPage(this.state.workspaceTool) ? undefined : this.state.workspaceTool,
+      tool: this.state.selectedWorkspace === undefined && !this.isGlobalPage(this.state.workspaceTool) ? undefined : this.shownWorkspaceToolId(),
       view: this.state.mainView === "navigation" ? undefined : this.state.mainView,
     }, options);
     this.syncWorkspaceRouteSurfaceToUrl();
@@ -2526,7 +2526,7 @@ export class PiWebApp extends LitElement {
         .workspace=${workspace}
         .panelContext=${panelContext}
         .emptyState=${emptyState}
-        .tool=${this.state.workspaceTool}
+        .tool=${this.shownWorkspaceToolId()}
         .panels=${this.visibleWorkspacePanels()}
         .globalPanels=${this.activeGlobalPanels()}
         .globalContext=${this.createGlobalPanelContext()}
@@ -3687,7 +3687,16 @@ export class PiWebApp extends LitElement {
   }
 
   private shownWorkspacePanel(): QualifiedWorkspacePanelContribution | undefined {
-    return shownWorkspacePanel(this.visibleWorkspacePanels(), this.state.workspaceTool);
+    return shownWorkspacePanel(this.visibleWorkspacePanels(), this.shownWorkspaceToolId());
+  }
+
+  /**
+   * The page id the chosen tool stands for. The tool can be a slot the core names, such as the
+   * workspace files slot a fresh page starts on, and a slot is not a page id until the plugin
+   * that claims it is loaded, so every comparison against page ids reads it through here.
+   */
+  private shownWorkspaceToolId(): QualifiedContributionId {
+    return this.resolvePageRouteId(this.state.workspaceTool) ?? this.state.workspaceTool;
   }
 
   /** The request alone never decides it: see `workspacePanelCanvas.ts`. */
@@ -3696,7 +3705,7 @@ export class PiWebApp extends LitElement {
       requested: this.workspacePanelFullscreen,
       windowShowsCanvas: this.appShell.isDesktopSideBySideLayout,
       panelOnScreen: this.workspacePanelOnScreen(),
-      tool: this.state.workspaceTool,
+      tool: this.shownWorkspaceToolId(),
       shown: this.shownWorkspacePanel(),
     });
   }
@@ -3786,7 +3795,7 @@ export class PiWebApp extends LitElement {
   private currentGoToScope(): GoToScope {
     const mobile = this.appShell.isMobileNavigationLayout;
     const view = this.displayMainView();
-    const shownPageId = mobile ? (view === "chat" || view === "navigation" ? undefined : view) : this.state.workspaceTool;
+    const shownPageId = mobile ? (view === "chat" || view === "navigation" ? undefined : view) : this.shownWorkspaceToolId();
     return goToScope({
       workspaceProjectId: this.state.selectedWorkspace?.projectId,
       openedFrom: this.goToOpenedFrom,
@@ -4008,7 +4017,7 @@ export class PiWebApp extends LitElement {
       workspacesApi,
       workspace,
       machineId,
-      () => { void this.invalidateWorkspacePanels(FILES_PANEL_ROUTE_ID); },
+      () => { void this.refreshWorkspaceFilesPage(); },
       workspaceEffectiveUploadFolder(workspace.effectiveConfig, this.workspaceUploadFolderFallback),
     );
   }
@@ -4020,7 +4029,7 @@ export class PiWebApp extends LitElement {
       workspacePanelFullscreenAvailable: () => this.appShell.isDesktopSideBySideLayout,
       setWorkspacePanelFullscreen: (fullscreen) => {
         if (this.workspacePanelFullscreen === fullscreen) return;
-        if (fullscreen && !workspacePanelMayHoldCanvas(this.state.workspaceTool, this.shownWorkspacePanel())) return;
+        if (fullscreen && !workspacePanelMayHoldCanvas(this.shownWorkspaceToolId(), this.shownWorkspacePanel())) return;
         this.workspacePanelFullscreen = fullscreen;
         if (this.routeRestoreDepth === 0 && this.state.mainView !== "chat" && this.state.mainView !== "navigation") {
           setNamespacedQueryKey(WORKSPACE_ROUTE_NAMESPACE, "expanded", fullscreen ? "1" : undefined);
@@ -4062,6 +4071,12 @@ export class PiWebApp extends LitElement {
       }, createContext);
     };
     return createContext(coreWorkspacePluginBinding());
+  }
+
+  /** Refresh the page that claims the workspace files slot; with no such page there is nothing to refresh. */
+  private async refreshWorkspaceFilesPage(): Promise<void> {
+    const page = this.plugins.resolveWorkspacePanelRouteId(WORKSPACE_FILES_SLOT, selectedMachineId(this.state));
+    if (page !== undefined) await this.invalidateWorkspacePanels(page);
   }
 
   private invalidateWorkspacePanels(panelId?: QualifiedContributionId): Promise<void> {
@@ -4446,7 +4461,7 @@ export class PiWebApp extends LitElement {
       selectMainView: (view) => { this.selectMainView(view); },
       selectWorkspaceTool: (tool) => { this.openWorkspaceTool(tool); },
       openTerminal: (options) => { this.openTerminal(options); },
-      refreshFiles: () => this.invalidateWorkspacePanels(FILES_PANEL_ROUTE_ID),
+      refreshFiles: () => this.refreshWorkspaceFilesPage(),
       refreshWorkspacePanels: (panelId) => this.invalidateWorkspacePanels(panelId),
       refreshAppData: () => this.refreshAppData(),
       checkForPiWebUpdates: () => this.piWebStatusController.checkForUpdates(),

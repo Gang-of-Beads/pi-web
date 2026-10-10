@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CLASSIC_THEME_ID, DEFAULT_THEME_ID, DEFAULT_THEME_PREFERENCE, findThemePairForTheme, resolveThemePreference } from "./theme";
+import { DEFAULT_THEME_PREFERENCE, findThemePairForTheme, resolveThemePreference } from "./theme";
 import type { QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, ThemeColorScheme, ThemeTokens } from "./plugins/types";
 
 const tokens = {
@@ -72,13 +72,12 @@ describe("resolveThemePreference", () => {
     const resolution = resolveThemePreference({ themes, themePairs, preference: DEFAULT_THEME_PREFERENCE, prefersLight: false });
     expect(resolution.selectedTheme).toBeUndefined();
     expect(resolution.activeTheme).toBeUndefined();
-    expect(resolution.fallbackTheme?.id).toBe(CLASSIC_THEME_ID);
   });
 
   it("still pairs a chosen soft theme when auto is on", () => {
-    const dark = resolveThemePreference({ themes, themePairs, preference: { themeId: DEFAULT_THEME_ID, auto: true }, prefersLight: false });
+    const dark = resolveThemePreference({ themes, themePairs, preference: { themeId: "themes:clay-soft", auto: true }, prefersLight: false });
     expect(dark.activeTheme?.id).toBe("themes:clay-soft");
-    const light = resolveThemePreference({ themes, themePairs, preference: { themeId: DEFAULT_THEME_ID, auto: true }, prefersLight: true });
+    const light = resolveThemePreference({ themes, themePairs, preference: { themeId: "themes:clay-soft", auto: true }, prefersLight: true });
     expect(light.activeTheme?.id).toBe("themes:clay-paper");
   });
 
@@ -86,7 +85,7 @@ describe("resolveThemePreference", () => {
     const resolution = resolveThemePreference({
       themes,
       themePairs,
-      preference: { themeId: CLASSIC_THEME_ID, auto: true },
+      preference: { themeId: "themes:classic", auto: true },
       prefersLight: true,
     });
 
@@ -95,7 +94,7 @@ describe("resolveThemePreference", () => {
     expect(resolution.selectedThemePair).toBeUndefined();
   });
 
-  it("falls back to Classic when the selected theme does not exist", () => {
+  it("shows the core's own look when the selected theme does not exist", () => {
     const resolution = resolveThemePreference({
       themes,
       themePairs,
@@ -103,11 +102,11 @@ describe("resolveThemePreference", () => {
       prefersLight: true,
     });
 
-    expect(resolution.selectedTheme?.id).toBe("themes:classic");
-    expect(resolution.activeTheme?.id).toBe("themes:classic");
+    expect(resolution.selectedTheme).toBeUndefined();
+    expect(resolution.activeTheme).toBeUndefined();
   });
 
-  it("falls back to Classic without mutating a missing selected theme preference", () => {
+  it("shows the core's own look without mutating a missing selected theme preference", () => {
     const preference = {
       themeId: "plugin:missing",
       auto: true,
@@ -119,8 +118,8 @@ describe("resolveThemePreference", () => {
       prefersLight: false,
     });
 
-    expect(resolution.selectedTheme?.id).toBe("themes:classic");
-    expect(resolution.activeTheme?.id).toBe("themes:classic");
+    expect(resolution.selectedTheme).toBeUndefined();
+    expect(resolution.activeTheme).toBeUndefined();
     expect(preference).toEqual({ themeId: "plugin:missing", auto: true });
   });
 

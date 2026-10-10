@@ -11,21 +11,17 @@ export interface ResolveThemePreferenceOptions {
   themePairs: readonly QualifiedThemePairContribution[];
   preference: ThemePreference;
   prefersLight: boolean;
-  fallbackThemeId?: QualifiedContributionId;
 }
 
 export interface ThemePreferenceResolution {
   selectedTheme: QualifiedThemeContribution | undefined;
   activeTheme: QualifiedThemeContribution | undefined;
   selectedThemePair: QualifiedThemePairContribution | undefined;
-  fallbackTheme: QualifiedThemeContribution | undefined;
 }
 
 import { CORE_PRO_LIGHT_THEME_ID, CORE_PRO_LIGHT_TOKENS } from "./nativeLightTheme";
 import { CORE_PRO_DARK_TOKENS } from "./nativeDarkTheme";
 
-export const CLASSIC_THEME_ID: QualifiedContributionId = "themes:classic";
-export const DEFAULT_THEME_ID: QualifiedContributionId = "themes:clay-soft";
 /** The core's own look: no plugin theme applied, the index.html defaults -
  * since the pro redesign, the flat mono TUI shape. Not a plugin theme; the
  * id is a sentinel the resolver and the appearance panel both know. */
@@ -172,26 +168,23 @@ function collectStringTokens(tokens: QualifiedThemeContribution["tokens"]): Reco
   return collected;
 }
 
+/**
+ * The plugin theme a preference shows, or none for the core's own look. A preference naming a
+ * theme no loaded plugin offers shows the core's own look, as pi falls back to its own default
+ * theme when the configured one is missing: the core names no plugin's theme to fall back to.
+ */
 export function resolveThemePreference(options: ResolveThemePreferenceOptions): ThemePreferenceResolution {
-  const fallbackTheme = findFallbackTheme(options.themes, options.fallbackThemeId ?? CLASSIC_THEME_ID);
-  if (isNativeThemeId(options.preference.themeId)) {
-    return { selectedTheme: undefined, activeTheme: undefined, selectedThemePair: undefined, fallbackTheme };
-  }
-  const selectedTheme = options.themes.find((candidate) => candidate.id === options.preference.themeId) ?? fallbackTheme;
-  if (selectedTheme === undefined) {
-    return { selectedTheme: undefined, activeTheme: undefined, selectedThemePair: undefined, fallbackTheme };
-  }
+  const nativeLook: ThemePreferenceResolution = { selectedTheme: undefined, activeTheme: undefined, selectedThemePair: undefined };
+  if (isNativeThemeId(options.preference.themeId)) return nativeLook;
+  const selectedTheme = options.themes.find((candidate) => candidate.id === options.preference.themeId);
+  if (selectedTheme === undefined) return nativeLook;
   const selectedThemePair = findThemePairForTheme(options.themePairs, selectedTheme.id);
   if (!options.preference.auto || selectedThemePair === undefined) {
-    return { selectedTheme, activeTheme: selectedTheme, selectedThemePair, fallbackTheme };
+    return { selectedTheme, activeTheme: selectedTheme, selectedThemePair };
   }
   const activeThemeId = options.prefersLight ? selectedThemePair.light : selectedThemePair.dark;
   const activeTheme = options.themes.find((candidate) => candidate.id === activeThemeId) ?? selectedTheme;
-  return { selectedTheme, activeTheme, selectedThemePair, fallbackTheme };
-}
-
-export function findFallbackTheme(themes: readonly QualifiedThemeContribution[], fallbackThemeId: QualifiedContributionId = CLASSIC_THEME_ID): QualifiedThemeContribution | undefined {
-  return themes.find((candidate) => candidate.id === fallbackThemeId) ?? themes[0];
+  return { selectedTheme, activeTheme, selectedThemePair };
 }
 
 export function findThemePairForTheme(themePairs: readonly QualifiedThemePairContribution[], themeId: QualifiedContributionId): QualifiedThemePairContribution | undefined {
