@@ -28,8 +28,10 @@ type Revision = number | undefined;
  * - `unknown`: the daemon's copy is not known (a read is in flight, or failed); `dirty` says the
  *   text shown has edits the daemon has not had, `revision` what that text was based on,
  *   `reading` whether a read is in flight (so a second is not started), and `announced` the
- *   highest revision the daemon is known to have (-1 when none); a read answering below it is
- *   stale and is read again instead of shown.
+ *   highest revision the daemon is known to have (-1 when none). A read answering below it raced
+ *   the write and is read once more (`rechecked`); still below, the daemon's copy was reset (a
+ *   month untouched, or gone with its session) and the text shown wins and is written back, so a
+ *   reset neither empties what the reader sees nor reads in a loop.
  * - `synced`: the text shown is the daemon's revision.
  * - `dirty`: typed since; a write is due when typing pauses.
  * - `writing`: a write of `written` is on its way; `text` is what is shown now.
@@ -37,7 +39,7 @@ type Revision = number | undefined;
  */
 export type DraftSyncState =
   | { readonly kind: "local-only" }
-  | { readonly kind: "unknown"; readonly text: string; readonly dirty: boolean; readonly revision: Revision; readonly reading: boolean; readonly announced: number }
+  | { readonly kind: "unknown"; readonly text: string; readonly dirty: boolean; readonly revision: Revision; readonly reading: boolean; readonly announced: number; readonly rechecked: boolean }
   | { readonly kind: "synced"; readonly text: string; readonly revision: number }
   | { readonly kind: "dirty"; readonly text: string; readonly base: Revision }
   | { readonly kind: "writing"; readonly text: string; readonly base: Revision; readonly written: string }
@@ -129,9 +131,9 @@ function opened(state: DraftSyncState, text: string, record: LocalDraftRecord | 
   switch (state.kind) {
     case "local-only":
       if (record?.state === "sent") return stay({ kind: "sent", base: record.revision }, [{ kind: "read" }]);
-      return stay({ kind: "unknown", text, dirty: record === undefined ? text !== "" : record.state === "dirty", revision: record?.revision, reading: true, announced: -1 }, [{ kind: "read" }]);
+      return stay({ kind: "unknown", text, dirty: record === undefined ? text !== "" : record.state === "dirty", revision: record?.revision, reading: true, announced: -1, rechecked: false }, [{ kind: "read" }]);
     case "unknown": return state.reading ? stay(state) : stay({ ...state, reading: true }, [{ kind: "read" }]);
-    case "synced": return stay({ kind: "unknown", text: state.text, dirty: false, revision: state.revision, reading: true, announced: state.revision }, [{ kind: "read" }]);
+    case "synced": return stay({ kind: "unknown", text: state.text, dirty: false, revision: state.revision, reading: true, announced: state.revision, rechecked: false }, [{ kind: "read" }]);
     case "dirty": return stay(state, [{ kind: "wait" }]);
     case "writing": return stay(state);
     case "sent": return stay(state, [{ kind: "read" }]);
@@ -162,9 +164,10 @@ function readAnswered(state: Exclude<DraftSyncState, { kind: "local-only" }>, dr
   const text = draft.text ?? "";
   if (state.kind === "sent") return draft.revision > (state.base ?? -1) ? taken(draft.revision, text, "") : stay(state);
   if (state.kind !== "unknown") return stay(state);
-  if (draft.revision < state.announced) return stay(state, [{ kind: "read" }]);
+  const behind = draft.revision < state.announced;
+  if (behind && !state.rechecked) return stay({ ...state, rechecked: true }, [{ kind: "read" }]);
   if (text === state.text) return stay({ kind: "synced", text, revision: draft.revision });
-  if (state.dirty) return stay({ kind: "dirty", text: state.text, base: draft.revision }, [{ kind: "wait" }]);
+  if (state.dirty || behind) return stay({ kind: "dirty", text: state.text, base: draft.revision }, [{ kind: "wait" }]);
   return taken(draft.revision, text, state.text);
 }
 
@@ -187,10 +190,10 @@ function writeAnswered(state: Exclude<DraftSyncState, { kind: "local-only" }>, a
 function announced(state: Exclude<DraftSyncState, { kind: "local-only" }>, frame: { readonly revision: number; readonly cause: DraftChangeCause; readonly fromHere: boolean }): DraftSyncStep {
   switch (state.kind) {
     case "unknown": {
-      const next = { ...state, announced: Math.max(state.announced, frame.revision) };
+      const next = { ...state, announced: Math.max(state.announced, frame.revision), rechecked: false };
       return state.reading ? stay(next) : stay({ ...next, reading: true }, [{ kind: "read" }]);
     }
-    case "synced": return frame.revision > state.revision ? stay({ kind: "unknown", text: state.text, dirty: false, revision: state.revision, reading: true, announced: frame.revision }, [{ kind: "read" }]) : stay(state);
+    case "synced": return frame.revision > state.revision ? stay({ kind: "unknown", text: state.text, dirty: false, revision: state.revision, reading: true, announced: frame.revision, rechecked: false }, [{ kind: "read" }]) : stay(state);
     case "dirty":
     case "writing": return stay(state);
     case "sent": return (frame.cause === "sent" || !frame.fromHere) && frame.revision > (state.base ?? -1) ? stay(state, [{ kind: "read" }]) : stay(state);

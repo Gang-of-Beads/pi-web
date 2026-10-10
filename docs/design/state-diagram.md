@@ -964,7 +964,7 @@ One composer's text against the copy on its session's daemon (server-drafts.md; 
 | Event \ state | `unknown` | `synced` | `dirty` / `writing` | `sent` |
 |---|---|---|---|---|
 | typed other text | `dirty` | `dirty` | stays (the write that follows carries it) | `dirty` |
-| read answered | the shown text equals it: `synced`; shown text dirty: `dirty` (written); else shown, `synced`; older than a frame announced: read again | – | ignored: this page's write lands later and wins | newer than the send: shown, `synced`; else ignored |
+| read answered | the shown text equals it: `synced`; shown text dirty: `dirty` (written); else shown, `synced`; older than a frame announced or the revision this page knew: read once more, and still older means the daemon's copy was reset (a month untouched, or with its session): the shown text wins and is written back | – | ignored: this page's write lands later and wins | newer than the send: shown, `synced`; else ignored |
 | `draft.changed` | read (if none in flight) | newer: `unknown`, read | ignored (D1: silent) | the send's own frame or another page's write, newer: read; this page's earlier writes: ignored |
 | write answered | – | – | `synced`, or `dirty` when typed meanwhile | remembered as this page's latest revision; `superseded`: read |
 | write failed | – | – | `dirty`; written again at the next keystroke | – |
