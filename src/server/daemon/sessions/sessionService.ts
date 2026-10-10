@@ -38,7 +38,7 @@ import type {
   SessionTranscriptTail,
   SessionStreamSync,
 } from "../../shared/types.js";
-import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, QueuedSessionMessage } from "../../../shared/apiTypes.js";
+import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, ExtensionTerminalKey, QueuedSessionMessage } from "../../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 import type { DelegationRequest, SpawnSessionResult, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionSummary } from "./delegation.js";
 
@@ -136,6 +136,8 @@ export interface SessionRouteService {
   abort(ref: SessionRouteRef): Promise<{ discarded: QueuedSessionMessage[] }>;
   /** Start one of the session's extension shortcuts; `unknown-shortcut` when it has none on that key. */
   runExtensionShortcut(ref: SessionRouteRef, key: string): Promise<"started" | "unknown-shortcut">;
+  /** A key through the session's terminal input listeners; a session without a running runtime has none, and consumes nothing. */
+  deliverTerminalInput(ref: SessionRouteRef, key: ExtensionTerminalKey): { consumed: boolean };
   /** Only a running runtime has providers: asking never starts one, and a session without one suggests nothing. */
   extensionCompletions(ref: SessionRouteRef, text: string, cursor: number, force: boolean): Promise<ExtensionCompletionSuggestions>;
   /** The providers' applyCompletion; without a running runtime's providers, pi's plain-token replacement. */

@@ -31,6 +31,7 @@ export class ExtensionStanding {
   private hiddenThinkingLabel: string | undefined;
   private title: string | undefined;
   private expandedTools = false;
+  private readonly terminalInputListeners = new Set<(data: string) => unknown>();
   /** The standing values the last broadcast status carried, serialized; see noteSent. */
   private lastSent: string | undefined;
 
@@ -77,6 +78,44 @@ export class ExtensionStanding {
 
   toolsExpanded(): boolean {
     return this.expandedTools;
+  }
+
+  /**
+   * pi's `onTerminalInput` (pi-insertion-points.md slice 8): a listener for the keys the page passes
+   * on; the status says one is listening. Answers its unsubscribe, as pi does.
+   */
+  addTerminalInputListener(listener: unknown): () => void {
+    if (typeof listener !== "function") return () => undefined;
+    const entry = (data: string): unknown => Reflect.apply(listener, undefined, [data]);
+    this.terminalInputListeners.add(entry);
+    this.changed();
+    return () => {
+      if (this.terminalInputListeners.delete(entry)) this.changed();
+    };
+  }
+
+  /**
+   * One key through the listeners as pi-tui runs them: in the order they were added, a listener that
+   * consumes stops the chain, and one that answers `data` passes that to the next. Unlike pi, a
+   * listener that throws is skipped rather than taking input down. Answers whether the key was
+   * consumed, which an emptied key also is.
+   */
+  deliverTerminalInput(data: string): boolean {
+    let current = data;
+    for (const listener of [...this.terminalInputListeners]) {
+      let result: unknown;
+      try {
+        result = listener(current);
+      } catch (error) {
+        console.warn("An extension terminal input listener failed", error);
+        continue;
+      }
+      if (typeof result !== "object" || result === null) continue;
+      if (Reflect.get(result, "consume") === true) return true;
+      const next: unknown = Reflect.get(result, "data");
+      if (typeof next === "string") current = next;
+    }
+    return current.length === 0;
   }
 
   /** pi's `addAutocompleteProvider`: the factory wraps the session's stack; the status then names its trigger characters. */
@@ -143,6 +182,7 @@ export class ExtensionStanding {
     this.hiddenThinkingLabel = undefined;
     this.title = undefined;
     this.expandedTools = false;
+    this.terminalInputListeners.clear();
     this.changed();
   }
 
@@ -181,6 +221,7 @@ export class ExtensionStanding {
       ...(this.title === undefined ? {} : { title: this.title }),
       ...(triggerCharacters === undefined ? {} : { completion: { triggerCharacters } }),
       ...(this.expandedTools ? { toolsExpanded: true as const } : {}),
+      ...(this.terminalInputListeners.size > 0 ? { terminalInput: true as const } : {}),
     };
     return Object.keys(standing).length === 0 ? undefined : standing;
   }

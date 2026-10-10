@@ -67,6 +67,11 @@ Each slice: state-diagram entries for new rows or frames in the same commit, a b
    - The session's tool cards open their output while it holds, as an error's card does, and fold back when it is cleared.
    - What the extensions draw from then on (tool call and result lines, custom rows) gets `expanded` as pi gives it. Rows the page has already read keep the drawing they were read with until the page reads them again; the card's own fold follows at once.
    - `setTheme` answers `{ success: false }` with the reason: PI WEB draws with its own themes, chosen in its Settings. pi's headless default said only "UI not available". `getAllThemes` and `getTheme` keep pi's headless answers (none).
+8. **Terminal input: Esc only.** Built 2026-10-10. pi gives every `onTerminalInput` listener each key before its editor, in the order they were added: one that consumes stops the key, one that answers `data` passes that on. The extensions on this machine listen for Esc (pi-subagents cancels a `/subagent` run, pi-goal aborts an audit or pauses a goal, panels close) and for a few hotkeys of their own. A page cannot wait for the daemon before deciding what a key does, so the owner chose (2026-10-10) to pass Esc only:
+   - The session's standing extension UI keeps the listeners and says `terminalInput: true` while one listens; they end with the session's extensions.
+   - Esc pressed in the chat view (the transcript, the composer, or nothing focused) that nothing on the page used (no open modal, no completion list, no row) goes to `POST /sessions/:id/terminal-input { key: "escape" }`, which runs the listeners as pi-tui does with pi's byte for Esc and answers whether one consumed it. Unlike pi, a listener that throws is skipped. Only a running runtime has listeners; asking never starts one.
+   - Not carried over: other keys, and a listener consuming a key before the page uses it (the page has used it, or not, by the time the daemon answers).
+   - `setEditorComponent` stays a no-op: no extension on this machine sets one, and the composer is a browser editor.
 
 ## Web insertion points on top
 

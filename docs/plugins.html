@@ -226,8 +226,9 @@
                 it cannot read a browser's draft. A browser loaded before PI WEB knew <code>editor</code> draws no card for
                 it: reload the page. <code>setHeader</code> and <code>setFooter</code> show on the extension's page in Go to
                 with its widgets, and <code>addAutocompleteProvider</code> completes in the composer. <code>setToolsExpanded</code> opens the session's tool output;
-                <code>setTheme</code> answers that PI WEB's own themes apply. <code>setEditorComponent</code> and
-                <code>onTerminalInput</code> remain no-ops despite <code>hasUI === true</code>.
+                <code>setTheme</code> answers that PI WEB's own themes apply. <code>onTerminalInput</code> gets Esc
+                pressed in the chat view that nothing on the page used, and no other key. <code>setEditorComponent</code>
+                remains a no-op despite <code>hasUI === true</code>.
               </p>
               <div class="table-scroll" role="region" aria-label="ctx.ui members in PI WEB" tabindex="0">
                 <table class="narrow-table">
@@ -292,8 +293,12 @@
                       <td>The composer's completions, asked where pi's editor would ask; the providers' items win when there are any.</td>
                     </tr>
                     <tr>
-                      <td><code>onTerminalInput</code>, <code>setEditorComponent</code>, <code>getEditorComponent</code></td>
-                      <td>No effect: they replace pi's terminal chrome, and PI WEB draws its own.</td>
+                      <td><code>onTerminalInput</code></td>
+                      <td>Gets Esc pressed in the chat view that nothing on the page used; no other key.</td>
+                    </tr>
+                    <tr>
+                      <td><code>setEditorComponent</code>, <code>getEditorComponent</code></td>
+                      <td>No effect: they replace pi's terminal editor, and PI WEB's composer is its own.</td>
                     </tr>
                     <tr>
                       <td><code>getAllThemes</code>, <code>getTheme</code></td>

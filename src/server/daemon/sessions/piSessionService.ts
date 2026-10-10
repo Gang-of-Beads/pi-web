@@ -36,7 +36,7 @@ import {
   parseSessionEntries,
   type FileEntry,
 } from "@earendil-works/pi-coding-agent";
-import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, TranscriptHead } from "../../../shared/apiTypes.js";
+import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, ExtensionTerminalKey, TranscriptHead } from "../../../shared/apiTypes.js";
 import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
@@ -5502,6 +5502,7 @@ export class PiSessionService implements SessionRouteService {
       setHeader,
       setFooter,
       getToolsExpanded: () => standing.toolsExpanded(),
+      onTerminalInput: (listener: unknown) => standing.addTerminalInputListener(listener),
       setToolsExpanded: (expanded: unknown) => { standing.setToolsExpanded(expanded === true); },
       setTheme: () => THEME_DOES_NOT_APPLY,
       addAutocompleteProvider: (factory: unknown) => { standing.addCompletionProvider(factory); },
@@ -6286,6 +6287,17 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private readonly extensionShortcuts = new ExtensionShortcuts();
+
+  /**
+   * A key from the page through the session's terminal input listeners (pi-insertion-points.md
+   * slice 8; owner 2026-10-10: Esc only). Only a running runtime has listeners; asking never starts
+   * one.
+   */
+  deliverTerminalInput(ref: PiSessionRef, key: ExtensionTerminalKey): { consumed: boolean } {
+    const session = this.activeForRef(ref)?.runtime.session;
+    const consumed = session === undefined ? false : this.extensionStanding.get(session)?.deliverTerminalInput(TERMINAL_KEY_BYTES[key]) === true;
+    return { consumed };
+  }
 
   /**
    * What the session's extension autocomplete providers suggest (pi-insertion-points.md slice 6).
@@ -7507,6 +7519,9 @@ async function closedBranch(path: string): Promise<ReturnType<typeof branchFromF
   const entries = await readSessionFileEntries(path);
   return entries !== undefined && isCurrentVersionFile(entries, CURRENT_SESSION_VERSION) ? branchFromFileEntries(entries) : undefined;
 }
+
+/** Each key as pi's terminal delivers it to input listeners. */
+const TERMINAL_KEY_BYTES: Readonly<Record<ExtensionTerminalKey, string>> = { escape: "\u001b" };
 
 /**
  * pi's `setTheme` answer under PI WEB (pi-insertion-points.md slice 7): PI WEB draws with its own

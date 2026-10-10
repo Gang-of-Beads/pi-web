@@ -12,6 +12,13 @@ import { payloadRevision } from "./payloadRevision.js";
 import { errorText, sessionErrorReply, type SessionErrorReply } from "./sessionErrors.js";
 import { delegationRequestFromBody, spawnCwdFromBody, subsessionReadQuery, type SubsessionTranscriptQuery } from "./delegationRequests.js";
 import { isRecord } from "../../../shared/unknownValues.js";
+import type { ExtensionTerminalKey } from "../../../shared/apiTypes.js";
+
+const TERMINAL_KEYS: Readonly<Record<ExtensionTerminalKey, true>> = { escape: true };
+
+function isTerminalKey(value: string): value is ExtensionTerminalKey {
+  return Object.hasOwn(TERMINAL_KEYS, value);
+}
 
 interface SessionQuery {
   cwd?: string;
@@ -640,6 +647,17 @@ app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unkn
     if (typeof text !== "string" || !Number.isInteger(cursor) || typeof cursor !== "number") return reply.code(400).send({ error: "text and cursor are required" });
     try {
       return await sessions.extensionCompletions(sessionRefFromBody(request.params.sessionId, body), text, cursor, body["force"] === true);
+    } catch (error) {
+      return sendError(reply, sessionErrorReply(error, 400));
+    }
+  });
+
+  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; key?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/terminal-input`, (request, reply) => {
+    const body = optionalRecord(request.body);
+    const key = body["key"];
+    if (typeof key !== "string" || !isTerminalKey(key)) return reply.code(400).send({ error: `key must be one of ${Object.keys(TERMINAL_KEYS).join(", ")}` });
+    try {
+      return sessions.deliverTerminalInput(sessionRefFromBody(request.params.sessionId, body), key);
     } catch (error) {
       return sendError(reply, sessionErrorReply(error, 400));
     }

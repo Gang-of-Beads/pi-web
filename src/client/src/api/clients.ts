@@ -1,5 +1,5 @@
 import { isRecord } from "../../../shared/unknownValues";
-import type { AskUserSubmission, ExtensionCompletionItem, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse } from "../../../shared/apiTypes";
+import type { AskUserSubmission, ExtensionCompletionItem, ExtensionTerminalKey, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse } from "../../../shared/apiTypes";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
 import { apiErrorMessage, errorCode, HttpError, request, transportFailureOf } from "./http";
@@ -12,6 +12,7 @@ import {
   parseShortcutStarted,
   parseExtensionCompletions,
   parseExtensionCompletionApplied,
+  parseTerminalInputDelivered,
   parseAskUserCloseResponse,
   parseAccepted,
   parseArchived,
@@ -430,6 +431,7 @@ export const sessionsApi = {
     }),
   abort: (session: SessionRef, machineId = "local") => request(sessionPath(session, "abort", machineId), parseAborted, { method: "POST", body: sessionBody(session) }),
   runExtensionShortcut: (session: SessionRef, key: string, machineId = "local") => request(sessionPath(session, "extension-shortcuts/run", machineId), parseShortcutStarted, { method: "POST", body: sessionBody(session, { key }) }),
+  sendTerminalInput: (session: SessionRef, key: ExtensionTerminalKey, machineId = "local") => request(sessionPath(session, "terminal-input", machineId), parseTerminalInputDelivered, { method: "POST", body: sessionBody(session, { key }) }),
   extensionCompletions: (session: SessionRef, at: { text: string; cursor: number }, machineId = "local") => request(sessionPath(session, "extension-completions", machineId), parseExtensionCompletions, { method: "POST", body: sessionBody(session, at) }),
   applyExtensionCompletion: (session: SessionRef, choice: { text: string; cursor: number; prefix: string; item: ExtensionCompletionItem }, machineId = "local") => request(sessionPath(session, "extension-completions/apply", machineId), parseExtensionCompletionApplied, { method: "POST", body: sessionBody(session, choice) }),
   stop: (session: SessionRef, machineId = "local") => request(sessionPath(session, "stop", machineId), parseStopped, { method: "POST", body: sessionBody(session) }),

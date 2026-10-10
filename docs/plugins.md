@@ -50,7 +50,8 @@ Pi extensions running under PI WEB's session daemon can ask the user questions w
 - **`setHeader` and `setFooter` are on the extension's page in Go to**, with its widgets: the header first, the footer last. A session has one of each, the last extension to set one replacing the one before, as in pi; a footer factory's `footerData` answers the git branch, the statuses and how many providers have models.
 - **`addAutocompleteProvider` completes in the composer.** Wherever pi's editor would ask its providers (`/` opening a line, `@`, `#` or a provider's `triggerCharacters` opening a word), the composer asks the session's providers alongside its own completions, and their items win when there are any; picking one applies it with the providers' `applyCompletion`. Tab does not force a completion.
 - **`setToolsExpanded` opens the session's tool output**, as pi's Ctrl+O does: the session's tool cards open, and what the extensions draw from then on is drawn expanded; `getToolsExpanded` answers it. `setTheme` answers that it does not apply: PI WEB draws with its own themes.
-- **Other UI surfaces are still no-ops.** `setEditorComponent` and `onTerminalInput` remain unimplemented under PI WEB even though `hasUI` is `true`; do not rely on `hasUI` alone to detect them.
+- **`onTerminalInput` gets Esc.** Esc pressed in the chat view that nothing on the page used (no open dialog, menu or completion list) reaches the session's listeners as pi's byte for Esc, in the order they were added; other keys do not, and a listener cannot stop the page from using a key first.
+- **`setEditorComponent` is still a no-op** under PI WEB even though `hasUI` is `true`; do not rely on `hasUI` alone to detect it.
 
 ### `ctx.ui` at a glance
 
@@ -70,7 +71,8 @@ Pi extensions running under PI WEB's session daemon can ask the user questions w
 | `setWidget` | The extension's own page in Go to, named by `piWeb.title` in its package; none when a plugin's page fronts it. Never around the composer. |
 | `setHeader`, `setFooter` | On the extension's page in Go to with its widgets, header first and footer last; one of each per session, the last set winning, as in pi. |
 | `addAutocompleteProvider` | The composer's completions, asked where pi's editor would ask; the providers' items win when there are any. |
-| `onTerminalInput`, `setEditorComponent`, `getEditorComponent` | No effect: they replace pi's terminal chrome, and PI WEB draws its own. |
+| `onTerminalInput` | Gets Esc pressed in the chat view that nothing on the page used; no other key. |
+| `setEditorComponent`, `getEditorComponent` | No effect: they replace pi's terminal editor, and PI WEB's composer is its own. |
 | `getAllThemes`, `getTheme` | pi's headless defaults (none): PI WEB's look is chosen in Settings. |
 | `setTheme` | `{ success: false }`, saying PI WEB draws with its own themes, chosen in its Settings. |
 | `getToolsExpanded`, `setToolsExpanded` | The session's tool cards open their output while it is set, and what the extensions draw from then on is drawn expanded. |

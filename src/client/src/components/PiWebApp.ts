@@ -857,6 +857,25 @@ export class PiWebApp extends LitElement {
     }
   };
 
+  /**
+   * Esc that nothing on the page used, pressed in the chat view, goes to the shown session's
+   * extensions that listen for terminal input (pi's `onTerminalInput`; owner 2026-10-10: only Esc).
+   * It listens after every surface had the key: a modal, the completion list or a row that used Esc
+   * marked it handled, and it is not passed on. Only a key from the chat view, the composer or no
+   * focused element counts; the navigation lists and settings keep their own.
+   */
+  private readonly onUnclaimedKey = (event: KeyboardEvent) => {
+    if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || this.isRenderedModalOpen()) return;
+    const session = this.state.selectedSession;
+    const status = this.state.status;
+    if (session === undefined || status?.sessionId !== session.id || status.extensionUi?.terminalInput !== true || this.displayMainView() !== "chat") return;
+    const fromChat = event.target === this.ownerDocument.body || event.composedPath().some((target) => target === this.chatView || target === this.promptEditor);
+    if (!fromChat) return;
+    void api.sendTerminalInput(session, "escape", selectedMachineId(this.state)).catch((error: unknown) => {
+      this.setState(errorNoticePatch(error));
+    });
+  };
+
   protected override willUpdate(): void {
     this.toggleAttribute("pwa-display-mode", this.appShell.isPwaDisplayMode);
     if (this.displayMainView() === "navigation") this.noteNavigationViewShown();
@@ -1209,6 +1228,7 @@ export class PiWebApp extends LitElement {
     window.addEventListener("pageshow", this.onPageShow);
     this.browserResume.connect();
     window.addEventListener("keydown", this.onKeyDown, GLOBAL_SHORTCUT_LISTENER_OPTIONS);
+    window.addEventListener("keydown", this.onUnclaimedKey);
     window.addEventListener("dragover", this.refuseStrayFileDrop);
     window.addEventListener("drop", this.refuseStrayFileDrop);
     this.systemLightThemeMedia?.addEventListener("change", this.onSystemLightThemeChange);
@@ -1319,6 +1339,7 @@ export class PiWebApp extends LitElement {
     window.removeEventListener("pageshow", this.onPageShow);
     this.browserResume.disconnect();
     window.removeEventListener("keydown", this.onKeyDown, GLOBAL_SHORTCUT_LISTENER_OPTIONS);
+    window.removeEventListener("keydown", this.onUnclaimedKey);
     window.removeEventListener("dragover", this.refuseStrayFileDrop);
     window.removeEventListener("drop", this.refuseStrayFileDrop);
     this.systemLightThemeMedia?.removeEventListener("change", this.onSystemLightThemeChange);

@@ -788,6 +788,12 @@ export function parseExtensionCompletions(value: unknown): ExtensionCompletionSu
   };
 }
 
+export function parseTerminalInputDelivered(value: unknown): { consumed: boolean } {
+  const consumed = requireRecord(value)["consumed"];
+  if (typeof consumed !== "boolean") throw new Error("Expected a delivered terminal key");
+  return { consumed };
+}
+
 export function parseExtensionCompletionApplied(value: unknown): ExtensionCompletionApplied {
   const record = requireRecord(value);
   const text = record["text"];
@@ -847,6 +853,7 @@ function optionalExtensionUi(value: unknown): Pick<SessionStatus, "extensionUi">
     ...(title === undefined ? {} : { title }),
     ...(triggerCharacters === undefined ? {} : { completion: { triggerCharacters } }),
     ...(Reflect.get(value, "toolsExpanded") === true ? { toolsExpanded: true as const } : {}),
+    ...(Reflect.get(value, "terminalInput") === true ? { terminalInput: true as const } : {}),
   };
   return Object.keys(standing).length === 0 ? {} : { extensionUi: standing };
 }

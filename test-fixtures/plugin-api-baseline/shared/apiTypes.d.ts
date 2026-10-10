@@ -923,9 +923,13 @@ export interface ExtensionUiStanding {
     };
     /** The session's extensions expanded tool output (pi's `setToolsExpanded`): its tool cards open their output. */
     toolsExpanded?: true;
+    /** The session's extensions listen for terminal input (pi's `onTerminalInput`): the page passes them Esc. */
+    terminalInput?: true;
 }
 /** The level of an extension's `ctx.ui.notify`, as pi's terminal draws it. */
 export type ExtensionNoticeLevel = "info" | "warning" | "error";
+/** The keys a page passes to the session's terminal input listeners (owner, 2026-10-10: Esc only). */
+export type ExtensionTerminalKey = "escape";
 /** Which extension UI dialog primitive a pending dialog belongs to. */
 export type ExtensionDialogKind = "confirm" | "select" | "input" | "editor" | "custom";
 /**
