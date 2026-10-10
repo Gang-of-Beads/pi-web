@@ -4868,9 +4868,9 @@ export class PiWebApp extends LitElement {
   };
 
   /**
-   * A message renderer's own send and insert (the Subagents supervisor card's Send and Edit in
-   * composer). The chat view passed both to renderers but nothing bound them, so the card's
-   * buttons were always disabled. A send goes like the composer's: a steer while a turn runs,
+   * A message renderer's own send and insert (a card's own Send and Edit in composer). The chat
+   * view passed both to renderers but nothing bound them, so a card's buttons were always
+   * disabled. A send goes like the composer's: a steer while a turn runs,
    * a follow-up otherwise; its row in the transcript carries the delivery state.
    */
   private readonly handleRendererSend = async (text: string): Promise<void> => {
@@ -4915,14 +4915,6 @@ export class PiWebApp extends LitElement {
     void this.sessions.clearServerQueue();
   };
 
-  /**
-   * Open the artifact a finished subagent run left behind. Running work has
-   * nothing to open yet, which is why those rows are inert rather than absent:
-   * the point of the row is to say that the child exists and what it is doing.
-   */
-  // Openable even without a result file: the server falls back to the run's own
-  // transcript, so a running child shows what it has done so far instead of
-  // being an inert row.
   private readonly handleRecallQueuedMessage = (message: QueuedSessionMessage): void => {
     // The composer is filled only once the server confirms the message left the
     // queue, so a recall that lost the race to the agent does not offer the

@@ -457,7 +457,7 @@ export interface MessageRendererContribution {
  */
 export interface CodeFenceRendererContribution {
     id: LocalContributionId;
-    /** The info-string language this renderer claims, lowercase (e.g. "mermaid"). */
+    /** The info-string language this renderer claims, lowercase (a fence's language, such as "dot"). */
     language: string;
     render: (source: string) => Node | Promise<Node>;
 }

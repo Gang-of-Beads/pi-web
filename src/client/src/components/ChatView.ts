@@ -1339,15 +1339,6 @@ export class ChatView extends LitElement {
   }
 
 
-  /**
-   * The subagents, tool runs and background tasks this session started.
-   *
-   * A parent conversation stays open while its children run; without this the
-   * only way to see them was the agent tools' own output. Background tasks
-   * share the list because they answer the same question a subagent row does -
-   * what is this conversation running that is not the reply on screen - and a
-   * browser had no other way to see them at all.
-   */
   private renderImageZoom() {
     return html`
       <dialog class="image-zoom" tabindex="-1" aria-label="Image, tap to close" @click=${this.onImageZoomDialogClick} @close=${this.closeImageZoom} @cancel=${this.closeImageZoom} @pointerdown=${this.onImageZoomPointerDown} @pointermove=${this.onImageZoomPointerMove} @pointerup=${this.onImageZoomPointerUp} @pointercancel=${this.onImageZoomPointerUp} @wheel=${this.onImageZoomWheel}>
@@ -2571,7 +2562,7 @@ export class ChatView extends LitElement {
    * is the bounce that was reported three times.
    *
    * The watch is a frame loop rather than an observer because every producer
-   * has to be covered - streamed text, a tool result filling in, a subagent row
+   * has to be covered - streamed text, a tool result filling in, an extension's row
    * appearing - and they share no single element to observe. It runs only while
    * the session is live and the reader is aimed at the bottom, and it stops
    * itself the moment either stops being true.
@@ -2905,7 +2896,7 @@ function firstTouchY(event: TouchEvent): number | undefined {
 
 
 /** How long a run has been going, in the shortest form that stays readable. */
-export function subagentRunDuration(elapsedMs: number): string {
+export function runDuration(elapsedMs: number): string {
   const seconds = Math.max(0, Math.round(elapsedMs / 1000));
   if (seconds < 60) return `${String(seconds)}s`;
   const minutes = Math.floor(seconds / 60);
@@ -2919,13 +2910,13 @@ export function turnElapsedLabel(startedAtMs: number | undefined, nowMs: number)
   if (startedAtMs === undefined) return undefined;
   const elapsedMs = Math.max(0, nowMs - startedAtMs);
   if (elapsedMs < 5000) return undefined;
-  return { text: subagentRunDuration(elapsedMs), long: elapsedMs >= LONG_TURN_AFTER_MS };
+  return { text: runDuration(elapsedMs), long: elapsedMs >= LONG_TURN_AFTER_MS };
 }
 
 /**
  * The working row's mark: PI WEB's dots, or what an extension set with `setWorkingIndicator`
  * (extension-ui-counterpart.md): no frames, no mark; otherwise its first frame stands still.
- * ponytail: frames do not animate; cycle them on a timer if an extension's mark needs motion.
+ * shortcut: frames do not animate; cycle them on a timer if an extension's mark needs motion.
  */
 function workingMark(frames: readonly string[] | undefined) {
   if (frames === undefined) return html`<span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>`;

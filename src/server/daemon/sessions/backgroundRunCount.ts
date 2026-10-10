@@ -6,7 +6,7 @@ import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
  * The chat already tells this story ("idle · 1 background run"), but it tells
  * it from per-session reads the browser only makes for the session it is
  * showing. Every other surface — the session list, the quick switcher — had no
- * way to know, so a session with a subagent still thinking was painted with
+ * way to know, so a session with background work still running was painted with
  * the same grey dot as one with nothing left to do.
  *
  * Core counts what core owns: the spawned subsessions that are working. Every

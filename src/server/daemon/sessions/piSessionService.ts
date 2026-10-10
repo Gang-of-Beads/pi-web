@@ -3019,13 +3019,14 @@ export class PiSessionService implements SessionRouteService {
     return { kind: "replay", sinceSeq, frames: missed.frames };
   }
 
+  /**
+   * Only the runtime's own models. An extension that adds providers registers them with the
+   * runtime, so they arrive here; models read from an extension's own files would offer entries
+   * that cannot resolve once that extension is gone.
+   */
   async availableModels(ref: PiSessionRef): Promise<ClientSessionModel[]> {
     const session = await this.getOrOpen(ref);
     const models = await this.sessionModelCandidates(session);
-    // Account aliases are not synthesised here. The multi-account extension
-    // registers each `anthropic-<account>` as a real provider, so they arrive
-    // with the runtime's own models; fabricating them from pi-accounts.json as
-    // well would offer entries that cannot resolve when the extension is absent.
     return models.map(modelToClientModel);
   }
 
@@ -5462,8 +5463,8 @@ export class PiSessionService implements SessionRouteService {
    * The UI context the session's extensions get. pi 1.0.4 hands extensions a copy of it
    * (`{ ...ui, select, confirm, input, editor, custom }`, its prompt bookkeeping), and a copy
    * keeps only the context's own properties: a member only the Proxy's `get` answered was
-   * dropped. `piWebScreens` was such a member, so since 1.0.4 pi-goal read no declarable
-   * screens, sent its terminal component, and the reader met the same question twice: a
+   * dropped. `piWebScreens` was such a member, so since 1.0.4 an extension that declares its
+   * screens read none, sent its terminal component, and the reader met the same question twice: a
    * terminal dump, then the native card behind it (owner, 2026-10-08). The Proxy now reports it
    * as an own property, so the copy keeps it; every other member the trap answers is one pi's
    * context already has. The base is not copied into a new target: a copy would read every
@@ -5598,7 +5599,7 @@ export class PiSessionService implements SessionRouteService {
    * A standing value reaches the browsers on the session's status. Writes are coalesced, and a
    * window whose writes left the values as the last broadcast status carried them publishes
    * nothing (ExtensionStanding.changedSinceSent).
-   * ponytail: a fixed 100 ms window, so an extension that animates its working words at 60 fps
+   * shortcut: a fixed 100 ms window, so an extension that animates its working words at 60 fps
    * costs ten status frames a second to every browser on the machine (a status frame also goes
    * out machine-wide); make it per-slot if a status frame ever grows expensive.
    */
@@ -6346,8 +6347,8 @@ export class PiSessionService implements SessionRouteService {
    *
    * Triggered by recountBackgroundRuns when a watched file changes, a session
    * opens, or counting plugins toggle, and by the heartbeat as a fallback when
-   * a watcher is unhealthy or work is known to be running, because a detached
-   * subagent run or background shell task reports only by writing files. The
+   * a watcher is unhealthy or work is known to be running, because detached
+   * background work reports only by writing files. The
    * counting itself is written to be cheap when the answer is zero, which is the normal case, and
    * only one scan is ever in flight so a slow disk cannot pile them up.
    */

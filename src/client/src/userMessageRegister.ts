@@ -17,7 +17,7 @@ import type { QueuedSessionMessage } from "./api.js";
  * constructed: the second write finds the first and updates it.
  *
  * Identity is the id the browser minted when it sent, and for anything it did
- * not send - another browser, the CLI, a subagent - the transcript's own entry
+ * not send - another browser, the CLI, an extension - the transcript's own entry
  * key. Text is never an identity. Text is what the runtime rewrites when it
  * expands a slash command, what an attachment-only message does not have, and
  * what every previous fix was eventually defeated by.
@@ -124,7 +124,7 @@ function queuedIdentity(message: QueuedSessionMessage, position: number): string
 
 /**
  * A row for a queued entry the browser has no line for - one queued from
- * another client, the CLI, or a subagent.
+ * another client, the CLI, or an extension.
  *
  * The synthetic key deliberately contains no text. A key built from text gives
  * one message two identities the moment the runtime rewrites it, which is the

@@ -44,7 +44,7 @@ export function jitteredReconnectDelay(delay: number, random: () => number = Mat
 }
 
 /**
- * The reconnect machinery both sockets share (ponytail audit fe60310c): two near-identical
+ * The reconnect machinery both sockets share (code audit fe60310c): two near-identical
  * copies that differed only in what a quiet window and a drop mean.
  * It owns the backoff, the liveness check against the quiet window and the silence budget, the
  * drop of a dead connection with its reconnect, and the retry when the network returns. A socket

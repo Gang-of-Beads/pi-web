@@ -13,9 +13,9 @@ export interface SessionWorkState {
  * refreshing the open workspace tool.
  *
  * Its turn ending is one such edge. The last of its background runs ending is
- * the other: a subagent or background task can outlive the turn that started
- * it, and a panel that stopped reading when the turn ended (the subagents run
- * list, the files tree) would otherwise keep what it read while the run was
+ * the other: background work can outlive the turn that started it, and a
+ * panel that stopped reading when the turn ended (a plugin's run list, the
+ * files tree) would otherwise keep what it read while the run was
  * still going. Only the same session's runs count: a selection that leaves a
  * session with runs going has settled nothing.
  */

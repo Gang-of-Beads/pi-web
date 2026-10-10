@@ -14,8 +14,8 @@
  * - a submodule's git directory (`.git/modules/<name>/`) follows the same rules;
  * - the working tree is news, except dependency folders, pi's own sessions
  *   (`.pi/sessions`), the directories the running plugins declare their
- *   extensions write background work into (`workPaths` under `cwd`, such as
- *   pi-background-tasks' `.pi/tasks`; core names none), each at any depth, and
+ *   extensions write background work into (`workPaths` under `cwd`; core
+ *   names none), each at any depth, and
  *   the git directories of nested clones. Build output is news on purpose:
  *   the tree and git panels show it, and a busy build publishes at most once
  *   per 2.5 s window.

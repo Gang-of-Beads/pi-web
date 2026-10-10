@@ -96,7 +96,7 @@ function postedText(result: PendingAskOpenResult): string {
  * 2026-09-30: PI WEB gives the agent no tools of its own; docs/design/no-builtin-agent-tools.md).
  * It is an inline extension rather than a file: it runs inside the daemon that owns the ask store,
  * so it opens the ask directly instead of finding the daemon's address to post it to a route.
- * It gives way to an `ask_user` the user installed in pi (pi-ask-user, for one): pi loads inline
+ * It gives way to an `ask_user` the user installed in pi as an extension: pi loads inline
  * extensions last and the first registration of a name wins, and a replaceable extension is left
  * out instead of reported as a conflict.
  */

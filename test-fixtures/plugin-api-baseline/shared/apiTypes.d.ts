@@ -1358,7 +1358,7 @@ export interface SessionStatus {
     daemonInstanceId?: string;
     /**
      * Work this session started that outlives its turn: working subsessions,
-     * running subagent-tool runs, running background shell tasks. Absent when
+     * and the running work the plugins count. Absent when
      * there is none.
      *
      * Published so surfaces that never load a session's activity panel — the

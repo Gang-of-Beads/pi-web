@@ -133,7 +133,7 @@ process.once("SIGTERM", (signal) => { void requestShutdown(signal); });
 
 /**
  * The session daemon is the long-lived owner of every active run. A plugin's
- * unhandled rejection - a pi-updater timer touching a disposed extension
+ * unhandled rejection - an extension's timer touching a disposed extension
  * runner killed pid 5602 mid-turn on 2026-09-04, taking two in-flight agent
  * runs with it - must never take the process down once it is serving.
  *

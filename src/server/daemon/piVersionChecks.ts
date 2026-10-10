@@ -1,7 +1,7 @@
 /**
  * Pi's own update checks stay quiet inside the session daemon (owner, 2026-10-04).
  *
- * Extensions that offer pi updates (pi-updater) honour `PI_SKIP_VERSION_CHECK`. Inside PI WEB
+ * Extensions that offer pi updates honour `PI_SKIP_VERSION_CHECK`. Inside PI WEB
  * their offer cannot work: "Update now" re-executes `process.argv[1]`, which is the daemon's own
  * entry, and that second daemon fails the ownership claim. It also compares against the pi bundled
  * with PI WEB, not the pi the user runs. PI WEB's own update flow replaces it. The variable is set

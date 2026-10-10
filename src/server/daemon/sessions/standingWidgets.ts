@@ -8,7 +8,7 @@ import type { ExtensionOrigin } from "./extensionOrigin.js";
  * extension's widgets are its own page in Go to (owner, 2026-10-07), so a widget keeps who wrote
  * it. A cleared widget stays as an empty one: the extension's key stays in Go to and its page says
  * it shows nothing now, until the session's extensions reload. Clearing a key that held nothing
- * leaves nothing: an extension that only ever clears (pi-background-tasks does, at every turn) has
+ * leaves nothing: an extension that only ever clears (some clear at every turn) has
  * drawn nothing and brings no key. A component that could not be built still keeps its author's key,
  * so the extension's page exists and says it shows nothing, instead of the widget vanishing.
  *
@@ -23,7 +23,7 @@ export const WIDGET_REDRAW_MS = 1_000;
 /**
  * One widget. Lines are kept as given. A component is drawn when it asks (`tui.requestRender()`)
  * or when its drawing is WIDGET_REDRAW_MS old, and only as a snapshot is built: drawing it on every
- * status put extension code on the daemon's per-chunk path (pi-goal's widget reads a file per
+ * status put extension code on the daemon's per-chunk path (a widget that reads a file per
  * render), and a request made while it draws is ignored, so a render that asks again cannot loop.
  */
 class StandingWidget {
