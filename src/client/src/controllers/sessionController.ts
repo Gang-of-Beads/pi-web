@@ -25,6 +25,7 @@ import { carryUnsettledForward } from "../transcriptReconcile";
 import { machineSessionKey } from "../machineKeys";
 import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessionsCache";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
+import { moveHeldComposerAttachments } from "../composerAttachmentHold";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryLineSentAt, deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
@@ -2145,6 +2146,7 @@ export class SessionController {
 
     rememberCachedNewSession(session, pending.machineId);
     moveDraft(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
+    moveHeldComposerAttachments(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
     moveOutbox(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
     const cachedSession = markCachedNewSessionInfo(session, pending.machineId);
     if (!this.isCurrentPendingStart(pending)) {
@@ -2364,6 +2366,7 @@ export class SessionController {
       const toKey = machineSessionKey(machineId, replacement.id);
       rememberCachedNewSession(replacement, machineId);
       moveDraft(fromKey, toKey);
+      moveHeldComposerAttachments(fromKey, toKey);
       moveOutbox(fromKey, toKey);
       forgetCachedNewSession(session.id, machineId);
       // The start was in flight across a possible scope switch: a late

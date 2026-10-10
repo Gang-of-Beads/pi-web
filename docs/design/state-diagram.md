@@ -957,7 +957,7 @@ Selecting is a page of its own (owner, 2026-10-09): a header with the way out (�
 
 ## D10. A composer draft (server drafts, slice 1)
 
-One composer's text against the copy on its session's daemon (server-drafts.md; owner 2026-10-05: one draft per session, every device, later write wins; D1 2026-10-10: silent). `draftSyncStep` in `sessionDraftSync.ts` decides every transition; `SessionDraftSync` carries them out. Attachments, extension input dialogs and the offline states (`offline-dirty`, `replaced`) are later slices.
+One composer's text against the copy on its session's daemon (server-drafts.md; owner 2026-10-05: one draft per session, every device, later write wins; D1 2026-10-10: silent). `draftSyncStep` in `sessionDraftSync.ts` decides every transition; `SessionDraftSync` carries them out. Attachments stay in the browser that added them (slice 2, below), an open dialog's typed answer is slice 3 (below), and the offline states (`offline-dirty`, `replaced`) are slice 4.
 
 | State | Meaning |
 |---|---|
@@ -982,6 +982,8 @@ One composer's text against the copy on its session's daemon (server-drafts.md; 
 Opening the composer on a session: a fresh page starts from this browser's copy and its record (`sent` stays `sent`; otherwise `unknown`) and reads; a page coming back reads again unless a write is on its way.
 
 Wire: `GET /sessions/:id/draft` → `{ revision, text?, updatedAt? }`; `PUT /sessions/:id/draft { cwd, deviceId, seq, text }` → `{ revision }` or `{ revision, superseded: true }`; the prompt route takes `draft: { deviceId, seq, revision? }`; the session socket carries `draft.changed { revision, cause: "edited" | "sent", deviceId }`. Both draft routes are federated for a remote machine.
+
+**Attachments (slice 2, D2)** are not part of the daemon's draft: they stay in the browser that added them, one IndexedDB record per machine + session (`composerAttachmentStore`). The page writes a session's record only after it has read it, and shows what it read before anything attached meanwhile; a record it cannot read is left alone and the attachments stay in memory. A send empties the record, and a session that was still starting takes its record to its real id with its text.
 
 **An open dialog's typed answer (slice 3)** follows the same table with a dialog's routes: `GET`/`PUT /sessions/:id/dialogs/draft` (`dialogId` in the query or body; 404 `dialog-not-open` once it closed) and the frame `dialog.draft.changed { dialogId, revision, deviceId }`. Its opening text counts as synced, not typed; answering or cancelling is `sent here`; nothing is kept in the browser, and the daemon drops it when the dialog closes. The page lets go of it at the `dialog.closed` frame (`closed`): nothing more is written for it, not a waiting write, not one after the answer of a write on its way, and not when the card lets go afterwards. Coming back to either kind of draft puts this page's unwritten typing back on screen, else compares the read with what the screen shows.
 

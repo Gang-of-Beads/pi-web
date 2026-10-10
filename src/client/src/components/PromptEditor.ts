@@ -20,7 +20,7 @@ import { machineSessionKey } from "../machineKeys";
 import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { draftSyncFor, type SessionDraftSync } from "../sessionDraftSync";
-import { addToHeldComposerAttachments, holdComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
+import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
 import { advancePendingPrompt, isNetworkFailure, linkReportedOffline, loadPendingPrompts, markUnansweredPrompt, NetworkSendError, replaysRecord, reserveAcceptedPrompt, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
 import { outgoingStopped } from "../outgoingMessages";
 import { classifySubmission, handleOutcome, transportFactsFor } from "../messageLifecycle";
@@ -362,6 +362,7 @@ export class PromptEditor extends LitElement {
     if (switched || !hadRendered) {
       const returning = currentKey === undefined ? [] : takeHeldComposerAttachments(currentKey).map((attachment) => this.withAttachmentId(attachment));
       this.attachments = [...returning, ...(switched ? [] : this.attachments)];
+      if (currentKey !== undefined) this.restoreAttachments(currentKey);
     }
     if (switched) {
       this.attachmentError = undefined;
@@ -408,6 +409,10 @@ export class PromptEditor extends LitElement {
   }
 
   protected override updated(changed: PropertyValues) {
+    if (changed.has("attachments")) {
+      const key = draftStorageKey(this.machineId, this.sessionId);
+      if (key !== undefined) holdComposerAttachments(key, this.attachments);
+    }
     if (changed.has("sessionId") || changed.has("machineId")) {
       this.syncEditorDoc();
       // The strip must carry the scope it belongs to: rows loaded for the
@@ -819,6 +824,14 @@ export class PromptEditor extends LitElement {
       this.attachments = [...this.attachments, ...attachments.map((attachment) => this.withAttachmentId(attachment))];
     }
     if (error !== undefined) this.attachmentError = error;
+  }
+
+  /** Put back what this browser kept of the session's attachments (D2), once per page, before anything attached since. */
+  private restoreAttachments(key: string): void {
+    void restoreHeldComposerAttachments(key).then((stored) => {
+      if (stored.length === 0 || draftStorageKey(this.machineId, this.sessionId) !== key) return;
+      this.attachments = [...stored.map((attachment) => this.withAttachmentId(attachment)), ...this.attachments];
+    });
   }
 
   /** A fresh id from this composer: held attachments may come from an earlier composer whose ids collide. */
