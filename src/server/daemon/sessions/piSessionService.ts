@@ -6715,15 +6715,21 @@ function sessionDisplayName(session: PiAgentSession): string {
   return session.sessionName ?? session.sessionId;
 }
 
-function clientSessionFromArchivedRecord(record: ArchivedSessionRecord, fallback: PiSessionListEntry | undefined): ClientSession | undefined {
-  const path = record.originalPath ?? fallback?.path;
-  const created = record.created ?? fallback?.created.toISOString();
-  const modified = record.modified ?? fallback?.modified.toISOString();
-  const messageCount = record.messageCount ?? fallback?.messageCount;
-  const firstMessage = record.firstMessage ?? fallback?.firstMessage;
+/**
+ * An archived session's row: what the archive recorded, filled in from its file's listing. The
+ * count is the listed file's while the file is listed: a record keeps the count taken when it was
+ * archived, and one taken from a listing before Q19 counted every message entry rather than what
+ * the conversation shows (owner, Q19 2026-10-10).
+ */
+function clientSessionFromArchivedRecord(record: ArchivedSessionRecord, listed: PiSessionListEntry | undefined): ClientSession | undefined {
+  const path = record.originalPath ?? listed?.path;
+  const created = record.created ?? listed?.created.toISOString();
+  const modified = record.modified ?? listed?.modified.toISOString();
+  const messageCount = listed?.messageCount ?? record.messageCount;
+  const firstMessage = record.firstMessage ?? listed?.firstMessage;
   if (path === undefined || created === undefined || modified === undefined || messageCount === undefined || firstMessage === undefined) return undefined;
-  const name = record.name ?? fallback?.name;
-  const parentSessionPath = record.parentSessionPath ?? fallback?.parentSessionPath;
+  const name = record.name ?? listed?.name;
+  const parentSessionPath = record.parentSessionPath ?? listed?.parentSessionPath;
   return {
     id: record.sessionId,
     path,

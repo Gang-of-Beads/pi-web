@@ -222,6 +222,9 @@ const RENDERED_ENTRY_TYPES: ReadonlySet<unknown> = new Set(["message", "compacti
  * Whether the transcript renders this entry, and so whether it is counted. A compaction and a
  * branch summary are drawn as rows, so they count: leaving them out made the session's count
  * one short of the transcript's own total per compaction (owed review of 402a9e22, lane C).
+ * A closed session's file is counted by the daemon's `ReadableCountFold`, which keeps only the
+ * fields this rule, `retriedAttemptIds` and `stopOutcomes` read: a field they start to read must
+ * be kept there too (state-diagram D12).
  */
 export function isReadableBranchEntry(entry: unknown): boolean {
   if (!isRecord(entry)) return false;

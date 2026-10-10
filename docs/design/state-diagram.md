@@ -994,6 +994,20 @@ The reason is pi's words when pi gave them ("Retry cancelled", its overflow comp
 
 **History** (pages, the transcript head, counts): an attempt pi took back is hidden when no `pi-web.retry.unreplaced` names it and it is pending now or a newer assistant reply follows it in the branch; otherwise it shows. The record's row is drawn right after the last attempt it names, so a Stop's row (drawn at its own earlier entry) follows it, as live. A file from before this has no records: an attempt with a newer reply after it stays hidden, as before, and one with none after it shows. The pending set changes only with an appended entry, so the head stays cached by pi's leaf.
 
+## D12. How many messages a session row says (Q19)
+
+Owner, 2026-10-10 (Q19, `readable-everywhere`): wherever a session's message count shows (the session list, Go to, an archived row, the line above the conversation) it says what the conversation shows, before and after the session is opened.
+
+- **One rule.** `readableMessageCount` over the branch, beside the walk `branchTranscript` renders: messages, compactions, branch summaries, displayed custom messages, PI WEB's refused-dialog and unreplaced-retry rows, and a Stop's lone row. A failed attempt pi retried is not counted (D11), and replies on a branch the reader left are not on the branch.
+- **Producers.**
+  - An open session: its status, over the live branch with the attempts pending retry hidden, memoized per leaf and entry count. The page puts every status's count on that session's row.
+  - A closed session: the summary scanner folds the file with `ReadableCountFold` over the branch the file loads as (its last entry and that entry's parents, the SDK's rule). Message lines and extensions' custom entries are read from their bytes; only small entries the rule reads whole, and any line not in pi's layout, are parsed. The count is memoized with the summary by file identity and size, as before.
+  - An archived session: the file's count while the file is listed, else the count the archive recorded.
+  - A session the daemon holds open but has not written yet: its live branch.
+- **Where the two still differ, briefly.** While pi waits to retry a failed attempt, the open session hides the attempt and its file cannot know a retry is coming; after a `/tree` move that appended nothing, the live leaf is not the file's last entry. Both happen only while the session is open, when its row takes the status count.
+- **Cost** (owner's store, 2,915 sessions, 6.9 GB): a cold listing of the whole store 2.1 s → 3.6 s, once per daemon start; re-reading the 905 MB session after it grew 120 → 264 ms; a warm listing still reads only the files whose size changed. Checked against a JSON parse of every line: the same count for all 2,915; 365 of them changed (327 up, 38 down).
+- **Before** (`b5795a408`, 2026-08-28): only an open session had the readable count; a closed session counted every `message` line in its file, so the number changed on open (owed review C 2).
+
 ## Methodology folded in (research run `e7c7403c`, `uiux-methodology.md`)
 
 - **Statecharts** (statecharts.dev; Stately testing docs):

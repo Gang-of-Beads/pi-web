@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiSessionListEntry } from "./piSessionService.js";
+import { readableMessageCount } from "./readableMessageCount.js";
 import { rewriteHeaderWithoutParentSession } from "./sessionFileRewrite.testSupport.js";
 import { SessionSummaryScanner } from "./sessionSummaryScanner.js";
 
@@ -40,7 +41,7 @@ describe("session summary scanner parity with the SDK listing", () => {
       sessionInfoLine("First name"),
       messageLine({ role: "assistant", content: textContent("Done") }),
       sessionInfoLine("Renamed session"),
-      JSON.stringify({ type: "custom", id: nextEntryId(), parentId: "root", timestamp: "2026-01-01T00:03:00.000Z", customType: "note" }),
+      JSON.stringify({ type: "custom", ...nextEntryIds(), timestamp: "2026-01-01T00:03:00.000Z", customType: "note" }),
       sessionInfoLine(""),
       messageLine({ role: "user", content: textContent("second question") }),
     ]);
@@ -62,7 +63,7 @@ describe("session summary scanner parity with the SDK listing", () => {
       expect(scanned.id).toBe(sdk.id);
       expect(scanned.cwd).toBe(sdk.cwd);
       expect(scanned.created.getTime()).toBe(sdk.created.getTime());
-      expect(scanned.messageCount).toBe(sdk.messageCount);
+      expect(scanned.messageCount).toBe(readableMessageCount(SessionManager.open(scanned.path, dirname(scanned.path)).getBranch()));
       expect(scanned.firstMessage).toBe(sdk.firstMessage);
       expect(scanned.name).toBe(sdk.name);
       expect(scanned.parentSessionPath).toBe(sdk.parentSessionPath);
@@ -269,7 +270,7 @@ describe("session summary scanner edge cases", () => {
     const path = await writeSession("torn.jsonl", [
       headerLine({ id: "torn", cwd: WORKSPACE }),
       messageLine({ role: "user", content: textContent("start") }),
-      '{"type":"message","id":"torn-1","message":{"role":"assistant","content":[{"type":"text","text":"streaming"}]}',
+      '{"type":"message","id":"torn-1","parentId":"entry-1","timestamp":"2026-01-01T00:01:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"streaming"}]}',
     ]);
 
     expect(await scanFileSummary(path)).toMatchObject({ id: "torn", messageCount: 2, firstMessage: "start" });
@@ -342,11 +343,11 @@ describe("session summary scanner edge cases", () => {
 
   it("classifies message lines after the first user message by shape, without validating them", async () => {
     // A raw tab makes this line invalid JSON: a parsing scanner would reject it.
-    // The fast path classifies by the leading type key and trailing brace
+    // The fast path classifies by pi's leading keys and the trailing brace
     // alone, so it is still counted — proof that bodies after the first user
     // message are never parsed. (SDK-written files are always valid JSON, so
     // this never diverges from the SDK on real transcripts.)
-    const invalidBody = '{"type":"message","id":"m2","message":{"role":"assistant","content":[{"type":"text","text":"has\traw tab"}]}}';
+    const invalidBody = '{"type":"message","id":"m2","parentId":"entry-1","timestamp":"2026-01-01T00:01:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"has\traw tab"}]}}';
     const path = await writeSession("unvalidated.jsonl", [
       headerLine({ id: "unvalidated", cwd: WORKSPACE }),
       messageLine({ role: "user", content: textContent("start") }),
@@ -413,8 +414,8 @@ describe("session summary scanner memo", () => {
     // A line still being written is folded into the listing it was read for,
     // then folded again as part of the whole file once the writer finishes
     // it: the size changed, so no line is counted twice.
-    const inFlight = messageLine({ role: "assistant", content: textContent("streaming") });
     const path = await writeSession("inflight.jsonl", [headerLine({ id: "inflight", cwd: WORKSPACE }), messageLine({ role: "user", content: textContent("start") })]);
+    const inFlight = messageLine({ role: "assistant", content: textContent("streaming") });
     await appendFile(path, inFlight, "utf8");
     const scanner = new SessionSummaryScanner();
     expect(await scanner.scanSessionSummariesInDir(sessionDir)).toMatchObject([{ id: "inflight", messageCount: 2 }]);
@@ -770,7 +771,7 @@ describe("session summary scanner deliberate SDK divergences", () => {
     // whole file is dropped. The scanner guards the payload and lists it.
     await writeSession("null-message.jsonl", [
       headerLine({ id: "null-message", cwd: WORKSPACE }),
-      JSON.stringify({ type: "message", id: nextEntryId(), parentId: "root", timestamp: "2026-01-01T00:01:00.000Z", message: null }),
+      JSON.stringify({ type: "message", ...nextEntryIds(), timestamp: "2026-01-01T00:01:00.000Z", message: null }),
       messageLine({ role: "user", content: textContent("real first") }),
       messageLine({ role: "user", content: textContent("after null") }),
     ]);
@@ -812,9 +813,11 @@ async function scanFileSummary(path: string): Promise<PiSessionListEntry | undef
   return (await coldListing(dirname(path))).find((session) => session.path === path);
 }
 
-function nextEntryId(): string {
+/** The next entry's id and its parent, the entry written before it, as pi chains every entry. */
+function nextEntryIds(): { id: string; parentId: string | null } {
+  const parentId = entryCounter === 0 ? null : `entry-${String(entryCounter)}`;
   entryCounter += 1;
-  return `entry-${String(entryCounter)}`;
+  return { id: `entry-${String(entryCounter)}`, parentId };
 }
 
 function headerLine(header: { id: string; cwd?: string; parentSession?: string }): string {
@@ -829,11 +832,11 @@ function headerLine(header: { id: string; cwd?: string; parentSession?: string }
 }
 
 function messageLine(message: { role: string; content: unknown }): string {
-  return JSON.stringify({ type: "message", id: nextEntryId(), parentId: "root", timestamp: "2026-01-01T00:01:00.000Z", message });
+  return JSON.stringify({ type: "message", ...nextEntryIds(), timestamp: "2026-01-01T00:01:00.000Z", message });
 }
 
 function sessionInfoLine(name: string | undefined): string {
-  return JSON.stringify({ type: "session_info", id: nextEntryId(), parentId: "root", timestamp: "2026-01-01T00:02:00.000Z", ...(name === undefined ? {} : { name }) });
+  return JSON.stringify({ type: "session_info", ...nextEntryIds(), timestamp: "2026-01-01T00:02:00.000Z", ...(name === undefined ? {} : { name }) });
 }
 
 function textContent(text: string): { type: "text"; text: string }[] {

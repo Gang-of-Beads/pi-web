@@ -2,29 +2,38 @@ import { open, readdir, stat } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { join, sep } from "node:path";
-import { isRecord, tryParseEntry } from "./sessionFileFormat.js";
+import { ReadableCountFold } from "./readableCountFold.js";
+import { endsWithClosingBrace, isRecord, tryParseEntry } from "./sessionFileFormat.js";
 import type { PiSessionListEntry } from "./piSessionService.js";
 
 /*
  * LISTING CONTRACT
  *
  * The summary fields mirror the SDK listing (`SessionManager.listAll`):
- * `messageCount` counts every `message` entry, `firstMessage` is the first
- * user message with non-empty text content, `name` is the latest `session_info`
- * name (an empty or missing name clears it), and `created`/`id`/`cwd`/
- * `parentSessionPath` come from the header line. Three deliberate differences:
+ * `firstMessage` is the first user message with non-empty text content,
+ * `name` is the latest `session_info` name (an empty or missing name clears
+ * it), and `created`/`id`/`cwd`/`parentSessionPath` come from the header
+ * line. Four deliberate differences:
  *
+ * - `messageCount` is what the conversation shows, not every `message`
+ *   entry: `readableMessageCount` over the branch the file loads as, the
+ *   number an open session's status reports, so a row says the same before
+ *   and after it is opened (owner, Q19 2026-10-10). The SDK's count took in
+ *   replies on branches the reader left and failed attempts pi retried, and
+ *   left out the compactions and extension messages the conversation shows.
  * - `modified` is the file mtime rather than the last message timestamp.
  *   Session files are append-only, so the mtime is a faithful "last activity"
  *   for listing order, the only thing `modified` is used for.
  * - `allMessagesText` is always empty. Building it required parsing every
  *   message body — the cost this scanner exists to remove — and PI WEB never
  *   consumes it.
- * - `messageCount` can transiently include a final write read mid-flight: a
- *   message-shaped line that ends with `}` counts even though its JSON is
- *   never validated, where the SDK fails to parse such a torn line. The count
- *   self-heals on the next listing once the line completes (the file is
- *   re-scanned whole as soon as its size changes).
+ * - `messageCount` can transiently include a final write read mid-flight: an
+ *   entry line in pi's layout that ends with `}` (a message, a leading-layout
+ *   entry such as a compaction or branch summary, or an extension custom
+ *   entry; see ReadableCountFold) is read from its bytes and counts even
+ *   though its JSON is never validated, where the SDK fails to parse such
+ *   a torn line. The count self-heals on the next listing once the line
+ *   completes (the file is re-scanned whole as soon as its size changes).
  *
  * Files whose header is missing, unreadable, or not a session header are
  * skipped, like the SDK does. Results are sorted by `modified` descending.
@@ -32,9 +41,11 @@ import type { PiSessionListEntry } from "./piSessionService.js";
  * Per-line work is minimal: lines are classified from their leading
  * `{"type":"..."` bytes without ever decoding them, and lines are only turned
  * into strings and JSON-parsed when they matter — the header, `session_info`
- * lines (rare, one per rename), and message lines until the first user text
- * message has been found. Message bodies after that point (which hold the huge
- * tool results and assistant replies) are neither decoded nor parsed.
+ * lines (rare, one per rename), message lines until the first user text
+ * message has been found, and the small entries the count reads whole. The
+ * count reads every other line's ids from its bytes, so message bodies (which
+ * hold the huge tool results and assistant replies) and extension data are
+ * neither decoded nor parsed.
  */
 
 /**
@@ -50,9 +61,6 @@ const ENTRY_TYPE_PREFIX = Buffer.from('{"type":"');
 const TYPE_QUOTE = 0x22; // `"`
 const NEWLINE = 0x0a;
 const CARRIAGE_RETURN = 0x0d;
-const CLOSING_BRACE = 0x7d; // `}`
-const SPACE = 0x20;
-const TAB = 0x09;
 
 /** The entry types the byte fast path recognizes, as raw bytes: type names are never decoded. */
 const MESSAGE_TYPE_BYTES = Buffer.from("message");
@@ -235,6 +243,7 @@ interface MemoizedSessionSummary {
 interface SummaryFoldState {
   header: Record<string, unknown> | undefined;
   rejected: boolean;
+  /** What the conversation shows on the branch the file loads as, set once the whole file is read. */
   messageCount: number;
   firstMessageText: string | undefined;
   name: string | undefined;
@@ -288,7 +297,9 @@ async function scanWholeSessionFile(filePath: string, chunkBuffer: () => Buffer)
   const { file, stats } = opened;
   try {
     const fold = createEmptyFold();
-    const endOffset = await foldFileLines(file, fold, chunkBuffer());
+    const counting = new ReadableCountFold();
+    const endOffset = await foldFileLines(file, fold, counting, chunkBuffer());
+    if (!fold.rejected) fold.messageCount = counting.count();
     // Rejection is final — the first parseable line decides it — so the fold
     // stops early and the observed file size, not the read offset, is what a
     // later listing must compare against to take the stat-only fast path.
@@ -307,7 +318,7 @@ async function scanWholeSessionFile(filePath: string, chunkBuffer: () => Buffer)
  * whole fold, so the fold always reads the file it was opened on, even if the
  * path is replaced concurrently.
  */
-async function foldFileLines(file: FileHandle, fold: SummaryFoldState, chunkBuffer: Buffer): Promise<number> {
+async function foldFileLines(file: FileHandle, fold: SummaryFoldState, counting: ReadableCountFold, chunkBuffer: Buffer): Promise<number> {
   let position = 0;
   let pendingChunks: Buffer[] = [];
   for (;;) {
@@ -320,7 +331,7 @@ async function foldFileLines(file: FileHandle, fold: SummaryFoldState, chunkBuff
       // counted twice.
       if (pendingChunks.length > 0) {
         const whole = Buffer.concat(pendingChunks);
-        processLineBytes(whole, 0, whole.length, fold);
+        processLineBytes(whole, 0, whole.length, fold, counting);
       }
       return position;
     }
@@ -333,9 +344,9 @@ async function foldFileLines(file: FileHandle, fold: SummaryFoldState, chunkBuff
         pendingChunks.push(Buffer.from(data.subarray(lineStart, newlineAt)));
         const whole = Buffer.concat(pendingChunks);
         pendingChunks = [];
-        processLineBytes(whole, 0, whole.length, fold);
+        processLineBytes(whole, 0, whole.length, fold, counting);
       } else {
-        processLineBytes(data, lineStart, newlineAt, fold);
+        processLineBytes(data, lineStart, newlineAt, fold, counting);
       }
       if (fold.rejected) return position + bytesRead;
       lineStart = newlineAt + 1;
@@ -374,7 +385,7 @@ function buildSummaryFromFold(fold: SummaryFoldState, filePath: string, mtime: D
 }
 
 /** Classify and fold one line, addressed as bytes inside `data`. */
-function processLineBytes(data: Buffer, start: number, end: number, state: SummaryFoldState): void {
+function processLineBytes(data: Buffer, start: number, end: number, state: SummaryFoldState, counting: ReadableCountFold): void {
   // Readline parity: a CRLF file yields lines without their trailing `\r`.
   if (end > start && data[end - 1] === CARRIAGE_RETURN) end -= 1;
 
@@ -389,6 +400,7 @@ function processLineBytes(data: Buffer, start: number, end: number, state: Summa
     return;
   }
 
+  counting.add(data, start, end);
   const entryType = classifyLineType(data, start, end);
   if (entryType === "session_info") {
     const entry = tryParseEntry(data.toString("utf8", start, end));
@@ -396,16 +408,9 @@ function processLineBytes(data: Buffer, start: number, end: number, state: Summa
     return;
   }
   if (entryType === "message") {
-    // A line still being written can be complete JSON only if its last
-    // significant byte is `}`; treating anything else as malformed matches
-    // the SDK, which skips unparseable lines. Ending in `}` counts the line
-    // without validating its JSON — a torn final write adds a transient +1
-    // that self-heals when the line completes (see messageCount's contract).
-    if (!endsWithClosingBrace(data, start, end)) return;
-    state.messageCount += 1;
     // The expensive part of a listing was parsing message bodies; decode and
     // parse only until the first user text message is known.
-    if (state.firstMessageText !== undefined) return;
+    if (state.firstMessageText !== undefined || !endsWithClosingBrace(data, start, end)) return;
     const entry = tryParseEntry(data.toString("utf8", start, end));
     if (entry !== undefined) {
       const userText = firstUserMessageText(entry);
@@ -421,12 +426,9 @@ function processLineBytes(data: Buffer, start: number, end: number, state: Summa
   const entry = tryParseEntry(data.toString("utf8", start, end));
   if (entry === undefined) return;
   if (entry["type"] === "session_info") state.name = sessionInfoName(entry);
-  else if (entry["type"] === "message") {
-    state.messageCount += 1;
-    if (state.firstMessageText === undefined) {
-      const userText = firstUserMessageText(entry);
-      if (userText !== undefined) state.firstMessageText = userText;
-    }
+  else if (entry["type"] === "message" && state.firstMessageText === undefined) {
+    const userText = firstUserMessageText(entry);
+    if (userText !== undefined) state.firstMessageText = userText;
   }
 }
 
@@ -459,21 +461,6 @@ function classifyLineType(data: Buffer, start: number, end: number): "message" |
 function sameBytes(data: Buffer, start: number, end: number, expected: Buffer): boolean {
   if (end - start !== expected.length) return false;
   return expected.compare(data, start, end) === 0;
-}
-
-/**
- * Whether the line's last significant byte is `}`, skipping trailing spaces,
- * tabs, and carriage returns: JSON.parse (and therefore the SDK) tolerates
- * that whitespace, so valid message lines with it still count.
- */
-function endsWithClosingBrace(data: Buffer, start: number, end: number): boolean {
-  let last = end;
-  while (last > start) {
-    const byte = data[last - 1];
-    if (byte !== SPACE && byte !== TAB && byte !== CARRIAGE_RETURN) break;
-    last -= 1;
-  }
-  return last > start && data[last - 1] === CLOSING_BRACE;
 }
 
 /**

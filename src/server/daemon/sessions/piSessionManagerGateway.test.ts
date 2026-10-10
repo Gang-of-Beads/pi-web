@@ -215,15 +215,15 @@ describe("Pi session manager gateway", () => {
     // The gateway keeps one memoized scanner for its lifetime, so a second
     // listing of the same directory must reflect appends, not stale cache.
     const sharedSessionDir = join(tempDir, "memo-sessions");
-    const message = (id: string, role: string, text: string) =>
-      JSON.stringify({ type: "message", id, parentId: "root", timestamp: "2026-01-01T00:01:00.000Z", message: { role, content: [{ type: "text", text }] } });
+    const message = (id: string, parentId: string | null, role: string, text: string) =>
+      JSON.stringify({ type: "message", id, parentId, timestamp: "2026-01-01T00:01:00.000Z", message: { role, content: [{ type: "text", text }] } });
     const path = await writeNamedSessionFile(sharedSessionDir, "memo.jsonl", { id: "memo-session", cwd });
-    await appendFile(path, `${message("m1", "user", "hello")}\n`, "utf8");
+    await appendFile(path, `${message("m1", null, "user", "hello")}\n`, "utf8");
     const gateway = createPiSessionManagerGateway(piProfileOptions({ PI_CODING_AGENT_SESSION_DIR: sharedSessionDir }));
 
     await expect(gateway.list(cwd)).resolves.toMatchObject([{ id: "memo-session", cwd, messageCount: 1, firstMessage: "hello" }]);
 
-    await appendFile(path, `${message("m2", "assistant", "hi there")}\n${message("m3", "user", "follow-up")}\n`, "utf8");
+    await appendFile(path, `${message("m2", "m1", "assistant", "hi there")}\n${message("m3", "m2", "user", "follow-up")}\n`, "utf8");
 
     await expect(gateway.list(cwd)).resolves.toMatchObject([{ id: "memo-session", cwd, messageCount: 3, firstMessage: "hello" }]);
   });
@@ -234,10 +234,10 @@ describe("Pi session manager gateway", () => {
     // memo's identity + size key cannot see, so without an explicit
     // invalidation the stat-only fast path keeps serving the old parent link.
     const sharedSessionDir = join(tempDir, "detach-sessions");
-    const message = (id: string, role: string, text: string) =>
-      JSON.stringify({ type: "message", id, parentId: "root", timestamp: "2026-01-01T00:01:00.000Z", message: { role, content: [{ type: "text", text }] } });
+    const message = (id: string, parentId: string | null, role: string, text: string) =>
+      JSON.stringify({ type: "message", id, parentId, timestamp: "2026-01-01T00:01:00.000Z", message: { role, content: [{ type: "text", text }] } });
     const path = await writeNamedSessionFile(sharedSessionDir, "detached.jsonl", { id: "detached-session", cwd, parentSession: "/parents/detached.jsonl" });
-    await appendFile(path, `${message("m1", "user", "first")}\n${message("m2", "assistant", "second")}\n`, "utf8");
+    await appendFile(path, `${message("m1", null, "user", "first")}\n${message("m2", "m1", "assistant", "second")}\n`, "utf8");
     const gateway = createPiSessionManagerGateway(piProfileOptions({ PI_CODING_AGENT_SESSION_DIR: sharedSessionDir }));
 
     await expect(gateway.list(cwd)).resolves.toMatchObject([{ id: "detached-session", cwd, messageCount: 2, parentSessionPath: "/parents/detached.jsonl" }]);

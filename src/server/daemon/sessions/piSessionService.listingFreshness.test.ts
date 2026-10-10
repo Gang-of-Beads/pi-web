@@ -101,12 +101,12 @@ describe("PiSessionService.detachParent summary memo", () => {
     const parentPath = join(sessionDir, "parent.jsonl");
     await writeFile(parentPath, `${JSON.stringify({ type: "session", version: 3, id: "parent", timestamp: "2026-01-01T00:00:00.000Z", cwd: LISTING_CWD })}\n`, "utf8");
     const childPath = join(sessionDir, "child.jsonl");
-    const message = (id: string, role: string, text: string) =>
-      JSON.stringify({ type: "message", id, parentId: "root", timestamp: "2026-01-01T00:01:00.000Z", message: { role, content: [{ type: "text", text }] } });
+    const message = (id: string, parentId: string | null, role: string, text: string) =>
+      JSON.stringify({ type: "message", id, parentId, timestamp: "2026-01-01T00:01:00.000Z", message: { role, content: [{ type: "text", text }] } });
     await writeFile(childPath, [
       JSON.stringify({ type: "session", version: 3, id: "child", timestamp: "2026-01-01T00:00:00.000Z", cwd: LISTING_CWD, parentSession: parentPath }),
-      message("m1", "user", "hello"),
-      message("m2", "assistant", "hi there"),
+      message("m1", null, "user", "hello"),
+      message("m2", "m1", "assistant", "hi there"),
     ].join("\n") + "\n", "utf8");
 
     const realGateway = createPiSessionManagerGateway({
