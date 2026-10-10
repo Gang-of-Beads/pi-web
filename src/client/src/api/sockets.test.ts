@@ -23,8 +23,8 @@ describe("machine-scoped socket urls", () => {
     realtimeEvents();
 
     expect(webSocketUrls).toEqual([
-      "wss://pi.example.test/api/machines/local/sessions/s1/events?cwd=%2Frepo",
-      "wss://pi.example.test/api/machines/local/events",
+      "wss://pi.example.test/api/machines/local/sessions/s1/events?cwd=%2Frepo&status=delta",
+      "wss://pi.example.test/api/machines/local/events?status=delta",
     ]);
   });
 

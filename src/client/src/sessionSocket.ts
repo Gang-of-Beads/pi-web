@@ -4,6 +4,7 @@ import { parseRealtimeStreamEvent, parseSessionAskClosedEvent, parseSessionAskOp
 import type { RealtimeEvent, SessionRef, SessionUiEvent } from "../../shared/apiTypes";
 import { socketLivenessVerdict, type SocketLivenessVerdict, type SocketReadyState } from "./socketLiveness";
 import { readQuietWindowSeconds } from "./quietWindow";
+import { StatusFrameDecoder } from "./statusFrameDecoder";
 import type { SocketPhase } from "./socketAnchoredRead";
 import type { Unanswered } from "./sync/scopedResource";
 import type { SessionSocketHandlers } from "./controllers/sessionController";
@@ -244,7 +245,8 @@ export class SessionSocket extends ReconnectingSocket {
       if (isReconnect) this.onReconnect?.();
       else this.onInitialOpen?.();
     };
-    socket.onmessage = (message) => void this.handleMessage(message.data, socket, session);
+    const statusFrames = new StatusFrameDecoder();
+    socket.onmessage = (message) => void this.handleMessage(message.data, socket, session, statusFrames);
     socket.onerror = () => { socket.close(); };
     socket.onclose = () => {
       if (this.socket !== socket) return;
@@ -254,7 +256,7 @@ export class SessionSocket extends ReconnectingSocket {
     };
   }
 
-  private async handleMessage(data: MessageEvent["data"], socket: WebSocket, session: SessionRef): Promise<void> {
+  private async handleMessage(data: MessageEvent["data"], socket: WebSocket, session: SessionRef, statusFrames: StatusFrameDecoder): Promise<void> {
     // Any frame is proof of life, including the keepalive, which parses to
     // nothing and is dropped below. It is also the first proof the session's
     // machine answered: the web proxy accepts the upgrade before it reaches
@@ -269,12 +271,17 @@ export class SessionSocket extends ReconnectingSocket {
     this.seqMonitor.observe(raw);
     const head = heartbeatHeadSeq(raw);
     if (head !== undefined) this.seqMonitor.observeHead(head);
-    const event = parseSessionSocketEvent(raw);
+    const decoded = statusFrames.decode(raw);
     if (this.socket !== socket) return;
+    if (decoded.kind === "out-of-step") {
+      socket.close();
+      return;
+    }
+    const event = parseSessionSocketEvent(decoded.raw);
     if (event === undefined) {
       // Validation failure on a revisioned surface is a gap: report it so the
       // surface resyncs instead of silently missing one transition.
-      const malformedType = revisionedFrameType(raw);
+      const malformedType = revisionedFrameType(decoded.raw);
       if (malformedType !== undefined) this.onMalformed?.(malformedType);
       return;
     }
@@ -388,7 +395,8 @@ export class RealtimeSocket extends ReconnectingSocket {
       this.lastFrameAt = Date.now();
       ackWatch.heard();
     };
-    socket.onmessage = (message) => void this.handleMessage(message.data, socket);
+    const statusFrames = new StatusFrameDecoder();
+    socket.onmessage = (message) => void this.handleMessage(message.data, socket, statusFrames);
     socket.onerror = () => { socket.close(); };
     socket.onclose = () => {
       if (this.socket !== socket) return;
@@ -400,7 +408,7 @@ export class RealtimeSocket extends ReconnectingSocket {
     };
   }
 
-  private async handleMessage(data: MessageEvent["data"], socket: WebSocket): Promise<void> {
+  private async handleMessage(data: MessageEvent["data"], socket: WebSocket, statusFrames: StatusFrameDecoder): Promise<void> {
     if (this.socket === socket) {
       this.lastFrameAt = Date.now();
       ackWatch.heard();
@@ -415,7 +423,12 @@ export class RealtimeSocket extends ReconnectingSocket {
     if (this.requestedQuietMs !== undefined && confirmedQuietMs(raw) === this.requestedQuietMs) this.quietMs = this.requestedQuietMs;
     const head = heartbeatHeadSeq(raw);
     if (head !== undefined) this.seqMonitor.observeHead(head);
-    const event = parseRealtimeSocketEvent(raw);
+    const decoded = statusFrames.decode(raw);
+    if (decoded.kind === "out-of-step") {
+      socket.close();
+      return;
+    }
+    const event = parseRealtimeSocketEvent(decoded.raw);
     if (event !== undefined) this.onEvent?.(event);
   }
 

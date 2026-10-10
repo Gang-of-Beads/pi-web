@@ -11,6 +11,7 @@ import type { SessionRouteRef, SessionRouteService } from "./sessionService.js";
 import { clearInterruptedRuns, readInterruptedRuns } from "./interruptedRunStore.js";
 import { normalizeSessionCleanupRequest } from "./sessionCleanup.js";
 import { payloadRevision } from "./payloadRevision.js";
+import { STATUS_DELTA_QUERY } from "../../../shared/statusChanges.js";
 import { errorText, sessionErrorReply, type SessionErrorReply } from "./sessionErrors.js";
 import { delegationRequestFromBody, spawnCwdFromBody, subsessionReadQuery, type SubsessionTranscriptQuery } from "./delegationRequests.js";
 import { isRecord } from "../../../shared/unknownValues.js";
@@ -31,6 +32,8 @@ interface SessionQuery {
 interface EventsQuery extends SessionQuery {
   /** The page's quiet window in seconds: how long it waits with nothing received before it asks. */
   quiet?: string;
+  /** `delta`: the page takes a status as what changed (shared/statusChanges.ts). */
+  status?: string;
 }
 
 interface SessionsListQuery extends SessionQuery {
@@ -807,11 +810,11 @@ app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unkn
   app.get<{ Params: { sessionId: string }; Querystring: EventsQuery }>(`${prefix}/sessions/:sessionId/events`, { websocket: true }, (socket, request) => {
     // cwd is intentionally ignored so a malformed value cannot throw inside the websocket
     // handler; a malformed quiet window reads as none, which keeps the default heartbeat.
-    eventHub.add(request.params.sessionId, socket, quietOption(request.query.quiet));
+    eventHub.add(request.params.sessionId, socket, { ...quietOption(request.query.quiet), ...statusOption(request.query.status) });
   });
 
   app.get<{ Querystring: EventsQuery }>(`${prefix}/events`, { websocket: true }, (socket, request) => {
-    eventHub.addGlobal(socket, quietOption(request.query.quiet));
+    eventHub.addGlobal(socket, { ...quietOption(request.query.quiet), ...statusOption(request.query.status) });
   });
 }
 
@@ -1041,6 +1044,10 @@ function optionalNumber(value: string | undefined): number | undefined {
 function quietOption(value: string | undefined): { quietMs?: number } {
   const quietMs = quietWindowMs(value);
   return quietMs === undefined ? {} : { quietMs };
+}
+
+function statusOption(value: string | undefined): { statusDeltas?: true } {
+  return value === STATUS_DELTA_QUERY.value ? { statusDeltas: true } : {};
 }
 
 /** A quiet window in whole seconds, 1 to 600; anything else is no window. */

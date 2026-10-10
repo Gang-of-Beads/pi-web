@@ -1,6 +1,7 @@
 import type { GlobalSessionEvent, RealtimeEvent, SessionNotificationSummaryEvent, SessionUiEvent, TranscriptHead } from "../../../shared/apiTypes.js";
 import { randomUUID } from "node:crypto";
 import { projectBrowserSessionEvent } from "../browserMessageProjection.js";
+import { StatusDeltaScope } from "./statusDeltaScope.js";
 
 export interface RealtimeSocket {
   readonly OPEN: number;
@@ -41,6 +42,12 @@ export function heartbeatIntervalMs(quietMs?: number): number {
   return Math.min(KEEPALIVE_INTERVAL_MS, Math.max(HEARTBEAT_FLOOR_MS, Math.round(quietMs * 0.6)));
 }
 
+/** What a page asked of its socket: a quiet window to be heartbeated within, and status deltas. */
+interface SocketOptions {
+  readonly quietMs?: number;
+  readonly statusDeltas?: boolean;
+}
+
 /** When a socket last carried anything, and how long it may stay quiet before a heartbeat. */
 interface SocketCadence {
   intervalMs: number;
@@ -55,6 +62,10 @@ export const MAX_REPLAY_SESSIONS = 256;
 export class SessionEventHub {
   private readonly socketsBySession = new Map<string, Set<RealtimeSocket>>();
   private readonly globalSockets = new Set<RealtimeSocket>();
+  /** Whether a session socket gets a status's changes or the whole status (statusDeltaScope.ts). */
+  private readonly sessionStatuses = new StatusDeltaScope();
+  /** The same for the machine's sockets, whose statuses also carry the stream position. */
+  private readonly globalStatuses = new StatusDeltaScope();
   private readonly seqBySession = new Map<string, number>();
   private readonly epochBySession = new Map<string, string>();
   private readonly instanceId = randomUUID().slice(0, 8);
@@ -160,7 +171,7 @@ export class SessionEventHub {
     return JSON.stringify(Object.keys(head).length === 0 ? { type: "keepalive" } : { type: "keepalive", head });
   }
 
-  add(sessionId: string, socket: RealtimeSocket, options: { quietMs?: number } = {}): void {
+  add(sessionId: string, socket: RealtimeSocket, options: SocketOptions = {}): void {
     let sockets = this.socketsBySession.get(sessionId);
     if (!sockets) {
       sockets = new Set();
@@ -168,6 +179,7 @@ export class SessionEventHub {
     }
     sockets.add(socket);
     this.cadence.set(socket, { intervalMs: heartbeatIntervalMs(options.quietMs), lastSentAt: this.now() });
+    if (options.statusDeltas === true) this.sessionStatuses.ask(socket);
     socket.on("close", () => {
       sockets.delete(socket);
       if (sockets.size === 0 && this.socketsBySession.get(sessionId) === sockets) this.socketsBySession.delete(sessionId);
@@ -189,11 +201,13 @@ export class SessionEventHub {
    * A machine-wide subscriber, heartbeated within the quiet window it named, as a session's is.
    * The join frame echoes that window (`quiet`, seconds): the page checks the socket after a
    * window of silence only when its daemon confirmed it, so a daemon or a remote machine that
-   * predates it, which keeps the 20 s heartbeat, is never taken for silent (B28).
+   * predates it, which keeps the 20 s heartbeat, is never taken for silent (B28). A page that
+   * asked for status deltas gets a status's changes once it has had the whole status.
    */
-  addGlobal(socket: RealtimeSocket, options: { quietMs?: number } = {}): void {
+  addGlobal(socket: RealtimeSocket, options: SocketOptions = {}): void {
     this.globalSockets.add(socket);
     this.cadence.set(socket, { intervalMs: heartbeatIntervalMs(options.quietMs), lastSentAt: this.now() });
+    if (options.statusDeltas === true) this.globalStatuses.ask(socket);
     socket.on("close", () => this.globalSockets.delete(socket));
     const joinFrame = this.globalJoinFrame?.();
     const quiet = options.quietMs === undefined ? {} : { quiet: options.quietMs / 1000 };
@@ -224,10 +238,12 @@ export class SessionEventHub {
       const remaining = dropCount - 1;
       if (remaining === 0) this.dropNextPerSession.delete(sessionId);
       else this.dropNextPerSession.set(sessionId, remaining);
+      this.sessionStatuses.outOfStep(sockets, sessionId);
       return;
     }
     const payload = JSON.stringify({ ...projectBrowserSessionEvent(event), seq, epoch });
-    this.sendToSockets(sockets, payload);
+    if (event.type === "status.update") this.sendEach(sockets, this.sessionStatuses.payloads(sessionId, { ...event.status }, payload, { seq, epoch }));
+    else this.sendToSockets(sockets, payload);
   }
 
   /**
@@ -325,7 +341,8 @@ export class SessionEventHub {
     // no browser is subscribed: same zero-listener discipline as publish.
     if (this.globalSockets.size === 0) return;
     const payload = JSON.stringify({ ...event, seq });
-    this.sendToSockets(this.globalSockets, payload);
+    if (event.type === "status.update") this.sendEach(this.globalSockets, this.globalStatuses.payloads(event.status.sessionId, { ...event.status }, payload, { seq }));
+    else this.sendToSockets(this.globalSockets, payload);
   }
 
   /**
@@ -342,6 +359,10 @@ export class SessionEventHub {
   private sendToSockets(sockets: Set<RealtimeSocket> | undefined, payload: string): void {
     if (sockets === undefined) return;
     for (const socket of sockets) this.sendToSocket(sockets, socket, payload);
+  }
+
+  private sendEach(sockets: Set<RealtimeSocket>, payloadFor: (socket: RealtimeSocket) => string): void {
+    for (const socket of sockets) this.sendToSocket(sockets, socket, payloadFor(socket));
   }
 
   private sendToEach(sockets: Set<RealtimeSocket>, targets: readonly RealtimeSocket[], payload: string): void {
