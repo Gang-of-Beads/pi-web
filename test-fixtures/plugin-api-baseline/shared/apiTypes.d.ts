@@ -1621,7 +1621,9 @@ type SessionUiEventBody =
     content?: unknown;
     details?: unknown;
     drawnResult?: string[];
-} | {
+}
+/** `durationMs`: how long the tool ran, as pi records it on the final result (pi 1.1.0); absent before. */
+ | {
     type: "tool.end";
     toolName: string;
     toolCallId: string;
@@ -1630,6 +1632,7 @@ type SessionUiEventBody =
     content?: unknown;
     details?: unknown;
     drawnResult?: string[];
+    durationMs?: number;
 } | {
     type: "shell.start";
     command: string;

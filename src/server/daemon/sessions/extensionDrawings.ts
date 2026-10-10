@@ -84,6 +84,8 @@ export interface ToolDrawingCall {
   readonly cwd: string;
   /** Whether the session's extensions expanded tool output (pi's `setToolsExpanded`). */
   readonly expanded: boolean;
+  /** pi's `outputPad` setting (0 or 1), which pi hands every tool renderer since 1.1.0. */
+  readonly outputPad: number;
 }
 
 /** A tool's result, partial while it runs. */
@@ -91,6 +93,8 @@ export interface ToolDrawingResult {
   readonly result: unknown;
   readonly isError: boolean;
   readonly isPartial: boolean;
+  /** How long the tool ran, as pi recorded it on the final result (pi 1.1.0); undefined while it runs and before 1.1.0. */
+  readonly durationMs: number | undefined;
 }
 
 type ToolCallRenderer = (args: unknown, theme: unknown, context: unknown) => unknown;
@@ -139,6 +143,8 @@ function toolRenderContext(call: ToolDrawingCall, result: ToolDrawingResult | un
     expanded: call.expanded,
     showImages: false,
     isError: result?.isError ?? false,
+    outputPad: call.outputPad,
+    durationMs: result === undefined || result.isPartial ? undefined : result.durationMs,
   };
 }
 

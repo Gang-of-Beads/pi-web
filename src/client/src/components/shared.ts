@@ -76,6 +76,8 @@ export interface ToolExecutionPart {
   /** The lines an extension tool's own pi renderers draw for its arguments and its result (pi-insertion-points.md slice 2). */
   drawnCall?: readonly string[];
   drawnResult?: readonly string[];
+  /** How long the tool ran, as pi recorded it on the final result (pi 1.1.0); absent before 1.1.0 and while it runs. */
+  durationMs?: number;
 }
 
 /** A deferred tool-result image: fetched by address when it scrolls into view. */
@@ -98,7 +100,7 @@ export type ChatPart =
   | { type: "askUserRecord"; outcome: AskUserOutcome }
   | { type: "toolCall"; toolCallId?: string; toolName: string; summary: string; args?: unknown; drawnCall?: readonly string[] }
   | ToolExecutionPart
-  | { type: "toolResult"; toolCallId?: string; toolName: string; text: string; isError: boolean; content?: unknown; details?: unknown; drawnResult?: readonly string[] }
+  | { type: "toolResult"; toolCallId?: string; toolName: string; text: string; isError: boolean; content?: unknown; details?: unknown; drawnResult?: readonly string[]; durationMs?: number }
   /**
    * An extension's custom message or entry. `drawn`: the lines the extension's own pi renderer
    * draws, from the daemon; `text`: a message's content, pi's default when nothing draws it.

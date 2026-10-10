@@ -1,4 +1,5 @@
 import { isRecord } from "../../shared/unknownValues";
+import { recordedDurationMs } from "../../shared/toolDuration";
 import { appendText, appendThinking, askUserRecordFromToolDetails, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
 import { deliverySettled } from "./messageDelivery";
 import { resolveArrival } from "./transcriptArrival";
@@ -26,6 +27,7 @@ interface ToolResultUpdate {
   content: unknown;
   details: unknown;
   drawnResult?: readonly string[];
+  durationMs?: number;
   presentation: ToolResultPresentation;
 }
 
@@ -64,6 +66,7 @@ export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent
       content: event.content,
       details: event.details,
       ...(event.drawnResult === undefined ? {} : { drawnResult: event.drawnResult }),
+      ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
       presentation: toolResultPresentation({ role: "toolResult", content: event.content }),
     });
   }
@@ -287,7 +290,7 @@ function mergeToolExecutionUpdate(part: ToolExecutionPart, event: Extract<Sessio
 }
 
 function finalizeToolExecution(messages: ChatLine[], result: ToolResultUpdate): ChatLine[] {
-  const { toolCallId, toolName, text, isError, content, details, drawnResult, presentation } = result;
+  const { toolCallId, toolName, text, isError, content, details, drawnResult, durationMs, presentation } = result;
   const updated = updateToolExecution(messages, toolCallId, (part) => {
     const preview = previewFromDetails(details) ?? part.preview;
     return {
@@ -298,6 +301,7 @@ function finalizeToolExecution(messages: ChatLine[], result: ToolResultUpdate): 
       ...(details === undefined ? {} : { details }),
       ...(preview === undefined ? {} : { preview }),
       ...(drawnResult === undefined ? {} : { drawnResult }),
+      ...(durationMs === undefined ? {} : { durationMs }),
     };
   }, (line) => reconcileToolResultPresentation(line, presentation));
 
@@ -314,6 +318,8 @@ function finalizeToolExecution(messages: ChatLine[], result: ToolResultUpdate): 
       ...(content === undefined ? {} : { content }),
       ...(details === undefined ? {} : { details }),
       ...(preview === undefined ? {} : { preview }),
+      ...(drawnResult === undefined ? {} : { drawnResult }),
+      ...(durationMs === undefined ? {} : { durationMs }),
     };
     finalized = [...messages, reconcileToolResultPresentation({ role: "tool", parts: [part] }, presentation)];
   }
@@ -378,6 +384,7 @@ function toolResultFromRawMessage(message: unknown): ToolResultUpdate | undefine
   if (getString(message, "role") !== "toolResult") return undefined;
   const toolCallId = getString(message, "toolCallId");
   const content = getProperty(message, "content");
+  const durationMs = recordedDurationMs(message);
   return {
     ...(toolCallId === undefined ? {} : { toolCallId }),
     toolName: getString(message, "toolName") ?? "tool",
@@ -385,6 +392,7 @@ function toolResultFromRawMessage(message: unknown): ToolResultUpdate | undefine
     isError: getBoolean(message, "isError") === true,
     content,
     details: getProperty(message, "details"),
+    ...(durationMs === undefined ? {} : { durationMs }),
     presentation: toolResultPresentation(message),
   };
 }

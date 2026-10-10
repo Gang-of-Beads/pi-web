@@ -12,6 +12,8 @@ So every drawn thing resolves in one order: a PI WEB plugin's web renderer, else
 
 ## Audit against the pi 1.0.4 SDK (`core/extensions/types.d.ts`)
 
+Rechecked against pi 1.1.0 (2026-10-10): its extension API adds `durationMs` and `outputPad` to the tool render context, which the daemon's drawing context now passes (the final result's duration, the session's `outputPad`), `durationMs` to `tool_execution_end`, and `aborted` to `agent_settled`. No new insertion point.
+
 ### Things that run inside pi
 
 `registerTool`, `registerCommand`, `registerProvider`/`unregisterProvider`, `registerVirtualModel`, `registerMcpServer`, `on(event)`, `sendMessage`, `sendUserMessage`, `appendEntry`, `exec`, `setModel`, `setThinkingLevel`, `setActiveTools`, `setSessionName`, `setLabel`, the getters, `events`: pi runs them in the session daemon exactly as in its terminal. Commands appear in the slash list (`sessionCommandService.ts`); labels in the session tree (`sessionTreeProjection.ts`). **Supported.**

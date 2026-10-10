@@ -1,5 +1,6 @@
 import { drawnLines } from "./drawnLines";
 import { isRecord } from "../../shared/unknownValues";
+import { recordedDurationMs } from "../../shared/toolDuration";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE } from "../../shared/apiTypes";
 import { deliverySettled } from "./messageDelivery";
 import { parseAskUserOutcome } from "./api/parsers";
@@ -363,6 +364,7 @@ function toolResultPartFromText(text: string, message: unknown): Extract<ChatPar
   const content = getProperty(message, "content");
   const details = getProperty(message, "details");
   const drawnResult = drawnLines(getProperty(message, "drawnResult"));
+  const durationMs = recordedDurationMs(message);
   return {
     type: "toolResult",
     ...(toolCallId === undefined ? {} : { toolCallId }),
@@ -371,6 +373,7 @@ function toolResultPartFromText(text: string, message: unknown): Extract<ChatPar
     ...(content === undefined ? {} : { content }),
     ...(details === undefined ? {} : { details }),
     ...(drawnResult === undefined ? {} : { drawnResult }),
+    ...(durationMs === undefined ? {} : { durationMs }),
     isError: getBoolean(message, "isError") === true,
   };
 }
@@ -449,6 +452,7 @@ function mergeToolResultInto(lines: ChatLine[], target: { lineIndex: number; par
     ...(result.details === undefined ? {} : { details: result.details }),
     ...(preview === undefined ? {} : { preview }),
     ...(result.drawnResult === undefined ? {} : { drawnResult: result.drawnResult }),
+    ...(result.durationMs === undefined ? {} : { durationMs: result.durationMs }),
   };
   lines[target.lineIndex] = { ...line, parts: [...line.parts.slice(0, target.partIndex), next, ...line.parts.slice(target.partIndex + 1)] };
   return true;

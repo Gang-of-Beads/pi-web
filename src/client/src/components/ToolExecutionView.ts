@@ -6,6 +6,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { writeClipboardText } from "../clipboard";
 import { toolExecutionDisplayStatus, type ToolExecutionDisplayStatus, interactiveSurfaceStyles } from "./shared";
 import type { ToolExecutionPart } from "./shared";
+import { shellTookLine } from "../shellRunTook";
 
 const MAX_COLLAPSED_DIFF_LINES = 180;
 
@@ -41,6 +42,7 @@ export class ToolExecutionView extends LitElement {
     const errorText = execution.status === "error" ? execution.resultText : preview?.error;
     const bodyText = visibleDiff === undefined ? execution.drawnResult?.join("\n") ?? execution.resultText : undefined;
     const target = execution.drawnCall === undefined ? toolTarget(execution, path) : { label: "Input" as const, text: execution.drawnCall.join("\n") };
+    const took = shellTookLine(execution);
 
     return html`
       <section class=${`tool-card ${displayedStatus}`}>
@@ -63,6 +65,7 @@ export class ToolExecutionView extends LitElement {
         ${previewMismatch ? html`<p class="notice">Applied diff differs from the preview.</p>` : null}
         ${errorText === undefined || errorText === "" ? null : html`<pre class="error-text">${errorText}</pre>`}
         ${visibleDiff === undefined ? this.renderTextBody(bodyText, execution.status === "error" || this.expanded, target) : this.renderDiffBody(visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff", target)}
+        ${took === undefined ? null : html`<p class="took">${took}</p>`}
       </section>
     `;
   }
@@ -160,6 +163,7 @@ export class ToolExecutionView extends LitElement {
     .status-label { color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); line-height: inherit; }
     .notice { margin: 0; color: var(--pi-warning); }
     .muted { margin: 0; color: var(--pi-muted); }
+    .took { margin: 0; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); line-height: inherit; }
     .error-text { margin: 0; border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); color: var(--pi-danger); padding: var(--pi-space-4); white-space: pre-wrap; overflow-wrap: anywhere; font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: inherit; }
     .text-body { border-top: 1px solid var(--pi-border-muted); padding-top: var(--pi-space-3); }
     .detail-target, .detail-result { display: grid; gap: var(--pi-space-2); margin-top: var(--pi-space-4); min-width: 0; }

@@ -144,6 +144,7 @@ import { correlateQueuedPromptIds } from "./queuedPromptIdentity.js";
 import { SessionNotFoundError } from "./sessionErrors.js";
 import { sessionHasActiveWork } from "./sessionActiveWork.js";
 import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
+import { recordedDurationMs } from "../../../shared/toolDuration.js";
 
 interface ActiveSession<TRuntime> {
   runtime: TRuntime;
@@ -637,6 +638,8 @@ export interface PiAgentSession {
     reload(): Promise<void>;
     flush(): Promise<void>;
     drainErrors(): readonly { scope: "global" | "project"; error: Error }[];
+    /** pi 1.1.0's `outputPad` setting, 0 or 1. */
+    getOutputPad?(): number;
   };
   sessionManager: PiSessionManager;
   scopedModels: readonly { model: AgentModel; thinkingLevel?: ClientThinkingLevel }[];
@@ -5857,20 +5860,20 @@ export class PiSessionService implements SessionRouteService {
     if (event.type === "message.end") return withMarkdownDisplay(withCustomDrawing(event, drawing), drawing.renderers);
     if (event.type !== "tool.start" && event.type !== "tool.update" && event.type !== "tool.end") return event;
     const args = this.toolCallArgs(session, event, getProperty(raw, "args"));
-    const call = { toolName: event.toolName, toolCallId: event.toolCallId, args, cwd: drawing.cwd, expanded: drawing.expanded };
+    const call = { toolName: event.toolName, toolCallId: event.toolCallId, args, cwd: drawing.cwd, expanded: drawing.expanded, outputPad: drawing.outputPad };
     if (event.type === "tool.start") {
       const drawnCall = drawToolCall(drawing.renderers, call);
       return drawnCall === undefined ? event : { ...event, drawnCall };
     }
     const isPartial = event.type === "tool.update";
     const result = getProperty(raw, isPartial ? "partialResult" : "result");
-    const drawnResult = drawToolResult(drawing.renderers, call, { result, isError: event.type === "tool.end" && event.isError, isPartial });
+    const drawnResult = drawToolResult(drawing.renderers, call, { result, isError: event.type === "tool.end" && event.isError, isPartial, durationMs: event.type === "tool.end" ? event.durationMs : undefined });
     return drawnResult === undefined ? event : { ...event, drawnResult };
   }
 
-  /** What the session's extensions draw with: their renderers, the session's folder, and pi's tool expansion. */
+  /** What the session's extensions draw with: their renderers, the session's folder, pi's tool expansion and its output padding (pi's default when the settings cannot say). */
   private drawingOf(session: PiAgentSession): TranscriptDrawing {
-    return { renderers: session.extensionRunner, cwd: session.sessionManager.getCwd(), expanded: this.extensionStanding.get(session)?.toolsExpanded() === true };
+    return { renderers: session.extensionRunner, cwd: session.sessionManager.getCwd(), expanded: this.extensionStanding.get(session)?.toolsExpanded() === true, outputPad: session.settingsManager.getOutputPad?.() ?? PI_DEFAULT_OUTPUT_PAD };
   }
 
   private toolCallArgs(session: PiAgentSession, event: Extract<SessionUiEvent, { type: "tool.start" | "tool.update" | "tool.end" }>, args: unknown): unknown {
@@ -7205,7 +7208,12 @@ interface TranscriptDrawing {
   readonly cwd: string;
   /** pi's `setToolsExpanded` for the session: rows drawn while it holds are drawn expanded; rows drawn before the change are not redrawn, unlike pi. */
   readonly expanded: boolean;
+  /** pi's `outputPad` setting, handed to tool renderers as pi does. */
+  readonly outputPad: number;
 }
+
+/** pi's `outputPad` when its settings do not say (pi 1.1.0 `SettingsManager.getOutputPad`). */
+const PI_DEFAULT_OUTPUT_PAD = 1;
 
 /**
  * `drawing` is the session's when its runtime is open: the custom entries its extensions draw
@@ -7286,7 +7294,7 @@ function withToolDrawing(message: unknown, drawing: TranscriptDrawing, argsByCal
     const toolName = getString(message, "toolName");
     const toolCallId = getString(message, "toolCallId");
     if (toolName === undefined || toolCallId === undefined) return message;
-    const drawnResult = drawToolResult(drawing.renderers, { toolName, toolCallId, args: argsByCall.get(toolCallId), cwd: drawing.cwd, expanded: drawing.expanded }, { result: message, isError: message["isError"] === true, isPartial: false });
+    const drawnResult = drawToolResult(drawing.renderers, { toolName, toolCallId, args: argsByCall.get(toolCallId), cwd: drawing.cwd, expanded: drawing.expanded, outputPad: drawing.outputPad }, { result: message, isError: message["isError"] === true, isPartial: false, durationMs: recordedDurationMs(message) });
     return drawnResult === undefined ? message : { ...message, drawnResult };
   }
   const content = message["content"];
@@ -7295,7 +7303,7 @@ function withToolDrawing(message: unknown, drawing: TranscriptDrawing, argsByCal
     const toolName = getString(part, "name");
     const toolCallId = getString(part, "id");
     if (getString(part, "type") !== "toolCall" || toolName === undefined || toolCallId === undefined || !isRecord(part)) return part;
-    const drawnCall = drawToolCall(drawing.renderers, { toolName, toolCallId, args: part["arguments"], cwd: drawing.cwd, expanded: drawing.expanded });
+    const drawnCall = drawToolCall(drawing.renderers, { toolName, toolCallId, args: part["arguments"], cwd: drawing.cwd, expanded: drawing.expanded, outputPad: drawing.outputPad });
     return drawnCall === undefined ? part : { ...part, drawnCall };
   });
   return drawnContent.some((part, index) => part !== content[index]) ? { ...message, content: drawnContent } : message;
@@ -7431,7 +7439,8 @@ function toClientEvent(event: unknown, thinkingLevel?: string): SessionUiEvent {
   }
   if (eventType === "tool_execution_end") {
     const result = getProperty(event, "result");
-    return { type: "tool.end", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: boundToolResultText(stringifyToolResult(result)).text, content: deferToolResultImages(toolResultContent(result), getString(event, "toolCallId")), details: toolResultDetails(result), isError: getBoolean(event, "isError") === true };
+    const durationMs = recordedDurationMs(event);
+    return { type: "tool.end", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: boundToolResultText(stringifyToolResult(result)).text, content: deferToolResultImages(toolResultContent(result), getString(event, "toolCallId")), details: toolResultDetails(result), isError: getBoolean(event, "isError") === true, ...(durationMs === undefined ? {} : { durationMs }) };
   }
   if (eventType === "agent_start") return { type: "agent.start" };
   if (eventType === "agent_end") return { type: "agent.end" };
