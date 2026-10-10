@@ -1846,6 +1846,11 @@ type SessionUiEventBody =
    * once. It carries no text; `deviceId` is the page that wrote or sent it.
    */
   | { type: "draft.changed"; revision: number; cause: DraftChangeCause; deviceId: string }
+  /**
+   * An open input or editor dialog's typed answer changed (server-drafts.md, slice 3): a page that
+   * did not write it reads it once. It carries no text; it lives and dies with the dialog.
+   */
+  | { type: "dialog.draft.changed"; dialogId: string; revision: number; deviceId: string }
   /** Sent by an older daemon when a background-work tool started or ended; read and ignored. */
   | { type: "activity.changed" }
   | { type: "dialog.opened"; dialog: PendingExtensionDialog; revision?: number; daemonInstanceId?: string }

@@ -96,12 +96,12 @@ function sessionPath(session: SessionRef, endpoint: string, machineId = "local")
   return `${sessionBasePath(session, machineId)}/${endpoint}`;
 }
 
-function sessionQueryPath(session: SessionRef, endpoint: string, machineId = "local"): string {
-  return `${sessionPath(session, endpoint, machineId)}${sessionQuery(session)}`;
+function sessionQueryPath(session: SessionRef, endpoint: string, machineId = "local", fields: Readonly<Record<string, string>> = {}): string {
+  return `${sessionPath(session, endpoint, machineId)}${sessionQuery(session, fields)}`;
 }
 
-function sessionQuery(session: SessionRef): string {
-  return `?${new URLSearchParams({ cwd: session.cwd }).toString()}`;
+function sessionQuery(session: SessionRef, fields: Readonly<Record<string, string>> = {}): string {
+  return `?${new URLSearchParams({ cwd: session.cwd, ...fields }).toString()}`;
 }
 
 function sessionBody(session: SessionRef, fields: Record<string, unknown> = {}): string {
@@ -435,6 +435,8 @@ export const sessionsApi = {
   runExtensionShortcut: (session: SessionRef, key: string, machineId = "local") => request(sessionPath(session, "extension-shortcuts/run", machineId), parseShortcutStarted, { method: "POST", body: sessionBody(session, { key }) }),
   sendTerminalInput: (session: SessionRef, key: ExtensionTerminalKey, machineId = "local") => request(sessionPath(session, "terminal-input", machineId), parseTerminalInputDelivered, { method: "POST", body: sessionBody(session, { key }) }),
   readDraft: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "draft", machineId), parseSessionDraft),
+  readDialogDraft: (session: SessionRef, dialogId: string, machineId = "local") => request(sessionQueryPath(session, "dialogs/draft", machineId, { dialogId }), parseSessionDraft),
+  writeDialogDraft: (session: SessionRef, dialogId: string, write: DraftWrite, machineId = "local") => request(sessionPath(session, "dialogs/draft", machineId), parseDraftWriteAnswer, { method: "PUT", body: sessionBody(session, { dialogId, ...write }) }),
   writeDraft: (session: SessionRef, write: DraftWrite, machineId = "local") => request(sessionPath(session, "draft", machineId), parseDraftWriteAnswer, { method: "PUT", body: sessionBody(session, { ...write }) }),
   extensionCompletions: (session: SessionRef, at: { text: string; cursor: number }, machineId = "local") => request(sessionPath(session, "extension-completions", machineId), parseExtensionCompletions, { method: "POST", body: sessionBody(session, at) }),
   applyExtensionCompletion: (session: SessionRef, choice: { text: string; cursor: number; prefix: string; item: ExtensionCompletionItem }, machineId = "local") => request(sessionPath(session, "extension-completions/apply", machineId), parseExtensionCompletionApplied, { method: "POST", body: sessionBody(session, choice) }),

@@ -145,6 +145,8 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "POST", path: "/sessions/:sessionId/ask/cancel" },
   { method: "POST", path: "/sessions/:sessionId/dialogs/answer" },
   { method: "POST", path: "/sessions/:sessionId/dialogs/cancel" },
+  { method: "GET", path: "/sessions/:sessionId/dialogs/draft" },
+  { method: "PUT", path: "/sessions/:sessionId/dialogs/draft" },
   { method: "POST", path: "/sessions/:sessionId/dialog/key" },
   { method: "POST", path: "/sessions/:sessionId/operations" },
   { method: "POST", path: "/sessions/:sessionId/warnings/dismiss" },

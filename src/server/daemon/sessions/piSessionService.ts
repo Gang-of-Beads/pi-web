@@ -3250,6 +3250,22 @@ export class PiSessionService implements SessionRouteService {
     return resumed;
   }
 
+  /** An open dialog's typed answer (server-drafts.md, slice 3). A dialog lives in a running session, so this never opens one. */
+  readDialogDraft(ref: PiSessionRef, dialogId: string): SessionDraft | undefined {
+    const session = this.activeForRef(ref)?.runtime.session ?? this.startupSessionForRef(ref);
+    return session === undefined ? undefined : this.pendingExtensionDialogStore.draftOf(session.sessionId, dialogId);
+  }
+
+  /** Keep an open dialog's typed answer; every other page showing the dialog hears of it and reads it. */
+  async writeDialogDraft(ref: PiSessionRef, dialogId: string, write: DraftWrite): Promise<DraftWriteAnswer | undefined> {
+    await this.assertWritable(ref);
+    const session = this.activeForRef(ref)?.runtime.session ?? this.startupSessionForRef(ref);
+    if (session === undefined) return undefined;
+    const answer = this.pendingExtensionDialogStore.writeDraft(session.sessionId, dialogId, write.text);
+    if (answer !== undefined) this.events.publish(session.sessionId, { type: "dialog.draft.changed", dialogId, revision: answer.revision, deviceId: write.deviceId });
+    return answer;
+  }
+
   /** Removes drafts nobody touched for a month (server-drafts.md, retention); run at daemon start. */
   sweepDrafts(): Promise<void> {
     return this.drafts.sweep();

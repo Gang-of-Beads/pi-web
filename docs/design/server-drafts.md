@@ -99,6 +99,13 @@ The text draft, shared through the session's daemon. Where this differs from the
 
 The page's states and transitions are in [the state diagram](state-diagram.md#d10-a-composer-draft-server-drafts-slice-1).
 
+### Slice 3 as built (2026-10-10): an open dialog's typed answer
+
+- **The typed answer of an open `input` or `editor` dialog** is kept on the daemon beside the dialog's own record (`PendingExtensionDialogStore`, in memory like the dialog), and goes when the dialog closes, answered, cancelled or timed out. Before any write it is the dialog's opening text at revision 0 (an editor's `prefill`, an input's empty text). Other kinds keep none: a choice is one tap, and a declared questions screen keeps its half answer in this browser (`askDrafts`, as before).
+- **Wire:** `GET /sessions/:id/dialogs/draft?cwd&dialogId` → `{ revision, text }`; `PUT /sessions/:id/dialogs/draft { cwd, dialogId, deviceId, seq, text }` → `{ revision }`; both answer 404 `dialog-not-open` for a dialog that is not open, and never open the session. A write publishes `dialog.draft.changed { dialogId, revision, deviceId }`; it is a frame of its own so a page from slice 1 cannot mistake a dialog's revision for the composer's. Both routes are federated.
+- **The page** runs the composer's classifier (`draftSyncStep`) against the dialog's routes, keyed by machine, session and dialog, and keeps nothing in this browser. The card's opening text counts as the daemon's, not as typing, so a card drawn anew takes what another device typed. Answering or cancelling stops a write that is waiting; a write still on its way finds the dialog closed. Once the dialog closes, wherever it was answered, the page writes nothing more for it. A session still starting keeps the answer on the card only.
+- **Coming back to a draft** (both kinds of draft): typing this page has not written yet is put back on screen; otherwise what the screen shows now is what the read is compared with.
+
 ### Open questions (asked one at a time when the slice needs them)
 
 - **D1 (slice 1). Another device sent while this one was typing.** This device keeps its text (its write recreates the draft). Should it also say "The draft was sent from another device", so the reader does not send the same thing twice? Proposed: yes, a one-line note under the composer until the next keystroke. **Answered (owner, 2026-10-10, ask 28a64627): silent.** No note: the device keeps its text, says nothing, and its next write puts the draft back.

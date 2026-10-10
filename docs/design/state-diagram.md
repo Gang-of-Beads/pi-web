@@ -954,7 +954,7 @@ One composer's text against the copy on its session's daemon (server-drafts.md; 
 
 | State | Meaning |
 |---|---|
-| `local-only` | this browser's copy only: not shown yet, or the machine answers `route-missing` (an older PI WEB) |
+| `local-only` | this browser's copy only: not shown yet, the machine answers `route-missing` (an older PI WEB), or the dialog it kept closed |
 | `unknown` | the daemon's copy is not known: a read is in flight or failed, or a frame announced a newer one; `dirty` says the shown text has edits the daemon has not had |
 | `synced` | the shown text is the daemon's revision |
 | `dirty` | typed since; a write goes when typing pauses for 500 ms |
@@ -970,10 +970,13 @@ One composer's text against the copy on its session's daemon (server-drafts.md; 
 | write failed | – | – | `dirty`; written again at the next keystroke | – |
 | sent here | `sent` | `sent` | `sent` (a waiting write is dropped; one on its way is covered by the send) | – |
 | `route-missing` | `local-only` | `local-only` | `local-only` | `local-only` |
+| dialog closed (slice 3) | `local-only` | `local-only` | `local-only` | `local-only` |
 
 Opening the composer on a session: a fresh page starts from this browser's copy and its record (`sent` stays `sent`; otherwise `unknown`) and reads; a page coming back reads again unless a write is on its way.
 
 Wire: `GET /sessions/:id/draft` → `{ revision, text?, updatedAt? }`; `PUT /sessions/:id/draft { cwd, deviceId, seq, text }` → `{ revision }` or `{ revision, superseded: true }`; the prompt route takes `draft: { deviceId, seq, revision? }`; the session socket carries `draft.changed { revision, cause: "edited" | "sent", deviceId }`. Both draft routes are federated for a remote machine.
+
+**An open dialog's typed answer (slice 3)** follows the same table with a dialog's routes: `GET`/`PUT /sessions/:id/dialogs/draft` (`dialogId` in the query or body; 404 `dialog-not-open` once it closed) and the frame `dialog.draft.changed { dialogId, revision, deviceId }`. Its opening text counts as synced, not typed; answering or cancelling is `sent here`; nothing is kept in the browser, and the daemon drops it when the dialog closes. The page lets go of it at the `dialog.closed` frame (`closed`): nothing more is written for it, not a waiting write, not one after the answer of a write on its way, and not when the card lets go afterwards. Coming back to either kind of draft puts this page's unwritten typing back on screen, else compares the read with what the screen shows.
 
 Invariants:
 

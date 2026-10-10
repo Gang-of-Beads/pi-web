@@ -107,6 +107,10 @@ export interface SessionRouteService {
   readDraft(ref: SessionRouteRef): Promise<SessionDraft>;
   /** One page's write of the draft: later write wins, except a write the page's own send already covered. */
   writeDraft(ref: SessionRouteRef, write: DraftWrite): Promise<DraftWriteAnswer>;
+  /** An open input or editor dialog's typed answer; undefined when no such dialog is open. Never opens the session. */
+  readDialogDraft(ref: SessionRouteRef, dialogId: string): SessionDraft | undefined;
+  /** Keep a typed answer for an open input or editor dialog; undefined when no such dialog is open. */
+  writeDialogDraft(ref: SessionRouteRef, dialogId: string, write: DraftWrite): Promise<DraftWriteAnswer | undefined>;
   saveAttachments(ref: SessionRouteRef, attachments: unknown, folder?: string): Promise<SavedPromptAttachment[]>;
   cleanupPreview(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupPreviewResponse>;
   cleanup(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupExecuteResponse>;

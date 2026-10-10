@@ -19,6 +19,7 @@ import { isSelectableLine, keysForLineTap, screenIsTappable } from "../dialogScr
 import { classifyScreen, type ScreenShape } from "../dialogScreenShape.js";
 import { shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { keyBelongsToInputMethod } from "./keyboardEventTarget";
+import { DIALOG_OPENING, dialogDraftSyncFor, draftScopeChanged, type DraftScope, type SessionDraftSync } from "../sessionDraftSync";
 import "./AskUserCard";
 
 export type ExtensionDialogAnswerCallback = (dialogId: string, value: ExtensionDialogAnswer) => void | Promise<void>;
@@ -181,6 +182,8 @@ export class ExtensionDialogCard extends LitElement {
   @property({ attribute: false }) onKey?: ExtensionDialogKeyCallback;
   /** Machine-scoped session key, so a questions screen keeps a half-given answer across a reload. */
   @property({ attribute: false }) draftSessionId = "";
+  /** Where an input or editor dialog's typed answer is kept on the session's daemon; absent keeps it on this card only. */
+  @property({ attribute: false, hasChanged: draftScopeChanged }) draftScope?: DraftScope;
 
   @state() private inputValue = "";
   @state() private closing = false;
@@ -190,6 +193,8 @@ export class ExtensionDialogCard extends LitElement {
   /** A Shift the keyboard really pressed; see promptEnterBehavior.ts (the composer tracks the same). */
   private explicitShiftKeyActive = false;
   private dialogIdentity: string | undefined;
+  private draftSync: SessionDraftSync | undefined;
+  private readonly draftView = { show: (text: string) => { this.inputValue = text; } };
   private countdownTimer: number | undefined;
 
   override connectedCallback(): void {
@@ -199,11 +204,24 @@ export class ExtensionDialogCard extends LitElement {
 
   override disconnectedCallback(): void {
     this.stopCountdownTimer();
+    this.draftSync?.detach();
+    this.draftSync = undefined;
     super.disconnectedCallback();
   }
 
+  /** Follow the typed answer of the open dialog shown on the session's daemon, letting go of any other. */
+  private followDraft(): void {
+    this.draftSync?.detach();
+    this.draftSync = undefined;
+    const dialog = this.dialog;
+    const scope = this.draftScope;
+    if (this.outcome !== undefined || dialog === undefined || scope === undefined || (dialog.kind !== "input" && dialog.kind !== "editor")) return;
+    this.draftSync = dialogDraftSyncFor(scope, dialog.dialogId);
+    this.draftSync.attach(this.draftView, this.inputValue, scope.session, DIALOG_OPENING);
+  }
+
   protected override willUpdate(changed: PropertyValues<this>): void {
-    if (!changed.has("dialog") && !changed.has("outcome")) return;
+    if (!changed.has("dialog") && !changed.has("outcome") && !changed.has("draftScope")) return;
     // Identity is keyed by dialogId, not object identity: status refreshes
     // re-project the same open dialog as a new object and must not wipe a
     // half-typed answer or an in-flight close.
@@ -212,6 +230,9 @@ export class ExtensionDialogCard extends LitElement {
       this.dialogIdentity = identity;
       this.inputValue = this.outcome === undefined && this.dialog?.kind === "editor" ? this.dialog.prefill ?? "" : "";
       this.closing = false;
+      this.followDraft();
+    } else if (changed.has("draftScope")) {
+      this.followDraft();
     }
     this.syncCountdownTimer();
   }
@@ -488,10 +509,12 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   private answerDialog(dialog: PendingExtensionDialog, value: ExtensionDialogAnswer): void {
+    this.draftSync?.sentHere();
     void this.closeWith(dialog, () => this.onAnswer?.(dialog.dialogId, value));
   }
 
   private cancelDialog(dialog: PendingExtensionDialog): void {
+    this.draftSync?.sentHere();
     void this.closeWith(dialog, () => this.onCancel?.(dialog.dialogId));
   }
 
@@ -521,6 +544,7 @@ export class ExtensionDialogCard extends LitElement {
     const input = event.currentTarget;
     if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLTextAreaElement)) return;
     this.inputValue = input.value;
+    this.draftSync?.typed(input.value);
   }
 
   private currentIdentity(): string | undefined {

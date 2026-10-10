@@ -87,6 +87,8 @@ export class PendingExtensionDialogStore {
   private readonly createDialogId: () => string;
   /** Per-session open dialogs in insertion order, so `pendingDialogs` reads oldest first. */
   private readonly openBySessionId = new Map<string, Map<string, PendingExtensionDialog>>();
+  /** The typed answers of open input and editor dialogs, by dialog id; a dialog's goes when it closes. */
+  private readonly drafts = new Map<string, { revision: number; text: string }>();
 
   constructor(options: PendingExtensionDialogStoreOptions = {}) {
     this.now = options.now ?? (() => new Date());
@@ -153,6 +155,28 @@ export class PendingExtensionDialogStore {
     return undefined;
   }
 
+  /**
+   * The typed answer of an open input or editor dialog (server-drafts.md, slice 3): what was last
+   * written, or the dialog's opening text at revision 0. Undefined when the dialog is not open.
+   */
+  draftOf(sessionId: string, dialogId: string): { revision: number; text: string } | undefined {
+    const dialog = this.openBySessionId.get(requireSessionId(sessionId))?.get(dialogId);
+    if (dialog === undefined) return undefined;
+    draftAnswerMaxLengthOf(dialog);
+    return { ...(this.drafts.get(dialogId) ?? { revision: 0, text: dialog.kind === "editor" ? dialog.prefill ?? "" : "" }) };
+  }
+
+  /** Keep a typed answer for an open input or editor dialog; later write wins. Undefined when the dialog is not open. */
+  writeDraft(sessionId: string, dialogId: string, text: string): { revision: number } | undefined {
+    const dialog = this.openBySessionId.get(requireSessionId(sessionId))?.get(dialogId);
+    if (dialog === undefined) return undefined;
+    const limit = draftAnswerMaxLengthOf(dialog);
+    if (text.length > limit) throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} takes at most ${String(limit)} characters`);
+    const revision = (this.drafts.get(dialogId)?.revision ?? 0) + 1;
+    this.drafts.set(dialogId, { revision, text });
+    return { revision };
+  }
+
   /** Close the dialog without an answer; the extension's wait settles with its kind's cancel value. */
   cancel(sessionId: string, dialogId: string, reason: ExtensionDialogCancelReason): PendingExtensionDialogCloseResult {
     const dialog = this.openBySessionId.get(requireSessionId(sessionId))?.get(dialogId);
@@ -171,6 +195,7 @@ export class PendingExtensionDialogStore {
       throw new Error(`Dialog ${dialog.dialogId} of session ${sessionId} disappeared while closing`);
     }
     if (dialogs.size === 0) this.openBySessionId.delete(sessionId);
+    this.drafts.delete(dialog.dialogId);
     return {
       dialogId: dialog.dialogId,
       reason,
@@ -183,6 +208,13 @@ export class PendingExtensionDialogStore {
   private timestamp(): string {
     return this.now().toISOString();
   }
+}
+
+/** Max typed-answer length for a dialog that keeps a draft; throws for kinds that keep none, so it doubles as the draft-kind guard. */
+function draftAnswerMaxLengthOf(dialog: PendingExtensionDialog): number {
+  if (dialog.kind === "input") return EXTENSION_DIALOG_INPUT_MAX_LENGTH;
+  if (dialog.kind === "editor") return EXTENSION_DIALOG_EDITOR_MAX_LENGTH;
+  throw new PendingExtensionDialogValidationError(`Only input and editor dialogs keep a typed answer; ${dialog.dialogId} is ${dialog.kind}`);
 }
 
 function validateLines(lines: string[] | undefined): string[] {

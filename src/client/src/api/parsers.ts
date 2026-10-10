@@ -1164,6 +1164,8 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
       return { type: "prompt.refused", clientMessageId: requireString(record, "clientMessageId"), message: requireString(record, "message") };
     case "draft.changed":
       return { type: "draft.changed", revision: requireNumber(record, "revision"), cause: requireDraftChangeCause(record), deviceId: requireString(record, "deviceId") };
+    case "dialog.draft.changed":
+      return { type: "dialog.draft.changed", dialogId: requireString(record, "dialogId"), revision: requireNumber(record, "revision"), deviceId: requireString(record, "deviceId") };
     case "activity.changed":
       return { type: "activity.changed" };
     default:

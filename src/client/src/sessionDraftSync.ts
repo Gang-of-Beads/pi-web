@@ -24,7 +24,8 @@ const LOCAL_RECORD_PREFIX = "pi-web:prompt-draft-sync:";
 type Revision = number | undefined;
 
 /**
- * - `local-only`: this browser's copy only (not shown yet, or the machine has no draft routes).
+ * - `local-only`: this browser's copy only (not shown yet, the machine has no draft routes, or
+ *   the dialog it kept closed).
  * - `unknown`: the daemon's copy is not known (a read is in flight, or failed); `dirty` says the
  *   text shown has edits the daemon has not had, `revision` what that text was based on,
  *   `reading` whether a read is in flight (so a second is not started), and `announced` the
@@ -60,6 +61,7 @@ export type DraftSyncEvent =
   | { readonly kind: "write-answered"; readonly answer: DraftWriteAnswer }
   | { readonly kind: "write-failed" }
   | { readonly kind: "route-missing" }
+  | { readonly kind: "closed" }
   | { readonly kind: "announced"; readonly revision: number; readonly cause: DraftChangeCause; readonly fromHere: boolean }
   | { readonly kind: "sent-here" };
 
@@ -77,7 +79,7 @@ export interface DraftSyncStep {
 /** Every transition of a composer's draft (server-drafts.md, "The page's sync states"). */
 export function draftSyncStep(state: DraftSyncState, event: DraftSyncEvent): DraftSyncStep {
   if (event.kind === "opened") return opened(state, event.text, event.record);
-  if (event.kind === "route-missing") return { state: { kind: "local-only" }, effects: [] };
+  if (event.kind === "route-missing" || event.kind === "closed") return { state: { kind: "local-only" }, effects: [] };
   if (state.kind === "local-only") return stay(state);
   switch (event.kind) {
     case "typed": return typed(state, event.text);
@@ -124,20 +126,30 @@ function stay(state: DraftSyncState, effects: readonly DraftSyncEffect[] = []): 
 }
 
 /**
- * The composer shows the session (again). A fresh page starts from this browser's copy; text
- * stored by an older build, with no record beside it, is this browser's unsent typing.
+ * The composer shows the session (again), showing `text`. A fresh page starts from this browser's
+ * copy; text stored by an older build, with no record beside it, is this browser's unsent typing.
+ * Coming back, this page's own typing the daemon has not had is put back on screen; otherwise what
+ * the screen shows now is what a read is compared with (a dialog card drawn anew shows its
+ * opening text, not what this page last synced).
  */
 function opened(state: DraftSyncState, text: string, record: LocalDraftRecord | undefined): DraftSyncStep {
   switch (state.kind) {
     case "local-only":
       if (record?.state === "sent") return stay({ kind: "sent", base: record.revision }, [{ kind: "read" }]);
       return stay({ kind: "unknown", text, dirty: record === undefined ? text !== "" : record.state === "dirty", revision: record?.revision, reading: true, announced: -1, rechecked: false }, [{ kind: "read" }]);
-    case "unknown": return state.reading ? stay(state) : stay({ ...state, reading: true }, [{ kind: "read" }]);
-    case "synced": return stay({ kind: "unknown", text: state.text, dirty: false, revision: state.revision, reading: true, announced: state.revision, rechecked: false }, [{ kind: "read" }]);
-    case "dirty": return stay(state, [{ kind: "wait" }]);
-    case "writing": return stay(state);
+    case "unknown": {
+      const shown = state.dirty ? state.text : text;
+      return stay({ ...state, text: shown, reading: true }, [...shownIf(shown, text), ...(state.reading ? [] : [{ kind: "read" as const }])]);
+    }
+    case "synced": return stay({ kind: "unknown", text, dirty: false, revision: state.revision, reading: true, announced: state.revision, rechecked: false }, [{ kind: "read" }]);
+    case "dirty": return stay(state, [...shownIf(state.text, text), { kind: "wait" }]);
+    case "writing": return stay(state, shownIf(state.text, text));
     case "sent": return stay(state, [{ kind: "read" }]);
   }
+}
+
+function shownIf(text: string, onScreen: string): DraftSyncEffect[] {
+  return text === onScreen ? [] : [{ kind: "show", text }];
 }
 
 function typed(state: Exclude<DraftSyncState, { kind: "local-only" }>, text: string): DraftSyncStep {
@@ -212,6 +224,11 @@ export interface DraftView {
   show(text: string): void;
 }
 
+/** Whether a scope names another machine, session or folder; a property compared this way re-renders on a change of value only. */
+export function draftScopeChanged(next: DraftScope | undefined, previous: DraftScope | undefined): boolean {
+  return next?.key !== previous?.key || next?.machineId !== previous?.machineId || next?.session.id !== previous?.session.id || next?.session.cwd !== previous?.session.cwd;
+}
+
 export interface DraftSyncDeps {
   readDraft(scope: DraftScope): Promise<SessionDraft>;
   writeDraft(scope: DraftScope, write: DraftWrite): Promise<DraftWriteAnswer>;
@@ -237,17 +254,31 @@ export class SessionDraftSync {
 
   constructor(private scope: DraftScope, private readonly deps: DraftSyncDeps = defaultDeps) {}
 
-  /** The composer shows this session now, showing `text` from this browser's copy. */
-  attach(view: DraftView, text: string, session: SessionRef): void {
+  /**
+   * The view (composer or dialog card) shows this session now, showing `text`. `opening` says
+   * how that text relates to the daemon's when this browser keeps no record of it (a dialog's
+   * opening text is not typing).
+   */
+  attach(view: DraftView, text: string, session: SessionRef, opening?: LocalDraftRecord): void {
     this.view = view;
     this.scope = { ...this.scope, session };
-    this.step({ kind: "opened", text, record: readLocalRecord(this.deps.storage(), this.scope.key) });
+    this.step({ kind: "opened", text, record: readLocalRecord(this.deps.storage(), this.scope.key) ?? opening });
   }
 
-  /** The composer moved on: a write that was waiting for typing to pause goes now. */
+  /** The view moved on: a write that was waiting for typing to pause goes now. */
   detach(): void {
     this.view = undefined;
     if (this.state.kind === "dirty") this.step({ kind: "due", seq: nextSeq() });
+  }
+
+  /**
+   * The dialog this sync kept closed: nothing it held is owed to anyone. Nothing more is written
+   * for it, neither a write waiting for typing to pause, nor one after the answer of a write still
+   * on its way, nor one when its card lets go of it afterwards.
+   */
+  discard(): void {
+    this.view = undefined;
+    this.step({ kind: "closed" });
   }
 
   typed(text: string): void {
@@ -333,6 +364,43 @@ export function draftSyncFor(scope: DraftScope): SessionDraftSync {
 /** A `draft.changed` frame for a session; one no composer on this page has shown has nothing to update. */
 export function announceDraftChange(key: string, frame: { readonly revision: number; readonly cause: DraftChangeCause; readonly deviceId: string }): void {
   syncs.get(key)?.announced(frame.revision, frame.cause, frame.deviceId);
+}
+
+/** How a dialog card's text relates to the daemon's when it opens: its opening text, not typing. */
+export const DIALOG_OPENING: LocalDraftRecord = { state: "synced" };
+
+function dialogKey(key: string, dialogId: string): string {
+  return `${key}#dialog:${dialogId}`;
+}
+
+/**
+ * The one sync of an open input or editor dialog's typed answer on this page (server-drafts.md,
+ * slice 3): the session draft's classifier, against the dialog's own routes. It keeps nothing in
+ * this browser: the answer dies with the dialog. A dialog that closes while its card is not on
+ * screen leaves its small sync here until the page goes.
+ */
+export function dialogDraftSyncFor(scope: DraftScope, dialogId: string): SessionDraftSync {
+  const key = dialogKey(scope.key, dialogId);
+  const existing = syncs.get(key);
+  if (existing !== undefined) return existing;
+  const created = new SessionDraftSync({ ...scope, key }, {
+    readDraft: (at) => sessionsApi.readDialogDraft(at.session, dialogId, at.machineId),
+    writeDraft: (at, write) => sessionsApi.writeDialogDraft(at.session, dialogId, write, at.machineId),
+    storage: () => undefined,
+  });
+  syncs.set(key, created);
+  return created;
+}
+
+/** A `dialog.draft.changed` frame for one of the session's dialogs. */
+export function announceDialogDraftChange(key: string, frame: { readonly dialogId: string; readonly revision: number; readonly deviceId: string }): void {
+  syncs.get(dialogKey(key, frame.dialogId))?.announced(frame.revision, "edited", frame.deviceId);
+}
+
+/** A dialog closed: its typed answer went with it. */
+export function forgetDialogDraftSync(key: string, dialogId: string): void {
+  syncs.get(dialogKey(key, dialogId))?.discard();
+  syncs.delete(dialogKey(key, dialogId));
 }
 
 function nextSeq(): number {

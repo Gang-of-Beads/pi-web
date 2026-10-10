@@ -44,7 +44,7 @@ import type { DeliveryFailureCause } from "../deliveryWords";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
 import type { DraftSendClaim, ExtensionEditorTextMode, PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
-import { announceDraftChange } from "../sessionDraftSync";
+import { announceDialogDraftChange, announceDraftChange, forgetDialogDraftSync } from "../sessionDraftSync";
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, type SessionSelectionMemory, isOpenableSession } from "./sessionSelection"
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
@@ -2950,6 +2950,12 @@ export class SessionController {
       if (selected !== undefined) announceDraftChange(machineSessionKey(selectedMachineId(current), selected.id), event);
       return;
     }
+    if (event.type === "dialog.draft.changed") {
+      const current = this.getState();
+      const selected = current.selectedSession;
+      if (selected !== undefined) announceDialogDraftChange(machineSessionKey(selectedMachineId(current), selected.id), event);
+      return;
+    }
     if (event.type === "prompt.withdrawn" || event.type === "prompt.consumed") {
       this.dropPromptRow(event.clientMessageId);
       return;
@@ -2992,6 +2998,9 @@ export class SessionController {
       return;
     }
     if (event.type === "dialog.closed") {
+      const current = this.getState();
+      const selected = current.selectedSession;
+      if (selected !== undefined) forgetDialogDraftSync(machineSessionKey(selectedMachineId(current), selected.id), event.dialogId);
       this.dialogScope.observe(event, () => { this.applyClosedDialog(event.dialogId, event.reason, event.answer); });
       return;
     }
