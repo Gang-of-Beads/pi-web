@@ -4,6 +4,7 @@ import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_
 import { projectBrowserMessageResponse } from "../browserMessageProjection.js";
 import { normalizeRequestCwd } from "../workingDirectory.js";
 import { readCompletionItem } from "./extensionCompletions.js";
+import { DraftRefusedError, draftWriteOf } from "./drafts/sessionDraftStore.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { SessionRouteRef, SessionRouteService } from "./sessionService.js";
 import { clearInterruptedRuns, readInterruptedRuns } from "./interruptedRunStore.js";
@@ -53,6 +54,7 @@ interface PromptRequestBody {
   attachments?: unknown;
   clientMessageId?: unknown;
   sentAt?: unknown;
+  draft?: unknown;
 }
 
 interface AttachmentsRequestBody {
@@ -470,10 +472,31 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
   app.post<{ Params: { sessionId: string }; Body: PromptRequestBody | undefined }>(`${prefix}/sessions/:sessionId/prompt`, async (request, reply) => {
     try {
       const body = optionalRecord(request.body);
-      await sessions.prompt(sessionRefFromBody(request.params.sessionId, body), body["text"], body["streamingBehavior"], body["attachments"], { clientMessageId: body["clientMessageId"], sentAt: body["sentAt"] });
+      await sessions.prompt(sessionRefFromBody(request.params.sessionId, body), body["text"], body["streamingBehavior"], body["attachments"], { clientMessageId: body["clientMessageId"], sentAt: body["sentAt"], draft: body["draft"] });
       return { accepted: true };
     } catch (error) {
       return sendError(reply, sessionErrorReply(error, 400));
+    }
+  });
+
+  app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/draft`, async (request, reply) => {
+    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
+    if (ref === undefined) return reply;
+    try {
+      return await sessions.readDraft(ref);
+    } catch (error) {
+      return sendError(reply, sessionErrorReply(error, error instanceof DraftRefusedError ? 400 : 500));
+    }
+  });
+
+  app.put<{ Params: { sessionId: string }; Body: { cwd?: unknown; deviceId?: unknown; seq?: unknown; text?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/draft`, async (request, reply) => {
+    const body = optionalRecord(request.body);
+    const write = draftWriteOf(body);
+    if (write === undefined) return reply.code(400).send({ error: "deviceId (text), seq (a whole number of 0 or more) and text (text) are required" });
+    try {
+      return await sessions.writeDraft(sessionRefFromBody(request.params.sessionId, body), write);
+    } catch (error) {
+      return sendError(reply, sessionErrorReply(error, error instanceof DraftRefusedError ? 400 : 500));
     }
   });
 

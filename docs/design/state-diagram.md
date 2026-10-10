@@ -948,6 +948,39 @@ Selecting is a page of its own (owner, 2026-10-09): a header with the way out (�
 
 **Where the order lives.** With the data it orders, so every device sees it: session pins in the pin file's arrays; projects in `projects.json`; machines in the machines plugin's `machines.json` (`order`, the local machine's id among them, so it can move too). Pinned projects are in the pin file too (`pinnedProjectIds`, in their order); a machine that answers without the field keeps them in this browser. A browser hands its old pins to a machine once per kind and remembers it (`pi-web.pinsHandedOver`), so a pin removed on another device while this browser was closed does not come back from this browser's stale copy. A pinned section stands in its pin order; its rows still show state marks but no longer move on activity.
 
+## D10. A composer draft (server drafts, slice 1)
+
+One composer's text against the copy on its session's daemon (server-drafts.md; owner 2026-10-05: one draft per session, every device, later write wins; D1 2026-10-10: silent). `draftSyncStep` in `sessionDraftSync.ts` decides every transition; `SessionDraftSync` carries them out. Attachments, extension input dialogs and the offline states (`offline-dirty`, `replaced`) are later slices.
+
+| State | Meaning |
+|---|---|
+| `local-only` | this browser's copy only: not shown yet, or the machine answers `route-missing` (an older PI WEB) |
+| `unknown` | the daemon's copy is not known: a read is in flight or failed, or a frame announced a newer one; `dirty` says the shown text has edits the daemon has not had |
+| `synced` | the shown text is the daemon's revision |
+| `dirty` | typed since; a write goes when typing pauses for 500 ms |
+| `writing` | a write is on its way; typing meanwhile is written after it |
+| `sent` | sent from here; the composer stays empty until the daemon says what the send left |
+
+| Event \ state | `unknown` | `synced` | `dirty` / `writing` | `sent` |
+|---|---|---|---|---|
+| typed other text | `dirty` | `dirty` | stays (the write that follows carries it) | `dirty` |
+| read answered | the shown text equals it: `synced`; shown text dirty: `dirty` (written); else shown, `synced`; older than a frame announced: read again | – | ignored: this page's write lands later and wins | newer than the send: shown, `synced`; else ignored |
+| `draft.changed` | read (if none in flight) | newer: `unknown`, read | ignored (D1: silent) | the send's own frame or another page's write, newer: read; this page's earlier writes: ignored |
+| write answered | – | – | `synced`, or `dirty` when typed meanwhile | remembered as this page's latest revision; `superseded`: read |
+| write failed | – | – | `dirty`; written again at the next keystroke | – |
+| sent here | `sent` | `sent` | `sent` (a waiting write is dropped; one on its way is covered by the send) | – |
+| `route-missing` | `local-only` | `local-only` | `local-only` | `local-only` |
+
+Opening the composer on a session: a fresh page starts from this browser's copy and its record (`sent` stays `sent`; otherwise `unknown`) and reads; a page coming back reads again unless a write is on its way.
+
+Wire: `GET /sessions/:id/draft` → `{ revision, text?, updatedAt? }`; `PUT /sessions/:id/draft { cwd, deviceId, seq, text }` → `{ revision }` or `{ revision, superseded: true }`; the prompt route takes `draft: { deviceId, seq, revision? }`; the session socket carries `draft.changed { revision, cause: "edited" | "sent", deviceId }`. Both draft routes are federated for a remote machine.
+
+Invariants:
+
+- **A sent text never comes back as a draft.** A send empties the draft it was made from when the daemon accepts the message; a write the page made before the send is refused if it arrives after; a page that was not typing reads the empty draft; and the sending page takes nothing older than its send.
+- **Typing is never overwritten.** A page with typing the daemon has not had ignores the daemon's copy and frames, and writes; the later write wins (owner).
+- **A reload knows which copy wins** from the record kept beside the text: unwritten typing wins, a synced copy yields, a sent one stays empty.
+
 ## Methodology folded in (research run `e7c7403c`, `uiux-methodology.md`)
 
 - **Statecharts** (statecharts.dev; Stately testing docs):

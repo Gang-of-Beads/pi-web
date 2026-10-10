@@ -11,7 +11,7 @@ import { settleOutbox } from "../outboxSettlement";
 import { SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
-import type { PromptAttachmentDelivery } from "../../../shared/apiTypes";
+import type { DraftSendClaim, PromptAttachmentDelivery } from "../../../shared/apiTypes";
 import type { ComposerRuntimeContext, ComposerSlot, QualifiedComposerContribution } from "../plugins/types";
 import { capturePromptAttachments, effectivePromptAttachmentDelivery, isInlinePromptAttachment, type CapturedAttachment } from "../promptAttachmentCapture";
 import { dataTransferHasFiles, filesFromDataTransfer } from "../fileDrop";
@@ -19,6 +19,7 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
+import { draftSyncFor, type SessionDraftSync } from "../sessionDraftSync";
 import { addToHeldComposerAttachments, holdComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
 import { advancePendingPrompt, isNetworkFailure, linkReportedOffline, loadPendingPrompts, markUnansweredPrompt, NetworkSendError, replaysRecord, reserveAcceptedPrompt, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
 import { outgoingStopped } from "../outgoingMessages";
@@ -256,6 +257,11 @@ export class PromptEditor extends LitElement {
   @property() sessionId?: string;
   @property() cwd?: string;
   @property() machineId = "local";
+  /**
+   * The session's own folder when its draft is kept on its daemon (server-drafts.md); absent for a
+   * session the daemon does not have yet, whose draft stays in this browser.
+   */
+  @property() draftSessionCwd?: string;
   @property() projectId?: string;
   @property() workspaceId?: string;
   @property({ type: Boolean }) canSteer = false;
@@ -297,6 +303,8 @@ export class PromptEditor extends LitElement {
   // long-press edit/paste callout). Only `currentInputMode` (shell vs. normal)
   // is reactive, since that is the only draft-derived value the template shows.
   private draft = "";
+  private draftSync: SessionDraftSync | undefined;
+  private readonly draftView = { show: (text: string) => { this.replaceText(text); } };
   /** Whether a draft has already been read back into this editor. */
   private hasRenderedOnce = false;
   @state() private currentInputMode: InputMode = { kind: "normal" };
@@ -345,6 +353,7 @@ export class PromptEditor extends LitElement {
     if (previousKey !== undefined && savesOutgoingDraft({ hasRendered: hadRendered })) saveDraft(previousKey, this.draft);
     const currentKey = draftStorageKey(this.machineId, this.sessionId);
     this.draft = currentKey !== undefined ? loadDraft(currentKey) : "";
+    this.attachDraftSync(currentKey);
     this.currentInputMode = inputModeForDraft(this.draft);
     this.completions = [];
     this.selectedIndex = 0;
@@ -393,6 +402,7 @@ export class PromptEditor extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    if (this.hasRenderedOnce) this.attachDraftSync(draftStorageKey(this.machineId, this.sessionId));
     this.pendingPrompts = this.pendingPromptsForSession();
     window.addEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
   }
@@ -411,6 +421,7 @@ export class PromptEditor extends LitElement {
   override disconnectedCallback(): void {
     const key = draftStorageKey(this.machineId, this.sessionId);
     if (key !== undefined) holdComposerAttachments(key, this.attachments);
+    this.draftSync?.detach();
     window.removeEventListener("online", this.flushPendingPrompts);
     window.removeEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
     if (this.pendingRevealTimer !== undefined) {
@@ -542,6 +553,7 @@ export class PromptEditor extends LitElement {
     this.draft = text;
     const key = draftStorageKey(this.machineId, this.sessionId);
     if (key !== undefined) saveDraft(key, text);
+    this.draftSync?.typed(text);
 
     const editor = this.editor;
     if (editor !== undefined && this.cm !== undefined) {
@@ -955,10 +967,25 @@ export class PromptEditor extends LitElement {
     });
   }
 
+  /** Follow the shown session's draft on its daemon, letting go of the previous session's (server-drafts.md). */
+  private attachDraftSync(key: string | undefined): void {
+    this.draftSync?.detach();
+    const cwd = this.draftSessionCwd;
+    const sessionId = this.sessionId;
+    if (key === undefined || cwd === undefined || sessionId === undefined) {
+      this.draftSync = undefined;
+      return;
+    }
+    const session = { id: sessionId, cwd };
+    this.draftSync = draftSyncFor({ key, machineId: this.machineId, session });
+    this.draftSync.attach(this.draftView, this.draft, session);
+  }
+
   private updateDraft(value: string) {
     this.draft = value;
     const key = draftStorageKey(this.machineId, this.sessionId);
     if (key !== undefined) saveDraft(key, this.draft);
+    this.draftSync?.typed(this.draft);
     const nextInputMode = inputModeForDraft(this.draft);
     if (!inputModesEqual(nextInputMode, this.currentInputMode)) this.currentInputMode = nextInputMode;
     void this.refreshCompletions();
@@ -1304,7 +1331,7 @@ export class PromptEditor extends LitElement {
           savePendingPrompt(key, retried);
         }
         try {
-          const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: id, scope, sentAt: prompt.at });
+          const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: id, scope, sentAt: prompt.at, ...(prompt.draft === undefined ? {} : { draft: prompt.draft }) });
           if (accepted !== false) reserveAcceptedPrompt(key, id);
           else if (prompt.refused === true && loadPendingPrompts(key).some((entry) => entry.clientMessageId === id)) savePendingPrompt(key, prompt);
         } catch (failure) {
@@ -1375,23 +1402,24 @@ export class PromptEditor extends LitElement {
     // its images to a dropped connection is the kind of failure that makes
     // people distrust the app.
     const restorable = { text: this.draft, attachments: pending };
+    const draftClaim = this.draftSync?.sentHere();
     this.resetComposer();
-    const outgoing = this.recordOutgoing(text, behavior, attachments, delivery);
+    const outgoing = this.recordOutgoing(text, behavior, attachments, delivery, draftClaim);
     this.enqueueSend(() => this.deliverAndRestoreOnFailure(text, behavior, attachments, delivery, restorable, outgoing));
   }
 
   /** Mint the message's identity and write its outbox record, before it waits for its turn. */
-  private recordOutgoing(text: string, behavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery): OutgoingSend {
+  private recordOutgoing(text: string, behavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, draft?: DraftSendClaim): OutgoingSend {
     const outboxKey = machineSessionKey(this.machineId, this.sessionId ?? "");
     const outboxId = newClientMessageId();
     const sentAt = new Date().toISOString();
     const carried = attachments === undefined || attachments.length === 0 ? undefined : attachments;
     if (outboxKey !== "") {
-      savePendingPrompt(outboxKey, { text, ...(behavior === undefined ? {} : { behavior }), clientMessageId: outboxId, ...(carried === undefined ? {} : { attachments: carried, delivery }), at: sentAt });
+      savePendingPrompt(outboxKey, { text, ...(behavior === undefined ? {} : { behavior }), clientMessageId: outboxId, ...(carried === undefined ? {} : { attachments: carried, delivery }), ...(draft === undefined ? {} : { draft }), at: sentAt });
       this.pendingPrompts = this.pendingPromptsForSession();
     }
     this.outboxInFlight.add(outboxId);
-    return { outboxKey, outboxId, sentAt, scope: { machineId: this.machineId, sessionId: this.sessionId ?? "" }, writtenOnPage: this.isConnected, text, behavior, attachments, delivery };
+    return { outboxKey, outboxId, sentAt, scope: { machineId: this.machineId, sessionId: this.sessionId ?? "" }, writtenOnPage: this.isConnected, text, behavior, attachments, delivery, ...(draft === undefined ? {} : { draft }) };
   }
 
   /**
@@ -1425,7 +1453,7 @@ export class PromptEditor extends LitElement {
     let accepted: boolean | undefined;
     let failure: unknown;
     try {
-      const replay: SendReplay = { clientMessageId: outboxId, scope, sentAt };
+      const replay: SendReplay = { clientMessageId: outboxId, scope, sentAt, ...(outgoing.draft === undefined ? {} : { draft: outgoing.draft }) };
       accepted = await this.onSend?.(text, behavior, attachments, attachments === undefined ? undefined : delivery, replay);
     } catch (error) {
       accepted = false;
@@ -1628,6 +1656,8 @@ interface OutgoingSend {
   behavior: "steer" | "followUp" | undefined;
   attachments: PromptAttachment[] | undefined;
   delivery: PromptAttachmentDelivery;
+  /** The draft this send was made from (server-drafts.md, sending). */
+  draft?: DraftSendClaim;
 }
 
 /**

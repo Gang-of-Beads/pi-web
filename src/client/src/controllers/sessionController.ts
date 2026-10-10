@@ -43,7 +43,8 @@ import { classifySubmission, deliveryAfterUnanswered, handleOutcome, transportFa
 import type { DeliveryFailureCause } from "../deliveryWords";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
-import type { ExtensionEditorTextMode, PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
+import type { DraftSendClaim, ExtensionEditorTextMode, PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
+import { announceDraftChange } from "../sessionDraftSync";
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, type SessionSelectionMemory, isOpenableSession } from "./sessionSelection"
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
@@ -719,7 +720,7 @@ export class SessionController {
     // Capture the originating session/machine before any await so the request
     // and its sending indicator stay bound to the right session even if the
     // user navigates elsewhere mid-upload.
-    return await this.deliverPromptToSession(session, text, streamingBehavior, attachments, delivery, selectedMachineId(this.getState()), { markSending: hasAttachments, ...(replay?.clientMessageId === undefined ? {} : { replayClientMessageId: replay.clientMessageId }), ...(replay?.sentAt === undefined ? {} : { sentAt: replay.sentAt }) });
+    return await this.deliverPromptToSession(session, text, streamingBehavior, attachments, delivery, selectedMachineId(this.getState()), { markSending: hasAttachments, ...(replay?.clientMessageId === undefined ? {} : { replayClientMessageId: replay.clientMessageId }), ...(replay?.sentAt === undefined ? {} : { sentAt: replay.sentAt }), ...(replay?.draft === undefined ? {} : { draft: replay.draft }) });
   }
 
   private markSendingPrompt(sessionId: string, sending: boolean): void {
@@ -802,7 +803,7 @@ export class SessionController {
     return this.deliverCommandToSession(session, queued.text, machineId, { applyResult: true, ledgerId: queued.ledgerId });
   }
 
-  private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean; replayClientMessageId?: string; sentAt?: string }): Promise<boolean> {
+  private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean; replayClientMessageId?: string; sentAt?: string; draft?: DraftSendClaim }): Promise<boolean> {
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     if (options.markSending) this.markSendingPrompt(session.id, true);
     // One message carries one id for its whole life. The sender mints it before
@@ -820,9 +821,9 @@ export class SessionController {
         const saved = await this.api.saveAttachments(session, attachments, machineId);
         const references = saved.map((file) => fileCompletionInsertText(file.path, false)).join(" ");
         const body = text === "" ? references : `${text}\n\n${references}`;
-        await this.api.prompt(session, body, streamingBehavior, machineId, undefined, clientMessageId, sentAt);
+        await this.api.prompt(session, body, streamingBehavior, machineId, undefined, clientMessageId, sentAt, options.draft);
       } else {
-        await this.api.prompt(session, text, streamingBehavior, machineId, attachments, clientMessageId, sentAt);
+        await this.api.prompt(session, text, streamingBehavior, machineId, attachments, clientMessageId, sentAt, options.draft);
       }
       if (clientMessageId !== undefined) this.settleAnsweredSend(session, machineId, clientMessageId);
       this.markCachedNewSessionPersisted(session);
@@ -2943,6 +2944,12 @@ export class SessionController {
       return;
     }
     if (event.type === "activity.changed") return;
+    if (event.type === "draft.changed") {
+      const current = this.getState();
+      const selected = current.selectedSession;
+      if (selected !== undefined) announceDraftChange(machineSessionKey(selectedMachineId(current), selected.id), event);
+      return;
+    }
     if (event.type === "prompt.withdrawn" || event.type === "prompt.consumed") {
       this.dropPromptRow(event.clientMessageId);
       return;
@@ -3357,7 +3364,7 @@ function replacePendingSessionInList(sessions: readonly SessionInfo[], pendingSe
   return next;
 }
 
-function isClientPendingStartSessionInfo(session: SessionInfo | undefined): session is ClientPendingStartSessionInfo {
+export function isClientPendingStartSessionInfo(session: SessionInfo | undefined): session is ClientPendingStartSessionInfo {
   return session !== undefined && "clientPendingStart" in session && session.clientPendingStart === true;
 }
 

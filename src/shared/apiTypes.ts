@@ -445,6 +445,42 @@ export interface SessionRef {
   cwd: string;
 }
 
+/**
+ * A session's shared draft as its daemon keeps it (server-drafts.md): `revision` 0 and nothing
+ * else when it has none. A cleared draft keeps its revision, so revisions never go back.
+ */
+export interface SessionDraft {
+  revision: number;
+  text?: string;
+  updatedAt?: string;
+}
+
+/** One page's write of a session's draft: the page, its number for this write, and the text. */
+export interface DraftWrite {
+  deviceId: string;
+  seq: number;
+  text: string;
+}
+
+/** What a draft write did: the draft's new revision, or `superseded` when the page's own send already covered the write. */
+export interface DraftWriteAnswer {
+  revision: number;
+  superseded?: true;
+}
+
+/**
+ * What a send says about the draft it was made from: the page that sent it, the number of that
+ * page's last draft write, and the draft revision the page last knew (absent before it knew one).
+ */
+export interface DraftSendClaim {
+  deviceId: string;
+  seq: number;
+  revision?: number;
+}
+
+/** Why a session's draft changed: a page wrote it, or a send settled it. */
+export type DraftChangeCause = "edited" | "sent";
+
 export const SESSION_UNREAD_LIMIT = 1_000;
 export const SESSION_UNREAD_SESSION_ID_MAX_LENGTH = 512;
 export const SESSION_UNREAD_CWD_MAX_LENGTH = 32 * 1024;
@@ -1805,6 +1841,11 @@ type SessionUiEventBody =
   | { type: "prompt.withdrawn"; clientMessageId: string }
   | { type: "prompt.consumed"; clientMessageId: string }
   | { type: "prompt.refused"; clientMessageId: string; message: string }
+  /**
+   * The session's shared draft changed (server-drafts.md): a page that did not write it reads it
+   * once. It carries no text; `deviceId` is the page that wrote or sent it.
+   */
+  | { type: "draft.changed"; revision: number; cause: DraftChangeCause; deviceId: string }
   /** Sent by an older daemon when a background-work tool started or ended; read and ignored. */
   | { type: "activity.changed" }
   | { type: "dialog.opened"; dialog: PendingExtensionDialog; revision?: number; daemonInstanceId?: string }

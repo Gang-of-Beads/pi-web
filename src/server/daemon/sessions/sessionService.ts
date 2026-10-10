@@ -38,7 +38,7 @@ import type {
   SessionTranscriptTail,
   SessionStreamSync,
 } from "../../shared/types.js";
-import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, ExtensionTerminalKey, QueuedSessionMessage } from "../../../shared/apiTypes.js";
+import type { DraftWrite, DraftWriteAnswer, ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, ExtensionTerminalKey, QueuedSessionMessage, SessionDraft } from "../../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 import type { DelegationRequest, SpawnSessionResult, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionSummary } from "./delegation.js";
 
@@ -102,7 +102,11 @@ export interface SessionRouteService {
   setThinkingLevel(ref: SessionRouteRef, level: string): Promise<ClientSessionStatus>;
   cycleThinkingLevel(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   commands(ref: SessionRouteRef): Promise<ClientCommand[]>;
-  prompt(ref: SessionRouteRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown }): Promise<void>;
+  prompt(ref: SessionRouteRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown; draft?: unknown }): Promise<void>;
+  /** The session's shared draft; reading it never opens the session. */
+  readDraft(ref: SessionRouteRef): Promise<SessionDraft>;
+  /** One page's write of the draft: later write wins, except a write the page's own send already covered. */
+  writeDraft(ref: SessionRouteRef, write: DraftWrite): Promise<DraftWriteAnswer>;
   saveAttachments(ref: SessionRouteRef, attachments: unknown, folder?: string): Promise<SavedPromptAttachment[]>;
   cleanupPreview(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupPreviewResponse>;
   cleanup(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupExecuteResponse>;

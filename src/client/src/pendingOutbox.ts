@@ -1,6 +1,6 @@
 import { browserLocalStorage } from "./browserLocalStorage";
 import type { PromptAttachment } from "./api";
-import type { PromptAttachmentDelivery } from "../../shared/apiTypes";
+import type { DraftSendClaim, PromptAttachmentDelivery } from "../../shared/apiTypes";
 import type { OutgoingEvent, OutgoingState } from "./outgoingMessages";
 import { outgoingStateFromStorage, outgoingStopped, outgoingVerdict } from "./outgoingMessages";
 import type { DeliveryFailureCause } from "./deliveryWords";
@@ -48,6 +48,11 @@ export interface PendingPrompt {
    * became a workspace file.
    */
   delivery?: PromptAttachmentDelivery;
+  /**
+   * The draft the message was sent from, for the daemon to empty when it accepts the message
+   * (server-drafts.md, sending). Kept on the record: a replay after a reload is the same send.
+   */
+  draft?: DraftSendClaim;
   at: string;
 }
 
@@ -141,6 +146,8 @@ export interface SendReplay {
   scope?: SendScope;
   /** When the message was first sent: a retry keeps the time its row first showed (B5). */
   sentAt?: string;
+  /** The draft the message was sent from (server-drafts.md, sending). */
+  draft?: DraftSendClaim;
 }
 
 /**
