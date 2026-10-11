@@ -517,11 +517,18 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
-  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unknown; key?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/dialog/key`, async (request) => {
+  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unknown; key?: unknown; line?: unknown; text?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/dialog/key`, async (request) => {
     const body = request.body ?? {};
     const dialogId = requireNonEmptyBoundedString(body.dialogId, "dialogId", EXTENSION_DIALOG_ID_MAX_LENGTH);
+    const ref = sessionRefFromBody(request.params.sessionId, body);
+    if (body.line !== undefined && body.key !== undefined) throw new Error("send either a key or a line, not both");
+    if (body.line !== undefined) {
+      const line = requireNonNegativeSafeInteger(body.line, "line");
+      const text = requireNonEmptyBoundedString(body.text, "text", EXTENSION_DIALOG_INPUT_MAX_LENGTH);
+      return await sessions.selectCustomScreenLine(ref, dialogId, line, text);
+    }
     const key = requireNonEmptyBoundedString(body.key, "key", EXTENSION_DIALOG_KEY_MAX_LENGTH);
-    return await sessions.sendCustomScreenKey(sessionRefFromBody(request.params.sessionId, body), dialogId, key);
+    return await sessions.sendCustomScreenKey(ref, dialogId, key);
   });
 
 app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/dialogs/cancel`, async (request, reply) => {

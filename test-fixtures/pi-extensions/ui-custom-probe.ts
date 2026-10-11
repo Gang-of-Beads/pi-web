@@ -1,11 +1,11 @@
 /**
  * A screen that proves `ctx.ui.custom` is rendered and drivable by this host.
  *
- * Draws a small menu with a cursor, moves it on the arrows, selects on Enter and
- * finishes on Escape. Nothing depends on it in production; it exists so
+ * Draws a small menu with a cursor, moves it on the arrow keys, selects on Enter and
+ * finishes on Escape, each read as the bytes pi's terminal sends. Nothing depends on it in production; it exists so
  * probe-custom-screen can tell "the factory ran, the browser drew it, and touch
  * can drive it" from "the call was cancelled" - and so the touch affordances
- * (tap a line, press a key button) have something with a cursor to act on.
+ * (tap a line, Confirm, Cancel) have something with a cursor to act on.
  */
 export default function (pi: {
   on: (event: string, handler: (event: unknown, ctx: any) => unknown) => void;
@@ -61,11 +61,14 @@ export default function (pi: {
         ...items.map((item, index) => `${index === cursor ? "▸" : " "} ${item}`.padEnd(width, " ")),
         "enter to select · esc to close",
       ],
-      handleInput: (key: string) => {
-        if (key === "escape") finish("escaped");
-        else if (key === "enter") finish(items[cursor]);
-        else if (key === "down") cursor = Math.min(cursor + 1, items.length - 1);
-        else if (key === "up") cursor = Math.max(cursor - 1, 0);
+      handleInput: (data: string) => {
+        const keys: Record<string, () => void> = {
+          "\x1b": () => { finish("escaped"); },
+          "\r": () => { finish(items[cursor]); },
+          "\x1b[B": () => { cursor = Math.min(cursor + 1, items.length - 1); },
+          "\x1b[A": () => { cursor = Math.max(cursor - 1, 0); },
+        };
+        keys[data]?.();
       },
     })).then(done).catch(() => undefined);
   };

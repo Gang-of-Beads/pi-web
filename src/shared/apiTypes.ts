@@ -1046,6 +1046,9 @@ export type ExtensionDialogKind = "confirm" | "select" | "input" | "editor" | "c
  */
 export const EXTENSION_DIALOG_SCREEN_MAX_LINES = 200;
 
+/** How many styled runs one line of a `custom` screen keeps; the rest of the line is cut. */
+export const EXTENSION_DIALOG_SCREEN_MAX_SPANS = 64;
+
 /** A forwarded keypress is a name ("escape", "ctrl+c") or one character. */
 export const EXTENSION_DIALOG_KEY_MAX_LENGTH = 32;
 
@@ -1079,6 +1082,29 @@ export interface ExtensionDialogScreen {
   questions: AskUserQuestion[];
 }
 
+/**
+ * A run of a drawn screen's text with the look the extension gave it: the pi theme roles it
+ * drew the text with (`theme.fg("accent", ...)`, `theme.bg("selectedBg", ...)`) and the
+ * emphasis it asked for. The roles are pi's names; the browser picks its own colors for them.
+ */
+export interface ScreenSpan {
+  text: string;
+  fg?: string;
+  bg?: string;
+  bold?: true;
+  dim?: true;
+  italic?: true;
+  underline?: true;
+  inverse?: true;
+  strike?: true;
+}
+
+/** One drawn line as runs, without the box drawing at its edges; `frame` when the line was nothing but box drawing. */
+export interface ScreenLine {
+  spans: ScreenSpan[];
+  frame?: true;
+}
+
 export interface PendingExtensionDialog {
   dialogId: string;
   kind: ExtensionDialogKind;
@@ -1098,10 +1124,18 @@ export interface PendingExtensionDialog {
   prefillCut?: number;
   /**
    * The rendered screen of a `custom` dialog: what the extension's TUI component
-   * drew, at the width the daemon asked it to draw for. Plain text, because the
-   * daemon hands the component a plain theme.
+   * drew, at the width the daemon asked it to draw for. Plain text: the daemon strips
+   * the escapes of the styled theme it hands the component; {@link styledLines} keeps them as runs.
    */
   lines?: string[];
+  /**
+   * The same lines of a `custom` screen, one for one, as runs that keep the look the extension
+   * drew them with and with the component's box drawing marked. A browser that has them draws
+   * these; one that predates them draws {@link lines}.
+   */
+  styledLines?: ScreenLine[];
+  /** Which of {@link lines} the component's own cursor is on, when the screen shows a cursor. */
+  selectedLine?: number;
   /**
    * What the extension declared this screen to be, for the browser to draw natively.
    *

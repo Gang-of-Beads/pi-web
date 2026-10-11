@@ -83,6 +83,8 @@ export interface SessionRouteService {
   recallQueuedMessage(ref: SessionRouteRef, target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }>;
   /** Deliver a keypress to an open extension screen; false when none is open. */
   sendCustomScreenKey(ref: SessionRouteRef, dialogId: string, key: string): Promise<boolean>;
+  /** Move an open drawn screen's cursor to a tapped line, matched by its text, and select it. */
+  selectCustomScreenLine(ref: SessionRouteRef, dialogId: string, line: number, text: string): Promise<boolean>;
 
   answerDialog(ref: SessionRouteRef, dialogId: string, value: ExtensionDialogAnswer): Promise<ExtensionDialogCloseResponse>;
   cancelDialog(ref: SessionRouteRef, dialogId: string): Promise<ExtensionDialogCloseResponse>;

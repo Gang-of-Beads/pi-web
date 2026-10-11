@@ -12,11 +12,13 @@ import {
   type ExtensionDialogScreen,
   type PendingAskUser,
   type PendingExtensionDialog,
+  type ScreenLine,
+  type ScreenSpan,
 } from "../../../shared/apiTypes";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText";
 import type { ClosedExtensionDialog } from "../appState";
 import { dialogScreenKey } from "../dialogScreenKey.js";
-import { isSelectableLine, keysForLineTap, screenIsTappable } from "../dialogScreenKeys.js";
+import { isScreenHintLine, isSelectableLine, keysForLineTap, screenIsTappable } from "../dialogScreenKeys.js";
 import { classifyScreen, type ScreenShape } from "../dialogScreenShape.js";
 import { shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { keyBelongsToInputMethod } from "./keyboardEventTarget";
@@ -27,8 +29,24 @@ export type ExtensionDialogAnswerCallback = (dialogId: string, value: ExtensionD
 export type ExtensionDialogCancelCallback = (dialogId: string) => void | Promise<void>;
 /** A keypress for a `custom` screen's component. */
 export type ExtensionDialogKeyCallback = (dialogId: string, key: string) => void | Promise<void>;
+/** A tapped line of a `custom` screen, by its number and its text; the daemon walks the cursor there. */
+export type ExtensionDialogLineCallback = (dialogId: string, line: number, text: string) => void | Promise<void>;
 
 const COUNTDOWN_TICK_MS = 1_000;
+
+/** The classes a styled run of a drawn screen takes: its pi roles and its emphasis. */
+function screenSpanClass(span: ScreenSpan): string {
+  return [
+    span.fg === undefined ? "" : `fg-${span.fg}`,
+    span.bg === undefined ? "" : `bg-${span.bg}`,
+    span.bold === true ? "bold" : "",
+    span.dim === true ? "dim" : "",
+    span.italic === true ? "italic" : "",
+    span.underline === true ? "underline" : "",
+    span.inverse === true ? "inverse" : "",
+    span.strike === true ? "strike" : "",
+  ].filter((name) => name !== "").join(" ");
+}
 
 /**
  * Longest heading kept in the card header. Beyond this the heading is
@@ -173,6 +191,7 @@ export class ExtensionDialogCard extends LitElement {
   @property({ attribute: false }) onAnswer?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancel?: ExtensionDialogCancelCallback;
   @property({ attribute: false }) onKey?: ExtensionDialogKeyCallback;
+  @property({ attribute: false }) onLine?: ExtensionDialogLineCallback;
   /** Machine-scoped session key under which this browser keeps a half-given answer (questions screen, input or editor dialog) across a reload; empty keeps none. */
   @property({ attribute: false }) draftSessionId = "";
 
@@ -280,7 +299,6 @@ export class ExtensionDialogCard extends LitElement {
    * extension that wants another look declares its screen.
    */
   private renderScreenMenu(dialog: PendingExtensionDialog, shape: Extract<ScreenShape, { kind: "menu" }>): TemplateResult {
-    const lines = dialog.lines ?? [];
     const chosen = this.chosenScreenLine(dialog, shape);
     return html`
       ${shape.body.length === 0 ? null : html`<p class="dialog-message">${shape.body.join("\n")}</p>`}
@@ -298,7 +316,7 @@ export class ExtensionDialogCard extends LitElement {
       </div>
       <footer class="dialog-footer">
         <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Cancel</button>
-        <button class="primary-action" type="button" ?disabled=${this.closing || chosen === undefined} @click=${() => { if (chosen !== undefined) void this.tapScreenLine(dialog, lines, chosen); }}>Confirm</button>
+        <button class="primary-action" type="button" ?disabled=${this.closing || chosen === undefined} @click=${() => { if (chosen !== undefined) void this.tapLine(dialog, chosen); }}>Confirm</button>
       </footer>
     `;
   }
@@ -311,8 +329,8 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   /**
-   * The last resort: a terminal screen that does not read as a menu. Its lines go out as
-   * drawn; a tap on a line walks the component's cursor there and selects it, and text goes
+   * The last resort: a terminal screen that does not read as a menu. When the daemon sends styledLines it
+   * draws as a web card (styled runs in app tokens, frame and key-hint rows hidden, the selected row marked); otherwise its lines go out as drawn; a tap on a line walks the component's cursor there and selects it, and text goes
    * in through a real field, because a phone raises no keyboard for drawn lines and an input
    * method composes only into a field (the owner's Chinese answer reached a screen as "3").
    * Send types the field into the component and presses Enter; empty, it only presses Enter.
@@ -322,25 +340,27 @@ export class ExtensionDialogCard extends LitElement {
    */
   private renderScreenText(dialog: PendingExtensionDialog, shape: ScreenShape): TemplateResult {
     const lines = dialog.lines ?? [];
-    const tappable = screenIsTappable(lines);
+    const styled = dialog.styledLines;
     return html`
-      ${dialog.message === undefined ? null : html`<p class="dialog-screen-hint">${dialog.message}</p>`}
       <div
-        class="dialog-screen"
+        class=${styled === undefined ? "dialog-screen" : "dialog-screen styled"}
         role="group"
         aria-label="Extension screen"
         tabindex="0"
         @keydown=${(event: KeyboardEvent) => { this.forwardScreenKey(event, dialog); }}
-      >${shape.body.map((line) => html`<div
-        class=${`screen-line${tappable && isSelectableLine(line) ? " selectable" : ""}`}
-        @click=${() => { void this.tapScreenLine(dialog, lines, lines.indexOf(line)); }}
-      >${line === "" ? " " : line}</div>`)}</div>
+      >${styled === undefined
+        ? shape.body.map((line, index) => html`<div
+          class=${`screen-line${screenIsTappable(lines) && isSelectableLine(line) ? " selectable" : ""}`}
+          @click=${() => { void this.tapLine(dialog, index); }}
+        >${line === "" ? " " : line}</div>`)
+        : this.renderStyledScreen(dialog, styled)}</div>
       <form class="dialog-input-form" @submit=${(event: SubmitEvent) => { void this.typeIntoScreen(event, dialog); }}>
         <input
           class="dialog-input"
           type="text"
           name="screen-text"
           aria-label="Text for the screen"
+          placeholder="Type to the screen"
           maxlength=${String(EXTENSION_DIALOG_INPUT_MAX_LENGTH)}
           .value=${live(this.inputValue)}
           ?disabled=${this.closing}
@@ -371,14 +391,38 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   /**
-   * A tap on a line: walk the component's cursor there, then select.
-   *
-   * Sent one key at a time because each key redraws the screen, and the walk is
-   * computed from the lines as they are: a component that re-orders between keys
-   * would otherwise take a stale step count.
+   * The screen as the extension styled it (state-diagram D2, 2026-10-11): its roles in the card's
+   * own colors, its box drawing and key-hint row left out, the line under its cursor marked as the
+   * selected row. Every remaining selectable line can be tapped once the screen shows a cursor.
    */
-  private async tapScreenLine(dialog: PendingExtensionDialog, lines: readonly string[], index: number): Promise<void> {
-    if (!screenIsTappable(lines) || !isSelectableLine(lines[index] ?? "")) return;
+  private renderStyledScreen(dialog: PendingExtensionDialog, styled: readonly ScreenLine[]): TemplateResult[] {
+    const lines = dialog.lines ?? [];
+    const tappable = dialog.selectedLine !== undefined;
+    return styled.flatMap((line, index) => {
+      const text = line.spans.map((span) => span.text).join("");
+      if (line.frame === true || (index !== dialog.selectedLine && isScreenHintLine(text))) return [];
+      const selectable = tappable && lines[index] !== undefined && isSelectableLine(text);
+      return [html`<div
+        class=${`screen-line${selectable ? " selectable" : ""}${index === dialog.selectedLine ? " selected" : ""}`}
+        @click=${() => { if (selectable) void this.tapLine(dialog, index); }}
+      >${line.spans.length === 0 ? " " : line.spans.map((span) => html`<span class=${screenSpanClass(span)}>${span.text}</span>`)}</div>`];
+    });
+  }
+
+  /**
+   * A tap on a line selects it. A daemon that sends styled lines walks the component's cursor there
+   * itself, judging every step on the redraw, so an item drawn on two lines or a scrolling list lands
+   * where the reader tapped; an older one gets the keys a line count gives.
+   */
+  private async tapLine(dialog: PendingExtensionDialog, index: number): Promise<void> {
+    const lines = dialog.lines ?? [];
+    const text = lines[index];
+    if (text === undefined || !isSelectableLine(text)) return;
+    if (dialog.styledLines !== undefined && this.onLine !== undefined) {
+      await this.onLine(dialog.dialogId, index, text);
+      return;
+    }
+    if (!screenIsTappable(lines)) return;
     for (const key of keysForLineTap(lines, index)) await this.onKey?.(dialog.dialogId, key);
   }
 
@@ -700,8 +744,22 @@ export class ExtensionDialogCard extends LitElement {
   .screen-choice { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-md); line-height: 1.35; overflow-wrap: anywhere; cursor: pointer; }
   .screen-choice.chosen { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   .screen-choice input { width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; accent-color: var(--pi-accent); }
+  .dialog-screen.styled { padding: var(--pi-space-2) 0; border: none; background: transparent; font-family: inherit; font-size: var(--pi-text-sm); line-height: 1.45; }
+  .dialog-screen.styled .screen-line { padding: 1px var(--pi-space-3); white-space: pre-wrap; overflow-wrap: anywhere; border-radius: var(--pi-radius-sm); }
+  .dialog-screen.styled .screen-line.selected { background: var(--pi-selection-bg); }
+  .fg-accent, .fg-borderAccent, .fg-mdHeading, .fg-mdLink, .fg-toolTitle, .fg-customMessageLabel { color: var(--pi-accent); }
+  .fg-dim, .fg-muted, .fg-border, .fg-borderMuted, .fg-thinkingText, .fg-mdCodeBlockBorder, .fg-mdQuoteBorder, .fg-mdHr, .fg-toolDiffContext, .fg-syntaxComment { color: var(--pi-muted); }
+  .fg-success, .fg-toolDiffAdded { color: var(--pi-success); }
+  .fg-error, .fg-toolDiffRemoved { color: var(--pi-danger); }
+  .fg-warning { color: var(--pi-warning); }
+  .bg-selectedBg, .bg-searchMatchBg { background: var(--pi-selection-bg); }
+  .bold { font-weight: var(--pi-weight-semibold); }
+  .dim { opacity: 0.72; }
+  .italic { font-style: italic; }
+  .underline { text-decoration: underline; }
+  .strike { text-decoration: line-through; }
+  .inverse { background: var(--pi-text); color: var(--pi-surface); }
   .dialog-screen:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
-  .dialog-screen-hint { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   .dialog-input {
       box-sizing: border-box;
       width: calc(100% - 32px);

@@ -14,6 +14,9 @@
 /** The frame a component may draw, before its own content. */
 const FRAME_PREFIX = /^[\s│┃|]*/u;
 const CURSOR_LINE = /^[\s│┃|]*[›>▸▪•*]\s/u;
+const HINT_KEY = /\b(?:enter|esc|escape|space|tab)\b|[↑↓←→]/iu;
+const HINT_SEPARATOR = /[·|,]|\s•\s|\s{2,}/u;
+const LEADING_CURSOR = /^[›>▸▶➤❯→●•*]\s/u;
 
 /** Which line the component's own cursor sits on, if the screen has one. */
 export function screenCursorLine(lines: readonly string[]): number | undefined {
@@ -45,7 +48,9 @@ export function isSelectableLine(line: string): boolean {
 
 /**
  * The component's own key-hint row, e.g. "Enter to select · ↑↓ to navigate · Esc =
- * back".
+ * back", or "↑ ↓ navigate • Esc cancel" (a bullet between words; one opening a line is a
+ * list item). A key is a whole word, and a cursor glyph opening the line is the cursor, not a
+ * key: pi-tui's list draws its selected row as "→ label   description" (8505, 2026-10-11).
  *
  * A TUI explains the keys because a terminal has them; the browser draws its own
  * controls, so the row is the one line that can go - and it is the line that made
@@ -55,5 +60,6 @@ export function isScreenHintLine(line: string): boolean {
   const text = line.replace(FRAME_PREFIX, "").replace(/[│┃|]\s*$/u, "").trim();
   if (text === "") return false;
   if (text.startsWith("|") || text.startsWith("│")) return false;
-  return /(enter|esc|space|tab|↑|↓|←|→)/iu.test(text) && /[·|,]|\s{2,}/u.test(text);
+  const words = text.replace(LEADING_CURSOR, "");
+  return HINT_KEY.test(words) && HINT_SEPARATOR.test(words);
 }

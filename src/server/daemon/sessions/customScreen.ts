@@ -9,11 +9,17 @@
  *
  * The browser cannot run a TUI, but a component is only two things: lines for a
  * width, and keys in. Both are transportable. What it needs from the terminal is
- * a `tui` and a `keybindings` object; the theme is already the daemon's plain one
- * (`plainTextTheme`), which is why the lines need no ANSI stripping.
+ * a `tui` and a `keybindings` object. The plain lines are drawn and passed through pi-tui's
+ * `stripTerminalSequences`. A component's own codes (pi-tui's input draws its cursor in
+ * reverse video) would otherwise show as text, as in "> [7m [27m" on pi-prompt-history's
+ * picker. The styled view (`renderScreenView`) renders once with pi's global theme swapped to
+ * `screenTheme` (screenView.ts). That theme writes each role as a private truecolor code, and
+ * `screenView` parses those codes back into styled runs.
  */
-import { getKeybindings } from "@earendil-works/pi-tui";
+import { getKeybindings, stripTerminalSequences } from "@earendil-works/pi-tui";
 import { EXTENSION_DIALOG_SCREEN_MAX_LINES } from "../../../shared/apiTypes.js";
+import { withGlobalTheme } from "./piGlobalTheme.js";
+import { screenTheme, screenView, type ScreenView } from "./screenView.js";
 
 /** The little of a TUI component this host drives. */
 export interface CustomScreenComponent {
@@ -58,12 +64,21 @@ export function isScreenComponent(value: unknown): value is CustomScreenComponen
   return typeof value === "object" && value !== null && "render" in value && typeof value.render === "function";
 }
 
+/** What the component drew, without its trailing blank lines, bounded. */
+function drawnLines(component: CustomScreenComponent, width: number, maxLines: number): string[] {
+  const lines = [...component.render(width)];
+  while (lines.length > 0 && stripTerminalSequences(lines[lines.length - 1] ?? "").trim() === "") lines.pop();
+  return lines.slice(0, maxLines);
+}
+
 /** Render, bounded and free of a trailing blank tail. */
 export function renderCustomScreen(component: CustomScreenComponent, width = CUSTOM_SCREEN_WIDTH, maxLines: number = EXTENSION_DIALOG_SCREEN_MAX_LINES): string[] {
-  const lines = component.render(width);
-  const trimmed = [...lines];
-  while (trimmed.length > 0 && (trimmed[trimmed.length - 1] ?? "").trim() === "") trimmed.pop();
-  return trimmed.slice(0, maxLines);
+  return drawnLines(component, width, maxLines).map((line) => stripTerminalSequences(line));
+}
+
+/** Render a screen dialog's component as plain lines, styled runs and its cursor (screenView.ts). */
+export function renderScreenView(component: CustomScreenComponent, width = CUSTOM_SCREEN_WIDTH): ScreenView {
+  return screenView(withGlobalTheme(screenTheme, () => drawnLines(component, width, EXTENSION_DIALOG_SCREEN_MAX_LINES)));
 }
 
 /**

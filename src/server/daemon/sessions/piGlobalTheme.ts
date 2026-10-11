@@ -17,3 +17,19 @@ const PI_GLOBAL_THEME_KEYS = [
 export function installPlainGlobalTheme(): void {
   for (const key of PI_GLOBAL_THEME_KEYS) Reflect.set(globalThis, key, plainTextTheme);
 }
+
+/**
+ * Draw with another global theme for one synchronous render, then put the previous one back. pi's
+ * `theme` export reads its key on every access, so pi's own components inside an extension screen
+ * (a `SelectList` themed by `getSelectListTheme()`, a `DynamicBorder`) mark their roles for the web
+ * card the way the factory's theme does; every other drawing keeps the plain one.
+ */
+export function withGlobalTheme<T>(theme: object, draw: () => T): T {
+  const previous = PI_GLOBAL_THEME_KEYS.map((key): unknown => Reflect.get(globalThis, key));
+  for (const key of PI_GLOBAL_THEME_KEYS) Reflect.set(globalThis, key, theme);
+  try {
+    return draw();
+  } finally {
+    PI_GLOBAL_THEME_KEYS.forEach((key, index) => Reflect.set(globalThis, key, previous[index]));
+  }
+}

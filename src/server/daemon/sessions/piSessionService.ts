@@ -123,7 +123,8 @@ import { ExtensionComposer } from "./extensionComposer.js";
 import { ExtensionStanding } from "./extensionStanding.js";
 import { ExtensionOrigins, type LoadedExtensionFile } from "./extensionOrigin.js";
 import { declaredAgentFacts } from "./declaredAgentFacts.js";
-import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
+import { customScreenHarness, extensionNameFromStack, renderScreenView, type CustomScreenComponent } from "./customScreen.js";
+import { screenTheme, walkScreenTo, type ScreenView } from "./screenView.js";
 import { terminalKeyData } from "./terminalInput.js";
 import { drawCustomRow, drawToolCall, drawToolResult, showsCustomEntry, transformedMarkdown, type ExtensionRenderers, type MarkdownKind } from "./extensionDrawings.js";
 import { ExtensionShortcuts, type ExtensionShortcutRunner } from "./extensionShortcuts.js";
@@ -1352,10 +1353,13 @@ function applyFactory(factory: unknown, args: unknown[]): unknown {
   return Reflect.apply(factory, undefined, args);
 }
 
-const CUSTOM_SCREEN_HINT = "keys go to the extension · Esc closes";
+/** A drawn screen's heading when nothing names the extension that drew it. */
+const DRAWN_SCREEN_TITLE = "Extension screen";
 
-function customScreenOwner(stack: string | undefined): string | undefined {
-  return extensionNameFromStack(stack);
+/** An open drawn screen as the routes drive it: a key by name, or a tapped line (screenView.ts). */
+interface OpenScreen {
+  key(key: string): void;
+  select(line: number, text: string): void;
 }
 
 function isCustomScreenComponent(value: unknown): value is CustomScreenComponent {
@@ -1497,7 +1501,7 @@ export class PiSessionService implements SessionRouteService {
   /** The last factory call's stack, read for the extension's own frame. */
   private customScreenStack: string | undefined;
   /** Open extension screens, by dialog id, so a keypress can find its component. */
-  private readonly customScreens = new Map<string, (key: string) => void>();
+  private readonly customScreens = new Map<string, OpenScreen>();
   /** Per runtime, so a disposed or rebound runtime takes its values with it; see extensionStanding.ts. */
   private readonly extensionStanding = new WeakMap<PiAgentSession, ExtensionStanding>();
   /** Who wrote a widget, read off the call stack (extension-keys-in-go-to.md). */
@@ -2024,10 +2028,16 @@ export class PiSessionService implements SessionRouteService {
     return { result: "closed", outcome, sessionStatus: this.statusFromSession(session) };
   }
 
-  /** Close an open extension dialog without an answer; the extension's wait settles with its kind's cancel value. */
+  /**
+   * Close an open extension dialog without an answer; the extension's wait settles with its kind's cancel value.
+   * A drawn screen first gets the Esc pi's terminal would send, so a component that cancels itself on Esc
+   * ends as it would in pi; closing it from outside answers undefined, which an extension written for
+   * pi's RPC mode takes as "no custom UI" and asks the reader again through its dialogs.
+   */
   async cancelDialog(ref: PiSessionRef, dialogId: string): Promise<ExtensionDialogCloseResponse> {
     await this.assertWritable(ref);
     const session = await this.sessionForStatusOrDialogClose(ref);
+    this.offerEscape(dialogId);
     const result = this.pendingExtensionDialogStore.cancel(session.sessionId, dialogId, "cancelled");
     if (result.status === "stale") return { result: "stale", sessionStatus: this.statusFromSession(session) };
     const { outcome } = result;
@@ -2094,7 +2104,7 @@ export class PiSessionService implements SessionRouteService {
     // Captured before the factory runs so the frame belongs to the extension.
     this.customScreenStack = new Error().stack;
     if (options.screen !== undefined) {
-      const questionsId = this.openCustomDialog(session, [], customScreenOwner(this.customScreenStack), options.screen);
+      const questionsId = this.openCustomDialog(session, { screen: options.screen }, options.screen.title ?? "Questions");
       return await this.customDialogClosed(session, questionsId, options);
     }
     const harness = customScreenHarness();
@@ -2136,19 +2146,32 @@ export class PiSessionService implements SessionRouteService {
       settledBeforeMount: lifecycle.settledBeforeMount,
     });
     if (lifecycle.settledBeforeMount) return await finished;
-    const lines = renderCustomScreen(component);
-    dialogId = this.openCustomDialog(session, lines, customScreenOwner(this.customScreenStack), options.screen);
-    const onKey = (key: string): void => {
+    const openId = this.openCustomDialog(session, { view: renderScreenView(component) }, this.drawnScreenTitle(session, this.customScreenStack));
+    dialogId = openId;
+    const press = (key: string): void => {
       const data = terminalKeyData(key);
-      if (data === undefined) return;
-      try {
-        component.handleInput?.(data);
-      } finally {
-        this.pendingExtensionDialogStore.update(dialogId, renderCustomScreen(component));
-        this.publishStatusForSessionId(session.sessionId);
-      }
+      if (data !== undefined) component.handleInput?.(data);
     };
-    this.customScreens.set(dialogId, onKey);
+    const redraw = (): void => {
+      this.pendingExtensionDialogStore.update(openId, renderScreenView(component));
+      this.publishStatusForSessionId(session.sessionId);
+    };
+    this.customScreens.set(openId, {
+      key: (key) => {
+        try {
+          press(key);
+        } finally {
+          redraw();
+        }
+      },
+      select: (line, text) => {
+        try {
+          walkScreenTo({ press, view: () => renderScreenView(component) }, { line, text });
+        } finally {
+          redraw();
+        }
+      },
+    });
     try {
       return await Promise.race([finished, this.customDialogClosed(session, dialogId, options)]);
     } finally {
@@ -2165,7 +2188,7 @@ export class PiSessionService implements SessionRouteService {
    * error at the boundary instead of a crash inside the host later.
    */
   private async buildCustomScreen(factory: unknown, harness: { tui: object; keybindings: object }, done: (result: unknown) => void): Promise<CustomScreenComponent> {
-    const built: unknown = await applyFactory(factory, [harness.tui, plainTextTheme, harness.keybindings, done]);
+    const built: unknown = await applyFactory(factory, [harness.tui, screenTheme, harness.keybindings, done]);
     if (!isCustomScreenComponent(built)) throw new Error("the extension's custom factory did not return a component");
     return built;
   }
@@ -2194,21 +2217,31 @@ export class PiSessionService implements SessionRouteService {
     return session.isStreaming && !this.commandHandlers.inHandler;
   }
 
+  /**
+   * The heading of a drawn screen: the extension's origin title (extensionOrigin.ts: its package's
+   * `piWeb.title`, else the package's name, else its folder's or file's name), else the name its
+   * file gives the call stack, and "Extension screen" only when neither is known. That generic
+   * heading alone said nothing about who was asking (the owner, 2026-10-11, on pi-prompt-history's
+   * picker).
+   */
+  private drawnScreenTitle(session: PiAgentSession, stack: string | undefined): string {
+    return this.extensionOrigins.originOf(stack, loadedExtensionFiles(session), declaredAgentFacts().surfaces)?.title
+      ?? extensionNameFromStack(stack)
+      ?? DRAWN_SCREEN_TITLE;
+  }
+
   private openCustomDialog(
     session: PiAgentSession,
-    lines: string[],
-    openedBy: string | undefined,
-    screen?: ExtensionDialogScreen,
+    content: { view: ScreenView } | { screen: ExtensionDialogScreen },
+    title: string,
   ): string {
     const dialog = this.openDialogRecord(session, {
       sessionId: session.sessionId,
       kind: "custom",
-      title: screen === undefined ? "Extension screen" : screen.title ?? "Questions",
-      // Who and what, in one line: the surface carried no title of its own and
-      // "Extension screen" alone read as something unannounced.
-      message: openedBy === undefined ? CUSTOM_SCREEN_HINT : `${openedBy} · ${CUSTOM_SCREEN_HINT}`,
-      lines,
-      ...(screen === undefined ? {} : { screen }),
+      title,
+      ...("view" in content
+        ? { lines: content.view.lines, styledLines: content.view.styled, selectedLine: content.view.selected }
+        : { lines: [], screen: content.screen }),
       runScoped: this.dialogRunScoped(session),
     });
     const revision = this.nextDialogRevision(session.sessionId);
@@ -2229,7 +2262,30 @@ export class PiSessionService implements SessionRouteService {
     const handler = this.customScreens.get(dialogId);
     if (handler === undefined) return false;
     void session;
-    handler(key);
+    handler.key(key);
+    return true;
+  }
+
+  /**
+   * Give an open drawn screen the Esc pi's terminal would send, ahead of the reader's Cancel. A
+   * component that throws on it must not keep the reader in its screen: the failure is logged and
+   * the cancel goes on.
+   */
+  private offerEscape(dialogId: string): void {
+    try {
+      this.customScreens.get(dialogId)?.key("escape");
+    } catch (error) {
+      console.error("[extension-screen] escape failed", String(error));
+    }
+  }
+
+  /** Move an open drawn screen's cursor to the line the reader tapped and select it (screenView.ts). */
+  async selectCustomScreenLine(ref: PiSessionRef, dialogId: string, line: number, text: string): Promise<boolean> {
+    await this.assertWritable(ref);
+    await this.sessionForStatusOrDialogClose(ref);
+    const handler = this.customScreens.get(dialogId);
+    if (handler === undefined) return false;
+    handler.select(line, text);
     return true;
   }
 

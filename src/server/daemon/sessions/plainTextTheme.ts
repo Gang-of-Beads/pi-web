@@ -6,7 +6,8 @@ const RESET_COLOR = "";
 
 // Theme requires complete color tables for nominal class construction. Every
 // method that could expose the resulting reset codes is overridden below.
-const SUPERCLASS_FOREGROUND_COLORS = {
+/** Every foreground token pi's Theme requires, each with no color of its own. */
+export const SUPERCLASS_FOREGROUND_COLORS = {
   accent: RESET_COLOR,
   border: RESET_COLOR,
   borderAccent: RESET_COLOR,
@@ -55,7 +56,8 @@ const SUPERCLASS_FOREGROUND_COLORS = {
   bashMode: RESET_COLOR,
 } satisfies ThemeConstructorParameters[0];
 
-const SUPERCLASS_BACKGROUND_COLORS = {
+/** Every background token pi's Theme requires, each with no color of its own. */
+export const SUPERCLASS_BACKGROUND_COLORS = {
   selectedBg: RESET_COLOR,
   userMessageBg: RESET_COLOR,
   customMessageBg: RESET_COLOR,

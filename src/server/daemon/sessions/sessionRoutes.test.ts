@@ -1355,6 +1355,14 @@ class CapturingRouteSessionService implements SessionRouteService {
     return Promise.resolve(true);
   }
 
+  selectCustomScreenLine(lookup: SessionRouteRef, dialogId: string, line: number, text: string): Promise<boolean> {
+    void lookup;
+    void dialogId;
+    void line;
+    void text;
+    return Promise.resolve(true);
+  }
+
   answerDialog(lookup: SessionRouteRef, dialogId: string, value: ExtensionDialogAnswer): Promise<ExtensionDialogCloseResponse> {
     if (this.dialogError !== undefined) return Promise.reject(this.dialogError);
     this.answerDialogCalls.push({ lookup, dialogId, value });

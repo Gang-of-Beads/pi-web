@@ -1617,6 +1617,13 @@ export class SessionController {
     return this.api.sendDialogKey(session, dialogId, key, selectedMachineId(this.getState())).then(() => undefined);
   }
 
+  /** Select the tapped line of an open drawn screen; the daemon walks the screen's cursor there. */
+  selectDialogLine(dialogId: string, line: number, text: string): Promise<void> {
+    const session = this.getState().selectedSession;
+    if (session === undefined) return Promise.resolve();
+    return this.api.selectDialogLine(session, dialogId, line, text, selectedMachineId(this.getState())).then(() => undefined);
+  }
+
   /** Close one of the session's open extension dialogs without answering it. */
   cancelDialog(dialogId: string): Promise<void> {
     return this.closeOpenDialog(dialogId, (session, machineId) => this.api.cancelDialog(session, dialogId, machineId));
