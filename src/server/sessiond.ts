@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { mkdir, rm } from "node:fs/promises";
 import { delimiter, dirname } from "node:path";
-import Fastify from "fastify";
+import Fastify, { LogController } from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import { WorkspaceActivityService } from "./daemon/activity/workspaceActivityService.js";
 import { MachineStatusService } from "./daemon/status/machineStatusService.js";
@@ -82,7 +82,7 @@ if (agentSessionDirOverride !== undefined) {
 // session can tell it runs inside this pi-web instance. The session
 // environment facts below explain the precautions that follow from it.
 process.env[PI_WEB_SESSION_ENV] = "1";
-const app = Fastify({ logger: true, disableRequestLogging: true, bodyLimit: maxUploadBytes(daemonEnvironment, config) });
+const app = Fastify({ logger: true, logController: new LogController({ disableRequestLogging: true }), bodyLimit: maxUploadBytes(daemonEnvironment, config) });
 startProcessLogging(app, "sessiond.log");
 if (deprecatedAgentInputs.length > 0) {
   app.log.warn({ deprecatedAgentInputs }, "deprecated agent configuration inputs detected; support will be removed in a future release");

@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { existsSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions } from "fastify";
+import Fastify, { LogController, type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions } from "fastify";
 import { notFoundAnswer, type NotFoundAnswer } from "./notFoundAnswer.js";
 import fastifyCompress from "@fastify/compress";
 import fastifyStatic from "@fastify/static";
@@ -225,7 +225,7 @@ async function withProfileDependency<T>(reply: FastifyReply, operation: () => Pr
 }
 
 export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: deps.logger ?? true, disableRequestLogging: true, ...(deps.bodyLimit === undefined ? {} : { bodyLimit: deps.bodyLimit }) });
+  const app = Fastify({ logger: deps.logger ?? true, logController: new LogController({ disableRequestLogging: true }), ...(deps.bodyLimit === undefined ? {} : { bodyLimit: deps.bodyLimit }) });
   // Vite proxies development API requests here, while production and machine-scoped
   // API requests already terminate here, so this is the shared browser HTTP edge.
   await app.register(fastifyCompress, {
