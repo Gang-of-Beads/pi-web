@@ -118,7 +118,8 @@ never draws one for a session it is not showing.
   there is one, otherwise appends).
 - **`getEditorText()`** is synchronous, and the daemon cannot ask a browser
   synchronously. It returns the last text this session's extensions set, or
-  `""`. The extension docs say so.
+  `""`. The extension docs say so. A message or command sent from the composer
+  empties it, as pi's editor empties before it runs what was submitted (2026-10-11).
 
 ### Theme
 

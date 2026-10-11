@@ -198,7 +198,7 @@
                 <code>0</code>, which waits forever) — does the same when no one answers. <code>custom</code> draws its
                 screen as a card: a menu as choices with Confirm, anything else as its text with a text field (drawn in the
                 app's font and colours from the roles the component draws with, without its box drawing or key-hint row,
-                under the extension's name; Send types the field into the component and presses Enter, tapping a line
+                under the extension's name; the field types into the component as you type and Send presses Enter, tapping a line
                 selects that item, and Cancel first sends Esc; there are no arrow-key buttons, and the component receives
                 keys as pi's terminal sends them), and a screen declared with
                 <code>web: { kind: "questions" }</code> as the Questions card (<code>ctx.ui.piWebScreens</code> lists what
@@ -228,7 +228,8 @@
                 the session's composer text and <code>pasteToEditor</code> inserts at the caret, in every browser showing the
                 session at that moment (a write that lands while a browser is still opening the session can be missed
                 there); <code>getEditorText</code> returns what the session's extensions wrote, or <code>""</code>, since
-                it cannot read a browser's draft. A browser loaded before PI WEB knew <code>editor</code> draws no card for
+                it cannot read a browser's draft, and a message or command sent from the composer empties it, as pi's
+                editor empties on submit. A browser loaded before PI WEB knew <code>editor</code> draws no card for
                 it: reload the page. <code>setHeader</code> and <code>setFooter</code> show on the extension's page in Go to
                 with its widgets, and <code>addAutocompleteProvider</code> completes in the composer. <code>setToolsExpanded</code> opens the session's tool output;
                 <code>setTheme</code> answers that PI WEB's own themes apply. <code>onTerminalInput</code> gets Esc
@@ -283,7 +284,7 @@
                     </tr>
                     <tr>
                       <td><code>getEditorText</code></td>
-                      <td>What the session's extensions wrote, or <code>""</code>; a browser's own draft cannot be read.</td>
+                      <td>What the session's extensions wrote since the last message or command was sent, or <code>""</code>; a browser's own draft cannot be read.</td>
                     </tr>
                     <tr>
                       <td><code>theme</code></td>

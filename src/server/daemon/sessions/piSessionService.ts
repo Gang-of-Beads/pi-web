@@ -3234,6 +3234,7 @@ export class PiSessionService implements SessionRouteService {
       this.publishStatus(session);
       return;
     }
+    this.composerFor(session).submitted();
     // Accepted only after the inbox file commits. Otherwise a full disk or a
     // read-only workspace would make the browser settle its outbox for a
     // message the daemon forgets at its next restart.
@@ -4007,6 +4008,7 @@ export class PiSessionService implements SessionRouteService {
   async runCommand(ref: PiSessionRef, text: string): Promise<ClientCommandResult> {
     await this.assertWritable(ref);
     const active = await this.getActive(ref);
+    this.composerFor(active.runtime.session).submitted();
     return this.commandService.run(active.runtime.session.sessionId, text);
   }
 

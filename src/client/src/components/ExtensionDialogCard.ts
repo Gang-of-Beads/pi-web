@@ -203,8 +203,10 @@ export class ExtensionDialogCard extends LitElement {
   /** A Shift the keyboard really pressed; see promptEnterBehavior.ts (the composer tracks the same). */
   private explicitShiftKeyActive = false;
   private dialogIdentity: string | undefined;
-  /** A Send still typing into a screen. Another Send meanwhile does nothing and its text stays in the field, so keys never interleave. */
-  private typingIntoScreen = false;
+  /** What this card has sent to the open screen since its last Enter; every edit of the field is sent as its difference from this. */
+  private screenTyped = "";
+  /** The screen's keys in the order they were typed: each waits for the one before, so a fast typist's keys never interleave. */
+  private screenKeys: Promise<void> = Promise.resolve();
   private countdownTimer: number | undefined;
 
   override connectedCallback(): void {
@@ -226,6 +228,7 @@ export class ExtensionDialogCard extends LitElement {
     if (identity !== this.dialogIdentity) {
       this.dialogIdentity = identity;
       this.inputValue = this.openingText();
+      this.screenTyped = this.dialog?.kind === "custom" ? this.inputValue : "";
       this.closing = false;
     }
     this.syncCountdownTimer();
@@ -354,7 +357,7 @@ export class ExtensionDialogCard extends LitElement {
           @click=${() => { void this.tapLine(dialog, index); }}
         >${line === "" ? " " : line}</div>`)
         : this.renderStyledScreen(dialog, styled)}</div>
-      <form class="dialog-input-form" @submit=${(event: SubmitEvent) => { void this.typeIntoScreen(event, dialog); }}>
+      <form class="dialog-input-form" @submit=${(event: SubmitEvent) => { this.pressScreenEnter(event, dialog); }}>
         <input
           class="dialog-input"
           type="text"
@@ -364,7 +367,9 @@ export class ExtensionDialogCard extends LitElement {
           maxlength=${String(EXTENSION_DIALOG_INPUT_MAX_LENGTH)}
           .value=${live(this.inputValue)}
           ?disabled=${this.closing}
-          @input=${(event: Event) => { this.changeInput(event); }}
+          @input=${(event: Event) => { this.typeIntoScreen(event, dialog); }}
+          @compositionend=${(event: Event) => { this.changeInput(event); this.syncScreenText(dialog); }}
+          @keydown=${(event: KeyboardEvent) => { this.backspaceIntoScreen(event, dialog); }}
         />
         <footer class="dialog-footer">
           <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Cancel</button>
@@ -374,20 +379,52 @@ export class ExtensionDialogCard extends LitElement {
     `;
   }
 
-  /** Type the field into the component one character at a time, as a terminal delivers typing, then press Enter. */
-  private async typeIntoScreen(event: SubmitEvent, dialog: PendingExtensionDialog): Promise<void> {
+  /**
+   * The field types into the component as the reader types, the way a terminal delivers typing:
+   * what was added goes as its characters and what was deleted as Backspace, in order, so a list
+   * that searches as you type follows the field (owner, 2026-10-11: "好难操作啊" on
+   * pi-prompt-history, whose search took the whole field only at Send). An input method's
+   * composition goes when it ends.
+   */
+  private typeIntoScreen(event: Event, dialog: PendingExtensionDialog): void {
+    this.changeInput(event);
+    if (Reflect.get(event, "isComposing") === true) return;
+    this.syncScreenText(dialog);
+  }
+
+  private syncScreenText(dialog: PendingExtensionDialog): void {
+    const before = Array.from(this.screenTyped);
+    const after = Array.from(this.inputValue);
+    let kept = 0;
+    while (kept < before.length && kept < after.length && before[kept] === after[kept]) kept += 1;
+    this.screenTyped = this.inputValue;
+    this.sendScreenKeys(dialog, [...Array.from({ length: before.length - kept }, () => "backspace"), ...after.slice(kept)]);
+  }
+
+  /** Backspace in an empty field still reaches the component: what it holds may have been typed before this page loaded. */
+  private backspaceIntoScreen(event: KeyboardEvent, dialog: PendingExtensionDialog): void {
+    if (event.key !== "Backspace" || keyBelongsToInputMethod(event) || this.inputValue !== "") return;
+    this.sendScreenKeys(dialog, ["backspace"]);
+  }
+
+  /** Send presses Enter: the text is in the component already. The field starts over for what comes next. */
+  private pressScreenEnter(event: SubmitEvent, dialog: PendingExtensionDialog): void {
     event.preventDefault();
-    if (this.typingIntoScreen) return;
-    this.typingIntoScreen = true;
-    const text = this.inputValue;
+    this.syncScreenText(dialog);
+    this.sendScreenKeys(dialog, ["enter"]);
     this.inputValue = "";
+    this.screenTyped = "";
     if (this.draftSessionId !== "") clearDialogAnswerDraft(this.draftSessionId, dialog.dialogId);
-    try {
-      for (const character of text) await this.onKey?.(dialog.dialogId, character);
-      await this.onKey?.(dialog.dialogId, "enter");
-    } finally {
-      this.typingIntoScreen = false;
-    }
+  }
+
+  private sendScreenKeys(dialog: PendingExtensionDialog, keys: readonly string[]): void {
+    const send = this.onKey;
+    if (keys.length === 0 || send === undefined) return;
+    this.screenKeys = this.screenKeys
+      .then(async () => {
+        for (const key of keys) await send(dialog.dialogId, key);
+      })
+      .catch(() => undefined);
   }
 
   /**
