@@ -395,6 +395,8 @@ export const sessionsApi = {
     request(sessionPath(session, "dialog/key", machineId), parseDialogKeyResponse, { method: "POST", body: sessionBody(session, { dialogId, key }) }),
   selectDialogLine: (session: SessionRef, dialogId: string, line: number, text: string, machineId = "local") =>
     request(sessionPath(session, "dialog/key", machineId), parseDialogKeyResponse, { method: "POST", body: sessionBody(session, { dialogId, line, text }) }),
+  resizeDialogScreen: (session: SessionRef, dialogId: string, width: number, machineId = "local") =>
+    request(sessionPath(session, "dialog/key", machineId), parseDialogKeyResponse, { method: "POST", body: sessionBody(session, { dialogId, width }) }),
   cancelDialog: (session: SessionRef, dialogId: string, machineId = "local") => request(sessionPath(session, "dialogs/cancel", machineId), parseExtensionDialogCloseResponse, { method: "POST", body: sessionBody(session, { dialogId }) }),
   models: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "models", machineId), parseModelSelectionResponse),
   modelCatalog: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "models/catalog", machineId), parseSessionModelCatalogResponse),

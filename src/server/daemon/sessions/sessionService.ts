@@ -85,6 +85,8 @@ export interface SessionRouteService {
   sendCustomScreenKey(ref: SessionRouteRef, dialogId: string, key: string): Promise<boolean>;
   /** Move an open drawn screen's cursor to a tapped line, matched by its text, and select it. */
   selectCustomScreenLine(ref: SessionRouteRef, dialogId: string, line: number, text: string): Promise<boolean>;
+  /** Draw an open drawn screen at the columns a card measured. */
+  resizeCustomScreen(ref: SessionRouteRef, dialogId: string, width: number): Promise<boolean>;
 
   answerDialog(ref: SessionRouteRef, dialogId: string, value: ExtensionDialogAnswer): Promise<ExtensionDialogCloseResponse>;
   cancelDialog(ref: SessionRouteRef, dialogId: string): Promise<ExtensionDialogCloseResponse>;

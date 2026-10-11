@@ -1,9 +1,10 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, EXTENSION_DIALOG_ID_MAX_LENGTH,
-  EXTENSION_DIALOG_KEY_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type AskUserAnswer, type AskUserSubmission, type ExtensionDialogAnswerRequest, type ExtensionDialogCancelRequest, type SessionBulkMutationRequest, type SessionSubsessionsSnapshot, type SessionBulkMutationRef, type SessionCleanupRequest, type SessionTreeForkRequest, type SessionTreeNavigateRequest, type SessionTreeSummaryChoice, type SessionUnreadAcknowledgeRequest } from "../../../shared/apiTypes.js";
+  EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type AskUserAnswer, type AskUserSubmission, type ExtensionDialogAnswerRequest, type ExtensionDialogCancelRequest, type SessionBulkMutationRequest, type SessionSubsessionsSnapshot, type SessionBulkMutationRef, type SessionCleanupRequest, type SessionTreeForkRequest, type SessionTreeNavigateRequest, type SessionTreeSummaryChoice, type SessionUnreadAcknowledgeRequest } from "../../../shared/apiTypes.js";
 import { projectBrowserMessageResponse } from "../browserMessageProjection.js";
 import { normalizeRequestCwd } from "../workingDirectory.js";
 import { readCompletionItem } from "./extensionCompletions.js";
+import { performScreenRequest, screenRequest, type ScreenRequestExecutors } from "./screenRequest.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { SessionRouteRef, SessionRouteService } from "./sessionService.js";
 import { clearInterruptedRuns, readInterruptedRuns } from "./interruptedRunStore.js";
@@ -517,18 +518,17 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
-  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unknown; key?: unknown; line?: unknown; text?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/dialog/key`, async (request) => {
+  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unknown; key?: unknown; line?: unknown; text?: unknown; width?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/dialog/key`, async (request) => {
     const body = request.body ?? {};
     const dialogId = requireNonEmptyBoundedString(body.dialogId, "dialogId", EXTENSION_DIALOG_ID_MAX_LENGTH);
     const ref = sessionRefFromBody(request.params.sessionId, body);
-    if (body.line !== undefined && body.key !== undefined) throw new Error("send either a key or a line, not both");
-    if (body.line !== undefined) {
-      const line = requireNonNegativeSafeInteger(body.line, "line");
-      const text = requireNonEmptyBoundedString(body.text, "text", EXTENSION_DIALOG_INPUT_MAX_LENGTH);
-      return await sessions.selectCustomScreenLine(ref, dialogId, line, text);
-    }
-    const key = requireNonEmptyBoundedString(body.key, "key", EXTENSION_DIALOG_KEY_MAX_LENGTH);
-    return await sessions.sendCustomScreenKey(ref, dialogId, key);
+    const asked = screenRequest(body);
+    const perform: ScreenRequestExecutors<Promise<boolean>> = {
+      key: (request) => sessions.sendCustomScreenKey(ref, dialogId, request.key),
+      line: (request) => sessions.selectCustomScreenLine(ref, dialogId, request.line, request.text),
+      width: (request) => sessions.resizeCustomScreen(ref, dialogId, request.width),
+    };
+    return await performScreenRequest(perform, asked);
   });
 
 app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/dialogs/cancel`, async (request, reply) => {

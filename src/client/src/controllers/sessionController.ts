@@ -1624,6 +1624,13 @@ export class SessionController {
     return this.api.selectDialogLine(session, dialogId, line, text, selectedMachineId(this.getState())).then(() => undefined);
   }
 
+  /** Ask the daemon to draw an open drawn screen at the columns this page's card has room for. */
+  resizeDialogScreen(dialogId: string, width: number): Promise<void> {
+    const session = this.getState().selectedSession;
+    if (session === undefined) return Promise.resolve();
+    return this.api.resizeDialogScreen(session, dialogId, width, selectedMachineId(this.getState())).then(() => undefined);
+  }
+
   /** Close one of the session's open extension dialogs without answering it. */
   cancelDialog(dialogId: string): Promise<void> {
     return this.closeOpenDialog(dialogId, (session, machineId) => this.api.cancelDialog(session, dialogId, machineId));

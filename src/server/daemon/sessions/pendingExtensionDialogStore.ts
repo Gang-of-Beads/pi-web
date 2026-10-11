@@ -5,6 +5,8 @@ import {
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   EXTENSION_DIALOG_SCREEN_MAX_LINES,
   EXTENSION_DIALOG_SCREEN_MAX_SPANS,
+  EXTENSION_DIALOG_SCREEN_MAX_WIDTH,
+  EXTENSION_DIALOG_SCREEN_MIN_WIDTH,
   EXTENSION_DIALOG_PROSE_MAX_LENGTH,
   EXTENSION_DIALOG_TEXT_MAX_LENGTH,
   type ExtensionDialogAnswer,
@@ -39,6 +41,8 @@ export interface PendingExtensionDialogOpenInput {
   styledLines?: ScreenLine[] | undefined;
   /** Which line the screen's cursor is on. */
   selectedLine?: number | undefined;
+  /** The columns the screen is drawn at. */
+  screenWidth?: number | undefined;
   /** What a `custom` screen was declared to be; see {@link PendingExtensionDialog.screen}. */
   screen?: ExtensionDialogScreen | undefined;
   message?: string | undefined;
@@ -149,8 +153,8 @@ export class PendingExtensionDialogStore {
    * a second dialog. The caller publishes the status afterwards, which is how the
    * browser sees the new lines.
    */
-  update(dialogId: string, screen: { lines: string[]; styled?: ScreenLine[] | undefined; selected?: number | undefined }): PendingExtensionDialog | undefined {
-    const next = screenFields(screen.lines, screen.styled, screen.selected);
+  update(dialogId: string, screen: { lines: string[]; styled?: ScreenLine[] | undefined; selected?: number | undefined; width?: number | undefined }): PendingExtensionDialog | undefined {
+    const next = screenFields(screen.lines, screen.styled, screen.selected, screen.width);
     for (const dialogs of this.openBySessionId.values()) {
       const dialog = dialogs.get(dialogId);
       if (dialog === undefined) continue;
@@ -159,6 +163,8 @@ export class PendingExtensionDialogStore {
       else dialog.styledLines = next.styledLines;
       if (next.selectedLine === undefined) delete dialog.selectedLine;
       else dialog.selectedLine = next.selectedLine;
+      if (next.screenWidth === undefined) delete dialog.screenWidth;
+      else dialog.screenWidth = next.screenWidth;
       return cloneDialog(dialog);
     }
     return undefined;
@@ -199,13 +205,25 @@ export class PendingExtensionDialogStore {
 /**
  * A drawn screen's fields, bounded as every status string is: the plain lines, their styled runs
  * one for one (a line's runs cut to the run bound, and their text together to the line's bound, as
- * its plain twin is), and the cursor line when it is one of the lines.
+ * its plain twin is), the cursor line when it is one of the lines, and the width the screen was
+ * drawn at when it is an integer within the screen width bounds (otherwise it is dropped).
  */
-function screenFields(lines: string[] | undefined, styled: ScreenLine[] | undefined, selected: number | undefined): { lines: string[]; styledLines?: ScreenLine[]; selectedLine?: number } {
+function screenFields(
+  lines: string[] | undefined,
+  styled: ScreenLine[] | undefined,
+  selected: number | undefined,
+  width: number | undefined,
+): { lines: string[]; styledLines?: ScreenLine[]; selectedLine?: number; screenWidth?: number } {
   const plain = validateLines(lines);
   const runs = styled === undefined ? undefined : styled.slice(0, plain.length).map(boundedScreenLine);
   const cursor = selected !== undefined && Number.isInteger(selected) && selected >= 0 && selected < plain.length ? selected : undefined;
-  return { lines: plain, ...(runs === undefined ? {} : { styledLines: runs }), ...(cursor === undefined ? {} : { selectedLine: cursor }) };
+  const columns = width !== undefined && Number.isInteger(width) && width >= EXTENSION_DIALOG_SCREEN_MIN_WIDTH && width <= EXTENSION_DIALOG_SCREEN_MAX_WIDTH ? width : undefined;
+  return {
+    lines: plain,
+    ...(runs === undefined ? {} : { styledLines: runs }),
+    ...(cursor === undefined ? {} : { selectedLine: cursor }),
+    ...(columns === undefined ? {} : { screenWidth: columns }),
+  };
 }
 
 function boundedScreenLine(line: ScreenLine): ScreenLine {
@@ -256,7 +274,7 @@ function validateText(dialog: PendingExtensionDialog, value: ExtensionDialogAnsw
 function kindFields(
   kind: ExtensionDialogKind,
   input: PendingExtensionDialogOpenInput,
-): Pick<PendingExtensionDialog, "message" | "options" | "placeholder" | "prefill" | "prefillCut" | "lines" | "styledLines" | "selectedLine" | "screen"> {
+): Pick<PendingExtensionDialog, "message" | "options" | "placeholder" | "prefill" | "prefillCut" | "lines" | "styledLines" | "selectedLine" | "screenWidth" | "screen"> {
   switch (kind) {
     case "confirm": {
       const message = optionalShownText(input.message, EXTENSION_DIALOG_PROSE_MAX_LENGTH);
@@ -271,7 +289,7 @@ function kindFields(
     case "editor":
       return editorPrefill(input.prefill);
     case "custom":
-      return { ...screenFields(input.lines, input.styledLines, input.selectedLine), ...(input.screen === undefined ? {} : { screen: input.screen }) };
+      return { ...screenFields(input.lines, input.styledLines, input.selectedLine, input.screenWidth), ...(input.screen === undefined ? {} : { screen: input.screen }) };
   }
 }
 

@@ -307,14 +307,16 @@ export interface ScreenView {
   lines: string[];
   styled: ScreenLine[];
   selected: number | undefined;
+  /** The columns the component was asked to draw at. */
+  width: number;
 }
 
 /** The view of what a component drew, bounded to the lines a dialog keeps. */
-export function screenView(drawn: readonly string[]): ScreenView {
+export function screenView(drawn: readonly string[], width: number): ScreenView {
   const bounded = drawn.slice(0, EXTENSION_DIALOG_SCREEN_MAX_LINES);
   const lines = bounded.map((line) => stripTerminalSequences(line));
   const styled = bounded.map((line) => screenLine(line));
-  return { lines, styled, selected: selectedScreenLine(styled, lines) };
+  return { lines, styled, selected: selectedScreenLine(styled, lines), width };
 }
 
 /** A screen a tap drives: press a named key, then read it again. */

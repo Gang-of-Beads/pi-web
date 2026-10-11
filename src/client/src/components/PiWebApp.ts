@@ -4945,6 +4945,7 @@ export class PiWebApp extends LitElement {
 
   private readonly handleDialogKey = (dialogId: string, key: string): Promise<void> => this.sessions.sendDialogKey(dialogId, key);
   private readonly handleDialogLine = (dialogId: string, line: number, text: string): Promise<void> => this.sessions.selectDialogLine(dialogId, line, text);
+  private readonly handleDialogWidth = (dialogId: string, width: number): Promise<void> => this.sessions.resizeDialogScreen(dialogId, width);
 
   /**
    * Put a sent prompt back in the composer so a failed turn can be retried
@@ -5038,6 +5039,7 @@ export class PiWebApp extends LitElement {
       <chat-view .onRetryMessage=${(clientMessageId: string) => { this.promptEditor?.retryOutbox(clientMessageId); }} .onDiscardMessage=${this.handleDiscardMessage} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity}
         .onDialogKey=${this.handleDialogKey}
         .onDialogLine=${this.handleDialogLine}
+        .onDialogWidth=${this.handleDialogWidth}
         .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .onSendMessage=${this.handleRendererSend} .onInsertIntoComposer=${this.handleRendererInsert} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} ?pluginsIncomplete=${this.pluginsIncomplete(selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .machineId=${selectedMachineId(state)} .sessionCwd=${session.cwd}></chat-view>
     `;
   }

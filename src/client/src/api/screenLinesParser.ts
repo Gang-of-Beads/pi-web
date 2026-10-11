@@ -2,6 +2,8 @@ import {
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   EXTENSION_DIALOG_SCREEN_MAX_LINES,
   EXTENSION_DIALOG_SCREEN_MAX_SPANS,
+  EXTENSION_DIALOG_SCREEN_MAX_WIDTH,
+  EXTENSION_DIALOG_SCREEN_MIN_WIDTH,
   type ScreenLine,
   type ScreenSpan,
 } from "../../../shared/apiTypes";
@@ -21,6 +23,11 @@ export function parseScreenLines(value: unknown): ScreenLine[] | undefined {
 /** The cursor's line, when it is a line number at all. */
 export function parseSelectedLine(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+/** The columns the screen is drawn at, when it is a width the daemon could draw at. */
+export function parseScreenWidth(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= EXTENSION_DIALOG_SCREEN_MIN_WIDTH && value <= EXTENSION_DIALOG_SCREEN_MAX_WIDTH ? value : undefined;
 }
 
 const ROLE_MAX_LENGTH = 64;

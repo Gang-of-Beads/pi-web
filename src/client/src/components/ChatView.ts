@@ -42,7 +42,7 @@ import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import { attachmentZoomStyles } from "./shared";
 import type { FollowingCustomRow, QualifiedActivityNoteContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";
 import "./ExtensionDialogCard";
-import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback, ExtensionDialogLineCallback } from "./ExtensionDialogCard";
+import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback, ExtensionDialogLineCallback, ExtensionDialogWidthCallback } from "./ExtensionDialogCard";
 import { deliveryTaken, discardAction, retryableDeliveryId } from "../messageDelivery";
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { placeUserRows } from "../userRowPlacement";
@@ -652,6 +652,7 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onCancelDialog?: ExtensionDialogCancelCallback;
   @property({ attribute: false }) onDialogKey?: ExtensionDialogKeyCallback;
   @property({ attribute: false }) onDialogLine?: ExtensionDialogLineCallback;
+  @property({ attribute: false }) onDialogWidth?: ExtensionDialogWidthCallback;
   /**
    * Put a sent prompt back in the composer, images included. Offered on user
    * messages because a turn that fails after delivery leaves the transcript as
@@ -1643,6 +1644,7 @@ export class ChatView extends LitElement {
             .onCancel=${presence === "live" ? this.onCancelDialog : undefined}
             .onKey=${presence === "live" ? this.onDialogKey : undefined}
             .onLine=${presence === "live" ? this.onDialogLine : undefined}
+            .onWidth=${presence === "live" ? this.onDialogWidth : undefined}
             .draftSessionId=${this.askDraftSessionId}
           ></extension-dialog-card>
         `)}

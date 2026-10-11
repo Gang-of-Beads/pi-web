@@ -19,6 +19,7 @@ import { dialogAnswerText } from "../../../shared/dialogAnswerText";
 import type { ClosedExtensionDialog } from "../appState";
 import { dialogScreenKey } from "../dialogScreenKey.js";
 import { isScreenHintLine, isSelectableLine, keysForLineTap, screenIsTappable } from "../dialogScreenKeys.js";
+import { asksForWidth, screenColumns, type WidthReason } from "../screenColumns.js";
 import { classifyScreen, type ScreenShape } from "../dialogScreenShape.js";
 import { shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { keyBelongsToInputMethod } from "./keyboardEventTarget";
@@ -31,6 +32,8 @@ export type ExtensionDialogCancelCallback = (dialogId: string) => void | Promise
 export type ExtensionDialogKeyCallback = (dialogId: string, key: string) => void | Promise<void>;
 /** A tapped line of a `custom` screen, by its number and its text; the daemon walks the cursor there. */
 export type ExtensionDialogLineCallback = (dialogId: string, line: number, text: string) => void | Promise<void>;
+/** The columns a `custom` screen's card has room for; the daemon draws the extension at that width. */
+export type ExtensionDialogWidthCallback = (dialogId: string, width: number) => void | Promise<void>;
 
 const COUNTDOWN_TICK_MS = 1_000;
 
@@ -192,6 +195,7 @@ export class ExtensionDialogCard extends LitElement {
   @property({ attribute: false }) onCancel?: ExtensionDialogCancelCallback;
   @property({ attribute: false }) onKey?: ExtensionDialogKeyCallback;
   @property({ attribute: false }) onLine?: ExtensionDialogLineCallback;
+  @property({ attribute: false }) onWidth?: ExtensionDialogWidthCallback;
   /** Machine-scoped session key under which this browser keeps a half-given answer (questions screen, input or editor dialog) across a reload; empty keeps none. */
   @property({ attribute: false }) draftSessionId = "";
 
@@ -208,6 +212,14 @@ export class ExtensionDialogCard extends LitElement {
   /** The screen's keys in the order they were typed: each waits for the one before, so a fast typist's keys never interleave. */
   private screenKeys: Promise<void> = Promise.resolve();
   private countdownTimer: number | undefined;
+  /** Watches the drawn screen (.dialog-screen) for changes to its width; one per card, re-observed when the element is replaced. */
+  private screenObserver: ResizeObserver | undefined;
+  /** The .dialog-screen element screenObserver currently watches. */
+  private observedScreen: Element | undefined;
+  /** The screen element's clientWidth in CSS pixels at the last resize callback, so an unchanged pixel width does not ask again; not columns. */
+  private observedWidth: number | undefined;
+  /** The columns this card last asked the open screen to draw at, and the dialogId it asked, so asksForWidth's "measured" reason does not repeat a request for the same dialog. */
+  private askedWidth: { dialogId: string; width: number } | undefined;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -215,8 +227,46 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   override disconnectedCallback(): void {
+    this.screenObserver?.disconnect();
+    this.screenObserver = undefined;
+    this.observedScreen = undefined;
     this.stopCountdownTimer();
     super.disconnectedCallback();
+  }
+
+  protected override updated(): void {
+    this.observeScreen();
+  }
+
+  private observeScreen(): void {
+    const screen = this.renderRoot.querySelector(".dialog-screen") ?? undefined;
+    if (screen === this.observedScreen) return;
+    this.screenObserver?.disconnect();
+    this.screenObserver = undefined;
+    this.observedScreen = screen;
+    this.observedWidth = undefined;
+    if (screen === undefined || typeof ResizeObserver === "undefined") return;
+    this.screenObserver = new ResizeObserver(() => { this.screenResized(); });
+    this.screenObserver.observe(screen);
+  }
+
+  private screenResized(): void {
+    const width = this.observedScreen?.clientWidth;
+    if (width === undefined || width === this.observedWidth) return;
+    this.observedWidth = width;
+    this.askForWidth("measured");
+  }
+
+  private askForWidth(reason: WidthReason): void {
+    const dialog = this.dialog;
+    const screen = this.observedScreen;
+    const send = this.onWidth;
+    if (dialog?.kind !== "custom" || this.outcome !== undefined || screen === undefined || send === undefined) return;
+    const columns = screenColumns(screen.querySelector(".screen-line") ?? screen);
+    const lastAsked = this.askedWidth?.dialogId === dialog.dialogId ? this.askedWidth.width : undefined;
+    if (columns === undefined || !asksForWidth(reason, columns, dialog.screenWidth, lastAsked)) return;
+    this.askedWidth = { dialogId: dialog.dialogId, width: columns };
+    void Promise.resolve(send(dialog.dialogId, columns)).catch(() => undefined);
   }
 
   protected override willUpdate(changed: PropertyValues<this>): void {
@@ -319,7 +369,7 @@ export class ExtensionDialogCard extends LitElement {
       </div>
       <footer class="dialog-footer">
         <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Cancel</button>
-        <button class="primary-action" type="button" ?disabled=${this.closing || chosen === undefined} @click=${() => { if (chosen !== undefined) void this.tapLine(dialog, chosen); }}>Confirm</button>
+        <button class="primary-action" type="button" ?disabled=${this.closing || chosen === undefined} @click=${() => { if (chosen !== undefined) void this.tapLine(dialog, chosen).catch(() => undefined); }}>Confirm</button>
       </footer>
     `;
   }
@@ -354,7 +404,7 @@ export class ExtensionDialogCard extends LitElement {
       >${styled === undefined
         ? shape.body.map((line, index) => html`<div
           class=${`screen-line${screenIsTappable(lines) && isSelectableLine(line) ? " selectable" : ""}`}
-          @click=${() => { void this.tapLine(dialog, index); }}
+          @click=${() => { void this.tapLine(dialog, index).catch(() => undefined); }}
         >${line === "" ? " " : line}</div>`)
         : this.renderStyledScreen(dialog, styled)}</div>
       <form class="dialog-input-form" @submit=${(event: SubmitEvent) => { this.pressScreenEnter(event, dialog); }}>
@@ -423,6 +473,7 @@ export class ExtensionDialogCard extends LitElement {
     this.screenKeys = this.screenKeys
       .then(async () => {
         for (const key of keys) await send(dialog.dialogId, key);
+        this.askForWidth("used");
       })
       .catch(() => undefined);
   }
@@ -441,7 +492,7 @@ export class ExtensionDialogCard extends LitElement {
       const selectable = tappable && lines[index] !== undefined && isSelectableLine(text);
       return [html`<div
         class=${`screen-line${selectable ? " selectable" : ""}${index === dialog.selectedLine ? " selected" : ""}`}
-        @click=${() => { if (selectable) void this.tapLine(dialog, index); }}
+        @click=${() => { if (selectable) void this.tapLine(dialog, index).catch(() => undefined); }}
       >${line.spans.length === 0 ? " " : line.spans.map((span) => html`<span class=${screenSpanClass(span)}>${span.text}</span>`)}</div>`];
     });
   }
@@ -457,10 +508,12 @@ export class ExtensionDialogCard extends LitElement {
     if (text === undefined || !isSelectableLine(text)) return;
     if (dialog.styledLines !== undefined && this.onLine !== undefined) {
       await this.onLine(dialog.dialogId, index, text);
+      this.askForWidth("used");
       return;
     }
     if (!screenIsTappable(lines)) return;
     for (const key of keysForLineTap(lines, index)) await this.onKey?.(dialog.dialogId, key);
+    this.askForWidth("used");
   }
 
   private forwardScreenKey(event: KeyboardEvent, dialog: PendingExtensionDialog): void {
@@ -468,7 +521,7 @@ export class ExtensionDialogCard extends LitElement {
     const key = dialogScreenKey(event);
     if (key === undefined) return;
     event.preventDefault();
-    void this.onKey?.(dialog.dialogId, key);
+    void Promise.resolve(this.onKey?.(dialog.dialogId, key)).then(() => { this.askForWidth("used"); }, () => undefined);
   }
 
   private renderConfirmBody(dialog: PendingExtensionDialog): TemplateResult {

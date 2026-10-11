@@ -25,6 +25,7 @@ import { screenTheme, screenView, type ScreenView } from "./screenView.js";
 export interface CustomScreenComponent {
   render(width: number): string[];
   handleInput?(key: string): void;
+  invalidate?(): void;
   dispose?(): void;
 }
 
@@ -77,8 +78,8 @@ export function renderCustomScreen(component: CustomScreenComponent, width = CUS
 }
 
 /** Render a screen dialog's component as plain lines, styled runs and its cursor (screenView.ts). */
-export function renderScreenView(component: CustomScreenComponent, width = CUSTOM_SCREEN_WIDTH): ScreenView {
-  return screenView(withGlobalTheme(screenTheme, () => drawnLines(component, width, EXTENSION_DIALOG_SCREEN_MAX_LINES)));
+export function renderScreenView(component: CustomScreenComponent, width: number): ScreenView {
+  return screenView(withGlobalTheme(screenTheme, () => drawnLines(component, width, EXTENSION_DIALOG_SCREEN_MAX_LINES)), width);
 }
 
 /**

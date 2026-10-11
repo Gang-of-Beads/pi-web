@@ -1048,6 +1048,12 @@ export const EXTENSION_DIALOG_SCREEN_MAX_LINES = 200;
 
 /** How many styled runs one line of a `custom` screen keeps; the rest of the line is cut. */
 export const EXTENSION_DIALOG_SCREEN_MAX_SPANS = 64;
+/** The columns a drawn screen is drawn at until a card asks for its own width. */
+export const EXTENSION_DIALOG_SCREEN_DEFAULT_WIDTH = 56;
+/** The fewest columns a card may ask a drawn screen to be drawn at. */
+export const EXTENSION_DIALOG_SCREEN_MIN_WIDTH = 20;
+/** The most columns a card may ask a drawn screen to be drawn at. */
+export const EXTENSION_DIALOG_SCREEN_MAX_WIDTH = 160;
 
 /** A forwarded keypress is a name ("escape", "ctrl+c") or one character. */
 export const EXTENSION_DIALOG_KEY_MAX_LENGTH = 32;
@@ -1136,6 +1142,11 @@ export interface PendingExtensionDialog {
   styledLines?: ScreenLine[];
   /** Which of {@link lines} the component's own cursor is on, when the screen shows a cursor. */
   selectedLine?: number;
+  /**
+   * The columns the screen is drawn at: the width the card that last asked for one measured, else
+   * the default. A card that measures another width asks again when it opens, resizes or is used.
+   */
+  screenWidth?: number;
   /**
    * What the extension declared this screen to be, for the browser to draw natively.
    *
