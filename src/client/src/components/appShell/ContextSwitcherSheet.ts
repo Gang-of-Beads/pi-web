@@ -1,7 +1,7 @@
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { renderCrossIcon, uiIconStyle } from "../uiIcons.js";
 import { customElement, property } from "lit/decorators.js";
-import type { NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
+import type { NavSectionContext, QualifiedNavSectionContribution, ReservedNavSectionId } from "../../plugins/types";
 import { interactiveSurfaceStyles, listStyles } from "../shared";
 import { panelHeaderStyles } from "./panelHeaderStyles.js";
 import "../ModalSurface";
@@ -44,7 +44,7 @@ export class ContextSwitcherSheet extends LitElement {
   }
 
 
-  private renderNavSection(localId: "projects" | "workspaces"): unknown {
+  private renderNavSection(localId: ReservedNavSectionId): unknown {
     const section = this.navSections.find((candidate) => candidate.localId === localId);
     if (section === undefined || this.navSectionContext === undefined) return nothing;
     return section.render({ ...this.navSectionContext, display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: true } });

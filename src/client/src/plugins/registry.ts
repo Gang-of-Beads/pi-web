@@ -1,7 +1,7 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
 import { pluginsPath } from "../api/clients";
-import type { ActivityNoteContribution, QualifiedActivityNoteContribution, SessionSectionContribution, QualifiedSessionSectionContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ActivityNoteContribution, QualifiedActivityNoteContribution, SessionSectionContribution, QualifiedSessionSectionContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, ReservedActionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -176,6 +176,11 @@ export class PluginRegistry {
       if (disabledReason !== undefined && disabledReason !== "") qualified.disabledReason = disabledReason;
       return qualified;
     });
+  }
+
+  /** The action a shell key runs: the first active one contributed under that reserved local id. */
+  getReservedAction(context: PluginRuntimeContext, id: ReservedActionId): QualifiedPluginAction | undefined {
+    return this.getActions(context).find((action) => action.localId === id);
   }
 
   getComposerContributions(selectedMachineId: string | undefined): QualifiedComposerContribution[] {

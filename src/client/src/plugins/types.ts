@@ -300,6 +300,9 @@ export interface NavWorkspaceTrustActions {
   set(workspaceId: string, trusted: boolean): Promise<{ trusted: boolean }>;
 }
 
+/** Slot ids the shell reserves for context-navigation sections. */
+export type ReservedNavSectionId = "projects" | "workspaces";
+
 /**
  * A section of the app's context navigation: the projects and workspaces
  * pickers. The shell reserves the slot vocabulary, keeps the section order,
@@ -828,6 +831,14 @@ export interface PluginRuntimeContext {
   deleteCachedNewSession: () => void | Promise<void>;
   stopActiveWork: () => void | Promise<void>;
 }
+
+/**
+ * Local ids of the actions the shell runs from keys it draws itself: `add-project` from its
+ * Add project keys and `add-machine` from Add machine. A plugin that provides one of those
+ * dialogs claims the key by contributing its action under that id; the shell names the slot,
+ * never the plugin.
+ */
+export type ReservedActionId = "add-project" | "add-machine";
 
 export interface PluginAction {
   id: LocalContributionId;

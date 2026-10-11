@@ -2927,14 +2927,14 @@ export class PiWebApp extends LitElement {
    * Absent plugin means no dialog: the affordances hide with it.
    */
   private openProjectDialog(options: { readonly startSessionAfter?: boolean } = {}): void {
-    const action = this.plugins.getActions(this.createPluginRuntimeContext()).find((candidate) => candidate.localId === "add-project");
+    const action = this.plugins.getReservedAction(this.createPluginRuntimeContext(), "add-project");
     if (action === undefined) return;
     this.startSessionAfterAddingProject = options.startSessionAfter === true;
     void action.run();
   }
 
   private hasAddProjectEntry(): boolean {
-    return this.plugins.getActions(this.createPluginRuntimeContext()).some((candidate) => candidate.localId === "add-project");
+    return this.plugins.getReservedAction(this.createPluginRuntimeContext(), "add-project") !== undefined;
   }
 
   private openContextSheet(): void {
@@ -4621,7 +4621,7 @@ export class PiWebApp extends LitElement {
    * Absent plugin means no dialog: the affordances hide with it.
    */
   private openMachineDialog(): void {
-    const action = this.plugins.getActions(this.createPluginRuntimeContext()).find((candidate) => candidate.localId === "add-machine");
+    const action = this.plugins.getReservedAction(this.createPluginRuntimeContext(), "add-machine");
     if (action === undefined) return;
     void action.run();
   }

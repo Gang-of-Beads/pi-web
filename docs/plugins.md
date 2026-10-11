@@ -835,6 +835,8 @@ interface PluginAction {
 
 If an action is disabled and returns `disabledReason`, PI WEB can keep it visible in the action palette with that explanation instead of hiding it.
 
+Two action ids are reserved for buttons PI WEB draws itself: it runs the active action with id `add-project` from its Add project buttons and the one with id `add-machine` from Add machine. A plugin that provides one of those dialogs contributes its action under that id, as the bundled Workspaces and Machines plugins do; the Add project buttons are hidden while no active plugin does. Navigation sections work differently: PI WEB draws a section only under the reserved id `projects` or `workspaces`, and does not show a section with any other id.
+
 Stable runtime context fields:
 
 ```ts

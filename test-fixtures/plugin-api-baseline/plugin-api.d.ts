@@ -614,6 +614,12 @@ export interface PluginRuntimeContext {
     archiveSession: () => void | Promise<void>;
     stopActiveWork: () => void | Promise<void>;
 }
+/**
+ * An entry of the action palette. Two local ids are reserved for keys the shell draws itself:
+ * it runs the active action with id `add-project` from its Add project keys and the one with id
+ * `add-machine` from Add machine, so a plugin that provides one of those dialogs contributes its
+ * action under that id.
+ */
 export interface PluginAction {
     id: LocalContributionId;
     title: string;
