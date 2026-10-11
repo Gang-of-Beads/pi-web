@@ -24,5 +24,6 @@ export default defineConfig({
     // `localStorage` global on Node versions that ship the experimental,
     // flag-gated one. It is a no-op in the node environment.
     setupFiles: ["./src/client/testSetup/domStorage.ts"],
+    globalSetup: ["./src/testSetup/throwawayDataDir.ts"],
   },
 });
