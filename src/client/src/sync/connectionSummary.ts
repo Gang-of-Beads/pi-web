@@ -69,6 +69,32 @@ export function rowDecision(input: RowInput): RowDecision {
   return graceLeft === undefined ? { claim } : { claim, recheckInMs: graceLeft };
 }
 
+/** When the page last heard from what a miss is about: its own server, or the machine on screen. */
+export interface HeardClocks {
+  readonly link: number;
+  readonly machine: (machineId: string) => number;
+}
+
+/**
+ * A miss the page has since heard past is no claim (owner, 2026-10-12: "已经开始收到包了就直接不显示").
+ * A read still waiting on its own backoff kept "Trying to sync" up while the machine's socket was
+ * already delivering; anything heard from what the miss is about after it began answers it. A
+ * server's error is an answer in its own words and is not retired by other traffic.
+ */
+export function stillUnheard(unanswered: Unanswered | undefined, heard: HeardClocks): Unanswered | undefined {
+  if (unanswered === undefined) return undefined;
+  return heardSince(unanswered.miss, heard) > unanswered.since ? undefined : unanswered;
+}
+
+/** When the page last heard from what `miss` is about; a server error is never answered by other traffic. */
+function heardSince(miss: ReadMiss, heard: HeardClocks): number {
+  switch (miss.kind) {
+    case "link-down": return heard.link;
+    case "machine-unanswering": return heard.machine(miss.machineId);
+    case "server-error": return Number.NEGATIVE_INFINITY;
+  }
+}
+
 function earnsRow(unanswered: Unanswered, shown: ShownUnanswered | undefined, now: number): boolean {
   return now - unanswered.since >= TRANSIENT_GRACE_MS || (shown !== undefined && unanswered.since <= shown.at);
 }

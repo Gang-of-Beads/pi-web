@@ -4,6 +4,7 @@ import { clearErrorPatch, errorNoticePatch, noticePatch, type NoticeFields } fro
 import { describeError, noticeForReader, noticeFromTransport } from "../notice";
 import { classifyReadError, QUIET_WINDOW_MS, type ReadFact, type ReadMiss, type ReadOutcome } from "../sync/readPhase";
 import { ScopedResource, type Unanswered } from "../sync/scopedResource";
+import { syncWords } from "../sync/rowWords";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import type { ProjectController } from "./projectController";
 import { orderedById } from "../../../shared/listOrder";
@@ -297,7 +298,7 @@ export class MachineController {
   private machineDownNotice(machineId: string, error: unknown): NoticeFields {
     const machine = this.getState().machines.find((candidate) => candidate.id === machineId);
     const detail = error instanceof Error ? /\((.*)\)/.exec(error.message)?.[1] : undefined;
-    const text = `Trying to sync with ${machine?.name ?? machineId}…${detail === undefined ? "" : ` ${detail}`}`;
+    const text = `${syncWords(machine?.name ?? machineId)}${detail === undefined ? "" : ` ${detail}`}`;
     return noticePatch(noticeFromTransport(text, machineId));
   }
 
@@ -365,7 +366,7 @@ export class MachineController {
       // Reply-retired and machine-scoped: the claim is that this machine's
       // link is down, so only a success from that machine disproves it - a
       // poll from anywhere else may not speak for it.
-      ...(remoteReportedDown(health) ? noticePatch(noticeFromTransport(`Trying to sync with ${requestedMachine.name}…`, requestedMachine.id)) : {}),
+      ...(remoteReportedDown(health) ? noticePatch(noticeFromTransport(syncWords(requestedMachine.name), requestedMachine.id)) : {}),
     });
     return requestedMachine;
   }

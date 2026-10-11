@@ -57,6 +57,11 @@ export class AckWatch {
     this.changed();
   }
 
+  /** When the server last answered anything, for the row (connectionSummary's stillUnheard). */
+  heardAt(): number {
+    return this.lastAckAt;
+  }
+
   /** A frame or response arrived: the server is there, and the clock starts again. */
   heard(): void {
     this.lastAckAt = this.now();

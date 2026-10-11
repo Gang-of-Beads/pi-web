@@ -10,10 +10,12 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+const NAMES = { page: "hxd-work-mbp", machine: "hxd-pc-ubuntu" };
+
 function renderBanner(error: string, claim?: TransportClaim): { host: HTMLElement } {
   const host = document.createElement("div");
   document.body.append(host);
-  render(errorBanner(error, claim), host);
+  render(errorBanner(error, claim, NAMES), host);
   return { host };
 }
 
@@ -111,7 +113,7 @@ describe("dropped-connection failures", () => {
       expect(isTransientError(raw)).toBe(true);
       const { host } = renderBanner(raw, legacyTransportClaim(raw));
       expect(host.querySelector(".error")?.getAttribute("role")).toBe("status");
-      expect(host.querySelector(".error-text")?.textContent).toContain("Trying to sync with the server");
+      expect(host.querySelector(".error-text")?.textContent).toContain("Trying to reach hxd-work-mbp");
     }
   });
 
@@ -163,7 +165,7 @@ describe("a reader-retired banner offers a way to try again", () => {
   it("renders Retry and calls it", () => {
     const retries: number[] = [];
     const host = document.createElement("div");
-    render(errorBanner("Session not found", undefined, () => { retries.push(1); }), host);
+    render(errorBanner("Session not found", undefined, NAMES, () => { retries.push(1); }), host);
     const retry = host.querySelector<HTMLButtonElement>(".error-retry");
 
     expect(retry).not.toBeNull();
@@ -173,7 +175,7 @@ describe("a reader-retired banner offers a way to try again", () => {
 
   it("does not add Retry to a self-healing transport claim", () => {
     const host = document.createElement("div");
-    render(errorBanner("remote machine request cancelled", "machine-unreachable", () => undefined), host);
+    render(errorBanner("remote machine request cancelled", "machine-unreachable", NAMES, () => undefined), host);
 
     expect(host.querySelector(".error-retry")).toBeNull();
   });
@@ -194,7 +196,7 @@ describe("what the app row says while a read goes unanswered", () => {
       "server-error": unansweredRowText({ kind: "server-error", machineId: "local", reason: "Project store is locked" }, nameOf),
       "server-error, unknown machine": unansweredRowText({ kind: "server-error", machineId: "gone-1", reason: "Internal Server Error" }, nameOf),
     }).toEqual({
-      "link-down": "Trying to sync with the server…",
+      "link-down": "Trying to reach hxd-work-mbp…",
       "machine-unanswering": "Trying to sync with hxd-pc-ubuntu…",
       "server-error": "hxd-work-mbp: Project store is locked",
       "server-error, unknown machine": "gone-1: Internal Server Error",

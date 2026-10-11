@@ -2,6 +2,7 @@ import { html, type TemplateResult } from "lit";
 import type { RetiredBy } from "../notice.js";
 import type { TransportClaim } from "../api/transportClaim.js";
 import type { ReadMiss } from "../sync/readPhase.js";
+import { reachWords, syncWords, type RowNames } from "../sync/rowWords.js";
 
 /**
  * The shared error banner. Every state in the app row is momentary (owner,
@@ -20,22 +21,23 @@ import type { ReadMiss } from "../sync/readPhase.js";
  * because it does. Any other failure keeps its own words, so "Update failed: …" is never presented
  * as a self-healing hiccup and the operation the reader needs to retry stays named.
  */
-const TRANSPORT_WORDS: Readonly<Record<TransportClaim, string>> = {
-  "daemon-not-listening": "Trying to sync with the server…",
-  "machine-unreachable": "Trying to sync with the machine…",
-  network: "Trying to sync with the server…",
-  deadline: "Trying to sync with the server…",
-  aborted: "Previous request was interrupted. Retry if the message did not finish.",
-  "server-error": "Connection problem. Retrying in the background…",
+const TRANSPORT_WORDS: Readonly<Record<TransportClaim, (names: RowNames) => string>> = {
+  "daemon-not-listening": (names) => syncWords(names.machine),
+  "machine-unreachable": (names) => syncWords(names.machine),
+  network: (names) => reachWords(names.page),
+  deadline: (names) => reachWords(names.page),
+  aborted: () => "Previous request was interrupted. Retry if the message did not finish.",
+  "server-error": () => "Connection problem. Retrying in the background…",
 };
 
 export function errorBanner(
   error: string,
   claim: TransportClaim | undefined,
+  names: RowNames,
   onRetry?: () => void,
 ): TemplateResult | null {
   if (error === "") return null;
-  const transient = claim === undefined ? undefined : TRANSPORT_WORDS[claim];
+  const transient = claim === undefined ? undefined : TRANSPORT_WORDS[claim](names);
   const retry = transient === undefined && onRetry !== undefined
     ? html`<button type="button" class="error-retry" @click=${() => { onRetry(); }}>Retry</button>`
     : null;
@@ -51,8 +53,8 @@ type MachineName = (machineId: string) => string;
 
 /** The row's words for each miss (object model §2.3); a machine is named, and a server error keeps its own words (owner Q9). */
 const UNANSWERED_WORDS: { readonly [K in MissKind]: (miss: MissOf<K>, nameOf: MachineName) => string } = {
-  "link-down": () => "Trying to sync with the server…",
-  "machine-unanswering": (miss, nameOf) => `Trying to sync with ${nameOf(miss.machineId)}…`,
+  "link-down": (_miss, nameOf) => reachWords(nameOf("local")),
+  "machine-unanswering": (miss, nameOf) => syncWords(nameOf(miss.machineId)),
   "server-error": (miss, nameOf) => `${nameOf(miss.machineId)}: ${miss.reason}`,
 };
 

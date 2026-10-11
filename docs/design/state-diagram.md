@@ -609,10 +609,10 @@ Before `folder-not-created`, a failed mkdir answered without a code, and the pag
 
 | claim | produced by | row words |
 |---|---|---|
-| `daemon-not-listening` | the web process's error body `transport` field, set from the errno (ECONNREFUSED or ENOENT) when it could not reach its session daemon: session proxy, plugin backend and operation proxies, workspace deletion, workspace catalog | Trying to sync with the server… |
-| `machine-unreachable` | the gateway's `transport` field on its 502/504 for a remote machine | Trying to sync with the machine… |
-| `network` | `NetworkError`: fetch() itself rejected, by the call site (`fetchNamingLinkFailure`), not by the browser's words | Trying to sync with the server… |
-| `deadline` | `RequestTimeoutError`, the page's own deadline | Trying to sync with the server… |
+| `daemon-not-listening` | the web process's error body `transport` field, set from the errno (ECONNREFUSED or ENOENT) when it could not reach its session daemon: session proxy, plugin backend and operation proxies, workspace deletion, workspace catalog | Trying to sync with *m*… |
+| `machine-unreachable` | the gateway's `transport` field on its 502/504 for a remote machine | Trying to sync with *m*… |
+| `network` | `NetworkError`: fetch() itself rejected, by the call site (`fetchNamingLinkFailure`), not by the browser's words | Trying to reach *p*… |
+| `deadline` | `RequestTimeoutError`, the page's own deadline | Trying to reach *p*… |
 | `aborted` | an error whose platform type is `AbortError` | Previous request was interrupted. Retry if the message did not finish. |
 | `server-error` | an `HttpError` 5xx whose body said nothing | Connection problem. Retrying in the background… |
 
@@ -644,11 +644,25 @@ Plugins read through the host, so the rule reaches them as one host facility: a 
 
   | miss | the row says |
   |---|---|
-  | `link-down`: no status, or a 502/503/504 that PI WEB's gateway did not claim | "Reconnecting…" |
-  | `machine-unanswering(m)`: a 502/503/504 whose body names a remote machine (the gateway) | "*m* is unavailable; reconnecting…" |
+  | `link-down`: no status, or a 502/503/504 that PI WEB's gateway did not claim | "Trying to reach *p*…" |
+  | `machine-unanswering(m)`: a 502/503/504 whose body names a remote machine (the gateway), or the realtime socket reached the web process and nothing came through it | "Trying to sync with *m*…" |
   | `server-error(m, reason)`: any other status | "*m*: *reason*" |
 
   All three keep retrying and retire when an answer comes; only a fact (401, 403) stops the retries.
+
+  **Two sentences, and none once it is heard** (owner, 2026-10-12: the same outage read "Trying to sync with the server…" and "Trying to sync with hxd-work-mbp…" by turns, and "Trying to sync" stayed up while messages were already arriving). *p* is the machine serving the page, *m* the machine the claim is about; a machine is always named and nothing says "the server". Every producer words them through `sync/rowWords.ts`: the transport claims above, the read misses here, and the page's own notices about a machine that reported itself down (which keep their evidence after the sentence). A miss is no claim once the page has heard, after it began, from what it is about (`stillUnheard`, keyed by the miss's kind): a `link-down` by any answer from the page's server (`ackWatch.heardAt`), a `machine-unanswering(m)` by a frame from *m* on the realtime socket (the socket's open alone is the web process answering). A read still waiting on its own backoff no longer holds the row while the socket delivers. A `server-error` is an answer in its own words and is not retired by other traffic.
+
+  ```mermaid
+  stateDiagram-v2
+    [*] --> InStep
+    InStep --> Waiting: a request or the socket goes unanswered
+    Waiting --> InStep: an answer within the grace
+    Waiting --> TryingToReach: link-down past the grace
+    Waiting --> TryingToSync: machine-unanswering past the grace
+    TryingToReach --> InStep: any answer from the page's server
+    TryingToSync --> InStep: a frame from the machine
+    TryingToReach --> TryingToSync: the server answers, the machine does not
+  ```
 - Syncing is never visible, except "Loading this session…" during a transcript's first read with nothing known. The tap acknowledgement (row spinner, "Opening…", the progress line) stays. "Still opening…" and the Loading titles go.
 - There is no Try now; the page retries by itself. Known data stays live and usable. Other actions fire now and show as pending, and are never replayed.
 - A tapped session opens unless it was deleted (the reason, and a way back) or archived (read-only, with Restore).

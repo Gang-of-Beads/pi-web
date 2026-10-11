@@ -126,8 +126,9 @@ import { observeTransportRecovery } from "../api/transportHealth";
 import { ackWatch } from "../api/ackWatch";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
 import { errorBanner, noticeExpiryMs, syncingRow, unansweredRow } from "./errorBanner";
+import { syncWords, type RowNames } from "../sync/rowWords";
 import type { TransportClaim } from "../api/transportClaim";
-import { rowDecision, type ShownUnanswered } from "../sync/connectionSummary";
+import { rowDecision, stillUnheard, type HeardClocks, type ShownUnanswered } from "../sync/connectionSummary";
 import { messageStatusUnanswered } from "../sendVerification";
 import { earliestUnanswered } from "../sync/scopedResource";
 import { QUIET_WINDOW_MS, retryDelayMs } from "../sync/readPhase";
@@ -1806,7 +1807,7 @@ export class PiWebApp extends LitElement {
     // previous text, which the retry ladder would otherwise paste into itself
     // once per attempt.
     const detail = health?.error;
-    const text = `Trying to sync with ${machineName}…${detail === undefined ? "" : ` ${detail}`}`;
+    const text = `${syncWords(machineName)}${detail === undefined ? "" : ` ${detail}`}`;
     if (text === this.remoteRouteRestoreNotice) return;
     this.remoteRouteRestoreNotice = text;
     this.setState(noticePatch(noticeFromTransport(text, machineId)));
@@ -5144,7 +5145,9 @@ export class PiWebApp extends LitElement {
 
   private renderUnansweredRow(noticeShown: boolean) {
     const messageStatus = messageStatusUnanswered(this.state.messageStatusUnanswered, { machineId: selectedMachineId(this.state), sessionId: this.state.selectedSession?.id });
-    const unanswered = [this.machines.unanswered(), targetUnanswered(this.namedTargetInScope()), messageStatus, this.realtime.unanswered(selectedMachineId(this.state)), ackWatch.waiting()].reduce(earliestUnanswered, this.projects.unanswered());
+    const heard: HeardClocks = { link: ackWatch.heardAt(), machine: (machineId) => this.realtime.heardAt(machineId) };
+    const sources = [this.projects.unanswered(), this.machines.unanswered(), targetUnanswered(this.namedTargetInScope()), messageStatus, this.realtime.unanswered(selectedMachineId(this.state)), ackWatch.waiting()];
+    const unanswered = sources.map((source) => stillUnheard(source, heard)).reduce(earliestUnanswered, undefined);
     const decision = rowDecision({ notice: noticeShown, unanswered, shown: this.unansweredShown, syncing: this.rememberedListOnScreen(), now: Date.now() });
     if (this.reconnectingRecheck !== undefined) globalThis.clearTimeout(this.reconnectingRecheck);
     this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : globalThis.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
@@ -5157,7 +5160,18 @@ export class PiWebApp extends LitElement {
       return null;
     }
     this.unansweredShown = { at: this.unansweredShown?.at ?? Date.now(), miss: decision.claim.miss };
-    return unansweredRow(decision.claim.miss, (machineId) => this.state.machines.find((machine) => machine.id === machineId)?.name ?? machineId);
+    return unansweredRow(decision.claim.miss, (machineId) => this.machineName(machineId));
+  }
+
+  /** A machine as the row names it: its name, or its id while the machines are unread. */
+  private machineName(machineId: string): string {
+    return this.state.machines.find((machine) => machine.id === machineId)?.name ?? machineId;
+  }
+
+  /** The machines a row sentence names: the one serving this page, and the one the notice is about. */
+  private rowNames(): RowNames {
+    const about = this.state.errorMachineId === "page" ? "local" : this.state.errorMachineId;
+    return { page: this.machineName("local"), machine: this.machineName(about) };
   }
 
   /** The session list is on screen and drawn wholly from memory: the row says it is syncing. */
@@ -5219,7 +5233,7 @@ export class PiWebApp extends LitElement {
         this.bannerShownAt = Date.now();
         this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
       }
-      this.heldErrorBanner = errorBanner(error, claim);
+      this.heldErrorBanner = errorBanner(error, claim, this.rowNames());
       return this.heldErrorBanner;
     }
     this.transientPendingSince = undefined;
@@ -5248,7 +5262,7 @@ export class PiWebApp extends LitElement {
       this.bannerShownAt = Date.now();
       this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
     }
-    this.heldErrorBanner = errorBanner(error, undefined, () => { void this.retryAfterError(); });
+    this.heldErrorBanner = errorBanner(error, undefined, this.rowNames(), () => { void this.retryAfterError(); });
     return this.heldErrorBanner;
   }
 

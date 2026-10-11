@@ -304,6 +304,8 @@ export class RealtimeSocket extends ReconnectingSocket {
   private openedSocket: WebSocket | undefined;
   private waitingSince = 0;
   private reachedServer = false;
+  /** When a frame last came through from the machine; the open alone is the web process answering. */
+  private machineHeardAt = 0;
   private phaseListener: (() => void) | undefined;
   /** The quiet window this connection named; the base's is the one its daemon confirmed in the join frame. */
   private requestedQuietMs: number | undefined;
@@ -333,6 +335,11 @@ export class RealtimeSocket extends ReconnectingSocket {
     const phase = this.phaseFor(machineId);
     if (phase.kind !== "connecting") return undefined;
     return { since: phase.since, miss: this.reachedServer ? { kind: "machine-unanswering", machineId } : { kind: "link-down" } };
+  }
+
+  /** When `machineId` last spoke on this socket, or 0 when this socket does not serve it. */
+  heardAt(machineId: string): number {
+    return this.shouldReconnect && this.machineId === machineId ? this.machineHeardAt : 0;
   }
 
   /** Told whenever phaseFor or unanswered may answer differently. */
@@ -368,6 +375,7 @@ export class RealtimeSocket extends ReconnectingSocket {
     this.shouldReconnect = true;
     this.waitingSince = Date.now();
     this.reachedServer = false;
+    this.machineHeardAt = 0;
     this.open();
   }
 
@@ -411,6 +419,7 @@ export class RealtimeSocket extends ReconnectingSocket {
   private async handleMessage(data: MessageEvent["data"], socket: WebSocket, statusFrames: StatusFrameDecoder): Promise<void> {
     if (this.socket === socket) {
       this.lastFrameAt = Date.now();
+      this.machineHeardAt = this.lastFrameAt;
       ackWatch.heard();
     }
     const raw = await parseSocketEvent(data);
