@@ -120,6 +120,7 @@
     "@earendil-works/pi-agent-core": "^1.1.0",
     "@earendil-works/pi-ai": "^1.1.0",
     "@earendil-works/pi-coding-agent": "^1.1.0",
+    "@earendil-works/pi-tui": "^1.1.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.13.3",
     "esbuild": "^0.28.2",
@@ -151,7 +152,8 @@
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "^1.1.0",
     "@earendil-works/pi-ai": "^1.1.0",
-    "@earendil-works/pi-coding-agent": "^1.1.0"
+    "@earendil-works/pi-coding-agent": "^1.1.0",
+    "@earendil-works/pi-tui": "^1.1.0"
   },
   "keywords": [
     "pi-package",

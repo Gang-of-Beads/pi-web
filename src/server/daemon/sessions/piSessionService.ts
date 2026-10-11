@@ -124,6 +124,7 @@ import { ExtensionStanding } from "./extensionStanding.js";
 import { ExtensionOrigins, type LoadedExtensionFile } from "./extensionOrigin.js";
 import { declaredAgentFacts } from "./declaredAgentFacts.js";
 import { customScreenHarness, extensionNameFromStack, renderCustomScreen, type CustomScreenComponent } from "./customScreen.js";
+import { terminalKeyData } from "./terminalInput.js";
 import { drawCustomRow, drawToolCall, drawToolResult, showsCustomEntry, transformedMarkdown, type ExtensionRenderers, type MarkdownKind } from "./extensionDrawings.js";
 import { ExtensionShortcuts, type ExtensionShortcutRunner } from "./extensionShortcuts.js";
 import { extensionFooterData } from "./extensionFooterData.js";
@@ -2138,8 +2139,10 @@ export class PiSessionService implements SessionRouteService {
     const lines = renderCustomScreen(component);
     dialogId = this.openCustomDialog(session, lines, customScreenOwner(this.customScreenStack), options.screen);
     const onKey = (key: string): void => {
+      const data = terminalKeyData(key);
+      if (data === undefined) return;
       try {
-        component.handleInput?.(key);
+        component.handleInput?.(data);
       } finally {
         this.pendingExtensionDialogStore.update(dialogId, renderCustomScreen(component));
         this.publishStatusForSessionId(session.sessionId);

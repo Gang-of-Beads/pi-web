@@ -2,6 +2,7 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, property, state } from "lit/decorators.js";
 import { dialogCardNeedsRender } from "../askCardIdentity";
 import { ifDefined } from "lit/directives/if-defined.js";
+import { live } from "lit/directives/live.js";
 import {
   EXTENSION_DIALOG_EDITOR_MAX_LENGTH,
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
@@ -19,21 +20,13 @@ import { isSelectableLine, keysForLineTap, screenIsTappable } from "../dialogScr
 import { classifyScreen, type ScreenShape } from "../dialogScreenShape.js";
 import { shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { keyBelongsToInputMethod } from "./keyboardEventTarget";
-import { loadDialogAnswerDraft, saveDialogAnswerDraft } from "../dialogAnswerDrafts";
+import { clearDialogAnswerDraft, loadDialogAnswerDraft, saveDialogAnswerDraft } from "../dialogAnswerDrafts";
 import "./AskUserCard";
 
 export type ExtensionDialogAnswerCallback = (dialogId: string, value: ExtensionDialogAnswer) => void | Promise<void>;
 export type ExtensionDialogCancelCallback = (dialogId: string) => void | Promise<void>;
 /** A keypress for a `custom` screen's component. */
 export type ExtensionDialogKeyCallback = (dialogId: string, key: string) => void | Promise<void>;
-
-/** The keys any screen can need, as buttons: a phone raises no keyboard for a <pre>. */
-const SCREEN_KEYS = [
-  { key: "up", glyph: "\u25b2", label: "Up" },
-  { key: "down", glyph: "\u25bc", label: "Down" },
-  { key: "enter", glyph: "\u23ce", label: "Enter" },
-  { key: "escape", glyph: "Esc", label: "Escape" },
-] as const;
 
 const COUNTDOWN_TICK_MS = 1_000;
 
@@ -191,6 +184,8 @@ export class ExtensionDialogCard extends LitElement {
   /** A Shift the keyboard really pressed; see promptEnterBehavior.ts (the composer tracks the same). */
   private explicitShiftKeyActive = false;
   private dialogIdentity: string | undefined;
+  /** A Send still typing into a screen. Another Send meanwhile does nothing and its text stays in the field, so keys never interleave. */
+  private typingIntoScreen = false;
   private countdownTimer: number | undefined;
 
   override connectedCallback(): void {
@@ -316,10 +311,14 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   /**
-   * The last resort: a terminal screen that does not read as a menu. Its lines
-   * go out as drawn and the reader's keys are forwarded to the component, which
-   * redraws. Scrollable and focusable, because a screen can be taller than the
-   * card and the arrows belong to it either way.
+   * The last resort: a terminal screen that does not read as a menu. Its lines go out as
+   * drawn; a tap on a line walks the component's cursor there and selects it, and text goes
+   * in through a real field, because a phone raises no keyboard for drawn lines and an input
+   * method composes only into a field (the owner's Chinese answer reached a screen as "3").
+   * Send types the field into the component and presses Enter; empty, it only presses Enter.
+   * There are no arrow keys (owner, 2026-10-11: "pi web 不要上下左右"). On a desktop the
+   * keyboard still reaches the component while the screen has focus. Scrollable and
+   * focusable, because a screen can be taller than the card.
    */
   private renderScreenText(dialog: PendingExtensionDialog, shape: ScreenShape): TemplateResult {
     const lines = dialog.lines ?? [];
@@ -336,18 +335,39 @@ export class ExtensionDialogCard extends LitElement {
         class=${`screen-line${tappable && isSelectableLine(line) ? " selectable" : ""}`}
         @click=${() => { void this.tapScreenLine(dialog, lines, lines.indexOf(line)); }}
       >${line === "" ? " " : line}</div>`)}</div>
-      <div class="dialog-screen-keys">
-        ${SCREEN_KEYS.map((key) => html`<button
-          type="button"
-          class="screen-key"
-          aria-label=${key.label}
-          @click=${() => { void this.onKey?.(dialog.dialogId, key.key); }}
-        >${key.glyph}</button>`)}
-      </div>
-      <footer class="dialog-footer">
-        <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Cancel</button>
-      </footer>
+      <form class="dialog-input-form" @submit=${(event: SubmitEvent) => { void this.typeIntoScreen(event, dialog); }}>
+        <input
+          class="dialog-input"
+          type="text"
+          name="screen-text"
+          aria-label="Text for the screen"
+          maxlength=${String(EXTENSION_DIALOG_INPUT_MAX_LENGTH)}
+          .value=${live(this.inputValue)}
+          ?disabled=${this.closing}
+          @input=${(event: Event) => { this.changeInput(event); }}
+        />
+        <footer class="dialog-footer">
+          <button class="secondary-action" type="button" ?disabled=${this.closing} @click=${() => { this.cancelDialog(dialog); }}>Cancel</button>
+          <button class="primary-action" type="submit" ?disabled=${this.closing}>Send</button>
+        </footer>
+      </form>
     `;
+  }
+
+  /** Type the field into the component one character at a time, as a terminal delivers typing, then press Enter. */
+  private async typeIntoScreen(event: SubmitEvent, dialog: PendingExtensionDialog): Promise<void> {
+    event.preventDefault();
+    if (this.typingIntoScreen) return;
+    this.typingIntoScreen = true;
+    const text = this.inputValue;
+    this.inputValue = "";
+    if (this.draftSessionId !== "") clearDialogAnswerDraft(this.draftSessionId, dialog.dialogId);
+    try {
+      for (const character of text) await this.onKey?.(dialog.dialogId, character);
+      await this.onKey?.(dialog.dialogId, "enter");
+    } finally {
+      this.typingIntoScreen = false;
+    }
   }
 
   /**
@@ -363,6 +383,7 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   private forwardScreenKey(event: KeyboardEvent, dialog: PendingExtensionDialog): void {
+    if (keyBelongsToInputMethod(event)) return;
     const key = dialogScreenKey(event);
     if (key === undefined) return;
     event.preventDefault();
@@ -525,10 +546,10 @@ export class ExtensionDialogCard extends LitElement {
     if (this.dialog !== undefined && this.draftSessionId !== "") saveDialogAnswerDraft(this.draftSessionId, this.dialog.dialogId, input.value);
   }
 
-  /** An open input or editor dialog shows what this browser kept of its answer (dialogAnswerDrafts), else its opening text. */
+  /** An open input, editor or screen dialog shows what this browser kept of its typed text (dialogAnswerDrafts), else its opening text. */
   private openingText(): string {
     const dialog = this.dialog;
-    if (this.outcome !== undefined || dialog === undefined || (dialog.kind !== "input" && dialog.kind !== "editor")) return "";
+    if (this.outcome !== undefined || dialog === undefined || (dialog.kind !== "input" && dialog.kind !== "editor" && dialog.kind !== "custom")) return "";
     const kept = this.draftSessionId === "" ? undefined : loadDialogAnswerDraft(this.draftSessionId, dialog.dialogId);
     return kept ?? (dialog.kind === "editor" ? dialog.prefill ?? "" : "");
   }
@@ -679,8 +700,6 @@ export class ExtensionDialogCard extends LitElement {
   .screen-choice { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-md); line-height: 1.35; overflow-wrap: anywhere; cursor: pointer; }
   .screen-choice.chosen { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   .screen-choice input { width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; accent-color: var(--pi-accent); }
-  .dialog-screen-keys { display: flex; flex-wrap: wrap; gap: var(--pi-space-3); }
-  .screen-key { box-sizing: border-box; min-width: var(--pi-panel-header-control-height, 36px); min-height: var(--pi-panel-header-control-height, 36px); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-family: inherit; font-size: var(--pi-text-sm); }
   .dialog-screen:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
   .dialog-screen-hint { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   .dialog-input {

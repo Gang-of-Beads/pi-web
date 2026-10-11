@@ -8,7 +8,7 @@
  * flows use: real buttons, real text, no box-drawing characters.
  *
  * Deliberately conservative: a screen that does not parse stays text, which is
- * faithful, and the key row keeps it drivable.
+ * faithful, and the card's text field keeps it drivable.
  */
 import { isScreenHintLine, screenCursorLine } from "./dialogScreenKeys.js";
 

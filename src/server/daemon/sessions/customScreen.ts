@@ -12,6 +12,7 @@
  * a `tui` and a `keybindings` object; the theme is already the daemon's plain one
  * (`plainTextTheme`), which is why the lines need no ANSI stripping.
  */
+import { getKeybindings } from "@earendil-works/pi-tui";
 import { EXTENSION_DIALOG_SCREEN_MAX_LINES } from "../../../shared/apiTypes.js";
 
 /** The little of a TUI component this host drives. */
@@ -27,11 +28,13 @@ export const CUSTOM_SCREEN_WIDTH = 56;
 /**
  * What the component gets when it asks the terminal questions.
  *
- * Any method call answers with its own last argument (`theme.fg("accent", text)`
- * style calls) and any property read that is not a method answers `undefined`
- * rather than throwing, so a component that pokes the terminal does not crash the
- * session over a detail nobody renders. `requestRender`, when given, is what the
- * component's `tui.requestRender()` calls, so a widget that redraws itself is redrawn.
+ * On the `tui`, any method call answers with its own last argument and any property
+ * read that is not a method answers `undefined` rather than throwing, so a component
+ * that pokes the terminal does not crash the session over a detail nobody renders.
+ * `requestRender`, when given, is what the component's `tui.requestRender()` calls,
+ * so a widget that redraws itself is redrawn. The keybindings are pi's own, the ones
+ * pi-tui's lists and editors read: the catch-all answered every `matches` with a
+ * truthy value, so a component that asks "is this key Up?" heard yes for every key.
  */
 export function customScreenHarness(hooks: { readonly requestRender?: () => void } = {}): { tui: object; keybindings: object } {
   const make = (own: Record<string, unknown> = {}): object => {
@@ -47,7 +50,7 @@ export function customScreenHarness(hooks: { readonly requestRender?: () => void
     });
   };
   const requestRender = hooks.requestRender;
-  return { tui: make(requestRender === undefined ? {} : { requestRender: () => { requestRender(); } }), keybindings: make() };
+  return { tui: make(requestRender === undefined ? {} : { requestRender: () => { requestRender(); } }), keybindings: getKeybindings() };
 }
 
 /** Whether an extension handed back something that draws: a TUI component has a `render(width)`. */

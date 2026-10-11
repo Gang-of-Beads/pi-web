@@ -612,25 +612,14 @@ describe("an extension's terminal screen", () => {
     expect([...renderRoot(card).querySelectorAll<HTMLInputElement>(".screen-choice input[type='radio']")].map((radio) => radio.checked)).toEqual([true, false, false]);
   });
 
-  it("that does not read as a menu keeps its lines and the key row, and closes with Cancel", async () => {
+  it("that does not read as a menu keeps its lines and a text field, and closes with Cancel", async () => {
     const card = await mountOpenDialog(openDialog({ dialogId: "dlg-text", kind: "custom", title: "Extension screen", lines: ["Building index", "42% done"] }));
     const root = renderRoot(card);
 
     expect({
       lines: [...root.querySelectorAll(".dialog-screen .screen-line")].map((line) => line.textContent.trim()),
-      keys: root.querySelectorAll(".dialog-screen-keys .screen-key").length > 0,
+      field: root.querySelector(".dialog-input-form input[name='screen-text']") !== null,
       footer: [...root.querySelectorAll(".dialog-footer button")].map((button) => button.textContent.trim()),
-    }).toEqual({ lines: ["Building index", "42% done"], keys: true, footer: ["Cancel"] });
-  });
-
-  it("forwards a key from the key row to the component", async () => {
-    const keys: string[] = [];
-    const card = await mountOpenDialog(openDialog({ dialogId: "dlg-keys", kind: "custom", title: "Extension screen", lines: ["Building index", "42% done"] }));
-    card.onKey = (_dialogId, key) => { keys.push(key); return Promise.resolve(); };
-    const down = [...renderRoot(card).querySelectorAll<HTMLButtonElement>(".dialog-screen-keys .screen-key")].find((key) => key.getAttribute("aria-label") === "Down");
-    down?.click();
-    await flushClose(card);
-
-    expect(keys).toEqual(["down"]);
+    }).toEqual({ lines: ["Building index", "42% done"], field: true, footer: ["Cancel", "Send"] });
   });
 });

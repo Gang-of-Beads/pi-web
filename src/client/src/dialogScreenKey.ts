@@ -1,10 +1,10 @@
 /**
- * A keypress, named the way a TUI component expects it.
+ * A keypress, by the name the session daemon reads.
  *
- * `ctx.ui.custom` hands the extension's component raw keys, and pi's terminal
- * names them ("up", "enter", "escape", a letter). The browser modal forwards what
- * it hears through this one mapping, so the component keeps working without
- * knowing it is no longer attached to a terminal.
+ * The browser forwards what it hears as a name ("up", "enter", "escape", a
+ * letter) through this one mapping, and the daemon turns each name into the
+ * bytes pi's terminal would hand the component, so the component keeps working
+ * without knowing it is no longer attached to a terminal.
  */
 const NAMED: Readonly<Record<string, string>> = {
   ArrowUp: "up",

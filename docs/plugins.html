@@ -196,9 +196,11 @@
                 <code>undefined</code> for select, input and editor), and the effective deadline — the sooner of the extension's
                 own <code>timeout</code> and the daemon's <code>extensionDialogsTimeoutMs</code> safety valve (default
                 <code>0</code>, which waits forever) — does the same when no one answers. <code>custom</code> draws its
-                screen as a card: a menu as choices with Confirm, anything else as its text, and a screen declared
-                with <code>web: { kind: "questions" }</code> as the Questions card (<code>ctx.ui.piWebScreens</code> lists
-                what this host draws). Every dialog is shown, as pi's terminal shows it: an empty title gets a generic
+                screen as a card: a menu as choices with Confirm, anything else as its text with a text field (Send types
+                the field into the component and presses Enter, and tapping a line selects it; there are no arrow-key
+                buttons, and the component receives keys as pi's terminal sends them), and a screen declared with
+                <code>web: { kind: "questions" }</code> as the Questions card (<code>ctx.ui.piWebScreens</code> lists what
+                this host draws). Every dialog is shown, as pi's terminal shows it: an empty title gets a generic
                 heading, a select with no options says so and offers Cancel, and repeated, blank or any number of options
                 are listed as given; a title or message longer than 32,000 characters is cut, and the cut says how much
                 is missing.
@@ -246,7 +248,7 @@
                     </tr>
                     <tr>
                       <td><code>custom</code></td>
-                      <td>A card: a menu as choices with Confirm, anything else as text; a screen declared with <code>web: { kind: "questions" }</code> as the Questions card.</td>
+                      <td>A card: a menu as choices with Confirm, anything else as text with a field that types into it; a screen declared with <code>web: { kind: "questions" }</code> as the Questions card.</td>
                     </tr>
                     <tr>
                       <td><code>notify</code></td>

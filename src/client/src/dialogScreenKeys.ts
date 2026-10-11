@@ -8,8 +8,8 @@
  * your native plugin?".
  *
  * Two ways in, both translating to the keys the component already understands:
- * tapping a line walks the cursor to it and selects, and a key row covers
- * everything else (Esc, and screens whose choice is not a cursor).
+ * tapping a line walks the cursor to it and selects, and the card's text field
+ * types into it and presses Enter.
  */
 /** The frame a component may draw, before its own content. */
 const FRAME_PREFIX = /^[\s│┃|]*/u;
@@ -47,9 +47,9 @@ export function isSelectableLine(line: string): boolean {
  * The component's own key-hint row, e.g. "Enter to select · ↑↓ to navigate · Esc =
  * back".
  *
- * A TUI explains the keys because a terminal has them; the browser now shows real
- * buttons under the screen, so the row is the one line that can go - and it is the
- * line that made the screen read as a terminal dump rather than a menu.
+ * A TUI explains the keys because a terminal has them; the browser draws its own
+ * controls, so the row is the one line that can go - and it is the line that made
+ * the screen read as a terminal dump rather than a menu.
  */
 export function isScreenHintLine(line: string): boolean {
   const text = line.replace(FRAME_PREFIX, "").replace(/[│┃|]\s*$/u, "").trim();
