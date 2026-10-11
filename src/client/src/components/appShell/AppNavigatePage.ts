@@ -426,8 +426,8 @@ export class AppNavigatePage extends LitElement {
     if (project === undefined) return nothing;
     const narrowed = this.pathProjectId !== undefined;
     return html`<div class="scope-switch" role="group" aria-label="Which sessions to list">
-      <button type="button" class=${narrowed ? "scope current" : "scope"} aria-pressed=${narrowed ? "true" : "false"} title=${project.name} @click=${() => { this.narrowTo(project.id); }}>${project.name}</button>
-      <button type="button" class=${narrowed ? "scope" : "scope current"} aria-pressed=${narrowed ? "false" : "true"} @click=${() => { this.widenToMachine(); }}>All projects</button>
+      <button type="button" class=${narrowed ? "scope current" : "scope"} aria-pressed=${narrowed ? "true" : "false"} title=${project.name} @click=${() => { this.narrowTo(project.id); }}><span class="scope-label">${project.name}</span></button>
+      <button type="button" class=${narrowed ? "scope" : "scope current"} aria-pressed=${narrowed ? "false" : "true"} @click=${() => { this.widenToMachine(); }}><span class="scope-label">All projects</span></button>
     </div>`;
   }
 
@@ -523,7 +523,7 @@ export class AppNavigatePage extends LitElement {
                 class=${segment.chosen ? "path-step chosen" : "path-step"}
                 title=${segment.label}
                 @click=${() => { this.pathStepPressed(segment.level); }}
-              >${segment.label}</button>
+              ><span class="path-step-label">${segment.label}</span></button>
             `)}
           </div>
           <div class="path-bar-actions">
@@ -1049,6 +1049,15 @@ export class AppNavigatePage extends LitElement {
     @media (hover: hover) { .tag-suggestion:hover { border-color: var(--pi-accent-border); } }
     .tag-suggestion:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     @media (pointer: coarse) { .tag-suggestion::after { content: ""; position: absolute; inset: calc((var(--pi-control-height) - var(--pi-control-height-touch)) / 2) 0; } }
+    /* B35: the header's keys keep their drawn height and a finger reaches 44px. The kinds and the
+       create key stand 4px apart, so their reach grows only up and down; a path step and a scope
+       clip their text in a span and the switch rounds its own ends, so the reach is not clipped. */
+    @media (pointer: coarse) {
+      .quick-access, .settings, .kind, .create, .path-step, .scope { position: relative; }
+      .quick-access::after, .settings::after { content: ""; position: absolute; inset: calc((var(--pi-panel-header-control-height) - var(--pi-control-height-touch)) / 2); }
+      .kind::after, .create::after, .scope::after { content: ""; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch)) / 2) 0; }
+      .path-step::after { content: ""; position: absolute; inset: calc((var(--pi-control-height) - var(--pi-control-height-touch)) / 2) 0; }
+    }
     .action-menu-panel { min-width: 160px; }
     .row-wrap > .row { height: 100%; }
     .row-wrap .action-menu-toggle { position: absolute; top: 0; right: 0; box-sizing: border-box; display: grid; place-items: center; width: var(--tile-menu-size); min-width: 0; height: var(--tile-menu-size); padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-ui); }
@@ -1062,7 +1071,8 @@ export class AppNavigatePage extends LitElement {
     /* No sideways scrolling on a phone: the path shares the width and each
        step ellipsises, so the whole scope is readable at a glance (owner). */
     .path-row { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow: hidden; }
-    .path-step { box-sizing: border-box; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); font: inherit; cursor: pointer; }
+    .path-step { box-sizing: border-box; flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; white-space: nowrap; min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); font: inherit; cursor: pointer; }
+    .path-step-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .path-step.chosen { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     .path-sep { flex: 0 0 auto; display: inline-grid; place-items: center; color: var(--pi-muted); }
     .path-sep .ui-icon { width: 14px; height: 14px; }
@@ -1072,8 +1082,11 @@ export class AppNavigatePage extends LitElement {
     .quick-access.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-accent); }
     .quick-access .ui-icon { width: 18px; height: 18px; }
     .settings.menu-key svg { width: 18px; height: 18px; }
-    .scope-switch { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; margin: var(--pi-space-3) var(--pi-bar-inset) 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); overflow: hidden; }
-    .scope { box-sizing: border-box; min-height: var(--pi-control-height-comfort); min-width: 0; padding: 0 var(--pi-space-4); border: 0; background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+    .scope-switch { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; margin: var(--pi-space-3) var(--pi-bar-inset) 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); }
+    .scope:first-child { border-radius: var(--pi-radius-sm) 0 0 var(--pi-radius-sm); }
+    .scope:last-child { border-radius: 0 var(--pi-radius-sm) var(--pi-radius-sm) 0; }
+    .scope { box-sizing: border-box; min-height: var(--pi-control-height-comfort); min-width: 0; display: inline-flex; align-items: center; justify-content: center; padding: 0 var(--pi-space-4); border: 0; background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
+    .scope-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .scope + .scope { border-left: 1px solid var(--pi-border); }
     .scope.current { background: var(--pi-selection-bg); color: var(--pi-accent); }
     .scope:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: calc(-1 * var(--pi-focus-ring-width)); }
