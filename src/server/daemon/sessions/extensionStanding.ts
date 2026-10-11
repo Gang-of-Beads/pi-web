@@ -1,3 +1,4 @@
+import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import type { ExtensionUiStanding, ExtensionWidgetPlacement } from "../../../shared/apiTypes.js";
 import { ExtensionCompletionStack } from "./extensionCompletions.js";
 import type { ExtensionOrigin } from "./extensionOrigin.js";
@@ -124,7 +125,7 @@ export class ExtensionStanding {
     this.changed();
   }
 
-  /** The statuses as pi's `footerData.getExtensionStatuses()` reports them. */
+  /** The statuses for `footerData.getExtensionStatuses()`, as the status bar shows them (statusText), not the raw text pi keeps. */
   statusTexts(): ReadonlyMap<string, string> {
     return this.statuses;
   }
@@ -227,10 +228,15 @@ export class ExtensionStanding {
   }
 }
 
-/** pi's footer sanitising (newlines and tabs to spaces, runs of spaces collapsed), then the payload bound. */
+/**
+ * pi's footer sanitising (newlines and tabs to spaces, runs of spaces collapsed), then the payload
+ * bound. The terminal codes an extension colours its text with are left out first: pi's footer is a
+ * terminal and paints them, the status bar is text and showed them raw (pi-background-tasks' status
+ * read "[48;2;183;223;255m bg 3 done" on the owner's phone, 2026-10-12).
+ */
 function statusText(text: unknown): string {
   const raw = typeof text === "string" ? text : typeof text === "number" || typeof text === "boolean" ? String(text) : "";
-  const flat = raw.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
+  const flat = stripTerminalSequences(raw).replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
   if (flat.length <= STATUS_MAX_LENGTH) return flat;
   return `${flat.slice(0, STATUS_MAX_LENGTH - 1)}…`;
 }
