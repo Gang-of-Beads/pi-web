@@ -76,6 +76,7 @@ function declaredQuestion(value: unknown): AskUserQuestion | undefined {
     options,
     ...(value["multiple"] === true ? { multiple: true } : {}),
     ...(value["custom"] === false ? { custom: false } : {}),
+    ...(value["customInput"] === "field" && value["custom"] !== false ? { customInput: "field" as const } : {}),
   };
 }
 

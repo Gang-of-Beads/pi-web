@@ -378,6 +378,7 @@ function parseAskUserQuestion(value: unknown, detailMax: number): AskUserQuestio
     options,
     ...(multiple === undefined ? {} : { multiple }),
     ...(custom === false ? { custom } : {}),
+    ...(record["customInput"] === "field" && custom !== false ? { customInput: "field" as const } : {}),
   };
 }
 

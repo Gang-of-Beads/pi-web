@@ -870,6 +870,13 @@ export interface AskUserQuestion {
   multiple?: boolean;
   /** When false, the browser offers no Custom choice and a typed answer is refused. */
   custom?: boolean;
+  /**
+   * How the typed answer is offered: "field" draws it as a box under the options, typed into
+   * straight away; without it a Custom choice opens the box. The extension chooses (owner,
+   * 2026-10-11: whether the custom input takes a tap first or is a box straight away is the
+   * extension's to define). Ignored when `custom` is false.
+   */
+  customInput?: "field";
 }
 
 /**

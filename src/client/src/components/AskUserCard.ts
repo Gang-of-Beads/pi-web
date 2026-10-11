@@ -121,7 +121,8 @@ export class AskUserCard extends LitElement {
     const answered = answeredCount([question], this.answers) === 1;
     const detailId = question.detail === undefined ? undefined : this.questionDetailId(index);
     const freeTextOnly = question.options.length === 0;
-    const customSelected = freeTextOnly || this.isOtherSelected(question, answer);
+    const customField = question.customInput === "field" && question.custom !== false;
+    const customSelected = freeTextOnly || customField || this.isOtherSelected(question, answer);
     const inputType = question.multiple === true ? "checkbox" : "radio";
     return html`
       <fieldset
@@ -151,7 +152,7 @@ export class AskUserCard extends LitElement {
               </span>
             </label>
           `)}
-          ${freeTextOnly || question.custom === false ? null : html`
+          ${freeTextOnly || customField || question.custom === false ? null : html`
             <label class="option other-option">
               <input
                 type=${inputType}
@@ -289,7 +290,7 @@ export class AskUserCard extends LitElement {
     growToFit(input);
     const current = this.answers[question.id];
     this.setAnswer(question, {
-      values: [...(current?.values ?? [])],
+      values: question.multiple === true ? [...(current?.values ?? [])] : [],
       otherText: input.value.slice(0, ASK_USER_OTHER_TEXT_MAX_LENGTH),
     });
   }

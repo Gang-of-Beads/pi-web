@@ -31,9 +31,9 @@ Only `ctx.ui.custom`, a terminal component, has no native form. The goal questio
 
 ### A screen declared as questions is the Questions card, once
 
-- `ctx.ui.custom(factory, { web: { kind: "questions", title?, questions: [{ id, question, detail?, options: [{ value, label, detail? }], multiple?, custom?: false }] } })`.
+- `ctx.ui.custom(factory, { web: { kind: "questions", title?, questions: [{ id, question, detail?, options: [{ value, label, detail? }], multiple?, custom?: false, customInput?: "field" }] } })`.
 - The daemon reads the declaration defensively (`declaredScreen.ts`). A detail may carry a whole proposal (8000 characters). Anything that does not fit reads as undeclared and the screen falls back to its drawn lines.
-- A declared screen never mounts its terminal component. The dialog carries the declaration, the browser draws the `ask_user` Questions card, and `custom()` resolves with the reader's `{ answers: [{ id, values, otherText? }] }`, validated against the declared questions. `custom: false` hides the Custom choice and refuses typed text.
+- A declared screen never mounts its terminal component. The dialog carries the declaration, the browser draws the `ask_user` Questions card, and `custom()` resolves with the reader's `{ answers: [{ id, values, otherText? }] }`, validated against the declared questions. `custom: false` hides the Custom choice and refuses typed text. `customInput: "field"` (2026-10-11) shows the typed answer as a box under the options, typed into straight away, instead of a Custom choice that opens it; on a single-answer question typing replaces the chosen option, as choosing Custom does. The extension picks the look (owner: whether the custom input takes a tap first or is a box straight away is the extension's to define).
 - `ctx.ui.piWebScreens` lists the declarations the host draws (`["questions"]`). A headless host and a closed card both resolve `custom()` with `undefined`. An extension reads this list to tell which one it got, so it does not ask a second time through `select`/`input`.
 - The closed record and the notification name the chosen labels, not the option values.
 
