@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AskUserOutcome, AskUserQuestion, PendingAskUser } from "../../../shared/apiTypes";
-import { saveAskDraft } from "../askDrafts";
+import type { AskUserQuestion, PendingAskUser } from "../../../shared/apiTypes";
 import { AskUserCard, type AskUserSubmitCallback } from "./AskUserCard";
 
 afterEach(() => {
@@ -192,73 +191,6 @@ describe("ask-user-card live form", () => {
   });
 });
 
-describe("ask-user-card record mode", () => {
-  it("has no answer controls and displays draft answers retained for a superseded ask", async () => {
-    const draftSessionId = "remote-a:session-1";
-    saveAskDraft(draftSessionId, "ask-old", {
-      speed: { values: ["fast"] },
-      rationale: { values: [], otherText: "It keeps the feedback loop short." },
-    });
-    const outcome: AskUserOutcome = {
-      askId: "ask-old",
-      reason: "superseded",
-      askedAt: "2026-07-20T10:00:00.000Z",
-      closedAt: "2026-07-20T10:05:00.000Z",
-      questions: [
-        unansweredRecord(question("speed", "Preferred pace", [option("fast", "Fast"), option("careful", "Careful")])),
-        unansweredRecord(question("rationale", "Why?", [])),
-        unansweredRecord(question("region", "Deployment region", [option("eu", "Europe")])),
-      ],
-      answeredCount: 0,
-      unansweredIds: ["speed", "rationale", "region"],
-      summary: "Answered 0 of 3; unanswered: speed, rationale, region",
-    };
-    const card = new AskUserCard();
-    card.draftSessionId = draftSessionId;
-    card.outcome = outcome;
-    document.body.append(card);
-    await card.updateComplete;
-    const root = renderRoot(card);
-
-    expect(root.querySelector("input, textarea, button, select")).toBeNull();
-    expect(root.textContent).toContain("Superseded");
-    expect(root.textContent).toContain("Fast");
-    expect(root.textContent).toContain("It keeps the feedback loop short.");
-    expect(root.textContent).toContain("Draft answer · not sent");
-    expect(root.textContent).toContain("Deployment region");
-    expect(root.textContent).toContain("Unanswered");
-  });
-
-  /**
-   * A close the reader did not perform must say who performed it. The owner
-   * watched his open form flip to a bare "Cancelled" and reported a bug;
-   * nothing had broken - his own chat message voided the form by design, and
-   * the card was the only place that knew and did not say.
-   */
-  it("names the reader's own message as what closed a voided form", async () => {
-    const outcome: AskUserOutcome = {
-      askId: "ask-voided",
-      reason: "cancelled",
-      cause: "user-message",
-      askedAt: "2026-07-20T10:00:00.000Z",
-      closedAt: "2026-07-20T10:01:00.000Z",
-      questions: [unansweredRecord(question("q1", "Pick one", [option("a", "A")]))],
-      answeredCount: 0,
-      unansweredIds: ["q1"],
-      summary: "Answered 0 of 1; unanswered: q1",
-    };
-    const card = new AskUserCard();
-    card.outcome = outcome;
-    document.body.append(card);
-    await card.updateComplete;
-    const root = renderRoot(card);
-
-    expect(root.textContent).toContain("Replaced by your message");
-    expect(root.textContent).toContain("You sent a chat message instead of answering");
-    expect(root.textContent).not.toContain("Cancelled");
-  });
-});
-
 async function mountOpenAsk(ask: PendingAskUser, onSubmit?: AskUserSubmitCallback): Promise<AskUserCard> {
   const card = new AskUserCard();
   card.ask = ask;
@@ -309,10 +241,6 @@ function question(
 
 function option(value: string, label: string, extra: Partial<AskUserQuestion["options"][number]> = {}): AskUserQuestion["options"][number] {
   return { value, label, ...extra };
-}
-
-function unansweredRecord(questionValue: AskUserQuestion): AskUserOutcome["questions"][number] {
-  return { question: questionValue, answered: false, values: [] };
 }
 
 describe("the step footer", () => {

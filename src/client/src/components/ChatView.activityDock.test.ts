@@ -79,8 +79,8 @@ describe("ChatView activity dock states", () => {
     expect(dock.dot).not.toBeNull();
   });
 
-  it("shows an amber dot and waiting text while an ask is open", async () => {
-    const dock = await dockWith(status({ pendingAsk: { askId: "a", askedAt: "", questions: [] } }), activity("idle"));
+  it("shows an amber dot and waiting text while a dialog is open", async () => {
+    const dock = await dockWith(status({ pendingDialogs: [{ dialogId: "d", kind: "confirm", title: "Ship?", askedAt: "", runScoped: false }] }), activity("idle"));
     expect(dock.className).toContain("asking");
     expect(dock.dots.length).toBe(0);
     expect(dock.dot).not.toBeNull();
@@ -136,31 +136,7 @@ describe("contributed activity notes", () => {
   });
 });
 
-describe("what else is running, while a question holds the reader", () => {
-  it("keeps the plugin's note on the dock instead of dropping it with the dock", async () => {
-    const view = new ChatView();
-    view.sessionId = "s";
-    view.status = status({ isStreaming: true });
-    view.activity = activity("active", "agent running");
-    view.pendingAsk = { askId: "a", askedAt: "", questions: [{ id: "q", question: "Ship?", options: [] }] };
-    view.activityNotes = [{ id: "p:n", pluginId: "p", localId: "n", note: () => "3 background runs" }];
-    document.body.append(view);
-    await view.updateComplete;
-    const dock = view.renderRoot.querySelector(".activity-dock");
-    expect(dock?.getAttribute("class")).toContain("background");
-    expect(dock?.textContent).toContain("3 background runs");
-  });
-
-  it("shows no dock at all during a question when no plugin has anything to say", async () => {
-    const view = new ChatView();
-    view.sessionId = "s";
-    view.status = status({ isStreaming: true });
-    view.pendingAsk = { askId: "a", askedAt: "", questions: [{ id: "q", question: "Ship?", options: [] }] };
-    document.body.append(view);
-    await view.updateComplete;
-    expect(view.renderRoot.querySelector(".activity-dock")).toBeNull();
-  });
-
+describe("the dock label and its note", () => {
   it("lets label and note give way together, and clips the dock, so nothing spills past its border", () => {
     const sheet = String(ChatView.styles);
     expect(sheet).toMatch(/\.activity-note\s*\{[^}]*text-overflow:\s*ellipsis/u);
@@ -241,7 +217,7 @@ describe("elapsed turn time", () => {
 });
 
 describe("a question the user has not answered", () => {
-  it("marks the dock as asking for an extension dialog, not only for an ask_user set", async () => {
+  it("marks the dock as asking for an extension dialog", async () => {
     const dialog = { dialogId: "d1", kind: "confirm" as const, title: "Update pi 0.84.2 → 0.84.3?", askedAt: "", runScoped: true };
     const dock = await dockWith(status({ pendingDialogs: [dialog] }), activity("idle", "idle"));
 

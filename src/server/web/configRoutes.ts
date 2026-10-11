@@ -14,7 +14,6 @@ export const SELECTED_MACHINE_CONFIG_KEYS = [
   "uploads",
   "maxUploadBytes",
   "logging",
-  "askUser",
   "agent",
   "updateCommand",
 ] as const satisfies readonly (keyof PiWebConfigValues)[];
@@ -134,7 +133,6 @@ function pickSelectedMachineConfig(config: PiWebConfigValues): PiWebConfig {
     ...(config.uploads !== undefined ? { uploads: config.uploads } : {}),
     ...(config.maxUploadBytes !== undefined ? { maxUploadBytes: config.maxUploadBytes } : {}),
     ...(config.logging !== undefined ? { logging: config.logging } : {}),
-    ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
     ...(config.updateCommand !== undefined ? { updateCommand: config.updateCommand } : {}),
   };
@@ -152,7 +150,6 @@ function parsePiWebConfigEnvOverridesResponse(value: unknown, source: string): P
     host: requireResponseBoolean(record, "host", source),
     port: requireResponseBoolean(record, "port", source),
     allowedHosts: requireResponseBoolean(record, "allowedHosts", source),
-    askUser: requireResponseBoolean(record, "askUser", source),
   };
 }
 
@@ -178,7 +175,6 @@ function piWebConfigEnvOverrides(env: NodeJS.ProcessEnv): PiWebConfigEnvOverride
     host: isEnvSet(env["PI_WEB_HOST"]),
     port: isEnvSet(env["PI_WEB_PORT"]) || isEnvSet(env["PORT"]),
     allowedHosts: isEnvSet(env["PI_WEB_ALLOWED_HOSTS"]),
-    askUser: isEnvSet(env["PI_WEB_ASK_USER"]),
   };
 }
 

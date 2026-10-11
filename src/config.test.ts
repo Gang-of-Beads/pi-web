@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS, DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_UPLOADS_FOLDER, AGENT_SESSION_DIR_ENV_KEYS, agentSessionDirEnvOverride, askUserEnabled, detectDeprecatedAgentInputs, effectiveAgentConfig, environmentFactsEnabled, effectivePiWebConfig, loadPiWebConfig, maxUploadBytes, offlineModeEnabled, savePiWebConfig } from "./config.js";
+import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS, DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_UPLOADS_FOLDER, AGENT_SESSION_DIR_ENV_KEYS, agentSessionDirEnvOverride, detectDeprecatedAgentInputs, effectiveAgentConfig, environmentFactsEnabled, effectivePiWebConfig, loadPiWebConfig, maxUploadBytes, offlineModeEnabled, savePiWebConfig } from "./config.js";
 
 let tempDir: string;
 let configPath: string;
@@ -212,26 +212,6 @@ describe("PI WEB config persistence", () => {
     expect(effectivePiWebConfig(testOptions()).config.uploads).toEqual({ defaultFolder: DEFAULT_UPLOADS_FOLDER });
   });
 
-  it("resolves askUser in the effective config so the runtime has a single source of truth", async () => {
-    expect(effectivePiWebConfig(testOptions()).config.askUser).toBe(false);
-
-    await writeFile(configPath, `${JSON.stringify({ askUser: false }, null, 2)}\n`, "utf8");
-
-    expect(effectivePiWebConfig(testOptions()).config.askUser).toBe(false);
-    expect(effectivePiWebConfig({ ...testOptions(), env: { ...testOptions().env, PI_WEB_ASK_USER: "1" } }).config.askUser).toBe(true);
-  });
-
-  it("round-trips the askUser key through save and load", () => {
-    expect(savePiWebConfig({ askUser: false }, testOptions()).config).toEqual({ askUser: false });
-    expect(loadPiWebConfig(testOptions()).config).toEqual({ askUser: false });
-  });
-
-  it("rejects a non-boolean askUser key", async () => {
-    await writeFile(configPath, `${JSON.stringify({ askUser: "yes" }, null, 2)}\n`, "utf8");
-
-    expect(() => loadPiWebConfig(testOptions())).toThrow("PI WEB config askUser must be a boolean");
-  });
-
   it("round-trips and validates the environmentFacts key", async () => {
     expect(savePiWebConfig({ environmentFacts: false }, testOptions()).config).toEqual({ environmentFacts: false });
     expect(loadPiWebConfig(testOptions()).config).toEqual({ environmentFacts: false });
@@ -273,26 +253,6 @@ describe("extensionDialogsTimeoutMs", () => {
     await writeFile(configPath, `${JSON.stringify({ extensionDialogsTimeoutMs: 0 }, null, 2)}\n`, "utf8");
 
     expect(effectivePiWebConfig(testOptions()).config.extensionDialogsTimeoutMs).toBe(0);
-  });
-});
-
-describe("askUserEnabled", () => {
-  it("is off by default: PI WEB gives the agent no tools of its own", () => {
-    expect(askUserEnabled({}, {})).toBe(false);
-  });
-
-  it("honors an explicit config choice", () => {
-    expect(askUserEnabled({}, { askUser: true })).toBe(true);
-    expect(askUserEnabled({}, { askUser: false })).toBe(false);
-  });
-
-  it("lets the env var override the config in both directions", () => {
-    expect(askUserEnabled({ PI_WEB_ASK_USER: "0" }, { askUser: true })).toBe(false);
-    expect(askUserEnabled({ PI_WEB_ASK_USER: "true" }, { askUser: false })).toBe(true);
-  });
-
-  it("treats an empty env value as unset", () => {
-    expect(askUserEnabled({ PI_WEB_ASK_USER: "" }, { askUser: false })).toBe(false);
   });
 });
 

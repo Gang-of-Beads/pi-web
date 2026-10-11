@@ -9,7 +9,8 @@ import { describe, expect, it } from "vitest";
  * detail region declared `overscroll-behavior: contain`, which D2 keeps for overlays. Horizontal
  * containment stays: on a code block it keeps a sideways swipe from going Back.
  *
- * Drawn in the transcript: ChatView and every component it imports, and every file of a plugin that
+ * Drawn in the transcript: ChatView and every component it imports, directly or through another
+ * component (the Questions card is drawn by the extension dialog card), and every file of a plugin that
  * contributes a message or code-fence renderer (review 1c0cb377: a fixed list of four files missed
  * the message text and the plugins' renderers).
  */
@@ -27,7 +28,24 @@ function sourceFiles(dir: string): string[] {
 }
 
 const chatView = join(componentsDir, "ChatView.ts");
-const chatViewImports = [...new Set([...readFileSync(chatView, "utf8").matchAll(/(?:from\s+|import\s+)"\.\/([A-Za-z]+)(?:\.js)?"/gu)].map((match) => match[1] ?? ""))].map((name) => join(componentsDir, `${name}.ts`));
+function componentImports(path: string): string[] {
+  return [...readFileSync(path, "utf8").matchAll(/(?:from\s+|import\s+)"\.\/([A-Za-z]+)(?:\.js)?"/gu)]
+    .map((match) => join(componentsDir, `${match[1] ?? ""}.ts`))
+    .filter((imported) => existsSync(imported));
+}
+
+function importedComponents(entry: string): string[] {
+  const reached = new Set([entry]);
+  const pending = [entry];
+  for (let path = pending.pop(); path !== undefined; path = pending.pop()) {
+    const unseen = componentImports(path).filter((imported) => !reached.has(imported));
+    unseen.forEach((imported) => reached.add(imported));
+    pending.push(...unseen);
+  }
+  return [...reached];
+}
+
+const chatViewImports = importedComponents(chatView);
 const rendererPlugins = readdirSync(pluginsDir)
   .map((entry) => join(pluginsDir, entry))
   .filter((dir) => existsSync(join(dir, "pi-web-plugin.ts")) && /messageRenderers|codeFenceRenderers/u.test(readFileSync(join(dir, "pi-web-plugin.ts"), "utf8")));

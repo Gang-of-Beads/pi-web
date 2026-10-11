@@ -13,7 +13,7 @@ import { css } from "lit";
  *                      now; also the "sending" mark — see sessionRowIndicator)
  *   background -> hollow purple ring (turn over, children still running)
  *   idle    -> static gray dot (done; nothing in flight)
- *   asking  -> amber dot (ask_user waiting on the user)
+ *   asking  -> amber dot (an extension dialog waiting on the user)
  *   error   -> red dot (activity errored, e.g. a model error)
  *   unread  -> purple dot (a completed turn the reader has not opened)
  *

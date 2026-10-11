@@ -507,25 +507,6 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
-  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; askId?: unknown; answers?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/ask/submit`, async (request, reply) => {
-    try {
-      const body = requireRecord(request.body);
-      const askId = requireBoundedId(body["askId"], "askId");
-      return await sessions.submitAsk(sessionRefFromBody(request.params.sessionId, body), askId, askUserSubmissionFromBody(body));
-    } catch (error) {
-      return sendError(reply, sessionErrorReply(error, 400));
-    }
-  });
-
-  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; askId?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/ask/cancel`, async (request, reply) => {
-    try {
-      const body = requireRecord(request.body);
-      return await sessions.cancelAsk(sessionRefFromBody(request.params.sessionId, body), requireBoundedId(body["askId"], "askId"));
-    } catch (error) {
-      return sendError(reply, sessionErrorReply(error, 400));
-    }
-  });
-
   app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unknown; value?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/dialogs/answer`, async (request, reply) => {
     try {
       const body = requireRecord(request.body);
@@ -859,9 +840,9 @@ function requireExactFields(record: Record<string, unknown>, fields: readonly st
 }
 
 /**
- * Shape-check one submitted answer set. Only transport-level checks belong here:
- * whether the answers fit the questions that were actually asked is the pending
- * ask store's job, since only it knows the open ask.
+ * Shape-check the answers to a declared questions screen. Only transport-level checks belong
+ * here: whether they fit the questions the extension declared is the pending dialog store's
+ * job, since only it knows the open dialog.
  */
 function askUserSubmissionFromBody(body: Record<string, unknown>): AskUserSubmission {
   const answers = body["answers"];

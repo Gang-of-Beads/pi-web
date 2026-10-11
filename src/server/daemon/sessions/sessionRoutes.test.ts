@@ -2,10 +2,8 @@ import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH } from "../../../shared/apiTypes.js";
+import { EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH } from "../../../shared/apiTypes.js";
 import type {
-  AskUserCloseResponse,
-  AskUserSubmission,
   ExtensionDialogAnswer,
   ExtensionDialogCloseResponse,
   MessagePage,
@@ -591,100 +589,6 @@ describe("session routes", () => {
       expect(active.statusCode).toBe(400);
       expect(active.json()).toEqual({ error: "Stop current session activity before forking the session tree" });
       expect(routeService.forkFromTreeCalls).toEqual([]);
-    } finally {
-      await routeService.dispose();
-      await routeApp.close();
-    }
-  });
-
-  it("parses ask submissions and reports both closed and stale outcomes", async () => {
-    const routeApp = Fastify({ logger: false });
-    await routeApp.register(fastifyWebsocket);
-    const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService();
-    registerSessionRoutes(routeApp, routeService, eventHub);
-
-    try {
-      const submitted = await routeApp.inject({
-        method: "POST",
-        url: "/sessions/session-1/ask/submit",
-        payload: {
-          cwd: "/repo/./",
-          askId: "ask-1",
-          answers: [{ id: "db", values: ["pg"] }, { id: "cache", values: [], otherText: "redis" }],
-        },
-      });
-      const cancelled = await routeApp.inject({
-        method: "POST",
-        url: "/sessions/session-1/ask/cancel",
-        payload: { cwd: "/repo/./", askId: "ask-2" },
-      });
-
-      expect(submitted.statusCode).toBe(200);
-      expect(submitted.json()).toMatchObject({ result: "closed", sessionStatus: { sessionId: "session-1" } });
-      expect(routeService.submitAskCalls).toEqual([{
-        lookup: { id: "session-1", cwd: resolve("/repo") },
-        askId: "ask-1",
-        submission: { answers: [{ id: "db", values: ["pg"] }, { id: "cache", values: [], otherText: "redis" }] },
-      }]);
-      expect(cancelled.statusCode).toBe(200);
-      expect(cancelled.json()).toMatchObject({ result: "stale" });
-      expect(routeService.cancelAskCalls).toEqual([{ lookup: { id: "session-1", cwd: resolve("/repo") }, askId: "ask-2" }]);
-    } finally {
-      await routeService.dispose();
-      await routeApp.close();
-    }
-  });
-
-  it("rejects malformed ask payloads before calling the service", async () => {
-    const routeApp = Fastify({ logger: false });
-    await routeApp.register(fastifyWebsocket);
-    const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService();
-    registerSessionRoutes(routeApp, routeService, eventHub);
-    const malformed: Record<string, unknown>[] = [
-      { cwd: "/repo", answers: [] },
-      { cwd: "/repo", askId: "", answers: [] },
-      { cwd: "/repo", askId: "x".repeat(ASK_USER_ID_MAX_LENGTH + 1), answers: [] },
-      { cwd: "/repo", askId: "ask-1" },
-      { cwd: "/repo", askId: "ask-1", answers: {} },
-      { cwd: "/repo", askId: "ask-1", answers: [{ values: ["pg"] }] },
-      { cwd: "/repo", askId: "ask-1", answers: [{ id: "db" }] },
-      { cwd: "/repo", askId: "ask-1", answers: [{ id: "db", values: [1] }] },
-      { cwd: "/repo", askId: "ask-1", answers: [{ id: "db", values: [], otherText: 7 }] },
-      { cwd: "/repo", askId: "ask-1", answers: [{ id: "db", values: [], otherText: "x".repeat(ASK_USER_OTHER_TEXT_MAX_LENGTH + 1) }] },
-      { cwd: "/repo", askId: "ask-1", answers: new Array<unknown>(ASK_USER_QUESTION_LIMIT + 1).fill({ id: "db", values: [] }) },
-    ];
-
-    try {
-      for (const payload of malformed) {
-        const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/ask/submit", payload });
-        expect(response.statusCode).toBe(400);
-      }
-      const cancelWithoutAskId = await routeApp.inject({ method: "POST", url: "/sessions/session-1/ask/cancel", payload: {} });
-
-      expect(cancelWithoutAskId.statusCode).toBe(400);
-      expect(routeService.submitAskCalls).toEqual([]);
-      expect(routeService.cancelAskCalls).toEqual([]);
-    } finally {
-      await routeService.dispose();
-      await routeApp.close();
-    }
-  });
-
-  it("maps a missing session on an ask submission to 404", async () => {
-    const routeApp = Fastify({ logger: false });
-    await routeApp.register(fastifyWebsocket);
-    const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService();
-    routeService.askError = new SessionNotFoundError();
-    registerSessionRoutes(routeApp, routeService, eventHub);
-
-    try {
-      const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/ask/submit", payload: { cwd: "/repo", askId: "ask-1", answers: [] } });
-
-      expect(response.statusCode).toBe(404);
-      expect(response.json()).toEqual({ error: "Session not found", code: "session-not-found" });
     } finally {
       await routeService.dispose();
       await routeApp.close();
@@ -1437,27 +1341,12 @@ class CapturingRouteSessionService implements SessionRouteService {
   readonly navigateTreeCalls: { lookup: SessionRouteRef; request: SessionTreeNavigateRequest }[] = [];
   readonly forkFromTreeCalls: { lookup: SessionRouteRef; request: SessionTreeForkRequest }[] = [];
   forkFromTreeError: Error | undefined;
-  readonly submitAskCalls: { lookup: SessionRouteRef; askId: string; submission: AskUserSubmission }[] = [];
-  readonly cancelAskCalls: { lookup: SessionRouteRef; askId: string }[] = [];
   readonly answerDialogCalls: { lookup: SessionRouteRef; dialogId: string; value: ExtensionDialogAnswer }[] = [];
   readonly cancelDialogCalls: { lookup: SessionRouteRef; dialogId: string }[] = [];
   readonly startCalls: { cwd: string; startupToken: string | undefined }[] = [];
-  askError: Error | undefined;
   dialogError: Error | undefined;
   reloadError: Error | undefined;
   clearQueueError: Error | undefined;
-
-  submitAsk(lookup: SessionRouteRef, askId: string, submission: AskUserSubmission): Promise<AskUserCloseResponse> {
-    if (this.askError !== undefined) return Promise.reject(this.askError);
-    this.submitAskCalls.push({ lookup, askId, submission });
-    return Promise.resolve({ result: "closed", sessionStatus: idleStatus(lookup) });
-  }
-
-  cancelAsk(lookup: SessionRouteRef, askId: string): Promise<AskUserCloseResponse> {
-    if (this.askError !== undefined) return Promise.reject(this.askError);
-    this.cancelAskCalls.push({ lookup, askId });
-    return Promise.resolve({ result: "stale", sessionStatus: idleStatus(lookup) });
-  }
 
   readonly customScreenKeyCalls: { lookup: SessionRouteRef; dialogId: string; key: string }[] = [];
 

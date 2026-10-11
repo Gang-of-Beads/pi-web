@@ -3,26 +3,23 @@ import type { SessionActivity, SessionStatus } from "./apiTypes.js";
 /**
  * User-facing session state, one of five, in precedence order.
  *
- * The precedence matters: an ask is also "not working", an error is often the
- * end of a turn, and a queued prompt is still work. Classifying once here keeps
- * every surface (rows, dock, header) agreeing on what the session is doing.
+ * The precedence matters: an open dialog is also "not working", an error is
+ * often the end of a turn, and a queued prompt is still work. Classifying once
+ * here keeps every surface (rows, dock, header) agreeing on what the session is
+ * doing.
  *
  * "background" sits between working and idle on purpose. The turn really has
  * ended — nothing will move without the user — so reporting it as working
  * would promise progress that is not coming; but children are still running,
  * so reporting it as idle hides work the user may be waiting on.
  */
-export type SessionActivityCategory = "error" | "asking" | "working" | "background" | "idle";
+export type SessionActivityCategory = "asking" | "error" | "working" | "background" | "idle";
 
 /**
- * Whether the run ended owing the user a reply.
- *
- * A tool result is never the end of a turn: the model asked for the tool, so
- * it has to say something about what came back. A transcript whose last record
- * is a tool result therefore describes a turn that stopped early. The failure
- * that motivated this left nothing else to go on - no assistant message, no
- * error record, no failed request - so the shape of the transcript is the only
- * evidence there is.
+ * The one category a session shows, first match wins: an open dialog, then a failed run, then
+ * work in flight (streaming, a shell command, compaction, a queued message or an active run),
+ * then runs left in the background, else idle. Without a status only the activity speaks: a
+ * failed run, an active one, or nothing (undefined).
  */
 export function sessionActivityCategory(
   status: SessionStatus | undefined,
@@ -41,12 +38,11 @@ export function sessionActivityCategory(
 /**
  * Whether a session is holding still for the user rather than for itself.
  *
- * Two things park a run on an answer: an `ask_user` question set and an
- * extension dialog (`ctx.ui.confirm`/`select`/`input`). They arrive on the
- * status through different fields, and a surface that consults only the first
- * reports a session blocked on a countdown dialog as idle.
+ * What parks a run on an answer is an open extension dialog
+ * (`ctx.ui.confirm`/`select`/`input`/`editor`/`custom`): a session blocked on one
+ * is waiting for the reader, not working and not idle.
  */
-export function isWaitingForUser(status: Pick<SessionStatus, "pendingAsk" | "pendingDialogs"> | undefined): boolean {
+export function isWaitingForUser(status: Pick<SessionStatus, "pendingDialogs"> | undefined): boolean {
   if (status === undefined) return false;
-  return status.pendingAsk !== undefined || (status.pendingDialogs?.length ?? 0) > 0;
+  return (status.pendingDialogs?.length ?? 0) > 0;
 }

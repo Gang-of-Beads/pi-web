@@ -195,18 +195,14 @@ describe("ChatView holding the waiting row for a press", () => {
   /** D2, B22: the cards kept for the press are closed; a tap that lands on one answers nothing. */
   it("keeps the closed cards inert while it holds them, and live again for the next card", async () => {
     const view = await mountView();
-    const ask = { askId: "ask-held", questions: [{ id: "q", question: "Pick", options: [{ value: "a", label: "A" }] }], askedAt: "2026-08-30T00:00:00.000Z" };
-    view.onSubmitAsk = () => undefined;
     view.onAnswerDialog = () => undefined;
     view.onCancelDialog = () => undefined;
     view.onDialogKey = () => undefined;
-    view.pendingAsk = ask;
     view.pendingDialogs = [dialog];
     await view.updateComplete;
     const open = slotCards(view);
 
     scroller(view).dispatchEvent(pointerEvent("pointerdown"));
-    Reflect.set(view, "pendingAsk", undefined);
     view.pendingDialogs = [];
     await view.updateComplete;
     const held = slotCards(view);
@@ -217,27 +213,26 @@ describe("ChatView holding the waiting row for a press", () => {
     await view.updateComplete;
 
     expect({ open, held, next: slotCards(view) }).toEqual({
-      open: [{ id: "ask-held", inert: false, live: [true] }, { id: "dlg-held", inert: false, live: [true, true, true] }],
-      held: [{ id: "ask-held", inert: true, live: [false] }, { id: "dlg-held", inert: true, live: [false, false, false] }],
+      open: [{ id: "dlg-held", inert: false, live: [true, true, true] }],
+      held: [{ id: "dlg-held", inert: true, live: [false, false, false] }],
       next: [{ id: "dlg-next", inert: false, live: [true, true, true] }],
     });
   });
 
-  /** Review b2c94ee9: only the first of several open forms was held. */
-  it("holds every open form that closes under the finger, not only the first", async () => {
+  /** Review b2c94ee9: only the first of several open cards was held. */
+  it("holds every open card that closes under the finger, not only the first", async () => {
     const view = await mountView();
-    view.onSubmitAsk = () => undefined;
-    const form = (askId: string) => ({ askId, questions: [{ id: "q", question: askId, options: [{ value: "a", label: "A" }] }], askedAt: "2026-08-30T00:00:00.000Z" });
-    view.pendingAsks = [form("ask-first"), form("ask-second")];
-    view.pendingAsk = form("ask-first");
+    view.onAnswerDialog = () => undefined;
+    view.onCancelDialog = () => undefined;
+    view.onDialogKey = () => undefined;
+    view.pendingDialogs = [{ ...dialog, dialogId: "dlg-first" }, { ...dialog, dialogId: "dlg-second" }];
     await view.updateComplete;
 
     scroller(view).dispatchEvent(pointerEvent("pointerdown"));
-    view.pendingAsks = [];
-    Reflect.set(view, "pendingAsk", undefined);
+    view.pendingDialogs = [];
     await view.updateComplete;
 
-    expect(slotCards(view)).toEqual([{ id: "ask-first", inert: true, live: [false] }, { id: "ask-second", inert: true, live: [false] }]);
+    expect(slotCards(view)).toEqual([{ id: "dlg-first", inert: true, live: [false, false, false] }, { id: "dlg-second", inert: true, live: [false, false, false] }]);
   });
 
   /** Review b2c94ee9: with a second card open, the closed one vanished and the survivor slid under the finger. */
@@ -272,11 +267,10 @@ function pointerEvent(type: string): Event {
 
 /** Each card in the waiting slot: its id, whether it is inert, and which of its handlers are bound. */
 function slotCards(view: ChatView): { id: string; inert: boolean; live: boolean[] }[] {
-  return [...view.renderRoot.querySelectorAll(".waiting-slot > ask-user-card, .waiting-slot > extension-dialog-card")].map((card) => {
-    const isAsk = card.tagName === "ASK-USER-CARD";
-    const subject: unknown = Reflect.get(card, isAsk ? "ask" : "dialog");
-    const id: unknown = typeof subject === "object" && subject !== null ? Reflect.get(subject, isAsk ? "askId" : "dialogId") : undefined;
-    const handlers = isAsk ? ["onSubmit"] : ["onAnswer", "onCancel", "onKey"];
+  return [...view.renderRoot.querySelectorAll(".waiting-slot > extension-dialog-card")].map((card) => {
+    const subject: unknown = Reflect.get(card, "dialog");
+    const id: unknown = typeof subject === "object" && subject !== null ? Reflect.get(subject, "dialogId") : undefined;
+    const handlers = ["onAnswer", "onCancel", "onKey"];
     return { id: String(id), inert: card.hasAttribute("inert"), live: handlers.map((name) => Reflect.get(card, name) !== undefined) };
   });
 }

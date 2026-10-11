@@ -130,7 +130,7 @@ describe("buildApp machine routes", () => {
     const response = await appTestContext.app.inject({
       method: "PUT",
       url: `/api/machines/${remote.id}/config`,
-      payload: { config: { plugins: { info: { enabled: false } }, pathAccess: { allowedPaths: ["/srv/remote"] }, uploads: { defaultFolder: "remote\\uploads" }, maxUploadBytes: 4096, askUser: true, agent: { command: "remote-agent", dir: "/srv/remote-agent" } } },
+      payload: { config: { plugins: { info: { enabled: false } }, pathAccess: { allowedPaths: ["/srv/remote"] }, uploads: { defaultFolder: "remote\\uploads" }, maxUploadBytes: 4096, agent: { command: "remote-agent", dir: "/srv/remote-agent" } } },
     });
 
     const expectedMerged: PiWebConfigValues = {
@@ -139,7 +139,6 @@ describe("buildApp machine routes", () => {
       pathAccess: { allowedPaths: ["/srv/remote"] },
       uploads: { defaultFolder: "remote/uploads" },
       maxUploadBytes: 4096,
-      askUser: true,
       agent: { command: "remote-agent", dir: "/srv/remote-agent" },
     };
     expect(response.statusCode).toBe(200);
@@ -150,7 +149,6 @@ describe("buildApp machine routes", () => {
       pathAccess: { allowedPaths: ["/srv/remote"] },
       uploads: { defaultFolder: "remote/uploads" },
       maxUploadBytes: 4096,
-      askUser: true,
       agent: { command: "remote-agent", dir: "/srv/remote-agent" },
     });
   });
@@ -169,11 +167,11 @@ describe("buildApp machine routes", () => {
     const response = await appTestContext.app.inject({
       method: "PUT",
       url: `/api/machines/${remote.id}/config`,
-      payload: { config: { askUser: true } },
+      payload: { config: { maxUploadBytes: 4096 } },
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json<PiWebConfigResponse>().config.askUser).toBe(true);
+    expect(response.json<PiWebConfigResponse>().config.maxUploadBytes).toBe(4096);
   });
 
   it("preserves foreign-platform agent paths across the federation transport", async () => {
@@ -208,7 +206,7 @@ describe("buildApp machine routes", () => {
     const response = await appTestContext.app.inject({
       method: "PUT",
       url: `/api/machines/${remote.id}/config`,
-      payload: { config: { host: "0.0.0.0", allowedHosts: true, shortcuts: { "core:view.chat": "mod+1" }, askUser: true } },
+      payload: { config: { host: "0.0.0.0", allowedHosts: true, shortcuts: { "core:view.chat": "mod+1" }, maxUploadBytes: 4096 } },
     });
 
     expect(response.statusCode).toBe(400);

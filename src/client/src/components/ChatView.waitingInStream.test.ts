@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from "vitest";
-import type { PendingAskUser } from "../../../shared/apiTypes";
+import type { PendingExtensionDialog } from "../../../shared/apiTypes";
 import type { ChatLine } from "./shared";
 import { ChatView } from "./ChatView";
 
@@ -15,12 +15,8 @@ import { ChatView } from "./ChatView";
  * that answer it.
  */
 
-function ask(): PendingAskUser {
-  return {
-    askId: "ask-1",
-    askedAt: "2026-09-01T00:00:00.000Z",
-    questions: [{ id: "q1", question: "Which one?", options: [{ value: "a", label: "A" }] }],
-  };
+function dialog(): PendingExtensionDialog {
+  return { dialogId: "dialog-1", kind: "select", title: "Which one?", options: ["A", "B"], askedAt: "2026-09-01T00:00:00.000Z", runScoped: false };
 }
 
 function userLine(text: string): ChatLine {
@@ -52,13 +48,13 @@ afterEach(() => { document.body.replaceChildren(); });
 
 describe("a waiting question lives in the transcript", () => {
   it("renders the question inside the scroller", async () => {
-    const view = await mount({ pendingAsk: ask() });
+    const view = await mount({ pendingDialogs: [dialog()] });
 
-    expect(scroller(view)?.querySelector("ask-user-card")).not.toBeNull();
+    expect(scroller(view)?.querySelector("extension-dialog-card")).not.toBeNull();
   });
 
   it("keeps the slot inside the scroller rather than beside it", async () => {
-    const view = await mount({ pendingAsk: ask() });
+    const view = await mount({ pendingDialogs: [dialog()] });
 
     expect(view.renderRoot.querySelector(".waiting-slot")?.closest(".chat")).not.toBeNull();
   });
@@ -74,7 +70,7 @@ describe("a waiting question lives in the transcript", () => {
 
 describe("an unanswered question is what the bottom of the transcript reaches", () => {
   it("renders after every settled message, the way a queued message does", async () => {
-    const view = await mount({ pendingAsk: ask() });
+    const view = await mount({ pendingDialogs: [dialog()] });
     const chat = scroller(view);
     const rows = [...(chat?.children ?? [])];
     const slotIndex = rows.findIndex((row) => row.classList.contains("waiting-slot"));
@@ -87,7 +83,7 @@ describe("an unanswered question is what the bottom of the transcript reaches", 
   });
 
   it("pins nothing inside itself, so no option sits under the card's own footer", async () => {
-    await mount({ pendingAsk: ask() });
+    await mount({ pendingDialogs: [dialog()] });
 
     // Checked against the stylesheet, not the DOM: the component writes no
     // inline styles, so a [style*=...] query could never have matched and

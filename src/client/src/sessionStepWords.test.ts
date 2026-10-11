@@ -26,22 +26,22 @@ describe("what the status line says for each step (B25)", () => {
 
   it("says when what waits is read, from the step it waits behind", () => {
     expect([
-      stepWaitingText({ kind: "running", tools: [] }, { messages: 2, followUps: 0, answers: 0 }),
-      stepWaitingText({ kind: "writing" }, { messages: 0, followUps: 0, answers: 1 }),
-      stepWaitingText({ kind: "compacting" }, { messages: 1, followUps: 0, answers: 1 }),
-      stepWaitingText({ kind: "thinking" }, { messages: 0, followUps: 0, answers: 0 }),
+      stepWaitingText({ kind: "running", tools: [] }, { messages: 2, followUps: 0 }),
+      stepWaitingText({ kind: "writing" }, { messages: 1, followUps: 0 }),
+      stepWaitingText({ kind: "compacting" }, { messages: 1, followUps: 0 }),
+      stepWaitingText({ kind: "thinking" }, { messages: 0, followUps: 0 }),
     ]).toEqual([
       "2 messages are read when these tools finish",
-      "your answer is read when this reply ends",
-      "your answer and 1 message are read next",
+      "1 message is read when this reply ends",
+      "1 message is read next",
       undefined,
     ]);
   });
 
   it("says a follow-up is read only when the agent is done, whatever the step (review of ad83d24b)", () => {
     expect([
-      stepWaitingText({ kind: "running", tools: [] }, { messages: 0, followUps: 1, answers: 0 }),
-      stepWaitingText({ kind: "running", tools: [] }, { messages: 1, followUps: 2, answers: 0 }),
+      stepWaitingText({ kind: "running", tools: [] }, { messages: 0, followUps: 1 }),
+      stepWaitingText({ kind: "running", tools: [] }, { messages: 1, followUps: 2 }),
     ]).toEqual([
       "1 follow-up is read when the agent is done",
       "1 message is read when these tools finish · 2 follow-ups are read when the agent is done",

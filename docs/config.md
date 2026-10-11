@@ -33,13 +33,13 @@ defaults → global config file → environment overrides
 
 Supported project-local settings are then applied for that project's workspaces. For upload defaults, `<project>/.pi-web/config.json` overrides the global value.
 
-Environment overrides include `PI_WEB_HOST`, `PI_WEB_PORT` / `PORT`, `PI_WEB_ALLOWED_HOSTS`, `PI_WEB_MAX_UPLOAD_BYTES`, `PI_CODING_AGENT_DIR`, `PI_CODING_AGENT_SESSION_DIR`, `PI_WEB_ASK_USER`, and `PI_WEB_ENVIRONMENT_FACTS`.
+Environment overrides include `PI_WEB_HOST`, `PI_WEB_PORT` / `PORT`, `PI_WEB_ALLOWED_HOSTS`, `PI_WEB_MAX_UPLOAD_BYTES`, `PI_CODING_AGENT_DIR`, `PI_CODING_AGENT_SESSION_DIR`, and `PI_WEB_ENVIRONMENT_FACTS`.
 
 Process restarts depend on the key:
 
 - `host` / `port`: restart the gateway web/API service or process.
 - `maxUploadBytes`: restart both the web/API process and the session daemon on that machine.
-- `askUser` / `extensionDialogsTimeoutMs` / `environmentFacts`: restart the session daemon on that machine.
+- `extensionDialogsTimeoutMs` / `environmentFacts`: restart the session daemon on that machine.
 - `pathAccess`: applies on the next request; existing file views may need a browser refresh.
 - `uploads.defaultFolder`: applies to newly opened Files upload dialogs and new direct drag/drop batches after config/workspace refresh.
 - `logging`: the web/API process and the session daemon re-read it within a minute; no restart.
@@ -63,7 +63,6 @@ Process restarts depend on the key:
     "defaultFolder": ".pi-web/uploads"
   },
   "maxUploadBytes": 67108864,
-  "askUser": true,
   "extensionDialogsTimeoutMs": 0,
   "plugins": {
     "workspace-tasks": { "enabled": true },
@@ -144,7 +143,7 @@ worktree_path="$1"
 
 ## Configuration matrix
 
-Rows with JSON key `—` are runtime-only environment variables, not config-file keys. `Global` means machine-global. In Settings, selected-machine-safe global keys (`pathAccess`, `uploads`, `maxUploadBytes`, `askUser`, `logging`, `updateCommand`, and `plugins`) are edited for the selected machine; gateway host/port/allowed-hosts, keyboard shortcuts, and machine registry/tokens stay local.
+Rows with JSON key `—` are runtime-only environment variables, not config-file keys. `Global` means machine-global. In Settings, selected-machine-safe global keys (`pathAccess`, `uploads`, `maxUploadBytes`, `logging`, `updateCommand`, and `plugins`) are edited for the selected machine; gateway host/port/allowed-hosts, keyboard shortcuts, and machine registry/tokens stay local.
 
 | Config | JSON key | Env var | Scope | Project-local behavior | Applies / restart |
 | --- | --- | --- | --- | --- | --- |
@@ -158,7 +157,6 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | Update command for the Updates page | `updateCommand` | `PI_WEB_UPDATE_COMMAND` (the saved value wins) | Global | Not supported locally | Next status check, no restart |
 | Tiles per row in the Navigate lists | `listTiles.phone`, `listTiles.desktop` | — | Global (the gateway's browser UI) | Not supported locally | At once from Settings; browser reload after a hand edit |
 | Upload/body limit | `maxUploadBytes` | `PI_WEB_MAX_UPLOAD_BYTES` | Global | Not supported locally | Restart web/API and session daemon on that machine |
-| Agent can post question forms | `askUser` | `PI_WEB_ASK_USER` | Global/session daemon | Not supported locally | Restart session daemon on that machine |
 | Extension dialog auto-cancel timeout | `extensionDialogsTimeoutMs` | — | Global/session daemon | Not supported locally | Restart session daemon on that machine |
 | Session environment facts | `environmentFacts` | `PI_WEB_ENVIRONMENT_FACTS` | Global/session daemon | Not supported locally | Restart session daemon on that machine |
 | PI WEB plugin desired enablement/settings | `plugins.<id>.enabled`, `plugins.<id>.settings` | — | Global + sessiond startup snapshot for server entries | Not core local config; plugins may read their own project files | Browser-only: reload tab. Server-backed: manually restart sessiond, then reload tab |
@@ -389,21 +387,11 @@ PI WEB gives agents no tools of its own. Starting other sessions is a session-da
 
 The `spawnSessions` and `subsessions` config keys, and `PI_WEB_SPAWN_SESSIONS` and `PI_WEB_SUBSESSIONS`, are retired. They controlled the `spawn_session` and tracked-subsession tools, which PI WEB no longer registers. A config file that still sets them loads, and they have no effect.
 
-#### `askUser` and `ask_user`
+#### `ask_user`
 
-`askUser` controls whether sessions load the `ask_user` extension PI WEB ships, which gives agents the `ask_user` tool. It defaults to `false`: PI WEB gives agents no tools of its own unless you turn one on. Set it to `true`, or set `PI_WEB_ASK_USER=true`, to load it. The environment override accepts `0|1|true|false` and takes precedence over the config file.
+PI WEB has no `ask_user` tool: it gives agents no tools of its own. A question tool comes from a pi extension you install, such as [pi-ask-user](https://github.com/edlsh/pi-ask-user), and its questions reach the browser as the [extension dialogs](#extension-dialogs) below.
 
-Use **Settings → Session daemon → Allow agents to ask questions** to change `askUser` on the selected machine. An environment override makes the toggle read-only.
-
-The tool accepts one set of 1–20 questions. Each question has a unique `id`, its `question` text, optional supporting `detail`, up to 12 options with stable values and user-facing labels, and an optional `multiple` flag. The browser always adds a **Custom** free-text answer, including when the model supplies no options. No question is required: the user may leave any of them unanswered.
-
-Calling `ask_user` posts the whole set as one browser form and ends the current agent run instead of waiting for the user. The open form is owned by the session daemon, so it survives a browser disconnect, browser reload, or web/API restart while that daemon keeps running. When the user submits, the answers arrive as a follow-up that wakes the session; each question is reported with its selected option values or free text, or explicitly as unanswered.
-
-PI WEB confirms a partial submission before sending it and names the unanswered questions. Only one ask can be open per session: a later `ask_user` call supersedes the earlier one, reports that fact and its unanswered questions to the model, and turns the earlier card into a read-only transcript record. Submitted and cancelled asks likewise remain readable in the transcript.
-
-Sending an ordinary chat message while a form is open voids the form: the card closes as cancelled and the model is told its questions went unanswered as part of the turn the message itself starts.
-
-Restart the session daemon after changing `askUser`, or after upgrading from a version where `ask_user` was on by default: sessions then offer it only once it is turned on. For the systemd user service, run `systemctl --user restart pi-web-sessiond`.
+The `askUser` config key and `PI_WEB_ASK_USER` are retired. A config file that still sets `askUser` loads; the key has no effect, and the next save from Settings drops it.
 
 ### Extension dialogs
 

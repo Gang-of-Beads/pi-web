@@ -25,7 +25,6 @@ function daemonCollaborators(patch: Partial<SessionServiceDependencyInput> = {})
     unreadStore: new SessionUnreadStore(),
     onUnreadChanged: () => { /* no-op */ },
     catalogRefreshStatus: { isRefreshInFlight: () => false },
-    askUserEnabled: true,
     hostContributions: { systemPromptSections: [], unsupportedSurfaces: [] },
     extensionDialogsTimeoutMs: 300_000,
     ...patch,
@@ -84,11 +83,6 @@ describe("sessiond session service dependency assembly", () => {
 
     expect(sessionServiceDependencies(daemonCollaborators({})).spawnTargets).toBeUndefined();
     expect(sessionServiceDependencies(daemonCollaborators({ spawnTargets })).spawnTargets).toBe(spawnTargets);
-  });
-
-  it("passes the ask-user preference through to the session service", () => {
-    expect(sessionServiceDependencies(daemonCollaborators({ askUserEnabled: true })).askUserEnabled).toBe(true);
-    expect(sessionServiceDependencies(daemonCollaborators({ askUserEnabled: false })).askUserEnabled).toBe(false);
   });
 
   it("passes the extension-dialog timeout through to the session service", () => {

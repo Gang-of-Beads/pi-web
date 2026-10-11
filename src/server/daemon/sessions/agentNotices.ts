@@ -1,7 +1,7 @@
 /**
- * PI WEB's own messages for the agent: the answers to a question card and the
- * notice that a subsession finished (B26, state-diagram D2 "An answer is a
- * message").
+ * PI WEB's own messages for the agent: the notice that a subsession finished
+ * (B26, state-diagram D2 "A notice for the agent waits with the reader's
+ * messages").
  *
  * They travel as custom messages through pi's steering queue, so a running
  * agent reads them at the next injection point with the reader's own

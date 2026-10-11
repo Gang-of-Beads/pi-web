@@ -19,9 +19,8 @@ function status(over: Partial<SessionStatus> = {}): SessionStatus {
 }
 
 describe("isWaitingForUser", () => {
-  it("counts an extension dialog, not only an ask_user set", () => {
+  it("counts an extension dialog", () => {
     expect(isWaitingForUser(status({ pendingDialogs: [dialog] }))).toBe(true);
-    expect(isWaitingForUser(status({ pendingAsk: { askId: "a", questions: [], askedAt: "" } }))).toBe(true);
   });
 
   it("is false when nothing is waiting on the user", () => {

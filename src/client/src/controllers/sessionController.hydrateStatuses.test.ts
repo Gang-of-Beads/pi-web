@@ -1,17 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { initialAppState } from "../appState";
-import type { PendingAskUser } from "../api";
+import type { PendingExtensionDialog } from "../api";
 import { SessionController } from "./sessionController";
 import { defaultApi, FakeSocket, oldSession, status, type AppState, type SessionStatus } from "./sessionController.testSupport";
 
-const ask: PendingAskUser = {
-  askId: "ask-1",
-  questions: [{ id: "q1", question: "Proceed?", options: [{ value: "yes", label: "Yes" }] }],
-  askedAt: "2026-07-20T00:00:00.000Z",
-};
+const dialog: PendingExtensionDialog = { dialogId: "dialog-1", kind: "confirm", title: "Proceed?", askedAt: "2026-07-20T00:00:00.000Z", runScoped: false };
 
 function asking(sessionId: string): SessionStatus {
-  return { ...status(sessionId), pendingAsk: ask };
+  return { ...status(sessionId), pendingDialogs: [dialog] };
 }
 
 /**

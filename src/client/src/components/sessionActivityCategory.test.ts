@@ -26,9 +26,9 @@ describe("sessionActivityCategory", () => {
     expect(sessionActivityCategory(status({ isStreaming: true }), activity("error"))).toBe("error");
   });
 
-  it("is asking when a question set waits for the user", () => {
+  it("is asking when a dialog waits for the user", () => {
     expect(sessionActivityCategory(status({ isStreaming: true }), undefined)).toBe("working");
-    expect(sessionActivityCategory(status({ pendingAsk: { askId: "a", askedAt: "", questions: [] } }), undefined)).toBe("asking");
+    expect(sessionActivityCategory(status({ pendingDialogs: [{ dialogId: "d", kind: "confirm", title: "Ship?", askedAt: "", runScoped: false }] }), undefined)).toBe("asking");
   });
 
   it("is working while streaming, compacting, running bash, or queued", () => {

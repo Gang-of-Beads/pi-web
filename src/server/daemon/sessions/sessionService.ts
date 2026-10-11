@@ -1,6 +1,4 @@
 import type {
-  AskUserCloseResponse,
-  AskUserSubmission,
   ExtensionDialogAnswer,
   ExtensionDialogCloseResponse,
   SavedPromptAttachment,
@@ -83,8 +81,6 @@ export interface SessionRouteService {
   clearQueue(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   /** Remove one queued message, leaving the rest of the queue in order. */
   recallQueuedMessage(ref: SessionRouteRef, target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }>;
-  submitAsk(ref: SessionRouteRef, askId: string, submission: AskUserSubmission): Promise<AskUserCloseResponse>;
-  cancelAsk(ref: SessionRouteRef, askId: string): Promise<AskUserCloseResponse>;
   /** Deliver a keypress to an open extension screen; false when none is open. */
   sendCustomScreenKey(ref: SessionRouteRef, dialogId: string, key: string): Promise<boolean>;
 

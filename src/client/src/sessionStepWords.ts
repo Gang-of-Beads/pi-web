@@ -45,17 +45,13 @@ export function stepStatusText(step: SessionStep, sinceMs: number | undefined, n
 
 /**
  * What waits for the agent and when it is read: "2 messages are read when
- * these tools finish". Steered messages and answers are read at the step's
+ * these tools finish". Steered messages are read at the step's
  * injection point; a follow-up (sent through the API or an extension, never
  * the composer while a reply runs) only once the agent has nothing left to do.
  */
-export function stepWaitingText(step: SessionStep, waiting: { messages: number; followUps: number; answers: number }): string | undefined {
-  const steered = [
-    waiting.answers === 0 ? undefined : waiting.answers === 1 ? "your answer" : `${String(waiting.answers)} answers`,
-    waiting.messages === 0 ? undefined : waiting.messages === 1 ? "1 message" : `${String(waiting.messages)} messages`,
-  ].filter((part): part is string => part !== undefined);
+export function stepWaitingText(step: SessionStep, waiting: { messages: number; followUps: number }): string | undefined {
   const clauses = [
-    steered.length === 0 ? undefined : `${steered.join(" and ")} ${waiting.messages + waiting.answers === 1 ? "is" : "are"} read ${READ_WHEN[step.kind]}`,
+    waiting.messages === 0 ? undefined : `${waiting.messages === 1 ? "1 message is" : `${String(waiting.messages)} messages are`} read ${READ_WHEN[step.kind]}`,
     waiting.followUps === 0 ? undefined : `${waiting.followUps === 1 ? "1 follow-up is" : `${String(waiting.followUps)} follow-ups are`} read when the agent is done`,
   ].filter((clause): clause is string => clause !== undefined);
   return clauses.length === 0 ? undefined : clauses.join(" · ");

@@ -185,7 +185,7 @@ describe("config routes", () => {
   });
 
   it("rejects config responses missing a required override flag", () => {
-    for (const flag of ["host", "port", "allowedHosts", "askUser"] as const) {
+    for (const flag of ["host", "port", "allowedHosts"] as const) {
       const envOverrides = Object.fromEntries(Object.entries(responseFor({}, false).envOverrides).filter(([key]) => key !== flag));
       expect(() => parsePiWebConfigResponseBody({ ...responseFor({}, false), envOverrides })).toThrow(`field must be a boolean: ${flag}`);
     }
@@ -197,7 +197,7 @@ describe("config routes", () => {
     const response = await app.inject({
       method: "PUT",
       url: "/api/machines/local/config",
-      payload: { config: { host: "0.0.0.0", askUser: true } },
+      payload: { config: { host: "0.0.0.0", maxUploadBytes: 4096 } },
     });
 
     expect(response.statusCode).toBe(400);
@@ -210,11 +210,11 @@ describe("config routes", () => {
     const response = await app.inject({
       method: "PUT",
       url: "/api/machines/local/config",
-      payload: { config: { askUser: "yes" } },
+      payload: { config: { maxUploadBytes: "lots" } },
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json<{ error: string }>().error).toContain("PI WEB selected-machine config askUser must be a boolean");
+    expect(response.json<{ error: string }>().error).toContain("PI WEB selected-machine config maxUploadBytes must be a positive integer");
     expect(service.write).not.toHaveBeenCalled();
   });
 });
@@ -249,7 +249,7 @@ function responseFor(config: PiWebConfigValues, exists: boolean): PiWebConfigRes
     exists,
     config,
     effectiveConfig: config,
-    envOverrides: { host: false, port: false, allowedHosts: false, askUser: false },
+    envOverrides: { host: false, port: false, allowedHosts: false },
   };
 }
 

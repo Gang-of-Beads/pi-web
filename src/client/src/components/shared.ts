@@ -1,6 +1,6 @@
 import { css } from "lit";
 import type { ChatRole } from "../chatRole";
-import type { AskUserOutcome, ExtensionCompletionItem, ExtensionNoticeLevel } from "../../../shared/apiTypes";
+import type { ExtensionCompletionItem, ExtensionNoticeLevel } from "../../../shared/apiTypes";
 
 /**
  * What every interactive control in this app owes a touch.
@@ -97,7 +97,6 @@ export type ChatPart =
   | { type: "thinking"; text: string; display?: string }
   | { type: "skillInvocation"; name: string; location: string; content: string }
   | { type: "skillRead"; name: string; path: string; toolCallId?: string }
-  | { type: "askUserRecord"; outcome: AskUserOutcome }
   | { type: "toolCall"; toolCallId?: string; toolName: string; summary: string; args?: unknown; drawnCall?: readonly string[] }
   | ToolExecutionPart
   | { type: "toolResult"; toolCallId?: string; toolName: string; text: string; isError: boolean; content?: unknown; details?: unknown; drawnResult?: readonly string[]; durationMs?: number }
@@ -160,8 +159,6 @@ export interface ChatLine {
     model?: { provider?: string; id?: string; responseId?: string };
     /** Thinking level the assistant message was generated with, when known. */
     thinkingLevel?: string;
-    /** An answers record the agent has not read yet, drawn from the status (B26, queuedAnswerRows.ts). */
-    queuedAnswer?: true;
   };
 }
 

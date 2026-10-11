@@ -200,11 +200,6 @@ export interface PiWebConfigValues {
   /** Tiles per row in the Navigate lists, per layout; see PiWebListTilesConfig. */
   listTiles?: PiWebListTilesConfig;
   /**
-   * When true, LLMs can post a question set to the browser via the ask_user
-   * tool. Off by default; set to `true` to add the tool to the runtime.
-   */
-  askUser?: boolean;
-  /**
    * When true, PI WEB appends environment facts to session system prompts:
    * the pi-web session nesting every session runs in, plus container facts in
    * Docker deployments. On by default.
@@ -348,7 +343,6 @@ export interface PiWebConfigEnvOverrides {
   host: boolean;
   port: boolean;
   allowedHosts: boolean;
-  askUser: boolean;
 }
 
 export interface PiWebConfigResponse {
@@ -838,26 +832,20 @@ export interface QueuedSessionMessage {
   clientMessageId?: string;
 }
 
-/**
- * `customType` of the follow-up custom message that carries a closed ask back to
- * the model and into the transcript. Its `details` are an {@link AskUserOutcome}.
- */
-export const ASK_USER_ANSWERS_CUSTOM_TYPE = "pi-web.ask.answers";
-
-/** Largest question set one `ask_user` call may post. */
+/** Largest question set one declared questions screen may hold. */
 export const ASK_USER_QUESTION_LIMIT = 20;
 /** Largest option list one question may offer. */
 export const ASK_USER_OPTION_LIMIT = 12;
-/** Length bound for ids: the ask id, question ids, and option values. */
+/** Length bound for ids: question ids and option values. */
 export const ASK_USER_ID_MAX_LENGTH = 128;
-/** Length bound for model-authored prose: questions, details, and option labels. */
+/** Length bound for declared prose: questions, details, and option labels. */
 export const ASK_USER_TEXT_MAX_LENGTH = 1_000;
 /** Length bound for the free text a user types as a custom answer. */
 export const ASK_USER_OTHER_TEXT_MAX_LENGTH = 4_000;
 
 /** One selectable option of an {@link AskUserQuestion}. */
 export interface AskUserQuestionOption {
-  /** Stable machine value reported back to the model. */
+  /** Stable machine value reported back to the extension. */
   value: string;
   /** Short human label rendered in the browser. */
   label: string;
@@ -866,12 +854,11 @@ export interface AskUserQuestionOption {
 }
 
 /**
- * One question of an `ask_user` set. Questions are never required: the user may
- * submit while leaving any of them untouched, and unanswered questions are
- * reported to the model as such.
+ * One question of a declared questions screen. Questions are never required: the
+ * reader may send while leaving any of them untouched.
  */
 export interface AskUserQuestion {
-  /** Unique within the ask; used as the answer key. */
+  /** Unique within the screen; used as the answer key. */
   id: string;
   /** The question itself, as one plain-text line. */
   question: string;
@@ -886,9 +873,8 @@ export interface AskUserQuestion {
 }
 
 /**
- * The open, unanswered question set of a session. Daemon-owned and reported in
- * {@link SessionStatus}, so a reconnecting or reloading browser rehydrates it
- * without depending on having seen the `ask.opened` event.
+ * A question set as the Questions card draws it: a declared questions screen's
+ * questions under its dialog's id and opening time.
  */
 export interface PendingAskUser {
   askId: string;
@@ -896,16 +882,13 @@ export interface PendingAskUser {
   questions: AskUserQuestion[];
 }
 
-/** Why an ask stopped being the session's open ask. */
-export type AskUserCloseReason = "submitted" | "superseded" | "cancelled";
-
 /**
  * What the user replied to one question. Absent from a submission means the
  * question was left untouched; an empty `values` with no `otherText` means the
  * same thing.
  */
 export interface AskUserAnswer {
-  /** Matches an {@link AskUserQuestion.id} of the open ask. */
+  /** Matches an {@link AskUserQuestion.id} of the screen. */
   id: string;
   /** Selected {@link AskUserQuestionOption.value} entries; several only when the question allows it. */
   values: string[];
@@ -913,64 +896,9 @@ export interface AskUserAnswer {
   otherText?: string;
 }
 
-/** One submit of the open ask: answers for some or all of its questions. */
+/** The reader's answers to a questions screen: some or all of its questions. */
 export interface AskUserSubmission {
   answers: AskUserAnswer[];
-}
-
-/**
- * One question of a closed ask paired with what came back for it. Carries the
- * question itself so the record renders without the original ask still existing.
- */
-export interface AskUserQuestionRecord {
-  question: AskUserQuestion;
-  /** True when at least one option was selected or custom text was given. */
-  answered: boolean;
-  values: string[];
-  otherText?: string;
-}
-
-/**
- * The complete result of an ask, computed when it closes. Shared by the
- * model-facing follow-up message and the browser's read-only record, so both
- * report the same answered and unanswered questions.
- */
-/**
- * Who closed an unanswered ask, when it was not the reader answering it. A
- * bare "cancelled" is indistinguishable from a bug - the owner watched his
- * open form close itself and asked what broke; nothing had, his own message
- * had voided it by design, and the card never said so.
- */
-export type AskUserCloseCause = "user-message";
-
-export interface AskUserOutcome {
-  askId: string;
-  reason: AskUserCloseReason;
-  /** Present only on closes the reader did not perform through the card. */
-  cause?: AskUserCloseCause;
-  askedAt: string;
-  closedAt: string;
-  questions: AskUserQuestionRecord[];
-  answeredCount: number;
-  /** Ids of the questions left unanswered, in the order they were asked. */
-  unansweredIds: string[];
-  /** One line, for example `Answered 3 of 5; unanswered: q2, q5`. */
-  summary: string;
-}
-
-/**
- * Result of the browser closing an ask by submitting or cancelling it.
- *
- * `"stale"` is an ordinary race rather than an error: the named ask was already
- * submitted, superseded by a newer one, or gone with its session runtime. The
- * browser drops its card and trusts `sessionStatus`, which is returned in both
- * cases so closing an ask needs no follow-up status request.
- */
-export interface AskUserCloseResponse {
-  result: "closed" | "stale";
-  /** Present only when this call is the one that closed the ask. */
-  outcome?: AskUserOutcome;
-  sessionStatus: SessionStatus;
 }
 
 /** Length bound for extension-dialog ids. */
@@ -1171,7 +1099,7 @@ export interface PendingExtensionDialog {
    * What the extension declared this screen to be, for the browser to draw natively.
    *
    * `ctx.ui.custom(factory, { web: { kind: "questions", questions } })` makes the
-   * screen the Questions card `ask_user` uses: the daemon never mounts the terminal
+   * screen the Questions card: the daemon never mounts the terminal
    * component, so the reader sees one native card instead of a terminal dump, and
    * `custom()` resolves with the {@link AskUserSubmission}. Absent for an extension
    * that only draws.
@@ -1222,9 +1150,8 @@ export interface ExtensionDialogCancelRequest {
 }
 
 /**
- * Result of the browser answering or cancelling an extension dialog. Mirrors
- * {@link AskUserCloseResponse}: `"stale"` is an ordinary lost race — another
- * browser, a timeout, or a teardown closed the dialog first — not an error.
+ * Result of the browser answering or cancelling an extension dialog. `"stale"`
+ * is an ordinary lost race — another browser, a timeout, or a teardown closed the dialog first — not an error.
  * The browser drops its card and trusts `sessionStatus`, which is returned in
  * both cases so closing a dialog needs no follow-up status request.
  */
@@ -1473,12 +1400,6 @@ export interface SessionStatus {
   pendingMessageCount: number;
   queuedMessages: QueuedSessionMessage[];
   /**
-   * Answers to question cards that the agent has not read yet, oldest first
-   * (B26). Read off pi's queues on every status. Absent when there are none,
-   * and from a daemon that predates the field.
-   */
-  queuedAnswers?: AskUserOutcome[];
-  /**
    * The session's latest activity with its step (B25), so a page that opens in
    * the middle of a long step can say it before the next frame. Live activity
    * frames supersede it. Absent before the session published any.
@@ -1496,19 +1417,6 @@ export interface SessionStatus {
    * session notifications. See {@link SessionWarning}.
    */
   warnings?: SessionWarning[];
-  /**
-   * The session's open `ask_user` question set, when one is waiting for the
-   * user. Daemon-owned, so it survives browser reload and web/API restarts.
-   */
-  pendingAsk?: PendingAskUser;
-  /**
-   * Every open question form, oldest first.
-   *
-   * `pendingAsk` is the oldest of these, kept because it is what the waiting
-   * slot shows first; a second `ask_user` used to supersede the first and leave
-   * it unanswerable.
-   */
-  pendingAsks?: PendingAskUser[];
   /**
    * The session's open extension dialogs, oldest first, when any are waiting
    * for the user. Daemon-owned, so they survive browser reload and web/API
@@ -1800,8 +1708,6 @@ type SessionUiEventBody =
   | { type: "session.stopped"; cause: "user" | "closed" }
   | SessionNotificationInboxEvent
   | { type: "session.error"; message: string }
-  | { type: "ask.opened"; ask: PendingAskUser; revision?: number; daemonInstanceId?: string }
-  | { type: "ask.closed"; askId: string; reason: AskUserCloseReason; revision?: number; daemonInstanceId?: string }
   | { type: "prompt.accepted"; clientMessageId: string }
   | { type: "prompt.withdrawn"; clientMessageId: string }
   | { type: "prompt.consumed"; clientMessageId: string }

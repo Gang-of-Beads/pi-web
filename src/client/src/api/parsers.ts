@@ -3,7 +3,7 @@ import { isRecord } from "../../../shared/unknownValues";
 import { recordedDurationMs } from "../../../shared/toolDuration";
 import { parseSessionStep } from "./sessionStepParser";
 import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, ASK_USER_TEXT_MAX_LENGTH, EXTENSION_DIALOG_EDITOR_MAX_LENGTH, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH,
-  EXTENSION_DIALOG_SCREEN_MAX_LINES, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_SCREEN_DETAIL_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserAnswer, type AskUserCloseReason, type AskUserCloseResponse, type AskUserOutcome, type AskUserQuestion, type AskUserQuestionOption, type AskUserQuestionRecord, type PendingAskUser, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type ExtensionDialogScreen, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionTranscriptTail, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type WorkspaceChangedUiEvent, type PinsChangedUiEvent, type PluginsChangedUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
+  EXTENSION_DIALOG_SCREEN_MAX_LINES, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_SCREEN_DETAIL_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserAnswer, type AskUserQuestion, type AskUserQuestionOption, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type ExtensionDialogScreen, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionTranscriptTail, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type WorkspaceChangedUiEvent, type PinsChangedUiEvent, type PluginsChangedUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
 import { parseMachineStatusSnapshot, type MachineStatusSnapshot, type MachineStatusUiEvent } from "../../../shared/machineStatus";
 import type { JsonValue, PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionsRevisionResponse, SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot, WorkspaceProviderDiagnostic, WorkspaceProviderDiagnosticCode, WorkspaceProviderResolution, WorkspaceProviderResolutionStatus, WorkspaceProviderTier } from "../../../shared/apiTypes";
 import type { ExtensionCompletionApplied, ExtensionCompletionSuggestions, ExtensionWidgetPlacement, PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport, PiWebSelfUpdateStatus } from "../../../shared/apiTypes";
@@ -365,7 +365,7 @@ function parseAskUserQuestionOption(value: unknown): AskUserQuestionOption {
   };
 }
 
-function parseAskUserQuestion(value: unknown, detailMax: number = ASK_USER_TEXT_MAX_LENGTH): AskUserQuestion {
+function parseAskUserQuestion(value: unknown, detailMax: number): AskUserQuestion {
   const record = requireRecord(value);
   const options = boundedArrayOf(record["options"], parseAskUserQuestionOption, ASK_USER_OPTION_LIMIT, "options");
   assertUniqueStrings(options.map((option) => option.value), "ask option value");
@@ -382,58 +382,7 @@ function parseAskUserQuestion(value: unknown, detailMax: number = ASK_USER_TEXT_
 }
 
 /**
- * Validate the session's open question set. A malformed ask must be dropped
- * rather than rendered: the card asks the user to answer on the model's behalf,
- * so questions or options the daemon did not really send must never appear.
- */
-function parsePendingAskUser(value: unknown): PendingAskUser {
-  const record = requireRecord(value);
-  const questions = boundedArrayOf(record["questions"], (entry) => parseAskUserQuestion(entry), ASK_USER_QUESTION_LIMIT, "questions");
-  if (questions.length === 0) throw new Error("Pending ask has no questions");
-  assertUniqueStrings(questions.map((question) => question.id), "ask question id");
-  return {
-    askId: requireBoundedNonEmptyString(record, "askId", ASK_USER_ID_MAX_LENGTH),
-    askedAt: requireNonEmptyString(record, "askedAt"),
-    questions,
-  };
-}
-
-function optionalQueuedAnswers(value: unknown): Pick<SessionStatus, "queuedAnswers"> | object {
-  if (!Array.isArray(value)) return {};
-  const answers = value.map(parseAskUserOutcome);
-  return answers.length === 0 ? {} : { queuedAnswers: answers };
-}
-
-function optionalPendingAsks(value: unknown): Pick<SessionStatus, "pendingAsks"> | object {
-  if (!Array.isArray(value)) return {};
-  const asks = value.map(parsePendingAskUser);
-  return asks.length === 0 ? {} : { pendingAsks: asks };
-}
-
-function optionalPendingAsk(value: unknown): Pick<SessionStatus, "pendingAsk"> | object {
-  if (value === undefined) return {};
-  return { pendingAsk: parsePendingAskUser(value) };
-}
-
-export function parseSessionAskOpenedEvent(value: unknown): { type: "ask.opened"; ask: PendingAskUser; revision?: number; daemonInstanceId?: string } {
-  const record = requireRecord(value);
-  if (record["type"] !== "ask.opened") throw new Error("Invalid ask opened event type");
-  return { type: "ask.opened", ask: parsePendingAskUser(record["ask"]), ...surfaceRevision(record) };
-}
-
-export function parseSessionAskClosedEvent(value: unknown): { type: "ask.closed"; askId: string; reason: AskUserCloseReason; revision?: number; daemonInstanceId?: string } {
-  const record = requireRecord(value);
-  if (record["type"] !== "ask.closed") throw new Error("Invalid ask closed event type");
-  return {
-    type: "ask.closed",
-    askId: requireBoundedNonEmptyString(record, "askId", ASK_USER_ID_MAX_LENGTH),
-    reason: parseAskUserCloseReason(record["reason"]),
-    ...surfaceRevision(record),
-  };
-}
-
-/**
- * The interactive-surface stamps on ask and dialog frames: the surface's
+ * The interactive-surface stamps on dialog frames: the surface's
  * monotonic revision and the identity of the daemon instance whose counter it
  * is. The lost-frame repair compares revisions and voids its ordering when
  * the instance changes, so a validator that rebuilds the event must carry
@@ -446,66 +395,6 @@ function surfaceRevision(record: Record<string, unknown>): { revision?: number; 
   return {
     ...(typeof revision === "number" && Number.isFinite(revision) ? { revision } : {}),
     ...(typeof daemonInstanceId === "string" && daemonInstanceId !== "" ? { daemonInstanceId } : {}),
-  };
-}
-
-function parseAskUserCloseReason(value: unknown): AskUserCloseReason {
-  if (value !== "submitted" && value !== "superseded" && value !== "cancelled") throw new Error("Invalid ask close reason");
-  return value;
-}
-
-function parseAskUserQuestionRecord(value: unknown): AskUserQuestionRecord {
-  const record = requireRecord(value);
-  const question = parseAskUserQuestion(record["question"]);
-  const values = boundedArrayOf(record["values"], parseNonEmptyString, ASK_USER_OPTION_LIMIT, "values");
-  const offered = new Set(question.options.map((option) => option.value));
-  if (values.some((selected) => !offered.has(selected))) throw new Error("Ask answer selected an option the question never offered");
-  const otherText = optionalBoundedNonEmptyString(record, "otherText", ASK_USER_OTHER_TEXT_MAX_LENGTH);
-  const answered = requireBoolean(record, "answered");
-  // The record is the one thing both the model and the user read, so a flag that
-  // disagrees with the answer it describes is rejected rather than displayed.
-  if (answered !== (values.length > 0 || otherText !== undefined)) throw new Error("Ask answer contradicts its answered flag");
-  return { question, answered, values, ...(otherText === undefined ? {} : { otherText }) };
-}
-
-export function parseAskUserOutcome(value: unknown): AskUserOutcome {
-  const record = requireRecord(value);
-  const questions = boundedArrayOf(record["questions"], parseAskUserQuestionRecord, ASK_USER_QUESTION_LIMIT, "questions");
-  const answeredCount = requireNonNegativeSafeInteger(record, "answeredCount");
-  const unansweredIds = arrayOfString(record["unansweredIds"], "unansweredIds");
-  const unanswered = questions.filter((entry) => !entry.answered).map((entry) => entry.question.id);
-  if (answeredCount !== questions.length - unanswered.length) throw new Error("Ask outcome answered count mismatch");
-  if (unansweredIds.length !== unanswered.length || unansweredIds.some((id, index) => id !== unanswered[index])) {
-    throw new Error("Ask outcome unanswered ids mismatch");
-  }
-  // An unknown cause parses as absent rather than failing the whole outcome:
-  // the label degrades to the bare "Cancelled", which is the pre-cause truth.
-  const cause = record["cause"] === "user-message" ? "user-message" as const : undefined;
-  return {
-    askId: requireBoundedNonEmptyString(record, "askId", ASK_USER_ID_MAX_LENGTH),
-    reason: parseAskUserCloseReason(record["reason"]),
-    ...(cause === undefined ? {} : { cause }),
-    askedAt: requireNonEmptyString(record, "askedAt"),
-    closedAt: requireNonEmptyString(record, "closedAt"),
-    questions,
-    answeredCount,
-    unansweredIds,
-    summary: requireNonEmptyString(record, "summary"),
-  };
-}
-
-export function parseAskUserCloseResponse(value: unknown): AskUserCloseResponse {
-  const record = requireRecord(value);
-  const result = record["result"];
-  if (result !== "closed" && result !== "stale") throw new Error("Invalid ask close result");
-  const outcome = record["outcome"] === undefined ? undefined : parseAskUserOutcome(record["outcome"]);
-  // Only the call that actually closed the ask carries an outcome; a stale close
-  // reports none and is trusted for the session status alone.
-  if ((result === "closed") !== (outcome !== undefined)) throw new Error("Ask close response outcome mismatch");
-  return {
-    result,
-    ...(outcome === undefined ? {} : { outcome }),
-    sessionStatus: parseSessionStatus(record["sessionStatus"]),
   };
 }
 
@@ -728,7 +617,6 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     // conversation says "idle . 3 background runs".
     ...optionalField("backgroundRunCount", optionalNumber(record, "backgroundRunCount")),
     queuedMessages: record["queuedMessages"] === undefined ? [] : arrayOf(parseQueuedSessionMessage)(record["queuedMessages"]),
-    ...optionalQueuedAnswers(record["queuedAnswers"]),
     ...optionalField("activity", record["activity"] === undefined ? undefined : parseSessionActivity(record["activity"])),
     ...optionalField("messageCount", optionalNumber(record, "messageCount")),
     tokens: parseTokens(record["tokens"]),
@@ -736,8 +624,6 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     ...optionalModel(record["model"]),
     ...optionalContextUsage(record["contextUsage"]),
     ...optionalField("thinkingLevel", optionalString(record, "thinkingLevel")),
-    ...optionalPendingAsk(record["pendingAsk"]),
-    ...optionalPendingAsks(record["pendingAsks"]),
     ...optionalPendingDialogs(record["pendingDialogs"]),
     ...optionalStreamPosition(record["streamPosition"]),
     ...optionalExtensionUi(record["extensionUi"]),
@@ -1976,7 +1862,6 @@ function parsePiWebConfigValues(value: unknown): PiWebConfigValues {
     ...optionalField("logging", optionalLogging(record["logging"])),
     ...optionalField("listTiles", optionalListTiles(record["listTiles"])),
     ...optionalField("agent", optionalAgent(record["agent"])),
-    ...optionalField("askUser", optionalBoolean(record, "askUser")),
     ...optionalField("environmentFacts", optionalBoolean(record, "environmentFacts")),
     ...optionalField("extensionDialogsTimeoutMs", optionalNumber(record, "extensionDialogsTimeoutMs")),
     ...optionalField("updateCommand", optionalString(record, "updateCommand")),
@@ -2080,7 +1965,6 @@ function parsePiWebConfigEnvOverrides(value: unknown): PiWebConfigEnvOverrides {
     host: requireBoolean(record, "host"),
     port: requireBoolean(record, "port"),
     allowedHosts: requireBoolean(record, "allowedHosts"),
-    askUser: requireBoolean(record, "askUser"),
   };
 }
 

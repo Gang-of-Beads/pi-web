@@ -26,8 +26,6 @@ export interface SessionServiceDependencyInput {
   catalogRefreshStatus: NonNullable<PiSessionServiceDependencies["catalogRefreshStatus"]>;
   /** Project-scope resolver behind the spawn and subsession routes; omitted in tests that spawn nothing. */
   spawnTargets?: NonNullable<PiSessionServiceDependencies["spawnTargets"]>;
-  /** Whether agents may post structured question sets to the browser. */
-  askUserEnabled: boolean;
   /** Everything the host adds to what sessions receive; THE seam, as data. */
   hostContributions: HostContributions;
   /** Auto-cancel delay for extension dialogs whose extension set no timeout; `0` waits forever. */
@@ -55,7 +53,6 @@ export function sessionServiceDependencies(input: SessionServiceDependencyInput)
     workspaceActivity: input.workspaceActivity,
     logger: input.logger,
     ...(input.spawnTargets === undefined ? {} : { spawnTargets: input.spawnTargets }),
-    askUserEnabled: input.askUserEnabled,
     hostContributions: input.hostContributions,
     extensionDialogsTimeoutMs: input.extensionDialogsTimeoutMs,
     notificationStore: input.notificationStore,

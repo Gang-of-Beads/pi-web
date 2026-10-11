@@ -24,7 +24,6 @@ import {
   type EditToolDetails,
   type ExtensionUIDialogOptions,
   type ExtensionUIContext,
-  type InlineExtension,
   type ModelRuntime,
   type PromptOptions,
   type ProjectTrustContext,
@@ -57,13 +56,10 @@ import { deterministicSessionName, fallbackSessionName, generateShortSessionName
 import { computeEditPreview, type EditPreviewResult } from "./editPreview.js";
 import { attachmentsToInlineImages, saveAttachmentsToWorkspace } from "./attachmentService.js";
 import { parsePromptAttachments } from "../../../shared/promptAttachments.js";
-import { ASK_USER_ANSWERS_CUSTOM_TYPE, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_LIMIT } from "../../../shared/apiTypes.js";
+import { SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_LIMIT } from "../../../shared/apiTypes.js";
 import { AGENT_NOTICE_DELIVERY, AgentNotices } from "./agentNotices.js";
 import { IDLE_STEP, nextSessionStep, stepPhase, stepWords } from "./sessionStep.js";
 import type {
-  AskUserCloseResponse,
-  AskUserOutcome,
-  AskUserSubmission,
   ExtensionDialogAnswer,
   ExtensionDialogCloseResponse,
   ExtensionDialogKind,
@@ -95,8 +91,6 @@ import { type AuthChange } from "./authService.js";
 import { canonicalizeStoredCwd, cwdPathsEqual } from "../workingDirectory.js";
 import { readSessionHeaderSummary } from "./sessionFileHeader.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
-import { askUserExtension, type AskUserInvocation, type AskUserToolDeps } from "./askUserTool.js";
-import { PendingAskStore, renderAskUserAnswersText, type PendingAskCloseResult, type PendingAskOpenResult } from "./pendingAskStore.js";
 import { PendingExtensionDialogStore, PendingExtensionDialogValidationError, type ExtensionDialogCancelReason, type PendingExtensionDialogOpenInput } from "./pendingExtensionDialogStore.js";
 import type { ExtensionNoticeLevel, PendingExtensionDialog } from "../../../shared/apiTypes.js";
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
@@ -311,8 +305,8 @@ const PREFLIGHT_LANDING: Record<PromptDisposition, HandoffLanding> = { queued: "
  * between-turn compaction. It then commits them even if the run is aborted meanwhile (the loop
  * emits drained messages without checking the signal). So they are read whatever happens, and
  * taking them back would have them read twice. Each lane is counted on its own, against the
- * user messages agent-core still queues in it: custom messages (ask answers, subsession
- * notices) share agent-core's queues but never appear in pi's lanes.
+ * user messages agent-core still queues in it: custom messages (subsession notices) share
+ * agent-core's queues but never appear in pi's lanes.
  */
 function loopHeldCounts(session: PiAgentSession): Record<QueuedPromptKind, number> {
   return {
@@ -975,8 +969,8 @@ function createRuntimeWithOneShotSessionOptions(
  * The tools PI WEB puts on a session: pi's own `edit`, wrapped to compute a diff
  * preview, and nothing it adds. Owner, 2026-09-30: "pi web should not give the AI any
  * extra tools; those should all be defined by the user's own plugins" - delegation is a session
- * route, and `ask_user` an extension loaded only when it is turned on
- * (docs/design/no-builtin-agent-tools.md).
+ * route, and PI WEB has no `ask_user` of its own: a question tool comes from a pi extension the
+ * user installs (owner, 2026-10-11; docs/design/no-builtin-agent-tools.md).
  */
 export function createPiWebCustomToolDefinitions(cwd: string) {
   return [createPiWebEditToolDefinition(cwd)];
@@ -1155,8 +1149,8 @@ export async function resolveWebProjectTrusted(resolution: WebProjectTrustResolu
 }
 
 /**
- * Resource-loader options for PI WEB's additions: its own system-prompt sections, and the
- * extensions it loads when the operator turned them on (`ask_user`).
+ * Resource-loader options for PI WEB's additions: its own system-prompt sections and the
+ * extension paths its host contributions name.
  *
  * `appendSystemPromptOverride` composes with what the loader already resolved,
  * so the operator's `SYSTEM.md` / `APPEND_SYSTEM.md` files keep their content
@@ -1165,24 +1159,21 @@ export async function resolveWebProjectTrusted(resolution: WebProjectTrustResolu
  */
 export function piWebResourceLoaderOptions(
   appendSystemPromptSections: readonly string[],
-  extensions: readonly InlineExtension[] = [],
   extensionPaths: readonly string[] = [],
 ): CreateAgentSessionServicesOptions["resourceLoaderOptions"] | undefined {
-  if (appendSystemPromptSections.length === 0 && extensions.length === 0 && extensionPaths.length === 0) return undefined;
+  if (appendSystemPromptSections.length === 0 && extensionPaths.length === 0) return undefined;
   return {
     ...(appendSystemPromptSections.length === 0 ? {} : { appendSystemPromptOverride: (base: string[]) => [...base, ...appendSystemPromptSections] }),
-    ...(extensions.length === 0 ? {} : { extensionFactories: [...extensions] }),
     ...(extensionPaths.length === 0 ? {} : { additionalExtensionPaths: [...extensionPaths] }),
   };
 }
 
 function createDefaultRuntimeFactory(
   modelRuntime: ModelRuntime,
-  askUser?: AskUserToolDeps,
   appendSystemPromptSections: readonly string[] = [],
   extensionPaths: readonly string[] = [],
 ): PiWebCreateAgentSessionRuntimeFactory {
-  const resourceLoaderOptions = piWebResourceLoaderOptions(appendSystemPromptSections, askUser === undefined ? [] : [askUserExtension(askUser)], extensionPaths);
+  const resourceLoaderOptions = piWebResourceLoaderOptions(appendSystemPromptSections, extensionPaths);
   return async ({ cwd, agentDir, sessionManager, sessionStartEvent, initialModel, initialThinkingLevel }) => {
     // PI WEB always honors pi's project-trust model. When the workspace ships
     // trust-requiring resources, trust is resolved exactly once, mirroring the
@@ -1294,12 +1285,6 @@ export interface PiSessionServiceDependencies {
    */
   spawnTargets?: SpawnTargetResolver;
   /**
-   * When true, `ask_user` is available to every session, so an agent can post a
-   * question set to the browser. Independent of the delegation capabilities: the
-   * questions reach the user of the asking session, not another session.
-   */
-  askUserEnabled?: boolean;
-  /**
    * The runs the running plugins report for an open session, added together (B20): the plugin
    * runtime's `backgroundWork`. Omitted, plugins add nothing to "N background runs".
    */
@@ -1311,8 +1296,6 @@ export interface PiSessionServiceDependencies {
    * from this. Empty in ordinary installs.
    */
   hostContributions?: HostContributions;
-  /** Daemon-lifetime open-ask state; defaults to an in-memory store in tests. */
-  pendingAskStore?: PendingAskStore;
   /** Daemon-lifetime open-dialog state; defaults to an in-memory store in tests. */
   pendingExtensionDialogStore?: PendingExtensionDialogStore;
   /**
@@ -1423,9 +1406,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly handing = new Set<string>();
   private readonly handingCommands = new Set<string>();
   private readonly commandHandlers = new CommandHandlerScope();
-  /** The answers records this daemon handed to pi, found again by identity while they wait in its queues. */
-  private readonly sentAnswers = new WeakMap<object, AskUserOutcome>();
-  private readonly notices = new AgentNotices(new Set([ASK_USER_ANSWERS_CUSTOM_TYPE, SUBSESSION_NOTIFICATION_CUSTOM_TYPE]));
+  private readonly notices = new AgentNotices(new Set([SUBSESSION_NOTIFICATION_CUSTOM_TYPE]));
   /** Accepted prompt identities, so a lost response answers instead of re-running. */
   /**
    * Durable when the daemon has a data directory, in-memory otherwise (tests
@@ -1509,7 +1490,6 @@ export class PiSessionService implements SessionRouteService {
   private readonly unreadStore: SessionUnreadStore;
   private readonly hostContributions: HostContributions;
   private readonly pluginBackgroundWork: (session: BackgroundWorkSession) => Promise<number>;
-  private readonly pendingAskStore: PendingAskStore;
   private readonly pendingExtensionDialogStore: PendingExtensionDialogStore;
   private readonly extensionDialogsTimeoutMs: number;
   /** The parked extension Promise resolvers behind the store's open dialogs. */
@@ -1571,7 +1551,6 @@ export class PiSessionService implements SessionRouteService {
     this.notificationStore = deps.notificationStore ?? new SessionNotificationStore();
     this.unreadStore = deps.unreadStore ?? new SessionUnreadStore();
     this.onUnreadChanged = deps.onUnreadChanged;
-    this.pendingAskStore = deps.pendingAskStore ?? new PendingAskStore();
     this.pendingExtensionDialogStore = deps.pendingExtensionDialogStore ?? new PendingExtensionDialogStore();
     this.extensionDialogsTimeoutMs = deps.extensionDialogsTimeoutMs ?? DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS;
     this.catalogRefreshStatus = deps.catalogRefreshStatus;
@@ -1582,7 +1561,6 @@ export class PiSessionService implements SessionRouteService {
     this.unreadPublicationRetryDelayMs = this.unreadPublicationRetryInitialMs;
     this.createRuntime = deps.createRuntime ?? createDefaultRuntimeFactory(
       this.modelRuntime,
-      deps.askUserEnabled === true ? { open: (input) => this.openAsk(input) } : undefined,
       deps.hostContributions?.systemPromptSections ?? [],
       deps.hostContributions?.extensionPaths ?? [],
     );
@@ -1776,7 +1754,6 @@ export class PiSessionService implements SessionRouteService {
     for (const active of activeSessions) {
       this.closeRetryRecovery(active.runtime.session);
       this.forgetUnreadActivity(active.runtime.session);
-      this.pendingAskStore.forgetSession(active.runtime.session.sessionId);
       this.endSessionExtensionDialogs(active.runtime.session.sessionId);
     }
     this.active.clear();
@@ -2024,122 +2001,10 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * Register the question set an agent wants the user to answer as the session's
-   * open ask. Deliberately does not wait for the user: `ask_user` terminates the
-   * run and the submitted answers come back later as a follow-up message.
-   *
-   * Rejected question sets throw {@link PendingAskValidationError}, which the
-   * agent loop reports to the model as an error tool result.
-   */
-  // eslint-disable-next-line @typescript-eslint/require-await -- async so a rejected question set becomes a rejection rather than a synchronous throw from a promise-returning method.
-  async openAsk(input: AskUserInvocation): Promise<PendingAskOpenResult> {
-    // Snapshot what is already queued: those messages predate the questions,
-    // and only their delivery may void the form. A message sent while the form
-    // is on screen is an addition to the request, not a refusal of it.
-    // INVARIANT: this snapshot must enumerate every queue that can later emit
-    // a user message_start - today the runtime's two lanes plus the compaction
-    // parking lot. A queue added without joining this list reopens the class:
-    // its drained messages would either never void the form or void it as
-    // strangers. Identity rides beside the text because texts drift (template
-    // expansion) and captionless photos have none.
-    const active = this.active.get(input.sessionId)?.runtime.session;
-    const ownedEntries = this.ownedQueue.entries(input.sessionId);
-    const queuedMessageTexts = [
-      ...(active === undefined ? [] : [...active.getSteeringMessages(), ...active.getFollowUpMessages()]),
-      ...ownedEntries.map((entry) => entry.text),
-    ];
-    const queuedMessageIds = [
-      ...(this.queuedPromptClientIds.get(input.sessionId) ?? []).map((record) => publishedId(record.clientMessageId)).filter((id): id is string => id !== undefined),
-      ...ownedEntries.map((entry) => entry.clientMessageId).filter((id): id is string => id !== undefined),
-    ];
-    const result = this.pendingAskStore.open({ ...input, queuedMessageTexts, queuedMessageIds });
-    this.events.publish(input.sessionId, { type: "ask.opened", ask: result.ask, revision: this.nextDialogRevision(input.sessionId), daemonInstanceId: this.notificationStore.daemonInstanceId });
-    this.publishStatusForSessionId(input.sessionId);
-    return result;
-  }
-
-  /**
-   * Record the user's answers to the session's open ask and hand them to the
-   * model. The answers travel as a system-authored custom message rather than a
-   * user message, so they are not attributed to the human in the transcript;
-   * they wake an idle session and reach a running one at its next injection
-   * point (`AGENT_NOTICE_DELIVERY`, B26).
-   */
-  async submitAsk(ref: PiSessionRef, askId: string, submission: AskUserSubmission): Promise<AskUserCloseResponse> {
-    await this.assertWritable(ref);
-    const session = await this.getOrOpen(ref);
-    // Checked before the store closes the ask so a refused delivery cannot
-    // discard answers the user already submitted.
-    this.assertTreeNavigationInactive(session, "answer questions");
-    return this.closeAsk(session, this.pendingAskStore.submit(session.sessionId, askId, submission));
-  }
-
-  /**
-   * Close the open ask without answers. The model is still told, naming every
-   * question as unanswered: it was promised a follow-up message and would
-   * otherwise wait for one that never comes.
-   */
-  async cancelAsk(ref: PiSessionRef, askId: string): Promise<AskUserCloseResponse> {
-    await this.assertWritable(ref);
-    const session = await this.getOrOpen(ref);
-    this.assertTreeNavigationInactive(session, "dismiss questions");
-    return this.closeAsk(session, this.pendingAskStore.cancel(session.sessionId, askId));
-  }
-
-  /**
-   * Publish and deliver a closed ask. A stale close is reported rather than
-   * thrown: losing the race against a supersede, another browser, or a session
-   * that went away is ordinary, and the returned status tells the browser what
-   * the session's open ask is now.
-   */
-  private async closeAsk(session: PiAgentSession, result: PendingAskCloseResult): Promise<AskUserCloseResponse> {
-    if (result.status === "stale") return { result: "stale", sessionStatus: this.statusFromSession(session) };
-    const { outcome } = result;
-    this.publishAskClosed(session.sessionId, outcome);
-    this.sentAnswers.set(outcome, outcome);
-    await this.runSessionEntryMutation(session, "deliver answers to your questions", () => session.sendCustomMessage(
-      { customType: ASK_USER_ANSWERS_CUSTOM_TYPE, content: renderAskUserAnswersText(outcome), display: true, details: outcome },
-      AGENT_NOTICE_DELIVERY,
-    ));
-    this.publishStatus(session);
-    return { result: "closed", outcome, sessionStatus: this.statusFromSession(session) };
-  }
-
-  private publishAskClosed(sessionId: string, outcome: AskUserOutcome): void {
-    this.events.publish(sessionId, { type: "ask.closed", askId: outcome.askId, reason: outcome.reason, revision: this.nextDialogRevision(sessionId), daemonInstanceId: this.notificationStore.daemonInstanceId });
-  }
-
-  /**
-   * A message delivered while the form is open leaves it alone.
-   *
-   * It used to void the ask: the model was told the questions were dead and
-   * carried on with defaults. The owner's ruling is the opposite - a message
-   * neither answers the form nor disturbs it - so the questions stay up and the
-   * answers arrive later as their own turn. The case that made this visible was
-   * a message queued *before* the questions were posted: it was delivered a
-   * second after the form appeared, so the reader watched a form they had never
-   * touched close itself, reported as "I never replied, why does it say
-   * unanswered".
-   *
-   * The message is still claimed, which is what tells a message queued before
-   * the questions from one sent after them; the claim is spent either way so a
-   * redelivery stays idempotent.
-   */
-  private voidOpenAskForDeliveredMessage(session: PiAgentSession, event: unknown): void {
-    if (this.pendingAskStore.pendingAsk(session.sessionId) === undefined) return;
-    const message = getProperty(event, "message");
-    const { text } = committedMessageShape(getProperty(message, "content"));
-    // The stamp ran before this handler in the same subscription, so a prompt
-    // this daemon accepted carries its sender's id here.
-    const stamped = isRecord(message) && typeof message["clientMessageId"] === "string" ? message["clientMessageId"] : undefined;
-    this.pendingAskStore.claimPreAskDelivery(session.sessionId, { ...(stamped === undefined ? {} : { clientMessageId: stamped }), text });
-  }
-
-  /**
    * Record the user's answer to an open extension dialog and resolve the
-   * extension's parked Promise with it. Unlike an ask, nothing is delivered to
-   * the model: the waiter is extension code inside an already in-flight run
-   * (or an idle handler), so no custom message and no turn are triggered.
+   * extension's parked Promise with it. Nothing is delivered to the model: the
+   * waiter is extension code inside an already in-flight run (or an idle
+   * handler), so no custom message and no turn are triggered.
    */
   async answerDialog(ref: PiSessionRef, dialogId: string, value: ExtensionDialogAnswer): Promise<ExtensionDialogCloseResponse> {
     await this.assertWritable(ref);
@@ -2423,10 +2288,9 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * The interactive surface's next mutation revision - asks and dialogs share
-   * one counter and one repair path on purpose: both are cards the same
-   * status resync recovers, and a shared strict-+1 stream means a lost frame
-   * of either kind is caught by whichever frame arrives next.
+   * The dialog surface's next mutation revision: a strict-+1 stream, so a lost
+   * frame is caught by whichever frame arrives next and the status resync
+   * recovers it.
    */
   private nextDialogRevision(sessionId: string): number {
     const next = (this.dialogRevisionBySession.get(sessionId) ?? 0) + 1;
@@ -2490,7 +2354,7 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * Publish status for a session known only by id, as the ask tools are: they
+   * Publish status for a session known only by id, as the dialog paths are: they
    * run inside the session's own runtime, so the active entry is the session.
    */
   private publishStatusForSessionId(sessionId: string): void {
@@ -3861,15 +3725,6 @@ export class PiSessionService implements SessionRouteService {
     return current === undefined ? { sessionId, ...stored } : { sessionId, ...stored, step: current.step, stepSince: current.since };
   }
 
-  /** The answers records still waiting in pi's queues (B26): what the transcript shows as queued answers. */
-  private queuedAnswers(session: PiAgentSession): AskUserOutcome[] {
-    return this.notices.queued(session).flatMap((notice) => {
-      if (notice.customType !== ASK_USER_ANSWERS_CUSTOM_TYPE || typeof notice.details !== "object" || notice.details === null) return [];
-      const outcome = this.sentAnswers.get(notice.details);
-      return outcome === undefined ? [] : [outcome];
-    });
-  }
-
   /**
    * What waits for the agent, as the status lists it (see `queuedMessagesFromSession`).
    */
@@ -3935,12 +3790,11 @@ export class PiSessionService implements SessionRouteService {
    * own stamp is the moment the daemon handed the message over. The
    * acceptance echo carries the same time only for a message with a sender
    * id, the only kind this stamp can claim; one without keeps pi's time.
+   * It runs on message_start so the published start event already carries the
+   * sender id, and on message_end as a fallback; the claim is consumed on first
+   * sight, so the end event finds the id present and returns early.
    */
   private stampCommittedUserMessage(session: PiAgentSession, event: unknown): void {
-    // Both boundary events: the void gate listens to message_start too, and an
-    // unstamped start would judge the message by its text - the guessing this
-    // stamp exists to end. The claim consumes on first sight; the end event
-    // finds the id already present and returns early.
     const eventType = getString(event, "type");
     if (eventType !== "message_start" && eventType !== "message_end") return;
     const message = getProperty(event, "message");
@@ -5035,9 +4889,6 @@ export class PiSessionService implements SessionRouteService {
     if (!active) return;
     this.closeRetryRecovery(active.runtime.session);
     this.forgetUnreadActivity(active.runtime.session);
-    // An open ask is meaningful only while the runtime that posted it exists: no
-    // one is left to receive the answers, so it is dropped without an outcome.
-    this.pendingAskStore.forgetSession(sessionId);
     this.extensionStanding.get(active.runtime.session)?.clear();
     // Open dialogs share that stance, but their extension waiters are parked
     // Promises inside the dying runtime: settle them rather than dropping them.
@@ -5831,7 +5682,6 @@ export class PiSessionService implements SessionRouteService {
     this.publishActivityForEvent(session, event);
     const eventType = getString(event, "type");
     if (eventType === "agent_end") this.abortRunScopedExtensionDialogs(session.sessionId);
-    if (isDeliveredUserMessageEvent(event)) this.voidOpenAskForDeliveredMessage(session, event);
     if (eventType !== undefined && HANDOFF_WAKE_EVENTS.has(eventType)) this.pumpInbox(session);
     // A /reload issued mid-turn waits here. agent_end can fire while the turn
     // is still winding down, so runQueuedReload re-checks for active work and
@@ -6270,11 +6120,8 @@ export class PiSessionService implements SessionRouteService {
     const facts = this.branchFacts.read(session, branchStateKey(session), () => branchFactsOf(session, this.retryRecoveries.pending(session)));
     const warnings = this.warningsForSession(session);
     this.fileWarningNotifications(session, warnings);
-    const pendingAsks = this.pendingAskStore.pendingAsks(session.sessionId);
-    const pendingAsk = pendingAsks[0];
     const pendingDialogs = this.pendingExtensionDialogStore.pendingDialogs(session.sessionId);
     const visibleQueued = this.queuedMessages(session);
-    const queuedAnswers = this.queuedAnswers(session);
     const activity = this.currentActivity(session.sessionId);
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
     const turnStartedAt = { turn: facts.turnStartedAt, shell: this.shellStartedAt.get(session.sessionId), none: undefined }[workingClock(session)];
@@ -6300,15 +6147,12 @@ export class PiSessionService implements SessionRouteService {
       ...(lastActivityAt === undefined ? {} : { lastActivityAt }),
       pendingMessageCount: visibleQueued.length,
       queuedMessages: visibleQueued,
-      ...(queuedAnswers.length === 0 ? {} : { queuedAnswers }),
       ...(activity === undefined ? {} : { activity }),
       messageCount: facts.messageCount,
       tokens: facts.tokens,
       cost: facts.cost,
       ...(facts.contextUsage === undefined ? {} : { contextUsage: facts.contextUsage }),
       ...(warnings.length === 0 ? {} : { warnings }),
-      ...(pendingAsk === undefined ? {} : { pendingAsk }),
-      ...(pendingAsks.length === 0 ? {} : { pendingAsks }),
       ...(pendingDialogs.length === 0 ? {} : { pendingDialogs }),
       // The dialog surface's revision and the process that stamped it: a client
       // comparing frame revisions must know when the revision space was
@@ -7135,17 +6979,6 @@ function consumedUserMessageTexts(session: PiAgentSession): ReadonlySet<string> 
     }
   }
   return consumed;
-}
-
-/**
- * A user message entering the transcript, from any route: sent now, or drained
- * from the agent's queue when a run ended.
- */
-function isDeliveredUserMessageEvent(event: unknown): boolean {
-  const eventType = getString(event, "type");
-  if (eventType !== "message_start" && eventType !== "message_end") return false;
-  const message = getProperty(event, "message");
-  return isRecord(message) && message["role"] === "user";
 }
 
 function userTextMessage(text: string): { role: "user"; content: string } {

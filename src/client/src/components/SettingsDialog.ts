@@ -15,7 +15,6 @@ import "./ModalSurface";
 import "./settings/SettingsAppearancePanel";
 import "./settings/SettingsGeneralPanel";
 import "./settings/SettingsMachinesPanel";
-import "./settings/SettingsSessiondPanel";
 import "./settings/SettingsPackagesPanel";
 import "./settings/SettingsPluginsPanel";
 import "./settings/SettingsShortcutsPanel";
@@ -24,7 +23,6 @@ import { loadGatewaySettingsData, loadPiPackagesData } from "./settings/settings
 import { mergeSelectedMachineAccessConfig } from "./settings/settingsMachineAccessConfig";
 import { friendlySelectedMachineSettingsErrorMessage, isSelectedMachineSettingsUnsupported, pluginLifecycleSupport, selectedMachineSettingsSupportKey, settingsMachineTarget, settingsMachineTargetLabel, type PluginLifecycleSupport, type SettingsMachineTarget } from "./settings/settingsMachineTarget";
 import { mergeSelectedMachinePluginConfig, pluginEnabledConfigPatch } from "./settings/settingsPluginConfig";
-import { mergeSelectedMachineSessiondConfig } from "./settings/settingsSessiondConfig";
 import { describeError } from "../notice";
 import { COARSE_OR_MOBILE_MEDIA_QUERY } from "../breakpoints";
 import { interactiveSurfaceStyles } from "./shared";
@@ -75,21 +73,18 @@ export class SettingsDialog extends LitElement {
   @state() private savingListTiles = false;
   @state() private listTilesError = "";
   @state() private accessConfigResponse: PiWebConfigResponse | undefined;
-  @state() private sessiondConfigResponse: PiWebConfigResponse | undefined;
   @state() private pluginsResponse: PiWebPluginsResponse | undefined;
   @state() private selectedPluginConfigResponse: PiWebConfigResponse | undefined;
   @state() private selectedPluginsResponse: PiWebPluginsResponse | undefined;
   @state() private packagesResponse: PiPackagesResponse | undefined;
   @state() private loading = true;
   @state() private accessLoading = true;
-  @state() private sessiondLoading = true;
   @state() private pluginLoading = true;
   @state() private packageLoading = true;
   @state() private saving = false;
   @state() private packageOperation: PiPackageOperationState | undefined;
   @state() private error = "";
   @state() private accessError = "";
-  @state() private sessiondError = "";
   @state() private pluginError = "";
   @state() private packageError = "";
   @state() private savedMessage = "";
@@ -97,7 +92,6 @@ export class SettingsDialog extends LitElement {
   private savedMessageTimer: number | undefined;
   private loadRequestSeq = 0;
   private accessLoadRequestSeq = 0;
-  private sessiondLoadRequestSeq = 0;
   private pluginLoadRequestSeq = 0;
   private packageLoadRequestSeq = 0;
   private packageMutationSeq = 0;
@@ -112,7 +106,7 @@ export class SettingsDialog extends LitElement {
     this.phoneQuery?.addEventListener("change", this.handlePhoneQueryChange);
     void this.loadConfig();
     void this.loadAccessConfigForTarget();
-    void this.reloadSessiondState();
+    void this.onRefreshMachineRuntime?.(this.settingsTarget().id);
     void this.loadPluginsForTarget();
     void this.loadPackagesForTarget();
   }
@@ -131,8 +125,6 @@ export class SettingsDialog extends LitElement {
       if (previousTarget.id !== currentTarget.id) {
         this.resetAccessStateForTargetChange();
         if (this.isConnected) void this.loadAccessConfigForTarget(currentTarget);
-        this.resetSessiondStateForTargetChange();
-        if (this.isConnected) void this.loadSessiondConfigForTarget(currentTarget);
         this.resetPluginStateForTargetChange();
         if (this.isConnected) void this.loadPluginsForTarget(currentTarget);
         this.resetPackageStateForTargetChange();
@@ -196,7 +188,6 @@ export class SettingsDialog extends LitElement {
       { id: "general", label: "General", detail: "Gateway + selected machine" },
       { id: "appearance", label: "Appearance", detail: "Theme, lists and system preference" },
       { id: "machines", label: "Machines", detail: "All connected devices" },
-      { id: "sessiond", label: "Session daemon", detail: "Selected machine" },
       { id: "packages", label: "Pi packages", detail: "Selected machine" },
       { id: "plugins", label: "PI WEB plugins", detail: "Selected machine" },
       { id: "shortcuts", label: "Keyboard", detail: "Gateway shortcuts" },
@@ -270,7 +261,6 @@ export class SettingsDialog extends LitElement {
       general: "General",
       appearance: "Appearance",
       machines: "Machines",
-      sessiond: "Session daemon",
       packages: "Pi packages",
       plugins: "PI WEB plugins",
       shortcuts: "Keyboard",
@@ -314,20 +304,6 @@ export class SettingsDialog extends LitElement {
           .listTilesError=${this.listTilesError}
           .onSelectListTiles=${(layout: ListLayout, tiles: ListTilesPerRow) => { void this.saveListTiles(layout, tiles); }}
         ></settings-appearance-panel>
-      `;
-    }
-    if (this.activeSection === "sessiond") {
-      return html`
-        <settings-sessiond-panel
-          .configResponse=${this.sessiondConfigResponse}
-          .loading=${this.sessiondLoading}
-          .saving=${this.saving}
-          .error=${this.sessiondError}
-          .savedMessage=${this.savedMessage}
-          .targetLabel=${settingsMachineTargetLabel(this.settingsTarget())}
-          .onReload=${() => this.reloadSessiondState()}
-          .onSave=${(config: PiWebConfigValues) => this.saveSessiondConfig(config)}
-        ></settings-sessiond-panel>
       `;
     }
     if (this.activeSection === "shortcuts") {
@@ -470,30 +446,6 @@ export class SettingsDialog extends LitElement {
       }
     } finally {
       if (this.isCurrentAccessLoad(requestSeq, target)) this.accessLoading = false;
-    }
-  }
-
-  private async reloadSessiondState(target = this.settingsTarget()): Promise<void> {
-    await Promise.all([
-      this.loadSessiondConfigForTarget(target),
-      this.onRefreshMachineRuntime?.(target.id),
-    ]);
-  }
-
-  private async loadSessiondConfigForTarget(target = this.settingsTarget()): Promise<void> {
-    const requestSeq = ++this.sessiondLoadRequestSeq;
-    this.sessiondLoading = true;
-    this.sessiondError = "";
-    try {
-      const response = await configApi.config(target.id);
-      if (!this.isCurrentSessiondLoad(requestSeq, target)) return;
-      this.sessiondConfigResponse = response;
-    } catch (error) {
-      if (this.isCurrentSessiondLoad(requestSeq, target)) {
-        this.sessiondError = `Failed to load session-daemon config from ${settingsMachineTargetLabel(target)}: ${friendlySelectedMachineSettingsErrorMessage(describeError(error), target)}`;
-      }
-    } finally {
-      if (this.isCurrentSessiondLoad(requestSeq, target)) this.sessiondLoading = false;
     }
   }
 
@@ -670,27 +622,6 @@ export class SettingsDialog extends LitElement {
     }
   }
 
-  private async saveSessiondConfig(config: PiWebConfigValues): Promise<void> {
-    if (this.saving) return;
-    const target = this.settingsTarget();
-    this.saving = true;
-    this.sessiondError = "";
-    this.savedMessage = "";
-    try {
-      const response = await configApi.saveConfig(config, target.id);
-      if (!this.isCurrentSettingsTarget(target)) return;
-      this.sessiondConfigResponse = response;
-      if (target.kind === "local" && this.configResponse !== undefined) this.configResponse = mergeSelectedMachineSessiondConfig(this.configResponse, response);
-      this.showSavedMessage();
-    } catch (error) {
-      if (this.isCurrentSettingsTarget(target)) {
-        this.sessiondError = `Failed to save session-daemon config on ${settingsMachineTargetLabel(target)}: ${friendlySelectedMachineSettingsErrorMessage(describeError(error), target)}`;
-      }
-    } finally {
-      this.saving = false;
-    }
-  }
-
   private async installPiPackage(source: string): Promise<void> {
     const target = this.packageTarget();
     await this.runPiPackageMutation({ kind: "install", source }, "install Pi package", target, () => piPackagesApi.install(source, target.id));
@@ -780,10 +711,6 @@ export class SettingsDialog extends LitElement {
     return requestSeq === this.accessLoadRequestSeq && this.isCurrentSettingsTarget(target);
   }
 
-  private isCurrentSessiondLoad(requestSeq: number, target: SettingsMachineTarget): boolean {
-    return requestSeq === this.sessiondLoadRequestSeq && this.isCurrentSettingsTarget(target);
-  }
-
   private isCurrentPluginLoad(requestSeq: number, target: SettingsMachineTarget): boolean {
     return requestSeq === this.pluginLoadRequestSeq && this.isCurrentSettingsTarget(target);
   }
@@ -809,14 +736,6 @@ export class SettingsDialog extends LitElement {
     this.accessLoading = false;
     this.accessError = "";
     this.accessConfigResponse = undefined;
-    this.savedMessage = "";
-  }
-
-  private resetSessiondStateForTargetChange(): void {
-    this.sessiondLoadRequestSeq += 1;
-    this.sessiondLoading = false;
-    this.sessiondError = "";
-    this.sessiondConfigResponse = undefined;
     this.savedMessage = "";
   }
 
@@ -898,7 +817,6 @@ export class SettingsDialog extends LitElement {
 export type SettingsPanelTag =
   | "settings-machines-panel"
   | "settings-general-panel"
-  | "settings-sessiond-panel"
   | "settings-packages-panel"
   | "settings-plugins-panel"
   | "settings-appearance-panel"
@@ -918,8 +836,6 @@ export function activeSettingsPanelTag(section: SettingsSection): SettingsPanelT
   switch (section) {
     case "appearance":
       return "settings-appearance-panel";
-    case "sessiond":
-      return "settings-sessiond-panel";
     case "packages":
       return "settings-packages-panel";
     case "plugins":

@@ -1,7 +1,7 @@
 /**
  * Whether a question card has to re-render.
  *
- * The pending ask arrives on every status frame as a fresh object, so a
+ * A question set arrives on every status frame as a fresh object, so a
  * streaming turn handed the card a new property many times a second. Lit then
  * rebuilt the form under the reader - the card visibly shook while the agent
  * was writing, and a control could move mid-tap. The card is defined by its
@@ -36,12 +36,12 @@ export function askCardNeedsRender(previous: AskLike | undefined, next: AskLike 
 type DialogLike = Pick<PendingExtensionDialog, "dialogId" | "kind" | "title" | "message" | "placeholder" | "prefill" | "prefillCut" | "options" | "timeoutAt" | "lines" | "screen">;
 
 /**
- * The same reasoning for the extension dialog card, which sits in the same
- * waiting slot and arrives on the same status frames. Fixing only the ask card
- * would have left its sibling shaking. A terminal screen's redrawn lines and a
- * declared screen are rendered fields too: left out, the card kept marking the
- * option the cursor had left, and a tap walked from where it used to be
- * (state-diagram D2; found probing the extension screen, 2026-10-02).
+ * The same reasoning for the extension dialog card, which draws the Questions
+ * card in the waiting slot and arrives on the same status frames. A terminal
+ * screen's redrawn lines and a declared screen are rendered fields too: left
+ * out, the card kept marking the option the cursor had left, and a tap walked
+ * from where it used to be (state-diagram D2; found probing the extension
+ * screen, 2026-10-02).
  */
 export function dialogCardFingerprint(dialog: DialogLike | undefined): string {
   if (dialog === undefined) return "";

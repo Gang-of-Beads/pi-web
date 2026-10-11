@@ -23,7 +23,7 @@ import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { doesNotFillViewport, shouldRequestNewerMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
-import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
+import type { PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
 import { deliveryWordKey, deliveryWords } from "../deliveryWords";
 import { commandDeliveryPresentation, commandResultLine, type CommandLedgerEntry } from "../commandLedger";
 import { placeCommands, type CommandPlacement } from "../commandPlacement";
@@ -41,12 +41,10 @@ import { isSessionActive } from "../../../shared/activity";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import { attachmentZoomStyles } from "./shared";
 import type { FollowingCustomRow, QualifiedActivityNoteContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";
-import "./AskUserCard";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback } from "./ExtensionDialogCard";
 import { deliveryTaken, discardAction, retryableDeliveryId } from "../messageDelivery";
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
-import { isQueuedAnswer, withQueuedAnswers } from "../queuedAnswerRows";
 import { placeUserRows } from "../userRowPlacement";
 import { stepStatusText, stepWaitingText } from "../sessionStepWords";
 import { activityDockWords } from "../activityDockWords";
@@ -270,8 +268,6 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .extension-notice.error { color: var(--pi-danger); }
   /* An extension's working mark (setWorkingIndicator): a fixed slot, so a long frame cannot push the words out. */
   .working-mark { flex: 0 0 auto; max-width: 8ch; overflow: hidden; white-space: pre; }
-  .msg.ask-user-record-shell ask-user-card { margin: 0 auto; }
-  .msg.ask-user-record-shell > .delivery-mark { margin-inline-end: 0; }
   /* A system line reports whatever the runtime has to say - a background task
      that finished with exit 0 as often as a failure - so it is not coloured as
      a fault. A genuine error arrives as an error line and keeps the red. */
@@ -647,11 +643,7 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) clientQueuedMessages: QueuedSessionMessage[] = [];
   @property({ attribute: false }) status?: SessionStatus;
   @property({ attribute: false }) activity?: SessionActivity;
-  @property({ attribute: false }) pendingAsk?: PendingAskUser;
-  /** Every open form, oldest first; a second ask no longer closes the first. */
-  @property({ attribute: false }) pendingAsks: PendingAskUser[] = [];
   @property({ attribute: false }) askDraftSessionId = "";
-  @property({ attribute: false }) onSubmitAsk?: (askId: string, submission: AskUserSubmission) => void | Promise<void>;
   @property({ attribute: false }) pendingDialogs: PendingExtensionDialog[] = [];
   /** The browser's own receipts for commands it issued in this session. */
   @property({ attribute: false }) commandLedger: CommandLedgerEntry[] = [];
@@ -1007,7 +999,7 @@ export class ChatView extends LitElement {
       this.savePreviousSessionScrollPosition(changed.get("sessionId"), changed.get("machineId"));
       this.prepareSessionUiState();
     }
-    if (changed.has("messages") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
+    if (changed.has("messages") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
   }
 
   protected override update(changed: Map<string, unknown>): void {
@@ -1073,8 +1065,8 @@ export class ChatView extends LitElement {
     if (changed.has("sessionId")) {
       this.openPages();
       this.restoreScrollPosition();
-    } else if (!changed.has("sessionId") && (changed.has("messages") || this.queueGrew(changed.get("status")) || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) && this.pinnedToBottom) this.scrollToBottom();
-    if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("transcriptLoading") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
+    } else if (!changed.has("sessionId") && (changed.has("messages") || this.queueGrew(changed.get("status")) || changed.has("pendingDialogs") || changed.has("closedDialogs")) && this.pinnedToBottom) this.scrollToBottom();
+    if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("transcriptLoading") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestPages(false);
     if (changed.has("messages") || changed.has("messageEnd") || changed.has("hasNewer")) this.newerRequested = false;
     this.publishScrollbarWidth();
@@ -1394,7 +1386,7 @@ export class ChatView extends LitElement {
       synthesise: (message, position) => queuedUserLine(message, position),
     });
     const { settled, pending } = placeUserRows(rows);
-    return { settled, pending: withQueuedAnswers(pending, this.status?.queuedAnswers, this.messages) };
+    return { settled, pending };
   }
 
   /**
@@ -1477,7 +1469,6 @@ export class ChatView extends LitElement {
   }
 
   private renderActivityDock() {
-    if (this.pendingAsk !== undefined) return this.renderNotesDock(this.contributedActivityNote(this.turnIdle()));
     if (this.isSendingPrompt) {
       return html`
         <div class="activity-dock sending" aria-live="polite">
@@ -1562,9 +1553,8 @@ export class ChatView extends LitElement {
     `;
   }
 
-  /** The mark for a message this browser sent, or for an answer the agent has not read yet, which wears the queued words (B26). */
+  /** The mark for a message this browser sent. */
   private deliveryMarkPresentation(message: ChatLine): DeliveryPresentation | undefined {
-    if (isQueuedAnswer(message)) return deliveryWords("queued");
     const delivery = message.meta?.delivery;
     if (!chatDeliveryMarkerVisible(delivery) || delivery === undefined) return undefined;
     const queued = this.status?.queuedMessages ?? [];
@@ -1606,7 +1596,7 @@ export class ChatView extends LitElement {
    * the height, so nothing is covered and no tap is intercepted.
    */
   private renderWaitingForYou() {
-    const open = { forms: this.pendingAsks.length > 0 ? this.pendingAsks : (this.pendingAsk === undefined ? [] : [this.pendingAsk]), dialogs: this.pendingDialogs };
+    const open = { dialogs: this.pendingDialogs };
     const shown = shownWaitingCards(this.drawnWaiting, open, this.followGate.holdsOrSettling(Date.now()));
     this.drawnWaiting = drawnWaitingCards(shown);
     return this.drawnWaiting === undefined ? null : this.renderWaitingSlot(shown);
@@ -1643,14 +1633,6 @@ export class ChatView extends LitElement {
   private renderWaitingSlot(shown: ShownWaiting) {
     return html`
       <div class="waiting-slot" role="region" aria-label="Waiting for your answer">
-        ${repeat(shown.forms, ({ card }) => card.askId, ({ card, presence }) => html`
-          <ask-user-card
-            ?inert=${presence === "held"}
-            .ask=${card}
-            .draftSessionId=${this.askDraftSessionId}
-            .onSubmit=${presence === "live" ? this.onSubmitAsk : undefined}
-          ></ask-user-card>
-        `)}
         ${repeat(shown.dialogs, ({ card }) => card.dialogId, ({ card, presence }) => html`
           <extension-dialog-card
             class="open-dialog-card"
@@ -1742,7 +1724,7 @@ export class ChatView extends LitElement {
     const text = stepStatusText(step, Number.isFinite(since) ? since : undefined, Date.now());
     const queued = this.status?.queuedMessages ?? [];
     const followUps = queued.filter((message) => message.kind === "followUp").length;
-    const waiting = stepWaitingText(step, { messages: queued.length - followUps, followUps, answers: this.status?.queuedAnswers?.length ?? 0 });
+    const waiting = stepWaitingText(step, { messages: queued.length - followUps, followUps });
     return waiting === undefined ? text : `${text} · ${waiting}`;
   }
 
@@ -1978,13 +1960,11 @@ export class ChatView extends LitElement {
     const notice = extensionNoticeOf(message);
     if (notice !== undefined) return html`${this.renderScrollMarker(key)}<div class="msg-notice" data-index=${index} data-scroll-anchor-id=${key}>${this.renderExtensionNotice(notice)}</div>`;
     const toolOnly = this.isToolExecutionOnlyMessage(message);
-    const askUserRecordOnly = this.isAskUserRecordOnlyMessage(message);
-    const shellClass = toolOnly ? "msg tool-execution-shell" : "msg ask-user-record-shell";
     const queuedClass = this.isQueuedLine(message) ? " queued" : "";
     return html`
       ${this.renderScrollMarker(key)}
-      <article class=${toolOnly || askUserRecordOnly ? shellClass : `msg ${message.role}${queuedClass}`} data-index=${index} data-scroll-anchor-id=${key}>
-        ${toolOnly || askUserRecordOnly ? null : this.renderMessageHeader(message, key)}
+      <article class=${toolOnly ? "msg tool-execution-shell" : `msg ${message.role}${queuedClass}`} data-index=${index} data-scroll-anchor-id=${key}>
+        ${toolOnly ? null : this.renderMessageHeader(message, key)}
         ${message.parts.map((part) => this.renderPart(part, message))}
         ${this.renderFailureDetail(message)}
         ${this.renderDeliveryMark(message)}
@@ -2005,10 +1985,6 @@ export class ChatView extends LitElement {
 
   private isToolExecutionOnlyMessage(message: ChatLine): boolean {
     return message.role === "tool" && message.parts.length > 0 && message.parts.every((part) => part.type === "toolExecution");
-  }
-
-  private isAskUserRecordOnlyMessage(message: ChatLine): boolean {
-    return message.parts.length > 0 && message.parts.every((part) => part.type === "askUserRecord");
   }
 
   private renderMessageGroup(group: Extract<ChatGroup, { kind: "group" }>, memberKeys: readonly string[], defaultOpen: boolean) {
@@ -2230,13 +2206,6 @@ export class ChatView extends LitElement {
         <strong>Loaded ${part.name}</strong>
         <small>read ${part.path}</small>
       </div>
-    `;
-    if (part.type === "askUserRecord") return html`
-      <ask-user-card
-        class="part"
-        .outcome=${part.outcome}
-        .draftSessionId=${this.askDraftSessionId}
-      ></ask-user-card>
     `;
     if (part.type === "image") {
       const source = chatImagePartSource(part, this.imageScope());

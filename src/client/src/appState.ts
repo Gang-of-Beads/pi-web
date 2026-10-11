@@ -1,4 +1,4 @@
-import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
+import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
 import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
 import { RetiredBy } from "./notice";
@@ -91,18 +91,10 @@ export interface AppState {
   status: SessionStatus | undefined;
   activity: SessionActivity | undefined;
   /**
-   * The selected session's open `ask_user` question set, derived from the
-   * daemon-owned {@link SessionStatus.pendingAsk} plus live ask events. A
-   * session can hold several open forms; this is the oldest, and `pendingAsks`
-   * carries them all.
-   */
-  pendingAsk: PendingAskUser | undefined;
-  pendingAsks: PendingAskUser[];
-  /**
    * The selected session's open extension dialogs, derived from the
    * daemon-owned {@link SessionStatus.pendingDialogs} plus live dialog events.
-   * Oldest first; unlike an ask, opening never supersedes, so several dialogs
-   * may wait at once.
+   * Oldest first; opening never supersedes, so several dialogs may wait at
+   * once.
    */
   pendingDialogs: PendingExtensionDialog[];
   /**
@@ -282,8 +274,6 @@ export function initialAppState(): AppState {
     statusReadFailed: undefined,
     status: undefined,
     activity: undefined,
-    pendingAsk: undefined,
-    pendingAsks: [],
     pendingDialogs: [],
     closedDialogs: [],
     dismissedDialogIds: [],

@@ -37,10 +37,21 @@ Owner, 2026-09-30, on sub-sessions filling the session list: "If spawn sub sessi
 
 ## Consequences
 
-- After the daemon restarts, a session no longer offers `spawn_session` or the subsession tools. It offers `ask_user` only when you turn it on in Settings.
+- After the daemon restarts, a session no longer offers `spawn_session` or the subsession tools. Since 2026-10-11 it offers no `ask_user` either (below).
 - Sessions an agent started through the old tools remain ordinary sessions.
 
 ## Commits
 
 1. Remove the delegation tools, and add the spawn and subsession routes.
 2. Move `ask_user` into the extension, off by default.
+3. Delete `ask_user` (2026-10-11, below).
+
+## 2026-10-11: `ask_user` is deleted
+
+Owner, 2026-10-11: "就是pi web首先不应该有ask user这个工具" and "pi web核心里不能自带给agent的功能…宗旨就是pi web里面和直接用纯净的pi tui一样啊，其他的都应该用插件/扩展来实现" (PI WEB should not have an ask_user tool; core must not ship agent features of its own, using PI WEB should be the same as using pure pi TUI, and everything else is a plugin or extension). Step 2 had only turned it off, and its card, ask store, routes and answer delivery stayed in core.
+
+- Deleted: the inline extension and its tool, the `askUser` config key and `PI_WEB_ASK_USER`, the Settings section that held the toggle (Session daemon, which had nothing else), the daemon's ask store and its two routes, the `pendingAsk`/`pendingAsks`/`queuedAnswers` status fields and the `ask.opened`/`ask.closed` frames, and the answers-as-a-message delivery (B26 for answers).
+- A config file that still sets `askUser` loads; the key has no effect, and the next save drops it.
+- A question tool is a pi extension the user installs (pi-ask-user, for example). Its questions arrive as extension dialogs.
+- Kept for now: the Questions card, which draws a screen an extension declares as `questions` (pi-goal's questionnaire), and the declaration's validation. The card moves out of core into a plugin next.
+- Old transcripts keep their records: an `ask_user` call reads as an ordinary tool row, and its answers message (`pi-web.ask.answers`) as an ordinary custom message, as pi's terminal shows them.

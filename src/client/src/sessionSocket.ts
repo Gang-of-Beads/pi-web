@@ -1,6 +1,6 @@
 import { realtimeEvents, sessionEvents } from "./api";
 import { ackWatch } from "./api/ackWatch";
-import { parseRealtimeStreamEvent, parseSessionAskClosedEvent, parseSessionAskOpenedEvent, parseSessionDialogClosedEvent, parseSessionDialogOpenedEvent, parseSessionNotificationInboxEvent, parseSessionStartupProgressEvent, parseSessionStreamEvent, parseSessionUnreadEvent } from "./api/parsers";
+import { parseRealtimeStreamEvent, parseSessionDialogClosedEvent, parseSessionDialogOpenedEvent, parseSessionNotificationInboxEvent, parseSessionStartupProgressEvent, parseSessionStreamEvent, parseSessionUnreadEvent } from "./api/parsers";
 import type { RealtimeEvent, SessionRef, SessionUiEvent } from "../../shared/apiTypes";
 import { socketLivenessVerdict, type SocketLivenessVerdict, type SocketReadyState } from "./socketLiveness";
 import { readQuietWindowSeconds } from "./quietWindow";
@@ -456,7 +456,7 @@ export class RealtimeSocket extends ReconnectingSocket {
  * of a state missing one step - the stuck-card failure through another door.
  * The caller treats it as a gap and requests the surface's resync.
  */
-const REVISIONED_FRAME_TYPES = new Set(["notifications.inbox", "ask.opened", "ask.closed", "dialog.opened", "dialog.closed"]);
+const REVISIONED_FRAME_TYPES = new Set(["notifications.inbox", "dialog.opened", "dialog.closed"]);
 
 /** The revisioned surface behind a raw frame, or undefined for everything else. */
 export function revisionedFrameType(event: unknown): string | undefined {
@@ -479,16 +479,14 @@ export function parseRealtimeSocketEvent(event: unknown): BrowserRealtimeEvent |
 }
 
 /**
- * Inbox, ask and dialog frames have dedicated validators: they drive the notification inbox and
- * the interactive cards answered on the model's or an extension's behalf. Every other accepted
+ * Inbox and dialog frames have dedicated validators: they drive the notification inbox and
+ * the interactive cards answered on an extension's behalf. Every other accepted
  * frame is session stream vocabulary, validated field by field. Every one of them keeps its
  * transport seq: the gap repair counts the frames the socket delivered, and a dialog frame whose
  * seq was dropped in validation made the next frame look like a gap (P3 slice c).
  */
 const DEDICATED_VALIDATORS = new Map<string, (event: unknown) => SessionUiEvent>([
   ["notifications.inbox", parseSessionNotificationInboxEvent],
-  ["ask.opened", parseSessionAskOpenedEvent],
-  ["ask.closed", parseSessionAskClosedEvent],
   ["dialog.opened", parseSessionDialogOpenedEvent],
   ["dialog.closed", parseSessionDialogClosedEvent],
 ]);

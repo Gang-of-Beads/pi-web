@@ -6,9 +6,7 @@ import { ifDefined } from "lit/directives/if-defined.js";
 import { live } from "lit/directives/live.js";
 import {
   ASK_USER_OTHER_TEXT_MAX_LENGTH,
-  type AskUserOutcome,
   type AskUserQuestion,
-  type AskUserQuestionRecord,
   type AskUserSubmission,
   type PendingAskUser,
 } from "../../../shared/apiTypes";
@@ -24,20 +22,6 @@ import {
 
 export type AskUserSubmitCallback = (askId: string, submission: AskUserSubmission) => void | Promise<void>;
 
-interface DisplayedRecordAnswer {
-  values: string[];
-  otherText?: string;
-  fromDraft: boolean;
-}
-
-/**
- * One question set posted by `ask_user`.
- *
- * The live mode owns only browser-local draft state; the daemon remains the
- * source of truth for whether the ask is open. Record mode consumes the closed
- * daemon outcome and, for a superseded ask, can recover the unsent local draft
- * so text the user had entered is not silently hidden.
- */
 /**
  * Resize a textarea to its content.
  *
@@ -51,6 +35,10 @@ function growToFit(input: HTMLTextAreaElement): void {
   input.style.height = `${String(input.scrollHeight)}px`;
 }
 
+/**
+ * A declared questions screen as one card. It owns only browser-local draft state;
+ * the daemon remains the source of truth for whether the screen is open.
+ */
 @customElement("ask-user-card")
 export class AskUserCard extends LitElement {
   @property({ attribute: false }) ask?: PendingAskUser;
@@ -64,16 +52,12 @@ export class AskUserCard extends LitElement {
     if (changed.size !== 1 || !changed.has("ask")) return true;
     return askCardNeedsRender(changed.get("ask"), this.ask);
   }
-  @property({ attribute: false }) outcome?: AskUserOutcome;
   /** Machine-scoped session cache key used by the ask draft store. */
   @property({ attribute: false }) draftSessionId = "";
   @property({ attribute: false }) onSubmit?: AskUserSubmitCallback;
   /** The card's heading: an extension's questions screen names itself. */
   @property({ attribute: false }) heading = "Questions";
-  /**
-   * Close without answering, offered when the asker can take a refusal. An extension
-   * screen can; `ask_user` has no cancel, because the model is told what went unanswered.
-   */
+  /** Close without answering: the extension's `custom()` resolves with nothing. Absent, the card offers no Cancel. */
   @property({ attribute: false }) onCancel?: () => void | Promise<void>;
 
   @state() private answers: AskDraftAnswers = {};
@@ -90,7 +74,7 @@ export class AskUserCard extends LitElement {
   private modelIdentity: string | undefined;
 
   protected override willUpdate(changed: PropertyValues<this>): void {
-    if (!changed.has("ask") && !changed.has("outcome") && !changed.has("draftSessionId")) return;
+    if (!changed.has("ask") && !changed.has("draftSessionId")) return;
     const identity = this.currentModelIdentity();
     if (identity === this.modelIdentity) return;
     this.modelIdentity = identity;
@@ -101,7 +85,6 @@ export class AskUserCard extends LitElement {
   }
 
   override render(): TemplateResult | null {
-    if (this.outcome !== undefined) return this.renderRecord(this.outcome);
     if (this.ask !== undefined) return this.renderOpenAsk(this.ask);
     return null;
   }
@@ -266,56 +249,6 @@ export class AskUserCard extends LitElement {
     `;
   }
 
-  private renderRecord(outcome: AskUserOutcome): TemplateResult {
-    const recordLabel = outcome.reason === "submitted"
-      ? "Answers sent"
-      : outcome.reason === "superseded"
-        ? "Superseded"
-        : outcome.cause === "user-message"
-          ? "Replaced by your message"
-          : "Cancelled";
-    return html`
-      <article class="card record-card" aria-labelledby="ask-user-record-heading">
-        <header class="card-header">
-          <h2 id="ask-user-record-heading">${this.heading}</h2>
-          <span class=${`header-status ${outcome.reason}`}>${recordLabel}</span>
-        </header>
-        <p class="record-summary">
-          ${outcome.reason === "superseded"
-            ? "A newer question set replaced this one. Draft answers shown below were not sent to the model."
-            : outcome.cause === "user-message"
-              ? `You sent a chat message instead of answering, so the form closed. ${outcome.summary}`
-              : outcome.summary}
-        </p>
-        <div class="record-questions">
-          ${outcome.questions.map((record, index) => this.renderQuestionRecord(outcome, record, index))}
-        </div>
-      </article>
-    `;
-  }
-
-  private renderQuestionRecord(outcome: AskUserOutcome, record: AskUserQuestionRecord, index: number): TemplateResult {
-    const answer = this.displayedRecordAnswer(outcome, record);
-    return html`
-      <section class="record-question" aria-labelledby=${this.recordQuestionHeadingId(index)}>
-        <h3 id=${this.recordQuestionHeadingId(index)}>
-          <span class="question-number">${String(index + 1)}.</span>
-          ${record.question.question}
-        </h3>
-        ${record.question.detail === undefined ? null : html`<p class="question-detail">${record.question.detail}</p>`}
-        ${answer === undefined
-          ? html`<p class="unanswered-record">Unanswered</p>`
-          : html`
-              <ul class="record-answers">
-                ${answer.values.map((value) => html`<li>${this.optionLabel(record.question, value)}</li>`)}
-                ${answer.otherText === undefined ? null : html`<li><strong>Custom:</strong> <span class="other-record-text">${answer.otherText}</span></li>`}
-              </ul>
-              ${answer.fromDraft ? html`<p class="draft-note">Draft answer · not sent</p>` : null}
-            `}
-      </section>
-    `;
-  }
-
   private changeOption(question: AskUserQuestion, value: string, event: Event): void {
     const input = event.currentTarget;
     if (!(input instanceof HTMLInputElement)) return;
@@ -428,36 +361,13 @@ export class AskUserCard extends LitElement {
     return question.multiple === true || answer.values.length === 0;
   }
 
-  private displayedRecordAnswer(outcome: AskUserOutcome, record: AskUserQuestionRecord): DisplayedRecordAnswer | undefined {
-    if (record.answered) {
-      return {
-        values: [...record.values],
-        ...(record.otherText === undefined ? {} : { otherText: record.otherText }),
-        fromDraft: false,
-      };
-    }
-    if (outcome.reason !== "superseded") return undefined;
-    const answer = toSubmission([record.question], this.answers).answers[0];
-    if (answer === undefined) return undefined;
-    return {
-      values: [...answer.values],
-      ...(answer.otherText === undefined ? {} : { otherText: answer.otherText }),
-      fromDraft: true,
-    };
-  }
-
-  private optionLabel(question: AskUserQuestion, value: string): string {
-    return question.options.find((option) => option.value === value)?.label ?? value;
-  }
-
   private currentModelIdentity(): string | undefined {
-    if (this.outcome !== undefined) return `record:${this.draftSessionId}:${this.outcome.askId}`;
     if (this.ask !== undefined) return `open:${this.draftSessionId}:${this.ask.askId}`;
     return undefined;
   }
 
   private loadCurrentDraft(): AskDraftAnswers {
-    const askId = this.outcome?.askId ?? this.ask?.askId;
+    const askId = this.ask?.askId;
     if (askId === undefined || this.draftSessionId === "") return {};
     return loadAskDraft(this.draftSessionId, askId);
   }
@@ -476,10 +386,6 @@ export class AskUserCard extends LitElement {
 
   private otherInputId(index: number): string {
     return `ask-user-other-${String(index)}`;
-  }
-
-  private recordQuestionHeadingId(index: number): string {
-    return `ask-user-record-question-${String(index)}`;
   }
 
   static override styles = css`
@@ -538,10 +444,6 @@ export class AskUserCard extends LitElement {
        palette is the owner's to change. */
     .header-status { color: var(--pi-text); display: inline-flex; align-items: center; gap: var(--pi-space-3); }
     .header-status::before { content: ""; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; }
-    .header-status.submitted::before { background: var(--pi-success); }
-    .header-status.superseded::before { background: var(--pi-warning); }
-    .header-status.submitted { color: var(--pi-success); }
-    .header-status.superseded { color: var(--pi-warning); }
     .questions {
       display: grid;
       padding-top: var(--pi-space-4);
@@ -677,18 +579,8 @@ export class AskUserCard extends LitElement {
       text-underline-offset: 2px;
     }
     .confirmation-actions { flex: 0 0 auto; display: flex; gap: var(--pi-space-4); }
-    .record-summary { margin: 0; color: var(--pi-muted); padding: var(--pi-space-6) var(--pi-space-7); font-size: var(--pi-text-xs); }
-    .record-questions { display: grid; }
-    .record-question { min-width: 0; padding: var(--pi-space-7) var(--pi-space-7); }
-    .record-question + .record-question { border-top: 1px solid var(--pi-border-muted); }
-    .record-question h3 { display: flex; gap: var(--pi-space-3); margin-bottom: var(--pi-space-4); font-size: var(--pi-text-base); line-height: 1.35; }
-    .record-answers { display: grid; gap: var(--pi-space-2); margin: 0; padding-left: var(--pi-space-9); line-height: 1.4; }
-    .other-record-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-    .unanswered-record { margin: 0; color: var(--pi-muted); font-style: italic; }
-    .draft-note { margin: var(--pi-space-4) 0 0; color: var(--pi-warning); font-size: var(--pi-text-2xs); }
     @container (max-width: 580px) {
-      fieldset.question, .record-question { padding: var(--pi-space-7) var(--pi-space-6); }
-      .record-summary { padding-inline: var(--pi-space-6); }
+      fieldset.question { padding: var(--pi-space-7) var(--pi-space-6); }
       /* Stacking made every action its own row, which on a phone with the
          keyboard open is height the question needs. Back and Next are one
          decision and stay on one row. */

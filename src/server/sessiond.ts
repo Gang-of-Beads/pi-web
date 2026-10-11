@@ -283,7 +283,6 @@ async function createSessionDaemonRuntime() {
       workspaceActivity,
       logger: app.log,
       spawnTargets,
-      askUserEnabled: config.askUser,
       pluginBackgroundWork: (session) => serverPlugins.backgroundWork(session),
       hostContributions: {
         // Sessions always run nested in this daemon, so they always get the

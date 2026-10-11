@@ -365,7 +365,7 @@ export function piWebConfigResponse(config: PiWebConfigValues): PiWebConfigRespo
     exists: false,
     config,
     effectiveConfig: config,
-    envOverrides: { host: false, port: false, allowedHosts: false, askUser: false },
+    envOverrides: { host: false, port: false, allowedHosts: false },
   };
 }
 

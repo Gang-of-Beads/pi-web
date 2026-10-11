@@ -1,4 +1,4 @@
-import type { PendingAskUser, PendingExtensionDialog } from "../../shared/apiTypes";
+import type { PendingExtensionDialog } from "../../shared/apiTypes";
 
 /**
  * What the waiting slot draws (state-diagram D2, B22). While a press holds or settles, the cards
@@ -8,7 +8,7 @@ import type { PendingAskUser, PendingExtensionDialog } from "../../shared/apiTyp
  *
  * A card used to be held only once every card had closed: with a second card open, the closed one
  * vanished at once and the survivor slid under the finger, where the release answered it (review
- * b2c94ee9). Only the first of several open forms was held at all.
+ * b2c94ee9). Only the first of several open cards was held at all.
  */
 export type CardPresence = "live" | "held";
 
@@ -18,27 +18,22 @@ export interface ShownCard<T> {
 }
 
 export interface WaitingCards {
-  readonly forms: readonly PendingAskUser[];
   readonly dialogs: readonly PendingExtensionDialog[];
 }
 
 export interface ShownWaiting {
-  readonly forms: readonly ShownCard<PendingAskUser>[];
   readonly dialogs: readonly ShownCard<PendingExtensionDialog>[];
 }
 
 export function shownWaitingCards(drawn: WaitingCards | undefined, open: WaitingCards, holding: boolean): ShownWaiting {
-  if (!holding || drawn === undefined) return { forms: open.forms.map(liveCard), dialogs: open.dialogs.map(liveCard) };
-  return {
-    forms: keepPlaces(drawn.forms, open.forms, (ask) => ask.askId),
-    dialogs: keepPlaces(drawn.dialogs, open.dialogs, (dialog) => dialog.dialogId),
-  };
+  if (!holding || drawn === undefined) return { dialogs: open.dialogs.map(liveCard) };
+  return { dialogs: keepPlaces(drawn.dialogs, open.dialogs, (dialog) => dialog.dialogId) };
 }
 
 /** The cards on screen, to be kept in place by the next render while a press holds. */
 export function drawnWaitingCards(shown: ShownWaiting): WaitingCards | undefined {
-  if (shown.forms.length === 0 && shown.dialogs.length === 0) return undefined;
-  return { forms: shown.forms.map(({ card }) => card), dialogs: shown.dialogs.map(({ card }) => card) };
+  if (shown.dialogs.length === 0) return undefined;
+  return { dialogs: shown.dialogs.map(({ card }) => card) };
 }
 
 function keepPlaces<T>(drawn: readonly T[], open: readonly T[], idOf: (card: T) => string): ShownCard<T>[] {

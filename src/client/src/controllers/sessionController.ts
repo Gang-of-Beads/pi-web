@@ -1,5 +1,5 @@
 import { withLaterActivity } from "../sync/sessionBoard";
-import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Project, type Workspace } from "../api";
+import { api as defaultApi, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Project, type Workspace } from "../api";
 import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand } from "../commandLedger";
@@ -13,7 +13,6 @@ import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
 import { MACHINE_WIDE_LOCATE_START, targetInListing, type SessionTarget, type SessionTargetScope } from "../sessionTarget";
 import { SessionTargetResolver, type SessionTargetOpenOptions } from "./sessionTargetResolver";
-import { openAsksIn } from "../openAsks";
 import type { SessionTranscriptTail } from "../../../shared/apiTypes";
 import { isSessionNotFoundError, sendRefusalNotice, sendRefusalWords, sessionFailureRoute } from "../sessionNotFound";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
@@ -411,7 +410,7 @@ export class SessionController {
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
     // finally block when the request settles.
-    this.setState({ selectedSession: undefined, transcriptSync: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, ...openAsksIn(undefined), pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
+    this.setState({ selectedSession: undefined, transcriptSync: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {
@@ -533,7 +532,6 @@ export class SessionController {
       ...(options?.preserveTreeDialog === true ? {} : { treeDialog: undefined }),
       status: session.archived === true ? undefined : this.getState().sessionStatuses[session.id],
       activity: session.archived === true ? undefined : this.getState().sessionActivities[session.id],
-      ...openAsksIn(session.archived === true ? undefined : this.getState().sessionStatuses[session.id]),
       // A dialog list this same session already had stays until a status replaces
       // it: the transcript load runs after the select and reset it to empty when
       // the connection's status catalog knew nothing about the session yet, so a
@@ -557,7 +555,7 @@ export class SessionController {
         const page = await this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
         if (seq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) return;
         const history = this.transcripts.mergeHistory(transcriptKey, page);
-        this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined, ...openAsksIn(undefined), pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [] });
+        this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [] });
         this.locatedAfterGone = undefined;
         this.onSelectedSessionReady?.({ machineId, session });
         this.settleSelectionUrl(seq, options?.updateUrl !== false);
@@ -1200,7 +1198,7 @@ export class SessionController {
         sessions: nextSessions,
         sessionStatuses: omitKeys(state.sessionStatuses, affectedIds),
         sessionActivities: omitKeys(state.sessionActivities, affectedIds),
-        ...(selectedAffected ? { status: undefined, activity: undefined, ...openAsksIn(undefined), pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [] } : {}),
+        ...(selectedAffected ? { status: undefined, activity: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [] } : {}),
       });
 
       if (state.selectedSession !== undefined && deletedIdSet.has(state.selectedSession.id)) {
@@ -1601,16 +1599,6 @@ export class SessionController {
     }
   }
 
-  /** Send the answers the user entered for the session's open ask. */
-  submitAsk(askId: string, submission: AskUserSubmission): Promise<void> {
-    return this.closeOpenAsk(askId, (session, machineId) => this.api.submitAsk(session, askId, submission, machineId));
-  }
-
-  /** Close the session's open ask without answering it. */
-  cancelAsk(askId: string): Promise<void> {
-    return this.closeOpenAsk(askId, (session, machineId) => this.api.cancelAsk(session, askId, machineId));
-  }
-
   /** Send the value the user gave for one of the session's open extension dialogs. */
   answerDialog(dialogId: string, value: ExtensionDialogAnswer): Promise<void> {
     return this.closeOpenDialog(dialogId, (session, machineId) => this.api.answerDialog(session, dialogId, value, machineId));
@@ -1698,30 +1686,6 @@ export class SessionController {
       this.applyPendingStartStatus(pending, response.sessionStatus);
     } catch (error) {
       if (selectionSeq === this.selectionSeq && this.getState().selectedSession?.id === session.id) this.setState(errorNoticePatch(error));
-    }
-  }
-
-  private async closeOpenAsk(askId: string, close: (session: SessionInfo, machineId: string) => Promise<AskUserCloseResponse>): Promise<void> {
-    const state = this.getState();
-    const session = state.selectedSession;
-    if (session === undefined || session.archived === true || isClientPendingStartSessionInfo(session)) return;
-    const machineId = selectedMachineId(state);
-    const selectionSeq = this.selectionSeq;
-    try {
-      const response = await close(session, machineId);
-      // The ask is gone either way: this call closed it, or it was already
-      // closed elsewhere. Its draft has nothing left to protect, and the answers
-      // now live in the daemon-owned outcome.
-      clearAskDraft(machineSessionKey(machineId, session.id), askId);
-      // Both outcomes carry the recomputed status, so no follow-up status
-      // request is needed to learn what the session's open ask is now. When
-      // the selection moved while the close ran, the fresh status still goes
-      // to the map - the ask belonged to the session it was asked in - while
-      // the card on screen stays the other session's.
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(response.sessionStatus);
-      else this.applyStatusToMap(response.sessionStatus);
-    } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
     }
   }
 
@@ -2113,7 +2077,6 @@ export class SessionController {
       statusReadFailed: undefined,
       status: undefined,
       activity,
-      ...openAsksIn(undefined),
       pendingDialogs: [],
       closedDialogs: [],
       dismissedDialogIds: [],
@@ -2162,7 +2125,7 @@ export class SessionController {
       sessionActivities: omitSessionActivity(state.sessionActivities, tempId),
       sendingPrompts: moveRecordKey(state.sendingPrompts, tempId, cachedSession.id),
       clientQueuedSessionMessages: moveRecordKey(state.clientQueuedSessionMessages, tempId, cachedSession.id),
-      ...(wasSelected ? { selectedSession: cachedSession, status: state.sessionStatuses[cachedSession.id], activity: state.sessionActivities[cachedSession.id], ...openAsksIn(state.sessionStatuses[cachedSession.id]), pendingDialogs: state.sessionStatuses[cachedSession.id]?.pendingDialogs ?? [], closedDialogs: [], dismissedDialogIds: [] } : {}),
+      ...(wasSelected ? { selectedSession: cachedSession, status: state.sessionStatuses[cachedSession.id], activity: state.sessionActivities[cachedSession.id], pendingDialogs: state.sessionStatuses[cachedSession.id]?.pendingDialogs ?? [], closedDialogs: [], dismissedDialogIds: [] } : {}),
       ...clearErrorPatch(),
     });
     this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
@@ -2458,12 +2421,10 @@ export class SessionController {
       status: isSelected ? status : state.status,
       ...(isSelected ? { statusReadFailed: undefined } : {}),
       activity: isSelected ? adoptedActivity ?? (clearsStaleActivity ? undefined : state.activity) : state.activity,
-      // The daemon owns whether an ask is open, so every status it publishes is
-      // authoritative for the selected session's card, including its removal.
-      ...(isSelected ? openAsksIn(status) : {}),
-      // Same for extension dialogs: the status projection is authoritative for
-      // the open list. Closed-card outcomes are event/response-driven instead,
-      // so a status without the dialog simply drops it from the open list.
+      // The status projection is authoritative for the selected session's open
+      // dialogs, including their removal. Closed-card outcomes are
+      // event/response-driven instead, so a status without the dialog simply
+      // drops it from the open list.
       // A dialog this browser already settled is the one thing the projection
       // cannot speak for: the snapshot is unordered against socket frames, so
       // one taken before the close can arrive after it. Re-opening a dismissed
@@ -2758,7 +2719,11 @@ export class SessionController {
       dismissedDialogIds: [...state.dismissedDialogIds, closed.dialog.dialogId],
       ...(leavesOutcomeCard(closed) ? { closedDialogs: [...state.closedDialogs, closed] } : {}),
     });
-    if (sessionId !== undefined) clearDialogAnswerDraft(machineSessionKey(selectedMachineId(state), sessionId), closed.dialog.dialogId);
+    if (sessionId !== undefined) {
+      const sessionKey = machineSessionKey(selectedMachineId(state), sessionId);
+      clearDialogAnswerDraft(sessionKey, closed.dialog.dialogId);
+      clearAskDraft(sessionKey, closed.dialog.dialogId);
+    }
     // The card is gone; the status map must stop listing the dialog too, or
     // the closed question rides the map back on the next selection and the
     // row keeps its asking marker.
@@ -2766,48 +2731,6 @@ export class SessionController {
       if (sessionStatus.pendingDialogs === undefined) return sessionStatus;
       if (!sessionStatus.pendingDialogs.some((pending) => pending.dialogId === closed.dialog.dialogId)) return sessionStatus;
       return { ...sessionStatus, pendingDialogs: sessionStatus.pendingDialogs.filter((pending) => pending.dialogId !== closed.dialog.dialogId) };
-    });
-  }
-
-  /**
-   * Drop a closed dialog's transient outcome card (e.g. the user dismissed it).
-   * The id is remembered so a status snapshot that predates the close cannot
-   * re-open the dialog and deposit the same card a second time.
-   */
-  private applyOpenedAsk(ask: PendingAskUser): void {
-    const state = this.getState();
-    if (state.selectedSession === undefined) return;
-    // A later form no longer closes the earlier one, so this appends: a form
-    // that arrived while the reader was still answering must stay answerable,
-    // and its draft is kept for as long as it is open.
-    const pendingAsks = state.pendingAsks.some((open) => open.askId === ask.askId)
-      ? state.pendingAsks
-      : [...state.pendingAsks, ask];
-    this.setState({ pendingAsks, pendingAsk: pendingAsks[0] });
-  }
-
-
-  private applyClosedAsk(askId: string): void {
-    const state = this.getState();
-    const remaining = state.pendingAsks.filter((open) => open.askId !== askId);
-    if (remaining.length === state.pendingAsks.length && state.pendingAsk?.askId !== askId) return;
-    const sessionId = state.selectedSession?.id;
-    // Whatever is still open moves up; the closed one leaves the screen.
-    this.setState({ pendingAsks: remaining, pendingAsk: remaining[0] });
-    // Same for the status map: the rows and the next selection read it, so an
-    // answered ask must be retracted there as well.
-    this.patchSessionStatus(sessionId, (sessionStatus) => {
-      if (sessionStatus.pendingAsk === undefined && (sessionStatus.pendingAsks ?? []).length === 0) return sessionStatus;
-      const next: SessionStatus = { ...sessionStatus };
-      const left = (sessionStatus.pendingAsks ?? []).filter((open) => open.askId !== askId);
-      if (left.length === 0) delete next.pendingAsks;
-      else next.pendingAsks = left;
-      const [oldest] = left;
-      if (next.pendingAsk?.askId === askId) {
-        if (oldest === undefined) delete next.pendingAsk;
-        else next.pendingAsk = oldest;
-      }
-      return next;
     });
   }
 
@@ -2930,12 +2853,6 @@ export class SessionController {
     }
 
     this.flushPendingUpdates();
-    // Ask frames are applied after the buffered status they were published with,
-    // so the card follows the daemon's own open/close order.
-    if (event.type === "ask.opened") {
-      this.dialogScope.observe(event, () => { this.applyOpenedAsk(event.ask); });
-      return;
-    }
     if (event.type === "session.stopped") {
       if (event.cause === "closed") this.forgetStandingValues(this.getState().selectedSession?.id);
       return;
@@ -2979,10 +2896,6 @@ export class SessionController {
         // message the agent had already answered.
         reserveAcceptedPrompt(machineSessionKey(selectedMachineId(current), selected.id), event.clientMessageId);
       }
-      return;
-    }
-    if (event.type === "ask.closed") {
-      this.dialogScope.observe(event, () => { this.applyClosedAsk(event.askId); });
       return;
     }
     if (event.type === "dialog.opened") {

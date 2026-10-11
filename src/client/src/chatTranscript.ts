@@ -1,6 +1,6 @@
 import { isRecord } from "../../shared/unknownValues";
 import { recordedDurationMs } from "../../shared/toolDuration";
-import { appendText, appendThinking, askUserRecordFromToolDetails, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
+import { appendText, appendThinking, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
 import { deliverySettled } from "./messageDelivery";
 import { resolveArrival } from "./transcriptArrival";
 import { placeByTimestamp } from "./transcriptOrder";
@@ -151,8 +151,6 @@ function committedClientMessageId(rawMessage: unknown): string | undefined {
 function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine, committedId?: string): ChatLine[] {
   const skillReadIndexes = findMatchingSkillReadIndexes(messages, displayEnded);
   if (skillReadIndexes.length > 0) return replaceSkillReadLines(messages, skillReadIndexes, displayEnded);
-  const askUserRecord = displayEnded.parts.find((part) => part.type === "askUserRecord");
-  if (askUserRecord !== undefined) return reconcileFinalAskUserRecord(messages, displayEnded, askUserRecord);
   // A user message the sender is watching keeps its delivery mark when the
   // agent's committed copy replaces it - and the committed copy is what proves
   // the message was taken into the turn.
@@ -232,19 +230,6 @@ function isUnansweredUser(line: ChatLine | undefined): boolean {
   return line.meta?.echo === true || (state !== undefined && !deliverySettled(state));
 }
 
-function reconcileFinalAskUserRecord(
-  messages: ChatLine[],
-  displayEnded: ChatLine,
-  record: Extract<ChatLine["parts"][number], { type: "askUserRecord" }>,
-): ChatLine[] {
-  for (let index = messages.length - 1; index >= 0; index--) {
-    if (lineHasAskUserRecord(messages[index], record)) {
-      return [...messages.slice(0, index), displayEnded, ...messages.slice(index + 1)];
-    }
-  }
-  return [...messages, displayEnded];
-}
-
 function withoutToolCalls(message: ChatLine): ChatLine {
   return { ...message, parts: message.parts.filter((part) => part.type !== "toolCall") };
 }
@@ -305,46 +290,22 @@ function finalizeToolExecution(messages: ChatLine[], result: ToolResultUpdate): 
     };
   }, (line) => reconcileToolResultPresentation(line, presentation));
 
-  let finalized = updated;
-  if (updated === messages) {
-    const preview = previewFromDetails(details);
-    const part: ToolExecutionPart = {
-      type: "toolExecution",
-      ...(toolCallId === undefined || toolCallId === "" ? {} : { toolCallId }),
-      toolName,
-      summary: summarizeArgs(content),
-      status: isError ? "error" : "success",
-      resultText: text,
-      ...(content === undefined ? {} : { content }),
-      ...(details === undefined ? {} : { details }),
-      ...(preview === undefined ? {} : { preview }),
-      ...(drawnResult === undefined ? {} : { drawnResult }),
-      ...(durationMs === undefined ? {} : { durationMs }),
-    };
-    finalized = [...messages, reconcileToolResultPresentation({ role: "tool", parts: [part] }, presentation)];
-  }
-  return reconcileAskUserToolRecord(finalized, toolName, details, presentation.meta);
-}
-
-function reconcileAskUserToolRecord(messages: ChatLine[], toolName: string, details: unknown, meta: ChatLine["meta"] | undefined): ChatLine[] {
-  const record = askUserRecordFromToolDetails(toolName, details);
-  if (record === undefined) return messages;
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const line = messages[index];
-    if (!lineHasAskUserRecord(line, record)) continue;
-    if (meta === undefined || line === undefined) return messages;
-    return [...messages.slice(0, index), { ...line, meta }, ...messages.slice(index + 1)];
-  }
-  return [...messages, { role: "tool", parts: [record], ...(meta === undefined ? {} : { meta }) }];
-}
-
-function lineHasAskUserRecord(
-  line: ChatLine | undefined,
-  record: Extract<ChatLine["parts"][number], { type: "askUserRecord" }>,
-): boolean {
-  return line?.parts.some((part) => part.type === "askUserRecord"
-    && part.outcome.askId === record.outcome.askId
-    && part.outcome.reason === record.outcome.reason) === true;
+  if (updated !== messages) return updated;
+  const preview = previewFromDetails(details);
+  const part: ToolExecutionPart = {
+    type: "toolExecution",
+    ...(toolCallId === undefined || toolCallId === "" ? {} : { toolCallId }),
+    toolName,
+    summary: summarizeArgs(content),
+    status: isError ? "error" : "success",
+    resultText: text,
+    ...(content === undefined ? {} : { content }),
+    ...(details === undefined ? {} : { details }),
+    ...(preview === undefined ? {} : { preview }),
+    ...(drawnResult === undefined ? {} : { drawnResult }),
+    ...(durationMs === undefined ? {} : { durationMs }),
+  };
+  return [...messages, reconcileToolResultPresentation({ role: "tool", parts: [part] }, presentation)];
 }
 
 function updateToolExecution(

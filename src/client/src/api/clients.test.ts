@@ -96,12 +96,12 @@ describe("settings config and plugin APIs", () => {
   it("preserves gateway config and plugin routes by default", async () => {
     const fetchMock = stubSequenceFetch([
       jsonResponse(piWebConfigResponse({ host: "127.0.0.1" })),
-      jsonResponse(piWebConfigResponse({ askUser: true })),
+      jsonResponse(piWebConfigResponse({ maxUploadBytes: 4096 })),
       jsonResponse(piWebPluginsResponse()),
     ]);
 
     await expect(configApi.config()).resolves.toMatchObject({ config: { host: "127.0.0.1" } });
-    await expect(configApi.saveConfig({ askUser: true })).resolves.toMatchObject({ config: { askUser: true } });
+    await expect(configApi.saveConfig({ maxUploadBytes: 4096 })).resolves.toMatchObject({ config: { maxUploadBytes: 4096 } });
     await expect(pluginsApi.plugins()).resolves.toEqual(piWebPluginsResponse());
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
@@ -110,18 +110,18 @@ describe("settings config and plugin APIs", () => {
       "https://pi.example.test/api/plugins",
     ]);
     expect(fetchCall(fetchMock, 1)[1]?.method).toBe("PUT");
-    expect(JSON.parse(requestBody(fetchCall(fetchMock, 1)[1]))).toEqual({ config: { askUser: true } });
+    expect(JSON.parse(requestBody(fetchCall(fetchMock, 1)[1]))).toEqual({ config: { maxUploadBytes: 4096 } });
   });
 
   it("uses machine-scoped config and plugin routes when a machine id is provided", async () => {
     const fetchMock = stubSequenceFetch([
-      jsonResponse(piWebConfigResponse({ askUser: false })),
-      jsonResponse(piWebConfigResponse({ askUser: true })),
+      jsonResponse(piWebConfigResponse({ maxUploadBytes: 1024 })),
+      jsonResponse(piWebConfigResponse({ maxUploadBytes: 4096 })),
       jsonResponse(piWebPluginsResponse()),
     ]);
 
-    await expect(configApi.config("remote a")).resolves.toMatchObject({ config: { askUser: false } });
-    await expect(configApi.saveConfig({ askUser: true }, "remote a")).resolves.toMatchObject({ config: { askUser: true } });
+    await expect(configApi.config("remote a")).resolves.toMatchObject({ config: { maxUploadBytes: 1024 } });
+    await expect(configApi.saveConfig({ maxUploadBytes: 4096 }, "remote a")).resolves.toMatchObject({ config: { maxUploadBytes: 4096 } });
     await expect(pluginsApi.plugins("remote a")).resolves.toEqual(piWebPluginsResponse());
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
@@ -130,7 +130,7 @@ describe("settings config and plugin APIs", () => {
       "https://pi.example.test/api/machines/remote%20a/plugins",
     ]);
     expect(fetchCall(fetchMock, 1)[1]?.method).toBe("PUT");
-    expect(JSON.parse(requestBody(fetchCall(fetchMock, 1)[1]))).toEqual({ config: { askUser: true } });
+    expect(JSON.parse(requestBody(fetchCall(fetchMock, 1)[1]))).toEqual({ config: { maxUploadBytes: 4096 } });
   });
 });
 
@@ -717,7 +717,7 @@ function piWebConfigResponse(config: PiWebConfigValues) {
     exists: true,
     config,
     effectiveConfig: config,
-    envOverrides: { host: false, port: false, allowedHosts: false, askUser: false },
+    envOverrides: { host: false, port: false, allowedHosts: false },
   };
 }
 

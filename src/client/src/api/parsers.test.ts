@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ASK_USER_TEXT_MAX_LENGTH, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH } from "../../../shared/apiTypes";
-import { parseAskUserCloseResponse, parseAuthProvidersResponse, parseCommandResult, parseExtensionDialogCloseResponse, parseFileContentResponse, parseFileSuggestion, parseMachineRuntime, parseMessagePage, parseOAuthFlowState, parsePiPackageMutationResponse, parsePiPackagesResponse, parsePiWebConfigResponse, parsePiWebPluginsResponse, parsePiWebRuntimeResponse, parsePiWebStatusResponse, parseSessionBulkArchiveResponse, parseSessionBulkDeleteArchivedResponse, parseSessionCleanupExecuteResponse, parseSessionCleanupPreviewResponse, parseSessionInfo, parseSessionModelCatalogResponse, parseSessionNotificationInboxEvent, parseSessionNotificationInboxSnapshot, parseSessionStartupProgressEvent, parseSessionStatus, parseSessionStreamSnapshot, parseSessionTreeForkResult, parseSessionTreeNavigateResult, parseSessionTreeSnapshot, parseSessionUnreadCatalogSnapshot, parseSessionUnreadEvent, parseSlashCommand, parseTerminalCommandRun, parseTerminalInfo, parseWorkspace, parseWorkspaceProviderResolution, parseSessionsRevisionResponse } from "./parsers";
+import { EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH } from "../../../shared/apiTypes";
+import { parseAuthProvidersResponse, parseCommandResult, parseExtensionDialogCloseResponse, parseFileContentResponse, parseFileSuggestion, parseMachineRuntime, parseMessagePage, parseOAuthFlowState, parsePiPackageMutationResponse, parsePiPackagesResponse, parsePiWebConfigResponse, parsePiWebPluginsResponse, parsePiWebRuntimeResponse, parsePiWebStatusResponse, parseSessionBulkArchiveResponse, parseSessionBulkDeleteArchivedResponse, parseSessionCleanupExecuteResponse, parseSessionCleanupPreviewResponse, parseSessionInfo, parseSessionModelCatalogResponse, parseSessionNotificationInboxEvent, parseSessionNotificationInboxSnapshot, parseSessionStartupProgressEvent, parseSessionStatus, parseSessionStreamSnapshot, parseSessionTreeForkResult, parseSessionTreeNavigateResult, parseSessionTreeSnapshot, parseSessionUnreadCatalogSnapshot, parseSessionUnreadEvent, parseSlashCommand, parseTerminalCommandRun, parseTerminalInfo, parseWorkspace, parseWorkspaceProviderResolution, parseSessionsRevisionResponse } from "./parsers";
 
 describe("API parsers", () => {
   it("preserves interactive API-key flow hints and defaults providers without one", () => {
@@ -54,13 +54,13 @@ describe("API parsers", () => {
       exists: true,
       config: { host: "0.0.0.0", port: 8504, allowedHosts: ["example.local"], shortcuts: { "core:view.chat": "mod+1", "core:session.stop": null }, plugins: { info: { enabled: false, settings: { compact: true } } }, pathAccess: { allowedPaths: ["/tmp"] }, uploads: { defaultFolder: "manual/uploads" }, maxUploadBytes: 1234, agent: { command: "agent-lab", dir: "~/agent-profiles/lab" } },
       effectiveConfig: { host: "127.0.0.1", port: 8504, allowedHosts: true, pathAccess: { allowedPaths: ["/tmp"] }, uploads: { defaultFolder: ".pi-web/uploads" }, agent: { command: "agent-lab", dir: "/Users/dev/agent-profiles/lab" } },
-      envOverrides: { host: true, port: false, allowedHosts: false, askUser: false },
+      envOverrides: { host: true, port: false, allowedHosts: false },
     })).toEqual({
       path: "/tmp/config.json",
       exists: true,
       config: { host: "0.0.0.0", port: 8504, allowedHosts: ["example.local"], shortcuts: { "core:view.chat": "mod+1", "core:session.stop": null }, plugins: { info: { enabled: false, settings: { compact: true } } }, pathAccess: { allowedPaths: ["/tmp"] }, uploads: { defaultFolder: "manual/uploads" }, maxUploadBytes: 1234, agent: { command: "agent-lab", dir: "~/agent-profiles/lab" } },
       effectiveConfig: { host: "127.0.0.1", port: 8504, allowedHosts: true, pathAccess: { allowedPaths: ["/tmp"] }, uploads: { defaultFolder: ".pi-web/uploads" }, agent: { command: "agent-lab", dir: "/Users/dev/agent-profiles/lab" } },
-      envOverrides: { host: true, port: false, allowedHosts: false, askUser: false },
+      envOverrides: { host: true, port: false, allowedHosts: false },
     });
   });
 
@@ -74,7 +74,7 @@ describe("API parsers", () => {
       exists: true,
       config: { plugins, environmentFacts: false, extensionDialogsTimeoutMs: 60_000 },
       effectiveConfig: { plugins, environmentFacts: false, extensionDialogsTimeoutMs: 60_000 },
-      envOverrides: { host: false, port: false, allowedHosts: false, askUser: false },
+      envOverrides: { host: false, port: false, allowedHosts: false },
     });
 
     expect(parsed.config).toEqual({ plugins, environmentFacts: false, extensionDialogsTimeoutMs: 60_000 });
@@ -172,8 +172,8 @@ describe("API parsers", () => {
   });
 
   it("rejects config responses missing a required override flag", () => {
-    const envOverrides = { host: false, port: false, allowedHosts: false, askUser: false };
-    for (const flag of ["host", "port", "allowedHosts", "askUser"] as const) {
+    const envOverrides = { host: false, port: false, allowedHosts: false };
+    for (const flag of ["host", "port", "allowedHosts"] as const) {
       const incomplete = Object.fromEntries(Object.entries(envOverrides).filter(([key]) => key !== flag));
       expect(() => parsePiWebConfigResponse({
         path: "/tmp/config.json",
@@ -593,34 +593,6 @@ describe("API parsers", () => {
     });
   });
 
-  it("parses the answers the agent has not read yet, and keeps them absent when none wait (B26)", () => {
-    const base = {
-      sessionId: "s1",
-      isStreaming: true,
-      isCompacting: false,
-      isBashRunning: false,
-      pendingMessageCount: 0,
-      queuedMessages: [],
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      cost: 0,
-    };
-    const outcome = {
-      askId: "ask-1",
-      reason: "submitted",
-      askedAt: "2026-10-02T10:00:00.000Z",
-      closedAt: "2026-10-02T10:00:05.000Z",
-      questions: [{ question: { id: "db", question: "Which database?", options: [{ value: "pg", label: "Postgres" }] }, answered: true, values: ["pg"] }],
-      answeredCount: 1,
-      unansweredIds: [],
-      summary: "Answered 1 of 1",
-    };
-
-    expect({
-      queued: parseSessionStatus({ ...base, queuedAnswers: [outcome] }).queuedAnswers?.map((answer) => answer.askId),
-      none: "queuedAnswers" in parseSessionStatus(base),
-    }).toEqual({ queued: ["ask-1"], none: false });
-  });
-
   it("parses workspace effective upload config without retaining the removed top-level branch alias", () => {
     const workspace = parseWorkspace({
       id: "w1",
@@ -1003,89 +975,6 @@ describe("API parsers", () => {
     })).toThrow("Invalid notification clear reason");
   });
 
-  it("parses an open ask", () => {
-    const parsed = parseSessionStatus({ ...statusWire(), pendingAsk: pendingAskWire() });
-
-    expect(parsed.pendingAsk).toEqual({
-      askId: "ask-1",
-      askedAt: "2026-07-20T00:00:00.000Z",
-      questions: [
-        { id: "q1", question: "Which database?", detail: "Pick the primary store", options: [{ value: "pg", label: "Postgres", detail: "Relational" }, { value: "sqlite", label: "SQLite" }] },
-        { id: "q2", question: "Which extras?", options: [{ value: "metrics", label: "Metrics" }], multiple: true },
-      ],
-    });
-  });
-
-  it("omits the pending ask entirely when the field is absent", () => {
-    expect(parseSessionStatus(statusWire()).pendingAsk).toBeUndefined();
-  });
-
-  // A session can hold more than one open form; the list is what the waiting
-  // slot renders, and it has to survive the status boundary.
-  it("parses every open ask, in order", () => {
-    const second = { ...pendingAskWire(), askId: "ask-2" };
-    const parsed = parseSessionStatus({ ...statusWire(), pendingAsks: [pendingAskWire(), second] });
-
-    expect(parsed.pendingAsks?.map((ask) => ask.askId)).toEqual(["ask-1", "ask-2"]);
-    expect(parseSessionStatus(statusWire()).pendingAsks).toBeUndefined();
-  });
-
-  it("validates an ask before rendering it", () => {
-    const ask = pendingAskWire();
-    const first = ask.questions[0];
-    expect(() => parseSessionStatus({ ...statusWire(), pendingAsk: { ...ask, questions: [] } })).toThrow("Pending ask has no questions");
-    expect(() => parseSessionStatus({ ...statusWire(), pendingAsk: { ...ask, questions: [first, first] } })).toThrow("Duplicate ask question id");
-    expect(() => parseSessionStatus({ ...statusWire(), pendingAsk: { ...ask, askId: "" } })).toThrow("Expected non-empty string field: askId");
-    expect(parseSessionStatus({ ...statusWire(), pendingAsk: { ...ask, questions: [{ id: "q1", question: "Anything?", options: [] }] } }).pendingAsk?.questions[0])
-      .toEqual({ id: "q1", question: "Anything?", options: [] });
-    expect(() => parseSessionStatus({ ...statusWire(), pendingAsk: { ...ask, questions: [{ id: "q1", question: "Which?", options: [{ value: "a", label: "A" }, { value: "a", label: "Also A" }] }] } })).toThrow("Duplicate ask option value");
-    expect(() => parseSessionStatus({ ...statusWire(), pendingAsk: { ...ask, questions: [{ id: "q1", question: "x".repeat(ASK_USER_TEXT_MAX_LENGTH + 1), options: [{ value: "a", label: "A" }] }] } })).toThrow("String field exceeds limit: question");
-  });
-
-  it("parses a closed ask response carrying the outcome and recomputed status", () => {
-    const response = parseAskUserCloseResponse({
-      result: "closed",
-      outcome: askOutcomeWire(),
-      sessionStatus: statusWire(),
-    });
-
-    expect(response.result).toBe("closed");
-    expect(response.outcome).toMatchObject({
-      askId: "ask-1",
-      reason: "submitted",
-      answeredCount: 1,
-      unansweredIds: ["q2"],
-      summary: "Answered 1 of 2; unanswered: q2",
-    });
-    expect(response.outcome?.questions[0]).toMatchObject({ answered: true, values: ["pg"] });
-    expect(response.sessionStatus.sessionId).toBe("s1");
-  });
-
-  it("parses a stale close as an ordinary race with no outcome", () => {
-    const response = parseAskUserCloseResponse({ result: "stale", sessionStatus: statusWire() });
-
-    expect(response).toEqual({ result: "stale", sessionStatus: parseSessionStatus(statusWire()) });
-  });
-
-  it("rejects close responses whose outcome contradicts itself", () => {
-    const outcome = askOutcomeWire();
-    expect(() => parseAskUserCloseResponse({ result: "closed", sessionStatus: statusWire() })).toThrow("Ask close response outcome mismatch");
-    expect(() => parseAskUserCloseResponse({ result: "stale", outcome, sessionStatus: statusWire() })).toThrow("Ask close response outcome mismatch");
-    expect(() => parseAskUserCloseResponse({ result: "closed", outcome: { ...outcome, answeredCount: 2 }, sessionStatus: statusWire() })).toThrow("Ask outcome answered count mismatch");
-    expect(() => parseAskUserCloseResponse({ result: "closed", outcome: { ...outcome, unansweredIds: [] }, sessionStatus: statusWire() })).toThrow("Ask outcome unanswered ids mismatch");
-    expect(() => parseAskUserCloseResponse({ result: "closed", outcome: { ...outcome, reason: "ignored" }, sessionStatus: statusWire() })).toThrow("Invalid ask close reason");
-    expect(() => parseAskUserCloseResponse({
-      result: "closed",
-      outcome: { ...outcome, questions: [{ ...askAnsweredRecordWire(), answered: false }, askUnansweredRecordWire()] },
-      sessionStatus: statusWire(),
-    })).toThrow("Ask answer contradicts its answered flag");
-    expect(() => parseAskUserCloseResponse({
-      result: "closed",
-      outcome: { ...outcome, questions: [{ ...askAnsweredRecordWire(), values: ["mysql"] }, askUnansweredRecordWire()] },
-      sessionStatus: statusWire(),
-    })).toThrow("Ask answer selected an option the question never offered");
-  });
-
   it("parses open extension dialogs on the session status, oldest first", () => {
     const parsed = parseSessionStatus({ ...statusWire(), pendingDialogs: [confirmDialogWire(), selectDialogWire(), inputDialogWire()] });
 
@@ -1159,40 +1048,6 @@ function statusWire() {
     queuedMessages: [],
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     cost: 0,
-  };
-}
-
-function pendingAskWire() {
-  return {
-    askId: "ask-1",
-    askedAt: "2026-07-20T00:00:00.000Z",
-    questions: [
-      { id: "q1", question: "Which database?", detail: "Pick the primary store", options: [{ value: "pg", label: "Postgres", detail: "Relational" }, { value: "sqlite", label: "SQLite" }] },
-      { id: "q2", question: "Which extras?", options: [{ value: "metrics", label: "Metrics" }], multiple: true },
-    ],
-  };
-}
-
-function askAnsweredRecordWire() {
-  const ask = pendingAskWire();
-  return { question: ask.questions[0], answered: true, values: ["pg"] };
-}
-
-function askUnansweredRecordWire() {
-  const ask = pendingAskWire();
-  return { question: ask.questions[1], answered: false, values: [] };
-}
-
-function askOutcomeWire() {
-  return {
-    askId: "ask-1",
-    reason: "submitted",
-    askedAt: "2026-07-20T00:00:00.000Z",
-    closedAt: "2026-07-20T00:01:00.000Z",
-    questions: [askAnsweredRecordWire(), askUnansweredRecordWire()],
-    answeredCount: 1,
-    unansweredIds: ["q2"],
-    summary: "Answered 1 of 2; unanswered: q2",
   };
 }
 

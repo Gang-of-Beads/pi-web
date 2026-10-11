@@ -13,7 +13,7 @@ import {
   type ExtensionDialogScreen,
   type PendingExtensionDialog,
 } from "../../../shared/apiTypes.js";
-import { validateSubmission } from "./pendingAskStore.js";
+import { validateSubmission } from "./declaredScreen.js";
 
 export interface PendingExtensionDialogStoreOptions {
   now?: (() => Date) | undefined;

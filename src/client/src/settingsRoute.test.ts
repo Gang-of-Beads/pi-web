@@ -35,8 +35,6 @@ function installWindow(href: string): { pushed: string[]; replaced: string[] } {
 describe("settings route helpers", () => {
   it("parses supported settings deep links and aliases", () => {
     expect(parseSettingsSection("general")).toBe("general");
-    expect(parseSettingsSection("sessiond")).toBe("sessiond");
-    expect(parseSettingsSection("sessions")).toBe("sessiond");
     expect(parseSettingsSection("packages")).toBe("packages");
     expect(parseSettingsSection("pi-packages")).toBe("packages");
     expect(parseSettingsSection("plugins")).toBe("plugins");

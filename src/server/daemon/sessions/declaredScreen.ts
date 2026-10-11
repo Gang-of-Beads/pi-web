@@ -13,11 +13,14 @@ import { isRecord } from "../../../shared/unknownValues.js";
 import {
   ASK_USER_ID_MAX_LENGTH,
   ASK_USER_OPTION_LIMIT,
+  ASK_USER_OTHER_TEXT_MAX_LENGTH,
   ASK_USER_QUESTION_LIMIT,
   ASK_USER_TEXT_MAX_LENGTH,
   EXTENSION_SCREEN_DETAIL_MAX_LENGTH,
+  type AskUserAnswer,
   type AskUserQuestion,
   type AskUserQuestionOption,
+  type AskUserSubmission,
   type ExtensionDialogScreen,
 } from "../../../shared/apiTypes.js";
 
@@ -105,5 +108,49 @@ function optionalText(value: unknown, max: number): string | undefined | null {
 
 function unique(values: readonly string[]): boolean {
   return new Set(values).size === values.length;
+}
+
+/**
+ * The answers a declared questions screen's submission gives, keyed by question id. Throws on
+ * any answer that does not fit its question - an unknown id, an option the question lacks,
+ * several answers to a single-answer question, typed text where the extension declared none -
+ * and the dialog store refuses the submission with that message. An untouched question and an
+ * explicitly empty answer are the same thing, so an empty answer is left out rather than
+ * recorded as answered.
+ */
+export function validateSubmission(questions: readonly AskUserQuestion[], submission: AskUserSubmission): Map<string, AskUserAnswer> {
+  const questionsById = new Map(questions.map((question) => [question.id, question]));
+  const answers = new Map<string, AskUserAnswer>();
+  for (const answer of submission.answers) {
+    const question = questionsById.get(answer.id);
+    if (question === undefined) throw new Error(`Unknown question id ${answer.id}`);
+    if (answers.has(answer.id)) throw new Error(`Duplicate answer for question ${answer.id}`);
+    const validated = validateAnswer(question, answer);
+    if (validated !== undefined) answers.set(answer.id, validated);
+  }
+  return answers;
+}
+
+function validateAnswer(question: AskUserQuestion, answer: AskUserAnswer): AskUserAnswer | undefined {
+  const optionValues = new Set(question.options.map((option) => option.value));
+  const values: string[] = [];
+  for (const value of answer.values) {
+    if (!optionValues.has(value)) throw new Error(`Question ${question.id} has no option ${value}`);
+    if (values.includes(value)) throw new Error(`Duplicate value ${value} for question ${question.id}`);
+    values.push(value);
+  }
+  const otherText = normalizeOtherText(question, answer.otherText);
+  const selectionCount = values.length + (otherText === undefined ? 0 : 1);
+  if (question.multiple !== true && selectionCount > 1) throw new Error(`Question ${question.id} accepts a single answer`);
+  if (selectionCount === 0) return undefined;
+  return { id: question.id, values, ...(otherText === undefined ? {} : { otherText }) };
+}
+
+function normalizeOtherText(question: AskUserQuestion, otherText: string | undefined): string | undefined {
+  if (otherText === undefined) return undefined;
+  if (question.custom === false) throw new Error(`Question ${question.id} takes no typed answer`);
+  if (otherText.length > ASK_USER_OTHER_TEXT_MAX_LENGTH) throw new Error(`Other text of question ${question.id} exceeds its length limit`);
+  const trimmed = otherText.trim();
+  return trimmed === "" ? undefined : trimmed;
 }
 

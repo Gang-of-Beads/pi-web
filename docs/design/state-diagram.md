@@ -13,7 +13,7 @@ This is the map. Code follows it; it does not follow code.
 1. **One owner per state.** Each state has exactly one writer and a fixed set of values. Every other place derives from it; nothing keeps a second copy that can disagree. A cache or a local store is a persistence of the owner's state, not a second state.
 2. **Words are output; identity is an id.** A label, a message or an error sentence is rendered from a state and never read back to decide one. Identity crosses a boundary as an id, never as matching text. Typed discriminants (`type`, `kind`, `phase`, `status` fields, exact `customType` constants) are fine. Known debt, each tied to an item here:
    - the commit claim by text (`committedPromptIdentity.ts:39-45`), removed by the `prompt.committed` frame (D1);
-   - the pre-ask claim's text fallback (`pendingAskStore.ts:193-198`);
+   - the pre-ask claim's text fallback, removed with PI WEB's own `ask_user` (2026-10-11);
    - the 20 text-decided sites of B16.
 
    One exception is named and permanent: a scraped terminal screen (the parsed-card fallback). A parse that cannot decide is `unknown` and falls back to the raw frame.
@@ -149,28 +149,28 @@ stateDiagram-v2
   | `handed` | Received |
   | `refused` | Not accepted · Retry |
 
-## D2. A docked card (asks, extension dialogs, declared screens, plugin cards)
+## D2. A docked card (extension dialogs, declared screens, plugin cards)
 
 ```mermaid
 stateDiagram-v2
     [*] --> refused: open rejected (too long, bad options)
-    [*] --> open: ask_user, ctx.ui.select/confirm/input/custom, plugin card
+    [*] --> open: ctx.ui.select/confirm/input/editor/custom, plugin card
     open --> open: redraw (same id, new lines)
     open --> answered: reader answers
-    open --> cancelled: reader cancels, Stop, timeout, run end, a chat message (oldest ask), owner plugin disabled, daemon restart, session closed
+    open --> cancelled: reader cancels, Stop, timeout, run end, owner plugin disabled, daemon restart, session closed
     answered --> [*]
     cancelled --> [*]
     refused --> [*]
 ```
 
 - **Owner.** The daemon's card stores own a card. Cards are session-scoped and FIFO.
-- **Cancel causes are typed:** `reader`, `stop`, `timeout`, `run-end`, `reader-sent-message`, `owner-disabled`, `daemon-restart`, `session-closed`. The waiter always resolves, so an extension's `await` never hangs.
+- **Cancel causes are typed:** `reader`, `stop`, `timeout`, `run-end`, `owner-disabled`, `daemon-restart`, `session-closed`. The waiter always resolves, so an extension's `await` never hangs.
 - **Run end and Stop settle only what the run opened (B54).** A dialog opened by a tool or an event handler of a run is the run's: its end or a Stop settles it, so the agent loop is never parked behind it. A dialog an extension command opens is the command's, even when the command was typed while a run was going: it outlives that run and closes only by the reader, its timeout or signal, or the session going away. The daemon tells them apart by the async context the dialog opens in (`CommandHandlerScope`), not by `isStreaming`; found 2026-10-02, when a command's screen was settled less than a second after it opened because an unrelated run ended. A run the command itself starts owns its own dialogs once the command's handler has returned.
-- **Class.** `ask_user`, extension dialogs, declared screens and plugin cards are one class.
+- **Class.** Extension dialogs, declared screens and plugin cards are one class. PI WEB's own `ask_user` card was one too until 2026-10-11, when the tool was deleted (owner: PI WEB gives agents no tools of its own; a question tool is a pi extension's, and its questions arrive as extension dialogs).
   - A plugin opens a card through its server half, into the daemon store, with a declared contribution point (`dockedCards`). An answer routes back through the same store.
   - Disabling the plugin cancels its open cards (`owner-disabled`).
 - **Rendering.**
-  - Every open card renders, FIFO: asks already do, and dialogs follow (no more "N more queued").
+  - Every open card renders, FIFO (no more "N more queued").
   - A card renders once, natively. A declared screen is the Questions card; an undeclared terminal screen is a parsed native option card; the raw frame is the last resort. One question never passes through two cards.
   - A card has exactly one capped inner region, within the waiting slot's 60vh budget. It chains the wheel and touch to the transcript at its end and when it does not overflow; `overscroll-behavior: contain` is for overlays only. The action row never scrolls away. Built 2026-10-03 (B11): the dialog detail region declared `contain`, so a wheel over a long goal draft at its end moved nothing (`probe-card-wheel-chains.mjs`); `cardScrollChains.test.ts` keeps vertical containment out of every component drawn in the transcript (horizontal containment on code blocks stays, so a sideways swipe never goes Back).
   - The card re-renders whenever any rendered field changes, including `lines` and `screen`.
@@ -180,22 +180,12 @@ stateDiagram-v2
     - A screen that does not parse keeps its lines and the key row: the last resort. Its close control reads Cancel, as on every other card.
     - The 8505 test fixture (`ui-custom-probe`) opened its screen in every 8505 session, 351 times in the current log, so every page the owner checked carried it. It opens now only when a probe asks for it (`/ui-custom-probe`).
 - **Placement.** Open cards are the tail of the transcript (D1 order). In D4 `following` they stay in view. In `reading`, an open card below the fold lights the back-to-bottom key with "Waiting for you", whatever the distance. The reader is still never moved.
-- **An answer is a message.** Answering a card creates a D1 message:
-  - it is `queued` from the moment it is submitted, and its answers record shows in the transcript;
-  - it is FIFO with the reader's other messages;
-  - it is handed at the next injection point with everything else waiting.
-
-  It never goes into pi's follow-up lane, which waits until the agent has no work left. The same holds for PI WEB's own notices meant for the agent (subsession completion). Measured 2026-09-30: four answers waited 9.5, 10, 26.7 and 14.5 minutes, invisibly (`piSessionService.ts:1997`, `:2688`).
-
-  **Built (B26, 2026-10-02).**
-  - *Lane.* An answer, and a subsession notice, is delivered with `deliverAs: "steer"` (`AGENT_NOTICE_DELIVERY`). While a run goes it waits in pi's steering queue and is read at the next injection point, after the tool batch in flight, with the reader's own messages in the same queue. On an idle session it starts a run at once, as before. An answer can never be read before the tool batch it was asked beside ends (`ask_user` called with `bash sleep 25`): that wait is the injection point, and it is now visible.
-  - *Order, as far as it holds.* An answer reaches pi's queue when it is given; a reader's message reaches it when its inbox handoff lands. So an answer can overtake a message sent just before it whose handoff is still on its way (or waiting out a Stop or Clear), and a recall replays the surviving messages behind the answers. Known and accepted (review of 4a1bdfd7): the answer is not the reader's typed message, and both are read in the same request.
-  - *Queued until read.* The status lists `queuedAnswers`: the answers records still in pi's queues, read off those queues on every status, so nothing kept beside them can disagree. The transcript shows each as its answers record marked Queued, among the reader's pending messages by the time it was given (a message from another device carries no time, so the answer goes after it). When pi reads it, its committed record replaces the queued one in place.
-  - *A window.* pi's loop takes the answer out of its queue at the poll and draws it at the next turn's start. In between, the status no longer lists it and the transcript does not hold it yet: one frame normally, but a whole compaction when pi compacts between turns. Known and accepted for now (review of 4a1bdfd7); closing it would mean keeping the answer queued on the page until its record arrives, which leaves a row behind if the runtime dies.
-  - *Not recallable.* A queued answer has no take-back, and Clear keeps it. Owner ruling (2026-10-02): no take-back.
+- **A notice for the agent waits with the reader's messages.** PI WEB's own notices meant for the agent (subsession completion) never go into pi's follow-up lane, which waits until the agent has no work left (B26, 2026-10-02).
+  - *Lane.* A notice is delivered with `deliverAs: "steer"` (`AGENT_NOTICE_DELIVERY`). While a run goes it waits in pi's steering queue and is read at the next injection point, after the tool batch in flight, with the reader's own messages in the same queue. On an idle session it starts a run at once.
   - *Take-back keeps it.* Recall, the idle take-back, Stop and Clear empty pi's lanes to take back the reader's messages. A notice is not the reader's message, so it is put back in pi's steering queue. Only the daemon's own custom types count; another extension's custom message is left to pi.
   - *Stop, close and shutdown write it down.* After a Stop, when the session's runtime closes, and when the daemon shuts down, a notice still queued is written into the transcript without starting a run (`triggerTurn: false`); the agent reads it with its next turn. Only the notices leave the queue: a reader's message steered while the Stop settled stays for the take-back (review of 4a1bdfd7). At close the page gets no live frame for it, because the session's events are already unsubscribed; it is on the transcript the next time the session is read.
-  - *Known limit.* A daemon that dies while an answer is queued loses it, as before, because pi's queues live in the runtime. Its queued record then leaves the transcript tail with the status.
+  - *Known limit.* A daemon that dies while a notice is queued loses it, because pi's queues live in the runtime.
+  - *Withdrawn 2026-10-11, with PI WEB's own `ask_user`:* an answered card as a queued D1 message (`queuedAnswers`, its answers record marked Queued among the pending rows, no take-back). An extension dialog's answer resolves the extension's own waiter and delivers nothing to the model.
 - **A refusal is a state the reader sees.** A refused open files a session notification. It is owned by the notification inbox, scoped to the session, and dismissible. It is never only an error inside the extension.
 - **A closed card is inert.** A card kept on screen while a gesture settles has no live handlers. A tap on a card answered elsewhere shows "Answered elsewhere". Built 2026-10-03 (B22, `waitingSlotHold`): while a press holds or settles, the cards already drawn keep their places; a card still open is drawn live, a card that closed is drawn inert with no answer, cancel or key handler bound, and a card that opened during the press joins at the end. A closed card is held beside a card still open, and every open form is held, not only the first (review b2c94ee9). A held card's layout is the live card's. The "Answered elsewhere" words wait on the owner (the no-UI ruling).
 

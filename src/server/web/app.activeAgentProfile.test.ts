@@ -200,7 +200,6 @@ function configResponse(config: PiWebConfigResponse["config"]): PiWebConfigRespo
       host: false,
       port: false,
       allowedHosts: false,
-      askUser: false,
     },
   };
 }
@@ -215,7 +214,6 @@ function emptyConfigService(): PiWebConfigService {
       host: false,
       port: false,
       allowedHosts: false,
-      askUser: false,
     },
   };
   return {

@@ -42,7 +42,7 @@ export interface QuickSwitcherModelInput {
   activeSessionIds: ReadonlySet<string>;
   /** Sessions whose agent stopped on an error (model unavailable, tool failure). */
   errorSessionIds?: ReadonlySet<string>;
-  /** Sessions whose agent is blocked on an `ask_user` answer. */
+  /** Sessions whose agent is blocked on an extension dialog the reader has to answer. */
   waitingSessionIds?: ReadonlySet<string>;
   /** Sessions that finished work the user has not looked at yet. */
   unreadSessionIds?: ReadonlySet<string>;

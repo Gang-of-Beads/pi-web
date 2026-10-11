@@ -1,9 +1,7 @@
 import { drawnLines } from "./drawnLines";
 import { isRecord } from "../../shared/unknownValues";
 import { recordedDurationMs } from "../../shared/toolDuration";
-import { ASK_USER_ANSWERS_CUSTOM_TYPE } from "../../shared/apiTypes";
 import { deliverySettled } from "./messageDelivery";
-import { parseAskUserOutcome } from "./api/parsers";
 import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview, ToolResultImageRef } from "./components/shared";
 import { MODEL_FAILURE_SENTENCE, modelFailure } from "./modelFailure";
 
@@ -77,11 +75,7 @@ export function normalizeMessage(message: unknown): ChatLine[] {
   if (getString(message, "role") === "bashExecution") return [withMessageMeta(normalizeBashExecution(message), message)];
   const rawRole = getString(message, "role");
   const role = normalizeRole(rawRole);
-  const contentParts = normalizeContent(getProperty(message, "content"), message);
-  const supersededRecord = rawRole === "toolResult"
-    ? askUserRecordFromToolDetails(getString(message, "toolName") ?? "", getProperty(message, "details"))
-    : undefined;
-  const parts = supersededRecord === undefined ? contentParts : [...contentParts, supersededRecord];
+  const parts = normalizeContent(getProperty(message, "content"), message);
   const skillLines = role === "user" ? normalizeSkillInvocation(parts) : undefined;
   if (skillLines !== undefined) return skillLines.map((line) => withMessageMeta(line, message));
   const source = normalizeSource(message);
@@ -248,8 +242,6 @@ function normalizeRole(role: unknown): ChatLine["role"] {
 }
 
 function normalizeContent(content: unknown, message: unknown): ChatPart[] {
-  const askUserRecord = askUserRecordPart(message);
-  if (askUserRecord !== undefined) return [askUserRecord];
   if (isHiddenCustomMessage(message)) return [];
   const custom = customPart(message);
   if (custom !== undefined) return [custom];
@@ -318,7 +310,7 @@ function withDisplay<Part extends Extract<ChatPart, { type: "text" | "thinking" 
 function customPart(message: unknown): Extract<ChatPart, { type: "custom" }> | undefined {
   if (getString(message, "role") !== "custom") return undefined;
   const tag = getString(message, "customType");
-  if (tag === undefined || tag === "" || tag === ASK_USER_ANSWERS_CUSTOM_TYPE) return undefined;
+  if (tag === undefined || tag === "") return undefined;
   const lines = drawnLines(getProperty(message, "drawn"));
   const text = customContentText(getProperty(message, "content"));
   return {
@@ -336,27 +328,6 @@ function customContentText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content.flatMap((part) => (getString(part, "type") === "text" ? [getString(part, "text") ?? ""] : [])).join("\n");
-}
-
-function askUserRecordPart(message: unknown): Extract<ChatPart, { type: "askUserRecord" }> | undefined {
-  if (getString(message, "role") !== "custom" || getString(message, "customType") !== ASK_USER_ANSWERS_CUSTOM_TYPE) return undefined;
-  return parsedAskUserRecord(getProperty(message, "details"));
-}
-
-/** Project the superseded ask carried by an `ask_user` tool result, if any. */
-export function askUserRecordFromToolDetails(toolName: string, details: unknown): Extract<ChatPart, { type: "askUserRecord" }> | undefined {
-  if (toolName !== "ask_user") return undefined;
-  return parsedAskUserRecord(getProperty(details, "superseded"));
-}
-
-function parsedAskUserRecord(value: unknown): Extract<ChatPart, { type: "askUserRecord" }> | undefined {
-  try {
-    return { type: "askUserRecord", outcome: parseAskUserOutcome(value) };
-  } catch {
-    // A malformed legacy/session entry must not make the whole transcript fail.
-    // Fall back to its model-facing text through the ordinary normalizer.
-    return undefined;
-  }
 }
 
 function toolResultPartFromText(text: string, message: unknown): Extract<ChatPart, { type: "toolResult" }> {

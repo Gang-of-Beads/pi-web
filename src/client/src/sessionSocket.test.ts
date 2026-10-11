@@ -49,7 +49,7 @@ function handlers(overrides: Partial<SessionSocketHandlers> = {}): SessionSocket
 }
 
 describe("a malformed frame on a revisioned surface is a gap, not a silent drop", () => {
-  // A dialog/ask/inbox frame that fails validation used to vanish without a
+  // A dialog/inbox frame that fails validation used to vanish without a
   // trace: the surface's revision never advanced, so the next valid frame
   // applied cleanly on top of a state missing one transition - the same stale
   // card the lost-frame repair exists for, reached through a different door.
@@ -57,8 +57,6 @@ describe("a malformed frame on a revisioned surface is a gap, not a silent drop"
   it("names the revisioned surface behind a frame", () => {
     expect(revisionedFrameType({ type: "dialog.opened", dialog: { bogus: true } })).toBe("dialog.opened");
     expect(revisionedFrameType({ type: "dialog.closed" })).toBe("dialog.closed");
-    expect(revisionedFrameType({ type: "ask.opened" })).toBe("ask.opened");
-    expect(revisionedFrameType({ type: "ask.closed" })).toBe("ask.closed");
     expect(revisionedFrameType({ type: "notifications.inbox" })).toBe("notifications.inbox");
   });
 
@@ -305,12 +303,7 @@ describe("notification socket guards", () => {
    * repair - which is exactly what shipped: the repair's tests fed the scope
    * hand-built events, while production frames arrived stripped.
    */
-  it("carries the surface revision through ask and dialog validation", () => {
-    const ask = {
-      askId: "ask-1",
-      askedAt: "2026-07-20T00:00:00.000Z",
-      questions: [{ id: "q1", question: "Which database?", options: [{ value: "pg", label: "Postgres" }] }],
-    };
+  it("carries the surface revision through dialog validation", () => {
     const dialog = {
       dialogId: "dialog-1",
       kind: "select",
@@ -320,12 +313,10 @@ describe("notification socket guards", () => {
       runScoped: true,
     };
 
-    expect(parseSessionSocketEvent({ type: "ask.opened", ask, revision: 4, daemonInstanceId: "daemon-a" })).toMatchObject({ revision: 4, daemonInstanceId: "daemon-a" });
-    expect(parseSessionSocketEvent({ type: "ask.closed", askId: "ask-1", reason: "superseded", revision: 5 })).toMatchObject({ revision: 5 });
-    expect(parseSessionSocketEvent({ type: "dialog.opened", dialog, revision: 6 })).toMatchObject({ revision: 6 });
+    expect(parseSessionSocketEvent({ type: "dialog.opened", dialog, revision: 6, daemonInstanceId: "daemon-a" })).toMatchObject({ revision: 6, daemonInstanceId: "daemon-a" });
     expect(parseSessionSocketEvent({ type: "dialog.closed", dialogId: "dialog-1", reason: "timeout", revision: 7 })).toMatchObject({ revision: 7 });
     // A malformed stamp parses as absent - the frame still applies, fail-open.
-    expect(parseSessionSocketEvent({ type: "ask.opened", ask, revision: "x" })).not.toHaveProperty("revision");
+    expect(parseSessionSocketEvent({ type: "dialog.opened", dialog, revision: "x" })).not.toHaveProperty("revision");
   });
 
   it("carries the epoch of a frame's seq space along with its seq", () => {
@@ -343,23 +334,6 @@ describe("notification socket guards", () => {
     expect(parseSessionSocketEvent({ type: "prompt.accepted", clientMessageId: "cmid-1" })).toEqual({ type: "prompt.accepted", clientMessageId: "cmid-1" });
     expect(parseSessionSocketEvent({ type: "prompt.accepted" })).toBeUndefined();
     expect(parseSessionSocketEvent({ type: "prompt.accepted", clientMessageId: 42 })).toBeUndefined();
-  });
-
-  it("accepts validated ask frames and drops malformed ones", () => {
-    const ask = {
-      askId: "ask-1",
-      askedAt: "2026-07-20T00:00:00.000Z",
-      questions: [{ id: "q1", question: "Which database?", options: [{ value: "pg", label: "Postgres" }] }],
-    };
-
-    expect(parseSessionSocketEvent({ type: "ask.opened", ask })).toEqual({ type: "ask.opened", ask });
-    expect(parseSessionSocketEvent({ type: "ask.closed", askId: "ask-1", reason: "superseded" }))
-      .toEqual({ type: "ask.closed", askId: "ask-1", reason: "superseded" });
-    expect(parseSessionSocketEvent({ type: "ask.opened", ask: { ...ask, questions: [] } })).toBeUndefined();
-    expect(parseSessionSocketEvent({ type: "ask.opened" })).toBeUndefined();
-    expect(parseSessionSocketEvent({ type: "ask.closed", askId: "ask-1", reason: "ignored" })).toBeUndefined();
-    // Ask frames are per-session only, so they must not be accepted globally.
-    expect(parseRealtimeSocketEvent({ type: "ask.opened", ask })).toBeUndefined();
   });
 
   it("accepts validated dialog frames and drops malformed ones", () => {

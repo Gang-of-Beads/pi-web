@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { configApi, type PiWebConfigResponse } from "../api";
+import { configApi, pluginsApi, type PiWebConfigResponse, type PiWebPluginsResponse } from "../api";
 import { activeSettingsPanelTag, SettingsDialog } from "./SettingsDialog";
-import { callDialogPromise, callDialogUpdated, configResponse, deferred, getDialogProperty, remoteMachine, secondRemoteMachine, setDialogProperty, stubWindowTimers } from "./SettingsDialog.testSupport";
+import { callDialogPromise, callDialogUpdated, configResponse, deferred, getDialogProperty, pluginsResponse, remoteMachine, secondRemoteMachine, setDialogProperty, stubWindowTimers } from "./SettingsDialog.testSupport";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -14,10 +14,26 @@ describe("settings-dialog general settings machine targeting", () => {
     // now maps to exactly one panel element. Assert that public routing contract
     // (`activeSettingsPanelTag`) instead of scraping the rendered template markup.
     expect(activeSettingsPanelTag("general")).toBe("settings-general-panel");
-    expect(activeSettingsPanelTag("sessiond")).toBe("settings-sessiond-panel");
     expect(activeSettingsPanelTag("packages")).toBe("settings-packages-panel");
     expect(activeSettingsPanelTag("plugins")).toBe("settings-plugins-panel");
     expect(activeSettingsPanelTag("shortcuts")).toBe("settings-shortcuts-panel");
+  });
+
+  it("keeps gateway settings loads on the gateway config/plugin endpoints", async () => {
+    const config = configResponse({ host: "127.0.0.1" });
+    const plugins: PiWebPluginsResponse = pluginsResponse([]);
+    const configSpy = vi.spyOn(configApi, "config").mockResolvedValue(config);
+    const pluginsSpy = vi.spyOn(pluginsApi, "plugins").mockResolvedValue(plugins);
+    const dialog = new SettingsDialog();
+
+    await callDialogPromise(dialog, "loadConfig");
+
+    expect(configSpy.mock.calls).toEqual([[]]);
+    expect(pluginsSpy.mock.calls).toEqual([[]]);
+    expect(getDialogProperty(dialog, "configResponse")).toBe(config);
+    expect(getDialogProperty(dialog, "pluginsResponse")).toBe(plugins);
+    expect(getDialogProperty(dialog, "error")).toBe("");
+    expect(getDialogProperty(dialog, "loading")).toBe(false);
   });
 
   it("keeps gateway server config saves on the gateway config endpoint", async () => {

@@ -225,8 +225,8 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   /**
-   * A screen the extension declared as questions is the Questions card `ask_user`
-   * uses, not a terminal frame: the daemon never mounted the component, so this is
+   * A screen the extension declared as questions is the Questions card, not a
+   * terminal frame: the daemon never mounted the component, so this is
    * the only place the dialog appears.
    */
   private renderQuestions(dialog: PendingExtensionDialog, screen: ExtensionDialogScreen): TemplateResult {

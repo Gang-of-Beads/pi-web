@@ -23,10 +23,9 @@ export interface LoadedPiWebConfig {
   deprecatedAgentInputs: readonly DeprecatedAgentInput[];
 }
 
-export interface EffectivePiWebConfig extends Omit<PiWebConfig, "uploads" | "askUser" | "dockerEnvironmentFacts" | "agent" | "extensionDialogsTimeoutMs" | "logging"> {
+export interface EffectivePiWebConfig extends Omit<PiWebConfig, "uploads" | "dockerEnvironmentFacts" | "agent" | "extensionDialogsTimeoutMs" | "logging"> {
   uploads: NonNullable<PiWebConfig["uploads"]>;
   logging: Required<PiWebLoggingConfig>;
-  askUser: boolean;
   environmentFacts: boolean;
   extensionDialogsTimeoutMs: number;
   agent: EffectivePiWebAgentConfig;
@@ -205,8 +204,6 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
       ...(maxUpload !== undefined && maxUpload !== "" ? { maxUploadBytes: parseMaxUploadBytes(maxUpload, "PI_WEB_MAX_UPLOAD_BYTES") } : {}),
       uploads: effectiveUploadsConfig(loaded.config),
       logging: effectiveLoggingConfig(loaded.config),
-      // Always resolved (on by default); the user is present for every ask.
-      askUser: askUserEnabled(env, loaded.config),
       // Always resolved (on by default); inert outside Docker deployments.
       environmentFacts: environmentFactsEnabled(env, loaded.config),
       // Always resolved; the unattended-dialog safety valve, not a gate.
@@ -218,8 +215,9 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
 
 /**
  * The keys a save rewrites from the parsed config; every other key in the file is kept as it was.
- * `respectProjectTrust` is retired and dropped on save. `extensionDialogsTimeoutMs` is not here: it
- * has no editor, so a save keeps the value the file holds, and one a request carries is not written.
+ * `respectProjectTrust` and `askUser` (PI WEB no longer has an `ask_user`) are retired: a load
+ * ignores them and a save drops them. `extensionDialogsTimeoutMs` is not here: it has no editor,
+ * so a save keeps the value the file holds, and one a request carries is not written.
  */
 const SAVED_CONFIG_KEYS: ReadonlySet<string> = new Set([
   "host", "port", "allowedHosts", "shortcuts", "plugins", "pathAccess", "uploads", "maxUploadBytes",
@@ -280,7 +278,6 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
     ...(config.uploads !== undefined ? { uploads: config.uploads } : {}),
     ...(config.maxUploadBytes !== undefined ? { maxUploadBytes: config.maxUploadBytes } : {}),
     ...(config.logging !== undefined ? { logging: config.logging } : {}),
-    ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.environmentFacts !== undefined ? { environmentFacts: config.environmentFacts } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
     ...(config.listTiles !== undefined ? { listTiles: config.listTiles } : {}),
@@ -304,7 +301,6 @@ export function parsePiWebConfig(value: Record<string, unknown>, path: string, a
     ...(value["maxUploadBytes"] !== undefined ? { maxUploadBytes: parseMaxUploadBytes(value["maxUploadBytes"], "maxUploadBytes", path) } : {}),
     ...(value["logging"] !== undefined ? { logging: parseLoggingConfig(value["logging"], path) } : {}),
     ...(value["listTiles"] !== undefined ? { listTiles: parseListTilesConfig(value["listTiles"], path) } : {}),
-    ...(value["askUser"] !== undefined ? { askUser: parseAskUser(value["askUser"], path) } : {}),
     ...(value["environmentFacts"] !== undefined ? { environmentFacts: parseBooleanKey(value["environmentFacts"], "environmentFacts", path) } : {}),
     ...(value["extensionDialogsTimeoutMs"] !== undefined ? { extensionDialogsTimeoutMs: parseExtensionDialogsTimeoutMs(value["extensionDialogsTimeoutMs"], path) } : {}),
     ...(value["agent"] !== undefined ? { agent: parseAgentConfig(value["agent"], path, agentPathHost) } : {}),
@@ -323,28 +319,11 @@ function parseMaxUploadBytes(value: unknown, key: string, path = "environment"):
   return bytes;
 }
 
-function parseAskUser(value: unknown, path: string): boolean {
-  if (typeof value !== "boolean") throw new PiWebConfigError(`PI WEB config askUser must be a boolean: ${path}`);
-  return value;
-}
-
 function parseExtensionDialogsTimeoutMs(value: unknown, path: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
     throw new PiWebConfigError(`PI WEB config extensionDialogsTimeoutMs must be a non-negative integer: ${path}`);
   }
   return value;
-}
-
-/**
- * Whether sessions load the `ask_user` extension, which lets the agent post a
- * question set to the browser. Off by default (owner, 2026-09-30: PI WEB gives the
- * agent no tools of its own). Set the env var `PI_WEB_ASK_USER` or the `askUser`
- * config key to `true` to load it. The env var takes precedence over the config file.
- */
-export function askUserEnabled(env: NodeJS.ProcessEnv = process.env, config: PiWebConfig = {}): boolean {
-  const fromEnv = env["PI_WEB_ASK_USER"];
-  if (fromEnv !== undefined && fromEnv !== "") return fromEnv === "1" || fromEnv.toLowerCase() === "true";
-  return config.askUser ?? false;
 }
 
 function parseBooleanKey(value: unknown, key: string, path: string): boolean {

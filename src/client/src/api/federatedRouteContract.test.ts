@@ -42,14 +42,6 @@ describe("federated route contract", () => {
     expect(FEDERATED_WEBSOCKET_ROUTES.some((path) => path.includes("notifications"))).toBe(false);
   });
 
-  it("allowlists both ask routes without adding an ask WebSocket", () => {
-    expect(FEDERATED_HTTP_ROUTES.filter((route) => route.path.includes("/ask/"))).toEqual([
-      { method: "POST", path: "/sessions/:sessionId/ask/submit" },
-      { method: "POST", path: "/sessions/:sessionId/ask/cancel" },
-    ]);
-    expect(FEDERATED_WEBSOCKET_ROUTES.some((path) => path.includes("ask"))).toBe(false);
-  });
-
   it("allowlists both extension dialog routes on the existing session WebSocket", () => {
     expect(FEDERATED_HTTP_ROUTES.filter((route) => route.path.includes("/dialogs/"))).toEqual([
       { method: "POST", path: "/sessions/:sessionId/dialogs/answer" },
@@ -138,7 +130,7 @@ describe("federated route contract", () => {
       ignoreParseFailure(piWebApi.piWebStatus(machineId)),
       ignoreParseFailure(piWebApi.checkForUpdates(machineId)),
       ignoreParseFailure(configApi.config(machineId)),
-      ignoreParseFailure(configApi.saveConfig({ askUser: true }, machineId)),
+      ignoreParseFailure(configApi.saveConfig({ maxUploadBytes: 4096 }, machineId)),
       ignoreParseFailure(pluginsApi.plugins(machineId)),
       ignoreParseFailure(piPackagesApi.packages(machineId)),
       ignoreParseFailure(piPackagesApi.install("npm:@acme/tools", machineId)),
@@ -180,8 +172,6 @@ describe("federated route contract", () => {
       ignoreParseFailure(sessionsApi.transcriptTail(session, { limit: 40 }, machineId)),
       ignoreParseFailure(sessionsApi.clearQueue(session, machineId)),
       ignoreParseFailure(sessionsApi.dismissWarning(session, "anthropicExtraUsage", machineId)),
-      ignoreParseFailure(sessionsApi.submitAsk(session, "ask 1", { answers: [{ id: "q1", values: ["pg"] }] }, machineId)),
-      ignoreParseFailure(sessionsApi.cancelAsk(session, "ask 1", machineId)),
       ignoreParseFailure(sessionsApi.answerDialog(session, "dialog 1", true, machineId)),
       ignoreParseFailure(sessionsApi.cancelDialog(session, "dialog 1", machineId)),
       ignoreParseFailure(sessionsApi.models(session, machineId)),
