@@ -205,7 +205,7 @@
                 <code>web: { kind: "card", fields: [...] }</code> as an interactive card: <code>text</code>, <code>choice</code>
                 (one or several options, an optional typed answer), <code>input</code> (one line or a box) and <code>confirm</code>
                 fields, one answerable field a step, <code>required</code> fields filled before the card moves on, and
-                <code>custom()</code> resolving with <code>{ values }</code> keyed by field id (<code>ctx.ui.piWebScreens</code>
+                <code>custom()</code> resolving with <code>{ values }</code> keyed by field id, under the extension's <code>title</code> (its name when absent) with its <code>submit</code> words on the last button ("Send" when absent) (<code>ctx.ui.piWebScreens</code>
                 lists what this host draws; the full format is in <code>docs/plugins.md</code>, "Interactive cards"). Every dialog is shown, as pi's terminal shows it: an empty title gets a generic
                 heading, a select with no options says so and offers Cancel, and repeated, blank or any number of options
                 are listed as given; a title or message longer than 32,000 characters is cut, and the cut says how much

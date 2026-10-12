@@ -44,7 +44,15 @@ Every field but `text` has a `label` and an optional `detail`.
 
 ## Steps
 
-The card shows one answerable field at a time, as the questions card does today, so the field being typed into stays above a phone's keyboard. A `text` field is shown with the answerable field after it (or alone, on the last step, when nothing follows it). Back and Next move between steps; the last step's button is the card's `submit` words ("Send" when absent). The header counts "2 of 4 · 1 answered". Cancel closes the card unanswered.
+The card shows one answerable field at a time, as the questions card did, so the field being typed into stays above a phone's keyboard. A `text` field is shown with the answerable field after it (or alone, on the last step, when nothing follows it). Back and Next move between steps; the last step's button is the card's `submit` words ("Send" when absent). The header is the card's `title`, or the extension's name when it declares none, and counts "2 of 4 · 1 answered". Cancel closes the card unanswered.
+
+## Look (owner review on a phone, 2026-10-12)
+
+- Each answerable field is numbered ("1.", green once answered), as the questions card was.
+- Each option row has its own border (22% of the text colour, so it shows in the dark theme too); a picked row takes the accent border and the selection background.
+- A typed box under the options starts at the options' left edge.
+- Cancel, Back and Next/Send share the footer row equally.
+- The words in the header and on the last button are the extension's: pi-ask-user declares "Questions" and "Send answers".
 
 ## What it replaces
 

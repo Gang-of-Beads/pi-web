@@ -119,7 +119,9 @@ const value = await ctx.ui.custom(factory, {
 | `input` | One line, or a box (`multiline`), with an optional `placeholder` | `{ text }` |
 | `confirm` | Two choices, `confirm` and `decline` ("Yes" and "No" when absent) | `{ confirmed }` |
 
-- The card shows one answerable field at a time, with Back and Next, and sends from the last one (`submit` names the button). A field with `required: true` must be filled before the card moves past it; other fields may be left untouched and are then absent from `values`.
+- The card is headed by `title`, or by the extension's name when it declares none. It shows one answerable field at a time, numbered, with Back and Next, and sends from the last one; `submit` names that button ("Send" when absent). Cancel closes it unanswered, and `custom()` resolves with `undefined`.
+- A field with `required: true` must be filled before the card moves past it; other fields may be left untouched and are then absent from `values`. Sending with untouched fields asks once ("Send without answering: …?").
+- The card keeps what the reader entered across a reload, in that browser, until the card closes.
 - Bounds: 20 fields, 12 options a choice, 1,000 characters a label, 4,000 characters of typed text. A declaration that does not fit is refused, and the terminal screen is drawn instead; the session daemon's log says why.
 - `ctx.ui.piWebScreens` lists `"card"` when the host draws cards, so an extension can tell "closed unanswered" from "no card here" before it asks again another way.
 
