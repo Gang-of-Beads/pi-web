@@ -52,17 +52,37 @@ export interface RowInput {
    * quietest claim: anything else the row has to say comes first.
    */
   readonly syncing: boolean;
+  /** When the page last came into view; undefined while it is hidden (`graceLeftMs`). */
+  readonly lookingSince: number | undefined;
   readonly now: number;
 }
 
 const NONE: RowClaim = { kind: "none" };
 const SYNCING: RowClaim = { kind: "syncing" };
 
+/**
+ * How much of the grace a claim that began at `since` has left; zero or less means it has earned
+ * the row. Only time the page is in view counts (owner, 2026-10-12: "Trying to sync" showed on
+ * every return to the browser). A phone freezes a hidden page and closes its links, so a request
+ * in flight at the switch, or a socket that dropped while away, carries a start from before the
+ * return; counting from it found minutes waited and showed the row before the return's own reads
+ * could answer. The grace therefore starts no earlier than the page's last return to view.
+ */
+export function graceLeftMs(since: number, lookingSince: number, now: number): number {
+  return TRANSIENT_GRACE_MS - (now - Math.max(since, lookingSince));
+}
+
+/**
+ * A hidden page shows no row: it earns no unanswered row, keeps no held one, and claims no
+ * Syncing; a notice still wins. No recheck is scheduled while hidden; the caller decides again on
+ * visibilitychange, and a return never inherits a row because the grace starts again in view.
+ */
 export function rowDecision(input: RowInput): RowDecision {
   if (input.notice) return { claim: { kind: "notice" } };
-  const { unanswered, shown, now } = input;
-  if (unanswered !== undefined && earnsRow(unanswered, shown, now)) return { claim: { kind: "unanswered", miss: unanswered.miss } };
-  const graceLeft = unanswered === undefined ? undefined : TRANSIENT_GRACE_MS - (now - unanswered.since);
+  const { unanswered, shown, now, lookingSince } = input;
+  if (lookingSince === undefined) return { claim: NONE };
+  const graceLeft = unanswered === undefined ? undefined : graceLeftMs(unanswered.since, lookingSince, now);
+  if (unanswered !== undefined && graceLeft !== undefined && earnsRow(unanswered, graceLeft, shown)) return { claim: { kind: "unanswered", miss: unanswered.miss } };
   const holdLeft = shown === undefined ? 0 : BANNER_MIN_VISIBLE_MS - (now - shown.at);
   if (shown !== undefined && holdLeft > 0) return { claim: { kind: "unanswered", miss: shown.miss }, recheckInMs: Math.min(holdLeft, graceLeft ?? holdLeft) };
   const claim = input.syncing ? SYNCING : NONE;
@@ -95,6 +115,6 @@ function heardSince(miss: ReadMiss, heard: HeardClocks): number {
   }
 }
 
-function earnsRow(unanswered: Unanswered, shown: ShownUnanswered | undefined, now: number): boolean {
-  return now - unanswered.since >= TRANSIENT_GRACE_MS || (shown !== undefined && unanswered.since <= shown.at);
+function earnsRow(unanswered: Unanswered, graceLeft: number, shown: ShownUnanswered | undefined): boolean {
+  return graceLeft <= 0 || (shown !== undefined && unanswered.since <= shown.at);
 }

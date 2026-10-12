@@ -94,6 +94,7 @@ function stubbedApp(): PiWebApp {
 function setAppState(app: PiWebApp, state: AppState): void {
   if (!Reflect.set(app, "state", state)) throw new Error("Could not set PiWebApp state");
   Reflect.set(app, "unansweredShown", undefined);
+  Reflect.set(app, "lookingSince", 0);
 }
 
 function renderRow(app: PiWebApp): void {

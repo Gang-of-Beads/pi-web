@@ -327,7 +327,8 @@ asked for the ablation batch first (2026-10-06); it is done.
   cards and the panels keep what they last knew and read again on their own. (Supersedes the
   per-surface "Syncing…" of the draft.)
 - **The ack timeout is its own value**, not the quiet window *T* (which probes after silence). It is
-  the row's grace, 4 s, kept in one place (`TRANSIENT_GRACE_MS`).
+  the row's grace, 10 s of the page in view (owner, 2026-10-12; it was 4 s), kept in one place
+  (`TRANSIENT_GRACE_MS`).
 - **Per page, not per machine**: the timer is about the page's own server. A remote machine that
   does not answer is the server's answer: the row names it ("Trying to sync with <machine>…").
   "Offline" for a machine appears on the Machines page only.

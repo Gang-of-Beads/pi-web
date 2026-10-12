@@ -652,10 +652,13 @@ Plugins read through the host, so the rule reaches them as one host facility: a 
 
   **Two sentences, and none once it is heard** (owner, 2026-10-12: the same outage read "Trying to sync with the server…" and "Trying to sync with hxd-work-mbp…" by turns, and "Trying to sync" stayed up while messages were already arriving). *p* is the machine serving the page, *m* the machine the claim is about; a machine is always named and nothing says "the server". Every producer words them through `sync/rowWords.ts`: the transport claims above, the read misses here, and the page's own notices about a machine that reported itself down (which keep their evidence after the sentence). A miss is no claim once the page has heard, after it began, from what it is about (`stillUnheard`, keyed by the miss's kind): a `link-down` by any answer from the page's server (`ackWatch.heardAt`), a `machine-unanswering(m)` by a frame from *m* on the realtime socket (the socket's open alone is the web process answering). A read still waiting on its own backoff no longer holds the row while the socket delivers. A `server-error` is an answer in its own words and is not retired by other traffic.
 
+  **The grace counts only time the page is in view** (owner, 2026-10-12: "Trying to sync" showed every time he switched back to the browser; the grace is 10 s by his word, it was 4 s). A phone freezes a page in the background and closes its links. A request in flight at the switch, a read that failed while away, or a socket that dropped while away carries a start from before the return, so the first decision after it found minutes "waited" and showed the row before any read the return sends could answer. The grace (`TRANSIENT_GRACE_MS`) now counts from the later of the miss's start and the moment the page last became visible (`graceLeftMs`). A hidden page earns no row, and a row showing when the page was hidden is not kept, so a return never inherits one. The transport claims' notices wait out the same grace by the same rule. On return a socket waiting out its reconnect backoff retries at once, as it does when the browser reports the network back. A miss still unanswered 10 s after the return is an outage and shows.
+
   ```mermaid
   stateDiagram-v2
     [*] --> InStep
     InStep --> Waiting: a request or the socket goes unanswered
+    Waiting --> Waiting: the page is hidden, then shown (the grace starts again at the return)
     Waiting --> InStep: an answer within the grace
     Waiting --> TryingToReach: link-down past the grace
     Waiting --> TryingToSync: machine-unanswering past the grace

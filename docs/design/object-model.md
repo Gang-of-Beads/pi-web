@@ -422,12 +422,12 @@ A remote's health whose read failed is `unknown`, and the ladder names the machi
 
 **Lifecycle** (pure classifier, extends `components/bannerHold.ts`):
 - The **sub-state** `unanswered-since-first-miss` begins at the first miss and persists through retries, so the row does not flicker per retry.
-- `hidden → grace` on the first miss; `grace → shown` after 4 s (`TRANSIENT_GRACE_MS`) if still unanswered; `shown → holding` on an answer; `holding → hidden` after the minimum visible time (`BANNER_MIN_VISIBLE_MS`, 1.5 s).
+- `hidden → grace` on the first miss; `grace → shown` after 10 s in view (`TRANSIENT_GRACE_MS`; 4 s until the owner's 2026-10-12 word; time the page spends hidden does not count, state-diagram D5) if still unanswered; `shown → holding` on an answer; `holding → hidden` after the minimum visible time (`BANNER_MIN_VISIBLE_MS`, 1.5 s).
 - **No expiry** (`TRANSIENT_ERROR_TIMEOUT_MS` does not apply) and **no dismiss** (no cross) for the reconnecting claim.
 - It renders above the dialog layer (portalled to the top layer, above `--pi-layer-dialog`, `SettingsDialog.ts:790`).
 - **One claim at a time** (owner, Q1: a definite failure is a different meaning from "not synced", and only one shows at a time). A definite claim (an action failed, an outcome unknown, an action's server error) holds the row until it is dismissed or retired; a read's server error retires itself when an answer comes. The reconnecting claim returns afterwards if it is still true. The pure classifier takes both inputs and names the one it shows.
 
-**Time to row**: deadline + grace (3 s + 4 s = 7 s for small critical reads; 8 s + 4 s = 12 s for the board and transcript).
+**Time to row**: deadline + grace (3 s + 10 s = 13 s for small critical reads; 8 s + 10 s = 18 s for the board and transcript).
 
 **Pinned by**: a unit test that enumerates `RowState × event`; a 393×850 probe that counts row mounts over 30 s of injected loss (expected: 1); a probe with Settings open under a held read.
 

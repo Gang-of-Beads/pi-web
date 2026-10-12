@@ -128,7 +128,7 @@ import { dismissKeyboardIfRaised } from "../keyboardDismissal";
 import { errorBanner, noticeExpiryMs, syncingRow, unansweredRow } from "./errorBanner";
 import { syncWords, type RowNames } from "../sync/rowWords";
 import type { TransportClaim } from "../api/transportClaim";
-import { rowDecision, stillUnheard, type HeardClocks, type ShownUnanswered } from "../sync/connectionSummary";
+import { graceLeftMs, rowDecision, stillUnheard, type HeardClocks, type ShownUnanswered } from "../sync/connectionSummary";
 import { messageStatusUnanswered } from "../sendVerification";
 import { earliestUnanswered } from "../sync/scopedResource";
 import { QUIET_WINDOW_MS, retryDelayMs } from "../sync/readPhase";
@@ -468,6 +468,8 @@ export class PiWebApp extends LitElement {
   private restoringSessionId: string | undefined;
   private livenessTimer: number | undefined;
   private unansweredShown: ShownUnanswered | undefined;
+  /** When the page last came into view, undefined while hidden: the row's grace counts only time in view (`graceLeftMs`). */
+  private lookingSince: number | undefined;
   private workspaceChangedWhileHidden: WorkspaceScope | undefined;
   private reconnectingRecheck: ReturnType<typeof setTimeout> | undefined;
   private lastInteractionLivenessAt = 0;
@@ -830,7 +832,11 @@ export class PiWebApp extends LitElement {
   };
 
   private readonly onDocumentVisibilityChange = () => {
+    this.lookingSince = document.visibilityState === "visible" ? Date.now() : undefined;
+    this.requestUpdate();
     if (document.visibilityState === "visible") {
+      this.realtime.reconnectNow();
+      this.sessions.reconnectSocketNow();
       this.pluginRetry.wake();
       void this.sessions.recheckTranscript();
       this.projects.wake();
@@ -1199,6 +1205,7 @@ export class PiWebApp extends LitElement {
     // not the one that failed; the realtime socket alone was leaving a banner
     // on screen until the page was reloaded by hand.
     observeTransportRecovery((machineId) => { this.clearTransientError(machineId); });
+    this.lookingSince = document.visibilityState === "visible" ? 0 : undefined;
     ackWatch.watch(() => { this.requestUpdate(); });
     this.realtime.watchPhase(() => { this.requestUpdate(); });
     // A failed send is a fact about a session the reader may not be looking at, so the
@@ -5148,7 +5155,7 @@ export class PiWebApp extends LitElement {
     const heard: HeardClocks = { link: ackWatch.heardAt(), machine: (machineId) => this.realtime.heardAt(machineId) };
     const sources = [this.projects.unanswered(), this.machines.unanswered(), targetUnanswered(this.namedTargetInScope()), messageStatus, this.realtime.unanswered(selectedMachineId(this.state)), ackWatch.waiting()];
     const unanswered = sources.map((source) => stillUnheard(source, heard)).reduce(earliestUnanswered, undefined);
-    const decision = rowDecision({ notice: noticeShown, unanswered, shown: this.unansweredShown, syncing: this.rememberedListOnScreen(), now: Date.now() });
+    const decision = rowDecision({ notice: noticeShown, unanswered, shown: this.unansweredShown, syncing: this.rememberedListOnScreen(), lookingSince: this.lookingSince, now: Date.now() });
     if (this.reconnectingRecheck !== undefined) globalThis.clearTimeout(this.reconnectingRecheck);
     this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : globalThis.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
     if (decision.claim.kind === "syncing") {
@@ -5225,8 +5232,15 @@ export class PiWebApp extends LitElement {
         this.heldErrorBanner = null;
         return null;
       }
-      const pendingFor = this.transientPendingSince === undefined ? TRANSIENT_GRACE_MS : Date.now() - this.transientPendingSince;
-      if (pendingFor < TRANSIENT_GRACE_MS) return null;
+      if (this.transientPendingSince !== undefined) {
+        if (this.lookingSince === undefined) return null;
+        const graceLeft = graceLeftMs(this.transientPendingSince, this.lookingSince, Date.now());
+        if (graceLeft > 0) {
+          if (this.transientGraceTimer !== undefined) window.clearTimeout(this.transientGraceTimer);
+          this.transientGraceTimer = window.setTimeout(() => { this.transientGraceTimer = undefined; this.requestUpdate(); }, graceLeft);
+          return null;
+        }
+      }
       this.transientPendingSince = undefined;
       if (this.transientGraceTimer !== undefined) { window.clearTimeout(this.transientGraceTimer); this.transientGraceTimer = undefined; }
       if (this.bannerShownAt === undefined) {
