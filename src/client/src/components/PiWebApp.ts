@@ -2945,6 +2945,10 @@ export class PiWebApp extends LitElement {
     return this.plugins.getReservedAction(this.createPluginRuntimeContext(), "add-project") !== undefined;
   }
 
+  private hasAddMachineEntry(): boolean {
+    return this.plugins.getReservedAction(this.createPluginRuntimeContext(), "add-machine") !== undefined;
+  }
+
   private openContextSheet(): void {
     dismissKeyboardIfRaised();
     this.contextSheetOpen = true;
@@ -3136,6 +3140,7 @@ export class PiWebApp extends LitElement {
       .onCreateSession=${() => { this.newSessionFrom[this.newSessionPlace()](); }}
       .onContinueFrom=${(session: SessionInfo, machineId: string) => { void this.continueInNewSession(session, machineId); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { void this.addProjectOnShownMachine(); } : undefined}
+      .onAddMachine=${this.hasAddMachineEntry() ? () => { this.openMachineDialog(); } : undefined}
       .machineSessions=${this.quickSwitcherSessions}
       .tilesPerRow=${chosenListTiles(this.listTiles, this.appShell.isMobileNavigationLayout ? "phone" : "desktop")}
       .onOpenSettings=${this.appShell.isMobileNavigationLayout ? undefined : () => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }}

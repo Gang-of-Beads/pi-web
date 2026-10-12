@@ -133,6 +133,7 @@ export class AppNavigatePage extends LitElement {
   /** Continue a session in a new one; absent where that cannot be offered. */
   @property({ attribute: false }) onContinueFrom?: (session: SessionInfo, machineId: string) => void;
   @property({ attribute: false }) onAddProject?: () => void;
+  @property({ attribute: false }) onAddMachine?: () => void;
   @property({ attribute: false }) onClose?: () => void;
   /**
    * Opens the Go to sheet; the host passes it on the phone, where Navigate is a page with no app
@@ -534,7 +535,7 @@ export class AppNavigatePage extends LitElement {
         </header>
         <slot name="app-row"></slot>
         <nav class="kinds" aria-label="What to list">
-          ${segments.some((segment) => segment.level === "machine") ? this.renderKindTab("machine", "Machines", renderMachineIcon()) : nothing}
+          ${this.renderKindTab("machine", "Machines", renderMachineIcon())}
           ${this.renderKindTab("project", "Projects", renderProjectIcon())}
           ${this.renderKindTab("sessions", "Sessions", renderChatIcon())}
         </nav>
@@ -563,14 +564,22 @@ export class AppNavigatePage extends LitElement {
           ${this.renderTagSuggestions()}
         ` : nothing}
         <div class="actions">
-          ${showsSessions
-            ? this.renderCreateSession()
-            : this.kind === "project" && this.onAddProject !== undefined
-              ? html`<button type="button" class="create" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>`
-              : nothing}
+          ${showsSessions ? this.renderCreateSession() : this.renderAddChoice()}
           ${this.renderSelectKey()}
         </div>
     `;
+  }
+
+  private renderAddChoice() {
+    const adds: Record<NavigateKind, { label: string; run: (() => void) | undefined } | undefined> = {
+      sessions: undefined,
+      project: { label: "+ Add project", run: this.onAddProject },
+      machine: { label: "+ Add machine", run: this.onAddMachine },
+    };
+    const add = adds[this.kind];
+    const run = add?.run;
+    if (add === undefined || run === undefined) return nothing;
+    return html`<button type="button" class="create" @click=${() => { run(); }}>${add.label}</button>`;
   }
 
   /** While the last search term is a `#` tag, the tags the listed rows carry that it can become, with how many rows carry each (B42). */
