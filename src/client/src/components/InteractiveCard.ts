@@ -507,7 +507,7 @@ export class InteractiveCard extends LitElement {
       grid-template-columns: auto minmax(0, 1fr);
       align-items: center;
       gap: var(--pi-space-4);
-      border: 1px solid transparent;
+      border: 1px solid color-mix(in srgb, var(--pi-text) 22%, transparent);
       border-radius: var(--pi-radius-md);
       padding: var(--pi-space-4) var(--pi-space-4);
       cursor: pointer;
@@ -519,7 +519,7 @@ export class InteractiveCard extends LitElement {
       box-sizing: border-box;
     }
     .other-option { border-top: 1px solid var(--pi-border-muted); padding-top: var(--pi-space-6); }
-    @media (hover: hover) { .option:hover { border-color: var(--pi-border-muted); background: var(--pi-surface-hover); } }
+    @media (hover: hover) { .option:hover { background: var(--pi-surface-hover); } }
     .option:has(input:checked) { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     /* An unsized native control renders at the UA size (13px here), which put
        a tick box beside 24px ones in the next card. */
@@ -528,8 +528,7 @@ export class InteractiveCard extends LitElement {
     .option-copy { min-width: 0; display: grid; gap: var(--pi-space-1); }
     .option-label { line-height: 1.35; }
     .option-detail { color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.35; }
-    .other-answer { display: grid; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); padding: var(--pi-space-2) var(--pi-space-4) var(--pi-space-2) calc(1px + var(--pi-space-4) + var(--pi-checkbox-size) + var(--pi-space-4)); }
-    .other-answer:only-child { padding-left: 0; padding-right: 0; }
+    .other-answer { display: grid; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); padding: var(--pi-space-2) 0; }
     /* Grows with the answer instead of keeping a long reply behind a
        three-line slot: field-sizing handles it natively where it exists and
        the input handler resizes it everywhere else. The cap keeps a very long
@@ -552,8 +551,8 @@ export class InteractiveCard extends LitElement {
     /* Back sits beside the forward action rather than under it: the pair is
        one decision, and a phone keyboard leaves little height to spend. */
     .step-actions { display: flex; gap: var(--pi-space-4); width: 100%; }
-    .step-actions .primary-action { flex: 0 1 auto; min-width: 140px; margin-left: auto; }
-    .step-actions .secondary-action { flex: 0 1 auto; min-width: 96px; }
+    .step-actions .primary-action { flex: 1 1 0; min-width: 0; margin-left: auto; }
+    .step-actions .secondary-action { flex: 1 1 0; min-width: 0; }
     .card-form {
       display: flex;
       flex-direction: column;
