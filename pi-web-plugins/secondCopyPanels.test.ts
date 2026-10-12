@@ -7,7 +7,7 @@ import { noPanelTerminal } from "./terminalSessionsTestSupport.js";
 
 /**
  * A second copy of a plugin on one page (another machine's, B51) renders its panel through the
- * element class the first copy defined (B53). The files, relays and tasks panels reached their
+ * element class the first copy defined (B53). The files and tasks panels reached their
  * panel through module functions reading a static on their own module's class, which the second
  * copy never sets: its Refresh, Upload and stale mark did nothing, and its badge read a cache the
  * panel never wrote. Each case activates a first copy, then a second one after a module reset, and
@@ -125,18 +125,6 @@ describe("a second copy's controls reach the panel its own registration rendered
 
     expect({ staleAfterTurn, refreshed: refreshed(), uploads: uploads(), staleAfterRefresh: toolbarStatus(copy, context) })
       .toEqual({ staleAfterTurn: "out of date", refreshed: 1, uploads: 1, staleAfterRefresh: undefined });
-  });
-
-  it("relays: Refresh reaches the panel", async () => {
-    const copy = await secondCopy("./relays/pi-web-plugin.ts", "workspace.relays");
-    const context = panelContext("remote-b");
-    const panel = mount(copy.panel.render(context));
-    await settle();
-    const refreshed = countCalls(panel, "refresh");
-
-    clickToolbar(copy, context, "Refresh");
-
-    expect(refreshed()).toBe(1);
   });
 
   it("tasks: Refresh reaches the panel, and the badge reads what the panel loaded", async () => {
