@@ -202,9 +202,11 @@
                 under the extension's name, at the card's width; the field types into the component as you type and Send presses Enter, tapping a line
                 selects that item, and Cancel first sends Esc; there are no arrow-key buttons, and the component receives
                 keys as pi's terminal sends them), and a screen declared with
-                <code>web: { kind: "questions" }</code> as the Questions card (<code>ctx.ui.piWebScreens</code> lists what
-                this host draws; a question's <code>customInput: "field"</code> shows its typed answer as a box under the
-                options). Every dialog is shown, as pi's terminal shows it: an empty title gets a generic
+                <code>web: { kind: "card", fields: [...] }</code> as an interactive card: <code>text</code>, <code>choice</code>
+                (one or several options, an optional typed answer), <code>input</code> (one line or a box) and <code>confirm</code>
+                fields, one answerable field a step, <code>required</code> fields filled before the card moves on, and
+                <code>custom()</code> resolving with <code>{ values }</code> keyed by field id (<code>ctx.ui.piWebScreens</code>
+                lists what this host draws; the full format is in <code>docs/plugins.md</code>, "Interactive cards"). Every dialog is shown, as pi's terminal shows it: an empty title gets a generic
                 heading, a select with no options says so and offers Cancel, and repeated, blank or any number of options
                 are listed as given; a title or message longer than 32,000 characters is cut, and the cut says how much
                 is missing.
@@ -253,7 +255,7 @@
                     </tr>
                     <tr>
                       <td><code>custom</code></td>
-                      <td>A card: a menu as choices with Confirm, anything else as its text in the app's own colours, a tap selecting the tapped item, with a field that types into it; Cancel sends Esc first. A screen declared with <code>web: { kind: "questions" }</code> is the Questions card.</td>
+                      <td>A card: a menu as choices with Confirm, anything else as its text in the app's own colours, a tap selecting the tapped item, with a field that types into it; Cancel sends Esc first. A screen declared with <code>web: { kind: "card" }</code> is an interactive card.</td>
                     </tr>
                     <tr>
                       <td><code>notify</code></td>

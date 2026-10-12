@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, EXTENSION_DIALOG_ID_MAX_LENGTH,
-  EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type AskUserAnswer, type AskUserSubmission, type ExtensionDialogAnswerRequest, type ExtensionDialogCancelRequest, type SessionBulkMutationRequest, type SessionSubsessionsSnapshot, type SessionBulkMutationRef, type SessionCleanupRequest, type SessionTreeForkRequest, type SessionTreeNavigateRequest, type SessionTreeSummaryChoice, type SessionUnreadAcknowledgeRequest } from "../../../shared/apiTypes.js";
+import { EXTENSION_DIALOG_ID_MAX_LENGTH,
+  EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ExtensionDialogAnswerRequest, type ExtensionDialogCancelRequest, type SessionBulkMutationRequest, type SessionSubsessionsSnapshot, type SessionBulkMutationRef, type SessionCleanupRequest, type SessionTreeForkRequest, type SessionTreeNavigateRequest, type SessionTreeSummaryChoice, type SessionUnreadAcknowledgeRequest } from "../../../shared/apiTypes.js";
+import { CARD_FIELD_LIMIT, CARD_ID_MAX_LENGTH, CARD_OPTION_LIMIT, CARD_TYPED_TEXT_MAX_LENGTH, type CardSubmission, type CardValue } from "../../../shared/interactiveCard.js";
 import { projectBrowserMessageResponse } from "../browserMessageProjection.js";
 import { normalizeRequestCwd } from "../workingDirectory.js";
 import { readCompletionItem } from "./extensionCompletions.js";
@@ -847,34 +848,36 @@ function requireExactFields(record: Record<string, unknown>, fields: readonly st
 }
 
 /**
- * Shape-check the answers to a declared questions screen. Only transport-level checks belong
- * here: whether they fit the questions the extension declared is the pending dialog store's
- * job, since only it knows the open dialog.
+ * Shape-check the values of a declared interactive card. Only transport-level checks belong
+ * here: whether they fit the fields the extension declared is the pending dialog store's job,
+ * since only it knows the open dialog.
  */
-function askUserSubmissionFromBody(body: Record<string, unknown>): AskUserSubmission {
-  const answers = body["answers"];
-  if (!Array.isArray(answers)) throw new Error("answers field must be an array");
-  if (answers.length > ASK_USER_QUESTION_LIMIT) throw new Error("answers field has too many entries");
-  return { answers: answers.map(askUserAnswerFromValue) };
+function cardSubmissionFromBody(body: Record<string, unknown>): CardSubmission {
+  const values = body["values"];
+  if (!isRecord(values)) throw new Error("values field must be an object");
+  const entries = Object.entries(values);
+  if (entries.length > CARD_FIELD_LIMIT) throw new Error("values field has too many entries");
+  return { values: Object.fromEntries(entries.map(([id, value]) => [requireNonEmptyBoundedString(id, "field id", CARD_ID_MAX_LENGTH), cardValueFromBody(value)])) };
 }
 
-function askUserAnswerFromValue(value: unknown): AskUserAnswer {
+function cardValueFromBody(value: unknown): CardValue {
   const record = requireRecord(value);
-  const values = record["values"];
-  if (!Array.isArray(values)) throw new Error("values field must be an array");
-  if (values.length > ASK_USER_OPTION_LIMIT) throw new Error("values field has too many entries");
-  const otherText = record["otherText"];
-  if (otherText !== undefined && typeof otherText !== "string") throw new Error("otherText field must be a string");
-  if (typeof otherText === "string" && otherText.length > ASK_USER_OTHER_TEXT_MAX_LENGTH) throw new Error("otherText field is too long");
+  if (typeof record["confirmed"] === "boolean") return { confirmed: record["confirmed"] };
+  if (typeof record["text"] === "string") return { text: boundedTyped(record["text"], "text") };
+  const selected = record["selected"];
+  if (!Array.isArray(selected)) throw new Error("a value must carry selected, text or confirmed");
+  if (selected.length > CARD_OPTION_LIMIT) throw new Error("selected field has too many entries");
+  const other = record["other"];
+  if (other !== undefined && typeof other !== "string") throw new Error("other field must be a string");
   return {
-    id: requireBoundedId(record["id"], "id"),
-    values: values.map((entry) => requireBoundedId(entry, "values entry")),
-    ...(otherText === undefined ? {} : { otherText }),
+    selected: selected.map((entry) => requireNonEmptyBoundedString(entry, "selected entry", CARD_ID_MAX_LENGTH)),
+    ...(other === undefined ? {} : { other: boundedTyped(other, "other") }),
   };
 }
 
-function requireBoundedId(value: unknown, field: string): string {
-  return requireNonEmptyBoundedString(value, field, ASK_USER_ID_MAX_LENGTH);
+function boundedTyped(value: string, field: string): string {
+  if (value.length > CARD_TYPED_TEXT_MAX_LENGTH) throw new Error(`${field} field is too long`);
+  return value;
 }
 
 /**
@@ -890,8 +893,8 @@ function extensionDialogAnswerFromBody(body: Record<string, unknown>): Extension
     if (value.length > EXTENSION_DIALOG_INPUT_MAX_LENGTH) throw new Error("value field is too long");
     return { dialogId, value };
   }
-  if (isRecord(value)) return { dialogId, value: askUserSubmissionFromBody(value) };
-  throw new Error("value field must be a string, a boolean, or answers");
+  if (isRecord(value)) return { dialogId, value: cardSubmissionFromBody(value) };
+  throw new Error("value field must be a string, a boolean, or a card's values");
 }
 
 function extensionDialogCancelFromBody(body: Record<string, unknown>): ExtensionDialogCancelRequest {

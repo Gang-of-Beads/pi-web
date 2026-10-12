@@ -9,7 +9,7 @@ import {
   type ExtensionDialogAnswerCallback,
   type ExtensionDialogCancelCallback,
 } from "./ExtensionDialogCard";
-import { AskUserCard } from "./AskUserCard";
+import { InteractiveCard } from "./InteractiveCard";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -283,11 +283,11 @@ async function mountOpenDialog(
   return card;
 }
 
-async function questionsCard(card: ExtensionDialogCard): Promise<{ questions: AskUserCard; inner: ShadowRoot }> {
-  const questions = renderRoot(card).querySelector("ask-user-card");
-  if (!(questions instanceof AskUserCard)) throw new Error("no Questions card");
+async function interactiveCard(card: ExtensionDialogCard): Promise<{ questions: InteractiveCard; inner: ShadowRoot }> {
+  const questions = renderRoot(card).querySelector("interactive-card");
+  if (!(questions instanceof InteractiveCard)) throw new Error("no interactive card");
   await questions.updateComplete;
-  return { questions, inner: requiredElement(questions.shadowRoot, "questions card root") };
+  return { questions, inner: requiredElement(questions.shadowRoot, "interactive card root") };
 }
 
 function renderRoot(card: ExtensionDialogCard): ShadowRoot {
@@ -385,54 +385,54 @@ describe("answer controls that float over the choices they sit above", () => {
   });
 });
 
-describe("a screen the extension declared as questions", () => {
+describe("a screen the extension declared as an interactive card", () => {
   const declared = openDialog({
     dialogId: "dlg-q",
     kind: "custom",
     title: "Confirm Goal Draft",
     lines: [],
     screen: {
-      kind: "questions",
+      kind: "card",
       title: "Confirm Goal Draft",
-      questions: [{
+      fields: [{
+        type: "choice",
         id: "confirm",
-        question: "Confirm Goal Draft",
+        label: "Confirm Goal Draft",
         detail: "Objective: ship the filters",
         options: [{ value: "0", label: "Confirm" }, { value: "1", label: "Continue chatting" }],
-        custom: false,
       }],
     },
   });
 
-  it("is the Questions card, with no terminal frame or key row", async () => {
+  it("is the interactive card, with no terminal frame or key row", async () => {
     const card = await mountOpenDialog(declared);
     const root = renderRoot(card);
-    const { inner } = await questionsCard(card);
+    const { inner } = await interactiveCard(card);
 
     expect(root.querySelector(".dialog-screen, .dialog-screen-keys, .dialog-screen-menu")).toBeNull();
-    expect(inner.querySelector(".question-detail")?.textContent).toBe("Objective: ship the filters");
+    expect(inner.querySelector(".field-detail")?.textContent).toBe("Objective: ship the filters");
     expect([...inner.querySelectorAll(".option-label")].map((label) => label.textContent)).toEqual(["Confirm", "Continue chatting"]);
   });
 
   it("answers the dialog with what the reader chose", async () => {
     const onAnswer = vi.fn<ExtensionDialogAnswerCallback>();
     const card = await mountOpenDialog(declared, { onAnswer });
-    const { questions, inner } = await questionsCard(card);
+    const { questions, inner } = await interactiveCard(card);
 
     requiredElement(inner.querySelector<HTMLInputElement>("input[value='0']"), "Confirm option").click();
     await questions.updateComplete;
-    buttonWithText(inner, "Send answers").click();
+    buttonWithText(inner, "Send").click();
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(onAnswer).toHaveBeenCalledWith("dlg-q", { answers: [{ id: "confirm", values: ["0"] }] });
+    expect(onAnswer).toHaveBeenCalledWith("dlg-q", { values: { confirm: { selected: ["0"] } } });
   });
 
   it("carries the dialog's title, and a Cancel that closes it without an answer", async () => {
     const onAnswer = vi.fn<ExtensionDialogAnswerCallback>();
     const onCancel = vi.fn<ExtensionDialogCancelCallback>();
     const card = await mountOpenDialog(declared, { onAnswer, onCancel });
-    const { inner } = await questionsCard(card);
+    const { inner } = await interactiveCard(card);
 
     expect(inner.querySelector("h2")?.textContent).toBe("Confirm Goal Draft");
     buttonWithText(inner, "Cancel").click();

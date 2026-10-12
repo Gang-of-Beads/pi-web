@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AskUserQuestion, PendingAskUser } from "../api";
-import { AskUserCard } from "./AskUserCard";
+import type { CardField } from "../../../shared/interactiveCard";
+import type { OpenCard } from "../cardIdentity";
+import { InteractiveCard } from "./InteractiveCard";
 
 afterEach(() => { document.body.replaceChildren(); });
 
@@ -18,20 +19,20 @@ afterEach(() => { document.body.replaceChildren(); });
  */
 describe("the question card asks one question at a time", () => {
   it("shows only the current question", async () => {
-    const card = await mount(ask([question("q1", "First"), question("q2", "Second")]));
+    const card = await mount(openCard([question("q1", "First"), question("q2", "Second")]));
 
     expect(text(card)).toContain("First");
     expect(text(card)).not.toContain("Second");
   });
 
   it("says where you are in the set", async () => {
-    const card = await mount(ask([question("q1", "First"), question("q2", "Second")]));
+    const card = await mount(openCard([question("q1", "First"), question("q2", "Second")]));
 
     expect(text(card)).toMatch(/1\s*(of|\/)\s*2/u);
   });
 
   it("moves forward and back without losing an answer", async () => {
-    const card = await mount(ask([question("q1", "First"), question("q2", "Second")]));
+    const card = await mount(openCard([question("q1", "First"), question("q2", "Second")]));
 
     answerCurrent(card, "first answer");
     await click(card, "Next");
@@ -43,7 +44,7 @@ describe("the question card asks one question at a time", () => {
   });
 
   it("offers Back only after the first question", async () => {
-    const card = await mount(ask([question("q1", "First"), question("q2", "Second")]));
+    const card = await mount(openCard([question("q1", "First"), question("q2", "Second")]));
 
     expect(buttonNames(card)).not.toContain("Back");
     await click(card, "Next");
@@ -51,25 +52,24 @@ describe("the question card asks one question at a time", () => {
   });
 
   it("ends with submit rather than another step", async () => {
-    const card = await mount(ask([question("q1", "First"), question("q2", "Second")]));
+    const card = await mount(openCard([question("q1", "First"), question("q2", "Second")]));
 
     await click(card, "Next");
-    expect(buttonNames(card)).toContain("Send answers");
+    expect(buttonNames(card)).toContain("Send");
     expect(buttonNames(card)).not.toContain("Next");
   });
 
   it("submits every answer collected across the steps", async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
-    const card = await mount(ask([question("q1", "First"), question("q2", "Second")]), onSubmit);
+    const card = await mount(openCard([question("q1", "First"), question("q2", "Second")]), onSubmit);
 
     answerCurrent(card, "one");
     await click(card, "Next");
     answerCurrent(card, "two");
-    await click(card, "Send answers");
+    await click(card, "Send");
 
     expect(onSubmit).toHaveBeenCalledOnce();
-    // The callback takes (askId, submission); the answers are the second one.
-    const submitted: unknown = onSubmit.mock.calls[0]?.[1];
+    const submitted: unknown = onSubmit.mock.calls[0]?.[0];
     expect(JSON.stringify(submitted)).toContain("one");
     expect(JSON.stringify(submitted)).toContain("two");
   });
@@ -81,7 +81,7 @@ describe("the question card asks one question at a time", () => {
    * or a tick made on one step shows up pre-made on the next.
    */
   it("does not carry a chosen option over to the next question", async () => {
-    const card = await mount(ask([
+    const card = await mount(openCard([
       choice("q1", "First", ["a", "b"]),
       choice("q2", "Second", ["c", "d"]),
     ]));
@@ -97,35 +97,35 @@ describe("the question card asks one question at a time", () => {
   });
 
   it("keeps a single question on one step with no navigation", async () => {
-    const card = await mount(ask([question("q1", "Only")]));
+    const card = await mount(openCard([question("q1", "Only")]));
 
-    expect(buttonNames(card)).toContain("Send answers");
+    expect(buttonNames(card)).toContain("Send");
     expect(buttonNames(card)).not.toContain("Next");
     expect(buttonNames(card)).not.toContain("Back");
   });
 });
 
-function text(card: AskUserCard): string {
+function text(card: InteractiveCard): string {
   return card.shadowRoot?.textContent ?? "";
 }
 
-function buttonNames(card: AskUserCard): string[] {
+function buttonNames(card: InteractiveCard): string[] {
   return [...card.shadowRoot?.querySelectorAll("button") ?? []].map((b) => b.textContent.trim());
 }
 
-function currentField(card: AskUserCard): HTMLInputElement | HTMLTextAreaElement {
+function currentField(card: InteractiveCard): HTMLInputElement | HTMLTextAreaElement {
   const field = card.shadowRoot?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input[type='text'], textarea");
   if (field === null || field === undefined) throw new Error("Expected an answer field");
   return field;
 }
 
-function answerCurrent(card: AskUserCard, value: string): void {
+function answerCurrent(card: InteractiveCard, value: string): void {
   const field = currentField(card);
   field.value = value;
   field.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-async function click(card: AskUserCard, name: string): Promise<void> {
+async function click(card: InteractiveCard, name: string): Promise<void> {
   const button = [...card.shadowRoot?.querySelectorAll("button") ?? []]
     .find((b) => b.textContent.trim() === name);
   if (button === undefined) throw new Error(`Expected a ${name} button, saw ${buttonNames(card).join(", ")}`);
@@ -133,9 +133,9 @@ async function click(card: AskUserCard, name: string): Promise<void> {
   await card.updateComplete;
 }
 
-async function mount(pending: PendingAskUser, onSubmit?: AskUserCard["onSubmit"]): Promise<AskUserCard> {
-  const card = new AskUserCard();
-  card.ask = pending;
+async function mount(pending: OpenCard, onSubmit?: InteractiveCard["onSubmit"]): Promise<InteractiveCard> {
+  const card = new InteractiveCard();
+  card.open = pending;
   card.draftSessionId = "local:session-1";
   if (onSubmit !== undefined) card.onSubmit = onSubmit;
   document.body.append(card);
@@ -143,14 +143,17 @@ async function mount(pending: PendingAskUser, onSubmit?: AskUserCard["onSubmit"]
   return card;
 }
 
-function ask(questions: AskUserQuestion[]): PendingAskUser {
-  return { askId: "ask-1", askedAt: "2026-08-26T10:00:00.000Z", questions };
+function openCard(fields: CardField[]): OpenCard {
+  return { dialogId: "ask-1", card: { kind: "card", fields } };
 }
 
-function question(id: string, prompt: string): AskUserQuestion {
-  return { id, question: prompt, options: [] };
+/** A field answered by typing, as a question without options once was. */
+function question(id: string, prompt: string): CardField {
+  return { type: "input", id, label: prompt, multiline: true };
 }
 
-function choice(id: string, prompt: string, values: string[]): AskUserQuestion {
-  return { id, question: prompt, options: values.map((v) => ({ value: v, label: v.toUpperCase() })) };
+
+function choice(id: string, prompt: string, values: string[]): CardField {
+  return { type: "choice", id, label: prompt, options: values.map((v) => ({ value: v, label: v.toUpperCase() })) };
 }
+

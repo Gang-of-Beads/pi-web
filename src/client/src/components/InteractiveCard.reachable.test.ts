@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { AskUserCard } from "./AskUserCard";
+import { InteractiveCard } from "./InteractiveCard";
 
 /**
  * The submit row has to be tappable, whatever the question's length.
@@ -19,7 +19,7 @@ import { AskUserCard } from "./AskUserCard";
  */
 
 function cardCss(): string {
-  const styles = AskUserCard.styles;
+  const styles = InteractiveCard.styles;
   const sheets = Array.isArray(styles) ? styles : [styles];
   return sheets.map((sheet) => String(sheet)).join("\n");
 }

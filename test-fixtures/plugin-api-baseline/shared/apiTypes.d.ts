@@ -1,3 +1,4 @@
+import type { CardSubmission, InteractiveCard } from "./interactiveCard.js";
 import type { MachineStatusUiEvent } from "./machineStatus.js";
 import type { DeleteWorkspaceFileResponse, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebComponentStatus, PiWebDockerMode, PiWebInstallationInfo, PiWebInstallationKind, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceFileRefusal, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./pluginApiTypes.js";
 export type { DeleteWorkspaceFileResponse, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebComponentStatus, PiWebDockerMode, PiWebInstallationInfo, PiWebInstallationKind, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, };
@@ -125,6 +126,11 @@ export interface PiWebConfigValues {
      * Docker deployments. On by default.
      */
     environmentFacts?: boolean;
+    /**
+     * When true, every session loads pi's built-in extensions (codemode, tool search, MCP) as the
+     * pi CLI does; their tools stay off until pi's `defaultTools` setting turns them on. On by default.
+     */
+    piBuiltInExtensions?: boolean;
     /**
      * How long an extension dialog may wait for an answer before the daemon
      * auto-cancels it, in milliseconds. Applies only when the extension set no
@@ -679,76 +685,6 @@ export interface QueuedSessionMessage {
      */
     clientMessageId?: string;
 }
-/** Largest question set one declared questions screen may hold. */
-export declare const ASK_USER_QUESTION_LIMIT = 20;
-/** Largest option list one question may offer. */
-export declare const ASK_USER_OPTION_LIMIT = 12;
-/** Length bound for ids: question ids and option values. */
-export declare const ASK_USER_ID_MAX_LENGTH = 128;
-/** Length bound for declared prose: questions, details, and option labels. */
-export declare const ASK_USER_TEXT_MAX_LENGTH = 1000;
-/** Length bound for the free text a user types as a custom answer. */
-export declare const ASK_USER_OTHER_TEXT_MAX_LENGTH = 4000;
-/** One selectable option of an {@link AskUserQuestion}. */
-export interface AskUserQuestionOption {
-    /** Stable machine value reported back to the extension. */
-    value: string;
-    /** Short human label rendered in the browser. */
-    label: string;
-    /** Optional clarifying line rendered under the label. */
-    detail?: string;
-}
-/**
- * One question of a declared questions screen. Questions are never required: the
- * reader may send while leaving any of them untouched.
- */
-export interface AskUserQuestion {
-    /** Unique within the screen; used as the answer key. */
-    id: string;
-    /** The question itself, as one plain-text line. */
-    question: string;
-    /** Optional supporting context rendered under the question. */
-    detail?: string;
-    /** Offered options; may be empty when only free text makes sense. */
-    options: AskUserQuestionOption[];
-    /** When true, several options may be selected at once. */
-    multiple?: boolean;
-    /** When false, the browser offers no Custom choice and a typed answer is refused. */
-    custom?: boolean;
-    /**
-     * How the typed answer is offered: "field" draws it as a box under the options, typed into
-     * straight away; without it a Custom choice opens the box. The extension chooses (owner,
-     * 2026-10-11: whether the custom input takes a tap first or is a box straight away is the
-     * extension's to define). Ignored when `custom` is false.
-     */
-    customInput?: "field";
-}
-/**
- * A question set as the Questions card draws it: a declared questions screen's
- * questions under its dialog's id and opening time.
- */
-export interface PendingAskUser {
-    askId: string;
-    askedAt: string;
-    questions: AskUserQuestion[];
-}
-/**
- * What the user replied to one question. Absent from a submission means the
- * question was left untouched; an empty `values` with no `otherText` means the
- * same thing.
- */
-export interface AskUserAnswer {
-    /** Matches an {@link AskUserQuestion.id} of the screen. */
-    id: string;
-    /** Selected {@link AskUserQuestionOption.value} entries; several only when the question allows it. */
-    values: string[];
-    /** Free text typed as the question's custom answer. */
-    otherText?: string;
-}
-/** The reader's answers to a questions screen: some or all of its questions. */
-export interface AskUserSubmission {
-    answers: AskUserAnswer[];
-}
 /** Length bound for extension-dialog ids. */
 export declare const EXTENSION_DIALOG_ID_MAX_LENGTH = 128;
 /**
@@ -893,11 +829,11 @@ export declare const EXTENSION_DIALOG_SCREEN_MAX_WIDTH = 160;
 export declare const EXTENSION_DIALOG_KEY_MAX_LENGTH = 32;
 /**
  * The value a user gave in an extension dialog: a boolean for `confirm`, the
- * chosen option for `select`, the typed text for `input` and `editor`, the answers of a
- * `custom` screen declared as questions. Absent when the dialog closed without
+ * chosen option for `select`, the typed text for `input` and `editor`, the values of a
+ * `custom` screen declared as an interactive card. Absent when the dialog closed without
  * an answer.
  */
-export type ExtensionDialogAnswer = boolean | string | AskUserSubmission;
+export type ExtensionDialogAnswer = boolean | string | CardSubmission;
 /**
  * Why a dialog stopped being open. `"answered"` carries an
  * {@link ExtensionDialogAnswer}; every other reason is a close without one.
@@ -913,11 +849,7 @@ export type ExtensionDialogCloseReason = "answered" | "cancelled" | "timeout" | 
  * an independent blocking wait inside extension code, so opening never
  * supersedes an existing one.
  */
-export interface ExtensionDialogScreen {
-    kind: "questions";
-    title?: string;
-    questions: AskUserQuestion[];
-}
+export type ExtensionDialogScreen = InteractiveCard;
 /**
  * A run of a drawn screen's text with the look the extension gave it: the pi theme roles it
  * drew the text with (`theme.fg("accent", ...)`, `theme.bg("selectedBg", ...)`) and the
@@ -978,11 +910,10 @@ export interface PendingExtensionDialog {
     /**
      * What the extension declared this screen to be, for the browser to draw natively.
      *
-     * `ctx.ui.custom(factory, { web: { kind: "questions", questions } })` makes the
-     * screen the Questions card: the daemon never mounts the terminal
-     * component, so the reader sees one native card instead of a terminal dump, and
-     * `custom()` resolves with the {@link AskUserSubmission}. Absent for an extension
-     * that only draws.
+     * `ctx.ui.custom(factory, { web: { kind: "card", fields } })` makes the screen an
+     * interactive card: the daemon never mounts the terminal component, so the reader sees
+     * one native card instead of a terminal dump, and `custom()` resolves with the
+     * {@link CardSubmission}. Absent for an extension that only draws.
      */
     screen?: ExtensionDialogScreen;
     askedAt: string;

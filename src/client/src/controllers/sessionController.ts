@@ -25,7 +25,7 @@ import { machineSessionKey } from "../machineKeys";
 import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessionsCache";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { moveHeldComposerAttachments } from "../composerAttachmentHold";
-import { clearAskDraft } from "../askDrafts";
+import { clearCardDraft } from "../cardDrafts";
 import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { deliveryLineSentAt, deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
@@ -2732,7 +2732,7 @@ export class SessionController {
     if (sessionId !== undefined) {
       const sessionKey = machineSessionKey(selectedMachineId(state), sessionId);
       clearDialogAnswerDraft(sessionKey, dialog.dialogId);
-      clearAskDraft(sessionKey, dialog.dialogId);
+      clearCardDraft(sessionKey, dialog.dialogId);
     }
     // The card is gone; the status map must stop listing the dialog too, or
     // the closed question rides the map back on the next selection and the

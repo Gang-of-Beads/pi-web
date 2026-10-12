@@ -1,15 +1,13 @@
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { dialogCardNeedsRender } from "../askCardIdentity";
+import { dialogCardNeedsRender } from "../cardIdentity";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { live } from "lit/directives/live.js";
 import {
   EXTENSION_DIALOG_EDITOR_MAX_LENGTH,
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   type ExtensionDialogAnswer,
-  type AskUserSubmission,
   type ExtensionDialogScreen,
-  type PendingAskUser,
   type PendingExtensionDialog,
   type ScreenLine,
   type ScreenSpan,
@@ -21,7 +19,8 @@ import { classifyScreen, type ScreenShape } from "../dialogScreenShape.js";
 import { shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { keyBelongsToInputMethod } from "./keyboardEventTarget";
 import { clearDialogAnswerDraft, loadDialogAnswerDraft, saveDialogAnswerDraft } from "../dialogAnswerDrafts";
-import "./AskUserCard";
+import "./InteractiveCard";
+import type { CardSubmission } from "../../../shared/interactiveCard";
 
 export type ExtensionDialogAnswerCallback = (dialogId: string, value: ExtensionDialogAnswer) => void | Promise<void>;
 export type ExtensionDialogCancelCallback = (dialogId: string) => void | Promise<void>;
@@ -161,7 +160,7 @@ export class ExtensionDialogCard extends LitElement {
   @property({ attribute: false }) onKey?: ExtensionDialogKeyCallback;
   @property({ attribute: false }) onLine?: ExtensionDialogLineCallback;
   @property({ attribute: false }) onWidth?: ExtensionDialogWidthCallback;
-  /** Machine-scoped session key under which this browser keeps a half-given answer (questions screen, input or editor dialog) across a reload; empty keeps none. */
+  /** Machine-scoped session key under which this browser keeps a half-given answer (interactive card, input or editor dialog) across a reload; empty keeps none. */
   @property({ attribute: false }) draftSessionId = "";
 
   @state() private inputValue = "";
@@ -250,25 +249,24 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   override render(): TemplateResult | null {
-    if (this.dialog?.screen !== undefined) return this.renderQuestions(this.dialog, this.dialog.screen);
+    if (this.dialog?.screen !== undefined) return this.renderCard(this.dialog, this.dialog.screen);
     if (this.dialog !== undefined) return this.renderOpen(this.dialog);
     return null;
   }
 
   /**
-   * A screen the extension declared as questions is the Questions card, not a
-   * terminal frame: the daemon never mounted the component, so this is
-   * the only place the dialog appears.
+   * A screen the extension declared as an interactive card is drawn as that card, not a
+   * terminal frame: the daemon never mounted the component, so this is the only place the
+   * dialog appears.
    */
-  private renderQuestions(dialog: PendingExtensionDialog, screen: ExtensionDialogScreen): TemplateResult {
-    const ask: PendingAskUser = { askId: dialog.dialogId, askedAt: dialog.askedAt, questions: screen.questions };
-    return html`<ask-user-card
-      .ask=${ask}
+  private renderCard(dialog: PendingExtensionDialog, screen: ExtensionDialogScreen): TemplateResult {
+    return html`<interactive-card
+      .open=${{ dialogId: dialog.dialogId, card: screen }}
       .heading=${splitDialogTitle(dialog.title).heading}
       .draftSessionId=${this.draftSessionId}
-      .onSubmit=${(_askId: string, submission: AskUserSubmission) => this.closeWith(dialog, () => this.onAnswer?.(dialog.dialogId, submission))}
+      .onSubmit=${(submission: CardSubmission) => this.closeWith(dialog, () => this.onAnswer?.(dialog.dialogId, submission))}
       .onCancel=${() => this.closeWith(dialog, () => this.onCancel?.(dialog.dialogId))}
-    ></ask-user-card>`;
+    ></interactive-card>`;
   }
 
   private renderOpen(dialog: PendingExtensionDialog): TemplateResult {

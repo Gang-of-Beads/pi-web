@@ -1,28 +1,18 @@
 /**
- * What an extension declared its `ctx.ui.custom` screen to be, read defensively.
+ * The daemon side of the `ctx.ui.custom(factory, { web })` declaration contract.
  *
- * `ctx.ui.custom(factory, { web })` is pi-web's addition; pi ignores the unknown
- * key and keeps running the TUI factory. A screen declared as questions is drawn
- * by the browser's Questions card and its terminal component is never mounted,
- * which is what stops the reader from seeing the same dialog twice (the owner had
- * to cancel a terminal dump before the native cards appeared). The declaration
- * comes from extension code, so junk is not an error: anything that does not fit
- * reads as undeclared and the screen falls back to its drawn lines.
+ * Reading a declaration defensively lives in src/shared/interactiveCardReader.ts, shared with the browser. This module holds what only the daemon does: it publishes the declarable kinds, summarises a refused declaration for the log, and validates a submitted card answer before `custom()` resolves (docs/design/interactive-card.md).
  */
 import { isRecord } from "../../../shared/unknownValues.js";
 import {
-  ASK_USER_ID_MAX_LENGTH,
-  ASK_USER_OPTION_LIMIT,
-  ASK_USER_OTHER_TEXT_MAX_LENGTH,
-  ASK_USER_QUESTION_LIMIT,
-  ASK_USER_TEXT_MAX_LENGTH,
-  EXTENSION_SCREEN_DETAIL_MAX_LENGTH,
-  type AskUserAnswer,
-  type AskUserQuestion,
-  type AskUserQuestionOption,
-  type AskUserSubmission,
-  type ExtensionDialogScreen,
-} from "../../../shared/apiTypes.js";
+  CARD_TYPED_TEXT_MAX_LENGTH,
+  isAnswerableField,
+  type CardAnswerableField,
+  type CardChoiceField,
+  type CardSubmission,
+  type CardValue,
+  type InteractiveCard,
+} from "../../../shared/interactiveCard.js";
 
 /**
  * The declarations this host draws, published on the UI context as `ctx.ui.piWebScreens`.
@@ -32,15 +22,7 @@ import {
  * end). An extension that falls back to `select`/`input` on `undefined` would ask the
  * reader a second time here; reading this list first tells it which `undefined` it got.
  */
-export const DECLARABLE_SCREENS: readonly string[] = Object.freeze(["questions"]);
-
-export function declaredScreen(value: unknown): ExtensionDialogScreen | undefined {
-  if (!isRecord(value) || value["kind"] !== "questions") return undefined;
-  const questions = listOf(value["questions"], ASK_USER_QUESTION_LIMIT, declaredQuestion);
-  if (questions === undefined || questions.length === 0 || !unique(questions.map((question) => question.id))) return undefined;
-  const title = text(value["title"], ASK_USER_TEXT_MAX_LENGTH);
-  return { kind: "questions", ...(title === undefined ? {} : { title }), questions };
-}
+export const DECLARABLE_SCREENS: readonly string[] = Object.freeze(["card"]);
 
 /**
  * A one-line account of a declaration that did not fit, for the daemon log. A refused
@@ -49,109 +31,79 @@ export function declaredScreen(value: unknown): ExtensionDialogScreen | undefine
  */
 export function refusedDeclarationSummary(value: unknown): string {
   if (!isRecord(value)) return `web is ${typeof value}`;
-  const questions = value["questions"];
-  if (!Array.isArray(questions)) return `kind ${String(value["kind"])}, no questions list`;
-  const sizes = questions.map((entry) => {
+  const fields = value["fields"];
+  if (!Array.isArray(fields)) return `kind ${String(value["kind"])}, no fields list`;
+  const sizes = fields.map((entry) => {
     if (!isRecord(entry)) return "junk";
     const options = entry["options"];
-    const detail = entry["detail"];
-    return `${Array.isArray(options) ? String(options.length) : "?"} options, detail ${typeof detail === "string" ? String(detail.length) : "none"}`;
+    return `${String(entry["type"])}${Array.isArray(options) ? ` with ${String(options.length)} options` : ""}`;
   });
-  return `kind ${String(value["kind"])}, ${String(questions.length)} questions: ${sizes.join("; ")}`;
-}
-
-function declaredQuestion(value: unknown): AskUserQuestion | undefined {
-  if (!isRecord(value)) return undefined;
-  const id = text(value["id"], ASK_USER_ID_MAX_LENGTH);
-  const question = text(value["question"], ASK_USER_TEXT_MAX_LENGTH);
-  const options = listOf(value["options"] ?? [], ASK_USER_OPTION_LIMIT, declaredOption);
-  if (id === undefined || question === undefined || options === undefined || !unique(options.map((option) => option.value))) return undefined;
-  if (options.length === 0 && value["custom"] === false) return undefined;
-  const detail = optionalText(value["detail"], EXTENSION_SCREEN_DETAIL_MAX_LENGTH);
-  if (detail === null) return undefined;
-  return {
-    id,
-    question,
-    ...(detail === undefined ? {} : { detail }),
-    options,
-    ...(value["multiple"] === true ? { multiple: true } : {}),
-    ...(value["custom"] === false ? { custom: false } : {}),
-    ...(value["customInput"] === "field" && value["custom"] !== false ? { customInput: "field" as const } : {}),
-  };
-}
-
-function declaredOption(value: unknown): AskUserQuestionOption | undefined {
-  if (!isRecord(value)) return undefined;
-  const optionValue = text(value["value"], ASK_USER_ID_MAX_LENGTH);
-  const label = text(value["label"], ASK_USER_TEXT_MAX_LENGTH);
-  const detail = optionalText(value["detail"], ASK_USER_TEXT_MAX_LENGTH);
-  if (optionValue === undefined || label === undefined || detail === null) return undefined;
-  return { value: optionValue, label, ...(detail === undefined ? {} : { detail }) };
-}
-
-/** Every entry read, or `undefined` when the list is missing, too long, or any entry is junk. */
-function listOf<T>(value: unknown, limit: number, read: (entry: unknown) => T | undefined): T[] | undefined {
-  if (!Array.isArray(value) || value.length > limit) return undefined;
-  const entries = value.map(read);
-  return entries.every((entry): entry is T => entry !== undefined) ? entries : undefined;
-}
-
-function text(value: unknown, max: number): string | undefined {
-  if (typeof value !== "string" || value.trim() === "" || value.length > max) return undefined;
-  return value;
-}
-
-/** `undefined` when absent, `null` when present but unusable. */
-function optionalText(value: unknown, max: number): string | undefined | null {
-  if (value === undefined) return undefined;
-  return text(value, max) ?? null;
-}
-
-function unique(values: readonly string[]): boolean {
-  return new Set(values).size === values.length;
+  return `kind ${String(value["kind"])}, ${String(fields.length)} fields: ${sizes.join("; ")}`;
 }
 
 /**
- * The answers a declared questions screen's submission gives, keyed by question id. Throws on
- * any answer that does not fit its question - an unknown id, an option the question lacks,
- * several answers to a single-answer question, typed text where the extension declared none -
- * and the dialog store refuses the submission with that message. An untouched question and an
- * explicitly empty answer are the same thing, so an empty answer is left out rather than
- * recorded as answered.
+ * The values a card's submission gives, checked against its fields. Throws on any value that does
+ * not fit its field - an unknown or read-only field, an option the field lacks, several options
+ * for a single-answer field, typed text where the field takes none, a required field left empty -
+ * and the dialog store refuses the submission with that message. An untouched field and an empty
+ * value are the same thing, so an empty value is left out rather than recorded as filled.
  */
-export function validateSubmission(questions: readonly AskUserQuestion[], submission: AskUserSubmission): Map<string, AskUserAnswer> {
-  const questionsById = new Map(questions.map((question) => [question.id, question]));
-  const answers = new Map<string, AskUserAnswer>();
-  for (const answer of submission.answers) {
-    const question = questionsById.get(answer.id);
-    if (question === undefined) throw new Error(`Unknown question id ${answer.id}`);
-    if (answers.has(answer.id)) throw new Error(`Duplicate answer for question ${answer.id}`);
-    const validated = validateAnswer(question, answer);
-    if (validated !== undefined) answers.set(answer.id, validated);
+export function validateCardSubmission(card: InteractiveCard, submission: CardSubmission): CardSubmission {
+  const fieldsById = new Map(card.fields.filter(isAnswerableField).map((field) => [field.id, field]));
+  const values: Record<string, CardValue> = {};
+  for (const [id, value] of Object.entries(submission.values)) {
+    const field = fieldsById.get(id);
+    if (field === undefined) throw new Error(`The card has no field ${id} to fill`);
+    const validated = validatedValue(field, value);
+    if (validated !== undefined) values[id] = validated;
   }
-  return answers;
+  const missing = [...fieldsById.values()].find((field) => field.required === true && values[field.id] === undefined);
+  if (missing !== undefined) throw new Error(`Field ${missing.id} is required`);
+  return { values };
 }
 
-function validateAnswer(question: AskUserQuestion, answer: AskUserAnswer): AskUserAnswer | undefined {
-  const optionValues = new Set(question.options.map((option) => option.value));
-  const values: string[] = [];
-  for (const value of answer.values) {
-    if (!optionValues.has(value)) throw new Error(`Question ${question.id} has no option ${value}`);
-    if (values.includes(value)) throw new Error(`Duplicate value ${value} for question ${question.id}`);
-    values.push(value);
-  }
-  const otherText = normalizeOtherText(question, answer.otherText);
-  const selectionCount = values.length + (otherText === undefined ? 0 : 1);
-  if (question.multiple !== true && selectionCount > 1) throw new Error(`Question ${question.id} accepts a single answer`);
-  if (selectionCount === 0) return undefined;
-  return { id: question.id, values, ...(otherText === undefined ? {} : { otherText }) };
+function validatedValue(field: CardAnswerableField, value: unknown): CardValue | undefined {
+  if (!isRecord(value)) throw new Error(`Field ${field.id} has no value of its kind`);
+  if (field.type === "input") return validatedInput(field.id, value);
+  if (field.type === "confirm") return validatedConfirm(field.id, value);
+  return validatedChoice(field, value);
 }
 
-function normalizeOtherText(question: AskUserQuestion, otherText: string | undefined): string | undefined {
-  if (otherText === undefined) return undefined;
-  if (question.custom === false) throw new Error(`Question ${question.id} takes no typed answer`);
-  if (otherText.length > ASK_USER_OTHER_TEXT_MAX_LENGTH) throw new Error(`Other text of question ${question.id} exceeds its length limit`);
-  const trimmed = otherText.trim();
+function validatedInput(id: string, value: Record<string, unknown>): CardValue | undefined {
+  const text = value["text"];
+  if (typeof text !== "string") throw new Error(`Field ${id} takes text`);
+  if (text.length > CARD_TYPED_TEXT_MAX_LENGTH) throw new Error(`Field ${id} exceeds its length limit`);
+  return text.trim() === "" ? undefined : { text };
+}
+
+function validatedConfirm(id: string, value: Record<string, unknown>): CardValue {
+  const confirmed = value["confirmed"];
+  if (typeof confirmed !== "boolean") throw new Error(`Field ${id} takes a yes or a no`);
+  return { confirmed };
+}
+
+function validatedChoice(field: CardChoiceField, value: Record<string, unknown>): CardValue | undefined {
+  const selected = value["selected"];
+  if (!Array.isArray(selected) || !selected.every((entry): entry is string => typeof entry === "string")) throw new Error(`Field ${field.id} takes a list of options`);
+  const offered = new Set(field.options.map((option) => option.value));
+  const picked: string[] = [];
+  for (const entry of selected) {
+    if (!offered.has(entry)) throw new Error(`Field ${field.id} has no option ${entry}`);
+    if (picked.includes(entry)) throw new Error(`Option ${entry} of field ${field.id} is picked twice`);
+    picked.push(entry);
+  }
+  const other = typedOther(field, value["other"]);
+  const count = picked.length + (other === undefined ? 0 : 1);
+  if (field.multiple !== true && count > 1) throw new Error(`Field ${field.id} takes a single answer`);
+  if (count === 0) return undefined;
+  return { selected: picked, ...(other === undefined ? {} : { other }) };
+}
+
+function typedOther(field: CardChoiceField, other: unknown): string | undefined {
+  if (other === undefined) return undefined;
+  if (typeof other !== "string") throw new Error(`Field ${field.id} takes its typed answer as text`);
+  if (field.other === undefined) throw new Error(`Field ${field.id} takes no typed answer`);
+  if (other.length > CARD_TYPED_TEXT_MAX_LENGTH) throw new Error(`The typed answer of field ${field.id} exceeds its length limit`);
+  const trimmed = other.trim();
   return trimmed === "" ? undefined : trimmed;
 }
-

@@ -4,8 +4,8 @@ import { browserLocalStorage } from "./browserLocalStorage";
 /**
  * The half-typed answer of an open extension input or editor dialog, kept in this browser so a
  * reload keeps it. Owner, 2026-10-10: drafts stay in the browser that typed them, so another
- * device does not see it. Keyed by machine + session + dialog, as a questions screen's half
- * answers are (askDrafts.ts). It goes when this page sees the dialog close. One left behind, its
+ * device does not see it. Keyed by machine + session + dialog, as an interactive card's half
+ * answers are (cardDrafts.ts). It goes when this page sees the dialog close. One left behind, its
  * dialog having closed while this page showed another session (a session's frames reach only the
  * page showing it) or while no page was open, is removed by the first dialog-answer read of a
  * page once it is older than 30 days.

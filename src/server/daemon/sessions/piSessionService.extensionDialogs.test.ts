@@ -794,11 +794,11 @@ describe("PiSessionService session_start dialog startup reachability", () => {
   });
 });
 
-describe("a custom screen declared as questions", () => {
+describe("a custom screen declared as an interactive card", () => {
   const web = {
-    kind: "questions",
+    kind: "card",
     title: "Confirm Goal Draft",
-    questions: [{ id: "confirm", question: "Confirm Goal Draft", detail: "Objective: ship", options: [{ value: "0", label: "Confirm" }, { value: "1", label: "Cancel" }], custom: false }],
+    fields: [{ type: "choice", id: "confirm", label: "Confirm Goal Draft", detail: "Objective: ship", options: [{ value: "0", label: "Confirm" }, { value: "1", label: "Cancel" }] }],
   };
   /** pi types `custom` options without `web`; a variable escapes the literal check the way an extension's does. */
   const declaring = { overlay: false, web };
@@ -807,7 +807,7 @@ describe("a custom screen declared as questions", () => {
     const { service, fake } = dialogService();
     const ui = await boundUiContext(service, fake);
 
-    expect(Reflect.get({ ...ui }, "piWebScreens")).toEqual(["questions"]);
+    expect(Reflect.get({ ...ui }, "piWebScreens")).toEqual(["card"]);
     await service.dispose();
   });
 
@@ -821,19 +821,19 @@ describe("a custom screen declared as questions", () => {
 
     expect(factory).not.toHaveBeenCalled();
     expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toMatchObject([{ dialogId: "dialog-1", kind: "custom", title: "Confirm Goal Draft", lines: [], screen: web }]);
-    await service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-1", { answers: [{ id: "confirm", values: ["0"] }] });
-    await expect(parked).resolves.toEqual({ answers: [{ id: "confirm", values: ["0"] }] });
+    await service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-1", { values: { confirm: { selected: ["0"] } } });
+    await expect(parked).resolves.toEqual({ values: { confirm: { selected: ["0"] } } });
     await service.dispose();
   });
 
-  it("refuses an answer that does not fit its questions and keeps the dialog open", async () => {
+  it("refuses an answer that does not fit its fields and keeps the dialog open", async () => {
     const { service, store, fake } = dialogService();
     const ui = await boundUiContext(service, fake);
     void ui.custom(vi.fn(), declaring);
     await Promise.resolve();
 
     await expect(service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-1", "Confirm")).rejects.toBeInstanceOf(PendingExtensionDialogValidationError);
-    await expect(service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-1", { answers: [{ id: "confirm", values: [], otherText: "maybe" }] })).rejects.toBeInstanceOf(PendingExtensionDialogValidationError);
+    await expect(service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-1", { values: { confirm: { selected: [], other: "maybe" } } })).rejects.toBeInstanceOf(PendingExtensionDialogValidationError);
     expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toHaveLength(1);
     await service.dispose();
   });

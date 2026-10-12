@@ -1,10 +1,12 @@
 import { drawnLines } from "../drawnLines";
+import { CARD_FIELD_LIMIT, CARD_OPTION_LIMIT, CARD_TYPED_TEXT_MAX_LENGTH, type CardValue } from "../../../shared/interactiveCard";
+import { readInteractiveCard } from "../../../shared/interactiveCardReader";
 import { isRecord } from "../../../shared/unknownValues";
 import { recordedDurationMs } from "../../../shared/toolDuration";
 import { parseSessionStep } from "./sessionStepParser";
 import { parseScreenLines, parseScreenWidth, parseSelectedLine } from "./screenLinesParser";
-import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, ASK_USER_TEXT_MAX_LENGTH, EXTENSION_DIALOG_EDITOR_MAX_LENGTH, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH,
-  EXTENSION_DIALOG_SCREEN_MAX_LINES, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_SCREEN_DETAIL_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserAnswer, type AskUserQuestion, type AskUserQuestionOption, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type ExtensionDialogScreen, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionTranscriptTail, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type WorkspaceChangedUiEvent, type PinsChangedUiEvent, type PluginsChangedUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
+import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, EXTENSION_DIALOG_EDITOR_MAX_LENGTH, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH,
+  EXTENSION_DIALOG_SCREEN_MAX_LINES, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type ExtensionDialogScreen, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionTranscriptTail, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type WorkspaceChangedUiEvent, type PinsChangedUiEvent, type PluginsChangedUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
 import { parseMachineStatusSnapshot, type MachineStatusSnapshot, type MachineStatusUiEvent } from "../../../shared/machineStatus";
 import type { JsonValue, PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionsRevisionResponse, SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot, WorkspaceProviderDiagnostic, WorkspaceProviderDiagnosticCode, WorkspaceProviderResolution, WorkspaceProviderResolutionStatus, WorkspaceProviderTier } from "../../../shared/apiTypes";
 import type { ExtensionCompletionApplied, ExtensionCompletionSuggestions, ExtensionWidgetPlacement, PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport, PiWebSelfUpdateStatus } from "../../../shared/apiTypes";
@@ -357,32 +359,6 @@ export function parseSessionInfo(value: unknown): SessionInfo {
   };
 }
 
-function parseAskUserQuestionOption(value: unknown): AskUserQuestionOption {
-  const record = requireRecord(value);
-  return {
-    value: requireBoundedNonEmptyString(record, "value", ASK_USER_ID_MAX_LENGTH),
-    label: requireBoundedNonEmptyString(record, "label", ASK_USER_TEXT_MAX_LENGTH),
-    ...optionalField("detail", optionalBoundedNonEmptyString(record, "detail", ASK_USER_TEXT_MAX_LENGTH)),
-  };
-}
-
-function parseAskUserQuestion(value: unknown, detailMax: number): AskUserQuestion {
-  const record = requireRecord(value);
-  const options = boundedArrayOf(record["options"], parseAskUserQuestionOption, ASK_USER_OPTION_LIMIT, "options");
-  assertUniqueStrings(options.map((option) => option.value), "ask option value");
-  const multiple = parseOptionalBoolean(record["multiple"], "multiple");
-  const custom = parseOptionalBoolean(record["custom"], "custom");
-  return {
-    id: requireBoundedNonEmptyString(record, "id", ASK_USER_ID_MAX_LENGTH),
-    question: requireBoundedNonEmptyString(record, "question", ASK_USER_TEXT_MAX_LENGTH),
-    ...optionalField("detail", optionalBoundedNonEmptyString(record, "detail", detailMax)),
-    options,
-    ...(multiple === undefined ? {} : { multiple }),
-    ...(custom === false ? { custom } : {}),
-    ...(record["customInput"] === "field" && custom !== false ? { customInput: "field" as const } : {}),
-  };
-}
-
 /**
  * The interactive-surface stamps on dialog frames: the surface's
  * monotonic revision and the identity of the daemon instance whose counter it
@@ -434,32 +410,34 @@ function parseExtensionDialogCloseReason(value: unknown): ExtensionDialogCloseRe
 function parseExtensionDialogAnswer(value: unknown): ExtensionDialogAnswer {
   if (typeof value === "boolean") return value;
   if (typeof value === "string" && value.length <= EXTENSION_DIALOG_INPUT_MAX_LENGTH) return value;
-  if (isRecord(value)) return { answers: boundedArrayOf(value["answers"], parseSubmittedAnswer, ASK_USER_QUESTION_LIMIT, "answers") };
+  if (isRecord(value) && isRecord(value["values"])) {
+    const entries = Object.entries(value["values"]);
+    if (entries.length > CARD_FIELD_LIMIT) throw new Error("Invalid extension dialog answer");
+    return { values: Object.fromEntries(entries.map(([id, entry]) => [id, parseCardValue(entry)])) };
+  }
   throw new Error("Invalid extension dialog answer");
 }
 
-function parseSubmittedAnswer(value: unknown): AskUserAnswer {
+/** One filled field of a card's submission, by the shape its field type gives it. */
+function parseCardValue(value: unknown): CardValue {
   const record = requireRecord(value);
-  const otherText = optionalBoundedNonEmptyString(record, "otherText", ASK_USER_OTHER_TEXT_MAX_LENGTH);
+  if (typeof record["confirmed"] === "boolean") return { confirmed: record["confirmed"] };
+  if (typeof record["text"] === "string") {
+    if (record["text"].length > CARD_TYPED_TEXT_MAX_LENGTH) throw new Error("Invalid card text");
+    return { text: record["text"] };
+  }
+  const other = optionalBoundedNonEmptyString(record, "other", CARD_TYPED_TEXT_MAX_LENGTH);
   return {
-    id: requireBoundedNonEmptyString(record, "id", ASK_USER_ID_MAX_LENGTH),
-    values: boundedArrayOf(record["values"], parseNonEmptyString, ASK_USER_OPTION_LIMIT, "values"),
-    ...(otherText === undefined ? {} : { otherText }),
+    selected: boundedArrayOf(record["selected"], parseNonEmptyString, CARD_OPTION_LIMIT, "selected"),
+    ...(other === undefined ? {} : { other }),
   };
 }
 
-/** A declared questions screen; anything else the daemon sent under `screen` is not one this browser draws. */
+/** A declared interactive card, read by the same reader the daemon uses; anything else is not one this browser draws. */
 function parseExtensionDialogScreen(value: unknown): ExtensionDialogScreen {
-  const record = requireRecord(value);
-  if (record["kind"] !== "questions") throw new Error("Invalid extension dialog screen kind");
-  const questions = boundedArrayOf(record["questions"], (entry) => parseAskUserQuestion(entry, EXTENSION_SCREEN_DETAIL_MAX_LENGTH), ASK_USER_QUESTION_LIMIT, "questions");
-  if (questions.length === 0) throw new Error("Questions screen has no questions");
-  assertUniqueStrings(questions.map((question) => question.id), "screen question id");
-  return {
-    kind: "questions",
-    ...optionalField("title", optionalBoundedNonEmptyString(record, "title", ASK_USER_TEXT_MAX_LENGTH)),
-    questions,
-  };
+  const card = readInteractiveCard(value);
+  if (card === undefined) throw new Error("Invalid interactive card");
+  return card;
 }
 
 function parseDialogScreenLine(value: unknown): string {

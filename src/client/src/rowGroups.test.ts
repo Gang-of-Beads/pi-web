@@ -30,7 +30,7 @@ describe("row margin groups", () => {
     expect(chatView).toMatch(holderRule);
     const bareRule = /\.msg\.event-group > summary, \.session-activity, \.msg-notice \{ padding-inline: var\(--pi-row-inset\); \}/u;
     expect(chatView).toMatch(bareRule);
-    const askCard = readFileSync(join(here, "components/AskUserCard.ts"), "utf8");
-    expect(askCard).not.toContain("--pi-row-inset");
+    const card = readFileSync(join(here, "components/InteractiveCard.ts"), "utf8");
+    expect(card).not.toContain("--pi-row-inset");
   });
 });

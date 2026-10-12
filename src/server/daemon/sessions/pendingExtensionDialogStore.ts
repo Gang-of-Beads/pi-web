@@ -18,7 +18,7 @@ import {
   type ScreenLine,
   type ScreenSpan,
 } from "../../../shared/apiTypes.js";
-import { validateSubmission } from "./declaredScreen.js";
+import { validateCardSubmission } from "./declaredScreen.js";
 
 export interface PendingExtensionDialogStoreOptions {
   now?: (() => Date) | undefined;
@@ -310,16 +310,16 @@ function keptLength(text: string): number {
   return last >= 0xd800 && last <= 0xdbff ? EXTENSION_DIALOG_EDITOR_MAX_LENGTH - 1 : EXTENSION_DIALOG_EDITOR_MAX_LENGTH;
 }
 
-/** A declared questions screen takes the Questions card's submission; a drawn screen takes text. */
+/** A declared interactive card takes the card's values; a drawn screen takes text. */
 function validateCustomAnswer(dialog: PendingExtensionDialog, value: ExtensionDialogAnswer): ExtensionDialogAnswer {
-  const questions = dialog.screen?.questions;
-  if (questions === undefined) {
+  const card = dialog.screen;
+  if (card === undefined) {
     if (typeof value !== "string") throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} expects the extension's result as text`);
     return value;
   }
-  if (typeof value !== "object") throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} expects answers to its questions`);
+  if (typeof value !== "object") throw new PendingExtensionDialogValidationError(`Dialog ${dialog.dialogId} expects the values of its card`);
   try {
-    return { answers: [...validateSubmission(questions, value).values()] };
+    return validateCardSubmission(card, value);
   } catch (error) {
     throw new PendingExtensionDialogValidationError(error instanceof Error ? error.message : String(error));
   }

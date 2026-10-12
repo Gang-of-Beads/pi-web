@@ -646,7 +646,7 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) clientQueuedMessages: QueuedSessionMessage[] = [];
   @property({ attribute: false }) status?: SessionStatus;
   @property({ attribute: false }) activity?: SessionActivity;
-  @property({ attribute: false }) askDraftSessionId = "";
+  @property({ attribute: false }) cardDraftSessionId = "";
   @property({ attribute: false }) pendingDialogs: PendingExtensionDialog[] = [];
   /** The browser's own receipts for commands it issued in this session. */
   @property({ attribute: false }) commandLedger: CommandLedgerEntry[] = [];
@@ -1646,7 +1646,7 @@ export class ChatView extends LitElement {
             .onKey=${presence === "live" ? this.onDialogKey : undefined}
             .onLine=${presence === "live" ? this.onDialogLine : undefined}
             .onWidth=${presence === "live" ? this.onDialogWidth : undefined}
-            .draftSessionId=${this.askDraftSessionId}
+            .draftSessionId=${this.cardDraftSessionId}
           ></extension-dialog-card>
         `)}
       </div>

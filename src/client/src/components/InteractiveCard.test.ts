@@ -1,23 +1,24 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AskUserQuestion, PendingAskUser } from "../../../shared/apiTypes";
-import { AskUserCard, type AskUserSubmitCallback } from "./AskUserCard";
+import type { CardField, CardOption } from "../../../shared/interactiveCard";
+import type { OpenCard } from "../cardIdentity";
+import { InteractiveCard, type InteractiveCardSubmitCallback } from "./InteractiveCard";
 
 afterEach(() => {
   document.body.replaceChildren();
   localStorage.clear();
 });
 
-describe("ask-user-card live form", () => {
+describe("interactive-card live form", () => {
   it("uses native labelled groups and updates progress for a keyboard-focusable single select", async () => {
-    const card = await mountOpenAsk(openAsk([
+    const card = await mountOpenCard(openCard([
       question("editor", "Choose an editor", [option("vim", "Vim"), option("code", "VS Code")], { detail: "Used for examples." }),
       question("platforms", "Target platforms", [option("web", "Web"), option("desktop", "Desktop")], { multiple: true }),
     ]));
     const root = renderRoot(card);
     expect(card).toBeInstanceOf(HTMLElement);
-    expect(customElements.get("ask-user-card")).toBe(AskUserCard);
+    expect(customElements.get("interactive-card")).toBe(InteractiveCard);
     const fieldsets = root.querySelectorAll("fieldset");
     const legends = root.querySelectorAll("legend");
     const vim = inputWithValue(root, "vim");
@@ -26,8 +27,8 @@ describe("ask-user-card live form", () => {
     // One question is on screen at a time, so this step holds one fieldset.
     expect(fieldsets).toHaveLength(1);
     expect(legends[0]?.textContent).toContain("Choose an editor");
-    expect(fieldsets[0]?.getAttribute("aria-describedby")).toBe("ask-user-question-detail-0");
-    expect(root.querySelector("#ask-user-question-detail-0")?.textContent).toBe("Used for examples.");
+    expect(fieldsets[0]?.getAttribute("aria-describedby")).toBe("card-field-detail-0");
+    expect(root.querySelector("#card-field-detail-0")?.textContent).toBe("Used for examples.");
     expect(vim.type).toBe("radio");
     expect(code.name).toBe(vim.name);
     expect(root.querySelector("[aria-live='polite']")?.textContent).toContain("1 of 2");
@@ -55,8 +56,8 @@ describe("ask-user-card live form", () => {
   });
 
   it("accumulates several checkbox values for a multi-select question", async () => {
-    const onSubmit = vi.fn<AskUserSubmitCallback>();
-    const card = await mountOpenAsk(openAsk([
+    const onSubmit = vi.fn<InteractiveCardSubmitCallback>();
+    const card = await mountOpenCard(openCard([
       question("platforms", "Target platforms", [option("web", "Web"), option("desktop", "Desktop")], { multiple: true }),
     ]), onSubmit);
     const root = renderRoot(card);
@@ -66,17 +67,15 @@ describe("ask-user-card live form", () => {
     await card.updateComplete;
 
     expect(root.querySelector("[aria-live='polite']")?.textContent).toContain("1 of 1 answered");
-    buttonWithText(root, "Send answers").click();
+    buttonWithText(root, "Send").click();
     await Promise.resolve();
 
-    expect(onSubmit).toHaveBeenCalledWith("ask-1", {
-      answers: [{ id: "platforms", values: ["web", "desktop"] }],
-    });
+    expect(onSubmit).toHaveBeenCalledWith({ values: { platforms: { selected: ["web","desktop"] } } });
   });
 
   it("always offers and focuses a labelled custom field while preserving multi-select options", async () => {
-    const onSubmit = vi.fn<AskUserSubmitCallback>();
-    const card = await mountOpenAsk(openAsk([
+    const onSubmit = vi.fn<InteractiveCardSubmitCallback>();
+    const card = await mountOpenCard(openCard([
       question("stack", "Pick the stack", [option("lit", "Lit"), option("react", "React")], { multiple: true }),
     ]), onSubmit);
     const root = renderRoot(card);
@@ -95,37 +94,33 @@ describe("ask-user-card live form", () => {
     textarea.value = "Svelte";
     textarea.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
     await card.updateComplete;
-    buttonWithText(root, "Send answers").click();
+    buttonWithText(root, "Send").click();
     await Promise.resolve();
 
-    expect(onSubmit).toHaveBeenCalledWith("ask-1", {
-      answers: [{ id: "stack", values: ["lit"], otherText: "Svelte" }],
-    });
+    expect(onSubmit).toHaveBeenCalledWith({ values: { stack: { selected: ["lit"], other: "Svelte" } } });
   });
 
-  it("shows and submits the custom field directly when no options were supplied", async () => {
-    const onSubmit = vi.fn<AskUserSubmitCallback>();
-    const card = await mountOpenAsk(openAsk([
+  it("shows and submits a typed field directly, labelled by the field", async () => {
+    const onSubmit = vi.fn<InteractiveCardSubmitCallback>();
+    const card = await mountOpenCard(openCard([
       question("notes", "Anything else?", []),
     ]), onSubmit);
     const root = renderRoot(card);
     const textarea = requiredElement(root.querySelector("textarea"), "custom textarea");
 
     expect(root.querySelector("input")).toBeNull();
-    expect(requiredElement(textarea.closest("label"), "custom label").textContent).toContain("Custom answer");
+    expect(textarea.getAttribute("aria-label")).toBe("Anything else?");
     textarea.value = "Keep the first version small.";
     textarea.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
     await card.updateComplete;
-    buttonWithText(root, "Send answers").click();
+    buttonWithText(root, "Send").click();
     await Promise.resolve();
 
-    expect(onSubmit).toHaveBeenCalledWith("ask-1", {
-      answers: [{ id: "notes", values: [], otherText: "Keep the first version small." }],
-    });
+    expect(onSubmit).toHaveBeenCalledWith({ values: { notes: { text: "Keep the first version small." } } });
   });
 
   it("grows the custom textarea with the answer when field-sizing is unavailable", async () => {
-    const card = await mountOpenAsk(openAsk([
+    const card = await mountOpenCard(openCard([
       question("notes", "Anything else?", []),
     ]));
     const root = renderRoot(card);
@@ -156,8 +151,8 @@ describe("ask-user-card live form", () => {
   });
 
   it("names unanswered questions before allowing a partial submit", async () => {
-    const onSubmit = vi.fn<AskUserSubmitCallback>();
-    const card = await mountOpenAsk(openAsk([
+    const onSubmit = vi.fn<InteractiveCardSubmitCallback>();
+    const card = await mountOpenCard(openCard([
       question("editor", "Choose an editor", [option("vim", "Vim")]),
       question("deploy", "Choose a deployment target", [option("cloud", "Cloud")]),
       question("notes", "Add implementation notes", []),
@@ -172,7 +167,7 @@ describe("ask-user-card live form", () => {
     await card.updateComplete;
     buttonWithText(root, "Next").click();
     await card.updateComplete;
-    buttonWithText(root, "Send answers").click();
+    buttonWithText(root, "Send").click();
     await card.updateComplete;
     await Promise.resolve();
 
@@ -185,15 +180,13 @@ describe("ask-user-card live form", () => {
 
     buttonWithText(root, "Send anyway").click();
     await Promise.resolve();
-    expect(onSubmit).toHaveBeenCalledWith("ask-1", {
-      answers: [{ id: "editor", values: ["vim"] }],
-    });
+    expect(onSubmit).toHaveBeenCalledWith({ values: { editor: { selected: ["vim"] } } });
   });
 });
 
-async function mountOpenAsk(ask: PendingAskUser, onSubmit?: AskUserSubmitCallback): Promise<AskUserCard> {
-  const card = new AskUserCard();
-  card.ask = ask;
+async function mountOpenCard(ask: OpenCard, onSubmit?: InteractiveCardSubmitCallback): Promise<InteractiveCard> {
+  const card = new InteractiveCard();
+  card.open = ask;
   card.draftSessionId = "local:session-1";
   if (onSubmit !== undefined) card.onSubmit = onSubmit;
   document.body.append(card);
@@ -201,8 +194,8 @@ async function mountOpenAsk(ask: PendingAskUser, onSubmit?: AskUserSubmitCallbac
   return card;
 }
 
-function renderRoot(card: AskUserCard): ShadowRoot {
-  return requiredElement(card.shadowRoot, "ask-user-card shadow root");
+function renderRoot(card: InteractiveCard): ShadowRoot {
+  return requiredElement(card.shadowRoot, "interactive-card shadow root");
 }
 
 function inputWithValue(root: ShadowRoot, value: string): HTMLInputElement {
@@ -220,28 +213,8 @@ function requiredElement<T>(value: T | null | undefined, label: string): T {
   return value;
 }
 
-function openAsk(questions: AskUserQuestion[]): PendingAskUser {
-  return { askId: "ask-1", askedAt: "2026-07-20T10:00:00.000Z", questions };
-}
 
-function question(
-  id: string,
-  text: string,
-  options: AskUserQuestion["options"],
-  settings: { detail?: string; multiple?: boolean } = {},
-): AskUserQuestion {
-  return {
-    id,
-    question: text,
-    options,
-    ...(settings.detail === undefined ? {} : { detail: settings.detail }),
-    ...(settings.multiple === undefined ? {} : { multiple: settings.multiple }),
-  };
-}
 
-function option(value: string, label: string, extra: Partial<AskUserQuestion["options"][number]> = {}): AskUserQuestion["options"][number] {
-  return { value, label, ...extra };
-}
 
 describe("the step footer", () => {
   /**
@@ -254,7 +227,7 @@ describe("the step footer", () => {
   it("does not float over the options it sits below", () => {
     // Scroll margin was tried here first. It only moves programmatic scrolling,
     // so the reader's own scrolling still parked an option behind the footer.
-    const rule = /\.form-footer\s*\{([^}]*)\}/u.exec(String(AskUserCard.styles))?.[1] ?? "";
+    const rule = /\.form-footer\s*\{([^}]*)\}/u.exec(String(InteractiveCard.styles))?.[1] ?? "";
 
     expect(rule).not.toMatch(/position:\s*sticky/u);
   });
@@ -265,7 +238,7 @@ describe("the step footer", () => {
    * different kinds of control.
    */
   it("does not let the forward step swallow the row", () => {
-    const sheet = String(AskUserCard.styles);
+    const sheet = String(InteractiveCard.styles);
     const primary = /\.step-actions\s+\.primary-action\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
 
     expect(primary).not.toMatch(/flex:\s*1 1 auto/u);
@@ -280,14 +253,14 @@ describe("where the step buttons sit", () => {
    * Back's whether Back is there or not.
    */
   it("pins the advancing button to the right even when Back is absent", () => {
-    const sheet = String(AskUserCard.styles);
+    const sheet = String(InteractiveCard.styles);
     const rule = /\.step-actions \.primary-action\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
 
     expect(rule).toMatch(/margin-left:\s*auto/u);
   });
 });
 
-describe("ask-user-card geometry", () => {
+describe("interactive-card geometry", () => {
   // The concern this replaces is real and unchanged: a tall question must not
   // put the submit control out of a thumb's reach. It was answered by capping
   // the questions and scrolling them inside the card, which moved the problem
@@ -298,11 +271,11 @@ describe("ask-user-card geometry", () => {
   // reaches the footer. Nothing inside the card floats, so nothing covers the
   // options.
   it("does not trap the questions in a scroller of their own", async () => {
-    const card = await mountOpenAsk(openAsk([
+    const card = await mountOpenCard(openCard([
       question("geom", "Pick one", [option("a", "A", { detail: "long".repeat(60) }), option("b", "B", { detail: "long".repeat(60) }), option("c", "C", { detail: "long".repeat(60) })], { detail: "Long detail text".repeat(40) }),
     ]));
 
-    const questions = card.shadowRoot?.querySelector<HTMLElement>(".questions");
+    const questions = card.shadowRoot?.querySelector<HTMLElement>(".fields");
     if (questions === null || questions === undefined) throw new Error("Expected the questions area");
     // happy-dom returns "" for a property no rule sets, so both the unset and
     // the explicit "none" spellings mean the same thing here: no cap.
@@ -312,7 +285,7 @@ describe("ask-user-card geometry", () => {
   });
 
   it("keeps the submit control in the card, reachable by scrolling the transcript", async () => {
-    const card = await mountOpenAsk(openAsk([
+    const card = await mountOpenCard(openCard([
       question("geom", "Pick one", [option("a", "A"), option("b", "B")]),
     ]));
 
@@ -322,7 +295,7 @@ describe("ask-user-card geometry", () => {
   });
 
   it("does not float the footer over the card's own options", async () => {
-    const card = await mountOpenAsk(openAsk([
+    const card = await mountOpenCard(openCard([
       question("geom", "Pick one", [option("a", "A"), option("b", "B")]),
     ]));
 
@@ -336,10 +309,10 @@ describe("ask-user-card geometry", () => {
 
 describe("a new question set", () => {
   it("opens on its first question, not on the step the previous set was left at", async () => {
-    const card = await mountOpenAsk(openAsk([question("a", "First?", [option("x", "X")]), question("b", "Second?", [option("y", "Y")])]));
+    const card = await mountOpenCard(openCard([question("a", "First?", [option("x", "X")]), question("b", "Second?", [option("y", "Y")])]));
     buttonWithText(renderRoot(card), "Next").click();
     await card.updateComplete;
-    card.ask = { ...openAsk([question("c", "Third?", [option("z", "Z")]), question("d", "Fourth?", [option("w", "W")])]), askId: "ask-2" };
+    card.open = { ...openCard([question("c", "Third?", [option("z", "Z")]), question("d", "Fourth?", [option("w", "W")])]), dialogId: "ask-2" };
     await card.updateComplete;
 
     expect(renderRoot(card).querySelector("legend")?.textContent).toContain("Third?");
@@ -347,14 +320,39 @@ describe("a new question set", () => {
 
   it("starts clean even when it asks exactly what the previous set asked", async () => {
     const questions = [question("a", "First?", [option("x", "X")]), question("b", "Second?", [option("y", "Y")])];
-    const card = await mountOpenAsk(openAsk(questions));
+    const card = await mountOpenCard(openCard(questions));
     inputWithValue(renderRoot(card), "x").click();
     buttonWithText(renderRoot(card), "Next").click();
     await card.updateComplete;
-    card.ask = { ...openAsk(questions), askId: "ask-2" };
+    card.open = { ...openCard(questions), dialogId: "ask-2" };
     await card.updateComplete;
 
     expect(renderRoot(card).querySelector("legend")?.textContent).toContain("First?");
     expect(inputWithValue(renderRoot(card), "x").checked).toBe(false);
   });
 });
+
+interface QuestionSettings { detail?: string; multiple?: boolean; custom?: boolean; customInput?: "field" }
+
+function openCard(fields: CardField[]): OpenCard {
+  return { dialogId: "ask-1", card: { kind: "card", fields } };
+}
+
+/** A choice field as a question once was: a Custom choice unless it takes no typed answer; no options is a typed field. */
+function question(id: string, text: string, options: CardOption[], settings: QuestionSettings = {}): CardField {
+  if (options.length === 0) return { type: "input", id, label: text, multiline: true, ...(settings.detail === undefined ? {} : { detail: settings.detail }) };
+  const other = settings.custom === false ? undefined : settings.customInput === "field" ? "field" : "choice";
+  return {
+    type: "choice",
+    id,
+    label: text,
+    options,
+    ...(settings.detail === undefined ? {} : { detail: settings.detail }),
+    ...(settings.multiple === true ? { multiple: true as const } : {}),
+    ...(other === undefined ? {} : { other }),
+  };
+}
+
+function option(value: string, label: string, extra: Partial<CardOption> = {}): CardOption {
+  return { value, label, ...extra };
+}

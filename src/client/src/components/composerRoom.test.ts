@@ -59,8 +59,8 @@ describe("the step footer of a question card", () => {
    * reader's own. A footer that does not overlap cannot hide anything.
    */
   it("does not float over the options", async () => {
-    const { AskUserCard } = await import("./AskUserCard");
-    const rule = /\.form-footer\s*\{([^}]*)\}/u.exec(String(AskUserCard.styles))?.[1] ?? "";
+    const { InteractiveCard } = await import("./InteractiveCard");
+    const rule = /\.form-footer\s*\{([^}]*)\}/u.exec(String(InteractiveCard.styles))?.[1] ?? "";
 
     expect(rule).not.toMatch(/position:\s*sticky/u);
   });

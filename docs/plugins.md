@@ -40,7 +40,7 @@ Pi extensions running under PI WEB's session daemon can ask the user questions w
 - **Settled cards stay until dismissed.** An answered or closed dialog leaves its outcome card in the transcript so the user can see what became of it — answers travel to the extension alone, so the card is the only record of the exchange. The card is browser-local: only a browser that saw the dialog open renders it, and switching sessions or reloading drops it.
 - **Timeouts.** The extension's own `timeout` option applies, and the daemon offers an unattended-dialog safety valve, `extensionDialogsTimeoutMs` (default `0`, which waits indefinitely; set a positive number of milliseconds to auto-cancel — see [Extension dialogs](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/config.md#extension-dialogs)). The effective deadline is the sooner of the two. A dialog that closes without an answer resolves with its kind's cancel value: `false` for confirm, `undefined` for select, input and editor.
 - **Abort and runtime replacement.** Aborting the current run settles a dialog opened during that run immediately, at abort-request time, with its cancel value. Replacing the session runtime (`/reload`, session disposal) settles any still-open dialog the same way; hooks on the new runtime open fresh dialogs. The extension's own `AbortSignal` is honored: aborting it dismisses the dialog and resolves with the cancel value.
-- **`custom` draws a card.** A terminal screen opened with `custom` is drawn as a card in the conversation: a menu as choices with Confirm, anything else as its text with a text field. The text is drawn in the app's font, its roles (`accent`, `dim`, the selected row…) in the app's colours, without the component's box drawing or key-hint row, under the extension's name, at the width of the card (the component is drawn at the columns the card has room for, as pi's terminal draws at its width): the `theme` the factory receives marks the roles, and pi's own components inside the screen draw with it too. The field types into the component as you type (what you delete goes as Backspace), so a list that searches as you type follows it, and Send presses Enter; tapping a line moves the component's cursor to that item, one key at a time, and selects it; a tap on no item selects nothing. Cancel first gives the component the Esc pi's terminal sends, so a screen that closes itself on Esc ends as it would in pi. There are no arrow-key buttons; on a keyboard, keys reach the screen while it has focus. The component receives keys as pi's terminal sends them and reads pi's own keybindings. A screen declared with `web: { kind: "questions", ... }` is drawn as the Questions card and its terminal component never mounts (a question's `customInput: "field"` shows its typed answer as a box under the options rather than behind a Custom choice); `ctx.ui.piWebScreens` lists the declarations this host draws.
+- **`custom` draws a card.** A terminal screen opened with `custom` is drawn as a card in the conversation: a menu as choices with Confirm, anything else as its text with a text field. The text is drawn in the app's font, its roles (`accent`, `dim`, the selected row…) in the app's colours, without the component's box drawing or key-hint row, under the extension's name, at the width of the card (the component is drawn at the columns the card has room for, as pi's terminal draws at its width): the `theme` the factory receives marks the roles, and pi's own components inside the screen draw with it too. The field types into the component as you type (what you delete goes as Backspace), so a list that searches as you type follows it, and Send presses Enter; tapping a line moves the component's cursor to that item, one key at a time, and selects it; a tap on no item selects nothing. Cancel first gives the component the Esc pi's terminal sends, so a screen that closes itself on Esc ends as it would in pi. There are no arrow-key buttons; on a keyboard, keys reach the screen while it has focus. The component receives keys as pi's terminal sends them and reads pi's own keybindings. A screen declared with `web: { kind: "card", fields: [...] }` is drawn as an interactive card and its terminal component never mounts; see [Interactive cards](#interactive-cards). `ctx.ui.piWebScreens` lists the declarations this host draws.
 - **Every dialog is shown, as pi's terminal shows it.** An empty title gets a generic heading, a select with no options says so and offers Cancel, repeated and blank options are listed as given, and any number of options is shown. Only the status payload is bounded: a title or message longer than 32,000 characters is cut, and the cut says how much is missing. A dialog kind PI WEB does not know rejects the extension's call, and the open conversation says that an extension asked something PI WEB could not show.
 - **`notify` is a status line in the conversation.** An info notice replaces the previous info line while that line is still the last thing in the conversation; a warning or an error is kept, and a repeat within ten seconds counts up instead of adding a line. Notices are momentary: a browser that was not open, or that reloads, does not see them.
 - **Standing values are drawn, and every open browser sees them.** `setWorkingMessage` changes the working row's words and `setWorkingIndicator` its mark (no frames hides it; otherwise the first frame stands still); `setWorkingVisible(false)` hides both, and the turn clock stays. `setHiddenThinkingLabel` labels a folded thinking block, and `setTitle` names the browser tab, after the π mark, while that session is open in the chat view. The daemon holds these values per session, so a browser that opens or reloads the session reads them as they stand; reloading the session's extensions clears them, as in pi, and so does closing the session's runtime. Each text is bounded at 1,000 characters.
@@ -59,7 +59,7 @@ Pi extensions running under PI WEB's session daemon can ask the user questions w
 | --- | --- |
 | `confirm`, `select`, `input` | A docked card in the conversation; resolves with the answer, or the kind's cancel value. |
 | `editor` | A card with a multi-line text box holding the extension's text; resolves with the edited text, or `undefined`. |
-| `custom` | A card: a menu as choices with Confirm, anything else as its text in the app's own colours, a tap selecting the tapped item, with a field that types into it; Cancel sends Esc first. A screen declared with `web: { kind: "questions" }` is the Questions card. |
+| `custom` | A card: a menu as choices with Confirm, anything else as its text in the app's own colours, a tap selecting the tapped item, with a field that types into it; Cancel sends Esc first. A screen declared with `web: { kind: "card" }` is an interactive card. |
 | `notify` | One line in the conversation; info replaces the previous info line, warnings and errors are kept. |
 | `setWorkingMessage`, `setWorkingVisible`, `setWorkingIndicator` | The working row's words and mark while the agent runs. |
 | `setHiddenThinkingLabel` | The label of a folded thinking block. |
@@ -89,6 +89,39 @@ An extension's own renderers draw its rows, as in pi's terminal:
 - The renderers live in the session's runtime. A session PI WEB reads without starting it (a closed session) has none: its custom messages show their content, and its custom entries are not shown until the session runs and the page reads it again.
 
 One browser-local caveat: reloading the browser while a new session is still being created loses the browser-local pending-start row, so the dialog card disappears from view. The daemon-side dialog still settles at its deadline and the session appears in the sidebar once creation completes.
+
+
+### Interactive cards
+
+An extension can declare what its `ctx.ui.custom` screen is, so PI WEB draws it as a card of its own instead of the terminal component. pi ignores the `web` option and keeps drawing the component in its terminal.
+
+```ts
+const value = await ctx.ui.custom(factory, {
+  web: {
+    kind: "card",
+    title: "Which plan?",
+    submit: "Send",
+    fields: [
+      { type: "text", id: "why", text: "Both plans keep the API; B also moves the store." },
+      { type: "choice", id: "plan", label: "Plan", options: [{ value: "a", label: "Plan A" }, { value: "b", label: "Plan B" }], other: "choice", required: true },
+      { type: "input", id: "note", label: "Anything else?", multiline: true },
+      { type: "confirm", id: "push", label: "Push when done?", confirm: "Push", decline: "Keep local" },
+    ],
+  },
+});
+// { values: { plan: { selected: ["b"] }, note: { text: "..." }, push: { confirmed: true } } }, or undefined when closed unanswered
+```
+
+| Field | Draws | Value |
+|---|---|---|
+| `text` | Read-only text shown with the field after it | none |
+| `choice` | Options, one or several (`multiple`); `other: "choice"` adds a Custom option that opens a box, `other: "field"` a box under the options | `{ selected, other? }` |
+| `input` | One line, or a box (`multiline`), with an optional `placeholder` | `{ text }` |
+| `confirm` | Two choices, `confirm` and `decline` ("Yes" and "No" when absent) | `{ confirmed }` |
+
+- The card shows one answerable field at a time, with Back and Next, and sends from the last one (`submit` names the button). A field with `required: true` must be filled before the card moves past it; other fields may be left untouched and are then absent from `values`.
+- Bounds: 20 fields, 12 options a choice, 1,000 characters a label, 4,000 characters of typed text. A declaration that does not fit is refused, and the terminal screen is drawn instead; the session daemon's log says why.
+- `ctx.ui.piWebScreens` lists `"card"` when the host draws cards, so an extension can tell "closed unanswered" from "no card here" before it asks again another way.
 
 ## Trust model
 

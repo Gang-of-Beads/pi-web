@@ -8,6 +8,7 @@ const publicApiDeclarationPaths = [
   "shared/activeAgentProfile.d.ts",
   "shared/apiTypes.d.ts",
   "shared/capabilities.d.ts",
+  "shared/interactiveCard.d.ts",
   "shared/machineStatus.d.ts",
   "shared/piWebStatusParsing.d.ts",
   "shared/pluginApiTypes.d.ts",
@@ -69,6 +70,7 @@ export async function smokeInstalledPluginApi({ packageRoot, fixtureRoot, repoRo
     assertStrictPluginConsumer("browser-only", [browserPath], mode, packageRoot, repoRoot, [
       "dist/plugin-api.d.ts",
       "dist/shared/apiTypes.d.ts",
+      "dist/shared/interactiveCard.d.ts",
       "dist/shared/machineStatus.d.ts",
       "dist/shared/pluginApiTypes.d.ts",
       "dist/shared/thinkingLevels.d.ts",
@@ -76,6 +78,7 @@ export async function smokeInstalledPluginApi({ packageRoot, fixtureRoot, repoRo
     assertStrictPluginConsumer("server-only", [serverPath], mode, packageRoot, repoRoot, [
       "dist/server-plugin-api.d.ts",
       "dist/shared/apiTypes.d.ts",
+      "dist/shared/interactiveCard.d.ts",
       "dist/shared/machineStatus.d.ts",
       "dist/shared/piWebStatusParsing.d.ts",
       "dist/shared/pluginApiTypes.d.ts",
@@ -85,6 +88,7 @@ export async function smokeInstalledPluginApi({ packageRoot, fixtureRoot, repoRo
       "dist/plugin-api.d.ts",
       "dist/server-plugin-api.d.ts",
       "dist/shared/apiTypes.d.ts",
+      "dist/shared/interactiveCard.d.ts",
       "dist/shared/machineStatus.d.ts",
       "dist/shared/piWebStatusParsing.d.ts",
       "dist/shared/pluginApiTypes.d.ts",

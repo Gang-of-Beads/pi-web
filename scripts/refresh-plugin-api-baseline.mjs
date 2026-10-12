@@ -13,6 +13,7 @@ const declarations = [
   "shared/activeAgentProfile.d.ts",
   "shared/apiTypes.d.ts",
   "shared/capabilities.d.ts",
+  "shared/interactiveCard.d.ts",
   "shared/machineStatus.d.ts",
   "shared/piWebStatusParsing.d.ts",
   "shared/pluginApiTypes.d.ts",

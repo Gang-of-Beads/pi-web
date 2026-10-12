@@ -23,33 +23,39 @@ export default function (pi: {
     models: [{ id: "flaky", name: "Flaky probe model", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 32000, maxTokens: 1000 },
       { id: "small", name: "Small-window probe model", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 8000, maxTokens: 1000 }],
   });
-  pi.registerCommand("questions-probe", {
-    description: "Open a custom screen declared as questions (probe-questions-screen)",
-    handler: async (_args, ctx) => {
-      const answer: unknown = await ctx.ui.custom(() => {
-        console.error("[ui-questions-probe] factory ran");
-        return { render: () => ["questions probe terminal frame"], handleInput: () => undefined };
-      }, {
-        web: {
-          kind: "questions",
-          title: "Questions probe",
-          questions: [{ id: "pick", question: "Pick one", detail: "Probe detail", options: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }], custom: false }],
-        },
-      });
-      console.error(`[ui-questions-probe] returned ${JSON.stringify(answer)}`);
-    },
+  const cardProbe = (name: string, description: string, web: unknown): void => {
+    pi.registerCommand(name, {
+      description,
+      handler: async (_args, ctx) => {
+        const answer: unknown = await ctx.ui.custom(() => {
+          console.error(`[${name}] factory ran`);
+          return { render: () => [`${name} terminal frame`], handleInput: () => undefined };
+        }, { web });
+        console.error(`[${name}] returned ${JSON.stringify(answer)}`);
+        ctx.ui.notify(`${name} returned ${JSON.stringify(answer)}`, "info");
+      },
+    });
+  };
+  cardProbe("card-probe", "Open an interactive card of every field type (docs/design/interactive-card.md)", {
+    kind: "card",
+    title: "Card probe",
+    submit: "Send it",
+    fields: [
+      { type: "text", id: "intro", text: "Every field type, one per step." },
+      { type: "choice", id: "plan", label: "Which plan?", detail: "Plan B also moves the store.", options: [{ value: "a", label: "Plan A" }, { value: "b", label: "Plan B", detail: "Moves the store" }], other: "choice" },
+      { type: "choice", id: "langs", label: "Which languages?", options: [{ value: "ts", label: "TypeScript" }, { value: "go", label: "Go" }, { value: "rs", label: "Rust" }], multiple: true, other: "field" },
+      { type: "input", id: "note", label: "Why?", multiline: true, placeholder: "A sentence is enough", required: true },
+      { type: "input", id: "name", label: "Branch name", placeholder: "feature/..." },
+      { type: "confirm", id: "push", label: "Push when done?", confirm: "Push", decline: "Keep local" },
+    ],
   });
-  pi.registerCommand("gated-questions-probe", {
-    description: "Open a screen through pi-goal's own piWebScreens gate (questionsOption)",
-    handler: async (_args, ctx) => {
-      const { questionsOption } = await import("/Users/hanxiao.du/.pi/agent/git/github.com/Gang-of-Beads/pi-goal/extensions/web-questions.ts");
-      const screens: unknown = Reflect.get(ctx.ui, "piWebScreens");
-      const option = questionsOption(ctx, "Gated probe", [{ id: "pick", question: "Pick one (gated)", options: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }] }]);
-      console.error(`[gated-questions-probe] piWebScreens=${JSON.stringify(screens)} declared=${String(option !== undefined)}`);
-      const answer: unknown = await ctx.ui.custom(() => ({ render: () => ["gated probe terminal frame", "▸ Alpha", "  Beta", "enter to select · esc to close"], handleInput: () => undefined }), option);
-      console.error(`[gated-questions-probe] returned ${JSON.stringify(answer)}`);
-      ctx.ui.notify(`gated probe: piWebScreens=${JSON.stringify(screens)} declared=${String(option !== undefined)}`, "info");
-    },
+  cardProbe("card-single-probe", "Open an interactive card with one choice", {
+    kind: "card",
+    fields: [{ type: "choice", id: "pick", label: "Pick one", options: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }] }],
+  });
+  cardProbe("card-refused-probe", "Declare a card core refuses (a choice without options), so the terminal frame is drawn", {
+    kind: "card",
+    fields: [{ type: "choice", id: "pick", label: "No options", options: [] }],
   });
   const items = ["first", "second", "third"];
   const openScreen = (ctx: any): Promise<void> => {

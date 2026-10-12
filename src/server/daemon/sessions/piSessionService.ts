@@ -131,7 +131,8 @@ import { drawCustomRow, drawToolCall, drawToolResult, showsCustomEntry, transfor
 import { ExtensionShortcuts, type ExtensionShortcutRunner } from "./extensionShortcuts.js";
 import { extensionFooterData } from "./extensionFooterData.js";
 import { ExtensionCompletionStack } from "./extensionCompletions.js";
-import { DECLARABLE_SCREENS, declaredScreen, refusedDeclarationSummary } from "./declaredScreen.js";
+import { DECLARABLE_SCREENS, refusedDeclarationSummary } from "./declaredScreen.js";
+import { readInteractiveCard } from "../../../shared/interactiveCardReader.js";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
 import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
@@ -1342,7 +1343,7 @@ function customScreenOptions(opts: unknown): {
   const signal: unknown = Reflect.get(opts, "signal");
   const timeout: unknown = Reflect.get(opts, "timeout");
   const web: unknown = Reflect.get(opts, "web");
-  const screen = declaredScreen(web);
+  const screen = readInteractiveCard(web);
   if (web !== undefined && screen === undefined) console.error("[extension-screen] declaration refused, drawing the terminal frame:", refusedDeclarationSummary(web));
   return {
     ...(signal instanceof AbortSignal ? { signal } : {}),
@@ -2103,8 +2104,8 @@ export class PiSessionService implements SessionRouteService {
     // Captured before the factory runs so the frame belongs to the extension.
     this.customScreenStack = new Error().stack;
     if (options.screen !== undefined) {
-      const questionsId = this.openCustomDialog(session, { screen: options.screen }, options.screen.title ?? "Questions");
-      return await this.customDialogClosed(session, questionsId, options);
+      const cardId = this.openCustomDialog(session, { screen: options.screen }, options.screen.title ?? this.drawnScreenTitle(session, this.customScreenStack));
+      return await this.customDialogClosed(session, cardId, options);
     }
     const harness = customScreenHarness();
     let settle: (result: unknown) => void = () => undefined;

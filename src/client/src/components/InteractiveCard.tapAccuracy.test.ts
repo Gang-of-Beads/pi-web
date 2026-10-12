@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it } from "vitest";
-import type { AskUserQuestion, PendingAskUser } from "../../../shared/apiTypes";
-import { AskUserCard } from "./AskUserCard";
+import type { CardField, CardOption } from "../../../shared/interactiveCard";
+import type { OpenCard } from "../cardIdentity";
+import { InteractiveCard } from "./InteractiveCard";
 
 /**
  * The owner's phone delivered option taps to the Custom row often enough to be
@@ -19,7 +20,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-function cardStyleText(card: AskUserCard): string {
+function cardStyleText(card: InteractiveCard): string {
   const sheets = card.shadowRoot?.adoptedStyleSheets ?? [];
   const text = sheets.map((sheet) => {
     const rules = [...sheet.cssRules].map((rule) => rule.cssText).join("\n");
@@ -31,21 +32,12 @@ function cardStyleText(card: AskUserCard): string {
   return card.constructor.toString();
 }
 
-function openAsk(questions: AskUserQuestion[]): PendingAskUser {
-  return { askId: "ask-1", askedAt: "2026-07-20T10:00:00.000Z", questions };
-}
 
-function question(id: string, text: string, options: AskUserQuestion["options"]): AskUserQuestion {
-  return { id, question: text, options };
-}
 
-function option(value: string, label: string): AskUserQuestion["options"][number] {
-  return { value, label };
-}
 
-async function mount(questions: AskUserQuestion[]): Promise<AskUserCard> {
-  const card = new AskUserCard();
-  card.ask = openAsk(questions);
+async function mount(questions: CardField[]): Promise<InteractiveCard> {
+  const card = new InteractiveCard();
+  card.open = openCard(questions);
   card.draftSessionId = "local:session-1";
   document.body.append(card);
   await card.updateComplete;
@@ -104,3 +96,28 @@ describe("ask option hit targets", () => {
     expect(custom.checked).toBe(false);
   });
 });
+
+interface QuestionSettings { detail?: string; multiple?: boolean; custom?: boolean; customInput?: "field" }
+
+function openCard(fields: CardField[]): OpenCard {
+  return { dialogId: "ask-1", card: { kind: "card", fields } };
+}
+
+/** A choice field as a question once was: a Custom choice unless it takes no typed answer; no options is a typed field. */
+function question(id: string, text: string, options: CardOption[], settings: QuestionSettings = {}): CardField {
+  if (options.length === 0) return { type: "input", id, label: text, multiline: true, ...(settings.detail === undefined ? {} : { detail: settings.detail }) };
+  const other = settings.custom === false ? undefined : settings.customInput === "field" ? "field" : "choice";
+  return {
+    type: "choice",
+    id,
+    label: text,
+    options,
+    ...(settings.detail === undefined ? {} : { detail: settings.detail }),
+    ...(settings.multiple === true ? { multiple: true as const } : {}),
+    ...(other === undefined ? {} : { other }),
+  };
+}
+
+function option(value: string, label: string, extra: Partial<CardOption> = {}): CardOption {
+  return { value, label, ...extra };
+}
