@@ -248,7 +248,7 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
   if (typeof content === "string") return content !== "" ? [withDisplay({ type: "text", text: content }, getString(message, "displayText"))] : [];
   if (!Array.isArray(content)) return objectFallback(content);
 
-  return content.flatMap((part): ChatPart[] => {
+  const parts = content.flatMap((part): ChatPart[] => {
     const type = getString(part, "type");
     const text = getString(part, "text");
     if (type === "text") {
@@ -281,9 +281,22 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
       return [{ type: "text", text: "[image]" }];
     }
     return objectFallback(part);
-  }).map((part) => part.type === "text" && getString(message, "role") === "toolResult"
-    ? toolResultPartFromText(part.text, message)
-    : part);
+  });
+  return getString(message, "role") === "toolResult" ? withOneToolResultPart(parts, message) : parts;
+}
+
+/**
+ * A tool result's text parts as the one result its row shows, joined as the live event joins them.
+ * Each text part became its own result before, so a result of two (a codemode run: its summary and
+ * the script's output) filled the card with the first and left the second as a stray "codemode
+ * result" row that only a reload showed.
+ */
+function withOneToolResultPart(parts: ChatPart[], message: unknown): ChatPart[] {
+  const texts = parts.flatMap((part) => (part.type === "text" ? [part.text] : []));
+  if (texts.length === 0) return parts;
+  const first = parts.findIndex((part) => part.type === "text");
+  const rest = parts.filter((part) => part.type !== "text");
+  return [...rest.slice(0, first), toolResultPartFromText(texts.filter((text) => text !== "").join("\n"), message), ...rest.slice(first)];
 }
 
 /**
