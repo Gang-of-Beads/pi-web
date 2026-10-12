@@ -5725,7 +5725,7 @@ export class PiSessionService implements SessionRouteService {
       this.commandService.observeSessionEvent(session.sessionId, settledStop);
     }
     this.observeInboxFacts(session, event);
-    this.events.publish(session.sessionId, this.withExtensionDrawing(session, event, toClientEvent(event, session.thinkingLevel)));
+    if (!isNestedToolEvent(event)) this.events.publish(session.sessionId, this.withExtensionDrawing(session, event, toClientEvent(event, session.thinkingLevel)));
     const shownEntry = shownAppendedEntry(event, this.drawingOf(session));
     if (shownEntry !== undefined) this.events.publish(session.sessionId, { type: "message.end", message: shownEntry });
     this.publishActivityForEvent(session, event);
@@ -7230,6 +7230,17 @@ function withCustomDrawing(event: SessionUiEvent, drawing: TranscriptDrawing): S
   if (event.type !== "message.end" || event.message === undefined) return event;
   const drawn = withDrawing(event.message, drawing, undefined);
   return drawn === event.message ? event : { ...event, message: drawn };
+}
+
+/**
+ * A tool execution event of a call another tool made through `ctx.executeTool()` (a codemode
+ * script's reads and commands). It makes no transcript row, as in pi's terminal: the calling tool
+ * is the one row the model issued, and its own drawing lists the calls it made, live and after a
+ * reload alike. A row per nested call appeared only live and vanished on reload (owner,
+ * 2026-10-12: "A, follow pi"). The session step still reads these events.
+ */
+function isNestedToolEvent(event: unknown): boolean {
+  return getString(event, "type")?.startsWith("tool_execution_") === true && getString(event, "parentToolCallId") !== undefined;
 }
 
 /**
