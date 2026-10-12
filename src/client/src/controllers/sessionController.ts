@@ -1,5 +1,5 @@
 import { withLaterActivity } from "../sync/sessionBoard";
-import { api as defaultApi, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Project, type Workspace } from "../api";
+import { api as defaultApi, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Project, type Workspace } from "../api";
 import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand } from "../commandLedger";
@@ -17,7 +17,7 @@ import type { SessionTranscriptTail } from "../../../shared/apiTypes";
 import { isSessionNotFoundError, sendRefusalNotice, sendRefusalWords, sessionFailureRoute } from "../sessionNotFound";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
-import { resetWorkspaceScopedState, type AppState, type ClosedExtensionDialog } from "../appState";
+import { resetWorkspaceScopedState, type AppState } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
 import { carryUnsettledForward } from "../transcriptReconcile";
@@ -410,7 +410,7 @@ export class SessionController {
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
     // finally block when the request settles.
-    this.setState({ selectedSession: undefined, transcriptSync: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
+    this.setState({ selectedSession: undefined, transcriptSync: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {
@@ -537,8 +537,7 @@ export class SessionController {
       // the connection's status catalog knew nothing about the session yet, so a
       // dialog the daemon held open vanished a moment after it appeared.
       pendingDialogs: pendingDialogsForSelection(this.getState(), session),
-      closedDialogs: [],
-      dismissedDialogIds: [],
+      settledDialogIds: [],
       availableThinkingLevels: [],
       newerPendingCount: 0,
     });
@@ -555,7 +554,7 @@ export class SessionController {
         const page = await this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
         if (seq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) return;
         const history = this.transcripts.mergeHistory(transcriptKey, page);
-        this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [] });
+        this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [] });
         this.locatedAfterGone = undefined;
         this.onSelectedSessionReady?.({ machineId, session });
         this.settleSelectionUrl(seq, options?.updateUrl !== false);
@@ -1198,7 +1197,7 @@ export class SessionController {
         sessions: nextSessions,
         sessionStatuses: omitKeys(state.sessionStatuses, affectedIds),
         sessionActivities: omitKeys(state.sessionActivities, affectedIds),
-        ...(selectedAffected ? { status: undefined, activity: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [] } : {}),
+        ...(selectedAffected ? { status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [] } : {}),
       });
 
       if (state.selectedSession !== undefined && deletedIdSet.has(state.selectedSession.id)) {
@@ -1398,7 +1397,7 @@ export class SessionController {
         keeps: (sessionId) => this.pendingSessionStarts.has(sessionId) || (this.activityFrameMarks.get(sessionId) ?? 0) > framesAtRequest,
         adopts: (sessionId) => sessionId !== selectedId,
       }),
-      ...(selectedId === undefined || selectedDialogs.length === 0 ? {} : { pendingDialogs: openDialogsAfterDismissals(selectedDialogs, this.getState().dismissedDialogIds) }),
+      ...(selectedId === undefined || selectedDialogs.length === 0 ? {} : { pendingDialogs: openDialogsAfterDismissals(selectedDialogs, this.getState().settledDialogIds) }),
     });
   }
 
@@ -1657,13 +1656,13 @@ export class SessionController {
         this.applyStatusToMap(response.sessionStatus);
         return;
       }
-      // When this call closed the dialog, its outcome is recorded right away so
-      // the card shows what the user gave; the daemon's dialog.closed event
-      // then finds the dialog already closed here and stays a no-op.
+      // When this call closed the dialog, it is settled right away; the
+      // daemon's dialog.closed event then finds it already closed here and
+      // stays a no-op.
       const outcome: ExtensionDialogOutcome | undefined = response.outcome;
       if (outcome !== undefined) {
         const dialog = this.getState().pendingDialogs.find((pending) => pending.dialogId === outcome.dialogId);
-        if (dialog !== undefined) this.recordClosedDialog({ dialog, reason: outcome.reason, ...(outcome.answer === undefined ? {} : { answer: outcome.answer }) });
+        if (dialog !== undefined) this.settleClosedDialog(dialog);
       }
       // Both outcomes carry the recomputed status, so no follow-up status
       // request is needed to learn what the session's open dialogs are now.
@@ -1689,13 +1688,12 @@ export class SessionController {
     try {
       const response = await close({ ...session, id: backendSessionId }, pending.machineId);
       if (selectionSeq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) return;
-      // Same outcome-first ordering as the ready-session path: the card shows
-      // what the user gave, and the daemon's dialog.closed frame then finds
-      // the dialog already closed here and stays a no-op.
+      // Same ordering as the ready-session path: settled at once, and the
+      // daemon's dialog.closed frame then finds it already closed here.
       const outcome: ExtensionDialogOutcome | undefined = response.outcome;
       if (outcome !== undefined) {
         const dialog = this.getState().pendingDialogs.find((candidate) => candidate.dialogId === outcome.dialogId);
-        if (dialog !== undefined) this.recordClosedDialog({ dialog, reason: outcome.reason, ...(outcome.answer === undefined ? {} : { answer: outcome.answer }) });
+        if (dialog !== undefined) this.settleClosedDialog(dialog);
       }
       this.applyPendingStartStatus(pending, response.sessionStatus);
     } catch (error) {
@@ -2092,8 +2090,7 @@ export class SessionController {
       status: undefined,
       activity,
       pendingDialogs: [],
-      closedDialogs: [],
-      dismissedDialogIds: [],
+      settledDialogIds: [],
       availableThinkingLevels: [],
       treeDialog: undefined,
       ...(activity === undefined ? {} : { sessionActivities: { ...state.sessionActivities, [session.id]: activity } }),
@@ -2139,7 +2136,7 @@ export class SessionController {
       sessionActivities: omitSessionActivity(state.sessionActivities, tempId),
       sendingPrompts: moveRecordKey(state.sendingPrompts, tempId, cachedSession.id),
       clientQueuedSessionMessages: moveRecordKey(state.clientQueuedSessionMessages, tempId, cachedSession.id),
-      ...(wasSelected ? { selectedSession: cachedSession, status: state.sessionStatuses[cachedSession.id], activity: state.sessionActivities[cachedSession.id], pendingDialogs: state.sessionStatuses[cachedSession.id]?.pendingDialogs ?? [], closedDialogs: [], dismissedDialogIds: [] } : {}),
+      ...(wasSelected ? { selectedSession: cachedSession, status: state.sessionStatuses[cachedSession.id], activity: state.sessionActivities[cachedSession.id], pendingDialogs: state.sessionStatuses[cachedSession.id]?.pendingDialogs ?? [], settledDialogIds: [] } : {}),
       ...clearErrorPatch(),
     });
     this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
@@ -2444,7 +2441,7 @@ export class SessionController {
       // one taken before the close can arrive after it. Re-opening a dismissed
       // dialog would record its outcome card again and cost the reader a second
       // tap, so those ids are held back.
-      ...(isSelected ? { pendingDialogs: openDialogsAfterDismissals(status.pendingDialogs, state.dismissedDialogIds) } : {}),
+      ...(isSelected ? { pendingDialogs: openDialogsAfterDismissals(status.pendingDialogs, state.settledDialogIds) } : {}),
       ...(messages === state.messages ? {} : { messages }),
       ...(commandLedger === state.commandLedger ? {} : { commandLedger }),
     });
@@ -2704,47 +2701,46 @@ export class SessionController {
     // that would wipe the genuinely re-opened card the frame after it appeared.
     this.setState({
       pendingDialogs: [...state.pendingDialogs, dialog],
-      ...(state.dismissedDialogIds.some((id) => id === dialog.dialogId)
-        ? { dismissedDialogIds: state.dismissedDialogIds.filter((id) => id !== dialog.dialogId) }
+      ...(state.settledDialogIds.some((id) => id === dialog.dialogId)
+        ? { settledDialogIds: state.settledDialogIds.filter((id) => id !== dialog.dialogId) }
         : {}),
     });
   }
 
-  private applyClosedDialog(dialogId: string, reason: ExtensionDialogCloseReason, answer: ExtensionDialogAnswer | undefined): void {
+  private applyClosedDialog(dialogId: string): void {
     // A close for a dialog that is not on screen is already reflected here
     // (e.g. the answering browser's own response landed first), so it must not
     // clear or duplicate other cards.
     const dialog = this.getState().pendingDialogs.find((pending) => pending.dialogId === dialogId);
     if (dialog === undefined) return;
-    this.recordClosedDialog({ dialog, reason, ...(answer === undefined ? {} : { answer }) });
+    this.settleClosedDialog(dialog);
   }
 
-  private recordClosedDialog(closed: ClosedExtensionDialog): void {
+  /**
+   * A dialog that closed leaves no card (state-diagram D2, owner 2026-10-12): what became of it is
+   * the tool row's, as in pi. Settling still matters: its id joins the suppression list at once, so
+   * a status snapshot built before the close cannot re-open a question that already settled.
+   */
+  private settleClosedDialog(dialog: PendingExtensionDialog): void {
     const state = this.getState();
-    if (state.closedDialogs.some((entry) => entry.dialog.dialogId === closed.dialog.dialogId)) return;
+    if (state.settledDialogIds.includes(dialog.dialogId)) return;
     const sessionId = state.selectedSession?.id;
-    // The outcome card is a display decision; suppressing the dialog is a
-    // correctness one. Every settled id joins the suppression list at the
-    // moment of settling: the id used to reach it only by way of the removed
-    // Dismiss button, so a status snapshot built before the close could
-    // re-open a question that had already settled without one.
     this.setState({
-      pendingDialogs: state.pendingDialogs.filter((pending) => pending.dialogId !== closed.dialog.dialogId),
-      dismissedDialogIds: [...state.dismissedDialogIds, closed.dialog.dialogId],
-      ...(leavesOutcomeCard(closed) ? { closedDialogs: [...state.closedDialogs, closed] } : {}),
+      pendingDialogs: state.pendingDialogs.filter((pending) => pending.dialogId !== dialog.dialogId),
+      settledDialogIds: [...state.settledDialogIds, dialog.dialogId],
     });
     if (sessionId !== undefined) {
       const sessionKey = machineSessionKey(selectedMachineId(state), sessionId);
-      clearDialogAnswerDraft(sessionKey, closed.dialog.dialogId);
-      clearAskDraft(sessionKey, closed.dialog.dialogId);
+      clearDialogAnswerDraft(sessionKey, dialog.dialogId);
+      clearAskDraft(sessionKey, dialog.dialogId);
     }
     // The card is gone; the status map must stop listing the dialog too, or
     // the closed question rides the map back on the next selection and the
     // row keeps its asking marker.
     this.patchSessionStatus(sessionId, (sessionStatus) => {
       if (sessionStatus.pendingDialogs === undefined) return sessionStatus;
-      if (!sessionStatus.pendingDialogs.some((pending) => pending.dialogId === closed.dialog.dialogId)) return sessionStatus;
-      return { ...sessionStatus, pendingDialogs: sessionStatus.pendingDialogs.filter((pending) => pending.dialogId !== closed.dialog.dialogId) };
+      if (!sessionStatus.pendingDialogs.some((pending) => pending.dialogId === dialog.dialogId)) return sessionStatus;
+      return { ...sessionStatus, pendingDialogs: sessionStatus.pendingDialogs.filter((pending) => pending.dialogId !== dialog.dialogId) };
     });
   }
 
@@ -2917,7 +2913,7 @@ export class SessionController {
       return;
     }
     if (event.type === "dialog.closed") {
-      this.dialogScope.observe(event, () => { this.applyClosedDialog(event.dialogId, event.reason, event.answer); });
+      this.dialogScope.observe(event, () => { this.applyClosedDialog(event.dialogId); });
       return;
     }
     const view = this.getState();
@@ -3060,7 +3056,7 @@ export class SessionController {
         const state = this.getState();
         const knownIds = new Set<string>([
           ...state.pendingDialogs.map((pendingDialog) => pendingDialog.dialogId),
-          ...state.closedDialogs.map((closed) => closed.dialog.dialogId),
+          ...state.settledDialogIds,
         ]);
         const recovered = (status.pendingDialogs ?? []).filter((recoveredDialog) => !knownIds.has(recoveredDialog.dialogId));
         if (recovered.length > 0) this.setState({ pendingDialogs: [...state.pendingDialogs, ...recovered] });
@@ -3089,7 +3085,7 @@ export class SessionController {
       return;
     }
     if (event.type === "dialog.closed") {
-      this.applyClosedDialog(event.dialogId, event.reason, event.answer);
+      this.applyClosedDialog(event.dialogId);
       return;
     }
     if (event.type === "status.update") this.applyPendingStartStatus(pending, event.status);
@@ -3197,32 +3193,6 @@ export class SessionController {
 }
 
 /**
- * Whether a settled dialog is worth a lasting outcome card in the transcript.
- *
- * Everything the user did is worth keeping, including dismissing a prompt:
- * `cancelled` is a deliberate action, not an absence of one. The single case
- * worth dropping is a *background* prompt that nobody acted on before it timed
- * out, because the extension that opened it will simply ask again — an update
- * notice on a five-minute timer would otherwise deposit a fresh card in the
- * conversation on every cycle, which on a phone is the whole screen.
- *
- * Run-scoped dialogs always leave a card: they belong to work the user started,
- * so even an unanswered timeout there is part of the story.
- *
- * An answered dialog leaves none. Answering is its own acknowledgment, and the
- * outcome is filed as a session notification for whatever surface a plugin
- * later gives that drawer, so a tail card would only be a row that never
- * leaves: the outcome cards are drawn after the transcript, so
- * nothing pushes them off the screen. Dropping the Dismiss button without
- * dropping the card is what pinned an answered update notice to the bottom of
- * the owner's phone.
- */
-function leavesOutcomeCard(closed: ClosedExtensionDialog): boolean {
-  if (closed.reason === "answered") return false;
-  return closed.reason !== "timeout" || closed.dialog.runScoped;
-}
-
-/**
  * The daemon's open list minus the dialogs this reader already dismissed. The
  * status projection describes what the daemon believed when it was built, which
  * for a dialog settled here is older news than the close this browser applied.
@@ -3237,11 +3207,11 @@ function pendingDialogsForSelection(state: AppState, session: SessionInfo): Pend
 
 function openDialogsAfterDismissals(
   pendingDialogs: readonly PendingExtensionDialog[] | undefined,
-  dismissedDialogIds: readonly string[],
+  settledDialogIds: readonly string[],
 ): PendingExtensionDialog[] {
   const open = pendingDialogs ?? [];
-  if (dismissedDialogIds.length === 0) return [...open];
-  const dismissed = new Set(dismissedDialogIds);
+  if (settledDialogIds.length === 0) return [...open];
+  const dismissed = new Set(settledDialogIds);
   return open.filter((dialog) => !dismissed.has(dialog.dialogId));
 }
 

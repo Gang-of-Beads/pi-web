@@ -34,7 +34,6 @@ import { isScrollKey, wheelReachesScroller } from "../readerScrollInput";
 const READER_INPUT_WINDOW_MS = 500;
 /** One wheel notch, as a scale factor: exp(-deltaY / this). */
 const WHEEL_ZOOM_STEP = 300;
-import type { ClosedExtensionDialog } from "../appState";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { sessionActivityCategory } from "../../../shared/sessionActivityState";
 import { isSessionActive } from "../../../shared/activity";
@@ -649,7 +648,6 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) pendingDialogs: PendingExtensionDialog[] = [];
   /** The browser's own receipts for commands it issued in this session. */
   @property({ attribute: false }) commandLedger: CommandLedgerEntry[] = [];
-  @property({ attribute: false }) closedDialogs: ClosedExtensionDialog[] = [];
   @property({ attribute: false }) onAnswerDialog?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancelDialog?: ExtensionDialogCancelCallback;
   @property({ attribute: false }) onDialogKey?: ExtensionDialogKeyCallback;
@@ -1003,7 +1001,7 @@ export class ChatView extends LitElement {
       this.savePreviousSessionScrollPosition(changed.get("sessionId"), changed.get("machineId"));
       this.prepareSessionUiState();
     }
-    if (changed.has("messages") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
+    if (changed.has("messages") || changed.has("pendingDialogs")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
   }
 
   protected override update(changed: Map<string, unknown>): void {
@@ -1069,8 +1067,8 @@ export class ChatView extends LitElement {
     if (changed.has("sessionId")) {
       this.openPages();
       this.restoreScrollPosition();
-    } else if (!changed.has("sessionId") && (changed.has("messages") || this.queueGrew(changed.get("status")) || changed.has("pendingDialogs") || changed.has("closedDialogs")) && this.pinnedToBottom) this.scrollToBottom();
-    if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("transcriptLoading") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
+    } else if (!changed.has("sessionId") && (changed.has("messages") || this.queueGrew(changed.get("status")) || changed.has("pendingDialogs")) && this.pinnedToBottom) this.scrollToBottom();
+    if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("transcriptLoading") || changed.has("pendingDialogs")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestPages(false);
     if (changed.has("messages") || changed.has("messageEnd") || changed.has("hasNewer")) this.newerRequested = false;
     this.publishScrollbarWidth();
@@ -1287,7 +1285,6 @@ export class ChatView extends LitElement {
           ${this.renderSessionActivity()}
           ${this.renderPendingMessages(commands, groups.length, pendingRows, pendingStart)}
           ${this.renderQueuedMessages()}
-          ${this.renderClosedDialogs()}
           ${this.renderWaitingForYou()}
         </div>
         ${this.renderJumpToBottom()}
@@ -1684,24 +1681,6 @@ export class ChatView extends LitElement {
           </article>
         `;
       })}
-    `;
-  }
-
-  /** Settled dialogs belong to the story, so they stay where they happened. */
-  private renderClosedDialogs() {
-    if (this.closedDialogs.length === 0) return null;
-    return html`
-      ${repeat(
-        this.closedDialogs,
-        (closed) => closed.dialog.dialogId,
-        (closed) => html`
-          <extension-dialog-card
-            class="closed-dialog-card"
-            data-scroll-anchor-id=${`closed-dialog:${closed.dialog.dialogId}`}
-            .outcome=${closed}
-          ></extension-dialog-card>
-        `,
-      )}
     `;
   }
 

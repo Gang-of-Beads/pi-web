@@ -2,11 +2,8 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PendingExtensionDialog } from "../../../shared/apiTypes";
-import type { ClosedExtensionDialog } from "../appState";
 import {
   ExtensionDialogCard,
-  extensionDialogCloseLabel,
-  extensionDialogCloseSummary,
   extensionDialogCountdownText,
   splitDialogTitle,
   type ExtensionDialogAnswerCallback,
@@ -171,63 +168,6 @@ describe("extension-dialog-card countdown", () => {
     expect(root.querySelector(".countdown")).toBeNull();
   });
 
-  it("stops ticking once the dialog closes", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-07-27T10:00:00.000Z"));
-    const card = await mountOpenDialog(openDialog({ timeoutAt: "2026-07-27T10:01:30.000Z" }));
-    card.outcome = closedDialog("timeout");
-    await card.updateComplete;
-
-    const before = renderRoot(card).textContent;
-    await vi.advanceTimersByTimeAsync(5_000);
-    await card.updateComplete;
-
-    expect(renderRoot(card).textContent).toBe(before);
-    expect(renderRoot(card).querySelector("[role='status']")).toBeNull();
-  });
-});
-
-describe("extension-dialog-card closed outcome", () => {
-  it("keeps the answer readable without charging a second tap to put it away", async () => {
-    const card = new ExtensionDialogCard();
-    card.outcome = closedDialog("answered", true);
-    document.body.append(card);
-    await card.updateComplete;
-    const root = renderRoot(card);
-
-    expect(root.querySelector(".header-status")?.textContent).toBe("Answered");
-    expect(root.querySelector(".answered-answer")?.textContent).toBe("Answered: Yes");
-    expect(root.querySelector("input, select, textarea")).toBeNull();
-    expect(buttonsWithText(root, "Yes")).toHaveLength(0);
-    expect(buttonsWithText(root, "Dismiss")).toHaveLength(0);
-  });
-
-  it("shows the timeout outcome as a quiet row with nothing left to tap", async () => {
-    const card = new ExtensionDialogCard();
-    card.outcome = closedDialog("timeout");
-    document.body.append(card);
-    await card.updateComplete;
-    const root = renderRoot(card);
-
-    expect(root.querySelector(".header-status")?.textContent).toBe("Timed out");
-    expect(root.querySelector(".answered-answer")?.textContent).toContain("timed out");
-    expect(buttonsWithText(root, "Dismiss")).toHaveLength(0);
-  });
-
-  it("shows a cancelled dialog as a quiet row with nothing left to tap", async () => {
-    // The tenth-plus report of the update dialog asking to be dismissed after
-    // it had already been dismissed: settled is settled, whatever the reason.
-    const card = new ExtensionDialogCard();
-    card.outcome = closedDialog("cancelled");
-    document.body.append(card);
-    await card.updateComplete;
-    const root = renderRoot(card);
-
-    expect(root.querySelector(".header-status")?.textContent).toBe("Cancelled");
-    expect(root.querySelector(".answered-answer")?.textContent).toContain("Dismissed without an answer");
-    expect(buttonsWithText(root, "Dismiss")).toHaveLength(0);
-    expect(root.querySelector("button")).toBeNull();
-  });
 });
 
 describe("splitDialogTitle", () => {
@@ -304,18 +244,6 @@ describe("extension-dialog-card long titles", () => {
     expect(renderRoot(card).querySelector(".dialog-detail")).toBeNull();
   });
 
-  it("keeps a closed card header to the heading line only", async () => {
-    const card = new ExtensionDialogCard();
-    card.outcome = {
-      dialog: openDialog({ title: "Confirm Goal Draft\nObjective: ship it" }),
-      reason: "answered",
-      answer: "Confirm",
-    };
-    document.body.append(card);
-    await card.updateComplete;
-
-    expect(renderRoot(card).querySelector("h2")?.textContent).toBe("Confirm Goal Draft");
-  });
 });
 
 describe("extensionDialogCountdownText", () => {
@@ -339,29 +267,6 @@ describe("extensionDialogCountdownText", () => {
 
   it("stays display-only once the deadline has passed", () => {
     expect(extensionDialogCountdownText("2026-07-27T09:59:59.000Z", now)).toBe("Auto-cancel imminent");
-  });
-});
-
-describe("extensionDialogCloseLabel and extensionDialogCloseSummary", () => {
-  it("labels every close reason", () => {
-    expect(extensionDialogCloseLabel("answered")).toBe("Answered");
-    expect(extensionDialogCloseLabel("cancelled")).toBe("Cancelled");
-    expect(extensionDialogCloseLabel("timeout")).toBe("Timed out");
-    expect(extensionDialogCloseLabel("aborted")).toBe("Aborted");
-    expect(extensionDialogCloseLabel("session-ended")).toBe("Session ended");
-  });
-
-  it("summarizes answers by kind", () => {
-    expect(extensionDialogCloseSummary(closedDialog("answered", false))).toBe("Answered: No");
-    expect(extensionDialogCloseSummary(closedDialog("answered", "Staging"))).toBe("Answered: Staging");
-    expect(extensionDialogCloseSummary(closedDialog("answered", ""))).toBe("Answered with an empty response.");
-  });
-
-  it("summarizes closes without an answer", () => {
-    expect(extensionDialogCloseSummary(closedDialog("cancelled"))).toBe("Dismissed without an answer.");
-    expect(extensionDialogCloseSummary(closedDialog("timeout"))).toContain("timed out");
-    expect(extensionDialogCloseSummary(closedDialog("aborted"))).toContain("run ended");
-    expect(extensionDialogCloseSummary(closedDialog("session-ended"))).toContain("session ended");
   });
 });
 
@@ -420,14 +325,6 @@ function openDialog(overrides: Partial<PendingExtensionDialog> = {}): PendingExt
     askedAt: "2026-07-27T10:00:00.000Z",
     runScoped: false,
     ...overrides,
-  };
-}
-
-function closedDialog(reason: ClosedExtensionDialog["reason"], answer?: ClosedExtensionDialog["answer"]): ClosedExtensionDialog {
-  return {
-    dialog: openDialog(),
-    reason,
-    ...(answer === undefined ? {} : { answer }),
   };
 }
 
@@ -545,10 +442,6 @@ describe("a screen the extension declared as questions", () => {
     expect(onAnswer).not.toHaveBeenCalled();
   });
 
-  it("records the answer by its label", () => {
-    expect(extensionDialogCloseSummary({ ...closedDialog("answered", { answers: [{ id: "confirm", values: ["0"] }] }), dialog: declared })).toBe("Answered: Confirm");
-    expect(extensionDialogCloseSummary({ ...closedDialog("answered", { answers: [] }), dialog: declared })).toBe("Sent without answering.");
-  });
 });
 
 /**

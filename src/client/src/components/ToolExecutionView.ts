@@ -39,8 +39,9 @@ export class ToolExecutionView extends LitElement {
     const visibleDiff = actualDiff ?? preview?.diff;
     const diffStats = visibleDiff === undefined ? undefined : countDiffLines(visibleDiff);
     const previewMismatch = actualDiff !== undefined && preview?.diff !== undefined && actualDiff !== preview.diff;
-    const errorText = execution.status === "error" ? execution.resultText : preview?.error;
-    const bodyText = visibleDiff === undefined ? execution.drawnResult?.join("\n") ?? execution.resultText : undefined;
+    const drawnResult = visibleDiff === undefined ? drawnResultText(execution) : undefined;
+    const errorText = execution.status === "error" ? (drawnResult === undefined ? execution.resultText : undefined) : preview?.error;
+    const bodyText = visibleDiff === undefined ? execution.resultText : undefined;
     const target = execution.drawnCall === undefined ? toolTarget(execution, path) : { label: "Input" as const, text: execution.drawnCall.join("\n") };
     const took = shellTookLine(execution);
 
@@ -63,8 +64,9 @@ export class ToolExecutionView extends LitElement {
           ? null
           : html`<pre class="target-block" aria-label=${`${target.label}: ${target.text}`}>${target.text}</pre>`}
         ${previewMismatch ? html`<p class="notice">Applied diff differs from the preview.</p>` : null}
+        ${drawnResult === undefined ? null : html`<pre class=${`drawn-result${execution.status === "error" ? " error" : ""}`} aria-label="Result">${drawnResult}</pre>`}
         ${errorText === undefined || errorText === "" ? null : html`<pre class="error-text">${errorText}</pre>`}
-        ${visibleDiff === undefined ? this.renderTextBody(bodyText, execution.status === "error" || this.expanded, target) : this.renderDiffBody(visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff", target)}
+        ${visibleDiff === undefined ? this.renderTextBody(bodyText, (execution.status === "error" && drawnResult === undefined) || this.expanded, target) : this.renderDiffBody(visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff", target)}
         ${took === undefined ? null : html`<p class="took">${took}</p>`}
       </section>
     `;
@@ -155,6 +157,8 @@ export class ToolExecutionView extends LitElement {
     strong { flex: 0 0 auto; color: var(--pi-text); }
     .path, .summary { display: block; flex: 1 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; white-space: pre; color: var(--pi-accent); font: var(--pi-text-sm) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: inherit; direction: ltr; text-align: left; unicode-bidi: isolate; }
     .summary { color: var(--pi-muted); font-family: inherit; }
+    .drawn-result { margin: var(--pi-space-2) 0 0; padding: 0; color: inherit; font-family: inherit; font-size: inherit; white-space: pre; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
+    .drawn-result.error { color: var(--pi-danger); }
     .target-block { margin: var(--pi-space-2) 0 0; padding: 0; color: var(--pi-muted); font-family: inherit; font-size: inherit; white-space: pre; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
     .tool-meta { flex: 0 0 auto; display: inline-flex; align-items: baseline; gap: var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-xs); }
     .diff-stats { display: inline-flex; gap: var(--pi-space-2); }
@@ -199,6 +203,16 @@ function toolTarget(execution: ToolExecutionPart, path: string | undefined): Too
   if (command !== undefined && command !== "") return { label: "Command", text: command };
   if (execution.summary !== "") return { label: "Input", text: execution.summary };
   return undefined;
+}
+
+/**
+ * The lines an extension drew for the tool's result, shown under the call as pi's terminal shows
+ * them (owner, 2026-10-12: an extension tool's row reads its own outcome line in pi, and PI WEB had
+ * it folded into Details). Undefined when nothing was drawn, so the card keeps its own result text.
+ */
+function drawnResultText(execution: ToolExecutionPart): string | undefined {
+  const text = execution.drawnResult?.join("\n");
+  return text === undefined || text.trim() === "" ? undefined : text;
 }
 
 function pathFromArgs(args: unknown): string | undefined {

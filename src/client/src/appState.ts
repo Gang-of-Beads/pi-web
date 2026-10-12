@@ -1,4 +1,4 @@
-import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
+import type { AuthProviderOption, CommandOption, CommandResult, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
 import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
 import { RetiredBy } from "./notice";
@@ -98,24 +98,13 @@ export interface AppState {
    */
   pendingDialogs: PendingExtensionDialog[];
   /**
-   * Dialogs that closed while their session was selected, kept with the close
-   * reason and any answer so the settled card can show what became of the
-   * dialog. The card stays until the user dismisses it. The wire outcome is
-   * deliberately small, so only a browser that saw the dialog open can show
-   * the closed card; deselection and reloads drop these.
+   * Dialog ids this browser saw close for the selected session. A close has to
+   * be remembered rather than merely applied: the daemon's status projection is
+   * unordered against socket frames, so a snapshot taken before the close can
+   * land after it and re-open a dialog this browser already settled. Cleared
+   * with the selection: nothing outlives it.
    */
-  closedDialogs: ClosedExtensionDialog[];
-  /**
-   * Dialog ids the reader dismissed from the settled-card list. A dismissal has
-   * to be remembered rather than merely applied: the daemon's status projection
-   * is unordered against socket frames, so a snapshot taken before the close can
-   * land after it and re-open a dialog this browser already settled. Without the
-   * memory the re-open records a second outcome card and the reader has to tap
-   * Dismiss again. Bounded by and cleared with `closedDialogs`, whose ids these
-   * are: both describe the selected session's settled cards and nothing outlives
-   * that selection.
-   */
-  dismissedDialogIds: readonly string[];
+  settledDialogIds: readonly string[];
   /** Thinking levels available for the selected session's current model. */
   availableThinkingLevels: readonly string[];
   /** Statuses keyed by session id, carried with the machine they were read
@@ -148,14 +137,6 @@ export interface AppState {
   errorMachineId: string;
   /** What a self-healing error claims about the link, which the row words for it (B16); undefined for every other notice. */
   errorClaim: TransportClaim | undefined;
-}
-
-/** A closed extension dialog paired with the record the browser rendered while it was open. */
-export interface ClosedExtensionDialog {
-  dialog: PendingExtensionDialog;
-  reason: ExtensionDialogCloseReason;
-  /** Present only when `reason` is `"answered"`. */
-  answer?: ExtensionDialogAnswer;
 }
 
 /** `machineId` stays bound to the machine selected when the auth operation began. */
@@ -275,8 +256,7 @@ export function initialAppState(): AppState {
     status: undefined,
     activity: undefined,
     pendingDialogs: [],
-    closedDialogs: [],
-    dismissedDialogIds: [],
+    settledDialogIds: [],
     availableThinkingLevels: [],
     sessionStatuses: {},
     sessionActivities: {},

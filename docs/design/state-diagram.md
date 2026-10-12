@@ -116,8 +116,9 @@ stateDiagram-v2
 - **Row placement is a function of state**, with exactly one row per id. The transcript tail, from the top:
   1. `committed` rows, at their entries' indices;
   2. the pending block: `queued` and `handed` ordered by `seq`, then `sending`, `unverifiable` and `notSent` ordered by send time;
-  3. records of closed cards (D2), in close order;
-  4. open cards (D2), FIFO.
+  3. open cards (D2), FIFO.
+
+  A closed card leaves no row (2026-10-12, below in D2).
 
   `consumed`, `withdrawn` and `discarded` leave no row; a settled notice appears only where the owner already chose one.
 
@@ -197,6 +198,8 @@ stateDiagram-v2
   - *Known limit.* A daemon that dies while a notice is queued loses it, because pi's queues live in the runtime.
   - *Withdrawn 2026-10-11, with PI WEB's own `ask_user`:* an answered card as a queued D1 message (`queuedAnswers`, its answers record marked Queued among the pending rows, no take-back). An extension dialog's answer resolves the extension's own waiter and delivers nothing to the model.
 - **A refusal is a state the reader sees.** A refused open files a session notification. It is owned by the notification inbox, scoped to the session, and dismissible. It is never only an error inside the extension.
+- **A closed card leaves nothing; the tool row tells what became of it (owner, 2026-10-12).** The owner asked why a "Cancelled" card sat at the bottom of the chat under every later message, and, told it was PI WEB's own record, called it gilding the lily ("画蛇添足"). pi's terminal keeps no record of a closed dialog: when a tool asked, the tool's own row says what happened (pi-tui draws the tool's `renderResult`, "Cancelled" for a dismissed question), in place, and it is in the session file. PI WEB kept a browser-only card of every cancelled or timed-out dialog, drawn after all rows in close order, so later messages ran above it, and a reload dropped it. Now a dialog that closes for any reason leaves no card. Closing still settles it: its id joins `settledDialogIds` so a status snapshot built before the close cannot re-open it, its drafts are cleared, and the status map stops listing it. What became of a dialog a tool opened is the tool row's (next point); one a command opened leaves nothing, as in pi.
+- **An extension's drawn result shows in its row, as in pi's terminal (owner, 2026-10-12).** A tool card whose extension draws its result (`renderResult`, slice 2 of R25) shows those lines under the call, where pi's terminal shows them, instead of inside the folded Details; Details keeps the tool's raw output. When the drawing is present it is the row's result, so the raw error block is not drawn above it (the drawing carries the error in the extension's words, and the raw text stays in Details, open by default when nothing was drawn). A tool with no drawing keeps the card as it was.
 - **A closed card is inert.** A card kept on screen while a gesture settles has no live handlers. A tap on a card answered elsewhere shows "Answered elsewhere". Built 2026-10-03 (B22, `waitingSlotHold`): while a press holds or settles, the cards already drawn keep their places; a card still open is drawn live, a card that closed is drawn inert with no answer, cancel or key handler bound, and a card that opened during the press joins at the end. A closed card is held beside a card still open, and every open form is held, not only the first (review b2c94ee9). A held card's layout is the live card's. The "Answered elsewhere" words wait on the owner (the no-UI ruling).
 
 ## D3. What a session is doing

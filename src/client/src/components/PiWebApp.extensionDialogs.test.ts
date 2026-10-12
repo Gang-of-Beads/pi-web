@@ -1,7 +1,7 @@
 import type { TemplateResult } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionDialogAnswer, PendingExtensionDialog, SessionInfo, SessionStatus } from "../api";
-import { initialAppState, type AppState, type ClosedExtensionDialog } from "../appState";
+import { initialAppState, type AppState } from "../appState";
 import { SessionController } from "../controllers/sessionController";
 // Template inspection here is the escape hatch for verifying the chat-view
 // dialog callback wiring in a node environment (no DOM harness), mirroring
@@ -30,7 +30,6 @@ describe("PiWebApp extension-dialog wiring", () => {
     const onCancel = templateDialogCallback(firstRender, ".onCancelDialog=");
 
     expect(templateValueAfterMarker(firstRender, ".pendingDialogs=")).toBe(state.pendingDialogs);
-    expect(templateValueAfterMarker(firstRender, ".closedDialogs=")).toBe(state.closedDialogs);
     expect(templateDialogCallback(secondRender, ".onAnswerDialog=")).toBe(onAnswer);
     expect(templateDialogCallback(secondRender, ".onCancelDialog=")).toBe(onCancel);
 
@@ -71,17 +70,11 @@ function stateWithDialogs(): AppState {
     askedAt: "2026-07-27T10:00:00.000Z",
     runScoped: false,
   };
-  const closed: ClosedExtensionDialog = {
-    dialog: { ...open, dialogId: "dlg-0", title: "Allow reads?" },
-    reason: "answered",
-    answer: true,
-  };
   return {
     ...initialAppState(),
     selectedSession: session,
     status: dialogStatus(),
     pendingDialogs: [open],
-    closedDialogs: [closed],
   };
 }
 

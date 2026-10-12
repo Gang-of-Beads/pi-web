@@ -192,8 +192,7 @@ describe("SessionController session_start dialog startup reachability", () => {
 
     expect(answerCalls).toEqual([{ sessionId: BACKEND_SESSION_ID, dialogId: "dialog-1", value: true, machineId: "local" }]);
     expect(harness.state.current.pendingDialogs).toEqual([]);
-    expect(harness.state.current.closedDialogs).toEqual([]);
-    expect(harness.state.current.dismissedDialogIds).toEqual(["dialog-1"]);
+    expect(harness.state.current.settledDialogIds).toEqual(["dialog-1"]);
     expect(harness.state.current.error).toBe("");
 
     // The answer settled the hook daemon-side, so the create resolves and the
@@ -226,7 +225,6 @@ describe("SessionController session_start dialog startup reachability", () => {
 
     expect(cancelCalls).toEqual([{ sessionId: BACKEND_SESSION_ID, dialogId: "dialog-1" }]);
     expect(harness.state.current.pendingDialogs).toEqual([]);
-    expect(harness.state.current.closedDialogs).toEqual([{ dialog: dialog("dialog-1"), reason: "cancelled" }]);
     resolveBackendSession(harness);
     await start;
   });
@@ -243,7 +241,6 @@ describe("SessionController session_start dialog startup reachability", () => {
     await harness.controller.answerDialog("dialog-1", true);
 
     expect(harness.state.current.error).toBe("");
-    expect(harness.state.current.closedDialogs).toEqual([]);
     expect(harness.state.current.pendingDialogs.map((pending) => pending.dialogId)).toEqual(["dialog-2"]);
     resolveBackendSession(harness);
     await start;

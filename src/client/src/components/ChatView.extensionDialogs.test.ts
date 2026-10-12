@@ -2,7 +2,6 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PendingExtensionDialog } from "../api";
-import type { ClosedExtensionDialog } from "../appState";
 import { ChatView } from "./ChatView";
 import { ExtensionDialogCard } from "./ExtensionDialogCard";
 
@@ -76,29 +75,6 @@ describe("ChatView open extension dialogs", () => {
   });
 });
 
-describe("ChatView closed extension dialogs", () => {
-  it("renders closed dialogs transiently above the open one", async () => {
-    const view = await mountView();
-    const closed = closedDialog("dlg-0", "Allow reads?", "answered", true);
-    view.closedDialogs = [closed];
-    view.pendingDialogs = [openDialog("dlg-1", "Allow file writes?")];
-    await view.updateComplete;
-
-    // The settled one stays in the transcript where it happened; the open one
-    // waits in its own row, out of reach of anything that arrives.
-    const cards = [
-      ...(view.shadowRoot?.querySelectorAll<ExtensionDialogCard>(".chat > extension-dialog-card") ?? []),
-      ...(view.shadowRoot?.querySelectorAll<ExtensionDialogCard>(".waiting-slot > extension-dialog-card") ?? []),
-    ];
-    expect(cards).toHaveLength(2);
-    const closedCard = requiredElement(cards[0], "closed dialog card");
-    expect(closedCard.classList.contains("closed-dialog-card")).toBe(true);
-    expect(closedCard.getAttribute("data-scroll-anchor-id")).toBe("closed-dialog:dlg-0");
-    expect(closedCard.outcome).toBe(closed);
-    expect(cards[1]?.classList.contains("open-dialog-card")).toBe(true);
-  });
-});
-
 async function mountView(): Promise<ChatView> {
   const view = new ChatView();
   view.sessionId = "session-1";
@@ -120,18 +96,5 @@ function openDialog(dialogId: string, title: string, overrides: Partial<PendingE
     askedAt: "2026-07-27T10:00:00.000Z",
     runScoped: false,
     ...overrides,
-  };
-}
-
-function closedDialog(
-  dialogId: string,
-  title: string,
-  reason: ClosedExtensionDialog["reason"],
-  answer?: ClosedExtensionDialog["answer"],
-): ClosedExtensionDialog {
-  return {
-    dialog: openDialog(dialogId, title),
-    reason,
-    ...(answer === undefined ? {} : { answer }),
   };
 }

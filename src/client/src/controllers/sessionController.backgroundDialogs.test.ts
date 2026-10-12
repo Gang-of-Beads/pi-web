@@ -5,10 +5,8 @@ import { SessionController } from "./sessionController";
 import { defaultApi, EmitSocket, emptyPage, oldSession, status, workspace, type AppState, type SessionStatus } from "./sessionController.testSupport";
 
 /**
- * Extensions that re-ask on a timer (an update notice, for one) open a dialog
- * the user is free to ignore. Recording every ignored cycle as an outcome card
- * fills the transcript with notices about notices, which on a phone is the
- * whole screen.
+ * A closed dialog leaves no card (state-diagram D2, owner 2026-10-12); it still
+ * leaves the open list and is remembered as settled.
  */
 describe("SessionController background dialog outcomes", () => {
   it("keeps no card when a background prompt times out unanswered", async () => {
@@ -17,21 +15,8 @@ describe("SessionController background dialog outcomes", () => {
 
     harness.socket.emit({ type: "dialog.closed", dialogId: "dlg-1", reason: "timeout" });
 
-    expect(harness.state().closedDialogs).toEqual([]);
     // It must still leave the open list, or the card would linger as "open".
     expect(harness.state().pendingDialogs).toEqual([]);
-  });
-
-  it("records a background prompt the user dismissed", async () => {
-    const harness = await liveSession();
-    harness.socket.emit({ type: "dialog.opened", dialog: dialog({ runScoped: false }) });
-
-    harness.socket.emit({ type: "dialog.closed", dialogId: "dlg-1", reason: "cancelled" });
-
-    // Dismissing is a deliberate action, not an absence of one, so it is kept
-    // even though the prompt was ambient.
-    expect(harness.state().closedDialogs).toHaveLength(1);
-    expect(harness.state().closedDialogs[0]).toMatchObject({ reason: "cancelled" });
   });
 
   it("suppresses a background prompt once it is answered, without parking a card", async () => {
@@ -40,34 +25,9 @@ describe("SessionController background dialog outcomes", () => {
 
     harness.socket.emit({ type: "dialog.closed", dialogId: "dlg-1", reason: "answered", answer: "Skip" });
 
-    // A choice the user made is worth keeping, even for a background prompt.
-    // Answering is its own acknowledgment and the filed notification keeps
-    // the record; a
-    // card here would outlive every scroll, because outcome cards render last.
-    expect(harness.state().closedDialogs).toEqual([]);
-    expect(harness.state().dismissedDialogIds).toEqual(["dlg-1"]);
+    expect(harness.state().settledDialogIds).toEqual(["dlg-1"]);
   });
 
-  it("still records an aborted run-scoped dialog", async () => {
-    const harness = await liveSession();
-    harness.socket.emit({ type: "dialog.opened", dialog: dialog({ runScoped: true }) });
-
-    harness.socket.emit({ type: "dialog.closed", dialogId: "dlg-1", reason: "aborted" });
-
-    // This one belongs to work the user started, so its interruption is part
-    // of the story rather than noise.
-    expect(harness.state().closedDialogs).toHaveLength(1);
-    expect(harness.state().closedDialogs[0]).toMatchObject({ reason: "aborted" });
-  });
-
-  it("still records a timed-out run-scoped dialog", async () => {
-    const harness = await liveSession();
-    harness.socket.emit({ type: "dialog.opened", dialog: dialog({ runScoped: true }) });
-
-    harness.socket.emit({ type: "dialog.closed", dialogId: "dlg-1", reason: "timeout" });
-
-    expect(harness.state().closedDialogs).toHaveLength(1);
-  });
 });
 
 interface LiveHarness {

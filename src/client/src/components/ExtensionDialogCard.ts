@@ -7,7 +7,6 @@ import {
   EXTENSION_DIALOG_EDITOR_MAX_LENGTH,
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   type ExtensionDialogAnswer,
-  type ExtensionDialogCloseReason,
   type AskUserSubmission,
   type ExtensionDialogScreen,
   type PendingAskUser,
@@ -15,8 +14,6 @@ import {
   type ScreenLine,
   type ScreenSpan,
 } from "../../../shared/apiTypes";
-import { dialogAnswerText } from "../../../shared/dialogAnswerText";
-import type { ClosedExtensionDialog } from "../appState";
 import { dialogScreenKey } from "../dialogScreenKey.js";
 import { isScreenHintLine, isSelectableLine, keysForLineTap, screenIsTappable } from "../dialogScreenKeys.js";
 import { asksForWidth, screenColumns, type WidthReason } from "../screenColumns.js";
@@ -102,36 +99,6 @@ function splitLongLine(line: string): DialogTitleParts {
   return { heading: `${line.slice(0, splitAt).trimEnd()}\u2026`, body: line.slice(splitAt).trimStart() };
 }
 
-/** Header status label for a closed extension dialog. */
-export function extensionDialogCloseLabel(reason: ExtensionDialogCloseReason): string {
-  switch (reason) {
-    case "answered": return "Answered";
-    case "cancelled": return "Cancelled";
-    case "timeout": return "Timed out";
-    case "aborted": return "Aborted";
-    case "session-ended": return "Session ended";
-  }
-}
-
-/** One-line summary of what a closed dialog resolved to, for the outcome card. */
-export function extensionDialogCloseSummary(closed: ClosedExtensionDialog): string {
-  switch (closed.reason) {
-    case "answered": {
-      const answer = closed.answer;
-      // An answered close without an answer value breaks the wire contract;
-      // the card still renders rather than crashing the transcript.
-      if (answer === undefined) return "Closed without an answer.";
-      const text = dialogAnswerText(closed.dialog.screen, answer);
-      if (text !== "") return `Answered: ${text}`;
-      return typeof answer === "string" ? "Answered with an empty response." : "Sent without answering.";
-    }
-    case "cancelled": return "Dismissed without an answer.";
-    case "timeout": return "No answer was given before the dialog timed out.";
-    case "aborted": return "The run ended before this dialog was answered.";
-    case "session-ended": return "The session ended before this dialog was answered.";
-  }
-}
-
 /**
  * Remaining-time label for an open dialog's auto-cancel deadline. Display
  * only: the daemon owns the real timeout and publishes `dialog.closed`, so a
@@ -173,9 +140,8 @@ function screenHeading(shape: ScreenShape | undefined): string | undefined {
  *
  * The card owns only browser-local form state (the half-typed input, the
  * in-flight close flag, the display-only countdown); the daemon remains the
- * source of truth for whether the dialog is open. Closed mode renders the
- * settled outcome — a browser-local record that stays until dismissed — for a
- * browser that saw the dialog open.
+ * source of truth for whether the dialog is open. A closed dialog leaves no
+ * card (state-diagram D2): what became of it is the tool row's, as in pi.
  */
 @customElement("extension-dialog-card")
 export class ExtensionDialogCard extends LitElement {
@@ -190,7 +156,6 @@ export class ExtensionDialogCard extends LitElement {
     if (changed.size !== 1 || !changed.has("dialog")) return true;
     return dialogCardNeedsRender(changed.get("dialog"), this.dialog);
   }
-  @property({ attribute: false }) outcome?: ClosedExtensionDialog;
   @property({ attribute: false }) onAnswer?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancel?: ExtensionDialogCancelCallback;
   @property({ attribute: false }) onKey?: ExtensionDialogKeyCallback;
@@ -261,7 +226,7 @@ export class ExtensionDialogCard extends LitElement {
     const dialog = this.dialog;
     const screen = this.observedScreen;
     const send = this.onWidth;
-    if (dialog?.kind !== "custom" || this.outcome !== undefined || screen === undefined || send === undefined) return;
+    if (dialog?.kind !== "custom" || screen === undefined || send === undefined) return;
     const columns = screenColumns(screen.querySelector(".screen-line") ?? screen);
     const lastAsked = this.askedWidth?.dialogId === dialog.dialogId ? this.askedWidth.width : undefined;
     if (columns === undefined || !asksForWidth(reason, columns, dialog.screenWidth, lastAsked)) return;
@@ -270,7 +235,7 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   protected override willUpdate(changed: PropertyValues<this>): void {
-    if (!changed.has("dialog") && !changed.has("outcome")) return;
+    if (!changed.has("dialog")) return;
     // Identity is keyed by dialogId, not object identity: status refreshes
     // re-project the same open dialog as a new object and must not wipe a
     // half-typed answer or an in-flight close.
@@ -285,7 +250,6 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   override render(): TemplateResult | null {
-    if (this.outcome !== undefined) return this.renderClosed(this.outcome);
     if (this.dialog?.screen !== undefined) return this.renderQuestions(this.dialog, this.dialog.screen);
     if (this.dialog !== undefined) return this.renderOpen(this.dialog);
     return null;
@@ -433,7 +397,7 @@ export class ExtensionDialogCard extends LitElement {
    * The field types into the component as the reader types, the way a terminal delivers typing:
    * what was added goes as its characters and what was deleted as Backspace, in order, so a list
    * that searches as you type follows the field (owner, 2026-10-11: "好难操作啊" on
-   * pi-prompt-history, whose search took the whole field only at Send). An input method's
+   * an extension's search picker, which took the whole field only at Send). An input method's
    * composition goes when it ends.
    */
   private typeIntoScreen(event: Event, dialog: PendingExtensionDialog): void {
@@ -623,26 +587,6 @@ export class ExtensionDialogCard extends LitElement {
     this.answerDialog(dialog, this.inputValue);
   }
 
-  private renderClosed(closed: ClosedExtensionDialog): TemplateResult {
-    // A settled dialog needs nothing further from the reader, whatever the
-    // reason it settled: the outcome is one quiet row the transcript keeps,
-    // with no Dismiss to tap. Only the answered branch got this in the first
-    // pass, and every cancelled or timed-out update dialog kept charging a
-    // second interaction for a fact that had already settled - reported by
-    // the owner more than ten times before this branch joined the same law.
-    return this.renderAnsweredRow(closed);
-  }
-
-  private renderAnsweredRow(closed: ClosedExtensionDialog): TemplateResult {
-    return html`
-      <article class="answered-row" aria-labelledby="extension-dialog-answered-heading">
-        <span class=${`header-status ${closed.reason}`}>${extensionDialogCloseLabel(closed.reason)}</span>
-        <h2 id="extension-dialog-answered-heading">${splitDialogTitle(closed.dialog.title).heading}</h2>
-        <p class="answered-answer">${extensionDialogCloseSummary(closed)}</p>
-      </article>
-    `;
-  }
-
   private answerDialog(dialog: PendingExtensionDialog, value: ExtensionDialogAnswer): void {
     void this.closeWith(dialog, () => this.onAnswer?.(dialog.dialogId, value));
   }
@@ -683,19 +627,18 @@ export class ExtensionDialogCard extends LitElement {
   /** An open input, editor or screen dialog shows what this browser kept of its typed text (dialogAnswerDrafts), else its opening text. */
   private openingText(): string {
     const dialog = this.dialog;
-    if (this.outcome !== undefined || dialog === undefined || (dialog.kind !== "input" && dialog.kind !== "editor" && dialog.kind !== "custom")) return "";
+    if (dialog === undefined || (dialog.kind !== "input" && dialog.kind !== "editor" && dialog.kind !== "custom")) return "";
     const kept = this.draftSessionId === "" ? undefined : loadDialogAnswerDraft(this.draftSessionId, dialog.dialogId);
     return kept ?? (dialog.kind === "editor" ? dialog.prefill ?? "" : "");
   }
 
   private currentIdentity(): string | undefined {
-    if (this.outcome !== undefined) return `closed:${this.outcome.dialog.dialogId}`;
     if (this.dialog !== undefined) return `open:${this.dialog.dialogId}`;
     return undefined;
   }
 
   private syncCountdownTimer(): void {
-    const needsTick = this.isConnected && this.outcome === undefined && this.dialog?.timeoutAt !== undefined;
+    const needsTick = this.isConnected && this.dialog?.timeoutAt !== undefined;
     if (needsTick && this.countdownTimer === undefined) {
       this.countdownNow = Date.now();
       // Surface backed up: the dialog's countdown readout. A display tick over
@@ -766,10 +709,6 @@ export class ExtensionDialogCard extends LitElement {
     .header-status { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-align: end; }
     .header-status { color: var(--pi-text); display: inline-flex; align-items: center; gap: var(--pi-space-3); }
     .header-status::before { content: ""; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; }
-    .header-status.answered::before { background: var(--pi-success); }
-    .header-status.cancelled::before { background: var(--pi-warning); }
-    .header-status.answered { color: var(--pi-success); }
-    .header-status.timeout, .header-status.aborted, .header-status.session-ended { color: var(--pi-warning); }
     .dialog-message {
       margin: 0;
       padding: var(--pi-space-6) var(--pi-space-7);
@@ -907,35 +846,6 @@ export class ExtensionDialogCard extends LitElement {
     .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: var(--pi-weight-strong); }
     @media (hover: hover) { .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); } }
     .primary-action:active:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }
-    .answered-row {
-      display: flex;
-      align-items: center;
-      gap: var(--pi-space-4);
-      min-width: 0;
-      padding: var(--pi-space-3) var(--pi-space-6);
-      border: 1px solid var(--pi-border-muted);
-      border-radius: var(--pi-radius-md);
-      background: var(--pi-surface);
-    }
-    .answered-row h2 {
-      min-width: 0;
-      margin: 0;
-      font-size: var(--pi-text-xs);
-      font-weight: var(--pi-weight-semibold);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .answered-row .answered-answer {
-      min-width: 0;
-      margin: 0;
-      color: var(--pi-muted);
-      font-size: var(--pi-text-xs);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .answered-row .header-status { flex: 0 0 auto; }
     /* A control a person taps is a touch target wherever the card is shown, as
        the ask-user card beside it in the same transcript already states. */
     .primary-action, .secondary-action, .option-button, .dialog-input { min-height: var(--pi-control-height-touch); }
