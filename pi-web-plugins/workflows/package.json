@@ -1,9 +1,0 @@
-{
-  "name": "@pi-web/workflows-plugin",
-  "private": true,
-  "piWeb": {
-    "plugins": [
-      { "id": "workflows", "browserRoot": ".", "module": "pi-web-plugin.js" }
-    ]
-  }
-}

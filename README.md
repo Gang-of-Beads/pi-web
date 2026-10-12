@@ -156,6 +156,7 @@ These Pi packages are maintained alongside PI WEB. Install one from **Settings â
 | Package | What it adds | Source |
 |---|---|---|
 | [pi-web-themes](https://github.com/Gang-of-Beads/pi-web-themes) | More PI WEB themes: PI WEB, Clay and Material light/dark pairs, plus Classic, Night, Paper and High Contrast | `git:github.com/Gang-of-Beads/pi-web-themes` |
+| [pi-web-workflows](https://github.com/Gang-of-Beads/pi-web-workflows) | Draws the pi-dynamic-workflows `workflow` tool as a live progress card | `git:github.com/Gang-of-Beads/pi-web-workflows` |
 | [pi-goal](https://github.com/Gang-of-Beads/pi-goal) | Goal mode: long-running objectives with tasks, auto-continue and a completion audit; PI WEB lists the goals on a page | `git:github.com/Gang-of-Beads/pi-goal` |
 | [pi-ask-user](https://github.com/Gang-of-Beads/pi-ask-user) | An `ask_user` tool the agent uses to ask you a question; PI WEB draws it as a card | `git:github.com/Gang-of-Beads/pi-ask-user` |
 | [pi-multi-account](https://github.com/Gang-of-Beads/pi-multi-account) | Several OAuth accounts per provider, and Claude subscription billing | `git:github.com/Gang-of-Beads/pi-multi-account` |
