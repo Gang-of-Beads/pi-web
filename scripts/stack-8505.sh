@@ -5,7 +5,8 @@
 # All PI WEB dev and test work happens on 8505. The owner's live instance is
 # 8504 with the default data dir, and this script must never be able to touch
 # it. So it never kills by process name: a process is an 8505 process only when
-# its command line - argv plus environment, as `ps -E` prints it - contains an
+# its command line - argv plus environment, as `ps -E` prints it on macOS and
+# /proc/<pid>/cmdline plus /proc/<pid>/environ give it on Linux - contains an
 # exact match for this stack's data dir, its socket path, or PI_WEB_PORT=8505.
 # Anything listening on 8505 without one of those markers is reported and left
 # alone, and the script exits non-zero rather than guessing. Ancestors of this
@@ -40,7 +41,12 @@ usage() {
 
 # argv + environment of one process, which is where the 8505 markers are: the
 # markers are set as environment for `node`, so argv alone would not show them.
+# Linux procps has no `ps -E`; /proc holds the same two lists, NUL-separated.
 process_command_line() {
+  if [ -d /proc/self ]; then
+    { tr '\0' ' ' <"/proc/$1/cmdline"; tr '\0' ' ' <"/proc/$1/environ"; } 2>/dev/null || true
+    return 0
+  fi
   ps -p "$1" -Eww -o command= 2>/dev/null || true
 }
 
@@ -85,6 +91,11 @@ is_ancestor_of_self() {
 }
 
 marked_pids() {
+  if [ -d /proc/self ]; then
+    { grep -lsaF -e "PI_WEB_DATA_DIR=$DATA_DIR" -e "PI_WEB_SESSIOND_SOCKET=$SOCKET" /proc/[0-9]*/environ 2>/dev/null || true; } \
+      | cut -d/ -f3 | { grep -vx "$$" || true; } | sort -u
+    return 0
+  fi
   ps -Axww -E -o pid=,command= 2>/dev/null \
     | grep -F -e "PI_WEB_DATA_DIR=$DATA_DIR" -e "PI_WEB_SESSIOND_SOCKET=$SOCKET" \
     | awk '{print $1}' | sort -u
