@@ -225,7 +225,8 @@ update in, keeping the motion simple, fast and smooth.
   answer), the remembered rows of exactly those sources stay (`boardFilledFromMemory`) until a
   retry answers them. A remembered row of a source that did answer is never kept.
 - **The top row says "Syncing…".** While the session list is on screen and drawn wholly from
-  memory, the app row says "Syncing…" in the muted tone (owner: "直接上面 notification row 的
+  memory, the app row says "Syncing…" in the row's one transient colour, the same as "Trying to
+  sync" (2026-10-13: one colour for the row by default) (owner: "直接上面 notification row 的
   syncing 就好了吧？这样用户知道在加载中/同步中"). It is the quietest claim: a notice and "Trying
   to sync with the server…" (nothing answered within the ack timeout) come first. A partial live
   answer filled from memory does not say "Syncing…": the board's own retries stay silent (owner

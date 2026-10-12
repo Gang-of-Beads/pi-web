@@ -75,11 +75,11 @@ export function unansweredRow(miss: ReadMiss, nameOf: MachineName): TemplateResu
 
 /**
  * The app row while a list on screen shows what this browser remembered and
- * its live answer has not landed (owner, 2026-10-07). Quieter than the
- * unanswered row: nothing is wrong yet, the page is loading.
+ * its live answer has not landed (owner, 2026-10-07). It wears the row's one
+ * transient colour, like every other sync word (owner, 2026-10-13).
  */
 export function syncingRow(): TemplateResult {
-  return html`<div class="error transient syncing" role="status"><span class="error-text">Syncing…</span></div>`;
+  return html`<div class="error transient" role="status"><span class="error-text">Syncing…</span></div>`;
 }
 
 

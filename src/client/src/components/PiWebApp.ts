@@ -234,7 +234,6 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .empty button, .archived-strip button { box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-4) var(--pi-space-6); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-accent); font: var(--pi-text-sm) var(--pi-font-ui); line-height: inherit; cursor: pointer; }
   .error { display: flex; gap: var(--pi-space-4); align-items: flex-start; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
-  .error.transient.syncing { color: var(--pi-muted); background: color-mix(in srgb, var(--pi-muted) 8%, transparent); }
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
   .error .error-retry { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-5); border: 1px solid currentColor; border-radius: var(--pi-radius-md); background: none; color: inherit; font: inherit; cursor: pointer; }
   @media (pointer: coarse) { .error .error-retry { min-height: var(--pi-control-height-touch); } }
