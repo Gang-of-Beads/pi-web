@@ -149,6 +149,20 @@ Pi packages are a separate Pi package-manager concept. A Pi package may include 
 
 Read more: [PI WEB plugin guide and API](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md)
 
+### Packages from Gang of Beads
+
+These Pi packages are maintained alongside PI WEB. Install one from **Settings → Pi packages** with its source, or with `pi install <source>`.
+
+| Package | What it adds | Source |
+|---|---|---|
+| [pi-web-themes](https://github.com/Gang-of-Beads/pi-web-themes) | More PI WEB themes: PI WEB, Clay and Material light/dark pairs, plus Classic, Night, Paper and High Contrast | `git:github.com/Gang-of-Beads/pi-web-themes` |
+| [pi-goal](https://github.com/Gang-of-Beads/pi-goal) | Goal mode: long-running objectives with tasks, auto-continue and a completion audit; PI WEB lists the goals on a page | `git:github.com/Gang-of-Beads/pi-goal` |
+| [pi-ask-user](https://github.com/Gang-of-Beads/pi-ask-user) | An `ask_user` tool the agent uses to ask you a question; PI WEB draws it as a card | `git:github.com/Gang-of-Beads/pi-ask-user` |
+| [pi-multi-account](https://github.com/Gang-of-Beads/pi-multi-account) | Several OAuth accounts per provider, and Claude subscription billing | `git:github.com/Gang-of-Beads/pi-multi-account` |
+| [pi-updater](https://github.com/Gang-of-Beads/pi-updater) | Offers updates for pi; under PI WEB it names the session-daemon restart an update needs | `git:github.com/Gang-of-Beads/pi-updater` |
+| [pi-bash-autobg](https://github.com/Gang-of-Beads/pi-bash-autobg) | Moves a long-running bash call to the background instead of blocking the agent | `git:github.com/Gang-of-Beads/pi-bash-autobg` |
+| [pi-bob-code](https://github.com/Gang-of-Beads/pi-bob-code) | Reviews every code change with a scout, verify, fix and gate pipeline before the agent finishes; needs pi-subagents | `git:github.com/Gang-of-Beads/pi-bob-code` |
+
 ## Configuration
 
 Global config lives at:
