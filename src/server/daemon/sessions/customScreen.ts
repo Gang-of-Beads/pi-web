@@ -11,7 +11,7 @@
  * width, and keys in. Both are transportable. What it needs from the terminal is
  * a `tui` and a `keybindings` object. The plain lines are drawn and passed through pi-tui's
  * `stripTerminalSequences`. A component's own codes (pi-tui's input draws its cursor in
- * reverse video) would otherwise show as text, as in "> [7m [27m" on pi-prompt-history's
+ * reverse video) would otherwise show as text, as in "> [7m [27m" on an extension's search
  * picker. The styled view (`renderScreenView`) renders once with pi's global theme swapped to
  * `screenTheme` (screenView.ts). That theme writes each role as a private truecolor code, and
  * `screenView` parses those codes back into styled runs.

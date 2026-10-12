@@ -10,9 +10,9 @@ import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
  * the same grey dot as one with nothing left to do.
  *
  * Core counts what core owns: the spawned subsessions that are working. Every
- * other run is what the running plugins report (`backgroundWork`, B20): the
- * Subagents plugin counts its tool runs, Background runs its shell tasks, and
- * a plugin turned off stops counting.
+ * other run is what the running plugins report (`backgroundWork`, B20): a
+ * plugin may count the tool runs or shell tasks its extension started, and a
+ * plugin turned off stops counting.
  */
 export interface BackgroundRunCountInput {
   sessionId: string;

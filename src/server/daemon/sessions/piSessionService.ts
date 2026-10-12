@@ -971,7 +971,7 @@ function createRuntimeWithOneShotSessionOptions(
  * The tools PI WEB puts on a session: pi's own `edit`, wrapped to compute a diff
  * preview, and nothing it adds. Owner, 2026-09-30: "pi web should not give the AI any
  * extra tools; those should all be defined by the user's own plugins" - delegation is a session
- * route, and PI WEB has no `ask_user` of its own: a question tool comes from a pi extension the
+ * route, and PI WEB adds no question tool of its own: one comes from a pi extension the
  * user installs (owner, 2026-10-11; docs/design/no-builtin-agent-tools.md).
  */
 export function createPiWebCustomToolDefinitions(cwd: string) {
@@ -2197,7 +2197,7 @@ export class PiSessionService implements SessionRouteService {
    * The heading of a drawn screen: the extension's origin title (extensionOrigin.ts: its package's
    * `piWeb.title`, else the package's name, else its folder's or file's name), else the name its
    * file gives the call stack, and "Extension screen" only when neither is known. That generic
-   * heading alone said nothing about who was asking (the owner, 2026-10-11, on pi-prompt-history's
+   * heading alone said nothing about who was asking (the owner, 2026-10-11, on an extension's
    * picker).
    */
   private drawnScreenTitle(session: PiAgentSession, stack: string | undefined): string {

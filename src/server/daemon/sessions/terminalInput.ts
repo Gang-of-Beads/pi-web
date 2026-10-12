@@ -4,7 +4,7 @@
  * A TUI component reads raw terminal input: pi-tui's `matchesKey(data, "up")` holds for
  * "\x1b[A", never for the word "up", and Enter is "\r". The browser forwards keys by name, and
  * the screen used to hand those names straight to `handleInput`, so a real component (a pi-tui
- * list, pi-prompt-history's picker) read Enter as typed text and never moved. Each name now
+ * list, an extension's search picker) read Enter as typed text and never moved. Each name now
  * becomes the bytes a terminal sends for it; a name with no terminal form is dropped, unreported,
  * instead of being typed. Text arrives one character per key, the way pi's stdin buffer splits
  * typing.

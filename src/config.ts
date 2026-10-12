@@ -215,7 +215,7 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
 
 /**
  * The keys a save rewrites from the parsed config; every other key in the file is kept as it was.
- * `respectProjectTrust` and `askUser` (PI WEB no longer has an `ask_user`) are retired: a load
+ * `respectProjectTrust` and `askUser` (PI WEB no longer has a built-in question tool) are retired: a load
  * ignores them and a save drops them. `extensionDialogsTimeoutMs` is not here: it has no editor,
  * so a save keeps the value the file holds, and one a request carries is not written.
  */

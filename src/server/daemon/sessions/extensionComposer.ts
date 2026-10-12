@@ -13,7 +13,7 @@ import type { ExtensionEditorTextMode } from "../../../shared/apiTypes.js";
  *
  * A message or command sent from a composer empties it, as pi's editor empties itself before it
  * runs what was submitted (pi-tui `Editor.submitValue`). Kept until then, the text read as the
- * reader's input: pi-prompt-history took the last prompt it had loaded as its query and listed
+ * reader's input: a search picker took the last prompt it had loaded as its query and listed
  * one result (owner, 2026-10-11).
  */
 export class ExtensionComposer {

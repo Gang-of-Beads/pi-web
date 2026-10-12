@@ -13,7 +13,7 @@
  * selected background, else a line opening with a cursor glyph the extension colored, else the
  * first line opening with a cursor glyph. A tap walks the component's cursor to the tapped line one
  * key at a time and judges every step on the redraw it caused, so an item drawn on two lines, or a
- * list that scrolls, still lands where the reader tapped. Counting lines read pi-prompt-history's
+ * list that scrolls, still lands where the reader tapped. Counting lines read a search picker's
  * query line ("> ") as its cursor and its two-line results as twice as many items.
  */
 import { Theme } from "@earendil-works/pi-coding-agent";

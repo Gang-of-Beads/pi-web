@@ -4,8 +4,8 @@
  *
  * The component is drawn at the width of the card that last asked for one, as pi's terminal draws
  * it at the terminal's width: an extension cuts its own lines to the width it is given, so a line
- * drawn wider than the card wrapped mid-word on a phone (owner, 2026-10-11, pi-prompt-history at 56
- * columns on a 47-column card). Every key, tap and resize redraws through one callback; the caller
+ * drawn wider than the card wrapped mid-word on a phone (owner, 2026-10-11, an extension's picker
+ * at 56 columns on a 47-column card). Every key, tap and resize redraws through one callback; the caller
  * publishes.
  */
 import {

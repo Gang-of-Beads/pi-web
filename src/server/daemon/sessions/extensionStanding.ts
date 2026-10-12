@@ -231,8 +231,8 @@ export class ExtensionStanding {
 /**
  * pi's footer sanitising (newlines and tabs to spaces, runs of spaces collapsed), then the payload
  * bound. The terminal codes an extension colours its text with are left out first: pi's footer is a
- * terminal and paints them, the status bar is text and showed them raw (pi-background-tasks' status
- * read "[48;2;183;223;255m bg 3 done" on the owner's phone, 2026-10-12).
+ * terminal and paints them, the status bar is text and showed them raw (an extension's status read
+ * "[48;2;183;223;255m bg 3 done" on the owner's phone, 2026-10-12).
  */
 function statusText(text: unknown): string {
   const raw = typeof text === "string" ? text : typeof text === "number" || typeof text === "boolean" ? String(text) : "";
