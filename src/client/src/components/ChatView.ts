@@ -38,9 +38,9 @@ import type { ClosedExtensionDialog } from "../appState";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { sessionActivityCategory } from "../../../shared/sessionActivityState";
 import { isSessionActive } from "../../../shared/activity";
-import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
-import { attachmentZoomStyles } from "./shared";
-import type { FollowingCustomRow, QualifiedActivityNoteContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution } from "../plugins/types";
+import type { ChatLine, ChatPart, MessageDelivery, ToolExecutionPart } from "./shared";
+import { attachmentZoomStyles, toolExecutionDisplayStatus } from "./shared";
+import type { FollowingCustomRow, QualifiedActivityNoteContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution, QualifiedToolRendererContribution } from "../plugins/types";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback, ExtensionDialogLineCallback, ExtensionDialogWidthCallback } from "./ExtensionDialogCard";
 import { deliveryTaken, discardAction, retryableDeliveryId } from "../messageDelivery";
@@ -636,6 +636,8 @@ export class ChatView extends LitElement {
   /** A plugin failed to load in this tab, so a message nothing draws may be one of its own. */
   @property({ type: Boolean }) pluginsIncomplete = false;
   @property({ attribute: false }) findCodeFenceRenderer?: (language: string) => QualifiedCodeFenceRendererContribution | undefined;
+  /** The plugin that draws a tool's rows, by tool name; the host's tool card otherwise. */
+  @property({ attribute: false }) findToolRenderer?: (toolName: string) => QualifiedToolRendererContribution | undefined;
   @property({ type: Boolean }) isSendingPrompt = false;
   /** Set while the page is not known to hold the whole transcript: the dock says so instead of the status. */
   @property({ type: Boolean }) isCompacting = false;
@@ -1938,6 +1940,27 @@ export class ChatView extends LitElement {
     </div>`;
   }
 
+  /** A tool's row: a plugin that claims the tool draws it, the host's tool card otherwise or when the plugin throws. */
+  private renderToolExecution(part: ToolExecutionPart) {
+    const streaming = this.status?.isStreaming === true;
+    const card = html`<tool-execution-view class="part" .execution=${part} .streaming=${streaming} .expanded=${this.status?.extensionUi?.toolsExpanded === true}></tool-execution-view>`;
+    const renderer = this.findToolRenderer?.(part.toolName);
+    if (renderer === undefined) return card;
+    try {
+      const drawn = renderer.render({
+        toolName: part.toolName,
+        status: toolExecutionDisplayStatus(part.status, streaming),
+        args: part.args,
+        details: part.details,
+        resultText: part.resultText,
+      });
+      return drawn === undefined ? card : html`<div class="part tool-claimed">${drawn}</div>`;
+    } catch (error) {
+      console.error(`[plugin] ${renderer.id} failed to draw a ${part.toolName} row; the host's card draws it`, error);
+      return card;
+    }
+  }
+
   private renderCustomBody(renderer: QualifiedMessageRendererContribution, part: Extract<ChatPart, { type: "custom" }>) {
     try {
       return renderer.render({
@@ -2224,7 +2247,7 @@ export class ChatView extends LitElement {
     }
     if (part.type === "custom") return this.renderCustomPart(part);
     if (part.type === "toolCall") return html`<div class="part tool-line">${renderRunIcon()} ${part.toolName}<span class="summary">${part.summary}</span></div>`;
-    if (part.type === "toolExecution") return html`<tool-execution-view class="part" .execution=${part} .streaming=${this.status?.isStreaming === true} .expanded=${this.status?.extensionUi?.toolsExpanded === true}></tool-execution-view>`;
+    if (part.type === "toolExecution") return this.renderToolExecution(part);
     if (part.type === "toolResult") return html`
       <details class="part" ?open=${part.isError}>
         <summary>${part.isError ? renderCrossIcon() : renderCheckIcon()} ${part.toolName} result</summary>

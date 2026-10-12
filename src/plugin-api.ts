@@ -374,6 +374,7 @@ export interface PluginContributions {
   settingsSections?: SettingsSectionContribution[];
   messageRenderers?: MessageRendererContribution[];
   codeFenceRenderers?: CodeFenceRendererContribution[];
+  toolRenderers?: ToolRendererContribution[];
   activityNotes?: ActivityNoteContribution[];
   sessionSections?: SessionSectionContribution[];
 }
@@ -491,6 +492,34 @@ export interface MessageRendererContribution {
   id: LocalContributionId;
   tag: string;
   render: (view: MessageRendererViewModel) => TemplateResult;
+}
+
+/**
+ * What a tool renderer is handed for one tool call: the tool's name, where the call stands, its
+ * arguments, and the `details` its last update or its result carried (the extension's own data,
+ * read defensively: anything may be there). A call the turn left unfinished reads as interrupted.
+ */
+export interface ToolRendererViewModel {
+  readonly toolName: string;
+  readonly status: "running" | "success" | "error" | "interrupted";
+  readonly args: unknown;
+  readonly details: unknown;
+  /** The result's text, for a failure the details do not explain. */
+  readonly resultText: string | undefined;
+}
+
+/**
+ * Claims one tool's rows in the transcript by its name: the claimant draws the call, live and
+ * once it settles, in place of the host's tool card. It returns undefined for a call it cannot
+ * draw yet (its details have not arrived), and the host's card draws it; a thrown error does the
+ * same and is logged - a tool row is never an empty hole. One plugin per tool name per machine; a second
+ * claim is a registration error, not a silent override.
+ */
+export interface ToolRendererContribution {
+  id: LocalContributionId;
+  /** The tool name this renderer claims, as the agent calls it (a pi extension's `registerTool` name). */
+  toolName: string;
+  render: (view: ToolRendererViewModel) => TemplateResult | undefined;
 }
 
 /**

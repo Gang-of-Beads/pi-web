@@ -116,6 +116,7 @@
                 <li><strong>Workspace labels</strong> in the workspace list, header, and status bar.</li>
                 <li><strong>Browser-public assets</strong> served only from an explicit <code>browserRoot</code>.</li>
                 <li><strong>Browser helpers</strong> for files, terminals, prompts, rendering, and paired backends.</li>
+                <li><strong>Tool rows</strong> in the transcript: a plugin claims a tool by name and draws its calls live (<code>toolRenderers</code>).</li>
                 <li><strong>One workspace provider</strong> from an optional sessiond server entry.</li>
               </ul>
               <p>
@@ -526,6 +527,14 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@gang-of-beads/pi-web
                 enabled primary third-party provider can claim a project before Git. Disabling <code>git</code> and
                 restarting sessiond leaves the kernel folder workspace plus generic Files, Terminal, and Session features;
                 reload the browser so Git contributions disappear.
+              </p>
+
+              <h3>Workflows</h3>
+              <p>
+                <strong>Workflows</strong> draws the pi-dynamic-workflows extension's <code>workflow</code> tool as a
+                progress card in the transcript: the workflow's counts and a bar, then each phase with its agents and a
+                status for each; a failed agent says why. It follows the call live and is browser-only, so a page reload
+                picks it up. Without the extension the plugin draws nothing.
               </p>
 
               <h3>Updates</h3>

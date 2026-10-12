@@ -1197,6 +1197,22 @@ contributions: {
 
 A session lands in the first section, by `order`, whose `claims` returns true; a claim that throws claims nothing. `claims` receives `{ sessionId, machineId, cwd, name, pinned, archived }`. Inside a section the host orders sessions by what they need from the reader (failed, asking, unread, running, the rest), then by last activity; a section does not choose its own order. Sections fold, and the host remembers each list's folds on the device; `foldedByDefault: true` starts a section folded.
 
+### Tool rows
+
+A plugin draws a tool's rows in the transcript with `toolRenderers`, claiming the tool by the name the agent calls it:
+
+```ts
+contributions: {
+  toolRenderers: [{
+    id: "workflow-progress",
+    toolName: "workflow",
+    render: (view) => view.details === undefined ? undefined : html`<my-progress .details=${view.details}></my-progress>`,
+  }],
+}
+```
+
+`render` receives `{ toolName, status, args, details, resultText }`: `status` is `running`, `success`, `error` or `interrupted` (a call the turn left unfinished), and `details` is what the tool's last update or its result carried, so the drawing follows the call live. It is the extension's own data: read it defensively. Return `undefined` for a call you cannot draw yet, and the host's tool card draws it; a `render` that throws does the same and is logged, so a tool row is never empty. One plugin claims a tool name per machine; a second claim is a registration error. The bundled Workflows plugin draws the pi-dynamic-workflows extension's `workflow` tool this way.
+
 ## Asking the reader to confirm
 
 `ui.confirm({ title, message, confirmLabel, tone })` asks on the host's own dialog and resolves `true` only for the confirming key; Cancel, Escape, the backdrop and the back gesture resolve `false`. Name the thing in `title` ("Close notes?"), say the consequence in `message`, and use `tone: "danger"` for anything that cannot be undone. Do not call `window.confirm`: on a phone it shows the page's address as its title and never names what is about to change. `ui.confirm` is optional on older hosts, so fall back when it is missing.
