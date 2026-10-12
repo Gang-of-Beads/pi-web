@@ -23,10 +23,11 @@ export interface LoadedPiWebConfig {
   deprecatedAgentInputs: readonly DeprecatedAgentInput[];
 }
 
-export interface EffectivePiWebConfig extends Omit<PiWebConfig, "uploads" | "dockerEnvironmentFacts" | "agent" | "extensionDialogsTimeoutMs" | "logging"> {
+export interface EffectivePiWebConfig extends Omit<PiWebConfig, "uploads" | "dockerEnvironmentFacts" | "agent" | "extensionDialogsTimeoutMs" | "logging" | "piBuiltInExtensions"> {
   uploads: NonNullable<PiWebConfig["uploads"]>;
   logging: Required<PiWebLoggingConfig>;
   environmentFacts: boolean;
+  piBuiltInExtensions: boolean;
   extensionDialogsTimeoutMs: number;
   agent: EffectivePiWebAgentConfig;
 }
@@ -206,6 +207,7 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
       logging: effectiveLoggingConfig(loaded.config),
       // Always resolved (on by default); inert outside Docker deployments.
       environmentFacts: environmentFactsEnabled(env, loaded.config),
+      piBuiltInExtensions: loaded.config.piBuiltInExtensions ?? true,
       // Always resolved; the unattended-dialog safety valve, not a gate.
       extensionDialogsTimeoutMs: loaded.config.extensionDialogsTimeoutMs ?? DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS,
       agent,
@@ -221,7 +223,7 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
  */
 const SAVED_CONFIG_KEYS: ReadonlySet<string> = new Set([
   "host", "port", "allowedHosts", "shortcuts", "plugins", "pathAccess", "uploads", "maxUploadBytes",
-  "logging", "listTiles", "askUser", "respectProjectTrust", "environmentFacts", "agent", "updateCommand",
+  "logging", "listTiles", "askUser", "respectProjectTrust", "environmentFacts", "piBuiltInExtensions", "agent", "updateCommand",
 ]);
 
 export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}): LoadedPiWebConfig {
@@ -279,6 +281,7 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
     ...(config.maxUploadBytes !== undefined ? { maxUploadBytes: config.maxUploadBytes } : {}),
     ...(config.logging !== undefined ? { logging: config.logging } : {}),
     ...(config.environmentFacts !== undefined ? { environmentFacts: config.environmentFacts } : {}),
+    ...(config.piBuiltInExtensions !== undefined ? { piBuiltInExtensions: config.piBuiltInExtensions } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
     ...(config.listTiles !== undefined ? { listTiles: config.listTiles } : {}),
     ...(config.updateCommand !== undefined ? { updateCommand: config.updateCommand } : {}),
@@ -302,6 +305,7 @@ export function parsePiWebConfig(value: Record<string, unknown>, path: string, a
     ...(value["logging"] !== undefined ? { logging: parseLoggingConfig(value["logging"], path) } : {}),
     ...(value["listTiles"] !== undefined ? { listTiles: parseListTilesConfig(value["listTiles"], path) } : {}),
     ...(value["environmentFacts"] !== undefined ? { environmentFacts: parseBooleanKey(value["environmentFacts"], "environmentFacts", path) } : {}),
+    ...(value["piBuiltInExtensions"] !== undefined ? { piBuiltInExtensions: parseBooleanKey(value["piBuiltInExtensions"], "piBuiltInExtensions", path) } : {}),
     ...(value["extensionDialogsTimeoutMs"] !== undefined ? { extensionDialogsTimeoutMs: parseExtensionDialogsTimeoutMs(value["extensionDialogsTimeoutMs"], path) } : {}),
     ...(value["agent"] !== undefined ? { agent: parseAgentConfig(value["agent"], path, agentPathHost) } : {}),
     ...(value["updateCommand"] !== undefined ? { updateCommand: parseUpdateCommand(value["updateCommand"], path) } : {}),

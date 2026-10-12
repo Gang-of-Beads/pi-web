@@ -1868,6 +1868,7 @@ function parsePiWebConfigValues(value: unknown): PiWebConfigValues {
     ...optionalField("listTiles", optionalListTiles(record["listTiles"])),
     ...optionalField("agent", optionalAgent(record["agent"])),
     ...optionalField("environmentFacts", optionalBoolean(record, "environmentFacts")),
+    ...optionalField("piBuiltInExtensions", optionalBoolean(record, "piBuiltInExtensions")),
     ...optionalField("extensionDialogsTimeoutMs", optionalNumber(record, "extensionDialogsTimeoutMs")),
     ...optionalField("updateCommand", optionalString(record, "updateCommand")),
   };

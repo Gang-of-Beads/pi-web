@@ -9,6 +9,7 @@
  * reducing these rows to empty, each one resolved in code or documented for
  * the human - never kept as prose in the prompt.
  */
+import type { InlineExtension } from "@earendil-works/pi-coding-agent";
 
 export interface HostContributions {
   /** System prompt sections appended after the operator's own files. */
@@ -24,6 +25,8 @@ export interface HostContributions {
    * any (`PI_WEB_DEBUG_EXTENSION_PATHS`), so its fixtures stay out of the operator's own pi.
    */
   readonly extensionPaths?: readonly string[];
+  /** Extensions given as code, loaded into every session: pi's built-in ones unless the operator turned them off. */
+  readonly extensionFactories?: readonly InlineExtension[];
 }
 
 export const EMPTY_HOST_CONTRIBUTIONS: HostContributions = {

@@ -12,6 +12,7 @@ import { drainActiveWork, resolveDrainTimeoutMs } from "./daemon/sessions/shutdo
 import { recordInterruptedRuns, takeInterruptedRuns } from "./daemon/sessions/interruptedRunStore.js";
 import { AuthService } from "./daemon/sessions/authService.js";
 import { debugExtensionPaths } from "./daemon/sessions/hostContributions.js";
+import { piBuiltInExtensions } from "./daemon/sessions/piBuiltInExtensions.js";
 import { bootstrapAndFreezeGlobalExtensionProviders } from "./daemon/sessions/globalProviderPolicy.js";
 import { registerAuthRoutes } from "./daemon/sessions/authRoutes.js";
 import { ModelCatalogRefresher } from "./daemon/sessions/modelCatalogRefresher.js";
@@ -306,6 +307,7 @@ async function createSessionDaemonRuntime() {
         // shown as a modal. The list stays for a host that gives one up.
         unsupportedSurfaces: [],
         extensionPaths,
+        extensionFactories: config.piBuiltInExtensions ? piBuiltInExtensions() : [],
       },
       extensionDialogsTimeoutMs: config.extensionDialogsTimeoutMs,
       notificationStore,

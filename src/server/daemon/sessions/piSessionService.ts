@@ -22,6 +22,7 @@ import {
   type CreateAgentSessionRuntimeFactory,
   type CreateAgentSessionServicesOptions,
   type EditToolDetails,
+  type InlineExtension,
   type ExtensionUIDialogOptions,
   type ExtensionUIContext,
   type ModelRuntime,
@@ -1151,8 +1152,8 @@ export async function resolveWebProjectTrusted(resolution: WebProjectTrustResolu
 }
 
 /**
- * Resource-loader options for PI WEB's additions: its own system-prompt sections and the
- * extension paths its host contributions name.
+ * Resource-loader options for PI WEB's additions: its own system-prompt sections, the
+ * extension paths its host contributions name, and the extensions they give as code.
  *
  * `appendSystemPromptOverride` composes with what the loader already resolved,
  * so the operator's `SYSTEM.md` / `APPEND_SYSTEM.md` files keep their content
@@ -1162,11 +1163,13 @@ export async function resolveWebProjectTrusted(resolution: WebProjectTrustResolu
 export function piWebResourceLoaderOptions(
   appendSystemPromptSections: readonly string[],
   extensionPaths: readonly string[] = [],
+  extensionFactories: readonly InlineExtension[] = [],
 ): CreateAgentSessionServicesOptions["resourceLoaderOptions"] | undefined {
-  if (appendSystemPromptSections.length === 0 && extensionPaths.length === 0) return undefined;
+  if (appendSystemPromptSections.length === 0 && extensionPaths.length === 0 && extensionFactories.length === 0) return undefined;
   return {
     ...(appendSystemPromptSections.length === 0 ? {} : { appendSystemPromptOverride: (base: string[]) => [...base, ...appendSystemPromptSections] }),
     ...(extensionPaths.length === 0 ? {} : { additionalExtensionPaths: [...extensionPaths] }),
+    ...(extensionFactories.length === 0 ? {} : { extensionFactories: [...extensionFactories] }),
   };
 }
 
@@ -1174,8 +1177,9 @@ function createDefaultRuntimeFactory(
   modelRuntime: ModelRuntime,
   appendSystemPromptSections: readonly string[] = [],
   extensionPaths: readonly string[] = [],
+  extensionFactories: readonly InlineExtension[] = [],
 ): PiWebCreateAgentSessionRuntimeFactory {
-  const resourceLoaderOptions = piWebResourceLoaderOptions(appendSystemPromptSections, extensionPaths);
+  const resourceLoaderOptions = piWebResourceLoaderOptions(appendSystemPromptSections, extensionPaths, extensionFactories);
   return async ({ cwd, agentDir, sessionManager, sessionStartEvent, initialModel, initialThinkingLevel }) => {
     // PI WEB always honors pi's project-trust model. When the workspace ships
     // trust-requiring resources, trust is resolved exactly once, mirroring the
@@ -1562,6 +1566,7 @@ export class PiSessionService implements SessionRouteService {
       this.modelRuntime,
       deps.hostContributions?.systemPromptSections ?? [],
       deps.hostContributions?.extensionPaths ?? [],
+      deps.hostContributions?.extensionFactories ?? [],
     );
     this.createAgentRuntime = deps.createAgentRuntime ?? defaultCreateAgentRuntime;
     this.workspaceActivity = deps.workspaceActivity;

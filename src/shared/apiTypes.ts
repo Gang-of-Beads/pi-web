@@ -206,6 +206,11 @@ export interface PiWebConfigValues {
    */
   environmentFacts?: boolean;
   /**
+   * When true, every session loads pi's built-in extensions (codemode, tool search, MCP) as the
+   * pi CLI does; their tools stay off until pi's `defaultTools` setting turns them on. On by default.
+   */
+  piBuiltInExtensions?: boolean;
+  /**
    * How long an extension dialog may wait for an answer before the daemon
    * auto-cancels it, in milliseconds. Applies only when the extension set no
    * `timeout` of its own (the sooner of the two wins); `0` waits forever.

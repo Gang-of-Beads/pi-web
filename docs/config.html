@@ -184,7 +184,7 @@
               <ul>
                 <li><code>host</code> / <code>port</code>: restart the gateway web/API service or process.</li>
                 <li><code>maxUploadBytes</code>: restart both the web/API process and the session daemon on that machine.</li>
-                <li><code>extensionDialogsTimeoutMs</code> / <code>environmentFacts</code>: restart the session daemon on that machine.</li>
+                <li><code>extensionDialogsTimeoutMs</code> / <code>environmentFacts</code> / <code>piBuiltInExtensions</code>: restart the session daemon on that machine.</li>
                 <li><code>pathAccess</code>: applies on the next request; existing file views may need a browser refresh.</li>
                 <li><code>logging</code>: the web/API process and the session daemon re-read it within a minute; no restart.</li>
                 <li><code>uploads.defaultFolder</code>: applies to newly opened Files upload dialogs and new direct drag/drop batches after config/workspace refresh.</li>
@@ -442,6 +442,14 @@ worktree_path="$1"
                       <td>Session environment facts</td>
                       <td><code>environmentFacts</code></td>
                       <td><code>PI_WEB_ENVIRONMENT_FACTS</code></td>
+                      <td>Global/session daemon</td>
+                      <td>Not supported locally</td>
+                      <td>Restart session daemon on that machine</td>
+                    </tr>
+                    <tr>
+                      <td>Load pi&#39;s built-in extensions (codemode, tool search, MCP), on by default; their tools stay off until pi&#39;s <code>defaultTools</code> turns them on</td>
+                      <td><code>piBuiltInExtensions</code></td>
+                      <td>—</td>
                       <td>Global/session daemon</td>
                       <td>Not supported locally</td>
                       <td>Restart session daemon on that machine</td>
