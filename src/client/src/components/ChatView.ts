@@ -35,7 +35,8 @@ const READER_INPUT_WINDOW_MS = 500;
 /** One wheel notch, as a scale factor: exp(-deltaY / this). */
 const WHEEL_ZOOM_STEP = 300;
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
-import { sessionActivityCategory } from "../../../shared/sessionActivityState";
+import { sessionActivityCategory, type SessionActivityCategory } from "../../../shared/sessionActivityState";
+import { openingMarkStyles, renderOpeningSpinner } from "./openingMark";
 import { isSessionActive } from "../../../shared/activity";
 import type { ChatLine, ChatPart, MessageDelivery, ToolExecutionPart } from "./shared";
 import { attachmentZoomStyles, toolExecutionDisplayStatus } from "./shared";
@@ -199,6 +200,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      working state keeps the full row, because it carries the elapsed clock at
      the far end and needs the distance between the two. */
   .activity-dock.asking { width: fit-content; max-width: min(calc(100% - 2 * var(--pi-chat-gutter)), 420px); }
+  .activity-dock.opening { width: fit-content; max-width: min(calc(100% - 2 * var(--pi-chat-gutter)), 420px); color: var(--pi-muted); }
   /* Idle turn, live children: readable as "waiting on something", not as the
      assistant working. */
   /* The named work has no drawer page to open: the pill states it and stays a
@@ -1491,7 +1493,7 @@ export class ChatView extends LitElement {
     const words = category === "working" ? standing?.workingMessage ?? ownWords : ownWords;
     return html`
       <div class=${`activity-dock ${category}${elapsed?.long === true ? " long-running" : ""}`} aria-live="polite">
-        ${category === "working" ? workingMark(standing?.workingFrames) : html`<span class="dot"></span>`}
+        ${dockMark(category, standing?.workingFrames)}
         <span class="activity-text" title=${words}>${words}</span>
         ${renderActivityNote(notes)}
         ${elapsed === undefined ? null : html`<span class="activity-elapsed" aria-hidden="true">${elapsed.text}</span>`}
@@ -2851,7 +2853,7 @@ export class ChatView extends LitElement {
     return defaultOpen ? `${this.sessionId}:live:${firstKey}` : `${this.sessionId}:${lastKey}`;
   }
 
-  static override styles = chatStyles;
+  static override styles = [chatStyles, openingMarkStyles];
 }
 
 
@@ -2897,4 +2899,18 @@ function workingMark(frames: readonly string[] | undefined) {
   if (frames === undefined) return html`<span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>`;
   const frame = frames[0];
   return frame === undefined ? null : html`<span class="working-mark" aria-hidden="true">${frame}</span>`;
+}
+
+const DOCK_MARKS: Readonly<Record<SessionActivityCategory, (frames: readonly string[] | undefined) => unknown>> = {
+  working: (frames) => workingMark(frames),
+  opening: () => renderOpeningSpinner(),
+  asking: () => html`<span class="dot"></span>`,
+  error: () => html`<span class="dot"></span>`,
+  background: () => html`<span class="dot"></span>`,
+  idle: () => html`<span class="dot"></span>`,
+};
+
+/** The dock's mark for a category: work in progress animates, an opening runtime wears the tap's spinner, the rest is a dot in its colour. */
+function dockMark(category: SessionActivityCategory, frames: readonly string[] | undefined) {
+  return DOCK_MARKS[category](frames);
 }

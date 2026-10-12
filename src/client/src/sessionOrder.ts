@@ -27,12 +27,13 @@ const RANK_POSITION: Readonly<Record<SessionRank, number>> = {
 /** The classifier's category before the unread flag is known; `unknown` is a state not yet read. */
 export type SessionRankCategory = SessionActivityCategory | "unknown";
 
-/** Each category's rank; only an idle (or not yet known) session splits on unread. */
+/** Each category's rank; only an idle, opening or not yet known session splits on unread. */
 const CATEGORY_RANK: Readonly<Record<SessionRankCategory, (unread: boolean) => SessionRank>> = {
   error: () => "error",
   asking: () => "asking",
   working: () => "working",
   background: () => "working",
+  opening: (unread) => unread ? "unread" : "read",
   idle: (unread) => unread ? "unread" : "read",
   unknown: (unread) => unread ? "unread" : "read",
 };

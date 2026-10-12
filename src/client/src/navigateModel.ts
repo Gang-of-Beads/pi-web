@@ -245,6 +245,7 @@ export function derivedTags(session: SessionInfo, input: Pick<NavigateInput, "pr
 const STATE_TAG: Readonly<Record<NavigateSessionState, string | undefined>> = {
   asking: "waiting",
   working: "working",
+  opening: undefined,
   background: undefined,
   error: undefined,
   idle: "idle",
@@ -255,6 +256,7 @@ const STATE_TAG: Readonly<Record<NavigateSessionState, string | undefined>> = {
 const STATE_DETAIL: Readonly<Record<NavigateSessionState, string | undefined>> = {
   asking: "waiting for you",
   working: "working",
+  opening: undefined,
   background: undefined,
   error: undefined,
   idle: undefined,

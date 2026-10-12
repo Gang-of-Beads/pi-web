@@ -14,6 +14,10 @@ export function renderOpeningSpinner(): TemplateResult {
   return html`<span class="opening-spinner" aria-hidden="true"></span>`;
 }
 
+export function renderOpeningStateMark(label: string): TemplateResult {
+  return html`<span class="session-state opening" role="img" aria-label=${label} title=${label}>${renderOpeningSpinner()}</span>`;
+}
+
 /** The words for the item's secondary line, or undefined when the line keeps its own text. */
 export function renderOpeningWords(opening: PendingNavigation | undefined, key: string): TemplateResult | undefined {
   if (opening?.key !== key) return undefined;

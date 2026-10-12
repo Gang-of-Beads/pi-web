@@ -30,7 +30,7 @@ import { renderSelectionActions, renderSelectionHeader, selectionBarStyles } fro
 import { sessionLabel } from "../../sessionLabels";
 import { machineSessionKey } from "../../machineKeys";
 import type { PendingNavigation } from "../../navigationIntent";
-import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningWords } from "../openingMark";
+import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningStateMark, renderOpeningWords } from "../openingMark";
 
 /** What a tap on a session row does. */
 type SessionRowTap = "open" | "continue";
@@ -66,6 +66,7 @@ export type NavigateKind = "sessions" | "machine" | "project";
 function renderNavigateStateMark(state: NavigateSessionState) {
   if (state === "unknown") return nothing;
   const label = SESSION_STATE_LABELS[state];
+  if (state === "opening") return renderOpeningStateMark(label);
   if (state === "working") {
     const dots = [0, 1, 2].map((index) => html`<span class="state-dot" style=${`animation-delay:${(index * 0.14).toFixed(2)}s`}></span>`);
     return html`<span class="session-state running" role="img" title=${label} aria-label=${label}><span class="state-dots">${dots}</span></span>`;

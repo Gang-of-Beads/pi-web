@@ -19,6 +19,7 @@ export interface DockFacts {
 
 const CATEGORY_WORDS: Readonly<Record<SessionActivityCategory, (facts: DockFacts) => string>> = {
   working: (facts) => workWords(facts),
+  opening: (facts) => activityWords(facts.activity) ?? "Opening session",
   asking: (facts) => (facts.stoppable ? workWords(facts) : "Waiting for your answer"),
   background: () => "idle",
   idle: (facts) => activityWords(facts.activity) ?? "idle",

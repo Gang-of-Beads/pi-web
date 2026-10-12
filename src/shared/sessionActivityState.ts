@@ -12,14 +12,19 @@ import type { SessionActivity, SessionStatus } from "./apiTypes.js";
  * ended — nothing will move without the user — so reporting it as working
  * would promise progress that is not coming; but children are still running,
  * so reporting it as idle hides work the user may be waiting on.
+ *
+ * "opening" is a runtime being started for the session (its extensions loading), reported by the
+ * daemon's startup frames. It is not the agent working (owner, 2026-10-12: a tapped session read as
+ * running while it was only being opened), so it sits below real work and the row wears the tap's
+ * own opening spinner until the startup ends.
  */
-export type SessionActivityCategory = "asking" | "error" | "working" | "background" | "idle";
+export type SessionActivityCategory = "asking" | "error" | "working" | "opening" | "background" | "idle";
 
 /**
  * The one category a session shows, first match wins: an open dialog, then a failed run, then
  * work in flight (streaming, a shell command, compaction, a queued message or an active run),
- * then runs left in the background, else idle. Without a status only the activity speaks: a
- * failed run, an active one, or nothing (undefined).
+ * then a runtime being opened, then runs left in the background, else idle. Without a status only
+ * the activity speaks: a failed run, an opening or an active one, or nothing (undefined).
  */
 export function sessionActivityCategory(
   status: SessionStatus | undefined,
@@ -27,10 +32,11 @@ export function sessionActivityCategory(
 ): SessionActivityCategory | undefined {
   if (isWaitingForUser(status)) return "asking";
   if (activity?.phase === "error") return "error";
-  if (status === undefined) return activity?.phase === "active" ? "working" : undefined;
+  const activeKind = activity?.phase !== "active" ? undefined : activity.startup === true ? "opening" : "working";
+  if (status === undefined) return activeKind;
   const working = status.isStreaming || status.isBashRunning || status.isCompacting || status.pendingMessageCount > 0;
   if (working) return "working";
-  if (activity?.phase === "active") return "working";
+  if (activeKind !== undefined) return activeKind;
   if ((status.backgroundRunCount ?? 0) > 0) return "background";
   return "idle";
 }

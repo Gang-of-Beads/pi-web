@@ -209,6 +209,11 @@ stateDiagram-v2
     [*] --> unknown
     unknown --> idle: status read or frame
     unknown --> working: status read or frame
+    unknown --> opening: a runtime starts for the session (startup frames)
+    idle --> opening: reload or fork starts the runtime again
+    opening --> idle: startup ends
+    opening --> asking: a card opens while it starts
+    opening --> working: a turn starts
     idle --> working: turn starts, or compaction / bash / tree navigation starts
     working --> idle: turn ends (once), or the out-of-turn work ends
     working --> background: turn ends while background work > 0
@@ -232,14 +237,15 @@ stateDiagram-v2
 ```
 
 - **Owner.** One pure classifier (`sessionActivityCategory`) over typed fields: the status booleans, the open cards, the background-work count and the activity `phase`. The chat dock, the session list, the quick switcher and the status line all use it; none has its own ladder.
-- **Precedence:** `asking` > `error` > `working` > `background` > `idle`. A question waiting for the reader outranks the failure before it; the failure stays in the transcript. (The classifier had `error` first, a leftover of the four-state badge that predates this diagram; it follows this order since the B14 review.)
+- **Precedence:** `asking` > `error` > `working` > `opening` > `background` > `idle`. A question waiting for the reader outranks the failure before it; the failure stays in the transcript. (The classifier had `error` first, a leftover of the four-state badge that predates this diagram; it follows this order since the B14 review.)
 - **Built (B14, 2026-10-02).** Three derivations had grown beside the classifier, and they disagreed:
   - the chat dock's own ladder (`activityState`) read the activity's *label* when no status had arrived, so a session whose last word was "stopped" showed working dots until its status came; it took "background" from a plugin's note being present rather than from the count, and ignored an active phase the classifier counts;
   - the quick switcher drew its badge from the classifier but its WORKING and waiting groups from `isSessionActive` and `isWaitingForUser`, so a session being opened sat outside WORKING with working dots, and a failed session still streaming sat in WORKING with a red badge;
   - the Go to page's rows knew only waiting, working and idle, from the same two sets, so a failed session and one with background work read idle there while the switcher said error and background.
 
   Now every surface asks `sessionActivityCategory`. The dock's category is the classifier's, and its words are output only: the step narration (D3), else the activity's words, else the status's own work word; asking says "Waiting for your answer" unless there is work a reader could stop. The switcher's groups and the Go to page's sections are ids in a category, computed once from the same map. The Go to page marks all five categories with the switcher's colours, and a session whose state is unknown carries no mark: absence is not negation.
-- **A different question.** `isSessionActive` stays, for a different question: is there work a reader could stop or must wait for (Stop, reload gating, a turn's falling edge, and the workspace roll-up, whose working flag is drawn on the workspace tile and means work a reader could stop below here). A session being opened is shown as working on its own row but has nothing to stop, so it does not light its workspace.
+- **A different question.** `isSessionActive` stays, for a different question: is there work a reader could stop or must wait for (Stop, reload gating, a turn's falling edge, and the workspace roll-up, whose working flag is drawn on the workspace tile and means work a reader could stop below here). A session being opened has nothing to stop either, so it does not light its workspace.
+- **Opening is not working (owner, 2026-10-12).** The owner tapped a session and its row turned to the working dots while the chat said "Opening session: Loading session extensions": starting a runtime for a session was classified as working. It is its own category, `opening`, from the activity's `startup` flag (the startup window's frames, and the daemon's reload and fork, which start the runtime again). The row and the dock wear the tap's own opening spinner until the startup ends (the owner's choice, B: "沿用点开时的转圈"); it is not in the switcher's WORKING group and ranks with idle in the session order. A refused duplicate send and a recall no longer publish an active activity: they are no work, and the status already says what the queue holds.
 - **Domain** (B14 review). The map covers every session a surface lists: the board's rows, pinned sessions whose project is closed, and the stepped-into project's own sessions. While another machine is browsed, neither the switcher nor the Go to page gets this machine's states: the rows wear no mark.
 - **Boot read** (B14). The status catalog a page reads at boot carries each session's latest activity, and the page takes it for a session it knows none for or holds an earlier one for (the daemon stamps both), as a live status does, so a reconnect learns a failure the page missed while its socket was down (review bd7a6a81); the selected session learns from its own status read, which also sets the dock. Before, a page loaded after a session failed never learned it: the Go to page and the switcher said "Session is done" for it, while a page open at the time said "Session hit an error" (`probe-one-classifier.mjs`).
 - **Background work** is a count on the status, contributed by plugins (a `backgroundWork` contribution per plugin, summed by the daemon). The *category* is core. The *words* beside it ("2 background runs", "subagent: reviewing…") are the contributing plugin's appendage. A disabled plugin contributes neither count nor words.

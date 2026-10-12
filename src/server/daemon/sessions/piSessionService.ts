@@ -1377,7 +1377,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly runInFlight = new Set<string>();
   /** Per-session tail of the queue-rewrite chain; see withQueueLock. */
   private readonly queueLocks = new Map<string, Promise<void>>();
-  private readonly activities = new Map<string, { phase: "active" | "idle" | "error"; label: string; detail?: string; at: string }>();
+  private readonly activities = new Map<string, { phase: "active" | "idle" | "error"; label: string; detail?: string; at: string; startup?: true }>();
   private readonly branchFacts = new BranchStateMemo<BranchFacts>();
   /** What each session's agent is doing (B25), and since when; every activity it publishes carries it. */
   private readonly steps = new Map<string, { step: SessionStep; since: string }>();
@@ -3210,13 +3210,11 @@ export class PiSessionService implements SessionRouteService {
     if (clientMessageId !== undefined && this.acceptanceLedger.has(sessionId, clientMessageId)) {
       const outcome = this.acceptanceLedger.outcomesFor(sessionId, [clientMessageId])[clientMessageId];
       this.events.publish(sessionId, { type: outcome === undefined ? "prompt.accepted" : REPEAT_ANSWER_FRAME[outcome], clientMessageId });
-      this.publishActivity(session, "duplicate message ignored", "active");
       this.publishStatus(session);
       return;
     }
     const busy = session.isStreaming || session.isCompacting || this.ownedQueue.entries(sessionId).length > 0;
     if (busy && clientMessageId === undefined && images.length === 0 && this.hasQueuedMessageText(session, promptText)) {
-      this.publishActivity(session, "duplicate queued message ignored", "active");
       this.publishStatus(session);
       return;
     }
@@ -4072,7 +4070,7 @@ export class PiSessionService implements SessionRouteService {
       throw new Error("The session changed since /tree was opened. Reopen /tree and try again.");
     }
 
-    this.publishActivity(session, "forking session from entry", "active");
+    this.publishActivity(session, "forking session from entry", "opening");
     this.publishStatus(session);
     try {
       const result = await this.commandService.forkEntry(session.sessionId, request.entryId, {
@@ -4156,7 +4154,7 @@ export class PiSessionService implements SessionRouteService {
       [{ sessionId: session.sessionId, session }],
       "Stop current session activity before reloading",
       async () => {
-        this.publishActivity(session, "reloading resources", "active");
+        this.publishActivity(session, "reloading resources", "opening");
         this.extensionStanding.get(session)?.clear();
         this.extensionOrigins.forget();
         const priorGeneration = this.notificationGenerationBySession.get(session);
@@ -4492,7 +4490,6 @@ export class PiSessionService implements SessionRouteService {
     const removed = recalled.removed;
     if (removed) this.withdraw(session.sessionId, recalled.clientMessageId);
     this.settleConsumedSteers(session);
-    this.publishActivity(session, removed ? "queued message recalled" : "queued message already gone", "active");
     this.publishStatus(session);
     this.pumpInbox(session);
     // Whether anything was actually taken back is the caller's business: the
@@ -5900,7 +5897,7 @@ export class PiSessionService implements SessionRouteService {
         continue;
       }
       this.publishStatus(session, "if-changed");
-      if (activity?.phase === "active") this.publishActivity(session, activity.label, "active", activity.detail);
+      if (activity?.phase === "active") this.publishActivity(session, activity.label, activity.startup === true ? "opening" : "active", activity.detail);
       else this.publishActivity(session, this.activityLabelFromStatus(session), "active");
     }
   }
@@ -6064,9 +6061,10 @@ export class PiSessionService implements SessionRouteService {
    * no session to own that state, and a failed creation would leave it stranded.
    *
    * Every report is marked `startup`, which is what keeps a session that is
-   * merely opening from counting as one doing work. This is the only publisher
-   * that sets the marker, and because it writes no `activities` entry no later
-   * heartbeat re-publication can carry it.
+   * merely opening from counting as one doing work. Because it writes no
+   * `activities` entry, no later heartbeat re-publishes these reports; a reload
+   * or a fork of an open session carries the marker through `publishActivity`'s
+   * `opening` kind, which the heartbeat keeps.
    */
   private publishStartupProgress(sessionId: string, startupToken: string | undefined, label: string, phase: "active" | "idle", detail: string | undefined): void {
     const at = new Date().toISOString();
@@ -6077,20 +6075,25 @@ export class PiSessionService implements SessionRouteService {
   private readonly lastActivityKeyBySession = new Map<string, string>();
 
   /**
-   * Publish an activity with the step the session is in. Deduped on what a
-   * reader sees, so a repeat (the heartbeat's, or a producer re-stating its
-   * words) sends nothing.
+   * Publish what a session is doing, with the step it is in. `opening` is a runtime starting its
+   * extensions again (a reload, a fork): it travels as an active activity with the startup flag, which
+   * the browser reads as opening, not as the agent working (owner, 2026-10-12: "click a session and it
+   * reads as running while it is only being opened"), as the startup window's own frames already did.
+   * Deduped on what a reader sees, so a repeat (the heartbeat's, or a producer re-stating its words)
+   * sends nothing.
    */
-  private publishActivity(session: PiAgentSession, label: string, phase: "active" | "idle" | "error", detail?: string): void {
+  private publishActivity(session: PiAgentSession, label: string, kind: "active" | "opening" | "idle" | "error", detail?: string): void {
+    const phase = kind === "opening" ? "active" : kind;
+    const startup = kind === "opening" ? { startup: true as const } : {};
     const current = this.steps.get(session.sessionId);
-    const key = `${phase}\u0000${label}\u0000${detail ?? ""}\u0000${current === undefined ? "" : `${JSON.stringify(current.step)}@${current.since}`}`;
+    const key = `${kind}\u0000${label}\u0000${detail ?? ""}\u0000${current === undefined ? "" : `${JSON.stringify(current.step)}@${current.since}`}`;
     if (this.lastActivityKeyBySession.get(session.sessionId) === key) return;
     this.lastActivityKeyBySession.set(session.sessionId, key);
     const at = new Date().toISOString();
-    const stored = detail === undefined ? { phase, label, at } : { phase, label, detail, at };
+    const stored = detail === undefined ? { phase, label, at, ...startup } : { phase, label, detail, at, ...startup };
     this.activities.set(session.sessionId, stored);
     const step = current === undefined ? {} : { step: current.step, stepSince: current.since };
-    const activity = detail === undefined ? { sessionId: session.sessionId, phase, label, at, ...step } : { sessionId: session.sessionId, phase, label, detail, at, ...step };
+    const activity = detail === undefined ? { sessionId: session.sessionId, phase, label, at, ...startup, ...step } : { sessionId: session.sessionId, phase, label, detail, at, ...startup, ...step };
     this.workspaceActivity?.applySessionActivity(session.sessionManager.getCwd(), activity);
     this.events.publish(session.sessionId, { type: "activity.update", activity });
     this.events.publishGlobal({ type: "activity.update", activity });
