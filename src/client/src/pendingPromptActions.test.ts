@@ -5,7 +5,7 @@ import { pendingPromptActions, trayState, type PendingPromptState } from "./pend
  * Owner report: "a message already confirmed as being processed - how can it still
  * have retry/discard? Some states simply cannot exist together". A message on its way cannot be re-sent, and a message the
  * daemon confirmed is no longer a tray row at all. The words are the bubble's
- * (owner, 2026-09-30): Sending… / Receiving… / Not sent / Not received.
+ * (owner, 2026-09-30): Sending… / Not sent / Not received.
  */
 describe("what an undelivered prompt offers", () => {
   it("offers nothing while the message is on its way", () => {
@@ -18,7 +18,7 @@ describe("what an undelivered prompt offers", () => {
       notSent: pendingPromptActions("not-sent"),
       notReceived: pendingPromptActions("not-received"),
     }).toEqual({
-      unverifiable: { state: "unverifiable", label: "Receiving…", retry: true, discard: true },
+      unverifiable: { state: "unverifiable", label: "Sending…", retry: true, discard: true },
       notSent: { state: "not-sent", label: "Not sent", retry: true, discard: true },
       notReceived: { state: "not-received", label: "Not received", retry: true, discard: true },
     });

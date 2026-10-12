@@ -35,7 +35,7 @@ describe("chatDeliveryPresentation", () => {
 
   it("shows work in flight while the request is unconfirmed", () => {
     expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "sending" })).toMatchObject({ text: "Sending…", tone: "pending" });
-    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "unverifiable" })).toMatchObject({ text: "Receiving…", tone: "pending" });
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "unverifiable" })).toMatchObject({ text: "Sending…", tone: "pending" });
   });
 });
 

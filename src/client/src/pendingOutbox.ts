@@ -121,7 +121,7 @@ export function isNetworkFailure(error: unknown): boolean {
  * failure that carried no answer can have been stopped by a dead link, and only an explicit
  * `navigator.onLine === false` says so: an HTTP answer, even a gateway's 504, proves the bytes
  * left, and an environment that does not report the link proves nothing. This decides whether a
- * row reads "Not sent" instead of "Receiving…", so it may not guess.
+ * row reads "Not sent" instead of "Sending…", so it may not guess.
  */
 export function linkReportedOffline(error: unknown): boolean {
   if (!isNetworkFailure(error) || typeof navigator === "undefined") return false;
@@ -368,7 +368,7 @@ export function failPendingPrompt(sessionKey: string, clientMessageId: string, c
 
 /**
  * A replay nobody answered: the record says what the bubble says. Bytes that left may have
- * arrived (Receiving…); bytes that never left did not (Not sent). The table cannot say it, because
+ * arrived (Sending…, still checking); bytes that never left did not (Not sent). The table cannot say it, because
  * a failed record ignores a timeout; a retry is a fresh attempt, so its outcome replaces the old.
  */
 export function markUnansweredPrompt(sessionKey: string, clientMessageId: string, bytesLeft: boolean, storage = browserLocalStorage()): void {

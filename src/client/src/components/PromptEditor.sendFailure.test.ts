@@ -149,7 +149,7 @@ describe("unsent messages are visible and retryable", () => {
     await editor.updateComplete;
     const strip = editor.shadowRoot?.querySelector(".pending-prompts");
     expect(strip?.textContent).toContain("lost on exit");
-    expect(strip?.textContent).toContain("Receiving…");
+    expect(strip?.textContent).toContain("Sending…");
     expect(strip?.textContent).toContain("Retry");
     expect(strip?.textContent).toContain("Discard");
   });

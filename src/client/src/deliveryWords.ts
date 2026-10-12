@@ -6,8 +6,11 @@ import type { MessageDeliveryState } from "./components/shared";
  * The bubble, the composer tray and the command bubble each kept their own wording, so one
  * message read "No answer yet" on its bubble and "Unsent" in the tray, and a confirmation
  * that was not a queue read "Queued". The owner fixed the words (2026-09-29 and 2026-09-30):
- * Sending… / Receiving… / Received / Queued / Not sent / Not received, and no "Read" - once
- * the agent takes a message it is an ordinary input message and carries no mark.
+ * Sending… / Received / Queued / Not sent / Not received, and no "Read" - once the agent takes
+ * a message it is an ordinary input message and carries no mark. A message whose bytes left and
+ * that the server has not confirmed yet still reads "Sending…": it read "Receiving…", which read
+ * as receiving a reply (owner, 2026-10-12). Its label says it is sent and being checked, and it
+ * keeps Retry and Discard.
  */
 
 /**
@@ -33,8 +36,8 @@ const WORDS: Readonly<Record<DeliveryWordKey, DeliveryWords>> = {
   sending: { glyph: "pending", text: "Sending…", label: "Sending…", tone: "pending", retry: false, discard: false },
   unverifiable: {
     glyph: "pending",
-    text: "Receiving…",
-    label: "Receiving… - sent, and the server has not confirmed it yet; still checking",
+    text: "Sending…",
+    label: "Sending… - sent, and the server has not confirmed it yet; still checking",
     tone: "pending",
     retry: true,
     discard: true,

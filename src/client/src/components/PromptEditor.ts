@@ -1506,7 +1506,7 @@ export class PromptEditor extends LitElement {
  * For a send nobody answered, whether its bytes left - the fact the bubble words it by; undefined
  * for a failure that is an answer. The controller wraps the transport error in `NetworkSendError`
  * and classifies the original, so this unwraps it too: classifying the wrapper made the record
- * say "Not sent" while the bubble said "Receiving…". The first send and a replay both use it; a
+ * say "Not sent" while the bubble said it was still being checked. The first send and a replay both use it; a
  * replay used to leave its record's state as it was whatever the retry found.
  */
 function unansweredBytesLeft(failure: unknown): boolean | undefined {

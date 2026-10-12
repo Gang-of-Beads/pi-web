@@ -866,7 +866,7 @@ export class SessionController {
 
   /**
    * A send nobody answered is the first unanswered moment of its session's message status (P1
-   * slice 6): the row says "Receiving…" and the app's one row says reconnecting after the grace,
+   * slice 6): the row says "Sending…" (sent, still checking) and the app's one row says reconnecting after the grace,
    * until a ledger ask gets through. It used to raise the transport error as a notice of its own,
    * which read as a second, red "reconnecting" (owner screenshot, 2026-10-01). A send the bytes
    * never left marks its row not sent instead, and claims nothing: nothing will ask about it.

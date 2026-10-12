@@ -81,7 +81,7 @@ describe("the words for a message nobody answered for", () => {
 
   it("gives the reader words for who is being waited on", () => {
     const bubble = chatDeliveryPresentation({ clientMessageId: "cm-1", state: "unverifiable" });
-    expect({ text: bubble.text, label: bubble.label }).toMatchObject({ text: "Receiving…" });
+    expect({ text: bubble.text, label: bubble.label }).toMatchObject({ text: "Sending…" });
   });
 });
 
