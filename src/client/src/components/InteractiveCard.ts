@@ -1,8 +1,7 @@
-import { LitElement, css, html, unsafeCSS, nothing, type PropertyValues, type TemplateResult } from "lit";
+import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { live } from "lit/directives/live.js";
-import { renderCheckIcon, renderFilledDotIcon, uiIconStyle } from "./uiIcons.js";
 import { acceptsOptionChange } from "../cardStepGuard";
 import { interactiveCardNeedsRender, type OpenCard } from "../cardIdentity";
 import {
@@ -162,7 +161,7 @@ export class InteractiveCard extends LitElement {
     return html`
       <fieldset id=${this.fieldsetId(index)} class=${`field${filled ? " answered" : ""}`} aria-describedby=${ifDefined(detailId)} tabindex="-1">
         <legend>
-          <span class="field-mark">${filled ? renderCheckIcon() : renderFilledDotIcon()}</span>
+          <span class="field-mark">${String(index + 1)}.</span>
           <span>${field.label}${field.required === true ? html`<span class="required" aria-label="required"> *</span>` : nothing}</span>
         </legend>
         ${field.detail === undefined ? nothing : html`<p class="field-detail" id=${ifDefined(detailId)}>${field.detail}</p>`}
@@ -406,7 +405,7 @@ export class InteractiveCard extends LitElement {
     return `card-typed-${String(index)}`;
   }
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`
+  static override styles = css`
     /* This card is its own shadow root, so the transcript's tap rules do not
        reach it: without these, the option buttons stay eligible for the
        browser's double-tap-zoom click delay and paint the platform's rectangular
@@ -619,7 +618,7 @@ export class InteractiveCard extends LitElement {
     @media (pointer: coarse) {
       .primary-action, .secondary-action { min-height: var(--pi-control-height-touch); }
     }
-  `];
+  `;
 }
 
 declare global {
