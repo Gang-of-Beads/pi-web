@@ -113,6 +113,7 @@ import { sessionLabel } from "../sessionLabels";
 import { NavigationIntents, openingAnnouncement } from "../navigationIntent";
 import { writeClipboardText } from "../clipboard";
 import type { NavigateInput, NavigateLevel } from "../navigateModel";
+import { machineReachability } from "../machineReachability";
 import type { ShellToolTab } from "../appShell/shellToolTabs";
 import "./appShell/AppPanelEdgeControl";
 import { goToScope, type GoToScope, type NavigateListScope, type ShownPageKind } from "../goToScope";
@@ -3088,7 +3089,7 @@ export class PiWebApp extends LitElement {
     const projectPinnedIds = this.projectPinnedSessionIdsFor(machineId, state.selectedProject?.id);
     return {
       scope: { machineId, projectId: state.selectedProject?.id, folderPath: state.selectedWorkspace?.path, sessionId: state.selectedSession?.id },
-      machines: state.machines.map((machine) => ({ id: machine.id, name: machine.name })),
+      machines: state.machines.map((machine) => ({ id: machine.id, name: machine.name, reachability: machineReachability(state.machineStatuses[machine.id]) })),
       projects: projectChoices(browsingElsewhere ? this.projects.listed(machineId) ?? [] : state.projects),
       folders: state.workspaces.map((workspace) => ({ id: workspace.id, label: workspace.label, path: workspace.path, projectId: workspace.projectId })),
       sessions,

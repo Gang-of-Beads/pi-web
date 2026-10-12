@@ -815,10 +815,10 @@ export class AppNavigatePage extends LitElement {
         }}
       >
         <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${this.rowIcon(group, choice.id, icon)}</span>${kind === "project" && this.pinnedProjectIds.has(choice.id) ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${choice.label}</span></span>
-        ${choice.detail === undefined ? nothing : html`<span class="row-path">${choice.detail}</span>`}
+        ${choice.reachability !== undefined ? html`<span class="row-path reachability" data-state=${choice.reachability.state} title=${choice.reachability.text}><span class="reachability-dot" aria-hidden="true"></span>${choice.reachability.text}</span>` : choice.detail === undefined ? nothing : html`<span class="row-path">${choice.detail}</span>`}
       </button>
     `, {
-      hasPath: choice.detail !== undefined,
+      hasPath: choice.detail !== undefined || choice.reachability !== undefined,
       closable: kind === "project" && this.canCloseProject,
       pinned: kind === "project" && this.pinnedProjectIds.has(choice.id),
     }, group, selected);
@@ -1124,6 +1124,11 @@ export class AppNavigatePage extends LitElement {
     .body.tiles-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .section-title, .empty { grid-column: 1 / -1; }
     .row-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
+    .row-path.reachability { display: block; }
+    .reachability-dot { display: inline-block; width: var(--pi-dot-md); height: var(--pi-dot-md); margin-right: var(--pi-space-2); border-radius: 50%; vertical-align: middle; background: var(--pi-dim); }
+    .reachability[data-state="online"] .reachability-dot { background: var(--pi-success); }
+    .reachability[data-state="offline"] .reachability-dot, .reachability[data-state="error"] .reachability-dot { background: var(--pi-danger); }
+    .reachability[data-state="offline"], .reachability[data-state="error"] { color: var(--pi-danger); }
     .row.folder-missing .row-name, .row.folder-missing .row-icon { color: var(--pi-muted); }
     .section-title { margin: var(--pi-space-5) 0 0; color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
     /* A section title stands close to its own rows (owner, 2026-10-09: "the Pinned / Active

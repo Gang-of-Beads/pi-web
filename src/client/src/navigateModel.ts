@@ -16,6 +16,7 @@
 import { presentProjectsFirst, projectDetail, projectFolderFlag } from "./projectFolder";
 import { CORE_SESSION_SECTIONS, compareRanked, modifiedMs, sectionOf, sessionRank, type SectionOrdering, type SessionRank, type SessionSectionDefinition } from "./sessionOrder";
 import type { SessionInfo } from "./api";
+import type { MachineReachabilityView } from "./machineReachability";
 import type { SessionActivityCategory } from "../../shared/sessionActivityState";
 
 /**
@@ -45,6 +46,8 @@ export interface NavigateChoice {
   folderMissing?: true;
   /** Sessions known to live under this choice, when the caller knows. */
   sessionCount?: number;
+  /** Whether a machine answers; drawn under its name. */
+  reachability?: MachineReachabilityView;
 }
 
 export interface SessionPinFacts {
@@ -95,7 +98,7 @@ export interface NavigateModel {
   tagCounts: ReadonlyMap<string, number>;
 }
 
-interface MachineLike { id: string; name: string }
+interface MachineLike { id: string; name: string; reachability?: MachineReachabilityView }
 interface ProjectLike { id: string; name: string; path?: string; folderMissing?: boolean }
 interface FolderLike { id: string; label: string; path: string; projectId?: string }
 
@@ -390,7 +393,7 @@ function nextLevelFor(input: NavigateInput): NavigateLevel | undefined {
 function choicesFor(level: NavigateLevel | undefined, input: NavigateInput): NavigateChoice[] {
   if (level === undefined) return [];
   if (level === "machine") {
-    return input.machines.map((machine) => ({ level, id: machine.id, label: machine.name, current: machine.id === input.scope.machineId }));
+    return input.machines.map((machine) => ({ level, id: machine.id, label: machine.name, current: machine.id === input.scope.machineId, ...(machine.reachability === undefined ? {} : { reachability: machine.reachability }) }));
   }
   return presentProjectsFirst(input.projects).map((project) => {
     const detail = projectDetail(project);

@@ -5,6 +5,7 @@ import type { Machine, MachineHealth } from "../../api";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
 import "./SettingsFleetSection";
 import { interactiveSurfaceStyles } from "../shared";
+import { machineReachability } from "../../machineReachability";
 
 /**
  * Dedicated machines management panel: every connected machine (including
@@ -53,13 +54,12 @@ export class SettingsMachinesPanel extends LitElement {
   }
 
   private renderMachineCard(machine: Machine) {
-    const health = this.machineStatuses[machine.id];
-    const statusClass = health?.status === "online" ? "online" : health?.status === "offline" ? "offline" : "unknown";
+    const reachability = machineReachability(this.machineStatuses[machine.id]);
     const renaming = this.renamingId === machine.id;
     return html`
       <div class="machine-card" data-machine-id=${machine.id}>
         <div class="machine-card-header">
-          <span class="status-dot ${statusClass}" aria-hidden="true"></span>
+          <span class="status-dot" data-state=${reachability.state} aria-hidden="true"></span>
           <span class="machine-kind">${machine.kind === "local" ? "Local" : "Remote"}</span>
         </div>
         ${renaming ? html`
@@ -73,6 +73,7 @@ export class SettingsMachinesPanel extends LitElement {
         ` : html`
           <div class="machine-card-name" title=${machine.id}>${machine.name}</div>
           <div class="machine-card-sub">${machine.kind === "local" ? "This device" : machine.baseUrl ?? machine.id}</div>
+          <div class="machine-card-sub reachability" data-state=${reachability.state}>${reachability.text}</div>
           <div class="machine-card-actions">
             <button type="button" @click=${() => { this.startRename(machine); }}>Rename</button>
             ${machine.kind === "remote" ? html`
@@ -105,8 +106,9 @@ export class SettingsMachinesPanel extends LitElement {
     .machine-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-3); min-height: 96px; padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
     .machine-card-header { display: flex; align-items: center; gap: var(--pi-space-3); }
     .status-dot { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: var(--pi-dim); }
-    .status-dot.online { background: var(--pi-success); }
-    .status-dot.offline { background: var(--pi-danger); }
+    .status-dot[data-state="online"] { background: var(--pi-success); }
+    .status-dot[data-state="offline"], .status-dot[data-state="error"] { background: var(--pi-danger); }
+    .reachability[data-state="offline"], .reachability[data-state="error"] { color: var(--pi-danger); }
     .machine-kind { color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); }
     .machine-card-name { font-weight: var(--pi-weight-semibold); overflow-wrap: anywhere; }
     .machine-card-sub { color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -381,13 +381,7 @@ export class MachineController {
       return await api.health(machine.id);
     } catch (error) {
       this.noticeReadFailure(error, "background");
-      return {
-        machineId: machine.id,
-        ok: false,
-        checkedAt: new Date().toISOString(),
-        status: "unknown",
-        error: describeError(error),
-      };
+      return unreadHealth(machine.id, error);
     }
   }
 
@@ -395,10 +389,16 @@ export class MachineController {
     return machines.find((machine) => machine.id === "local") ?? machines[0];
   }
 
+  /**
+   * Each machine's health as it answers: the Machines list shows a quick machine's answer without
+   * waiting for the slowest. A read that failed on the way leaves the machine unknown, with why,
+   * rather than no answer at all.
+   */
   private async refreshMachineHealthFor(machines: Machine[]): Promise<void> {
-    const results = await Promise.allSettled(machines.map((machine) => api.health(machine.id)));
-    const health = Object.fromEntries(results.flatMap((result) => result.status === "fulfilled" ? [[result.value.machineId, result.value] as const] : []));
-    if (Object.keys(health).length > 0) this.setState({ machineStatuses: { ...this.getState().machineStatuses, ...health } });
+    await Promise.all(machines.map(async (machine) => {
+      const health = await api.health(machine.id).catch((error: unknown) => unreadHealth(machine.id, error));
+      this.setState({ machineStatuses: { ...this.getState().machineStatuses, [health.machineId]: health } });
+    }));
   }
 
   private async refreshMachineRuntimeFor(machines: Machine[]): Promise<void> {
@@ -410,6 +410,10 @@ export class MachineController {
 
 function omitKey<T>(record: Record<string, T>, keyToOmit: string): Record<string, T> {
   return Object.fromEntries(Object.entries(record).filter(([key]) => key !== keyToOmit));
+}
+
+function unreadHealth(machineId: string, error: unknown): MachineHealth {
+  return { machineId, ok: false, checkedAt: new Date().toISOString(), status: "unknown", error: describeError(error) };
 }
 
 function filterKeys<T>(record: Record<string, T>, allowedKeys: Set<string>): Record<string, T> {
