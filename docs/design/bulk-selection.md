@@ -78,7 +78,7 @@ Owner, 2026-09-30: "Long-pressing an item on any list page opens a bulk-operatio
 | Context sheet › Projects | workspaces plugin | Close | Close project |
 | Context sheet › Folders | workspaces plugin | actions other plugins contribute to a folder (git's worktree actions) | a contributed action that marks itself bulk; none do today |
 | Context sheet › Machines | machines plugin | Check again, Open PI WEB, Rename…, Remove | Check again, Remove |
-| Files, Background, Subagents, Goals, Relays, Updates, Git, Terminal | plugins | none per row | none: a hold does nothing |
+| Files, Background, Subagents, Goals, Updates, Git, Terminal | plugins | none per row | none: a hold does nothing |
 
 A hold on a list without bulk actions does nothing, rather than entering a mode with nothing to do.
 

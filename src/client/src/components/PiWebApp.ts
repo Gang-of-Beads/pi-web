@@ -3162,6 +3162,7 @@ export class PiWebApp extends LitElement {
 
   /** Whether the choices the page lists are still being read: the browsed machine's projects, or the selected machine's. */
   private navigateChoicesLoading(): boolean {
+    if (this.state.machinesLoad !== "loaded") return true;
     const machineId = this.browsedMachineId();
     if (machineId !== selectedMachineId(this.state)) return this.projects.listed(machineId) === undefined;
     return this.state.projectsLoad !== "loaded" || this.state.isLoadingWorkspaces;

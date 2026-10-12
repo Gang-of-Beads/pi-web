@@ -39,15 +39,27 @@ usage() {
   sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
-# argv + environment of one process, which is where the 8505 markers are: the
-# markers are set as environment for `node`, so argv alone would not show them.
 # Linux procps has no `ps -E`; /proc holds the same two lists, NUL-separated.
-process_command_line() {
-  if [ -d /proc/self ]; then
-    { tr '\0' ' ' <"/proc/$1/cmdline"; tr '\0' ' ' <"/proc/$1/environ"; } 2>/dev/null || true
+has_proc() {
+  [ -d /proc/self ]
+}
+
+# argv + environment of one process, one record per line, which is where the
+# 8505 markers are: they are set as environment for `node`, so argv alone would
+# not show them. /proc keeps each record whole, so a variable whose value merely
+# contains a marker cannot pass for the marker; `ps -E` prints one line, which
+# only spaces can split.
+process_records() {
+  if has_proc; then
+    [ -r "/proc/$1/environ" ] || return 0
+    { tr '\0' '\n' <"/proc/$1/cmdline"; printf '\n'; tr '\0' '\n' <"/proc/$1/environ"; } 2>/dev/null || true
     return 0
   fi
-  ps -p "$1" -Eww -o command= 2>/dev/null || true
+  { ps -p "$1" -Eww -o command= 2>/dev/null || true; } | tr ' ' '\n'
+}
+
+process_command_line() {
+  process_records "$1" | { grep -v '^$' || true; } | tr '\n' ' '
 }
 
 # The guard. Membership of this stack is an exact token match, never a name.
@@ -56,14 +68,14 @@ process_command_line() {
 # proof exists: HOLDING this stack's socket or port while running this repo's
 # server entrypoint. Resource ownership plus code identity - still never a name.
 is_8505_process() {
-  if process_command_line "$1" | tr ' ' '\n' | grep -Fxq \
+  if process_records "$1" | grep -Fx \
     -e "PI_WEB_DATA_DIR=$DATA_DIR" \
     -e "PI_WEB_SESSIOND_SOCKET=$SOCKET" \
-    -e "PI_WEB_PORT=$PORT"; then
+    -e "PI_WEB_PORT=$PORT" >/dev/null; then
     return 0
   fi
   if holder_pids | grep -qx "$1"; then
-    process_command_line "$1" | grep -Eq "dist/server/(sessiond|index)\.js"
+    process_records "$1" | grep -E "dist/server/(sessiond|index)\.js" >/dev/null
     return $?
   fi
   return 1
@@ -91,9 +103,16 @@ is_ancestor_of_self() {
 }
 
 marked_pids() {
-  if [ -d /proc/self ]; then
-    { grep -lsaF -e "PI_WEB_DATA_DIR=$DATA_DIR" -e "PI_WEB_SESSIOND_SOCKET=$SOCKET" /proc/[0-9]*/environ 2>/dev/null || true; } \
-      | cut -d/ -f3 | { grep -vx "$$" || true; } | sort -u
+  if has_proc; then
+    local environ pid
+    for environ in /proc/[0-9]*/environ; do
+      pid="${environ#/proc/}"
+      pid="${pid%/environ}"
+      if [ "$pid" = "$$" ]; then continue; fi
+      if { tr '\0' '\n' <"$environ"; } 2>/dev/null | grep -Fx -e "PI_WEB_DATA_DIR=$DATA_DIR" -e "PI_WEB_SESSIOND_SOCKET=$SOCKET" >/dev/null; then
+        echo "$pid"
+      fi
+    done
     return 0
   fi
   ps -Axww -E -o pid=,command= 2>/dev/null \

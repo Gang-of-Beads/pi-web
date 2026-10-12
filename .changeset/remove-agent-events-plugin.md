@@ -2,4 +2,4 @@
 "@gang-of-beads/pi-web": patch
 ---
 
-The bundled Agent Events plugin is removed. The one-line rows it drew for web search results, legacy agent-browser script sessions and account selections no longer appear in the conversation; those entries are extension state that pi's terminal does not show either.
+The bundled Agent Events plugin is removed. Conversation messages it summarised in one line (pi-web-access search results, legacy agent-browser script sessions, account selections) are now drawn as pi's terminal draws them: with the extension's own drawing when it registers one, otherwise as their type and content.

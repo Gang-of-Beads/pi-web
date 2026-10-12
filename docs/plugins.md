@@ -1225,7 +1225,7 @@ contributions: {
 }
 ```
 
-`render` receives `{ toolName, status, args, details, resultText }`: `status` is `running`, `success`, `error` or `interrupted` (a call the turn left unfinished), and `details` is what the tool's last update or its result carried, so the drawing follows the call live. It is the extension's own data: read it defensively. Return `undefined` for a call you cannot draw yet, and the host's tool card draws it; a `render` that throws does the same and is logged, so a tool row is never empty. One plugin claims a tool name per machine; a second claim is a registration error. The bundled Workflows plugin draws the pi-dynamic-workflows extension's `workflow` tool this way.
+`render` receives `{ toolName, status, args, details, resultText }`: `status` is `running`, `success`, `error` or `interrupted` (a call the turn left unfinished), and `details` is what the tool's last update or its result carried, so the drawing follows the call live. It is the extension's own data: read it defensively. Return `undefined` for a call you cannot draw yet, and the host's tool card draws it; a `render` that throws does the same and is logged, so a tool row is never empty. One plugin claims a tool name per machine; a second claim is a registration error. The [pi-web-workflows](https://github.com/Gang-of-Beads/pi-web-workflows) plugin draws the pi-dynamic-workflows extension's `workflow` tool this way.
 
 ## Asking the reader to confirm
 

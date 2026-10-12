@@ -104,7 +104,7 @@ desktop does not narrow Go to to the machine.
 | --- | --- |
 | Updates (PI WEB updates for the shown machine) | global |
 | Terminal | both: the project page as today, and a global page with a shell in the machine's home folder (owner, ask `7aba00fa`) |
-| Files, Git, Goals, Tasks, Relays, Info | project |
+| Files, Git, Goals, Tasks, Info | project |
 | Subagents, Background (per session, inside a project) | project |
 
 The global Terminal needs machine-level terminal routes in the web process and the session daemon
