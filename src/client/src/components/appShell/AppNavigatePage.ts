@@ -30,7 +30,7 @@ import type { ReorderPoint } from "../../listReorder";
 import { isSelecting, type SelectionOutcome } from "../../selectionModel";
 import { renderSelectionActions, renderSelectionHeader, selectionBarStyles } from "./navigateSelectionBar";
 import { sessionLabel } from "../../sessionLabels";
-import { machineSessionKey } from "../../machineKeys";
+import { LOCAL_MACHINE_ID, machineSessionKey } from "../../machineKeys";
 import type { PendingNavigation } from "../../navigationIntent";
 import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningStateMark, renderOpeningWords } from "../openingMark";
 
@@ -168,6 +168,8 @@ export class AppNavigatePage extends LitElement {
   /** Whether the host can archive, restore and delete sessions of the machine this page lists. */
   @property({ attribute: false }) canArchiveSessions = false;
   @property({ attribute: false }) canCloseProject = false;
+  /** The host renames and removes machines from their row, as Settings → Machines does (owner, 2026-10-14). */
+  @property({ attribute: false }) canManageMachines = false;
   /** Project ids the reader pinned; the host owns the store. */
   @property({ attribute: false }) pinnedProjectIds: ReadonlySet<string> = new Set();
   /** How much of the machine-wide board has answered; emptiness is claimed only for a complete one. */
@@ -843,6 +845,8 @@ export class AppNavigatePage extends LitElement {
       hasPath: choice.detail !== undefined || choice.reachability !== undefined,
       closable: kind === "project" && this.canCloseProject,
       pinned: kind === "project" && this.pinnedProjectIds.has(choice.id),
+      renamable: kind === "machine" && this.canManageMachines,
+      removable: kind === "machine" && this.canManageMachines && choice.id !== LOCAL_MACHINE_ID,
     }, group, selected);
   }
 
@@ -858,13 +862,13 @@ export class AppNavigatePage extends LitElement {
     id: string,
     label: string,
     row: unknown,
-    facts: { pinned?: boolean; projectPinned?: boolean | undefined; hasPath?: boolean; closable?: boolean; archived?: boolean; archivable?: boolean },
+    facts: { pinned?: boolean; projectPinned?: boolean | undefined; hasPath?: boolean; closable?: boolean; archived?: boolean; archivable?: boolean; renamable?: boolean; removable?: boolean },
     group: NavigateBulkGroup | undefined,
     selected: boolean | undefined,
   ) {
     const actions = navigateRowActions(kind, {
       ...facts,
-      renamable: kind === "session" && this.canRenameSession,
+      renamable: kind === "session" ? this.canRenameSession : facts.renamable === true,
     });
     const open = this.openMenuRowId === rowId;
     const menu = actions.length > 1 && !isSelecting(this.selection.state);

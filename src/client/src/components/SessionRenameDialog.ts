@@ -5,8 +5,16 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import "./ModalSurface";
 import { interactiveSurfaceStyles } from "./shared";
 
+/** What is being renamed, and the words the dialog uses for it. */
+export type RenameSubject = "session" | "machine";
+
+const RENAME_WORDS: Readonly<Record<RenameSubject, { readonly title: string; readonly field: string; readonly hint: string }>> = {
+  session: { title: "Rename session", field: "Session name", hint: "A name only you see. Empty or unchanged keeps the current one." },
+  machine: { title: "Rename machine", field: "Machine name", hint: "The name this PI WEB shows for the machine. Empty or unchanged keeps the current one." },
+};
+
 /**
- * Rename a session in the project's own dialog.
+ * Rename a session, or a machine in the list, in the project's own dialog.
  *
  * The native `prompt()` this replaces is suppressed in iOS standalone mode,
  * ignores the theme, and blocks rendering. The contract it carried is kept:
@@ -17,6 +25,7 @@ import { interactiveSurfaceStyles } from "./shared";
 @customElement("session-rename-dialog")
 export class SessionRenameDialog extends LitElement {
   @property({ attribute: false }) sessionName = "";
+  @property({ attribute: false }) subject: RenameSubject = "session";
   @property({ attribute: false }) onSubmit?: (name: string) => void | Promise<void>;
   @property({ attribute: false }) onCancel?: () => void;
 
@@ -74,23 +83,24 @@ export class SessionRenameDialog extends LitElement {
   override render(): TemplateResult {
     const trimmed = this.draft.trim();
     const canSubmit = trimmed !== "" && trimmed !== this.sessionName && !this.submitting;
+    const words = RENAME_WORDS[this.subject];
     return html`
       <modal-surface
         .onClose=${() => this.onCancel?.()}
         .initialFocus=${"input"}
-        .label=${"Rename session"}
+        .label=${words.title}
       >
         <form @submit=${(event: SubmitEvent) => { this.handleSubmit(event); }}>
           <header>
-            <strong>Rename session</strong>
+            <strong>${words.title}</strong>
             <button type="button" class="bar-key" @click=${() => { this.onCancel?.(); }} aria-label="Close">${renderCrossIcon()}</button>
           </header>
           <div class="body">
             <label>
-              Session name
+              ${words.field}
               <input type="text" .value=${this.draft} @input=${(event: Event) => { this.handleInput(event); }} maxlength="200" autocomplete="off" />
             </label>
-            <p class="hint">A name only you see. Empty or unchanged keeps the current one.</p>
+            <p class="hint">${words.hint}</p>
           </div>
           <footer>
             <button type="button" @click=${() => { this.onCancel?.(); }}>Cancel</button>

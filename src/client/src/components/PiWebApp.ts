@@ -561,6 +561,7 @@ export class PiWebApp extends LitElement {
   private startSessionAfterAddingProject = false;
   /** The session the rename dialog names, with the machine it lives on: a row of a browsed machine is renamed there. */
   @state() private renameFromBar: { session: SessionInfo; machineId: string } | undefined;
+  @state() private renamingMachine: Machine | undefined;
   /** How much of the browsed machine's board has answered; the lists claim emptiness only for a complete one. */
   @state() private quickSwitcherBoardAnswer: BoardAnswer = "none";
   /** Changes the reader asked for from the list that are still on their way; the list applies their result without motion (cached-first-and-motion.md). */
@@ -3243,6 +3244,7 @@ export class PiWebApp extends LitElement {
       .canRenameSession=${true}
       .canArchiveSessions=${!this.quickSwitcherBrowsingElsewhere()}
       .canCloseProject=${!this.quickSwitcherBrowsingElsewhere()}
+      .canManageMachines=${true}
       .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => { void this.asReaderListChange(() => this.runNavigateRowAction(kind, id, action)); }}
       .readerChanging=${this.readerListChanges > 0}
       .onBulkAction=${(group: NavigateBulkGroup, action: NavigateBulkActionId, ids: readonly string[]) => this.asReaderListChange(() => this.runNavigateBulkAction(group, action, ids))}
@@ -3288,7 +3290,19 @@ export class PiWebApp extends LitElement {
    * The row menu names an action; the shell performs it against the row's own
    * scope. A row acts on the thing it names, never on the current selection.
    */
+  /** A machine row's own actions; Open is the shared one. */
+  private readonly machineRowActions: Partial<Record<NavigateRowActionId, (machine: Machine) => void>> = {
+    rename: (machine) => { this.renamingMachine = machine; },
+    "remove-machine": (machine) => { void this.removeMachine(machine); },
+  };
+
   private async runNavigateRowAction(kind: NavigateRowKind, id: string, action: NavigateRowActionId): Promise<void> {
+    const machineAction = kind === "machine" ? this.machineRowActions[action] : undefined;
+    if (machineAction !== undefined) {
+      const machine = this.state.machines.find((entry) => entry.id === id);
+      if (machine !== undefined) machineAction(machine);
+      return;
+    }
     if (action === "open") {
       if (kind === "session") {
         const session = this.listedSession(id);
@@ -5603,6 +5617,12 @@ export class PiWebApp extends LitElement {
         .navSectionContext=${this.buildNavSectionContext("sheet")}
         .onClose=${() => { this.contextSheetOpen = false; }}
       ></context-switcher-sheet>` : null}
+      ${this.renamingMachine === undefined ? null : html`<session-rename-dialog
+        .subject=${"machine"}
+        .sessionName=${this.renamingMachine.name}
+        .onSubmit=${async (name: string) => { const machine = this.renamingMachine; this.renamingMachine = undefined; if (machine !== undefined) await this.renameMachine(machine, name); }}
+        .onCancel=${() => { this.renamingMachine = undefined; }}
+      ></session-rename-dialog>`}
       ${this.renameFromBar === undefined ? null : html`<session-rename-dialog
         .sessionName=${this.renameFromBar.session.name ?? ""}
         .onSubmit=${(name: string) => { const target = this.renameFromBar; this.renameFromBar = undefined; if (target !== undefined) void this.renameListedSession(target.session, target.machineId, name); }}

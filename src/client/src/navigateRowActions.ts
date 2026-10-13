@@ -9,7 +9,7 @@
 
 export type NavigateRowKind = "session" | "project" | "machine";
 
-export type NavigateRowActionId = "open" | "pin" | "unpin" | "pin-project" | "unpin-project" | "rename" | "archive" | "restore" | "delete-archived" | "copy-path" | "close-project";
+export type NavigateRowActionId = "open" | "pin" | "unpin" | "pin-project" | "unpin-project" | "rename" | "archive" | "restore" | "delete-archived" | "copy-path" | "close-project" | "remove-machine";
 
 export interface NavigateRowAction {
   id: NavigateRowActionId;
@@ -25,6 +25,8 @@ export interface NavigateRowFacts {
   archivable?: boolean;
   archived?: boolean;
   closable?: boolean;
+  /** A machine this PI WEB can drop from its list: any but its own. */
+  removable?: boolean;
   hasPath?: boolean;
   /** The session finished something the reader has not looked at. */
   unread?: boolean;
@@ -103,6 +105,10 @@ export function navigateRowActions(kind: NavigateRowKind, facts: NavigateRowFact
     if (facts.projectPinned !== undefined) actions.push(facts.projectPinned ? { id: "unpin-project", label: "Unpin in this project" } : { id: "pin-project", label: "Pin in this project" });
     if (facts.renamable === true) actions.push({ id: "rename", label: "Rename" });
     if (facts.archivable === true) actions.push({ id: "archive", label: "Archive" });
+  }
+  if (kind === "machine") {
+    if (facts.renamable === true) actions.push({ id: "rename", label: "Rename" });
+    if (facts.removable === true) actions.push({ id: "remove-machine", label: "Remove" });
   }
   if (kind === "project") {
     actions.push(facts.pinned === true ? { id: "unpin", label: "Unpin" } : { id: "pin", label: "Pin to top" });
