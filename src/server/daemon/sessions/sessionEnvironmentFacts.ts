@@ -15,7 +15,7 @@
  * the web/API process before the session daemon when restarts are needed.
  * Restarts themselves are permitted (the owner's 2.2 ruling removed the old
  * "never restart" plea; the startup ownership claim enforces single-instance
- * state instead) — operator semantics are documented in `docs/install.html`
+ * state instead) — operator semantics are documented in `docs/install.md`
  * ("Session daemon ownership and restarts"), not duplicated into the prompt.
  */
 

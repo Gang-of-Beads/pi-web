@@ -18,9 +18,8 @@ describe("pi-web-docker documentation", () => {
   it("keeps Docker setup documentation scoped to the Docker folder", async () => {
     const nonDockerDocs = await Promise.all([
       readRepoFile("README.md"),
-      readRepoFile("docs/install.html"),
+      readRepoFile("docs/install.md"),
       readRepoFile("docs/plugins.md"),
-      readRepoFile("docs/plugins.html"),
     ]);
 
     for (const content of nonDockerDocs) {

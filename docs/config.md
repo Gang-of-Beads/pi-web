@@ -2,8 +2,6 @@
 
 PI WEB configuration covers the machine-local and project-local settings you usually need: the web/API bind address, trusted development-host settings, UI preferences, desired plugin enablement/settings, server-plugin recovery, file-explorer path access, manual upload defaults, upload limits, the Pi agent state directory, and session-daemon tools.
 
-This file is the markdown reference for agents and package consumers. The website page is <https://github.com/Gang-of-Beads/pi-web/blob/main/docs/config.md>.
-
 ## Config files
 
 PI WEB uses two config files:
@@ -11,7 +9,7 @@ PI WEB uses two config files:
 - **Global PI WEB config:** `$PI_WEB_CONFIG`, or `$XDG_CONFIG_HOME/pi-web/config.json`, or `~/.config/pi-web/config.json`.
 - **Project-local PI WEB config:** `<project>/.pi-web/config.json` for commit-able project settings.
 
-Each PI WEB machine has its own config. When using Fleet/machine federation, Settings uses the selected machine for config that affects work running there: session daemon tools, desired PI WEB plugin enablement/settings, external path access, and upload defaults. Gateway/browser-only settings stay local to the gateway: keyboard shortcuts, remote machine registry/tokens, and gateway host/port/allowed-hosts.
+Each PI WEB machine has its own config. When you use [several machines](machines.md), Settings uses the selected machine for config that affects work running there: session daemon options, desired PI WEB plugin enablement/settings, external path access, upload defaults, logs, and the update command. Settings of the PI WEB you open (the gateway) stay local to it: keyboard shortcuts, the machine list and tokens, and the gateway's host/port/allowed-hosts.
 
 Pi package settings are separate from PI WEB config. They live in Pi's package-manager settings on the target machine and are managed by Pi (`pi install`, `pi remove`, `pi update`) or **Settings → Pi packages**. In a federated setup, **Settings → Pi packages** targets the currently selected machine. The PI WEB `plugins` config key controls desired enablement/settings for discovered browser-only, server-only, and dual-entry PI WEB plugins on that machine; it does not install, remove, or update Pi packages.
 
@@ -21,7 +19,7 @@ If you installed services with a custom config path, `pi-web start`, `pi-web res
 
 The deployment path is not a PI WEB config-file key or environment setting. The published client is portable: one build works at `/` and at canonical trailing-slash prefixes such as `/ai/` or `/test/ai/`.
 
-For a nested deployment, redirect the slashless prefix to the trailing-slash URL, strip the prefix before forwarding to PI WEB, and proxy authenticated HTTP and WebSocket traffic through the same location. Relative browser and PWA URLs then stay within that prefix. See the [reverse proxy installation guide](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/install.html#reverse-proxy-prefix) for a complete Nginx example.
+For a nested deployment, redirect the slashless prefix to the trailing-slash URL, strip the prefix before forwarding to PI WEB, and proxy authenticated HTTP and WebSocket traffic through the same location. Relative browser and PWA URLs then stay within that prefix. See [Reverse proxy at the root or under a path prefix](install.md#reverse-proxy-at-the-root-or-under-a-path-prefix) for a complete Nginx example.
 
 ## Precedence and reloads
 
@@ -46,7 +44,7 @@ Process restarts depend on the key:
 - `updateCommand`: the Updates page uses it from its next status check; no restart.
 - `plugins`: a browser-only change saved in **Settings → PI WEB plugins** applies when Settings closes: the page reloads itself. A change made in the config file by hand applies after a browser-tab reload. Any enablement, settings, package-source, or package-revision change affecting a `serverModule` requires a manual session-daemon restart, then a browser reload for its paired UI.
 - `serverPlugins.safeStart`: persistent offline recovery state applied before server-plugin discovery/import on the next sessiond start; use the `pi-web plugins safe-start ...` CLI rather than hand-editing it.
-- Pi package install/remove/update: not a PI WEB config key; after a mutation, type `/reload` in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. For a PI WEB package with `serverModule`, manually restart `pi-web-sessiond.service`, then reload the browser. If a global Pi extension adds or removes a model provider, or changes a provider's connection settings, the same manual sessiond restart is required; `/reload` cannot change either startup snapshot. A known Pi model provider refreshing only its own model list is applied without a restart. See [Pi extension provider baseline](#pi-extension-provider-baseline).
+- Pi package install/remove/update: not a PI WEB config key; after a mutation, type `/reload` in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. For a PI WEB package with `serverModule`, manually [restart the session daemon](install.md#restart-the-session-daemon), then reload the browser. If a global Pi extension adds or removes a model provider, or changes a provider's connection settings, the same manual sessiond restart is required; `/reload` cannot change either startup snapshot. A known Pi model provider refreshing only its own model list is applied without a restart. See [Pi extension provider baseline](#pi-extension-provider-baseline).
 - `shortcuts`: saved settings apply in the browser after config refresh/save.
 - `listTiles`: a choice saved in **Settings → Appearance → Lists** applies at once; a change made in the config file by hand applies after a browser reload.
 
@@ -150,7 +148,7 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | **Config-file keys** |  |  |  |  |  |
 | Web/API bind host | `host` | `PI_WEB_HOST` | Global | Not supported locally | Restart web/API |
 | Web/API port | `port` | `PI_WEB_PORT`, `PORT` | Global | Not supported locally | Restart web/API |
-| Dev-server allowed hosts | `allowedHosts` | `PI_WEB_ALLOWED_HOSTS` | Global | Not supported locally | Restart dev web/UI |
+| Dev-server allowed hosts: `true` or an array of hostnames (env: `true` or a comma-separated list); used only by the Vite dev server (`pnpm run dev:client`), not by `pi-web-server` | `allowedHosts` | `PI_WEB_ALLOWED_HOSTS` | Global | Not supported locally | Restart dev web/UI |
 | External filesystem roots | `pathAccess.allowedPaths` | — | Global + project | **Merges**: global roots first, then project roots; duplicates removed | Next file request; refresh existing views if needed |
 | Manual file upload default folder | `uploads.defaultFolder` | — | Global + project | **Overrides**: project value wins for workspaces in that project; otherwise global/default applies | New Upload dialogs and direct drag/drop batches after config/workspace refresh |
 | Log level and retention | `logging.level`, `logging.maxFileMb`, `logging.keepFiles` | — | Global (web/API and session daemon) | Not supported locally | Within a minute, no restart |
@@ -173,8 +171,12 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | Web-to-daemon URL | — | `PI_WEB_SESSIOND_URL` | Web/API env | Not supported locally | Restart web/API |
 | Projects storage file | — | `PI_WEB_PROJECTS_FILE` | Web/API + session daemon env | Not supported locally | Restart services; advanced state override |
 | Remote machines storage file | — | `PI_WEB_MACHINES_FILE` | Web/API env | Not supported locally | Restart web/API; advanced state override |
-| Agent state directory | — | `PI_CODING_AGENT_DIR` | Session daemon env | Not supported locally | Restart session daemon on that machine; affects auth, models, settings, sessions, Pi packages, and Pi-package-backed PI WEB plugins |
-| Agent session storage directory | — | `PI_CODING_AGENT_SESSION_DIR` | Session daemon env | Not supported locally | Restart session daemon on that machine; env-only session storage override |
+| Pinned sessions storage file | — | `PI_WEB_SESSION_PINS_FILE` | Web/API env | Not supported locally | Restart web/API; advanced state override |
+| Log directory | — | `PI_WEB_LOG_DIR` | Web/API + session daemon env | Not supported locally | Restart both; `pi-web install` sets it to `~/.pi-web/logs`, otherwise `$PI_WEB_DATA_DIR/logs`. See [Logs](#logs) |
+| Session daemon shutdown drain | — | `PI_WEB_SHUTDOWN_DRAIN_MS` | Session daemon env | Not supported locally | Milliseconds the daemon waits on stop for in-flight runs (default `60000`; `0` exits at once). Applies to the next stop |
+| Service command overrides | — | `PI_WEB_SERVER_EXEC`, `PI_WEB_SESSIOND_EXEC` | `pi-web install` env | Not supported locally | Read when you run `pi-web install`; the command is written into the service instead of `pi-web-server` / `pi-web-sessiond` |
+| Agent state directory | — | `PI_CODING_AGENT_DIR` (deprecated alias `PI_WEB_AGENT_DIR`) | Session daemon env | Not supported locally | Restart session daemon on that machine; affects auth, models, settings, sessions, Pi packages, and Pi-package-backed PI WEB plugins. See [Agent state directory](#agent-state-directory) |
+| Agent session storage directory | — | `PI_CODING_AGENT_SESSION_DIR` (deprecated alias `PI_WEB_AGENT_SESSION_DIR`) | Session daemon env | Not supported locally | Restart session daemon on that machine |
 | Skip update checks | — | `PI_WEB_SKIP_VERSION_CHECK`, `PI_WEB_OFFLINE`, `PI_SKIP_VERSION_CHECK`, `PI_OFFLINE` | Web/API env | Not supported locally | Restart web/API after env changes. The session daemon always sets `PI_SKIP_VERSION_CHECK` for its own process (not for its terminals), so pi extensions that prompt for pi updates stay quiet in PI WEB sessions |
 | Offline mode | — | `PI_WEB_OFFLINE`, `PI_OFFLINE` | Web/API + session daemon env | Not supported locally | Restart session daemon and web/API after env changes; also disables the [background model catalog refresh](#background-model-catalog-refresh) |
 
@@ -182,7 +184,7 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 
 ### Managed data directory
 
-`PI_WEB_DATA_DIR` sets the root for PI WEB-managed runtime state and defaults to `~/.pi-web`. Unless a more specific path override is configured, PI WEB stores its project and machine registries, locally discovered plugins, default session-daemon socket, and session archives beneath this root.
+`PI_WEB_DATA_DIR` sets the root for PI WEB-managed runtime state and defaults to `~/.pi-web`. Unless a more specific path override is configured, PI WEB stores beneath this root its project registry (`projects.json`), the machine list (`machines.json`), the pages approved to use this machine from a browser (`machine-access.json`, see [Machines](machines.md#which-pages-may-use-a-machine)), pinned sessions (`session-pins.json`), locally discovered plugins (`plugins/`), the default session-daemon socket (`sessiond.sock`), session archives, and the logs of a process started without `PI_WEB_LOG_DIR`. These files are PI WEB's own state, not a configuration interface.
 
 Each data directory is independent: after pointing PI WEB at a new root, it starts there with empty registries and no session archives. To carry session archives over, stop PI WEB, then copy `archived-sessions.json` and the `archived-sessions/` directory from the old data directory into the new one before starting it again.
 
@@ -194,7 +196,7 @@ This setting does not change the PI WEB config file selected by `PI_WEB_CONFIG` 
 
 Agent shells, terminals, and spawned sessions inherit the session daemon's environment almost as-is. When the daemon starts, it removes only `NODE_ENV` and `PORT` from the environment agent processes see, so development commands behave normally inside sessions — for example, `npm install` is not affected by a production `NODE_ENV` meant for the daemon. Ordinary variables (`PATH`, `HOME`, proxy settings, and the like) stay visible, and so do the daemon's `PI_WEB_*` configuration keys and the resolved `PI_CODING_AGENT_DIR` / `PI_CODING_AGENT_SESSION_DIR` values, so a `pi` CLI started from inside a session uses the same agent state — auth, models, and session storage — as the daemon. The daemon itself keeps using the values it captured at startup.
 
-Every process spawned from a session also inherits `PI_WEB_SESSION=1`, marking it as nested inside the running PI WEB instance. The inherited `PI_WEB_*` values point at that live instance, so starting another PI WEB instance from inside a session fails loudly at startup because the live instance owns the state (see [Managed data directory](#managed-data-directory)); running one deliberately requires a distinct `PI_WEB_DATA_DIR`, `PI_WEB_SESSIOND_SOCKET` (or `PI_WEB_SESSIOND_PORT` / `PI_WEB_SESSIOND_HOST`), and `PI_WEB_PORT`.
+Every process spawned from a session also inherits `PI_WEB_SESSION=1`, marking it as nested inside the running PI WEB instance, and a PI WEB terminal also sets `PI_WEB_TERMINAL=1`, so your shell and tools can tell they run inside PI WEB. The inherited `PI_WEB_*` values point at that live instance, so starting another PI WEB instance from inside a session fails loudly at startup because the live instance owns the state (see [Managed data directory](#managed-data-directory)); running one deliberately requires a distinct `PI_WEB_DATA_DIR`, `PI_WEB_SESSIOND_SOCKET` (or `PI_WEB_SESSIOND_PORT` / `PI_WEB_SESSIOND_HOST`), and `PI_WEB_PORT`.
 
 Session system prompts state these nesting facts — and, in a Docker deployment, the container layout facts — so agents learn the rules before discovering them by breaking their own session, including the precautions never to restart the hosting session daemon and to restart the web/API process before the session daemon. Set the `environmentFacts` config key to `false`, or `PI_WEB_ENVIRONMENT_FACTS=false` in the session daemon's environment, to leave environment facts out of session system prompts; they default to on.
 
@@ -266,11 +268,11 @@ Both processes check the setting and the file sizes once a minute. The log direc
 
 ```json
 {
-  "updateCommand": "~/nix-config/scripts/pi-web-update.sh --force my-host"
+  "updateCommand": "/usr/local/bin/update-pi-web"
 }
 ```
 
-The command should update PI WEB and restart it; it runs in a new terminal on the Terminal page, so its output stays visible while the web process and the session daemon restart. It wins over the services' `PI_WEB_UPDATE_COMMAND`, which wins over the update PI WEB works out from the install method: npm, a Pi package, a git checkout with an upstream, or a `nix profile install` (`nix profile upgrade`). An install from a nix configuration (home-manager, nix-darwin, NixOS) has no update of its own: give it one here or in the services. An empty value saves none. The status reads it on its next check; no restart.
+The command should update PI WEB and restart it; it runs in a new terminal on the Terminal page, so its output stays visible while the web process and the session daemon restart. It wins over the services' `PI_WEB_UPDATE_COMMAND` (which `pi-web install` records from the installing shell), which wins over the update PI WEB works out from the install method, such as `npm install -g` for a global npm install or `nix profile upgrade` for a `nix profile install`. An install from a Nix configuration (Home Manager, nix-darwin, NixOS) has no update of its own: give it one here or in the services. [Update](install.md#update) lists how each install is updated by hand. An empty value saves none. The status reads it on its next check; no restart.
 
 ### Lists
 
@@ -295,7 +297,14 @@ Switching a session's model in PI WEB's model picker also makes that model pi's 
 
 PI WEB runs every session on its bundled Pi SDK. `pi-web doctor` and the status/update flow probe the `pi` command on the machine's `PATH`.
 
-`PI_CODING_AGENT_DIR` selects the Pi agent state directory used for auth providers, models, settings, sessions, Pi packages, and Pi-package-backed PI WEB plugin discovery. It defaults to Pi's own default, `~/.pi/agent`. `PI_CODING_AGENT_SESSION_DIR` overrides session storage separately from the state directory. Both are environment-only; there is no config-file key.
+`PI_CODING_AGENT_DIR` selects the Pi agent state directory used for auth providers, models, settings, sessions, Pi packages, and Pi-package-backed PI WEB plugin discovery. It defaults to Pi's own default, `~/.pi/agent`. `PI_CODING_AGENT_SESSION_DIR` overrides session storage separately from the state directory. Set both in the session daemon's environment.
+
+Deprecated inputs are still honored, and PI WEB shows a deprecation banner while any of them is set:
+
+- `PI_WEB_AGENT_DIR` wins over `PI_CODING_AGENT_DIR`.
+- `PI_WEB_AGENT_SESSION_DIR` wins over `PI_CODING_AGENT_SESSION_DIR`.
+- The config key `agent.dir` is used only when neither `PI_WEB_AGENT_DIR` nor `PI_CODING_AGENT_DIR` is set.
+- `agent.command` and `PI_WEB_AGENT_COMMAND` are ignored: sessions always run on the bundled Pi SDK.
 
 ```sh
 # Session daemon environment
@@ -311,7 +320,7 @@ If the session daemon cannot report a valid active directory, profile-dependent 
 
 ### Pi extension provider baseline
 
-This policy applies to **Pi runtime extensions that register model providers**, not PI WEB workspace-provider plugins. Pi extensions can call `pi.registerProvider(...)` and follow Pi's extension API. A PI WEB plugin may have a browser `module` and/or a sessiond `serverModule`, but its server entry follows the separate `@gang-of-beads/pi-web/server-plugin-api` lifecycle and cannot register Pi model providers or arbitrary hooks. See the [PI WEB plugin guide](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md).
+This policy applies to **Pi runtime extensions that register model providers**, not PI WEB workspace-provider plugins. Pi extensions can call `pi.registerProvider(...)` and follow Pi's extension API. A PI WEB plugin may have a browser `module` and/or a sessiond `serverModule`, but its server entry follows the separate `@gang-of-beads/pi-web/server-plugin-api` lifecycle and cannot register Pi model providers or arbitrary hooks. See [Plugins](plugins.md).
 
 PI WEB shares one model runtime across all sessions. When the session daemon starts, before any project resources load, it initializes global Pi extensions from the active agent directory, including extensions supplied by globally configured Pi packages. Provider registrations made by synchronous or awaited asynchronous extension factories during this bootstrap join the shared baseline. PI WEB captures both config-form registrations (`pi.registerProvider("id", config)`) and native-provider registrations (`pi.registerProvider(provider)`), alongside Pi built-ins, environment credentials, and providers from the active agent directory's `models.json`.
 
@@ -336,7 +345,7 @@ Ignored mutations are written to the session-daemon log once per operation and p
 
 This prevents accidental provider, configuration, or credential contamination between projects; it is not a security boundary because Pi extensions remain trusted daemon code.
 
-Configure providers before the daemon starts: use the active agent directory's `models.json`, or install the Pi extension globally in that agent directory. Project Pi extensions and project-level `models.json` files cannot add providers to PI WEB's shared baseline. After updating PI WEB—or after installing, removing, or updating a global Pi extension that registers providers—manually restart `pi-web-sessiond.service` (`systemctl --user restart pi-web-sessiond`). Restarting only the web/API service and running `/reload` do not rebuild the baseline.
+Configure providers before the daemon starts: use the active agent directory's `models.json`, or install the Pi extension globally in that agent directory. Project Pi extensions and project-level `models.json` files cannot add providers to PI WEB's shared baseline. After updating PI WEB—or after installing, removing, or updating a global Pi extension that registers providers—manually [restart the session daemon](install.md#restart-the-session-daemon). Restarting only the web/API service and running `/reload` do not rebuild the baseline.
 
 ### Background model catalog refresh
 
@@ -370,6 +379,8 @@ Trust is resolved the way `pi` resolves it with no trust prompt to show:
 
 This mirrors the Pi CLI: with `defaultProjectTrust: "never"`, an opened workspace's `.pi/` extensions and packages are ignored rather than loaded silently.
 
+The `respectProjectTrust` config key is retired: trust always applies. A config file that still sets it loads; the key has no effect, and the next save from Settings drops it.
+
 ### Delegation routes
 
 PI WEB gives agents no tools of its own. Starting other sessions is a session-daemon interface that a plugin or extension can build tools on:
@@ -390,17 +401,17 @@ The `spawnSessions` and `subsessions` config keys, and `PI_WEB_SPAWN_SESSIONS` a
 
 #### `ask_user`
 
-PI WEB has no `ask_user` tool: it gives agents no tools of its own. A question tool comes from a pi extension you install, such as [pi-ask-user](https://github.com/edlsh/pi-ask-user), and its questions reach the browser as the [extension dialogs](#extension-dialogs) below.
+PI WEB has no `ask_user` tool: it gives agents no tools of its own. A question tool comes from a pi extension you install, such as [pi-ask-user](https://github.com/Gang-of-Beads/pi-ask-user), and its questions reach the browser as the [extension dialogs](#extension-dialogs) below.
 
 The `askUser` config key and `PI_WEB_ASK_USER` are retired. A config file that still sets `askUser` loads; the key has no effect, and the next save from Settings drops it.
 
 ### Extension dialogs
 
-Pi extensions can ask the user questions from `ctx.ui.confirm()`, `ctx.ui.select()`, `ctx.ui.input()`, and `ctx.ui.editor()` — including from `session_start` hooks and in-flight `tool_call` hooks. PI WEB renders these dialogs inline in the session transcript and answers them through a dedicated session-daemon channel, never the prompt queue, so a dialog parked inside a `tool_call` hook cannot deadlock the run. Dialog support is always on; there is no enable flag. See [Pi extension dialogs in PI WEB](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md#pi-extension-dialogs) for behavior details and author guidance.
+Pi extensions can ask the user questions from `ctx.ui.confirm()`, `ctx.ui.select()`, `ctx.ui.input()`, and `ctx.ui.editor()` — including from `session_start` hooks and in-flight `tool_call` hooks. PI WEB renders these dialogs inline in the session transcript and answers them through a dedicated session-daemon channel, never the prompt queue, so a dialog parked inside a `tool_call` hook cannot deadlock the run. Dialog support is always on; there is no enable flag. See [Pi extensions in PI WEB](pi-extensions.md) for behavior details and author guidance.
 
 `extensionDialogsTimeoutMs` is the unattended-dialog safety valve: how long the session daemon waits for an answer before settling the dialog with its kind's cancel value (`false` for confirm, `undefined` for select, input and editor). It defaults to `0`, which waits for an answer indefinitely; set a positive number of milliseconds to auto-cancel instead. A dialog that expires is settled with its cancel value, which the extension cannot tell apart from a deliberate dismissal, so a timeout short enough to fire while someone is still reading turns their reading time into a silent answer. An extension's own `timeout` option still applies, and the effective deadline is the sooner of the two.
 
-The key is edited directly in the global config file. Restart the session daemon after changing it — for the systemd user service, run `systemctl --user restart pi-web-sessiond`.
+The key is edited directly in the global config file. [Restart the session daemon](install.md#restart-the-session-daemon) after changing it.
 
 ### PI WEB plugin config and recovery
 
@@ -424,9 +435,9 @@ Sessiond is the single workspace authority and resolves one immutable server-plu
 
 **Settings → PI WEB plugins** shows desired and active state separately, including active, failed, incompatible, disabled, not-active/missing, unknown, conflict, stale-revision, health, safe-mode, and restart-required state. Desired config remains editable when sessiond is unavailable as long as the selected machine's config endpoint works, but PI WEB reports active state as unavailable rather than constructing a second workspace authority.
 
-For machine federation, the panel targets the selected machine. Remote desired state is saved in that target's config and active state comes from that target's sessiond through the gateway. If the versioned plugin lifecycle, the remote manifest, or provider backend routes are unavailable/incompatible, PI WEB reports an explicit unsupported or compatibility error and does not silently use gateway config/code.
+With [several machines](machines.md), the panel targets the selected machine. Its desired state is saved in that machine's config and its active state comes from that machine's session daemon. If the versioned plugin lifecycle, the machine's plugin manifest, or provider backend routes are unavailable or incompatible, PI WEB reports an explicit unsupported or compatibility error and does not silently use the gateway's config or code.
 
-Mixed-version plugin/provider operation is not supported in either upgrade order. A newer gateway rejects an older target's whole remote plugin manifest, including browser-only contributions, when the target lacks the current lifecycle contract; its Git panel is therefore unavailable. An older gateway still calls legacy core Git routes removed by an updated target, so remote Git status/diff returns `404`. Upgrade gateway and target together, restart their updated web/API processes and the target session daemon, then reload the browser. Other selected-machine settings and features report their own explicit errors.
+Mixed-version plugin and provider operation is not supported in either upgrade order. Upgrade the machines together, restart their web/API processes and session daemons, then reload the browser. Other selected-machine settings and features report their own explicit errors.
 
 Apply changes in this order:
 
@@ -435,7 +446,7 @@ Apply changes in this order:
 3. For a browser-only plugin, close Settings: the page reloads itself to load or unload it. After editing the config file by hand, reload the browser tab.
 4. For a server-backed plugin, manually restart the target session daemon, wait for it, then reload the browser tab.
 
-> **Manual restart warning:** for the native user service, run `systemctl --user restart pi-web-sessiond` (unit `pi-web-sessiond.service`). Restarting sessiond may interrupt active sessions and runtime ownership. A browser reload, web/UI autoreload, restarting only web/API, and Pi's `/reload` do not activate server-plugin state.
+> **Manual restart warning:** see [Restart the session daemon](install.md#restart-the-session-daemon) for the command on each install. Restarting sessiond may interrupt active sessions and runtime ownership. A browser reload, web/UI autoreload, restarting only web/API, and Pi's `/reload` do not activate server-plugin state.
 
 #### Offline disable and safe start
 
