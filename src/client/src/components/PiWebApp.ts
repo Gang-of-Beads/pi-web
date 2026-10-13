@@ -36,7 +36,7 @@ import { AuthController } from "../controllers/authController";
 import { MachineController, remoteReportedDown } from "../controllers/machineController";
 import { SessionBoardController } from "../controllers/sessionBoardController";
 import { browserBoardMemory } from "../sync/boardMemory";
-import { boardEventOf, dedupeById, type BoardAnswer } from "../sync/sessionBoard";
+import { boardEventOf, boardSessionsOf, dedupeById, type BoardAnswer } from "../sync/sessionBoard";
 import { dataTransferHasFiles, FileDragDepth, fileDropFrameStyle, filesFromDataTransfer } from "../fileDrop";
 import { MachineStatusController } from "../controllers/machineStatusController";
 import { ProjectController } from "../controllers/projectController";
@@ -429,7 +429,7 @@ export class PiWebApp extends LitElement {
     (options) => { this.updateUrl(options); },
     this.sessions,
     new SessionStorageWorkspaceSelectionMemory(),
-    { opensPreferredSession: () => !this.appShell.isMobileNavigationLayout },
+    { opensPreferredSession: () => !this.appShell.isMobileNavigationLayout, rememberedSessions: (machineId, path) => boardSessionsOf(this.sessionBoards.known(machineId), path) },
   );
   private readonly projects: ProjectController = new ProjectController(
     () => this.state,

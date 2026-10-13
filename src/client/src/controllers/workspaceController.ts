@@ -6,6 +6,8 @@ import { ScopedResource, type ResourceClock } from "../sync/scopedResource";
 import { mergeCachedNewSessions } from "../cachedNewSessions";
 import { machineProjectKey } from "../machineKeys";
 import { cachedSessionsFor, rememberWorkspaceSessions } from "../workspaceSessionsCache";
+import { namedListingStep, opensFromListing, targetInListing, type NamedListingStep } from "../sessionTarget";
+import type { SessionInfo } from "../api";
 import { selectedMachineId, type GetState, type RouteTarget, type SetState, type UpdateUrl } from "./types";
 import type { SessionController } from "./sessionController";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
@@ -21,6 +23,12 @@ export interface WorkspaceControllerDependencies {
    * the board read its transcript (the 17.8 MB seed on 8505) for nobody (D8).
    */
   opensPreferredSession?: () => boolean;
+  /**
+   * A workspace's sessions as this browser last knew them across a reload: the page-life cache is
+   * empty after one, and the remembered session board still holds the list, so the list and a named
+   * session draw before the listing answers. Undefined when nothing whole is remembered.
+   */
+  rememberedSessions?: (machineId: string, workspacePath: string) => readonly SessionInfo[] | undefined;
   api?: Pick<typeof defaultApi, "sessions" | "workspaces">;
   topologyRefreshDebounceMs?: number;
   clock?: ResourceClock;
@@ -48,6 +56,7 @@ export class WorkspaceController {
    * never painted as an error, and never as "No workspaces found".
    */
   private readonly listings: ScopedResource<ProjectListingKey, Workspace[]>;
+  private readonly rememberedSessions: (machineId: string, workspacePath: string) => readonly SessionInfo[] | undefined;
   private followed: { id: string; release: () => void } | undefined;
   /** The listing value the state shows for the followed project, so one answer is applied once. */
   private mirrored: Workspace[] | undefined;
@@ -59,12 +68,13 @@ export class WorkspaceController {
     private readonly getState: GetState,
     private readonly setState: SetState,
     private readonly updateUrl: UpdateUrl,
-    private readonly sessions: Pick<SessionController, "clearActiveSession" | "preferredSession" | "selectSession" | "openNamedSession">,
+    private readonly sessions: Pick<SessionController, "clearActiveSession" | "preferredSession" | "selectSession" | "openNamedSession" | "adoptListedSession">,
     private readonly workspaceSelection: WorkspaceSelectionMemory = new InMemoryWorkspaceSelectionMemory(),
     deps: WorkspaceControllerDependencies = {},
   ) {
     this.api = deps.api ?? defaultApi;
     this.opensPreferredSession = deps.opensPreferredSession ?? (() => true);
+    this.rememberedSessions = deps.rememberedSessions ?? (() => undefined);
     this.topologyRefreshes = new TrailingRefreshCoordinator(
       deps.topologyRefreshDebounceMs ?? WORKSPACE_TOPOLOGY_REFRESH_DEBOUNCE_MS,
     );
@@ -162,17 +172,19 @@ export class WorkspaceController {
     // The cache answers before the listing does: a revisited workspace shows
     // its previous list immediately, and a first visit shows the loading state
     // the reset below leaves, never the empty claim.
-    const cached = cachedSessionsFor(machineId, workspace.path);
+    const cached = cachedSessionsFor(machineId, workspace.path) ?? this.rememberedSessions(machineId, workspace.path);
     this.setState({ selectedWorkspace: workspace, isLoadingWorkspaces: false, ...resetWorkspaceScopedState(), sessions: cached === undefined ? [] : [...cached], sessionsLoad: "loading" });
+    const named = target?.sessionId === undefined || target.sessionId === "" ? undefined : target.sessionId;
+    const fromMemory = named === undefined || cached === undefined || !opensFromListing(cached, named) ? undefined : this.sessions.openNamedSession(named, workspace, cached, { updateUrl: target?.updateUrl });
     try {
       const sessions = mergeCachedNewSessions(workspace.path, await this.api.sessions(workspace.path, machineId), machineId);
       if (selectedMachineId(this.getState()) !== machineId || this.getState().selectedWorkspace?.id !== workspace.id || this.getState().selectedProject?.id !== workspace.projectId) return;
       rememberWorkspaceSessions(machineId, workspace.path, sessions);
       this.setState({ sessions, sessionsLoad: "loaded" });
-      const named = target?.sessionId;
-      if (named !== undefined && named !== "") {
-        await this.sessions.openNamedSession(named, workspace, sessions, { updateUrl: target?.updateUrl });
-        if (target?.updateUrl !== false && this.getState().selectedSession === undefined) this.updateUrl();
+      if (named !== undefined) {
+        await fromMemory;
+        const step = namedListingStep({ openedFromMemory: fromMemory !== undefined, stillShown: this.getState().selectedSession?.id.startsWith(named) === true, listed: opensFromListing(sessions, named) });
+        await this.settleNamed[step]({ named, workspace, sessions, updateUrl: target?.updateUrl });
         return;
       }
       const session = this.opensPreferredSession() ? this.sessions.preferredSession(workspace.path, sessions) : undefined;
@@ -186,6 +198,22 @@ export class WorkspaceController {
       }
     }
   }
+
+  private readonly settleNamed: Readonly<Record<NamedListingStep, (named: { named: string; workspace: Workspace; sessions: readonly SessionInfo[]; updateUrl: boolean | undefined }) => Promise<void>>> = {
+    follow: async ({ named, workspace, sessions, updateUrl }) => {
+      await this.sessions.openNamedSession(named, workspace, sessions, { updateUrl });
+      if (updateUrl !== false && this.getState().selectedSession === undefined) this.updateUrl();
+    },
+    keep: async ({ named, sessions }) => {
+      const listed = targetInListing(sessions, named);
+      if (listed.kind === "open" || listed.kind === "archived") await this.sessions.adoptListedSession(listed.session);
+    },
+    recheck: async (input) => {
+      this.sessions.clearActiveSession();
+      await this.settleNamed.follow(input);
+    },
+    leave: () => Promise.resolve(),
+  };
 
   /**
    * Read one project's workspaces now, for an action that needs them. It

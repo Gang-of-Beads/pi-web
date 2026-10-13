@@ -508,6 +508,21 @@ export class SessionController {
   }
 
   /**
+   * The live listing's row for the open session replaces the remembered row it was opened from. A
+   * session archived or restored since it was remembered opens again: an archived session is read
+   * once and keeps no live stream, so swapping the row alone left a live composer with no stream.
+   */
+  async adoptListedSession(session: SessionInfo): Promise<void> {
+    const shown = this.getState().selectedSession;
+    if (shown?.id !== session.id) return;
+    if ((shown.archived === true) !== (session.archived === true)) {
+      await this.selectSession(session, { updateUrl: false });
+      return;
+    }
+    this.setState({ selectedSession: session });
+  }
+
+  /**
    * Open the session a route names with no project (B49): one outside every
    * open project, or a link written that way. Before, such a route opened
    * nothing on a reload. The daemon locates it machine-wide, starting from the

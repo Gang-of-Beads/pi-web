@@ -129,6 +129,14 @@ export class SessionBoardController {
     return this.recall(machineId);
   }
 
+  /**
+   * The board this browser knows now, for a reader that acts on it rather than draws it: the live
+   * one, else the remembered one at once, without the wait that keeps the drawn list from flashing.
+   */
+  known(machineId: string): SessionBoard | undefined {
+    return this.boards.entry(machineId).data ?? this.recall(machineId);
+  }
+
   /** How much of the live board answered; a remembered board is no answer. */
   answer(machineId: string): BoardAnswer {
     return boardAnswer(this.boards.entry(machineId).data);

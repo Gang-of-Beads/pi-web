@@ -205,6 +205,16 @@ export function boardEventOf(event: RealtimeEvent): SessionBoardEvent | undefine
 }
 
 /**
+ * A workspace's sessions as a board holds them - its folder and the folders under it, as its
+ * listing does - only when the board answered for that workspace: a partial list is not the list.
+ */
+export function boardSessionsOf(board: SessionBoard | undefined, workspacePath: string): readonly SessionInfo[] | undefined {
+  if (board === undefined || board.unknownSources.some((source) => source.kind === "workspace" && source.path === workspacePath)) return undefined;
+  if (!board.workspaces.some((workspace) => workspace.path === workspacePath)) return undefined;
+  return board.sessions.filter((session) => sessionLocationVerdict(session.cwd, workspacePath) === "described");
+}
+
+/**
  * The board with an announced change applied. A rename renames the session
  * wherever the board lists it; a new session joins the board when one of its
  * listed workspaces holds its folder. Each is a set, so applying it again over

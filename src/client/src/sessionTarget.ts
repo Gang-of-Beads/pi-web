@@ -83,6 +83,27 @@ export function targetInListing(sessions: readonly SessionInfo[], sessionId: str
   return session === undefined ? { kind: "asking", sessionId } : targetOf(session);
 }
 
+/** Whether a listing holds the named session as one that opens (open or archived). */
+export function opensFromListing(sessions: readonly SessionInfo[], sessionId: string): boolean {
+  const { kind } = targetInListing(sessions, sessionId);
+  return kind === "open" || kind === "archived";
+}
+
+/**
+ * What a named session needs once the live listing answers. A reload opens it from the listing
+ * remembered for the same machine and workspace, so its chat draws from the cache at once instead
+ * of waiting on the listing (owner, 2026-10-14). The live listing then settles it: kept when it
+ * lists the session too, let go and asked for when it does not (absence is not an answer), and left
+ * alone when the reader has moved on. Without a remembered row it is followed as before.
+ */
+export type NamedListingStep = "follow" | "keep" | "recheck" | "leave";
+
+export function namedListingStep(input: { readonly openedFromMemory: boolean; readonly stillShown: boolean; readonly listed: boolean }): NamedListingStep {
+  if (!input.openedFromMemory) return "follow";
+  if (!input.stillShown) return "leave";
+  return input.listed ? "keep" : "recheck";
+}
+
 /** What the daemon's locate answer makes of the target; a daemon older than the route leaves the listing as the only evidence. */
 export function targetFromLocation(sessionId: string, location: SessionLocation): SessionTarget {
   return location.kind === "found" ? targetOf(location.session) : { kind: "not-listed", sessionId };
