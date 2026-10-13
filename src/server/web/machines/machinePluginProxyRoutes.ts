@@ -16,6 +16,7 @@ interface RemotePluginManifestEntry {
   source?: string;
   scope?: string;
   machineSpecific?: boolean;
+  settings?: Record<string, unknown>;
 }
 
 interface RemotePluginManifest {
@@ -177,6 +178,7 @@ function parseRemoteManifest(value: unknown): RemotePluginManifest {
       ...(typeof entry["source"] === "string" ? { source: entry["source"] } : {}),
       ...(typeof entry["scope"] === "string" ? { scope: entry["scope"] } : {}),
       ...(parseRemoteMachineSpecific(entry["machineSpecific"])),
+      ...(isRecord(entry["settings"]) ? { settings: entry["settings"] } : {}),
     };
   });
   const ids = new Set<string>();

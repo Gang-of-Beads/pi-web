@@ -1,4 +1,4 @@
-import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, type PiWebPluginSafeStart, type PiWebPluginsResponse, type PiWebPluginScope } from "../../shared/apiTypes.js";
+import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, type PiWebPluginSafeStart, type PiWebPluginSettings, type PiWebPluginsResponse, type PiWebPluginScope } from "../../shared/apiTypes.js";
 import { isPiWebPluginId } from "../../shared/pluginIds.js";
 import {
   PiWebPluginCatalog,
@@ -41,6 +41,8 @@ export interface PiWebPluginManifestEntry {
   source: string;
   scope: PiWebPluginScope;
   machineSpecific: boolean;
+  /** `plugins.<id>.settings` of this machine's config, which the browser entry receives at activation; absent when unconfigured. */
+  settings?: Readonly<PiWebPluginSettings>;
 }
 
 interface CachedBrowserArtifact {
@@ -96,6 +98,7 @@ export class PiWebPluginService {
         source: plugin.source,
         scope: plugin.scope,
         machineSpecific: plugin.machineSpecific,
+        ...(Object.keys(plugin.settings).length === 0 ? {} : { settings: plugin.settings }),
       });
     }
     return { lifecycleVersion: PI_WEB_PLUGIN_LIFECYCLE_VERSION, plugins };

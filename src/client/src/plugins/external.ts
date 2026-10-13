@@ -3,7 +3,7 @@ import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
 import { isPiWebPluginId, isReservedPiWebPluginId } from "../../../shared/pluginIds";
 import { resolveAppUrl, type AppUrlContext } from "../appUrl";
-import type { PiWebPlugin, PiWebPluginRegistration } from "./types";
+import type { PiWebPlugin, PiWebPluginRegistration, PluginSettings } from "./types";
 import { fetchWithDeadline } from "../api/requestDeadline";
 
 export interface PluginManifestEntry {
@@ -11,6 +11,8 @@ export interface PluginManifestEntry {
   module: string;
   backendRevision?: string;
   machineSpecific: boolean;
+  /** The plugin's own `plugins.<id>.settings` on the machine that serves the manifest; absent when unconfigured. */
+  settings?: PluginSettings;
 }
 
 interface PluginManifest {
@@ -35,6 +37,8 @@ export interface ExternalPluginLoadResult {
   failures: ExternalPluginLoadFailure[];
   /** Every plugin the manifest lists, by its id on this page; undefined when no manifest was read, which proves nothing about what is running. */
   listed?: readonly string[];
+  /** Each listed plugin's settings by its id on this page, so a plugin already running can follow a change. */
+  settings?: ReadonlyMap<string, PluginSettings | undefined>;
 }
 
 export async function loadExternalPlugins(manifestUrl = "pi-web-plugins/manifest.json", options: LoadExternalPluginsOptions = {}): Promise<ExternalPluginLoadResult> {
@@ -57,6 +61,7 @@ export async function loadExternalPlugins(manifestUrl = "pi-web-plugins/manifest
         id: options.machineId === undefined ? entry.id : machineScopedPluginId(options.machineId, entry.id),
         plugin,
         machineSpecific: entry.machineSpecific,
+        ...(entry.settings === undefined ? {} : { settings: entry.settings }),
         ...(entry.backendRevision === undefined ? {} : { backendRevision: entry.backendRevision }),
         ...(options.machineId === undefined ? {} : { machineId: options.machineId, sourcePluginId: entry.id }),
       };
@@ -70,8 +75,10 @@ export async function loadExternalPlugins(manifestUrl = "pi-web-plugins/manifest
     if ("registration" in outcome) registrations.push(outcome.registration);
     else failures.push(outcome.failure);
   }
-  const listed = manifest.plugins.map((entry) => (options.machineId === undefined ? entry.id : machineScopedPluginId(options.machineId, entry.id)));
-  return { registrations, failures, listed };
+  const runtimeIdOf = (entry: PluginManifestEntry): string => (options.machineId === undefined ? entry.id : machineScopedPluginId(options.machineId, entry.id));
+  const listed = manifest.plugins.map(runtimeIdOf);
+  const settings = new Map(manifest.plugins.map((entry) => [runtimeIdOf(entry), entry.settings]));
+  return { registrations, failures, listed, settings };
 }
 
 export function resolvePluginModuleUrl(moduleReference: string, manifestUrl: string, appUrlContext?: AppUrlContext): string {
@@ -113,6 +120,7 @@ function parseManifest(value: unknown): PluginManifest {
       module: entry["module"],
       ...(parseBackendRevision(entry["backendRevision"])),
       machineSpecific: parseMachineSpecific(entry["machineSpecific"]),
+      ...(isRecord(entry["settings"]) ? { settings: entry["settings"] } : {}),
     };
   });
   const ids = new Set<string>();

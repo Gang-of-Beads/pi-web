@@ -66,7 +66,7 @@ import { projectFolderFlag } from "../projectFolder";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
-import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, MachineTerminalSessions, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext } from "../plugins/types";
+import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, MachineTerminalSessions, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, PluginSettings } from "../plugins/types";
 import { CORE_PRO_LIGHT_THEME_ID, isNativeThemeId, applyNativeProLightTheme, CORE_PRO_THEME_ID, DEFAULT_THEME_PREFERENCE, applyNativeProTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
@@ -4292,6 +4292,15 @@ export class PiWebApp extends LitElement {
     }
   }
 
+  /** A plugin already running gets its machine's changed settings; one whose settings are unchanged hears nothing. */
+  private followPluginSettings(settingsById: ReadonlyMap<string, PluginSettings | undefined> | undefined): void {
+    for (const [pluginId, settings] of settingsById ?? []) {
+      if (!this.plugins.hasPlugin(pluginId)) continue;
+      if (JSON.stringify(this.plugins.pluginSettings(pluginId) ?? {}) === JSON.stringify(settings ?? {})) continue;
+      this.plugins.applyPluginSettings(pluginId, settings ?? {});
+    }
+  }
+
   /** Whether the machine in Settings applies a plugin toggle live, so the page follows it and needs no reload. */
   private settingsMachineFollowsToggles(): boolean {
     return supportsPiWebCapability(this.selectedMachineRuntime(), PI_WEB_CAPABILITIES.livePluginToggle);
@@ -4363,6 +4372,7 @@ export class PiWebApp extends LitElement {
           this.notePluginLoadFailure(machineId, registration.sourcePluginId ?? registration.id, error);
         }
       }
+      this.followPluginSettings(result.settings);
       this.applyPreferredTheme(false);
       this.requestUpdate();
       if (!complete) this.pluginRetry.failed();
