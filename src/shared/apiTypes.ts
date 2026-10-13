@@ -1621,12 +1621,6 @@ export type SessionStreamSync =
   | { kind: "replay"; sinceSeq: number; frames: string[] }
   | { kind: "resync"; sinceSeq: number };
 
-/**
- * `deferred` marks a command the daemon accepted but has not run: a runtime
- * command forwarded behind the reply in flight, or a reload parked until the
- * session is idle. The browser must show it as queued, never as done; the
- * daemon says so explicitly because the browser cannot tell from the prose.
- */
 /** What an accepted numbered operation came to, as the stream reports it. */
 export type OperationAppliedOutcome = "accepted" | "takenBack" | "tooLate";
 
@@ -1680,6 +1674,12 @@ export type CommandResultState =
   | { state: "running" }
   | { state: "failed"; error: string };
 
+/**
+ * `deferred` marks a command the daemon accepted but has not run: a runtime
+ * command forwarded behind the reply in flight, or a reload parked until the
+ * session is idle. The browser must show it as queued, never as done; the
+ * daemon says so explicitly because the browser cannot tell from the prose.
+ */
 export type CommandResult =
   | { type: "done"; message?: string; session?: SessionInfo; promptDraft?: string; deferred?: true }
   | { type: "select"; requestId: string; title: string; options: CommandOption[] }

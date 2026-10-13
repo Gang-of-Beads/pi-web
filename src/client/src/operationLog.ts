@@ -12,7 +12,7 @@ import { newClientMessageId } from "./messageDelivery";
  */
 
 const DEVICE_KEY = "pi-web:device-id";
-const LOG_PREFIX = "pi-web:operation-log:";
+const LOG_PREFIX = "pi-web:acked-through:";
 
 /** Minted once per browser profile; every tab of the profile is this device. */
 export function deviceId(storage = browserLocalStorage()): string {
@@ -37,6 +37,11 @@ export function confirmThrough(sessionKey: string, appliedThrough: number, stora
   } catch {
     return;
   }
+}
+
+/** A deleted session's standing goes with it. */
+export function forgetOperationLog(sessionKey: string, storage = browserLocalStorage()): void {
+  storage?.removeItem(`${LOG_PREFIX}${sessionKey}`);
 }
 
 /** A draft's standing goes with its outbox to the session's own id. */

@@ -6,8 +6,9 @@ import type { ClientCommandResult } from "../../shared/types.js";
  * time and the command runs once. A resend that arrives while the command still runs waits for
  * the same run.
  *
- * Held in memory, newest kept: after a restart the ledger still knows the command ran, and its
- * resend is answered as done without what it said.
+ * Held in memory, the newest `KEPT` only. An identity not held - the daemon restarted, the answer
+ * aged out, or it never ran here - is answered as done without what it said; the acceptance ledger,
+ * which outlives a restart, is what decides that a resend repeats rather than runs.
  */
 export interface CommandAnswers {
   remember(sessionId: string, clientMessageId: string, run: Promise<ClientCommandResult>): void;

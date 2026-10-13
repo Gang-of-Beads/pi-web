@@ -102,7 +102,8 @@ import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
-import { createSequenceCursors, parseSequencedOperation, type IdentityStanding, type SequenceCursors, type SequencedOperation, type SequenceTurn } from "./sequenceCursors.js";
+import { createSequenceCursors, type IdentityStanding, type SequenceCursors, type SequencedOperation, type SequenceTurn } from "./sequenceCursors.js";
+import { isBuiltinCommand } from "./builtinCommands.js";
 import { createCommandAnswers, type CommandAnswers } from "./commandAnswers.js";
 import { batchGoesOn, resultForError } from "./operationBatch.js";
 import type { OperationOutcome } from "./operationDecision.js";
@@ -367,11 +368,6 @@ interface Numbered {
   readonly turn: SequenceTurn;
 }
 
-/** The identity and sequence a request for a device's operation carries. */
-interface OperationIdentity {
-  readonly clientMessageId?: unknown;
-  readonly sequence?: unknown;
-}
 
 /**
  * The frame that answers a repeat of an identity the ledger already holds: what became of it, so
@@ -3200,7 +3196,7 @@ export class PiSessionService implements SessionRouteService {
    * are accepted in the order they reached the daemon even when the first carries a photo that
    * takes longer to decode.
    */
-  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown; sequence?: unknown }): Promise<void> {
+  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown; sequence?: SequencedOperation }): Promise<void> {
     return this.inArrivalOrder(ref.id, async () => {
       const numbered = this.numberedTurn(ref.id, options?.sequence);
       await this.acceptPrompt(ref, text, streamingBehavior, attachments, options, numbered?.turn);
@@ -3214,9 +3210,27 @@ export class PiSessionService implements SessionRouteService {
    * runtime command forwarded to the agent - carry no number and take no turn; every route that
    * takes a device's operation requires one.
    */
-  private numberedTurn(sessionId: string, value: unknown): Numbered | undefined {
-    const operation = parseSequencedOperation(value);
+  private numberedTurn(sessionId: string, operation: SequencedOperation | undefined): Numbered | undefined {
     return operation === undefined ? undefined : { operation, turn: this.sequences.turn(sessionId, operation) };
+  }
+
+  /**
+   * Whether an operation with this identity already ran here, whatever its number says. A command
+   * or a `!` command that failed ran too, so its resend repeats rather than runs; only `unknown` (a
+   * restart lost it) runs again. The number alone cannot say it: two tabs number one outbox, and a
+   * lost cursor file forgets.
+   */
+  private ranBefore(sessionId: string, clientMessageId: string | undefined): boolean {
+    if (clientMessageId === undefined) return false;
+    const outcome = this.acceptanceLedger.outcomesFor(sessionId, [clientMessageId])[clientMessageId];
+    return outcome !== undefined && outcome !== "unknown";
+  }
+
+  /** Record that an operation with this identity ran, so a resend of it repeats. */
+  private recordRan(sessionId: string, clientMessageId: string | undefined): void {
+    if (clientMessageId === undefined) return;
+    this.acceptanceLedger.record(sessionId, clientMessageId);
+    this.acceptanceLedger.settle(sessionId, clientMessageId, "succeeded");
   }
 
   /**
@@ -3278,25 +3292,27 @@ export class PiSessionService implements SessionRouteService {
     },
     takeBack: async (ref, sequence, operation) => {
       if (operation.kind !== "takeBack") throw new Error("Expected a take-back");
-      const { recalled } = await this.recallQueuedMessage(ref, { text: operation.text, clientMessageId: operation.target, ...(operation.lane === undefined ? {} : { kind: operation.lane }) }, sequence);
+      const recalled = await this.takeBackInTurn(ref, { text: operation.text, clientMessageId: operation.target, ...(operation.lane === undefined ? {} : { kind: operation.lane }) }, sequence, operation.clientMessageId);
       return recalled ? "takenBack" : "tooLate";
     },
     command: async (ref, sequence, operation) => {
       if (operation.kind !== "command") throw new Error("Expected a command");
-      await this.admitCommand(ref, operation.text, { clientMessageId: operation.clientMessageId, sequence });
+      const { run } = await this.admitCommand(ref, operation.text, operation.clientMessageId, sequence);
+      if (forwardsToAgent(operation.text)) await run.catch(() => undefined);
       return "accepted";
     },
     shell: async (ref, sequence, operation) => {
       if (operation.kind !== "shell") throw new Error("Expected a shell command");
-      await this.shell(ref, operation.text, { clientMessageId: operation.clientMessageId, sequence });
+      await this.shell(ref, operation.text, operation.clientMessageId, sequence);
       return "accepted";
     },
   };
 
   /**
    * A device's command's result, read by its identity once the batch accepted it. A command still
-   * running past `waitMs` reads as running and is asked again; one this daemon no longer holds
-   * (it restarted) ran before and reads as done.
+   * running past `waitMs` reads as running and is asked again. An identity this daemon holds no
+   * answer for - it restarted, the answer aged out of the newest kept, or it never ran here - reads
+   * as done without what it said: the device asks only after the batch accepted the command.
    */
   async commandResult(sessionId: string, clientMessageId: string, waitMs: number): Promise<CommandResultState> {
     const run = this.commandAnswers.repeat(sessionId, clientMessageId);
@@ -4085,17 +4101,15 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /** A device's `!` command, in its turn: run once, and a resend answered without running it again. */
-  shell(ref: PiSessionRef, text: string, identity?: OperationIdentity): Promise<void> {
+  shell(ref: PiSessionRef, text: string, clientMessageId?: string, sequence?: SequencedOperation): Promise<void> {
     return this.inArrivalOrder(ref.id, async () => {
-      const numbered = this.numberedTurn(ref.id, identity?.sequence);
-      const clientMessageId = parseClientMessageId(identity?.clientMessageId);
+      const numbered = this.numberedTurn(ref.id, sequence);
       const active = await this.getActive(ref);
       const sessionId = active.runtime.session.sessionId;
       const verdict = numbered?.turn.decide(() => this.identityStanding(active.runtime.session, clientMessageId));
-      if (verdict !== "repeat") {
+      if (verdict !== "repeat" && !this.ranBefore(sessionId, clientMessageId)) {
         await this.shellNow(ref, text);
-        if (clientMessageId !== undefined) this.acceptanceLedger.record(sessionId, clientMessageId);
-        if (clientMessageId !== undefined) this.acceptanceLedger.settle(sessionId, clientMessageId, "succeeded");
+        this.recordRan(sessionId, clientMessageId);
       }
       this.applied(ref.id, numbered, clientMessageId, "accepted");
     });
@@ -4146,20 +4160,23 @@ export class PiSessionService implements SessionRouteService {
    * the command itself runs outside it, because a runtime command forwards a prompt that takes its
    * own turn on the chain. A resend is answered with what the command answered the first time.
    */
-  async runCommand(ref: PiSessionRef, text: string, identity?: OperationIdentity): Promise<ClientCommandResult> {
-    const admitted = await this.admitCommand(ref, text, identity);
+  async runCommand(ref: PiSessionRef, text: string): Promise<ClientCommandResult> {
+    const admitted = await this.admitCommand(ref, text, undefined, undefined);
     return admitted.run;
   }
 
-  /** Admit a command in its turn and start it; the caller decides whether to wait for its result. */
-  private admitCommand(ref: PiSessionRef, text: string, identity?: OperationIdentity): Promise<{ run: Promise<ClientCommandResult> }> {
+  /**
+   * Admit a command in its turn and start it; the caller decides whether to wait for its result. A
+   * command a device sent before is answered with what it answered then, and runs once.
+   */
+  private admitCommand(ref: PiSessionRef, text: string, clientMessageId: string | undefined, sequence: SequencedOperation | undefined): Promise<{ run: Promise<ClientCommandResult> }> {
     return this.inArrivalOrder(ref.id, async () => {
-      const numbered = this.numberedTurn(ref.id, identity?.sequence);
-      const clientMessageId = parseClientMessageId(identity?.clientMessageId);
+      const numbered = this.numberedTurn(ref.id, sequence);
       const active = await this.getActive(ref);
       const sessionId = active.runtime.session.sessionId;
       const verdict = numbered?.turn.decide(() => this.identityStanding(active.runtime.session, clientMessageId));
-      const run = verdict === "repeat" && clientMessageId !== undefined ? this.commandAnswers.repeat(ref.id, clientMessageId) : this.startCommand(ref, sessionId, text, clientMessageId);
+      const repeat = verdict === "repeat" || this.ranBefore(sessionId, clientMessageId);
+      const run = repeat && clientMessageId !== undefined ? this.commandAnswers.repeat(ref.id, clientMessageId) : this.startCommand(ref, sessionId, text, clientMessageId);
       run.catch(() => undefined);
       this.applied(ref.id, numbered, clientMessageId, "accepted");
       return { run };
@@ -4639,34 +4656,38 @@ export class PiSessionService implements SessionRouteService {
     return this.statusFromSession(session);
   }
 
+  /** Take one message back in its turn, unnumbered: the recall a device's take-back runs (`takeBackInTurn`). */
+  recallQueuedMessage(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }> {
+    return this.inArrivalOrder(ref.id, () => this.recallNow(ref, target));
+  }
+
   /**
-   * Take one message back out of the queue, leaving the rest of it alone.
-   *
-   * The runtime has no such operation - `clearQueue()` empties both lanes and
-   * hands them back (agent-session.d.ts: "Clear all queued messages and return
-   * them") - so the only way to remove one entry is to empty the queue and put
-   * the survivors back. That is why this reaches past `prompt()` to
-   * `session.prompt()` directly: the wrapper drops a message whose text is
-   * already queued as a double-send, which is exactly what a replay looks like,
-   * so going through it would silently discard everything being restored.
-   *
-   * Matching is by text within a lane, first occurrence, because
-   * `clientMessageId` is optional (other clients and older ones never mint
-   * one) and the runtime itself keys its queue on text. Two identical queued
-   * texts are therefore indistinguishable; taking the first keeps the visible
-   * order stable and the caller re-renders from the returned status either way.
+   * Take one message back, as a device's numbered take-back with its own identity
+   * (docs/design/message-states.md, "Take-back answers"). The runtime has no such operation -
+   * `clearQueue()` empties both lanes and hands them back - so `recallNow` empties the queue and
+   * puts the survivors back, matching by text within a lane because the runtime keys its queue on
+   * text. A repeat of the take-back is answered from the ledger and recalls nothing.
    */
-  recallQueuedMessage(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }, sequence?: unknown): Promise<{ recalled: boolean; status: ClientSessionStatus }> {
+  private takeBackInTurn(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId: string }, sequence: SequencedOperation, takeBackId: string): Promise<boolean> {
     return this.inArrivalOrder(ref.id, async () => {
       const numbered = this.numberedTurn(ref.id, sequence);
-      if (numbered !== undefined) {
-        const session = await this.getOrOpen(ref);
-        numbered.turn.decide(() => this.identityStanding(session, target.clientMessageId));
-      }
-      const answer = await this.recallNow(ref, target);
-      this.applied(ref.id, numbered, target.clientMessageId, answer.recalled ? "takenBack" : "tooLate");
-      return answer;
+      const session = await this.getOrOpen(ref);
+      const verdict = numbered?.turn.decide(() => this.identityStanding(session, takeBackId));
+      const repeat = verdict === "repeat" || this.ranBefore(session.sessionId, takeBackId);
+      const recalled = repeat ? this.takenBackBefore(session.sessionId, target.clientMessageId) : (await this.recallNow(ref, target)).recalled;
+      if (!repeat) this.recordRan(session.sessionId, takeBackId);
+      this.applied(ref.id, numbered, takeBackId, recalled ? "takenBack" : "tooLate");
+      return recalled;
     });
+  }
+
+  /**
+   * A take-back's resend is answered from what became of its message - withdrawn means taken back -
+   * and never recalls again: the recall matches the runtime's queue by text, so a second pass could
+   * take a later message with the same words.
+   */
+  private takenBackBefore(sessionId: string, clientMessageId: string): boolean {
+    return this.acceptanceLedger.outcomesFor(sessionId, [clientMessageId])[clientMessageId] === "withdrawn";
   }
 
   /**
@@ -7692,4 +7713,10 @@ function loadedExtensionFiles(session: PiAgentSession): LoadedExtensionFile[] {
     ...(extension.sourceInfo === undefined ? {} : { sourceInfo: extension.sourceInfo }),
     tools: extension.tools === undefined ? [] : [...extension.tools.keys()],
   }));
+}
+
+/** A command the agent expands - a skill, an extension command - goes on as a prompt of its own; a built-in runs here. */
+function forwardsToAgent(text: string): boolean {
+  const name = text.trim().replace(/^\//u, "").split(/\s+/u)[0] ?? "";
+  return !isBuiltinCommand(name);
 }

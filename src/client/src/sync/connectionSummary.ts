@@ -71,7 +71,12 @@ export const SYNCING_AFTER_MS = 1000;
  * could answer. The grace therefore starts no earlier than the page's last return to view.
  */
 export function graceLeftMs(since: number, lookingSince: number, now: number): number {
-  return TRANSIENT_GRACE_MS - (now - Math.max(since, lookingSince));
+  return inViewLeftMs(TRANSIENT_GRACE_MS, since, lookingSince, now);
+}
+
+/** How much of `waitMs` is left for something that began at `since`, counting only time in view. */
+function inViewLeftMs(waitMs: number, since: number, lookingSince: number, now: number): number {
+  return waitMs - (now - Math.max(since, lookingSince));
 }
 
 /**
@@ -87,7 +92,7 @@ export function rowDecision(input: RowInput): RowDecision {
   if (unanswered !== undefined && graceLeft !== undefined && earnsRow(unanswered, graceLeft, shown)) return { claim: { kind: "unanswered", miss: unanswered.miss } };
   const holdLeft = shown === undefined ? 0 : BANNER_MIN_VISIBLE_MS - (now - shown.at);
   if (shown !== undefined && holdLeft > 0) return { claim: { kind: "unanswered", miss: shown.miss }, recheckInMs: Math.min(holdLeft, graceLeft ?? holdLeft) };
-  const behindLeft = input.behind === undefined ? undefined : SYNCING_AFTER_MS - (now - Math.max(input.behind.since, lookingSince));
+  const behindLeft = input.behind === undefined ? undefined : inViewLeftMs(SYNCING_AFTER_MS, input.behind.since, lookingSince, now);
   const claim: RowClaim = input.behind !== undefined && behindLeft !== undefined && behindLeft <= 0 ? { kind: "syncing", machineId: input.behind.machineId } : NONE;
   const recheck = [graceLeft, behindLeft].filter((left): left is number => left !== undefined && left > 0);
   return recheck.length === 0 ? { claim } : { claim, recheckInMs: Math.min(...recheck) };

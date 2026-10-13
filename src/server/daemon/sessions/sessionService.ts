@@ -79,8 +79,6 @@ export interface SessionRouteService {
   dismissNotification(ref: SessionRouteRef, request: Omit<SessionNotificationDismissRequest, "cwd">): SessionNotificationDismissResponse | Promise<SessionNotificationDismissResponse>;
   dismissAllNotifications(ref: SessionRouteRef, request: Omit<SessionNotificationDismissAllRequest, "cwd">): SessionNotificationDismissResponse | Promise<SessionNotificationDismissResponse>;
   clearQueue(ref: SessionRouteRef): Promise<ClientSessionStatus>;
-  /** Remove one queued message, leaving the rest of the queue in order. */
-  recallQueuedMessage(ref: SessionRouteRef, target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string }, sequence?: unknown): Promise<{ recalled: boolean; status: ClientSessionStatus }>;
   /** Deliver a keypress to an open extension screen; false when none is open. */
   sendCustomScreenKey(ref: SessionRouteRef, dialogId: string, key: string): Promise<boolean>;
   /** Move an open drawn screen's cursor to a tapped line, matched by its text, and select it. */
@@ -108,8 +106,7 @@ export interface SessionRouteService {
   cleanup(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupExecuteResponse>;
   archiveMany(refs: readonly SessionBulkMutationRef[]): Promise<SessionBulkArchiveResponse>;
   deleteArchivedMany(refs: readonly SessionBulkMutationRef[]): Promise<SessionBulkDeleteArchivedResponse>;
-  shell(ref: SessionRouteRef, text: string, identity?: { clientMessageId?: unknown; sequence?: unknown }): Promise<void>;
-  runCommand(ref: SessionRouteRef, text: string, identity?: { clientMessageId?: unknown; sequence?: unknown }): Promise<ClientCommandResult>;
+  runCommand(ref: SessionRouteRef, text: string): Promise<ClientCommandResult>;
   /** Apply a device's batch of operations in order, stopping at the first that is not applied. */
   applyOperations(ref: SessionRouteRef, batch: OperationBatch): Promise<OperationBatchAnswer>;
   /** A device's command's result, read by its identity, waiting up to `waitMs` for it. */

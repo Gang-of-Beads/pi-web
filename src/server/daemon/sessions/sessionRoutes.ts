@@ -964,7 +964,6 @@ export function quietWindowMs(value: string | undefined): number | undefined {
   return seconds >= 1 && seconds <= 600 ? seconds * 1000 : undefined;
 }
 
-/** A message or take-back that does not say where it stands in its device's log cannot be ordered against that device's other operations. */
 /** How long a read of a command's result waits for the command before answering that it still runs. */
 const COMMAND_RESULT_WAIT_MS = 20_000;
 

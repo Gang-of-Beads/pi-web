@@ -11,9 +11,11 @@
  * an earlier one that read "Not received".
  *
  * A request also says the highest number its device saw confirmed (`ackedThrough`, a recorded
- * value); the cursor is the higher of that and what is on file, so a lost file costs nothing. The
- * verdict is decided before the operation runs and recorded only once it is accepted, so an
- * operation refused for its content takes no number.
+ * value); the cursor is the higher of that and what is on file. A lost file, or one written in an
+ * older shape, loses only the number check for what was applied above that; the identity check
+ * (the acceptance ledger) still keeps an operation from running twice. The verdict is decided
+ * before the operation runs and recorded only once it is accepted, so an operation refused for its
+ * content takes no number.
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -83,13 +85,11 @@ const REFUSAL: Readonly<Record<SequenceVerdictKind, ((appliedThrough: number) =>
 };
 
 /**
- * One operation's turn. `place` is known before the operation runs; `decide` turns it into a
- * verdict once the identity is known, throwing for `stale` and `gap`; `accept` records the
- * operation as applied and returns where the device's cursor stands.
+ * One operation's turn: `decide` gives its verdict once the identity can be looked up, throwing for
+ * `stale` and `gap`; `accept` records the operation as applied and returns where the device's
+ * cursor stands.
  */
 export interface SequenceTurn {
-  readonly place: Place;
-  readonly appliedThrough: number;
   decide(identity: () => IdentityStanding): SequenceVerdictKind;
   accept(): number;
 }
@@ -125,8 +125,6 @@ export function createSequenceCursors(dataDir: string | undefined, now: () => nu
       const place = placeOf(applied, operation.seq);
       if (place === "past") throw new SequenceGapError(applied);
       return {
-        place,
-        appliedThrough: applied,
         decide(identity) {
           const verdict = sequenceVerdict(applied, operation.seq, identity);
           const refusal = REFUSAL[verdict];
@@ -178,16 +176,4 @@ function writeTable(filePath: string, table: CursorTable): void {
   const temporary = `${filePath}.writing`;
   writeFileSync(temporary, JSON.stringify(table), "utf8");
   renameSync(temporary, filePath);
-}
-
-/** A device's operation number as a request carries it; undefined when the request carries none or a malformed one, which the routes refuse. */
-export function parseSequencedOperation(value: unknown): SequencedOperation | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  const deviceId: unknown = Reflect.get(value, "deviceId");
-  const seq: unknown = Reflect.get(value, "seq");
-  const ackedThrough: unknown = Reflect.get(value, "ackedThrough");
-  if (typeof deviceId !== "string" || !/^[A-Za-z0-9._:-]{8,128}$/u.test(deviceId)) return undefined;
-  if (typeof seq !== "number" || typeof ackedThrough !== "number") return undefined;
-  if (!Number.isSafeInteger(seq) || !Number.isSafeInteger(ackedThrough) || seq < 1 || ackedThrough < 0) return undefined;
-  return { deviceId, seq, ackedThrough };
 }

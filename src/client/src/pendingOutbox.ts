@@ -1,7 +1,7 @@
 import { browserLocalStorage } from "./browserLocalStorage";
 import type { PromptAttachment } from "./api";
 import type { PromptAttachmentDelivery } from "../../shared/apiTypes";
-import { moveOperationLog } from "./operationLog";
+import { forgetOperationLog, moveOperationLog } from "./operationLog";
 
 /**
  * The outbox: this browser's operations on a session that the machine has not answered yet, in
@@ -147,9 +147,33 @@ export function appendOperation(sessionKey: string, operation: Omit<PendingPromp
   return writeRecord(sessionKey, record, storage) ? record : undefined;
 }
 
-/** Rewrite one record in place (its number, its words after attachments were saved). */
+/**
+ * Rewrite one record in place (its number, its words after attachments were saved), only while it
+ * is still the operation that was read: a message withdrawn meanwhile turned into its take-back
+ * under the same key, here or in another tab, and a copy read before must not bring it back.
+ */
 export function updateOperation(sessionKey: string, record: PendingPrompt, storage = browserLocalStorage()): boolean {
+  const stored = readRecord(recordKey(sessionKey, record), storage);
+  if (stored?.clientMessageId !== record.clientMessageId || stored.kind !== record.kind) return false;
   return writeRecord(sessionKey, record, storage);
+}
+
+/** A message whose files go to the workspace: they are saved, and its words rewritten with their paths, before it travels. */
+export function savesFilesFirst(record: PendingPrompt): boolean {
+  return record.kind === "message" && record.delivery === "folder" && (record.attachments ?? []).length > 0;
+}
+
+/**
+ * Drop everything a session held to send - its outbox, its reserve, its acknowledgements - when
+ * the reader deleted it: the engine sends every outbox, and a deleted draft would otherwise start
+ * again and run what the reader threw away.
+ */
+export function discardOutbox(sessionKey: string, storage = browserLocalStorage()): void {
+  if (storage === undefined) return;
+  forgetOperationLog(sessionKey, storage);
+  const keys = [...keysWithPrefix(`${OUTBOX_PREFIX}${sessionKey}${ORDER_MARK}`, storage), ...keysWithPrefix(`${RESERVE_PREFIX}${sessionKey}${ORDER_MARK}`, storage)];
+  for (const key of keys) storage.removeItem(key);
+  announce(sessionKey);
 }
 
 export function forgetPendingPrompt(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): void {

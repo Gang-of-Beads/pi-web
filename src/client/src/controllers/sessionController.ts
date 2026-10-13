@@ -4,7 +4,6 @@ import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand } from "../commandLedger";
 import { lastLastingRowKey } from "../rowIdentity";
-import { queuedUserLine } from "../userMessageRegister";
 import { RevisionScope, type ProjectionSource, type ProjectionVerdict } from "../revisionScope";
 import { SessionGapRepair, type GapReplayResult, type StreamFrontier } from "../sessionGapRepair";
 import { nextTranscriptSync, transcriptRetryAction, type TranscriptSyncEvent } from "../transcriptSync";
@@ -29,7 +28,7 @@ import { clearCardDraft } from "../cardDrafts";
 import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
-import { forgetPendingPrompt, loadPendingPrompts, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, updateOperation, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
+import { discardOutbox, forgetPendingPrompt, loadPendingPrompts, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
 import { OutboxEngine } from "../outboxEngine";
 import { NOTE_SHOWN_MS, notesSeen, notesStillShowing } from "../messageNotes";
 import { NetworkError } from "../api/requestDeadline";
@@ -772,7 +771,7 @@ export class SessionController {
     if (!session || session.archived === true || isClientPendingStartSessionInfo(session)) return;
     const machineId = selectedMachineId(this.getState());
     const ledgerId = this.issueCommandRow(machineId, session.id, text, undefined);
-    await this.deliverCommandToSession(session, text, machineId, { applyResult: true, ledgerId });
+    await this.deliverCommandToSession(session, text, machineId, ledgerId);
   }
 
   private markSendingPrompt(sessionId: string, sending: boolean): void {
@@ -788,13 +787,12 @@ export class SessionController {
   private issueCommandRow(machineId: string, sessionId: string, text: string, id: string | undefined): string {
     const state = this.getState();
     const onScreen = this.isSelectedSessionIdentity(sessionId, machineId);
-    const waiting = onScreen ? (state.clientQueuedSessionMessages[sessionId] ?? []).map((message, position) => queuedUserLine(message, position)) : [];
     const issued = issueCommand(state.commandLedger, {
       ...(id === undefined ? {} : { id }),
       sessionKey: machineSessionKey(machineId, sessionId),
       text,
       now: Date.now(),
-      afterRowKey: onScreen ? lastLastingRowKey([...state.messages, ...waiting]) : undefined,
+      afterRowKey: onScreen ? lastLastingRowKey(state.messages) : undefined,
     });
     this.setState({ commandLedger: issued.entries });
     return issued.id;
@@ -811,7 +809,7 @@ export class SessionController {
       return answer;
     },
     launchDraft: (scope) => this.launchDraft(scope),
-    prepare: (sessionKey, record) => this.prepareOperation(sessionKey, record),
+    prepare: (record) => this.prepareOperation(record),
     applied: (sessionKey, record, outcome) => { this.operationApplied[record.kind](sessionKey, record, outcome); },
     refused: (sessionKey, record, reason) => { this.operationRefused[record.kind](sessionKey, record, reason); },
     changed: () => { this.outboxChanged(); },
@@ -923,15 +921,13 @@ export class SessionController {
   }
 
   /** A message whose files go to the workspace travels with their paths, saved once before its first batch. */
-  private async prepareOperation(sessionKey: string, record: PendingPrompt): Promise<PendingPrompt> {
-    const attachments = record.attachments ?? [];
-    if (record.kind !== "message" || record.delivery !== "folder" || attachments.length === 0) return record;
-    const saved = await this.api.saveAttachments({ id: record.scope.sessionId, cwd: record.scope.cwd }, attachments, record.scope.machineId);
+  private async prepareOperation(record: PendingPrompt): Promise<PendingPrompt> {
+    if (!savesFilesFirst(record)) return record;
+    const saved = await this.api.saveAttachments({ id: record.scope.sessionId, cwd: record.scope.cwd }, record.attachments ?? [], record.scope.machineId);
     const references = saved.map((file) => fileCompletionInsertText(file.path, false)).join(" ");
     const prepared: PendingPrompt = { ...record, text: record.text === "" ? references : `${record.text}\n\n${references}` };
     Reflect.deleteProperty(prepared, "attachments");
     Reflect.deleteProperty(prepared, "delivery");
-    updateOperation(sessionKey, prepared);
     return prepared;
   }
 
@@ -1107,30 +1103,23 @@ export class SessionController {
     return clientMessageId;
   }
 
-  private async deliverCommandToSession(session: SessionInfo, text: string, machineId: string, options: { applyResult: boolean; ledgerId?: string }): Promise<boolean> {
-    // Commands are not inserted into the transcript optimistically: a builtin
-    // command produces its own result line, and a runtime/skill command is
-    // forwarded to the agent, which streams back the canonical (expanded)
-    // message. Inserting the raw text here would leave a line that doesn't
-    // converge with server history and disappears on reload. Surface the same
-    // per-session sending indicator that send() uses for the pre-receipt window.
+  /**
+   * Commands are not inserted into the transcript optimistically: a built-in command produces its
+   * own result line, and a runtime or skill command is forwarded to the agent, which streams back
+   * the canonical (expanded) message. The raw text would leave a line that never converges with the
+   * machine's history and disappears on reload.
+   */
+  private async deliverCommandToSession(session: SessionInfo, text: string, machineId: string, ledgerId: string): Promise<void> {
     this.markSendingPrompt(session.id, true);
     try {
       const result = await this.api.runCommand(session, text, machineId);
-      if (options.applyResult && this.isSelectedSessionIdentity(session.id, machineId)) this.applyCommandResult(result);
+      if (this.isSelectedSessionIdentity(session.id, machineId)) this.applyCommandResult(result);
       else if (result.type === "select" || result.type === "tree") this.setState(noticePatch(noticeForReader(`Command “${text}” is asking a question; open the session and run it again.`)));
       this.markCachedNewSessionPersisted(session);
-      if (options.ledgerId !== undefined) {
-        const outcome = commandOutcomeFor(result);
-        if (outcome !== undefined) this.settleLedgerRow(options.ledgerId, outcome);
-        else if (result.type === "select") this.commandDialogRows.set(result.requestId, options.ledgerId);
-        else this.setState({ commandLedger: withdrawCommand(this.getState().commandLedger, options.ledgerId) });
-      }
-      return true;
+      this.settleCommandRow(ledgerId, result);
     } catch (error) {
       if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", sendRefusalWords(error))], ...noticePatch(sendRefusalNotice(error, machineId)) });
-      if (options.ledgerId !== undefined) this.settleLedgerRow(options.ledgerId, { state: "failed", resultText: sendRefusalWords(error) });
-      return false;
+      this.settleLedgerRow(ledgerId, { state: "failed", resultText: sendRefusalWords(error) });
     } finally {
       this.markSendingPrompt(session.id, false);
     }
@@ -1610,6 +1599,7 @@ export class SessionController {
     }
     forgetCachedNewSession(session.id, selectedMachineId(this.getState()));
     clearDraft(this.sessionCacheKey(session.id));
+    discardOutbox(this.sessionCacheKey(session.id));
     const state = this.getState();
     const sessions = state.sessions.filter((candidate) => candidate.id !== session.id);
     this.setState({
@@ -1617,7 +1607,6 @@ export class SessionController {
       sessionStatuses: omitKey(state.sessionStatuses, session.id),
       sessionActivities: omitSessionActivity(state.sessionActivities, session.id),
       sendingPrompts: omitKey(state.sendingPrompts, session.id),
-      clientQueuedSessionMessages: omitKey(state.clientQueuedSessionMessages, session.id),
     });
     if (this.getState().selectedSession?.id !== session.id) return;
     const next = sessions.find((candidate) => candidate.archived !== true && isOpenableSession(candidate)) ?? sessions.find(isOpenableSession);
@@ -1762,14 +1751,6 @@ export class SessionController {
     }
   }
 
-  /**
-   * Take one message of this device back, as the operation its outbox numbered
-   * (docs/design/message-states.md, "Take-back answers"). The machine answers whether it took it
-   * back - from its queue, or before it ever arrived (a tombstone) - or was too late because the
-   * agent has it. Taken back, the row goes; the composer gets the words from the outbox. Too late,
-   * the agent has the message: the row reads Received, and the reader is told. No answer is not an answer: it
-   * throws, and the outbox asks again.
-   */
   /**
    * A message just written to this browser's outbox shows its row at once, before anything ahead
    * of it is answered; a command shows its receipt row, and a shell command its line.
@@ -1971,9 +1952,13 @@ export class SessionController {
    * A gap the socket saw, a heartbeat's head among them: the frames after the frontier are owed.
    * Before the join seeded a frontier the join's own read is under way and answers it.
    */
+  /** Fetch what the stream skipped; before the join's read has placed the page, that read answers it, and the page is not behind. */
   private catchUpFromFrontier(repair: SessionGapRepair, key: string): void {
     const pending = repair.catchUp();
-    if (pending === undefined) return;
+    if (pending === undefined) {
+      this.clearBehind();
+      return;
+    }
     this.syncTranscript({ type: "check", key });
   }
 
@@ -2305,7 +2290,7 @@ export class SessionController {
     const releasedCreatedSessions = this.takeSuppressedCreatedSessionsFor(pending.cwd, pending.machineId, session.id);
     if (pending.discarded) {
       clearDraft(machineSessionKey(pending.machineId, tempId));
-      this.setState({ clientQueuedSessionMessages: omitKey(this.getState().clientQueuedSessionMessages, tempId) });
+      discardOutbox(machineSessionKey(pending.machineId, tempId));
       this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
       void this.api.stop(session, pending.machineId).catch(() => {
         // Best-effort cleanup for a backend session whose temporary UI row was discarded before creation finished.
@@ -2318,10 +2303,7 @@ export class SessionController {
     moveHeldComposerAttachments(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
     moveOutbox(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id), session.id);
     const cachedSession = markCachedNewSessionInfo(session, pending.machineId);
-    if (!this.isCurrentPendingStart(pending)) {
-      this.setState({ clientQueuedSessionMessages: omitKey(this.getState().clientQueuedSessionMessages, tempId) });
-      return;
-    }
+    if (!this.isCurrentPendingStart(pending)) return;
 
     const state = this.getState();
     const wasSelected = state.selectedSession?.id === tempId;
@@ -2329,7 +2311,6 @@ export class SessionController {
       sessions: replacePendingSessionInList(state.sessions, tempId, cachedSession),
       sessionActivities: omitSessionActivity(state.sessionActivities, tempId),
       sendingPrompts: moveRecordKey(state.sendingPrompts, tempId, cachedSession.id),
-      clientQueuedSessionMessages: moveRecordKey(state.clientQueuedSessionMessages, tempId, cachedSession.id),
       ...(wasSelected ? { selectedSession: cachedSession, status: state.sessionStatuses[cachedSession.id], activity: state.sessionActivities[cachedSession.id], pendingDialogs: state.sessionStatuses[cachedSession.id]?.pendingDialogs ?? [], settledDialogIds: [] } : {}),
       ...clearErrorPatch(),
     });
@@ -2796,7 +2777,7 @@ export class SessionController {
   private cancelMessage(scope: ReturnScope, clientMessageId: string, reason: string): void {
     const words = retireMessage(machineSessionKey(scope.machineId, scope.sessionId), clientMessageId);
     this.setState({ messages: withdrawDeliveryLine(this.getState().messages, clientMessageId) });
-    this.noteUnder(scope, clientMessageId, `Not sent: ${reason}. The words are back in the composer.`);
+    this.noteUnder(scope, clientMessageId, words === undefined ? `Not sent: ${reason}.` : `Not sent: ${reason}. The words are back in the composer.`);
     if (words !== undefined) this.returnToComposer?.(scope, { text: words.text, attachments: words.attachments ?? [] });
   }
 
@@ -2993,12 +2974,6 @@ export class SessionController {
   }
 
   /**
-   * Every live frame, the join buffer's included, flows through the gap repair: seeded with
-   * the snapshot's watermark, it applies frames in seq order exactly once and fetches any
-   * range it sees missing, including frames published between the snapshot and the
-   * subscription.
-   */
-  /**
    * Rebase the live stream on a view just rebuilt from a read. Frames still waiting for the next
    * render were applied to the view being replaced: those the read reflects are in it already,
    * and the machine fetches the ones after it again, so only frames without a seq stay queued.
@@ -3010,6 +2985,12 @@ export class SessionController {
     this.socket.noteApplied?.(watermark.seq);
   }
 
+  /**
+   * Every live frame, the join buffer's included, flows through the gap repair: seeded with
+   * the snapshot's watermark, it applies frames in seq order exactly once and fetches any
+   * range it sees missing, including frames published between the snapshot and the
+   * subscription.
+   */
   private routeLiveEvent(event: SessionUiEvent): void {
     this.outbox.heardFrom(selectedMachineId(this.getState()));
     const seq: unknown = Reflect.get(event, "seq");

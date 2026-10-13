@@ -17,7 +17,7 @@ export interface MessageNote {
 
 export const NOTE_SHOWN_MS = 8000;
 
-/** Notes of other sessions stay; this session's, once seen long enough, go. */
+/** A note not yet on screen stays - it waits for its session to open; one on screen goes once it has shown `NOTE_SHOWN_MS`. */
 export function notesStillShowing(notes: readonly MessageNote[], now: number): MessageNote[] {
   return notes.filter((note) => note.shownAt === undefined || now - note.shownAt < NOTE_SHOWN_MS);
 }

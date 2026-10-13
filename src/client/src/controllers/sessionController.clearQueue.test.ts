@@ -19,7 +19,6 @@ describe("SessionController server queue clearing", () => {
       ],
     };
     const clearedStatus: SessionStatus = { ...queuedStatus, pendingMessageCount: 0, queuedMessages: [] };
-    const clientQueuedSends = [{ kind: "followUp" as const, text: "waiting for session creation" }];
     const clearCalls: { sessionId: string; machineId: string }[] = [];
     let state: AppState = {
       ...initialAppState(),
@@ -29,7 +28,6 @@ describe("SessionController server queue clearing", () => {
       sessions: [oldSession],
       status: queuedStatus,
       sessionStatuses: { [oldSession.id]: queuedStatus },
-      clientQueuedSessionMessages: { [oldSession.id]: clientQueuedSends },
     };
     const api: typeof defaultApi = {
       ...defaultApi,
@@ -51,7 +49,6 @@ describe("SessionController server queue clearing", () => {
     expect(clearCalls).toEqual([{ sessionId: oldSession.id, machineId: "remote-a" }]);
     expect(state.status).toEqual(clearedStatus);
     expect(state.sessionStatuses[oldSession.id]).toEqual(clearedStatus);
-    expect(state.clientQueuedSessionMessages[oldSession.id]).toBe(clientQueuedSends);
   });
 
   it("does not apply a response after another session is selected", async () => {
@@ -147,14 +144,12 @@ describe("SessionController server queue clearing", () => {
 
   it("does not send a server clear for a client-pending session or discard its queued sends", async () => {
     const pendingSession = { ...oldSession, id: "pending-session", clientPendingStart: true as const, machineId: "local" };
-    const clientQueuedSends = [{ kind: "followUp" as const, text: "send after creation" }];
     let clearCalls = 0;
     let state: AppState = {
       ...initialAppState(),
       selectedWorkspace: workspace,
       selectedSession: pendingSession,
       sessions: [pendingSession],
-      clientQueuedSessionMessages: { [pendingSession.id]: clientQueuedSends },
     };
     const api: typeof defaultApi = {
       ...defaultApi,
@@ -174,6 +169,5 @@ describe("SessionController server queue clearing", () => {
     await controller.clearServerQueue();
 
     expect(clearCalls).toBe(0);
-    expect(state.clientQueuedSessionMessages[pendingSession.id]).toBe(clientQueuedSends);
   });
 });

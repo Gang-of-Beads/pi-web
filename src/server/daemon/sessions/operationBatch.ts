@@ -55,7 +55,8 @@ const PARSERS: Readonly<Record<DeviceOperation["kind"], Parser>> = {
   },
   takeBack: (body, head) => {
     const kind = lane(body["lane"]);
-    return { kind: "takeBack", ...head, target: text(body["target"], "target"), text: text(body["text"] ?? "", "text"), ...(kind === undefined ? {} : { lane: kind }) };
+    const words = body["text"];
+    return { kind: "takeBack", ...head, target: text(body["target"], "target"), text: typeof words === "string" ? words : "", ...(kind === undefined ? {} : { lane: kind }) };
   },
   command: (body, head) => ({ kind: "command", ...head, text: text(body["text"], "text") }),
   shell: (body, head) => ({ kind: "shell", ...head, text: text(body["text"], "text") }),

@@ -1,4 +1,4 @@
-import type { AuthProviderOption, CommandOption, CommandResult, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
+import type { AuthProviderOption, CommandOption, CommandResult, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
 import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
 import { RetiredBy } from "./notice";
@@ -47,14 +47,12 @@ export interface AppState {
   transcriptSync: TranscriptSync | undefined;
   /** Sessions with a prompt upload in flight, keyed by sessionId (client-owned). */
   sendingPrompts: Record<string, true>;
-  /** Machines this browser sent a batch to that nobody has answered yet, and since when (outboxEngine.ts). */
+  /** Machines this browser sent a batch to that nobody has answered yet, since when, and why, as the app row words it (outboxEngine.ts). */
   outboxUnanswered: readonly { readonly machineId: string; readonly since: number; readonly miss: ReadMiss }[];
   /** Notes about single messages, shown under them (messageNotes.ts). */
   messageNotes: readonly MessageNote[];
   /** The machine the open session's stream is known to be behind, since when: a frame number skipped, or a read again after "resync". */
   streamBehind: { readonly machineId: string; readonly since: number } | undefined;
-  /** Client-side queued sends waiting for a just-created backend session, keyed by sessionId. */
-  clientQueuedSessionMessages: Record<string, QueuedSessionMessage[]>;
   /**
    * The browser's record of every command it issued: the receipt a slash
    * command's invisible route never produced. Rows carry the session key they
@@ -180,7 +178,6 @@ export type MachinesLoadState = "unloaded" | "loading" | "loaded";
 export type WorkspaceScopedStateReset = Pick<AppState,
   | "sessions"
   | "sessionsLoad"
-  | "clientQueuedSessionMessages"
   | "commandLedger"
   | "startingSessionCount"
   | "treeDialog"
@@ -196,7 +193,6 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
     // Goals belong to the workspace being left, so they must not linger over
     // the next one while its own records load. The key goes with them: an
     // unkeyed list would be retained by nothing and owned by no one.
-    clientQueuedSessionMessages: {},
     commandLedger: [],
     startingSessionCount: 0,
     treeDialog: undefined,
@@ -252,7 +248,6 @@ export function initialAppState(): AppState {
     outboxUnanswered: [],
     streamBehind: undefined,
     messageNotes: [],
-    clientQueuedSessionMessages: {},
     commandLedger: [],
     startingSessionCount: 0,
     projectsLoad: "unloaded",

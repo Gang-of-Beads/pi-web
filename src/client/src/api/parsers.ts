@@ -2515,6 +2515,19 @@ function parseAppliedOutcome(value: unknown): OperationAppliedOutcome {
   return value;
 }
 
+type OperationStoppedCode = Extract<OperationResult, { status: "stopped" }>["code"];
+
+const STOPPED_CODES: ReadonlySet<string> = new Set<OperationStoppedCode>(["sequence-gap", "sequence-stale"]);
+
+function isStoppedCode(value: unknown): value is OperationStoppedCode {
+  return typeof value === "string" && STOPPED_CODES.has(value);
+}
+
+function parseStoppedCode(value: unknown): OperationStoppedCode {
+  if (!isStoppedCode(value)) throw new Error("Expected a stopped operation code");
+  return value;
+}
+
 function parseOperationStanding(value: unknown): OperationStanding {
   const record = requireRecord(value);
   const head = requireRecord(record["head"]);
@@ -2523,7 +2536,7 @@ function parseOperationStanding(value: unknown): OperationStanding {
 
 const RESULT_PARSERS: Readonly<Record<OperationResult["status"], (record: Record<string, unknown>, head: { seq: number; clientMessageId: string }) => OperationResult>> = {
   applied: (record, head) => ({ ...head, status: "applied", outcome: parseAppliedOutcome(record["outcome"]) }),
-  stopped: (record, head) => ({ ...head, status: "stopped", code: record["code"] === "sequence-stale" ? "sequence-stale" : "sequence-gap", appliedThrough: requireNumber(record, "appliedThrough") }),
+  stopped: (record, head) => ({ ...head, status: "stopped", code: parseStoppedCode(record["code"]), appliedThrough: requireNumber(record, "appliedThrough") }),
   refused: (record, head) => {
     const code = optionalString(record, "code");
     return { ...head, status: "refused", httpStatus: requireNumber(record, "httpStatus"), error: requireString(record, "error"), ...(code === undefined ? {} : { code }) };
@@ -2548,11 +2561,21 @@ export function parseOperationBatchAnswer(value: unknown): OperationBatchAnswer 
   return { results: arrayOf(parseOperationResult)(record["results"]), standing: parseOperationStanding(record["standing"]) };
 }
 
+const COMMAND_RESULT_STATES: Readonly<Record<CommandResultState["state"], (record: Record<string, unknown>) => CommandResultState>> = {
+  done: (record) => ({ state: "done", result: parseCommandResult(record["result"]) }),
+  failed: (record) => ({ state: "failed", error: requireString(record, "error") }),
+  running: () => ({ state: "running" }),
+};
+
+function isCommandResultStateName(value: unknown): value is CommandResultState["state"] {
+  return typeof value === "string" && Object.hasOwn(COMMAND_RESULT_STATES, value);
+}
+
 export function parseCommandResultState(value: unknown): CommandResultState {
   const record = requireRecord(value);
-  if (record["state"] === "done") return { state: "done", result: parseCommandResult(record["result"]) };
-  if (record["state"] === "failed") return { state: "failed", error: requireString(record, "error") };
-  return { state: "running" };
+  const state = record["state"];
+  if (!isCommandResultStateName(state)) throw new Error("Expected a command result state");
+  return COMMAND_RESULT_STATES[state](record);
 }
 
 /**

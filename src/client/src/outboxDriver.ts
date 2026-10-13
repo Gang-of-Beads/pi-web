@@ -22,7 +22,7 @@ export type DriverState = "idle" | "sending" | "waiting";
 export type DriverEvent = "kick" | "answered" | "unanswered" | "elapsed" | "drained";
 
 /** What the engine does on a move: send a batch now, wait and then resend it, or nothing. */
-export type DriverEffect = "sendHead" | "wait" | "none";
+export type DriverEffect = "sendBatch" | "wait" | "none";
 
 /** How the resend wait changes: back to the start, one step longer, or as it is. */
 export type DelayChange = "reset" | "grow" | "keep";
@@ -33,8 +33,8 @@ export interface DriverMove {
   readonly delay: DelayChange;
 }
 
-const SEND_NOW: DriverMove = { to: "sending", effect: "sendHead", delay: "reset" };
-const RESEND: DriverMove = { to: "sending", effect: "sendHead", delay: "keep" };
+const SEND_NOW: DriverMove = { to: "sending", effect: "sendBatch", delay: "reset" };
+const RESEND: DriverMove = { to: "sending", effect: "sendBatch", delay: "keep" };
 const BACK_OFF: DriverMove = { to: "waiting", effect: "wait", delay: "grow" };
 const STOP: DriverMove = { to: "idle", effect: "none", delay: "reset" };
 const stay = (state: DriverState): DriverMove => ({ to: state, effect: "none", delay: "keep" });

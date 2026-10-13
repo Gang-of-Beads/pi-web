@@ -111,7 +111,7 @@ describe("SessionController prompt.refused", () => {
 
     harness.socket.emit({ type: "prompt.refused", clientMessageId: "cmid-r", message: "No model configured" });
 
-    expect({ rows: harness.state().messages.length, notes: harness.state().messageNotes.map((note) => note.text) }).toEqual({ rows: 0, notes: ["Not sent: No model configured. The words are back in the composer."] });
+    expect({ rows: harness.state().messages.length, notes: harness.state().messageNotes.map((note) => note.text) }).toEqual({ rows: 0, notes: ["Not sent: No model configured."] });
   });
 
   it("leaves a row the transcript already claimed as read", async () => {

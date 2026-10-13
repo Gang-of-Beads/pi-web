@@ -129,11 +129,6 @@ export class SessionBoardController {
     return this.recall(machineId);
   }
 
-  /** Whether the board drawn is wholly the remembered one: no live answer has landed yet. */
-  drawnFromMemory(machineId: string): boolean {
-    return this.boards.entry(machineId).data === undefined && this.board(machineId) !== undefined;
-  }
-
   /** How much of the live board answered; a remembered board is no answer. */
   answer(machineId: string): BoardAnswer {
     return boardAnswer(this.boards.entry(machineId).data);

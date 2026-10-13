@@ -4,7 +4,7 @@ import { sendRefusedForGood } from "./messageLifecycle";
 import { ackedThrough, confirmThrough, deviceId } from "./operationLog";
 import { delayAfter, driverMove, type DriverEffect, type DriverEvent, type DriverState } from "./outboxDriver";
 import { classifyReadError, type ReadMiss } from "./sync/readPhase";
-import { findOperation, loadPendingPrompts, OUTBOX_CHANGED_EVENT, outboxSessionKeyOf, outboxSessionKeys, updateOperation, type OperationScope, type PendingPrompt } from "./pendingOutbox";
+import { findOperation, loadPendingPrompts, OUTBOX_CHANGED_EVENT, outboxSessionKeyOf, outboxSessionKeys, savesFilesFirst, updateOperation, type OperationScope, type PendingPrompt } from "./pendingOutbox";
 
 /**
  * Sends every outbox of this browser, wherever the reader is (docs/design/message-states.md,
@@ -29,8 +29,8 @@ export interface OutboxEngineDeps extends OutboxEffects {
   apply(scope: OperationScope, batch: OperationBatch): Promise<OperationBatchAnswer>;
   /** Start the session a draft stands for and move its outbox to the session's id; false when the scope is not a draft. Throws when the start went unanswered. */
   launchDraft(scope: OperationScope): Promise<boolean>;
-  /** Ready a record to travel - a message whose files go to the workspace is rewritten with their paths - and return it. */
-  prepare(sessionKey: string, record: PendingPrompt): Promise<PendingPrompt>;
+  /** Ready a record to travel - a message whose files go to the workspace is rewritten with their paths - and return it; the engine stores it. */
+  prepare(record: PendingPrompt): Promise<PendingPrompt>;
   /** Something about the outboxes changed that the page shows: which sessions are sending, which machines are unanswered. */
   changed(): void;
   now?: () => number;
@@ -161,7 +161,7 @@ export class OutboxEngine {
   }
 
   private readonly effects: Readonly<Record<DriverEffect, (sessionKey: string, run: OutboxRun) => void>> = {
-    sendHead: (sessionKey) => { void this.sendBatch(sessionKey); },
+    sendBatch: (sessionKey) => { void this.sendBatch(sessionKey); },
     wait: (sessionKey, run) => {
       clearTimeout(run.timer);
       run.timer = setTimeout(() => { this.drive(sessionKey, "elapsed"); }, run.delay);
@@ -193,53 +193,63 @@ export class OutboxEngine {
       this.drive(sessionKey, "drained");
       return;
     }
+    const run = this.runOf(sessionKey);
+    if (run.unansweredSince === undefined) {
+      run.unansweredSince = this.now();
+      run.machineId = head.scope.machineId;
+      run.miss = { kind: "machine-unanswering", machineId: head.scope.machineId };
+    }
     try {
       if (await this.deps.launchDraft(head.scope)) {
+        this.heard(sessionKey);
         this.drive(sessionKey, "drained");
         this.kickAll();
         return;
       }
       const batch = await this.batchOf(sessionKey, records);
-      const run = this.runOf(sessionKey);
-      run.sentAt = this.now();
-      if (run.unansweredSince === undefined) {
-        run.unansweredSince = this.now();
-        run.machineId = head.scope.machineId;
-        run.miss = { kind: "machine-unanswering", machineId: head.scope.machineId };
+      if (batch === undefined) {
+        this.drive(sessionKey, "answered");
+        return;
       }
+      run.sentAt = this.now();
       const answer = await this.deps.apply(head.scope, batch.request);
       this.heard(sessionKey);
-      this.drive(sessionKey, this.settle(sessionKey, batch.records, answer));
+      this.settle(sessionKey, batch.records, answer);
+      this.drive(sessionKey, "answered");
     } catch (error) {
       this.drive(sessionKey, this.afterFailure(sessionKey, head, error));
     }
     this.deps.changed();
   }
 
-  private async batchOf(sessionKey: string, records: readonly PendingPrompt[]): Promise<{ records: PendingPrompt[]; request: OperationBatch }> {
+  /**
+   * The next batch: numbered from where the machine last said this device stands, each record
+   * stored with its number before it goes. Only the head is prepared, so a failure to save files is
+   * always the head's; a later record that saves files first ends the batch before it. The batch
+   * ends, too, at a record that changed while it was read - a message withdrawn into its take-back -
+   * and is undefined when even the head did, so the next round reads it again.
+   */
+  private async batchOf(sessionKey: string, records: readonly PendingPrompt[]): Promise<{ records: PendingPrompt[]; request: OperationBatch } | undefined> {
     const acked = ackedThrough(sessionKey);
     const limit = this.runOf(sessionKey).oneAtATime ? 1 : MAX_BATCH_OPERATIONS;
-    const chosen: PendingPrompt[] = [];
+    const numbered: PendingPrompt[] = [];
     let bytes = 0;
     for (const record of records) {
       const size = fileBytes(record);
-      if (chosen.length >= limit || (chosen.length > 0 && bytes + size > MAX_BATCH_FILE_BYTES)) break;
-      chosen.push(record);
+      if (numbered.length >= limit || (numbered.length > 0 && (bytes + size > MAX_BATCH_FILE_BYTES || savesFilesFirst(record)))) break;
+      const prepared = numbered.length === 0 ? await this.deps.prepare(record) : record;
+      const seq = acked + 1 + numbered.length;
+      const stamped = prepared.seq === seq ? prepared : { ...prepared, seq };
+      if (stamped !== record && !updateOperation(sessionKey, stamped)) break;
+      numbered.push(stamped);
       bytes += size;
     }
-    const numbered: PendingPrompt[] = [];
-    for (const [index, record] of chosen.entries()) {
-      const prepared = await this.deps.prepare(sessionKey, record);
-      const seq = acked + 1 + index;
-      const stamped = prepared.seq === seq ? prepared : { ...prepared, seq };
-      if (stamped !== record) updateOperation(sessionKey, stamped);
-      numbered.push(stamped);
-    }
+    if (numbered.length === 0) return undefined;
     return { records: numbered, request: { deviceId: deviceId(), ackedThrough: acked, operations: numbered.map(deviceOperation) } };
   }
 
   /** Apply the machine's answer to the records it names; anything not applied stays for the next batch. */
-  private settle(sessionKey: string, records: readonly PendingPrompt[], answer: OperationBatchAnswer): DriverEvent {
+  private settle(sessionKey: string, records: readonly PendingPrompt[], answer: OperationBatchAnswer): void {
     confirmThrough(sessionKey, answer.standing.appliedThrough);
     this.runOf(sessionKey).oneAtATime = false;
     for (const result of answer.results) {
@@ -248,7 +258,6 @@ export class OutboxEngine {
       if (record?.seq !== result.seq) continue;
       this.resultEffects[result.status](sessionKey, record, result);
     }
-    return "answered";
   }
 
   private readonly resultEffects: Readonly<Record<OperationResult["status"], (sessionKey: string, record: PendingPrompt, result: OperationResult) => void>> = {
@@ -260,8 +269,10 @@ export class OutboxEngine {
 
   /**
    * A batch that got no answer goes again after the wait. One the way to the machine refused as too
-   * large goes again one operation at a time; a single operation it still refuses, or a batch the
-   * machine could not read, cancels its head, so one bad record can never hold the outbox forever.
+   * large goes again at once, one operation at a time: a 413 is an answer - something on the way
+   * read the request and said no - so it neither waits nor claims the row. A single operation it
+   * still refuses, or a batch the machine could not read, cancels its head, so one bad record can
+   * never hold the outbox forever.
    */
   private afterFailure(sessionKey: string, head: PendingPrompt, error: unknown): DriverEvent {
     const run = this.runOf(sessionKey);
