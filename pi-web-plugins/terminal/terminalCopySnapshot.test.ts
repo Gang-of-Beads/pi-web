@@ -236,6 +236,7 @@ describe("createTerminalCopySnapshot", () => {
       lines: [],
       physicalLineCount: 0,
       viewportLine: 0,
+      physicalLineRanges: [],
     });
   });
 });

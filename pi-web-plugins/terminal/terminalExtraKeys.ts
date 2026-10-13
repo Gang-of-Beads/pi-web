@@ -77,6 +77,36 @@ export function extraKeySequence(id: TerminalExtraKeyId, modifiers: TerminalModi
   return withModifiers(PLAIN[id](modes), modifiers);
 }
 
+const HARDWARE_NAMED_KEYS: ReadonlyMap<string, Sequence> = new Map([
+  ["Enter", () => "\r"],
+  ["Backspace", soft("backspace")],
+  ["Delete", soft("delete")],
+  ["Tab", soft("tab")],
+  ["Escape", soft("escape")],
+  ["ArrowUp", soft("arrow-up")],
+  ["ArrowDown", soft("arrow-down")],
+  ["ArrowLeft", soft("arrow-left")],
+  ["ArrowRight", soft("arrow-right")],
+  ["Home", soft("home")],
+  ["End", soft("end")],
+  ["PageUp", soft("page-up")],
+  ["PageDown", soft("page-down")],
+]);
+
+/**
+ * What a hardware key pressed while the selection layer has focus sends to the shell (owner,
+ * 2026-10-13: a key press leaves the selection and sends the key, never gets swallowed). xterm never
+ * saw that keydown, so the panel encodes it: a named key as the soft keys encode it, a character with
+ * its Ctrl and Alt. Undefined for a key with no terminal form here (a function key, a lone modifier).
+ */
+export function hardwareKeyInput(event: Pick<KeyboardEvent, "key" | "ctrlKey" | "altKey">, modes?: TerminalModesSnapshot): string | undefined {
+  const named = HARDWARE_NAMED_KEYS.get(event.key);
+  if (named !== undefined) return named(modes);
+  const first = event.key.codePointAt(0);
+  if (first === undefined || String.fromCodePoint(first) !== event.key) return undefined;
+  return withModifiers(event.key, { ctrl: event.ctrlKey, alt: event.altKey });
+}
+
 export interface TypedInput {
   readonly data: string;
   readonly modifiers: TerminalModifiers;

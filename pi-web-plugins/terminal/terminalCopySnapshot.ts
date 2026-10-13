@@ -67,6 +67,13 @@ export interface TerminalCopySnapshot {
   lines: TerminalCopyLine[];
   physicalLineCount: number;
   viewportLine: number;
+  /** Where each captured buffer row's text sits in `text`, so a press on a row can find its word. */
+  physicalLineRanges: TextRange[];
+}
+
+export interface TextRange {
+  start: number;
+  end: number;
 }
 
 export interface TerminalCopySnapshotOptions {
@@ -116,7 +123,7 @@ export function createTerminalCopySnapshot(
   options: TerminalCopySnapshotOptions = {},
 ): TerminalCopySnapshot {
   const columnCount = Math.max(0, Math.floor(columns));
-  if (buffer.length <= 0 || columnCount === 0) return { text: "", lines: [], physicalLineCount: 0, viewportLine: 0 };
+  if (buffer.length <= 0 || columnCount === 0) return { text: "", lines: [], physicalLineCount: 0, viewportLine: 0, physicalLineRanges: [] };
 
   const palette = terminalAnsiPalette(options.theme);
   const foreground = options.theme?.foreground ?? DEFAULT_FOREGROUND;
@@ -145,14 +152,21 @@ export function createTerminalCopySnapshot(
   const endLine = Math.max(lastMeaningfulLine, cursorLine);
   const includedPhysicalLines = physicalLines.slice(0, endLine + 1);
   const lines: TerminalCopyLine[] = [];
+  const physicalLineRanges: TextRange[] = [];
+  let textLength = 0;
 
   for (const physicalLine of includedPhysicalLines) {
     const currentLine = lines.at(-1);
     if (physicalLine.wrapped && currentLine !== undefined) {
+      physicalLineRanges.push({ start: textLength, end: textLength + physicalLine.text.length });
+      textLength += physicalLine.text.length;
       currentLine.text += physicalLine.text;
       appendRuns(currentLine.runs, physicalLine.runs);
       continue;
     }
+    if (currentLine !== undefined) textLength += 1;
+    physicalLineRanges.push({ start: textLength, end: textLength + physicalLine.text.length });
+    textLength += physicalLine.text.length;
     lines.push({ text: physicalLine.text, runs: physicalLine.runs.map((run) => ({ text: run.text, style: run.style })) });
   }
 
@@ -161,7 +175,47 @@ export function createTerminalCopySnapshot(
     lines,
     physicalLineCount: includedPhysicalLines.length,
     viewportLine: Math.min(endLine, Math.max(0, buffer.viewportY)),
+    physicalLineRanges,
   };
+}
+
+/**
+ * Where a buffer cell's character sits in the snapshot's text: the row's start plus the text of the
+ * cells before it, counted as `capturePhysicalLine` writes them (a wide character's second cell adds
+ * nothing, an empty cell a space). A cell past the row's trimmed end lands at that end.
+ */
+export function snapshotOffsetAt(snapshot: TerminalCopySnapshot, buffer: TerminalCopyBufferSource, line: number, column: number): number {
+  const range = snapshot.physicalLineRanges[line];
+  if (range === undefined) return snapshot.text.length;
+  const source = buffer.getLine(line);
+  const reusableCell = buffer.getNullCell();
+  let offset = range.start;
+  for (let index = 0; index < column && offset < range.end; index += 1) {
+    const cell = source?.getCell(index, reusableCell);
+    if (cell === undefined) {
+      offset += 1;
+      continue;
+    }
+    const width = cell.getWidth();
+    if (width === 0) continue;
+    const chars = cell.getChars();
+    offset += chars === "" ? Math.max(1, width) : chars.length;
+  }
+  return Math.min(offset, range.end);
+}
+
+/** xterm's default word separators, so a held finger selects what a double-click in xterm would. */
+const WORD_SEPARATOR = /[\s()[\]{}'",`]/u;
+
+/** The word around `offset`, or an empty range at `offset` when it sits on a separator. */
+export function wordRangeAt(text: string, offset: number): TextRange {
+  const isWordCharacter = (index: number): boolean => index >= 0 && index < text.length && !WORD_SEPARATOR.test(text.charAt(index));
+  if (!isWordCharacter(offset)) return { start: offset, end: offset };
+  let start = offset;
+  let end = offset + 1;
+  while (isWordCharacter(start - 1)) start -= 1;
+  while (isWordCharacter(end)) end += 1;
+  return { start, end };
 }
 
 interface CaptureColors {
