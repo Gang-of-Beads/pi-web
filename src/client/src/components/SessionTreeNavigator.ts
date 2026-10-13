@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing, unsafeCSS, type PropertyValues, type TemplateResult } from "lit";
+import { barKeyStyles } from "./appShell/panelHeaderStyles";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { keyBelongsToInputMethod } from "./keyboardEventTarget.js";
 import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
@@ -93,7 +94,7 @@ export class SessionTreeNavigator extends LitElement {
             <span class="eyebrow">Conversation history</span>
             <h1>Navigate session tree</h1>
           </div>
-          <button class="close-button" ?disabled=${this.busy} title="Close session tree" aria-label="Close session tree" @click=${() => { this.onCancel?.(); }}>${renderCrossIcon()}</button>
+          <button class="close-button bar-key" ?disabled=${this.busy} title="Close session tree" aria-label="Close session tree" @click=${() => { this.onCancel?.(); }}>${renderCrossIcon()}</button>
         </header>
         ${this.step === "tree" ? this.renderTreeStep() : this.renderActionStep()}
         ${this.renderFooter()}
@@ -538,9 +539,6 @@ export class SessionTreeNavigator extends LitElement {
     h1 { font-size: var(--pi-text-xl); line-height: 1.25; }
     h2 { margin-top: var(--pi-space-1); font-size: var(--pi-text-lg); }
     .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-bold); letter-spacing: normal; text-transform: uppercase; }
-    .close-button { box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); margin-inline-start: auto; display: grid; place-items: center; border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
-    .close-button:not(:disabled):focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
-    @media (hover: hover) { .close-button:not(:disabled):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; }
     .tree-step { display: flex; flex-direction: column; gap: var(--pi-space-5); padding: var(--pi-space-6) max(var(--pi-space-7), env(safe-area-inset-right)) var(--pi-space-7) max(var(--pi-space-7), env(safe-area-inset-left)); }
     .tree-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--pi-space-5) var(--pi-space-8); color: var(--pi-muted); }
@@ -559,12 +557,10 @@ export class SessionTreeNavigator extends LitElement {
     .tree-row.active-leaf { box-shadow: inset var(--pi-rail-width) 0 var(--pi-accent); }
     .tree-row.bookkeeping { color: var(--pi-muted); }
     .disclosure { width: 20px; height: var(--pi-control-height); display: grid; place-items: center; border-radius: var(--pi-radius-xs); color: var(--pi-muted); font-size: var(--pi-text-md); user-select: none; }
-    /* Real controls under the AA floor the repo cites: the disclosure is the
-       collapse verb itself, and the close button sits beside its 44px sisters
-       in the other dialogs. */
+    /* A real control under the AA floor the repo cites: the disclosure is the
+       collapse verb itself. */
     @media (pointer: coarse) {
       .disclosure { width: 24px; }
-      .close-button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
     }
     @media (hover: hover) { .disclosure:not(.leaf):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .disclosure.leaf { opacity: var(--pi-disabled-opacity); }
@@ -639,7 +635,8 @@ export class SessionTreeNavigator extends LitElement {
     @media (pointer: coarse) {
       .tree-row { grid-template-columns: 24px minmax(82px, auto) minmax(0, 1fr); }
     }
-  `];
+    .close-button { margin-inline-start: auto; }
+  `, barKeyStyles];
 }
 
 export function sessionTreeVisualDepth(depth: number): number {

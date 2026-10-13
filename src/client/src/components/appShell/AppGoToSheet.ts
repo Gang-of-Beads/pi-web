@@ -1,8 +1,10 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
+import { deepActiveElement } from "../modalLayerRegistry";
+import { barKeyStyles, barSheetStyles } from "./panelHeaderStyles";
 import { customElement, property } from "lit/decorators.js";
 import "../ModalSurface";
 import { interactiveSurfaceStyles } from "../shared";
-import { renderCheckIcon } from "../uiIcons";
+import { renderCheckIcon, renderMenuIcon } from "../uiIcons";
 
 /** One destination in the Go to sheet: a main view with a name and a badge. */
 export interface GoToDestination {
@@ -28,35 +30,59 @@ export interface GoToDestination {
 @customElement("app-go-to-sheet")
 export class AppGoToSheet extends LitElement {
   @property({ attribute: false }) destinations: readonly GoToDestination[] = [];
+  /**
+   * Where the list opens: over the screen as a sheet, or inside the column whose pages it swaps on
+   * the wide layout, under that column's bar (AppColumnBar); the chat bar's Go to key opens and closes it.
+   */
+  @property({ reflect: true }) placement: "screen" | "column" = "screen";
   @property({ attribute: false }) onSelect?: (id: string) => void;
   @property({ attribute: false }) onClose?: () => void;
 
   override render() {
-    return html`
+    return this.placement === "column" ? html`<div class="body" role="dialog" aria-label="Go to">${this.renderLists()}</div>` : html`
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"Go to"} .initialFocus=${"button"}>
         <header class="panel-header">
           <h2 class="panel-header-title">Go to</h2>
           <button
             type="button"
-            class="panel-key"
+            class="panel-key bar-key"
             title="Close Go to"
             aria-label="Close Go to"
             @click=${() => { this.onClose?.(); }}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 6h16M4 12h16M4 18h16"></path>
-            </svg>
+            ${renderMenuIcon()}
           </button>
         </header>
-        <div class="body">
-          <div class="views" role="list">
-            ${this.destinations.filter((destination) => destination.command !== true).map((destination) => this.renderDestination(destination))}
-          </div>
-          ${this.destinations.some((destination) => destination.command === true) ? html`<div class="commands" role="list">
-            ${this.destinations.filter((destination) => destination.command === true).map((destination) => this.renderDestination(destination))}
-          </div>` : nothing}
-        </div>
+        <div class="body">${this.renderLists()}</div>
       </modal-surface>
+    `;
+  }
+
+  /** The key that opened a column list, to take the focus back when the list goes; the sheet's modal surface does this itself. */
+  private openedFrom: HTMLElement | undefined;
+
+  /** In a column the list is no modal layer: the keyboard lands in it, and Escape reaches the app, which closes it. */
+  override firstUpdated(): void {
+    if (this.placement !== "column") return;
+    const opener = deepActiveElement(this.ownerDocument);
+    this.openedFrom = opener instanceof HTMLElement ? opener : undefined;
+    this.renderRoot.querySelector<HTMLButtonElement>("button.destination")?.focus();
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    const lost = deepActiveElement(this.ownerDocument);
+    if (this.openedFrom?.isConnected === true && (lost === null || lost === this.ownerDocument.body)) this.openedFrom.focus();
+  }
+
+  private renderLists() {
+    return html`
+      <div class="views" role="list">
+        ${this.destinations.filter((destination) => destination.command !== true).map((destination) => this.renderDestination(destination))}
+      </div>
+      ${this.destinations.some((destination) => destination.command === true) ? html`<div class="commands" role="list">
+        ${this.destinations.filter((destination) => destination.command === true).map((destination) => this.renderDestination(destination))}
+      </div>` : nothing}
     `;
   }
 
@@ -80,21 +106,10 @@ export class AppGoToSheet extends LitElement {
 
   static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
-    modal-surface {
-      --modal-surface-place-items: start center;
-      --modal-surface-backdrop-padding: 0;
-      --modal-surface-width: min(560px, 100vw);
-      --modal-surface-max-height: min(70dvh, 560px);
-    }
-    /* The key that opened the sheet keeps its place in it, so a second press
-       closes what the first press opened. Without it the sheet had no key at
-       all and the gesture had nowhere to land. */
-    .panel-key { box-sizing: border-box; flex: 0 0 auto; margin-left: auto; display: grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
-    .panel-key svg { width: 18px; height: 18px; }
-    .panel-key:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
-    @media (hover: hover) { .panel-key:hover { background: var(--pi-surface-hover); } }
-    .panel-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
-    .panel-header-title { margin: 0; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-text); line-height: var(--pi-panel-header-control-height); }
+    :host([placement="column"]) { position: absolute; inset: var(--pi-panel-header-height) 0 0 0; z-index: var(--pi-layer-sticky); display: flex; flex-direction: column; background: var(--pi-bg); container-type: inline-size; }
+    :host([placement="column"]) .views { grid-template-columns: minmax(0, 1fr); }
+    @container (min-width: 420px) { :host([placement="column"]) .views { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    modal-surface { --modal-surface-max-height: min(70dvh, 560px); }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-reading-edge); padding-bottom: max(var(--pi-space-4), env(safe-area-inset-bottom)); overscroll-behavior: contain; }
     .views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pi-space-3); }
     .commands { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-3); padding-top: var(--pi-space-4); border-top: 1px solid var(--pi-border); }
@@ -110,7 +125,7 @@ export class AppGoToSheet extends LitElement {
     .destination-badge { min-width: 20px; border-radius: var(--pi-radius-pill); background: var(--pi-surface-hover); color: var(--pi-text-secondary); padding: 1px var(--pi-space-4); font-size: var(--pi-text-xs); text-align: center; }
     .destination-check { display: inline-grid; place-items: center; color: var(--pi-accent); }
     .destination-check .ui-icon { width: 16px; height: 16px; }
-  `];
+  `, barSheetStyles, barKeyStyles];
 }
 
 declare global {

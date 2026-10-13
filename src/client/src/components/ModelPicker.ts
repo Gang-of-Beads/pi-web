@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult, unsafeCSS } from "lit";
+import { barKeyStyles } from "./appShell/panelHeaderStyles";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { CommandOption, SessionModelCatalogEntry } from "../api";
@@ -88,7 +89,7 @@ export class ModelPicker extends LitElement {
       >
         <header>
           <strong>${this.title}</strong>
-          <button aria-label="Close" @click=${() => this.onCancel?.()}>${renderCrossIcon()}</button>
+          <button class="bar-key" aria-label="Close" @click=${() => this.onCancel?.()}>${renderCrossIcon()}</button>
         </header>
         <div class="scope-toggle" role="group" aria-label="Model scope">
           ${this.renderScopeToggleButton("enabled", "Enabled")}
@@ -284,7 +285,6 @@ export class ModelPicker extends LitElement {
     .options { min-height: 0; overflow: auto; outline: none; }
     .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     button { font: inherit; border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
-    header button { font: inherit; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; font-size: var(--pi-text-xl); line-height: 1; color: var(--pi-muted); }
     input.search { box-sizing: border-box; height: var(--pi-control-height-comfort); margin: var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; padding: var(--pi-space-4) var(--pi-space-5); outline: none; }
     input.search:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     input.search:focus { border-color: var(--pi-accent); }
@@ -293,7 +293,6 @@ export class ModelPicker extends LitElement {
        touch targets on a phone. Declared after every base rule it raises. */
     @media (pointer: coarse) {
       .options > button, .catalog-row .pick { min-height: var(--pi-control-height-touch); }
-      header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
       .scope-toggle button { min-height: var(--pi-control-height-touch, 44px); }
       input.search { min-height: var(--pi-control-height-touch, 44px); }
       input[type="checkbox"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
@@ -310,5 +309,5 @@ export class ModelPicker extends LitElement {
     .group-header { padding: var(--pi-space-4) var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; letter-spacing: 0.04em; }
     small { display: block; margin-top: var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .empty { padding: var(--pi-space-9); color: var(--pi-muted); text-align: center; }
-  `];
+  `, barKeyStyles];
 }

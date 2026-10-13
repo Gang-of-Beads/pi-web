@@ -41,7 +41,8 @@ describe("the panel-header banner contract", () => {
   it("the settings phone header rides the same token row", () => {
     const css = read("./SettingsDialog.ts");
     expect(css).toContain(".settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left));");
-    expect(css).toContain("width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); } }");
+    expect(css).toContain('<button class="close-button bar-key"');
+    expect(read("./appShell/panelHeaderStyles.ts")).toContain(".bar-key { position: relative; box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height);");
   });
 
   it("the bundled plugin toolbar fits the token box it names", () => {

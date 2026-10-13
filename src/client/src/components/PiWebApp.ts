@@ -1,6 +1,6 @@
 import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
 import { isTransientNewSessionInfo } from "../sessionPersistence";
-import { uiIconStyle, renderChatIcon, renderCommandIcon, renderGearIcon, renderListIcon, renderPluginIcon } from "./uiIcons.js";
+import { uiIconStyle, renderCommandIcon, renderGearIcon, renderPluginIcon } from "./uiIcons.js";
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
@@ -82,6 +82,7 @@ import { appRowPlace, type AppRowPlace } from "../appShell/appRowPlace";
 import { BrowserResumeController } from "../appShell/browserResumeController";
 import "./appShell/ContextSwitcherSheet";
 import "./appShell/AppGoToSheet";
+import "./appShell/AppColumnBar";
 import "./appShell/NewSessionProjectSheet";
 import "./SessionRenameDialog";
 import type { GoToDestination } from "./appShell/AppGoToSheet";
@@ -531,6 +532,8 @@ export class PiWebApp extends LitElement {
   private navigateSelectionExit: (() => void) | undefined;
   @state() private contextSheetOpen = false;
   @state() private goToSheetOpen = false;
+  /** Go to opened inside the page column, on the wide layout (`columnGoTo`). */
+  @state() private columnGoToOpen = false;
   /** What the Navigate page that opened Go to listed; undefined when a chat or plugin page opened it. */
   private goToOpenedFrom: NavigateListScope | undefined;
   /** Whether any modal layer is open; the app row then rides above it. */
@@ -875,10 +878,16 @@ export class PiWebApp extends LitElement {
    * extensions that listen for terminal input (pi's `onTerminalInput`; owner 2026-10-10: only Esc).
    * It listens after every surface had the key: a modal, the completion list or a row that used Esc
    * marked it handled, and it is not passed on. Only a key from the chat view, the composer or no
-   * focused element counts; the navigation lists and settings keep their own.
+   * focused element counts; the navigation lists and settings keep their own. An open Go to list in
+   * the page column takes it first, from any focus: the list is no modal layer, and Escape is how
+   * the keyboard leaves it.
    */
   private readonly onUnclaimedKey = (event: KeyboardEvent) => {
     if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || this.isRenderedModalOpen()) return;
+    if (this.columnGoToOpen) {
+      this.columnGoToOpen = false;
+      return;
+    }
     const session = this.state.selectedSession;
     const status = this.state.status;
     if (session === undefined || status?.sessionId !== session.id || status.extensionUi?.terminalInput !== true || this.displayMainView() !== "chat") return;
@@ -891,6 +900,8 @@ export class PiWebApp extends LitElement {
 
   protected override willUpdate(): void {
     this.toggleAttribute("pwa-display-mode", this.appShell.isPwaDisplayMode);
+    if (this.columnGoToOpen && !(this.columnShowsBar() && this.workspacePanelOnScreen())) this.columnGoToOpen = false;
+    if (this.goToSheetOpen && this.columnGoTo()) this.goToSheetOpen = false;
     if (this.displayMainView() === "navigation") this.noteNavigationViewShown();
     else this.navigationViewLoaded = false;
     // The tree module is fetched when its dialog first appears, outside the
@@ -2533,7 +2544,8 @@ export class PiWebApp extends LitElement {
         .panels=${this.visibleWorkspacePanels()}
         .globalPanels=${this.activeGlobalPanels()}
         .globalContext=${this.createGlobalPanelContext()}
-      ></workspace-panel>
+        ?covered=${this.columnShowsBar() && this.columnGoToOpen}
+      >${this.columnShowsBar() ? html`<app-column-bar slot="bar" .pageTitle=${this.pageTitleOf(this.shownPageId())}></app-column-bar>${this.columnGoToOpen ? html`<app-go-to-sheet slot="cover" placement="column" .destinations=${this.goToDestinations()} .onSelect=${(id: string) => { this.goTo(id); }} .onClose=${() => { this.columnGoToOpen = false; }}></app-go-to-sheet>` : null}` : null}</workspace-panel>
     `;
   }
 
@@ -2992,17 +3004,14 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * The phone's destinations by name: the list, the conversation, then the
-   * pages of the scope the reader is looking at (goToScope), each marked when
-   * it is the view on screen. A plugin page that needs a project has no
-   * button while no project is in scope.
+   * Go to's destinations: the pages of the scope the reader is looking at (goToScope), each marked
+   * when it is the page shown, then Actions… and Settings. The session list and the chat are not
+   * among them (owner, 2026-10-14): the grid key and the way back reach them. A plugin page that
+   * needs a project has no button while no project is in scope.
    */
   private goToDestinations(): GoToDestination[] {
-    const view = this.displayMainView();
     const pages = this.shellToolTabs(this.currentGoToScope());
     return [
-      { id: "navigation", label: "Sessions", icon: renderListIcon(), selected: view === "navigation" },
-      { id: "chat", label: "Chat", icon: renderChatIcon(), selected: view === "chat" },
       ...pages.map((tab) => ({ id: tab.id, label: tab.label, icon: tab.icon, badge: tab.badge, badgeLabel: tab.badgeLabel, selected: tab.selected })),
       { id: GO_TO_ACTIONS, label: "Actions…", icon: renderCommandIcon(), command: true },
       { id: GO_TO_SETTINGS, label: "Settings", icon: renderGearIcon(), command: true },
@@ -3026,11 +3035,50 @@ export class PiWebApp extends LitElement {
       return;
     }
     this.closeNavigate();
-    if (id === "navigation" || id === "chat") {
-      this.selectMainView(id);
+    this.openShellToolTab(id);
+  }
+
+  /**
+   * The wide layout, where pages sit in their own column beside the chat: Go to belongs to that
+   * column (owner, 2026-10-14). A coarse pointer is the phone's layout at any width.
+   */
+  private columnGoTo(): boolean {
+    return this.appShell.isDesktopSideBySideLayout && !this.appShell.isMobileNavigationLayout;
+  }
+
+  /** The column's bar and its list, on the wide layout unless the page holds the whole canvas, where no bar names it. */
+  private columnShowsBar(): boolean {
+    return this.columnGoTo() && !this.workspacePanelHoldsCanvas();
+  }
+
+  /**
+   * Go to from the chat bar's right key, which mirrors the grid key on its left: on the wide layout
+   * it opens the list inside the page column, expanding a collapsed column first, and a second
+   * press closes it; elsewhere it is the sheet.
+   */
+  private openGoTo(): void {
+    if (!this.columnGoTo()) {
+      this.toggleGoToSheet();
       return;
     }
-    this.openShellToolTab(id);
+    this.goToOpenedFrom = undefined;
+    if (!this.workspacePanelOnScreen()) {
+      this.panelCollapse.expandWorkspacePanel();
+      this.columnGoToOpen = true;
+      return;
+    }
+    this.columnGoToOpen = !this.columnGoToOpen;
+  }
+
+  /** The page the column draws: a global page by its id, else the workspace page the panel falls back to as it does. */
+  private shownPageId(): string | undefined {
+    const shown = this.shownWorkspaceToolId();
+    return this.activeGlobalPanels().some((panel) => panel.id === shown) ? shown : this.shownWorkspacePanel()?.id;
+  }
+
+  /** A page's name by its id, for the bar that names it. */
+  private pageTitleOf(id: string | undefined): string {
+    return [...this.visibleWorkspacePanels(), ...this.activeGlobalPanels()].find((panel) => panel.id === id)?.title ?? "";
   }
 
   /** Ask on the app's own dialog (B40); see askConfirmation. */
@@ -5307,9 +5355,9 @@ export class PiWebApp extends LitElement {
     return html`
       <app-context-bar
         .session=${this.state.selectedSession}
-        .activeSurface=${this.activeSurfaceLabel()}
+        .activeSurface=${this.columnGoTo() ? "" : this.activeSurfaceLabel()}
         .startsIn=${this.startsIn()?.project ?? ""}
-        .onOpenGoTo=${() => { this.toggleGoToSheet(); }}
+        .onOpenGoTo=${() => { this.openGoTo(); }}
         .onRenameRequest=${(session: SessionInfo) => { this.renameFromBar = { session, machineId: selectedMachineId(this.state) }; }}
         ?panelOpen=${this.shellPanelOpen()}
         .toggleTarget=${"menu"}
@@ -5396,7 +5444,7 @@ export class PiWebApp extends LitElement {
   private activeSurfaceLabel(): string {
     const view = this.displayMainView();
     if (view === "chat" || view === "navigation") return "";
-    return [...this.visibleWorkspacePanels(), ...this.activeGlobalPanels()].find((panel) => panel.id === view)?.title ?? "";
+    return this.pageTitleOf(view);
   }
 
   /** The pages a scope offers, as Go to's lines (scopePages). */
@@ -5409,7 +5457,7 @@ export class PiWebApp extends LitElement {
         label: panel.title,
         icon: panel.icon ?? renderPluginIcon(),
         ...(usableBadge === undefined ? {} : { badge: usableBadge }),
-        selected: this.state.mainView === panel.id,
+        selected: (this.columnGoTo() ? this.shownPageId() : this.state.mainView) === panel.id,
       };
     });
   }

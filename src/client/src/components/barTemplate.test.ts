@@ -86,7 +86,8 @@ describe("every bar producer", () => {
 
   it("the settings and sheet headers ride the same tokens", () => {
     expect(read("./SettingsDialog.ts")).toContain(".settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left));");
-    expect(read("./SettingsDialog.ts")).toContain(".close-button { box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); display: grid; place-items: center; border: 1px solid var(--pi-border); background: var(--pi-surface);");
+    expect(read("./SettingsDialog.ts")).toContain('<button class="close-button bar-key"');
+    expect(read("./appShell/panelHeaderStyles.ts")).toContain("border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text);");
     expect(read("./appShell/ContextSwitcherSheet.ts")).toContain("margin-inline: 0; padding-inline: var(--pi-bar-inset);");
   });
 });

@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
+import { barKeyStyles } from "./appShell/panelHeaderStyles";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { CommandOption } from "../api";
@@ -27,7 +28,7 @@ export class CommandPicker extends LitElement {
       >
         <header>
           <strong>${this.title}</strong>
-          <button aria-label="Close" @click=${() => this.onCancel?.()}>${renderCrossIcon()}</button>
+          <button class="bar-key" aria-label="Close" @click=${() => this.onCancel?.()}>${renderCrossIcon()}</button>
         </header>
         <div class="options" tabindex="0">
           ${options.map((option, index) => html`
@@ -92,19 +93,16 @@ export class CommandPicker extends LitElement {
        needs a visible ring of its own when reached by keyboard. */
     .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
-    header button { font: inherit; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; font-size: var(--pi-text-xl); line-height: 1; color: var(--pi-muted); }
     .options button { display: block; box-sizing: border-box; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); line-height: inherit; padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options button.selected { background: var(--pi-selection-bg); border-color: var(--pi-accent); }
     .options button.selected small { color: var(--pi-text-secondary, var(--pi-text)); }
     @media (hover: hover) { .options button:hover { background: var(--pi-surface-hover); } }
     small { display: block; margin-top: var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .empty { padding: var(--pi-space-9); color: var(--pi-muted); text-align: center; }
-    /* Coarse pointers get the comfort floor across the picker chrome: the
-       close control and every option row are touch targets
-       on a phone. Declared after every base rule it raises. */
+    /* Coarse pointers get the comfort floor on every option row (the close key
+       reaches it through barKeyStyles). Declared after every base rule it raises. */
     @media (pointer: coarse) {
-      header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
       .options button { min-height: var(--pi-control-height-touch, 44px); }
     }
-  `];
+  `, barKeyStyles];
 }

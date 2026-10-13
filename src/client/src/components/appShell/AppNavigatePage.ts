@@ -1,4 +1,5 @@
 import { projectRowClass } from "../../projectFolder";
+import { barKeyStyles } from "./panelHeaderStyles";
 import { isPendingStartSessionInfo } from "../../sessionPersistence";
 import type { ListTilesPerRow } from "../../../../shared/apiTypes";
 import type { NavigateListScope } from "../../goToScope";
@@ -14,7 +15,7 @@ import type { BreadcrumbSegment } from "../../switcherBreadcrumb";
 import { ActivityClock, modifiedMs } from "../../sessionOrder";
 import { listFolds } from "../../listFolds";
 import { disclosureIconStyle, renderDisclosureIcon } from "../disclosureIcon.js";
-import { renderChatIcon, renderCheckIcon, renderChevronRightIcon, renderGearIcon, renderGridIcon, renderMachineIcon, renderPendingRingIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
+import { renderChatIcon, renderCheckIcon, renderChevronRightIcon, renderGearIcon, renderGridIcon, renderMachineIcon, renderMenuIcon, renderPendingRingIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
 import type { BoardAnswer } from "../../sync/sessionBoard";
@@ -419,7 +420,7 @@ export class AppNavigatePage extends LitElement {
     if (this.returnable) {
       return html`<button
         type="button"
-        class="quick-access current"
+        class="quick-access current bar-key"
         aria-pressed="true"
         title="Back"
         aria-label="Back to where you were"
@@ -541,8 +542,8 @@ export class AppNavigatePage extends LitElement {
             `)}
           </div>
           <div class="path-bar-actions">
-            ${this.onOpenSettings === undefined ? nothing : html`<button type="button" class="settings" aria-label="Settings" title="Settings" @click=${() => { this.onOpenSettings?.(); }}>${renderGearIcon()}</button>`}
-            ${this.onOpenGoTo === undefined ? nothing : html`<button type="button" class="settings menu-key" aria-label="Go to a view" title="Go to a view" aria-haspopup="dialog" @click=${() => { this.onOpenGoTo?.(this.pathProjectId === undefined ? { kind: "machine" } : { kind: "project", projectId: this.pathProjectId }); }}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg></button>`}
+            ${this.onOpenSettings === undefined ? nothing : html`<button type="button" class="bar-key" aria-label="Settings" title="Settings" @click=${() => { this.onOpenSettings?.(); }}>${renderGearIcon()}</button>`}
+            ${this.onOpenGoTo === undefined ? nothing : html`<button type="button" class="bar-key" aria-label="Go to a view" title="Go to a view" aria-haspopup="dialog" @click=${() => { this.onOpenGoTo?.(this.pathProjectId === undefined ? { kind: "machine" } : { kind: "project", projectId: this.pathProjectId }); }}>${renderMenuIcon()}</button>`}
           </div>
         </header>
         <slot name="app-row"></slot>
@@ -1077,13 +1078,14 @@ export class AppNavigatePage extends LitElement {
     .tag-suggestion:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     @media (pointer: coarse) { .tag-suggestion::after { content: ""; position: absolute; inset: calc((var(--pi-control-height) - var(--pi-control-height-touch)) / 2) 0; } }
     /* B35: the header's keys keep their drawn height and a finger reaches 44px. The kinds and the
-       create key stand 4px apart, so their reach grows only up and down; a path step and a scope
-       clip their text in a span and the switch rounds its own ends, so the reach is not clipped. */
+       create key stand 4px apart, so their reach grows only up and down, laid from inside their 1px
+       border; a path step and a scope clip their text in a span and the switch rounds its own ends,
+       so the reach is not clipped, and the path row clips only sideways. */
     @media (pointer: coarse) {
-      .quick-access, .settings, .kind, .create, .path-step, .scope { position: relative; }
-      .quick-access::after, .settings::after { content: ""; position: absolute; inset: calc((var(--pi-panel-header-control-height) - var(--pi-control-height-touch)) / 2); }
-      .kind::after, .create::after, .scope::after { content: ""; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch)) / 2) 0; }
-      .path-step::after { content: ""; position: absolute; inset: calc((var(--pi-control-height) - var(--pi-control-height-touch)) / 2) 0; }
+      .kind, .create, .path-step, .scope { position: relative; }
+      .kind::after, .create::after { content: ""; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch)) / 2 - 1px) 0; }
+      .scope::after { content: ""; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch)) / 2) 0; }
+      .path-step::after { content: ""; position: absolute; inset: calc((var(--pi-panel-header-control-height) - var(--pi-control-height-touch)) / 2 - 1px) 0; }
     }
     .action-menu-panel { min-width: 160px; }
     .row-wrap > .row { height: 100%; }
@@ -1094,21 +1096,18 @@ export class AppNavigatePage extends LitElement {
     :host { display: block; min-height: 0; height: 100%; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); user-select: none; -webkit-user-select: none; }
     .navigate { display: flex; flex-direction: column; min-height: 0; height: 100%; }
     ::slotted([slot="app-row"]) { flex: 0 0 auto; }
-    .path-bar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-2); min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
+    .path-bar { box-sizing: border-box; flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-2); min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
     /* No sideways scrolling on a phone: the path shares the width and each
        step ellipsises, so the whole scope is readable at a glance (owner). */
-    .path-row { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow: hidden; }
-    .path-step { box-sizing: border-box; flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; white-space: nowrap; min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); font: inherit; cursor: pointer; }
+    .path-row { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow: clip visible; }
+    .path-step { box-sizing: border-box; flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; white-space: nowrap; min-height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); font: inherit; cursor: pointer; }
     .path-step-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .path-step.chosen { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     .path-sep { flex: 0 0 auto; display: inline-grid; place-items: center; color: var(--pi-muted); }
     .path-sep .ui-icon { width: 14px; height: 14px; }
-    /* One tap back to every session this machine runs; the path alone made the
-       reader work out where "everything" lived. */
-    .quick-access { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
-    .quick-access.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-accent); }
-    .quick-access .ui-icon { width: 18px; height: 18px; }
-    .settings.menu-key svg { width: 18px; height: 18px; }
+    /* The key back to every session this machine runs reads as the place the
+       reader is in while that list is shown. */
+    .quick-access.current.bar-key { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-accent); }
     .scope-switch { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; margin: var(--pi-space-3) var(--pi-bar-inset) 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); }
     .scope:first-child { border-radius: var(--pi-radius-sm) 0 0 var(--pi-radius-sm); }
     .scope:last-child { border-radius: 0 var(--pi-radius-sm) var(--pi-radius-sm) 0; }
@@ -1118,8 +1117,6 @@ export class AppNavigatePage extends LitElement {
     .scope.current { background: var(--pi-selection-bg); color: var(--pi-accent); }
     .scope:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: calc(-1 * var(--pi-focus-ring-width)); }
     .path-bar-actions { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); }
-    .settings { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
-    .settings .ui-icon { width: 18px; height: 18px; }
     .kinds { flex: 0 0 auto; display: flex; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
     .kind { box-sizing: border-box; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
     .kind.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
@@ -1175,7 +1172,7 @@ export class AppNavigatePage extends LitElement {
     .pin { display: inline-flex; align-items: center; margin-right: var(--pi-space-2); color: var(--pi-accent); }
     .pin .ui-icon { width: 14px; height: 14px; }
     .empty { margin: var(--pi-space-5) 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
-  `];
+  `, barKeyStyles];
 }
 
 

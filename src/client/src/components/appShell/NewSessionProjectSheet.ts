@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
+import { barKeyStyles, barSheetStyles } from "./panelHeaderStyles";
 import { customElement, property } from "lit/decorators.js";
 import "../ModalSurface";
 import type { Project } from "../../api";
@@ -33,7 +34,7 @@ export class NewSessionProjectSheet extends LitElement {
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"New session in"} .initialFocus=${"button"}>
         <header class="panel-header">
           <h2 class="panel-header-title">New session in…</h2>
-          <button type="button" class="panel-key" title="Close" aria-label="Close" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
+          <button type="button" class="panel-key bar-key" title="Close" aria-label="Close" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
         </header>
         <div class="body">
           ${this.canAddProject ? html`<button type="button" class="create" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>` : nothing}
@@ -52,16 +53,7 @@ export class NewSessionProjectSheet extends LitElement {
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
-    modal-surface {
-      --modal-surface-place-items: start center;
-      --modal-surface-backdrop-padding: 0;
-      --modal-surface-width: min(560px, 100vw);
-      --modal-surface-max-height: min(80dvh, 640px);
-    }
-    .panel-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
-    .panel-header-title { margin: 0; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); line-height: var(--pi-panel-header-control-height); }
-    .panel-key { box-sizing: border-box; margin-left: auto; display: grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
-    .panel-key:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
+    modal-surface { --modal-surface-max-height: min(80dvh, 640px); }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-reading-edge); padding-bottom: max(var(--pi-space-4), env(safe-area-inset-bottom)); overscroll-behavior: contain; }
     .create { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-selection-bg); color: var(--pi-text-bright); font: inherit; cursor: pointer; }
     @media (pointer: coarse) { .create { min-height: var(--pi-control-height-touch); } }
@@ -77,7 +69,7 @@ export class NewSessionProjectSheet extends LitElement {
     .tile-icon .ui-icon { width: 14px; height: 14px; }
     .tile-name { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); line-height: 1.3; overflow-wrap: anywhere; }
     .tile-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
-  `];
+  `, barSheetStyles, barKeyStyles];
 }
 
 declare global {

@@ -85,9 +85,9 @@ export function renderGridIcon(): TemplateResult {
   return html`<svg class="ui-icon" viewBox=${ATTRIBUTES.viewBox} aria-hidden="true" focusable="false" fill=${ATTRIBUTES.fill} stroke=${ATTRIBUTES.stroke} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg>`;
 }
 
-/** The destinations a phone reaches by name: the sessions list. */
-export function renderListIcon(): TemplateResult {
-  return html`<svg class="ui-icon" viewBox=${ATTRIBUTES.viewBox} aria-hidden="true" focusable="false" fill=${ATTRIBUTES.fill} stroke=${ATTRIBUTES.stroke} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12"></path><path d="M8 12h12"></path><path d="M8 18h12"></path><path d="M4 6h.01"></path><path d="M4 12h.01"></path><path d="M4 18h.01"></path></svg>`;
+/** The Go to key: the chat bar's, the session list header's, and the open sheet's that closes it. */
+export function renderMenuIcon(): TemplateResult {
+  return html`<svg class="ui-icon" viewBox=${ATTRIBUTES.viewBox} aria-hidden="true" focusable="false" fill=${ATTRIBUTES.fill} stroke=${ATTRIBUTES.stroke} stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>`;
 }
 
 /**

@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
+import { barKeyStyles } from "./panelHeaderStyles";
 import { renderCrossIcon, uiIconStyle } from "../uiIcons.js";
 import { customElement, property } from "lit/decorators.js";
 import type { NavSectionContext, QualifiedNavSectionContribution, ReservedNavSectionId } from "../../plugins/types";
@@ -32,7 +33,7 @@ export class ContextSwitcherSheet extends LitElement {
         <div class="sheet">
           <div class="sheet-header panel-header">
             <span class="panel-header-title">${this.title}</span>
-            <button type="button" class="panel-header-action sheet-close" title="Close" aria-label="Close context sheet" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
+            <button type="button" class="sheet-close bar-key" title="Close" aria-label="Close context sheet" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
           </div>
           <div class="sheet-body">
             ${this.renderNavSection("projects")}
@@ -69,7 +70,7 @@ export class ContextSwitcherSheet extends LitElement {
        scrollable surface into three squeezed ones - a second machine rendered
        as an 8.9px sliver that read as a rendering artefact, not a row. */
     .sheet-body project-list, .sheet-body workspace-list { flex: 0 0 auto; min-height: auto; }
-  `];
+  `, barKeyStyles];
 }
 
 declare global {

@@ -1,4 +1,5 @@
 import { LitElement, css, html, type PropertyValues, type TemplateResult, unsafeCSS } from "lit";
+import { barKeyStyles } from "./appShell/panelHeaderStyles";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, query, state } from "lit/decorators.js";
 import "./ModalSurface";
@@ -35,12 +36,11 @@ export class SessionRenameDialog extends LitElement {
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .hint { color: var(--pi-muted); font-size: var(--pi-text-xs); margin: 0; }
     button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
-    header button { display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort);  line-height: 1; border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0; }
     .primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: var(--pi-weight-semibold); }
     button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     footer { justify-content: flex-end; gap: var(--pi-space-4); }
-    @media (pointer: coarse) { footer button, header button { min-height: var(--pi-control-height-touch, 44px); } header button { width: var(--pi-control-height-touch, 44px); } input { min-height: var(--pi-control-height-touch, 44px); } }
-  `];
+    @media (pointer: coarse) { footer button { min-height: var(--pi-control-height-touch, 44px); } input { min-height: var(--pi-control-height-touch, 44px); } }
+  `, barKeyStyles];
 
   protected override willUpdate(changed: PropertyValues<this>): void {
     if (changed.has("sessionName")) this.draft = this.sessionName;
@@ -83,7 +83,7 @@ export class SessionRenameDialog extends LitElement {
         <form @submit=${(event: SubmitEvent) => { this.handleSubmit(event); }}>
           <header>
             <strong>Rename session</strong>
-            <button type="button" @click=${() => { this.onCancel?.(); }} aria-label="Close">${renderCrossIcon()}</button>
+            <button type="button" class="bar-key" @click=${() => { this.onCancel?.(); }} aria-label="Close">${renderCrossIcon()}</button>
           </header>
           <div class="body">
             <label>

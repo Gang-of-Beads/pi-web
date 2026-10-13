@@ -1,4 +1,5 @@
 import { LitElement, css, html, type PropertyValues, type TemplateResult, unsafeCSS } from "lit";
+import { barKeyStyles } from "./appShell/panelHeaderStyles";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionCleanupExecuteResponse, SessionCleanupPreviewResponse, SessionCleanupProjectSummary, SessionCleanupRequest } from "../api";
@@ -55,7 +56,7 @@ export class SessionCleanupDialog extends LitElement {
             <span class="eyebrow">Sessions</span>
             <h1>Clean up sessions</h1>
           </div>
-          <button class="close-button" title="Close cleanup" aria-label="Close cleanup" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
+          <button class="close-button bar-key" title="Close cleanup" aria-label="Close cleanup" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
         </header>
         <div class="body">
           <p class="intro">Preview manual cleanup for this machine before archiving idle sessions or permanently deleting old archived sessions.</p>
@@ -270,14 +271,10 @@ export class SessionCleanupDialog extends LitElement {
     button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     button.danger { color: var(--pi-danger); }
     @media (hover: hover) { button.danger:not(:disabled):hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
-    .close-button { box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); display: grid; place-items: center; border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
-    .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
-    @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     /* Coarse pointers get the comfort floor, as every sibling dialog does:
        this one shipped ~36px footer actions and ~29px selection controls. */
     @media (pointer: coarse) {
       button, input.days { min-height: var(--pi-control-height-touch); }
-      .close-button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
     }
 
     @media (max-width: 760px) {
@@ -288,7 +285,7 @@ export class SessionCleanupDialog extends LitElement {
       table { min-width: 560px; }
       thead th:first-child, td.select-cell { width: 58px; }
     }
-  `];
+  `, barKeyStyles];
 }
 
 function checkedValue(event: Event): boolean {

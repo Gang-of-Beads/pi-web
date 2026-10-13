@@ -59,7 +59,7 @@ async function mount(tool: QualifiedContributionId): Promise<WorkspacePanel> {
 
 function shape(panel: WorkspacePanel): unknown {
   const root = panel.renderRoot;
-  const first = [...root.children].find((element) => element.tagName !== "STYLE");
+  const first = [...root.children].find((element) => element.tagName !== "STYLE" && element.tagName !== "SLOT");
   return {
     rows: root.querySelectorAll("header, [role=heading]").length,
     first: first?.className ?? null,

@@ -1,8 +1,9 @@
 import { LitElement, css, html, nothing } from "lit";
+import { barKeyStyles } from "./panelHeaderStyles";
 import { customElement, property } from "lit/decorators.js";
 import type { SessionInfo } from "../../api";
 import { sessionLabel } from "../../sessionLabels";
-import { renderGridIcon } from "../uiIcons";
+import { renderGridIcon, renderMenuIcon } from "../uiIcons";
 import { LongPressTracker } from "../../longPress";
 
 /** The resident row opens navigation and names the session; state belongs in the dock and footer. */
@@ -56,7 +57,7 @@ export class AppContextBar extends LitElement {
         ${this.onOpenGoTo === undefined ? null : html`
         <button
           type="button"
-          class="panel-toggle go-to"
+          class="panel-toggle go-to bar-key"
           title=${navigationLabel}
           aria-label=${navigationLabel}
           aria-haspopup=${this.navigationTarget === "page" ? "dialog" : nothing}
@@ -98,16 +99,14 @@ export class AppContextBar extends LitElement {
         ${this.panelToggleHidden ? null : html`
         <button
           type="button"
-          class="panel-toggle"
+          class="panel-toggle bar-key"
           title=${toggleLabel}
           aria-label=${toggleLabel}
           aria-haspopup=${this.toggleTarget === "menu" ? "dialog" : nothing}
           aria-expanded=${this.toggleTarget === "menu" ? nothing : this.panelOpen ? "true" : "false"}
           @click=${() => { if (this.toggleTarget === "menu" && this.onOpenGoTo !== undefined) this.onOpenGoTo(); else this.onTogglePanel?.(); }}
         >
-          <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M4 6h16M4 12h16M4 18h16"></path>
-          </svg>
+          ${renderMenuIcon()}
         </button>
         `}
       </nav>
@@ -119,7 +118,7 @@ export class AppContextBar extends LitElement {
     return [this.activeSurface, sessionLabel(session), this.startsIn].filter((part) => part !== "").join(" · ");
   }
 
-  static override styles = css`
+  static override styles = [css`
     :host { position: relative; z-index: var(--pi-layer-sticky); flex: 0 0 auto; min-width: 0; }
     /* Control chrome, not content: buttons and labels here are not copy targets. (T1/T3) */
     :host, :host * { -webkit-user-select: none; user-select: none; }
@@ -136,11 +135,6 @@ export class AppContextBar extends LitElement {
     }
     button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     @media (pointer: coarse) { button:active { background: var(--pi-surface-hover); } }
-    .panel-toggle { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); }
-    .panel-toggle:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
-    @media (hover: hover) { .panel-toggle:hover { background: var(--pi-surface-hover); } }
-    .toggle-icon { width: 16px; height: 16px; pointer-events: none; }
-    .go-to .ui-icon { width: 18px; height: 18px; pointer-events: none; }
     /* Centred between the two keys, the owner's call: the name is the bar's
        subject, not a label hanging off the menu key. */
     .session-title { flex: 1 1 auto; min-width: 0; min-height: var(--pi-panel-header-control-height); display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden; border: 0; background: none; color: var(--pi-text-bright, var(--pi-text)); padding: 0; font: inherit; line-height: var(--pi-panel-header-control-height); font-weight: var(--pi-weight-strong); text-align: center; text-overflow: ellipsis; white-space: nowrap; }
@@ -150,15 +144,13 @@ export class AppContextBar extends LitElement {
        itself the name was clipped mid-glyph with no ellipsis, while the phone
        scope chip beside it truncated properly. */
     .session-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    /* B35: on a coarse pointer the keys keep their drawn 36px and a finger reaches 44px, as the
-       composer's keys do; the title clips its text in its own span so the reach is not clipped. */
+    /* B35: on a coarse pointer the title keeps its drawn height and a finger reaches 44px, as the
+       keys do through barKeyStyles; it clips its text in its own span so the reach is not clipped. */
     @media (pointer: coarse) {
-      .panel-toggle, .session-title { position: relative; }
-      .session-title { overflow: visible; }
-      .panel-toggle::after { content: ""; position: absolute; inset: calc((var(--pi-panel-header-control-height) - var(--pi-control-height-touch)) / 2); }
+      .session-title { position: relative; overflow: visible; }
       .session-title::after { content: ""; position: absolute; inset: calc((var(--pi-panel-header-control-height) - var(--pi-control-height-touch)) / 2) 0; }
     }
     .session-title:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     @media (hover: hover) { .session-title:hover { color: var(--pi-text-bright); } }
-  `;
+  `, barKeyStyles];
 }

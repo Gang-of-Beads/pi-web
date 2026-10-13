@@ -31,22 +31,24 @@ stateDiagram-v2
     Navigate --> Navigate: tap a level on the path (path widens)
     Navigate --> Chat: + New session
 
-    Chat --> Navigate: menu key (phone, over the session) / panel (desktop)
-    Chat --> Tool: Go to ⊞ picks a tool
-    Tool --> Chat: Go to ⊞ picks Chat
-    Tool --> Tool: Go to ⊞ picks another tool
-    Tool --> Navigate: menu key
+    Chat --> Navigate: grid key ⊞ (phone, over the session) / panel (desktop)
+    Chat --> Tool: Go to ≡ picks a tool
+    Tool --> Chat: the way back (phone, medium) / the chat beside it (wide)
+    Tool --> Tool: Go to ≡ picks another tool
+    Tool --> Navigate: grid key ⊞
     Navigate --> Tool: open a session, the tool it was on returns
 ```
 
 Rules that make the place layer closed:
 
-1. Navigate is reachable from every place through one control: the menu key on
+1. Navigate is reachable from every place through one control: the grid key on
    a phone, the resident panel on desktop.
 2. Navigate never dead-ends: narrowing and widening are the same control (the
    path), so the reader can always get back to "All projects".
 3. Chat is reachable from Navigate by opening a session, and from a tool by the
-   Go to sheet. A tool is never the only way back to anything.
+   way back; on the wide layout it stays beside the page column. Go to lists the
+   pages only (owner, 2026-10-14): the grid key reaches Navigate and the way back
+   reaches Chat, so a tool is never the only way back to anything.
 4. A place change writes the URL, so a reload lands on the same place.
 
 ## Layers
@@ -54,7 +56,7 @@ Rules that make the place layer closed:
 ```mermaid
 stateDiagram-v2
     state "Place (Chat / Navigate / Tool)" as Place
-    Place --> GoTo: ⊞
+    Place --> GoTo: ≡
     GoTo --> Place: pick a destination / close / back gesture
     Place --> Settings: Settings
     Settings --> Place: close / back gesture
@@ -111,7 +113,7 @@ stateDiagram-v2
 | --- | --- | --- |
 | Three surfaces still answer "where am I": the context sheet, the quick-access menu and the navigation panel's accordion | `PiWebApp.contextSheetOpen`, `quickSwitcherOpen`, `AppNavigationPanel` | Being retired by `AppNavigatePage`; until they are gone the place layer has three entries where the machine says one |
 | A session opened from a remote machine's pins changes machine and place at once | `navigateModel` pinned rows | Allowed by design, but the machine level must show the move, otherwise the path lies about where the session came from |
-| The tool places are addressable but the Go to sheet is the only way between them | `AppGoToSheet` | Acceptable: ⊞ is present in every tool and in Chat, so no tool is a dead end |
+| The tool places are addressable but Go to is the only way between them | `AppGoToSheet` | Acceptable: the Go to key is on the chat bar in every layout (on the wide layout it opens the list inside the page column), so no tool is a dead end |
 | Boot with an unreachable machine | route restore | Must land on Navigate with the machine level showing the failure, never on an empty Chat |
 
 ## What a change to navigation must prove

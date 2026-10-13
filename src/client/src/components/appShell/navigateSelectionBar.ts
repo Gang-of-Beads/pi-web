@@ -26,7 +26,7 @@ export function renderSelectionHeader(input: SelectionBarInput) {
   const everything = input.visibleIds.length > 0 && input.visibleIds.every((id) => input.state.ids.has(id));
   return html`
     <header class="path-bar selection-header" role="toolbar" aria-label="Selected rows" aria-busy=${acting ? "true" : "false"}>
-      <button type="button" class="quick-access" title="Done" aria-label="Done" ?disabled=${acting} @click=${input.onExit}>${renderCrossIcon()}</button>
+      <button type="button" class="quick-access bar-key" title="Done" aria-label="Done" ?disabled=${acting} @click=${input.onExit}>${renderCrossIcon()}</button>
       <span class="selection-count" role="status">${input.state.ids.size} selected</span>
       <button type="button" class="path-step" ?disabled=${acting || everything} @click=${() => { input.onSelectAll(input.visibleIds); }}>Select all</button>
     </header>

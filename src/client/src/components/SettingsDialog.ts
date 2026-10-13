@@ -1,4 +1,5 @@
 import type { ListTilesPerRow } from "../../../shared/apiTypes";
+import { barKeyStyles } from "./appShell/panelHeaderStyles";
 import { withListTiles, type ListLayout } from "../listTiles";
 import { css, html, LitElement, unsafeCSS, type PropertyValues, type TemplateResult } from "lit";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
@@ -156,7 +157,7 @@ export class SettingsDialog extends LitElement {
             <span class="eyebrow">Settings</span>
             <h1>PI WEB</h1>
           </div>
-          <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
+          <button class="close-button bar-key" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
         <div class="settings-body">
           <nav class="settings-nav" aria-label="Settings sections">
@@ -178,7 +179,7 @@ export class SettingsDialog extends LitElement {
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"PI WEB settings"}>
         <header class="settings-header settings-header-phone">
           <h1 class="panel-header-title">Settings</h1>
-          <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
+          <button class="close-button bar-key" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
         <nav class="settings-list" aria-label="Settings sections">
           ${this.renderSearchField()}
@@ -246,7 +247,7 @@ export class SettingsDialog extends LitElement {
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"PI WEB settings"}>
         <header class="settings-header settings-header-phone">
           <button class="settings-back" @click=${() => this.onBackToList?.()}><span class="settings-back-icon">${renderDisclosureIcon(false)}</span> Settings</button>
-          <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
+          <button class="close-button bar-key" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
         <main class="settings-content">
           ${this.renderActiveSection()}
@@ -809,10 +810,6 @@ export class SettingsDialog extends LitElement {
     .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); }
     h1 { margin: 0; font-size: var(--pi-text-xl); line-height: 1.2; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: inherit; cursor: pointer; }
-    .close-button { box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); display: grid; place-items: center; border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font-size: var(--pi-text-lg); }
-    @media (pointer: coarse) { .close-button:active { background: var(--pi-surface-hover); } }
-    .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
-    @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .settings-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
     .settings-search { padding: 0 0 var(--pi-space-4); }
     .settings-search-input { box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: inherit; }
@@ -826,7 +823,6 @@ export class SettingsDialog extends LitElement {
     .settings-nav small { font-size: var(--pi-text-xs); color: var(--pi-muted); }
     .settings-content { min-width: 0; min-height: 0; overflow: auto; padding: var(--pi-space-8); }
 
-    @media (pointer: coarse) { .close-button { width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); } }
     @media (pointer: coarse), (max-width: 760px) {
       modal-surface { --modal-surface-backdrop-padding: 0; --modal-surface-place-items: stretch; --modal-surface-width: 100%; --modal-surface-max-height: none; --modal-surface-min-height: 0; --modal-surface-border: 0; --modal-surface-radius: 0; }
       .settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left)); padding-top: max(0px, env(safe-area-inset-top)); }
@@ -844,7 +840,7 @@ export class SettingsDialog extends LitElement {
       .settings-list-label small { font-size: var(--pi-text-xs); color: var(--pi-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .settings-list-chevron { display: inline-flex; color: var(--pi-muted); }
     }
-  `];
+  `, barKeyStyles];
 }
 
 export type SettingsPanelTag =

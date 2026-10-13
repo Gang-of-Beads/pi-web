@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult, unsafeCSS } from "lit";
+import { barKeyStyles } from "./appShell/panelHeaderStyles";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, query, state } from "lit/decorators.js";
 import type { AuthDialogState } from "../appState";
@@ -49,7 +50,7 @@ export class AuthDialog extends LitElement {
       >
         <header>
           <strong>${this.dialogTitle(state)}</strong>
-          <button title="Close" aria-label="Close" @click=${() => { this.cancel(); }}>${renderCrossIcon()}</button>
+          <button class="bar-key" title="Close" aria-label="Close" @click=${() => { this.cancel(); }}>${renderCrossIcon()}</button>
         </header>
         ${this.renderBody(state)}
       </modal-surface>
@@ -271,8 +272,7 @@ export class AuthDialog extends LitElement {
     .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     button { font: inherit; border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
-    header button { font: inherit; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; line-height: 1; font-size: var(--pi-text-xl); color: var(--pi-muted); }
-    @media (pointer: coarse) { header button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); } .actions button, .inline-options button, input { min-height: var(--pi-control-height-touch); } }
+    @media (pointer: coarse) { .actions button, .inline-options button, input { min-height: var(--pi-control-height-touch); } }
     input { margin: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; padding: var(--pi-space-4) var(--pi-space-5); outline: none; }
     input:focus { border-color: var(--pi-accent); }
     .options button { display: block; box-sizing: border-box; width: 100%; padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
@@ -298,7 +298,7 @@ export class AuthDialog extends LitElement {
     .inline-options button { display: grid; gap: var(--pi-space-1); text-align: left; }
     .inline-options small { color: var(--pi-muted); }
     em { color: var(--pi-success); font-style: normal; font-size: var(--pi-text-xs); }
-  `];
+  `, barKeyStyles];
 }
 
 export function oauthPromptInputType(promptType: NonNullable<OAuthFlowState["prompt"]>["promptType"]): "text" | "password" {

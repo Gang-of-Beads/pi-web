@@ -1,4 +1,5 @@
 import { searchPlaceholder } from "../keyboardShortcuts";
+import { barKeyStyles } from "./appShell/panelHeaderStyles";
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { renderCheckIcon, renderChevronRightIcon, renderCrossIcon, renderPinIcon, uiIconStyle } from "./uiIcons.js";
 import { reconcileBreadcrumbFilter, switcherBreadcrumb, type BreadcrumbLevel } from "../switcherBreadcrumb";
@@ -136,7 +137,7 @@ export class QuickSwitcher extends LitElement {
             .value=${this.query}
             @input=${(event: Event) => { this.onQueryInput(event); }}
           >
-          <button class="close" title="Close" aria-label="Close" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
+          <button class="bar-key" title="Close" aria-label="Close" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
         ${this.renderBreadcrumb()}
         <div class="body">
@@ -550,8 +551,6 @@ export class QuickSwitcher extends LitElement {
     input { box-sizing: border-box; min-width: 0; height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-control-font-size, var(--pi-text-base)) var(--pi-font-ui); line-height: inherit; }
     input::-webkit-search-cancel-button { display: none; }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
-    .close { font: inherit; box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; line-height: 1; border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-xl); cursor: pointer; }
-    @media (pointer: coarse) { .close:active { background: var(--pi-surface-hover); } }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--pi-space-5); overscroll-behavior: contain; }
     h3 { margin: var(--pi-space-7) 0 var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); text-transform: uppercase; }
     .section-toggle { display: inline-flex; align-items: center; gap: var(--pi-space-2); box-sizing: border-box; min-height: var(--pi-control-height); margin: 0; padding: 0 var(--pi-space-2); border: 1px solid transparent; border-radius: var(--pi-radius-md); background: transparent; color: inherit; font: inherit; text-transform: inherit; cursor: pointer; }
@@ -649,12 +648,11 @@ export class QuickSwitcher extends LitElement {
     .row-menu { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; overflow: auto; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
     .row-menu button { box-sizing: border-box; min-height: var(--pi-control-height-comfort); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
     /* Coarse pointers get the comfort floor: every target the quick switcher
-       ships measures 44px on touch. Placed after every base declaration it
+       ships reaches 44px on touch (the close key through barKeyStyles). Placed after every base declaration it
        raises - a media query carries no extra specificity, so an earlier
        coarse rule loses to a later base rule (the drawer collapse shipped
        exactly that bug once). */
     @media (pointer: coarse) {
-      .close { width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }
       .row-menu-toggle { width: var(--qs-menu-size); min-height: var(--qs-menu-size); }
       .row-menu button { min-height: var(--pi-control-height-touch); }
       input { height: var(--pi-panel-header-control-height); }
@@ -679,7 +677,7 @@ export class QuickSwitcher extends LitElement {
     .empty { margin: var(--pi-space-7) var(--pi-space-2); color: var(--pi-muted); }
     footer { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-bar-inset) max(var(--pi-space-2), env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); display: flex; flex-direction: column; gap: var(--pi-space-2); }
     footer button { box-sizing: border-box; font: inherit; width: 100%; min-height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
-  `];
+  `, barKeyStyles];
 }
 
 declare global {

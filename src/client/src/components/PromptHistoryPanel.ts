@@ -1,4 +1,5 @@
 import { LitElement, css, html, unsafeCSS } from "lit";
+import { barKeyStyles } from "./appShell/panelHeaderStyles";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import { searchPromptHistory } from "../promptHistory";
@@ -62,7 +63,7 @@ export class PromptHistoryPanel extends LitElement {
             .value=${this.query}
             @input=${(event: Event) => { this.onQueryInput(event); }}
           >
-          <button class="close" type="button" title="Close" aria-label="Close prompt history" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
+          <button class="close bar-key" type="button" title="Close" aria-label="Close prompt history" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
         </header>
         <div class="body">
           ${entries.length === 0
@@ -109,7 +110,7 @@ export class PromptHistoryPanel extends LitElement {
     this.onPick?.(entry);
   }
 
-  static override styles = css`${unsafeCSS(uiIconStyle)}
+  static override styles = [css`${unsafeCSS(uiIconStyle)}
     /* The sheet's controls are in their own shadow root, so the composer's
        tap rules do not reach them: without these, every row and the close
        button stay eligible for the browser's double-tap-zoom click delay. */
@@ -125,9 +126,6 @@ export class PromptHistoryPanel extends LitElement {
     .history-search::placeholder { color: var(--pi-dim); }
     .history-search::-webkit-search-cancel-button { display: none; }
     .history-search:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
-    .close { display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); box-sizing: border-box; padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; cursor: pointer; }
-    .close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
-    @media (hover: hover) { .close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
     .entry { display: block; box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-touch); border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); text-align: left; cursor: pointer; }
     .entry:last-child { border-bottom: 0; }
@@ -136,7 +134,7 @@ export class PromptHistoryPanel extends LitElement {
     .entry:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     .entry-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; font: var(--pi-text-sm) var(--pi-font-ui); line-height: 1.4; }
     .empty { margin: var(--pi-space-7) var(--pi-space-2); color: var(--pi-muted); text-align: center; }
-  `;
+  `, barKeyStyles];
 }
 
 declare global {

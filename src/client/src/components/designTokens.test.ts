@@ -156,7 +156,9 @@ describe("panel headers share one height", () => {
   });
 
   it("sizes the navigation header controls from the token rather than the user agent", () => {
-    expect(navigationPage).toContain("height: var(--pi-panel-header-control-height)");
+    const barKeys = readFileSync(join(process.cwd(), "src/client/src/components/appShell/panelHeaderStyles.ts"), "utf8");
+    expect(navigationPage).toContain("barKeyStyles");
+    expect(barKeys).toContain("height: var(--pi-panel-header-control-height)");
   });
 });
 

@@ -1,4 +1,4 @@
-import { LitElement, html, type TemplateResult } from "lit";
+import { LitElement, css, html, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { Workspace } from "../api";
 import type { GlobalPanelContext, QualifiedContributionId, QualifiedGlobalPanelContribution, QualifiedWorkspacePanelContribution, WorkspacePanelContext } from "../plugins/types";
@@ -13,9 +13,10 @@ import { interactiveSurfaceStyles, workspacePanelStyles } from "./shared";
 export type WorkspacePanelEmptyState = { kind: "unknown" } | { kind: "message"; title: string; body?: string };
 
 /**
- * A plugin's page under the app bar. It draws no row of its own: the app bar
- * already names the page ("Files · session"), and a title row under it was a
- * second bar the owner had removed (2026-10-01). A tool's own buttons
+ * A plugin's page. It draws no row of its own: on the phone and medium layouts
+ * the app bar names the page ("Files · session"), on the wide layout the app
+ * slots in the column's bar (`bar`, AppColumnBar) that names it, and a title
+ * row under either was a second bar the owner had removed (2026-10-01). A tool's own buttons
  * (Files: Upload, Refresh) show at the top of its page as they did inside the
  * old fold; a tool without buttons starts with its content. The content is a
  * region named for the tool: the row that carried its heading is gone, and
@@ -31,8 +32,24 @@ export class WorkspacePanel extends LitElement {
   @property({ attribute: false }) panels: QualifiedWorkspacePanelContribution[] = [];
   @property({ attribute: false }) globalPanels: QualifiedGlobalPanelContribution[] = [];
   @property({ attribute: false }) globalContext: GlobalPanelContext | undefined;
+  /** The Go to list covers the page (`cover`): the page under it takes no pointer, focus or reading until it goes. */
+  @property({ type: Boolean }) covered = false;
 
+  /**
+   * The page, under the bar the app slots in on the wide layout (`bar`), with what covers it
+   * (`cover`: the Go to list, which opens inside this column).
+   */
   override render() {
+    return html`<slot name="bar"></slot>${this.renderPage()}<slot name="cover"></slot>`;
+  }
+
+  override updated(): void {
+    for (const child of this.renderRoot.children) {
+      if (child.tagName !== "SLOT" && child.tagName !== "STYLE") child.toggleAttribute("inert", this.covered);
+    }
+  }
+
+  private renderPage() {
     const globalPanel = this.globalPanels.find((panel) => panel.id === this.tool);
     const globalContext = this.globalContext;
     if (globalPanel !== undefined && globalContext !== undefined) return this.renderGlobalPanel(globalContext, globalPanel);
@@ -85,5 +102,5 @@ export class WorkspacePanel extends LitElement {
     `;
   }
 
-  static override styles = [interactiveSurfaceStyles, workspacePanelStyles];
+  static override styles = [interactiveSurfaceStyles, workspacePanelStyles, css`:host { position: relative; }`];
 }
