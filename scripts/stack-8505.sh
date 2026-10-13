@@ -34,6 +34,12 @@ READY_TIMEOUT_SECONDS=120
 # read-only (sops-rendered). PI_WEB_8505_CONFIG points this stack at its own
 # writable copy, so Settings saves can be exercised without touching 8504's.
 CONFIG_ENV="${PI_WEB_8505_CONFIG:+PI_WEB_CONFIG=$PI_WEB_8505_CONFIG }"
+# The pi agent dir (~/.pi/agent) is shared with 8504 too: session files, settings,
+# trust and accounts. Sessions this stack writes land in pi's shared session store,
+# so an 8504 project that contains the seed workspace (one rooted at $HOME) lists
+# them, and 8504 can open the same file this stack has open (2026-10-13). Set
+# PI_WEB_8505_AGENT_DIR to give this stack its own agent dir.
+AGENT_ENV="${PI_WEB_8505_AGENT_DIR:+PI_CODING_AGENT_DIR=$PI_WEB_8505_AGENT_DIR }"
 
 usage() {
   sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -212,7 +218,7 @@ start_stack() {
   # in the tmux pane - killed pane, lost cause. Every run appends to a log so a
   # crash leaves evidence; the pane stays for interactive watching.
   tmux new-session -d -s "$SESSIOND_TMUX" -c "$REPO_ROOT" \
-    "${CONFIG_ENV}PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET PI_WEB_UI_CUSTOM_PROBE=${PI_WEB_UI_CUSTOM_PROBE:-1} PI_WEB_DEBUG_EXTENSION_PATHS=$REPO_ROOT/test-fixtures/pi-extensions/ui-custom-probe.ts PI_WEB_DEBUG_FRAME_DROP=${PI_WEB_DEBUG_FRAME_DROP:-0} PI_WEB_DEBUG_PROMPT_CAPTURE=${PI_WEB_DEBUG_PROMPT_CAPTURE:-0} node dist/server/sessiond.js 2>&1 | tee -a $DATA_DIR/logs/sessiond.log"
+    "${CONFIG_ENV}${AGENT_ENV}PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET PI_WEB_UI_CUSTOM_PROBE=${PI_WEB_UI_CUSTOM_PROBE:-1} PI_WEB_DEBUG_EXTENSION_PATHS=$REPO_ROOT/test-fixtures/pi-extensions/ui-custom-probe.ts PI_WEB_DEBUG_FRAME_DROP=${PI_WEB_DEBUG_FRAME_DROP:-0} PI_WEB_DEBUG_PROMPT_CAPTURE=${PI_WEB_DEBUG_PROMPT_CAPTURE:-0} node dist/server/sessiond.js 2>&1 | tee -a $DATA_DIR/logs/sessiond.log"
   tmux set-option -t "$SESSIOND_TMUX" remain-on-exit on >/dev/null
   local waited=0
   while [ ! -S "$SOCKET" ]; do
@@ -225,7 +231,7 @@ start_stack() {
     waited=$((waited + 1))
   done
   tmux new-session -d -s "$WEB_TMUX" -c "$REPO_ROOT" \
-    "${CONFIG_ENV}PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET PI_WEB_PORT=$PORT node dist/server/index.js 2>&1 | tee -a $DATA_DIR/logs/web.log"
+    "${CONFIG_ENV}${AGENT_ENV}PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET PI_WEB_PORT=$PORT node dist/server/index.js 2>&1 | tee -a $DATA_DIR/logs/web.log"
   tmux set-option -t "$WEB_TMUX" remain-on-exit on >/dev/null
 }
 
