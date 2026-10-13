@@ -1,45 +1,48 @@
 # Agent Notes
 
-This project is expected to run locally using split systemd user services:
+Guidance for coding agents, and the people driving them, working in this repository. Contributor workflow (setup, checks, changesets, pull requests) is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- `pi-web-sessiond.service` runs `pnpm run start:sessiond` in non-autoreload, non-auto-restart mode.
-- `pi-web-ui-dev.service` runs the web/API and Vite UI in dev autoreload mode with `pnpm run dev:web` and `pnpm run dev:client`.
+A gitignored `AGENTS.local.md` next to this file may extend these notes with one machine's environment: its service names, its dev stack, its accounts and tools. Read it when it exists; never commit it.
 
-When working on this project, assume the session runtime owner is long-lived and separate from the autoreloading UI/API process. Browser disconnects and UI/API restarts should not stop active Pi sessions.
+## Process model
 
-If you make changes that affect `src/server/sessiond.ts`, session runtime ownership, the session daemon protocol, or any code path only loaded by the session daemon, inform the user that a manual restart of the session daemon is needed. Restart order, the startup ownership claim, and second-instance requirements are documented in `docs/install.html` ("Session daemon ownership and restarts").
+PI WEB runs as two processes. The session daemon (`src/server/sessiond.ts`; `pnpm run start:sessiond`, or `pnpm run dev:sessiond`) owns the running pi sessions and is long-lived: it does not autoreload. The web/API process (`pnpm run dev:web`) and the Vite UI (`pnpm run dev:client`) autoreload in development. Browser disconnects and web/API restarts must not stop active pi sessions.
 
-Changes to the web/API/UI side generally only require the `pi-web-ui-dev.service` autoreload/restart path.
+If a change affects `src/server/sessiond.ts`, session runtime ownership, the session daemon protocol, or any code path only the session daemon loads, say that the session daemon needs a manual restart. Restart order and the startup ownership claim are documented in [docs/install.md](docs/install.md).
+
+Changes to the web/API/UI side only need the web process to restart, which the dev scripts do on their own.
 
 ## Server layout: process ownership
 
 `src/server/` is organized by which process loads a module. `src/server/index.ts` and `src/server/sessiond.ts` are the two entry points and stay at the root; everything else lives under exactly one of:
 
-- `src/server/web/` — loaded only by the web/API process (routes, proxies, machines/fleet, static serving). Since the plugin-architecture refactor the web process also assembles its own server-plugin runtime for plugins declared `runs: "web" | "both"` and mounts their contributed routes under `/api` and `/api/machines/local`.
+- `src/server/web/` — loaded only by the web/API process (routes, proxies, machines/fleet, browser machine access, static serving). The web process also assembles its own server-plugin runtime for plugins declared `runs: "web" | "both"` and mounts their contributed routes under `/api` and `/api/machines/local`.
 - `src/server/daemon/` — loaded only by the session daemon (sessions, terminals, realtime hub, status, workspace providers).
 - `src/server/shared/` — loaded by both processes (project store, plugin catalog/runtime, the sessiond client under `shared/sessiondClient/`).
 
-Keep new modules in the directory matching the process that imports them. A `web/` module must never import from `daemon/` (or vice versa) — if both sides need it, it belongs in `shared/`. This is what makes the two-process split legible from the tree; don't reintroduce process-ambiguous modules at the root.
+Keep new modules in the directory matching the process that imports them. A `web/` module must never import from `daemon/` (or vice versa); if both sides need it, it belongs in `shared/` (`src/server/processOwnership.test.ts` checks this). Don't reintroduce process-ambiguous modules at the root.
+
+The other trees: `src/client/` is the browser app, `src/shared/` holds the types and parsers the server and the browser share, `src/nativeServices/` installs and drives the systemd and launchd services, `pi-web-plugins/` holds the bundled plugins, and `packages/pi-web-plugin-api/` is the types-only plugin API package.
 
 ## Documentation boundaries
 
 `README.md` is a concise landing page and quick start. Keep it focused on what PI WEB is, basic requirements, the shortest supported install path, essential commands, the core model, and links to detailed documentation.
 
-Put installation variants, troubleshooting, configuration details, operational behavior, architecture, edge cases, and exhaustive explanations under `docs/`. Avoid duplicating detailed documentation in the README; link to its canonical location instead.
+Put installation variants, troubleshooting, configuration details, operational behavior, architecture, edge cases, and exhaustive explanations under `docs/`, as Markdown. Avoid duplicating detailed documentation in the README; link to its canonical location instead.
 
 Use `.agents/skills/documentation-guide/SKILL.md` whenever writing, modifying, reviewing, or planning user-facing documentation.
 
 ## Testing guidance
 
-Do not write new unit tests (owner, 2026-10-03). The existing suite runs locally before a change is merged to main (`pnpm run verify`; the pre-push hook runs it for a push to main), and in CI only on a release tag (`publish.yml`). A merge to main and a pull request run no CI. The pre-commit hook runs static checks only. Committed Playwright probe scripts and the e2e suite were removed (owner, 2026-10-03).
+`pnpm run verify` (typecheck, lint, Knip and the Vitest suite) runs locally before a change reaches main (the pre-push hook runs it for a push to main) and in CI on every pull request, every push to main and every release tag. The pre-commit hook runs static checks only. There is no committed Playwright probe or e2e suite.
 
-Project-specific testing rules live in `.agents/skills/testing-guide/SKILL.md`.
+Maintainer agents do not write new unit tests unless asked (maintainer rule, 2026-10-03); they keep the suite green by fixing the code, or by updating or deleting a test that pinned removed behavior. Outside contributors may, and should, add tests with their change.
 
-Use that skill whenever writing, modifying, reviewing, or planning tests, closing coverage gaps, triaging test failures, or creating test helpers/harnesses. Keep detailed testing conventions there rather than growing this top-level orientation file.
+Project-specific testing rules live in `.agents/skills/testing-guide/SKILL.md`. Use that skill whenever writing, modifying, reviewing, or planning tests, closing coverage gaps, triaging test failures, or creating test helpers.
 
 ## Verification reporting
 
-Never report failed, incomplete, or skipped verification as passing. Identify any expected check that was not run and why, and do not mask a non-zero result. If a command intentionally probes a failure path or captures an exit for inspection, state that purpose and interpret the result.
+Never report failed, incomplete, or skipped verification as passing. Identify any expected check that was not run and why, and do not mask a non-zero result. If a command intentionally probes a failure path or captures an exit for inspection, state that purpose and interpret the result. Capture exit codes explicitly: piping a command into `tail`, or appending `echo` after it, hides its exit status.
 
 ## Client application URL convention
 
@@ -60,89 +63,43 @@ Never report failed, incomplete, or skipped verification as passing. Identify an
 - Core features should add keys to these config files, not create one project file per feature.
 - Plugins may own separate project config files, such as `.pi-web/tasks.json`.
 
-## Code style (owner's standing rules)
+## Code style
 
-- No inline comments. Write self-explanatory code; a comment that narrates what
-  the next line does is noise the owner has asked twice to stop. Docstrings on
-  modules, classes, and non-obvious functions are welcome when they carry the
-  "why" - design rationale, invariants, the incident that motivated the shape.
-- Design before code: name the module boundary, what it encapsulates, and what
-  it exposes. Prefer small cohesive modules over growth inside an existing god
-  file. New behavior gets its own unit when it has its own reason to change.
-- Prefer state machines and enums over string comparison and if/else ladders.
-  A branchy decision that appears twice or carries product meaning gets its
-  states named in one pure classifier (see `revisionVerdict`, `replayDecision`,
-  `bottomAnchorAction`, `promptDeliveryBehavior`); callers stay dumb executors,
-  and a `Record` keyed by the state type makes an unhandled state a type error.
-- Keep cyclomatic complexity down: early returns over nesting, lookup tables
-  over switch ladders, extraction over accumulation. If a function needs a
-  paragraph to explain its branches, it wants to be a classifier plus
-  executors.
-- Encapsulation is real: a module owns its state and its invariants; callers
-  do not reach in. Data that crosses a boundary carries the scope it belongs
-  to (machine + project + workspace + session).
+- No inline comments. Write self-explanatory code; a comment that narrates what the next line does is noise. Docstrings on modules, classes, and non-obvious functions are welcome when they carry the "why": design rationale, invariants, the report that motivated the shape.
+- Design before code: name the module boundary, what it encapsulates, and what it exposes. Prefer small cohesive modules over growth inside an existing large file. New behavior gets its own unit when it has its own reason to change.
+- Prefer state machines and enums over string comparison and if/else ladders. A branchy decision that appears twice or carries product meaning gets its states named in one pure classifier (see `revisionVerdict`, `replayDecision`, `bottomAnchorAction`, `promptDeliveryBehavior`); callers stay dumb executors, and a `Record` keyed by the state type makes an unhandled state a type error.
+- Keep cyclomatic complexity down: early returns over nesting, lookup tables over switch ladders, extraction over accumulation. If a function needs a paragraph to explain its branches, it wants to be a classifier plus executors.
+- Encapsulation is real: a module owns its state and its invariants; callers do not reach in. Data that crosses a boundary carries the scope it belongs to (machine + project + workspace + session).
+- The repository is public and English only: no personal names, private hosts, home directories or internal service names in code, tests, fixtures or docs.
 
-## Git etiquette (owner's standing rules)
+## Git etiquette
 
-- Never `git add -A`, `git add .`, or `git add -u` across the tree. Stage the
-  exact files this change touched, by path, and read `git status --short`
-  first; an unrelated file in the commit is a review lie and has shipped
-  accidents here before.
-- One coherent change per commit, committed the moment it is green; a commit
-  message states what changed and why in English, present tense, with the
-  incident or report that motivated it when there is one.
-- User-visible changes carry a patch-level changeset in the same commit (see
-  the changeset skill); minor-level bumps are forbidden - they roll the fake
-  CalVer month.
-- Untracked scratch (CHECKLIST.md, /tmp artifacts, screenshots) stays
-  untracked; do not let a broad stage sweep it in.
-- Push promptly after committing (the fork updater hard-resets unpushed work),
-  verify the push landed under the right GitHub account
-  (`gh auth switch --user VincentHanxiaoDu` first when needed). Run
-  `pnpm run verify` locally before a change reaches main (the pre-push hook
-  runs it for a push to main); CI runs the suite only on a release tag.
-- PRs from forks get a real review before merge; never claim merged without
-  checking `gh pr view` says so.
+- Never `git add -A`, `git add .`, or `git add -u` across the tree. Read `git status --short` first, then stage the exact files the change touched, by path. Untracked scratch (checklists, screenshots, temporary artifacts) stays untracked.
+- One coherent change per commit, committed as soon as it is green. The subject says what changed, in plain English and the present tense; the body says why, citing the issue or report that motivated it when there is one.
+- User-visible changes carry a `patch` changeset in the same commit (see the changeset skill). Never use `minor`: the version is `MAJOR.YYYYMM.PATCH` and the month is set at release.
+- Run `pnpm run verify` before a change reaches main.
+- Pull requests get a real review before merge; never claim a pull request merged without checking that `gh pr view` says so.
 
-## Verification workflow (owner's standing rules)
+## Verification workflow
 
-Every non-trivial change wave gets, before it is called done:
+Before a non-trivial change is called done:
 
-1. **Multi-lane max-thinking review**: anonymous parallel lanes on the
-   builtin `reviewer` shell - two split-focus lanes on
-   `botim-bllm/deepseek-v4.1-flash:max` plus one full pass on
-   `anthropic-merchant/claude-opus-5:max` (owner, 2026-10-05). Check the
-   names against the model registry (`subagent` action `models`) before
-   launching; an unknown model fails every lane at start. Give each lane
-   the diff, the live file paths, and a directed hunt list; require file:line findings with a
-   minimal failure scenario and true/false adjudication of each suspicion.
-   Triage in writing (fixed / not-fixed-with-reason / judged-not-true) before
-   fixing, in a scratch file outside the repository; the commit that lands the
-   fixes states each outcome in its message. Triage records are not committed:
-   the reasons live in git history (owner, 2026-10-06). Two lanes disagreeing
-   is settled by reading the source, not by trusting either lane.
-2. **Live verification on the 8505 stack**: rebuild and restart via
-   `scripts/stack-8505.sh up`, then drive the real UI in a browser (Playwright
-   MCP or the browser tool; no committed probe scripts) for the touched flows -
-   real session, real daemon, coarse-pointer 393x850 where the surface is
-   phone-relevant. A check must fail loudly on a missing precondition rather
-   than passing empty.
+1. **Independent review.** Run at least two independent review passes over the diff (separate reviewers or review agents), each given the diff, the live file paths and a directed list of what to hunt for, and each required to return file:line findings with a minimal failure scenario and a true/false verdict on every suspicion. Triage every finding in writing (fixed / not fixed, with the reason / judged not true) in a scratch file outside the repository, before fixing. Triage records are not committed; the commit that lands the fixes states each outcome in its message. When two reviewers disagree, read the source rather than trusting either.
+2. **Live verification.** Build and run the change on an isolated dev stack (`scripts/stack-8505.sh up` runs one on port 8505 with its own data dir), then drive the real UI in a real browser against a real session daemon for the touched flows: desktop, and a coarse-pointer 393x850 viewport where the surface is phone-relevant. Record what was checked. A check must fail loudly on a missing precondition rather than pass empty, and daemon-side claims are checked against the daemon's logs.
 
 ## How we work
 
-These are the owner's standing rules. They exist because breaking each one cost real damage on this project, and the cost is recorded so nobody has to relearn it.
-
 ### Design the whole before patching the part
 
-A reported symptom is a request to understand the system, not permission to patch the spot where it showed. Before code: name the surface, the scope it acts on, and how it relates to the currently open session. Ship a design the owner can correct on paper; a page he has to use before discovering it is wrong is the expensive way to find out.
+A reported symptom is a request to understand the system, not permission to patch the spot where it showed. Before code: name the surface, the scope it acts on, and how it relates to the currently open session. Write the design down so it can be corrected on paper; a page someone has to use before discovering it is wrong is the expensive way to find out.
 
-### Product semantics belong to the owner
+### Product semantics belong to the maintainers
 
-Do not decide user-visible behavior alone. Present the options and their costs and let the owner choose. Two unilateral decisions did real harm here: a read-only modal was built where a navigable page was asked for, and "keep the previous list while loading or on error" was invented to stop a panel from disappearing - it then rendered another project's goal, with a live Abandon button on it. Trading "empty" for "wrong" is worse than the bug being fixed.
+Do not decide user-visible behavior alone. Present the options and their costs and let the maintainers choose. A fix that trades "empty" for "wrong" (for example, keeping a previous list on screen while a new one loads, so it shows another project's data with live actions on it) is worse than the bug it fixes.
 
-### Verify your own work before it reaches the owner
+### Verify your own work
 
-A green unit suite is not evidence that a person can use the feature. Before committing UI-affecting work, exercise it the way a user does - the 8505 stack, a real browser, a coarse pointer at 393x850 - and record the numbers. Read the daemon logs for daemon-side claims. If a probe cannot reproduce the defect, say "not reproduced"; never present an unverified leg as verified, and never let a server that died mid-test read as "the bug is gone".
+A green unit suite is not evidence that a person can use the feature. Before committing UI-affecting work, exercise it the way a user does and record the numbers. If a probe cannot reproduce the defect, say "not reproduced"; never present an unverified leg as verified, and never let a server that died mid-test read as "the bug is gone".
 
 ### Data must carry the scope it belongs to
 
@@ -154,20 +111,12 @@ An empty list means "unloaded or empty", not "empty". A missing transcript means
 
 ### Consistency is designed, not corrected
 
-Grid tiles share a height; titles clamp to a fixed line count; every interactive target meets the coarse-pointer floor. Decide these when the surface is built. "The boxes are different sizes" should never be something the owner has to report.
+Grid tiles share a height; titles clamp to a fixed line count; every interactive target meets the coarse-pointer floor. Decide these when the surface is built.
 
 ### The same symptom reported twice stops the patching
 
-Enumerate every producer, write down the invariant being violated, then change code. Fixing one producer and leaving its siblings is how this project produced the same complaint five times.
+Enumerate every producer, write down the invariant being violated, then change code. Fixing one producer and leaving its siblings is how the same complaint comes back.
 
-### The goal plugin's design (owner's definition)
+### State machines over ladders
 
-A goal belongs to a project. One session focuses it at a time; focusing elsewhere releases it. Focus, pause and resume are available to the user and to the agent itself. While a subagent run or a background task is active, the continuation is not injected - it waits for quiescence, with a bounded fallback so lost work cannot stall a goal forever.
-
-### Operational rules that cost us time
-
-- Never use heredocs or `cat >` in agent shell commands; four runs hung on an unterminated heredoc. Use file-writing tools.
-- Prefer explicit state machines over if/else ladders. When a branchy decision appears twice or carries product meaning, name its states and transitions in one pure classifier (see `revisionVerdict`, `replayDecision`) and keep the callers as dumb executors; enumerate every state in tests so an unanswered state fails there instead of in production.
-- Commit each coherent piece the moment it is green. Two runs were killed by a 30-minute wall with uncommitted work.
-- Push extension/fork work immediately. The package updater hard-resets those repos to upstream; unpushed commits were destroyed twice.
-- Capture exit codes explicitly. A trailing `echo EXIT=$?` masked a killed release chain, and piping a verify into `tail` masked a failure.
+When a branchy decision appears twice or carries product meaning, name its states and transitions in one pure classifier (see `revisionVerdict`, `replayDecision`) and keep the callers as dumb executors; enumerate every state in tests so an unanswered state fails there instead of in production.

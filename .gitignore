@@ -24,9 +24,6 @@ dist/
 # Local runtime attachment uploads (created by the chat composer "save to folder" mode).
 .pi-web/
 
-# Dev docs site staging output (scripts/build-docs-dev.mjs).
-/docs/.deploy/
-
 /test-results/
 /playwright-report/
 
@@ -35,3 +32,10 @@ dist/
 # committing it meant every checkout inherited somebody else's half-finished
 # work - five goals whose task lists all read as incomplete.
 /.pi/
+
+# Release packing output (the publish workflows pack into pack-out/).
+pack-out/
+*.tgz
+
+# Local agent guidance that extends AGENTS.md for one maintainer's environment.
+AGENTS.local.md
