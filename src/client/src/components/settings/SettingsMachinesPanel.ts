@@ -4,6 +4,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, MachineHealth } from "../../api";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
 import "./SettingsFleetSection";
+import "./SettingsMachineAccessSection";
 import { interactiveSurfaceStyles } from "../shared";
 import { machineReachability } from "../../machineReachability";
 
@@ -42,6 +43,7 @@ export class SettingsMachinesPanel extends LitElement {
           ${this.machines.map((machine) => this.renderMachineCard(machine))}
           ${this.machines.length === 0 ? html`<p class="empty">No machines configured.</p>` : null}
         </div>
+        <settings-machine-access-section></settings-machine-access-section>
         <settings-fleet-section
           .report=${this.fleetReport}
           ?loading=${this.fleetLoading}

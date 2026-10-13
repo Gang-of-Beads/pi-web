@@ -58,9 +58,10 @@ const LINK_DOWN: ReadOutcome = { kind: "miss", miss: { kind: "link-down" } };
 /**
  * What a failed read means, decided once. Only a refusal the server stated is
  * a fact. No status (0) is a transport failure. A hop status is a remote
- * machine not answering only when PI WEB's gateway said so for a machine it
- * named; any other hop - a proxy in front of PI WEB, the local daemon - means
- * nothing answered. Any other status is a server error, in its own words.
+ * machine not answering only when someone who knows said so for a machine it
+ * named: PI WEB's gateway, or this browser for a machine it reaches itself
+ * (`HttpErrorOrigin`); any other hop - a proxy in front of PI WEB, the local
+ * daemon - means nothing answered. Any other status is a server error, in its own words.
  */
 export function classifyReadError(error: unknown): ReadOutcome {
   if (!(error instanceof HttpError) || error.status === 0) return LINK_DOWN;
@@ -68,7 +69,7 @@ export function classifyReadError(error: unknown): ReadOutcome {
   if (fact !== undefined) return { kind: "fact", fact };
   const machineId = error.machineId ?? LOCAL_MACHINE_ID;
   if (!HOP_STATUSES.has(error.status)) return { kind: "miss", miss: { kind: "server-error", machineId, reason: error.message === "" ? `HTTP ${String(error.status)}` : error.message } };
-  const remoteUnanswering = error.answeredBy === "gateway" && machineId !== LOCAL_MACHINE_ID;
+  const remoteUnanswering = error.answeredBy !== undefined && machineId !== LOCAL_MACHINE_ID;
   return remoteUnanswering ? { kind: "miss", miss: { kind: "machine-unanswering", machineId } } : LINK_DOWN;
 }
 

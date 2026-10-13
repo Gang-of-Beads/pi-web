@@ -3,6 +3,12 @@
 export type MachineKind = "local" | "remote";
 
 /**
+ * Where a page reaches a remote machine from (docs/design/browser-direct-machines.md, owner decision
+ * 1b): the browser itself, at the machine's base URL, or through the PI WEB it opened, which forwards.
+ */
+export type MachineConnection = "browser" | "server";
+
+/**
  * The machine DTOs the server contract hands plugins. They are type-only
  * re-exports: the shapes live beside the host's own client types so one
  * definition serves both, and the re-export keeps the contract's import

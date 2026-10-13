@@ -9,6 +9,7 @@ import type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  MachineConnection,
   MachineKind,
   MoveWorkspaceFileOptions,
   MoveWorkspaceFileResponse,
@@ -42,6 +43,7 @@ export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  MachineConnection,
   MachineKind,
   MoveWorkspaceFileOptions,
   MoveWorkspaceFileResponse,
@@ -94,6 +96,8 @@ export interface Machine {
   name: string;
   kind: MachineKind;
   baseUrl?: string;
+  /** Absent means through the server: entries from before browser-direct, and the local machine. */
+  connectFrom?: MachineConnection;
   createdAt: string;
   updatedAt: string;
   status?: MachineStatus;

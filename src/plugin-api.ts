@@ -1,5 +1,5 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { FileSuggestion, ForegroundToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
+import type { FileSuggestion, ForegroundToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 
@@ -15,6 +15,7 @@ export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  MachineConnection,
   MachineKind,
   PiWebComponentStatus,
   PiWebDockerMode,
@@ -628,6 +629,8 @@ export interface MachineCreateInput {
   readonly name: string;
   readonly baseUrl: string;
   readonly token?: string;
+  /** Where the page reaches the machine from; absent means through this server. */
+  readonly connectFrom?: MachineConnection;
 }
 
 /** The dialog's trust checkbox answer; `changed` is false for the pre-filled value. */

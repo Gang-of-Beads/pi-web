@@ -21,7 +21,7 @@ import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
 import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
-import type { ExtensionUiStanding, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig, PluginSurfacePresence } from "../../../shared/apiTypes";
+import type { ExtensionUiStanding, MachineConnection, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig, PluginSurfacePresence } from "../../../shared/apiTypes";
 import type { AppAction } from "../actions";
 import { composerCwd, initialAppState, type AppState } from "../appState";
 import { isSessionNotFoundError } from "../sessionNotFound";
@@ -90,6 +90,8 @@ import { PanelCollapseController, mainViewClass, panelToggleHiddenState, workspa
 import { PanelResizeController, type PanelResizeConstraints, type ResizablePanelSide } from "../appShell/panelResizeController";
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
 import { readSettingsOpen, readSettingsSection, writeSettingsOpen, writeSettingsSection, type SettingsReveal, type SettingsSection } from "../settingsRoute";
+import { clearMachineAccessRoute, readMachineAccessRequestId } from "../machineAccessRoute";
+import "./MachineAccessApproval";
 import { applyActiveShortcutPreferences } from "../shortcutPreferences";
 import { extensionShortcutActions } from "../extensionShortcutActions";
 import { createTerminalCommandRunsRuntime } from "../runtime/terminalRuntime";
@@ -264,6 +266,12 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
 // update banner). Nothing events it; the tab re-reads on this slow cadence.
 const EMPTY_ID_SET: ReadonlySet<string> = new Set();
 
+/** What removing a machine changes, said before it happens, by how the machine is reached. */
+const REMOVE_MACHINE_WORDS: Readonly<Record<MachineConnection, (name: string) => string>> = {
+  browser: (name) => `This removes it from this PI WEB and asks ${name} to forget this page's access; if it cannot be reached now, remove the access in ${name}'s own Settings. Nothing else on that machine changes.`,
+  server: () => "This only removes it from this PI WEB gateway; nothing on that machine changes.",
+};
+
 /** What the page shows of one machine's pins, from that machine's answer. */
 function machinePinView(machineId: string, answered: MachinePins): { machineId: string; ids: ReadonlySet<string>; projects?: ReadonlyMap<string, ReadonlySet<string>>; pinnedProjects?: ReadonlySet<string> } {
   return {
@@ -327,8 +335,10 @@ const PANEL_EDGE_COLUMNS_WIDTH_PX = 2;
 import { deliveredClientMessageIds } from "../userMessageRegister";
 import { heldWords, type PendingPrompt } from "../pendingOutbox";
 import { returnWordsToSavedDraft } from "../returnedWords";
+import { fleetReportFromHere, runFleetFromHere, type FleetFanOutApi } from "../fleetFanOut";
 import { rowedClientMessageIds } from "../messageDelivery";
 import { frontedPageShown } from "../frontedPage";
+import { directMachinesOf, setDirectMachines } from "../directMachineUrl";
 import { extensionWidgetPanels } from "./ExtensionWidgetPage";
 
 interface SessionCleanupDialogState {
@@ -696,6 +706,7 @@ export class PiWebApp extends LitElement {
   /** The last composer picker asked for; an older one's late read opens nothing (beginPickerRequest). */
   private pickerRequestSeq = 0;
   @state() private settingsOpen = readSettingsOpen();
+  @state() private machineAccessRequestId = readMachineAccessRequestId();
   @state() private reloadAfterSettings = false;
   private settingsListFramePushed = false;
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
@@ -1395,6 +1406,7 @@ export class PiWebApp extends LitElement {
     if (!patchChangesState(this.state, patch)) return;
     const previous = this.state;
     this.state = { ...this.state, ...patch };
+    if (patch.machines !== undefined) setDirectMachines(directMachinesOf(patch.machines));
     if (selectedChatIdentity(previous) !== selectedChatIdentity(this.state)) {
       this.committedChatIdentity = undefined;
       this.readyChatIdentity = undefined;
@@ -2146,11 +2158,19 @@ export class PiWebApp extends LitElement {
     writeSettingsSection(section);
   }
 
+  private readonly fleetFanOutApi: FleetFanOutApi = {
+    report: () => fleetApi.report(),
+    run: (operation, machineIds) => fleetApi.run(operation, machineIds),
+    health: (machineId) => api.health(machineId),
+    runtime: (machineId) => api.runtime(machineId, true),
+    start: (machineId, operation) => fleetApi.start(machineId, operation),
+  };
+
   private async refreshFleet(): Promise<void> {
     this.fleetLoading = true;
     this.fleetError = undefined;
     try {
-      this.fleetReport = await fleetApi.report();
+      this.fleetReport = await fleetReportFromHere(this.fleetFanOutApi, this.state.machines);
     } catch (error) {
       this.fleetError = describeError(error);
     } finally {
@@ -2168,7 +2188,7 @@ export class PiWebApp extends LitElement {
   private async runFleetOperation(operation: "restart" | "update", machineIds?: readonly string[]): Promise<PiWebFleetRunResponse | undefined> {
     this.fleetError = undefined;
     try {
-      return await fleetApi.run(operation, machineIds);
+      return await runFleetFromHere(this.fleetFanOutApi, this.state.machines, operation, machineIds);
     } catch (error) {
       this.fleetError = describeError(error);
       return undefined;
@@ -4739,7 +4759,7 @@ export class PiWebApp extends LitElement {
 
   private async removeMachine(machine: Machine | undefined = this.state.selectedMachine): Promise<void> {
     if (machine === undefined || machine.kind === "local") return;
-    if (!(await this.confirm({ title: `Remove ${machine.name}?`, message: "This only removes it from this PI WEB gateway; nothing on that machine changes.", confirmLabel: "Remove", tone: "danger" }))) return;
+    if (!(await this.confirm({ title: `Remove ${machine.name}?`, message: REMOVE_MACHINE_WORDS[machine.connectFrom ?? "server"](machine.name), confirmLabel: "Remove", tone: "danger" }))) return;
     const wasSelected = this.state.selectedMachine?.id === machine.id;
     if (wasSelected) this.rememberCurrentMachineNavigation();
     const fallback = await this.machines.deleteMachine(machine, { selectFallback: !wasSelected });
@@ -5594,8 +5614,14 @@ export class PiWebApp extends LitElement {
         .onClose=${() => { this.goToSheetOpen = false; }}
       ></app-go-to-sheet>` : null}
       ${this.renderAppRowLayer()}
+      ${this.machineAccessRequestId === undefined ? nothing : html`<machine-access-approval .requestId=${this.machineAccessRequestId} .onDone=${this.closeMachineAccessApproval}></machine-access-approval>`}
     `;
   }
+
+  private readonly closeMachineAccessApproval = (): void => {
+    clearMachineAccessRoute();
+    this.machineAccessRequestId = undefined;
+  };
 
   /**
    * While a dialog is open the app row rides above it (owner, 2026-10-04), and every dialog

@@ -2,7 +2,7 @@ import { isRecord } from "../../../shared/unknownValues";
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
 import { isPiWebPluginId, isReservedPiWebPluginId } from "../../../shared/pluginIds";
-import { resolveAppUrl, type AppUrlContext } from "../appUrl";
+import { resolveAppUrl } from "../appUrl";
 import type { PiWebPlugin, PiWebPluginRegistration, PluginSettings } from "./types";
 import { fetchWithDeadline } from "../api/requestDeadline";
 
@@ -81,9 +81,15 @@ export async function loadExternalPlugins(manifestUrl = "pi-web-plugins/manifest
   return { registrations, failures, listed, settings };
 }
 
-export function resolvePluginModuleUrl(moduleReference: string, manifestUrl: string, appUrlContext?: AppUrlContext): string {
+/**
+ * A manifest's module reference, as a URL. A leading slash (existing manifests' rolling-compatibility
+ * form) means the root of the PI WEB that served the manifest, which sits at
+ * `<root>/pi-web-plugins/manifest.json`: this page's root for its own manifest, the machine's root for
+ * the manifest of a machine this browser reaches directly (browser-direct-machines.md).
+ */
+export function resolvePluginModuleUrl(moduleReference: string, manifestUrl: string): string {
   if (!moduleReference.startsWith("/")) return new URL(moduleReference, manifestUrl).toString();
-  return appUrlContext === undefined ? resolveAppUrl(moduleReference) : resolveAppUrl(moduleReference, appUrlContext);
+  return new URL(`.${moduleReference}`, new URL("..", manifestUrl)).toString();
 }
 
 /** A browser may answer a module URL whose import failed with the same failure, so a retry asks for a URL of its own. */

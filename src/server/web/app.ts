@@ -55,6 +55,8 @@ import { registerPluginOperationProxyRoutes } from "./plugins/pluginOperationPro
 import { withFolderPresence } from "./projectFolderPresence.js";
 import { proxyMachinePluginAsset, registerMachinePluginProxyRoutes } from "./machines/machinePluginProxyRoutes.js";
 import { localMachineFallback, registerFallbackMachineRoutes, type MachineRegistryFace } from "./machines/localMachineRegistry.js";
+import { MachineAccessStore } from "./machineAccess/machineAccessStore.js";
+import { registerMachineAccess } from "./machineAccess/machineAccessRoutes.js";
 import type { Project, WorkspaceEffectiveConfig, WorkspaceProviderResolution } from "../shared/types.js";
 
 export interface AppDependencies {
@@ -75,6 +77,7 @@ export interface AppDependencies {
   serverPluginRuntime?: ServerPluginRuntime;
   piPackages?: PiPackageService;
   sessionPins?: SessionPinStore;
+  machineAccess?: MachineAccessStore;
   piWebStatusCache?: PiWebStatusCache;
   config?: PiWebConfigService;
   clientDist?: string | false;
@@ -234,6 +237,11 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     threshold: 1024,
   });
   await app.register(fastifyWebsocket);
+  const machineAccess = deps.machineAccess ?? new MachineAccessStore();
+  await machineAccess.load().catch((error: unknown) => {
+    app.log.warn({ err: error }, "The machine access file could not be read; no other machine's page is approved until it is fixed");
+  });
+  registerMachineAccess(app, machineAccess);
 
   const projects = deps.projects ?? new ProjectService(new ProjectStore());
   const configService = deps.config ?? createFilePiWebConfigService();

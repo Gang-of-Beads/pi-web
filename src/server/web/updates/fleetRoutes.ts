@@ -76,10 +76,19 @@ export function registerFleetRoutes(app: FastifyInstance, machines: FleetMachine
   });
 }
 
+/**
+ * The fleet as this server sees it. A machine the pages reach from the browser is not read here: the
+ * page reads it itself (decision 3a, `fleetFanOut.ts`), and a server that cannot reach it waited out
+ * a health and a runtime deadline per such machine before answering.
+ */
 async function fleetReport(machines: FleetMachines, deps: FleetRouteDeps): Promise<PiWebFleetReport> {
   const list = await machines.list();
   const targets: PiWebFleetTargetReport[] = [];
   for (const machine of list) {
+    if (machine.connectFrom === "browser") {
+      targets.push({ machineId: machine.id, name: machine.name, kind: machine.kind, online: false });
+      continue;
+    }
     const health = await machines.health(machine.id);
     const runtime = await machines.runtime(machine.id);
     targets.push({

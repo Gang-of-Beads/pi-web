@@ -8,7 +8,7 @@ import { parseScreenLines, parseScreenWidth, parseSelectedLine } from "./screenL
 import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, EXTENSION_DIALOG_EDITOR_MAX_LENGTH, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   EXTENSION_DIALOG_SCREEN_MAX_LINES, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type ExtensionDialogScreen, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionTranscriptTail, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type WorkspaceChangedUiEvent, type PinsChangedUiEvent, type PluginsChangedUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
 import { parseMachineStatusSnapshot, type MachineStatusSnapshot, type MachineStatusUiEvent } from "../../../shared/machineStatus";
-import type { JsonValue, PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionsRevisionResponse, SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot, WorkspaceProviderDiagnostic, WorkspaceProviderDiagnosticCode, WorkspaceProviderResolution, WorkspaceProviderResolutionStatus, WorkspaceProviderTier } from "../../../shared/apiTypes";
+import type { JsonValue, MachineConnection, PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionsRevisionResponse, SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot, WorkspaceProviderDiagnostic, WorkspaceProviderDiagnosticCode, WorkspaceProviderResolution, WorkspaceProviderResolutionStatus, WorkspaceProviderTier } from "../../../shared/apiTypes";
 import type { CommandResultState, OperationAppliedOutcome, OperationBatchAnswer, OperationResult, OperationStanding } from "../../../shared/apiTypes";
 import type { ExtensionCompletionApplied, ExtensionCompletionSuggestions, ExtensionWidgetPlacement, PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport, PiWebSelfUpdateStatus } from "../../../shared/apiTypes";
 import { parseKnownPiWebCapabilities } from "../../../shared/capabilities";
@@ -76,6 +76,7 @@ export function parseMachine(value: unknown): Machine {
   const record = requireRecord(value);
   const kind = requireMachineKind(record, "kind");
   const baseUrl = optionalString(record, "baseUrl");
+  const connectFrom = optionalMachineConnection(record, "connectFrom");
   const status = optionalMachineStatus(record, "status");
   const statusMessage = optionalString(record, "statusMessage");
   return {
@@ -83,6 +84,7 @@ export function parseMachine(value: unknown): Machine {
     name: requireString(record, "name"),
     kind,
     ...(baseUrl === undefined ? {} : { baseUrl }),
+    ...(connectFrom === undefined ? {} : { connectFrom }),
     createdAt: requireString(record, "createdAt"),
     updatedAt: requireString(record, "updatedAt"),
     ...(status === undefined ? {} : { status }),
@@ -131,6 +133,19 @@ function requireMachineKind(record: Record<string, unknown>, key: string): Machi
   const value = requireString(record, key);
   if (value !== "local" && value !== "remote") throw new Error(`Expected machine kind field: ${key}`);
   return value;
+}
+
+const MACHINE_CONNECTIONS: Readonly<Record<MachineConnection, true>> = { browser: true, server: true };
+
+function optionalMachineConnection(record: Record<string, unknown>, key: string): MachineConnection | undefined {
+  const value = optionalString(record, key);
+  if (value === undefined) return undefined;
+  if (!isMachineConnection(value)) throw new Error(`Expected machine connection field: ${key}`);
+  return value;
+}
+
+function isMachineConnection(value: string): value is MachineConnection {
+  return Object.hasOwn(MACHINE_CONNECTIONS, value);
 }
 
 function optionalMachineStatus(record: Record<string, unknown>, key: string): MachineStatus | undefined {

@@ -156,14 +156,8 @@ describe("external plugin manifests", () => {
     const rootManifestUrl = "https://pi.example.test/pi-web-plugins/manifest.json";
     const nestedManifestUrl = "https://pi.example.test/test/ai/pi-web-plugins/manifest.json";
 
-    expect(resolvePluginModuleUrl("/pi-web-plugins/info/pi-web-plugin.js?v=1", rootManifestUrl, {
-      viteBaseUrl: "/",
-      documentBaseUrl: "https://pi.example.test/",
-    })).toBe("https://pi.example.test/pi-web-plugins/info/pi-web-plugin.js?v=1");
-    expect(resolvePluginModuleUrl("/pi-web-plugins/info/pi-web-plugin.js?v=1", nestedManifestUrl, {
-      viteBaseUrl: "./",
-      documentBaseUrl: "https://pi.example.test/test/ai/",
-    })).toBe("https://pi.example.test/test/ai/pi-web-plugins/info/pi-web-plugin.js?v=1");
+    expect(resolvePluginModuleUrl("/pi-web-plugins/info/pi-web-plugin.js?v=1", rootManifestUrl)).toBe("https://pi.example.test/pi-web-plugins/info/pi-web-plugin.js?v=1");
+    expect(resolvePluginModuleUrl("/pi-web-plugins/info/pi-web-plugin.js?v=1", nestedManifestUrl)).toBe("https://pi.example.test/test/ai/pi-web-plugins/info/pi-web-plugin.js?v=1");
   });
 });
 

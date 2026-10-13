@@ -1,6 +1,10 @@
+import { directMachines, directMachineUrl, type DirectMachines } from "./directMachineUrl";
+
 export interface AppUrlContext {
   viteBaseUrl: string;
   documentBaseUrl: string;
+  /** Machines this browser reaches itself; their `api/machines/<id>/…` paths leave this origin. */
+  directMachines?: DirectMachines;
 }
 
 /**
@@ -11,6 +15,8 @@ export interface AppUrlContext {
  * and mean the application root rather than the origin root.
  */
 export function resolveAppUrl(path: string, context: AppUrlContext = browserAppUrlContext()): string {
+  const direct = context.directMachines === undefined ? undefined : directMachineUrl(path, context.directMachines);
+  if (direct !== undefined) return direct;
   const applicationBaseUrl = new URL(context.viteBaseUrl, context.documentBaseUrl);
   return new URL(appRelativePath(path), applicationBaseUrl).toString();
 }
@@ -31,6 +37,7 @@ function browserAppUrlContext(): AppUrlContext {
   return {
     viteBaseUrl: import.meta.env.BASE_URL,
     documentBaseUrl: document.baseURI,
+    directMachines: directMachines(),
   };
 }
 
