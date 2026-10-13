@@ -1,15 +1,13 @@
 # PI WEB
 
-[![CI](https://github.com/Gang-of-Beads/pi-web/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Gang-of-Beads/pi-web/actions/workflows/ci.yml)
+[![Release](https://github.com/Gang-of-Beads/pi-web/actions/workflows/publish.yml/badge.svg)](https://github.com/Gang-of-Beads/pi-web/actions/workflows/publish.yml)
 [![npm version](https://img.shields.io/npm/v/@gang-of-beads/pi-web)](https://www.npmjs.com/package/@gang-of-beads/pi-web)
 [![Node.js](https://img.shields.io/node/v/@gang-of-beads/pi-web)](package.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **PI WEB is a web UI for [Pi Coding Agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) that keeps agent sessions running in real workspaces on your machine or server.**
 
-Run agents where your code, tools, credentials, and build caches live. Supervise them from any browser.
-
-Source and docs: <https://github.com/Gang-of-Beads/pi-web>
+Run agents where your code, tools, credentials and build caches live. Supervise them from any browser.
 
 ![PI WEB](docs/assets/pi-web-banner.png)
 
@@ -21,27 +19,25 @@ Source and docs: <https://github.com/Gang-of-Beads/pi-web>
 
 ## Why PI WEB?
 
-Agentic development works better when the work environment is persistent.
-
-PI WEB lets you:
+Agentic development works better when the work environment is persistent. PI WEB lets you:
 
 - keep Pi Coding Agent sessions alive after browser disconnects;
 - run agents inside real repositories and git worktrees;
-- supervise multiple sessions in parallel;
-- switch between laptop, phone, tablet, and desktop;
-- use a server, workstation, or remote dev box as your agent runtime;
-- manage projects, workspaces, files, terminals, sessions, and remote machines from one web UI.
+- supervise several sessions in parallel;
+- switch between laptop, phone, tablet and desktop;
+- use a server, workstation or remote dev box as your agent runtime;
+- manage projects, workspaces, files, terminals, sessions and other machines from one web UI.
 
-Your browser is the control surface. The work stays where it can keep running.
+Your browser is the control surface. The work stays where it can keep running. See [Remote-first development](docs/remote-first.md).
 
 ## Quick start
 
 Requirements:
 
-- Node.js 22.19.0 or newer
-- npm
-- Pi Coding Agent `>=0.84.0`, configured for your user
+- Node.js 22.19.0 or newer, and npm
+- Pi Coding Agent 1.1.0 or newer, configured for your user
 - git and the development tools your agents need
+- Linux or macOS with a per-user service manager (systemd or launchd)
 
 Install and start PI WEB as per-user services:
 
@@ -51,15 +47,11 @@ pi-web install
 pi-web doctor
 ```
 
-On npm 12, the scoped flag lets `node-pty` prepare its required native module without enabling install scripts for other dependencies.
+Then open <http://127.0.0.1:8504>.
 
-Then open:
+Nix, Home Manager, Docker, installing through Pi, WSL and manual runs: see the [installation guide](docs/install.md).
 
-```text
-http://127.0.0.1:8504
-```
-
-Useful commands:
+Everyday commands:
 
 ```bash
 pi-web status
@@ -70,165 +62,35 @@ pi-web version
 pi-web uninstall
 ```
 
-<!-- Keep README guidance concise. Put install variants, troubleshooting,
-configuration, and operational details in docs/, then link from here. -->
-
-For more install options, including one-line install, Pi package install, WSL/manual usage, and remote access, see the [installation guide](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/install.html).
-
-## Install with Nix
-
-Every release is built for `x86_64-linux`, `aarch64-linux` and Apple Silicon macOS and pushed to the public binary cache [gang-of-beads.cachix.org](https://app.cachix.org/cache/gang-of-beads). A Nix install of a release downloads PI WEB instead of compiling it. Pin a release tag, replacing `<version>` with one from the [releases page](https://github.com/Gang-of-Beads/pi-web/releases). Any other commit builds locally.
-
-```bash
-nix profile install github:Gang-of-Beads/pi-web/v<version> --accept-flake-config
-```
-
-The flake declares the cache, and Nix honours that declaration only for trusted users. If Nix warns that it ignored the substituter, add the cache once, system-wide, with `cachix use gang-of-beads` or these `nix.conf` lines, then restart the Nix daemon:
-
-```text
-extra-substituters = https://gang-of-beads.cachix.org
-extra-trusted-public-keys = gang-of-beads.cachix.org-1:oeKLfGX21CJJ8AUAhGoesrIy2i8vlXCEn6yT4x1hqX0=
-```
-
-With Home Manager, use the flake's own package. The module's default package, and `inputs.pi-web.inputs.nixpkgs.follows`, both build PI WEB against your nixpkgs, which is a different build from the one in the cache.
-
-```nix
-inputs.pi-web.url = "github:Gang-of-Beads/pi-web/v<version>";
-
-# In your Home Manager modules, with inputs.pi-web.homeManagerModules.default imported:
-programs.pi-web = {
-  enable = true;
-  package = inputs.pi-web.packages.${pkgs.stdenv.hostPlatform.system}.pi-web;
-};
-```
-
-Service management and settings are in the installation guide's [NixOS and nix-darwin section](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/install.html#nix).
-
 ## Core model
 
-PI WEB organizes work like this:
-
 ```text
-Machine     a local or remote PI WEB runtime endpoint
+Machine     a PI WEB runtime: the one you opened, or another one you added
 Project     a folder on that machine
-Workspace   a provider-owned working folder; bundled Git discovers worktrees, otherwise the project folder
+Workspace   a working folder of the project: the project folder, or with Git, each worktree
 Session     a Pi Coding Agent chat running inside a workspace
 ```
 
-A typical flow:
+A typical flow: add a project, choose a workspace or git worktree, start a session, let the agent work, and come back later from any browser.
 
-1. Add a project.
-2. Choose a workspace or git worktree.
-3. Start a session.
-4. Let the agent work.
-5. Come back later from any browser.
+## Security
 
-## Remote-first development
-
-PI WEB is designed for remote AI-driven development.
-
-Instead of tying agent work to your laptop session, run PI WEB on a machine that stays available: a server, desktop, cloud VM, home lab machine, or remote dev box.
-
-Use a private network, SSH tunnel, trusted reverse proxy, or federated PI WEB machine setup when accessing it remotely.
-
-Read more: [Remote-first development](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/remote-first.html)
-
-## Machines and fleets
-
-PI WEB can register other PI WEB runtimes as remote machines. One browser-facing PI WEB instance can proxy projects, files, git state, sessions, terminals, activity, Pi package management, and selected-machine settings from trusted remote machines.
-
-When a remote machine is selected, Settings tabs label their target. Pi packages, PI WEB plugin enablement, session daemon toggles, external file access, and upload defaults target the selected machine. Gateway/server settings such as host, port, allowed hosts, registered machines/tokens, and keyboard shortcuts stay local to the gateway/browser.
-
-Read more: [Fleet and machines guide](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/machines.html)
-
-## PI WEB plugins
-
-PI WEB supports trusted browser plugins plus optional sessiond-backed workspace providers. Bundled Git uses the same public provider and backend contracts available to installed plugins. Use **Settings → PI WEB plugins** to manage desired state on the selected machine.
-
-Pi packages are a separate Pi package-manager concept. A Pi package may include a PI WEB plugin, but installing a package and enabling it are different operations. Server-backed changes require a session-daemon restart; see the plugin guide for lifecycle and recovery details. The session daemon's ownership, restart order, and second-instance requirements are documented in the [installation guide](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/install.html#session-daemon).
-
-Read more: [PI WEB plugin guide and API](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md)
-
-### Packages from Gang of Beads
-
-These Pi packages are maintained alongside PI WEB. Install one from **Settings → Pi packages** with its source, or with `pi install <source>`.
-
-| Package | What it adds | Source |
-|---|---|---|
-| [pi-web-themes](https://github.com/Gang-of-Beads/pi-web-themes) | More PI WEB themes: PI WEB, Clay and Material light/dark pairs, plus Classic, Night, Paper and High Contrast | `git:github.com/Gang-of-Beads/pi-web-themes` |
-| [pi-web-workflows](https://github.com/Gang-of-Beads/pi-web-workflows) | Draws the pi-dynamic-workflows `workflow` tool as a live progress card | `npm:@gang-of-beads/pi-web-workflows` |
-| [pi-web-background-runs](https://github.com/Gang-of-Beads/pi-web-background-runs) | A Background tab and running count for pi-background-tasks (`bg_run`) tasks | `npm:@gang-of-beads/pi-web-background-runs` |
-| [pi-web-subagents](https://github.com/Gang-of-Beads/pi-web-subagents) | A Subagents tab for pi-subagents runs, and a card to answer a child's question | `npm:@gang-of-beads/pi-web-subagents` |
-| [pi-goal](https://github.com/Gang-of-Beads/pi-goal) | Goal mode: long-running objectives with tasks, auto-continue and a completion audit; PI WEB lists the goals on a page with pi-web-goals | `git:github.com/Gang-of-Beads/pi-goal` |
-| [pi-web-goals](https://github.com/Gang-of-Beads/pi-web-goals) | A Goals tab for pi-goal: each goal's status and task progress | `npm:@gang-of-beads/pi-web-goals` |
-| [pi-ask-user](https://github.com/Gang-of-Beads/pi-ask-user) | An `ask_user` tool the agent uses to ask you a question; PI WEB draws it as a card | `git:github.com/Gang-of-Beads/pi-ask-user` |
-| [pi-multi-account](https://github.com/Gang-of-Beads/pi-multi-account) | Several OAuth accounts per provider, and Claude subscription billing | `git:github.com/Gang-of-Beads/pi-multi-account` |
-| [pi-updater](https://github.com/Gang-of-Beads/pi-updater) | Offers updates for pi; under PI WEB it names the session-daemon restart an update needs | `git:github.com/Gang-of-Beads/pi-updater` |
-| [pi-bash-autobg](https://github.com/Gang-of-Beads/pi-bash-autobg) | Moves a long-running bash call to the background instead of blocking the agent | `git:github.com/Gang-of-Beads/pi-bash-autobg` |
-
-## Configuration
-
-Global config lives at:
-
-```text
-$PI_WEB_CONFIG
-~/.config/pi-web/config.json
-```
-
-Project-local PI WEB config lives at:
-
-```text
-<project>/.pi-web/config.json
-```
-
-Common configuration includes host/port, path access, uploads, PI WEB plugin enablement, shortcuts, and session daemon options. In Settings, machine-affecting config targets the selected machine; gateway host/port/allowed-hosts, remote machine registration, tokens, and keyboard shortcuts stay local.
-
-Read more: [Configuration reference](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/config.md)
-
-## Development
-
-Clone the repository with pnpm 12.8.1 installed and run:
-
-```bash
-pnpm install --frozen-lockfile
-pnpm run dev
-```
-
-Open the Vite URL, usually:
-
-```text
-http://localhost:8505
-```
-
-For the split development setup:
-
-```bash
-pnpm run dev:sessiond
-pnpm run dev:web
-pnpm run dev:client
-```
-
-Validate changes with:
-
-```bash
-pnpm run verify
-```
-
-## Security model
-
-PI WEB assumes trusted users, trusted repositories, and trusted server paths.
-
-It is not a sandbox, permission system, or multi-tenant platform. Do not expose it directly to the public internet without a trusted network, firewall, VPN, SSH tunnel, or authenticated reverse proxy.
+PI WEB has no login of its own and assumes trusted users, repositories and server paths; it is not a sandbox or a multi-user platform. Keep it on localhost, a private network, an SSH tunnel or an authenticated reverse proxy, never directly on the public internet. See [SECURITY.md](SECURITY.md) for the threat model and how to report a vulnerability.
 
 ## Documentation
 
-- [Repository](https://github.com/Gang-of-Beads/pi-web)
-- [Install](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/install.html)
-- [Remote-first development](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/remote-first.html)
-- [Machines / fleet](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/machines.html)
-- [Configuration](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/config.md)
-- [Plugins](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md)
-- [FAQ](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/faq.html)
+- [Install](docs/install.md): requirements, install options, services, updates, remote access
+- [Configuration](docs/config.md): config files, keys, environment variables, restart rules
+- [Machines](docs/machines.md): use several PI WEB machines from one page
+- [Remote-first development](docs/remote-first.md)
+- [Plugins](docs/plugins.md): PI WEB plugins and Pi packages
+- [FAQ and troubleshooting](docs/faq.md)
+
+Plugins and packages maintained alongside PI WEB: [docs/plugins.md](docs/plugins.md#packages).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, checks and pull request expectations.
 
 ## License
 
