@@ -580,7 +580,7 @@ export interface PiSessionManager {
   getTree?(): readonly ProjectableSessionTreeNode[];
   getLeafId(): string | null;
   getLeafEntry?(): { readonly timestamp?: unknown } | undefined;
-  getHeader?(): { parentSession?: string } | null | undefined;
+  getHeader?(): { parentSession?: string; timestamp?: string } | null | undefined;
   appendCustomEntry?(customType: string, data?: unknown): string;
 }
 
@@ -1811,7 +1811,10 @@ export class PiSessionService implements SessionRouteService {
     for (const record of archivedForCwd) {
       this.publishNotificationMutations(this.notificationStore.clearSession(record.sessionId, "archive-reconcile"));
     }
-    const unarchivedSessions = sessions.filter((session) => !archivedById.has(session.id)).map(clientSessionFromListEntry);
+    const unarchivedSessions = [
+      ...this.unwrittenSessionsIn(cwd, new Set(sessions.map((session) => session.id))),
+      ...sessions.filter((session) => !archivedById.has(session.id)).map(clientSessionFromListEntry),
+    ];
     const reconcilableSessionIds = this.reconcilableSessionIds(cwd, unarchivedSessions.map((session) => session.id), archivedById);
     this.workspaceActivity?.reconcileSessionActivity(cwd, reconcilableSessionIds);
     await this.publishUnreadMutations(this.unreadStore.reconcileCwd(canonicalizeStoredCwd(cwd), reconcilableSessionIds));
@@ -1846,6 +1849,22 @@ export class PiSessionService implements SessionRouteService {
     const unwritten = this.unwrittenSession(ref.id);
     if (unwritten !== undefined) return unwritten;
     throw new SessionNotFoundError();
+  }
+
+  /**
+   * The sessions open in this daemon that pi has not written yet. pi writes a session's file at its
+   * first message, so one nobody has spoken to exists only here, and a listing read from files lost
+   * it the moment its reader left (owner, 2026-10-13: list it). A daemon restart drops them, as it
+   * drops the sessions themselves.
+   */
+  private unwrittenSessionsIn(cwd: string, listedIds: ReadonlySet<string>): ClientSession[] {
+    const wanted = canonicalizeStoredCwd(cwd);
+    return [...this.active.values()]
+      .map((active) => active.runtime)
+      .filter((runtime) => !listedIds.has(runtime.session.sessionId)
+        && !sessionFileExists(runtime.session.sessionFile)
+        && canonicalizeStoredCwd(runtime.cwd) === wanted)
+      .map((runtime) => freshClientSession(runtime.session, runtime.cwd));
   }
 
   private unwrittenSession(sessionId: string): ClientSession | undefined {
@@ -6729,14 +6748,14 @@ function notificationIdentityForSession(session: PiAgentSession): { sessionId: s
 
 /** A session the daemon holds open, as a listing row, before its file says more about it. */
 function freshClientSession(session: PiAgentSession, cwd: string): ClientSession {
-  const now = new Date().toISOString();
+  const created = session.sessionManager.getHeader?.()?.timestamp ?? new Date().toISOString();
   return {
     id: session.sessionId,
     path: session.sessionFile ?? "",
     cwd,
     persisted: sessionFileExists(session.sessionFile),
-    created: now,
-    modified: now,
+    created,
+    modified: created,
     messageCount: readableMessageCount(session.sessionManager.getBranch()),
     firstMessage: "",
   };

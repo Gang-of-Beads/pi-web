@@ -294,21 +294,30 @@ function row(session: SessionInfo, machineId: string, input: NavigateInput): Nav
 }
 
 /**
- * The subtitle a reader can use: state first because it decides whether to
- * open, then size, then the folder it runs in. Tags stay searchable but off
- * the screen - a row of hashes said nothing at a glance (owner).
+ * A session pi has not written yet: nobody has spoken in it, and it lives only in its daemon until
+ * the first message, so a daemon restart drops it (owner, 2026-10-13: list it, marked). The mark
+ * leads the line the row shows, because the subtitle below is not drawn on a session row.
  */
+const NOT_STARTED_MARK = "not started";
+
 /**
- * The project a session runs in, or its working directory when the project is
- * not in the loaded catalogue. The owner reads a list of names by where they
+ * The line a session row shows: the project a session runs in, or its working
+ * directory when the project is not in the loaded catalogue, prefixed with
+ * NOT_STARTED_MARK for a session pi has not persisted yet. The owner reads a list of names by where they
  * are, so the row says where before it says how busy.
  */
 function sessionPath(session: SessionInfo, input: NavigateInput): string {
   const folder = input.folders.find((entry) => entry.path === session.cwd);
   const project = folder === undefined ? undefined : input.projects.find((entry) => entry.id === folder.projectId);
-  return project?.name ?? folder?.label ?? session.cwd;
+  const where = project?.name ?? folder?.label ?? session.cwd;
+  return session.persisted === false ? `${NOT_STARTED_MARK} · ${where}` : where;
 }
 
+/**
+ * The subtitle a reader can use: state first because it decides whether to
+ * open, then size, then the folder it runs in. Tags stay searchable but off
+ * the screen - a row of hashes said nothing at a glance (owner).
+ */
 function sessionDetail(session: SessionInfo, machineId: string, input: NavigateInput): string {
   const parts: string[] = [];
   const stateWord = STATE_DETAIL[sessionState(session, input)];
