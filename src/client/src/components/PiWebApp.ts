@@ -236,8 +236,6 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .error { display: flex; gap: var(--pi-space-4); align-items: flex-start; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-  .error .error-retry { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-5); border: 1px solid currentColor; border-radius: var(--pi-radius-md); background: none; color: inherit; font: inherit; cursor: pointer; }
-  @media (pointer: coarse) { .error .error-retry { min-height: var(--pi-control-height-touch); } }
   .app-row-layer { position: fixed; top: 0; left: 0; right: 0; z-index: calc(var(--pi-layer-dialog) + 5); padding-top: env(safe-area-inset-top); background: var(--pi-bg); box-shadow: var(--pi-elevation-2); }
   .app-row-layer:empty { display: none; }
   .deprecation-notice { padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-warning); }
@@ -5130,10 +5128,10 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * What "Retry" means on the shell banner: read the current scope again.
-   * The banner reports a failed read of the selection, so the retry is the
-   * read the selection needs - not a generic reload that would lose the
-   * reader's place.
+   * What "Retry" means on the session status bar: read the current scope again.
+   * The bar reports a failed read of the selection, so the retry is the read
+   * the selection needs - not a generic reload that would lose the reader's
+   * place. The app row above it has no Retry (owner, 2026-10-13).
    */
   private async retryAfterError(): Promise<void> {
     this.bannerDismissedByReader = true;
@@ -5303,7 +5301,7 @@ export class PiWebApp extends LitElement {
       this.bannerShownAt = Date.now();
       this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
     }
-    this.heldErrorBanner = errorBanner(error, undefined, this.rowNames(), () => { void this.retryAfterError(); });
+    this.heldErrorBanner = errorBanner(error, undefined, this.rowNames(), this.state.errorRetiredBy === RetiredBy.reply);
     return this.heldErrorBanner;
   }
 

@@ -8,8 +8,7 @@ import { reachWords, syncWords, type RowNames } from "../sync/rowWords.js";
  * The shared error banner. Every state in the app row is momentary (owner,
  * 2026-10-04): it has no close key, and it leaves when another message replaces
  * it, the owning action clears it, its expiry passes (`noticeExpiryMs`), or -
- * for a claim about a link - the machine's own answers retire it. A failure the
- * reader can act on keeps its Retry while it shows.
+ * for a claim about a link - the machine's own answers retire it.
  *
  * A few transport/reconnect failures are noisy but usually self-heal after the
  * next retry or a sessiond restart. Those still deserve visibility, but not a
@@ -30,20 +29,22 @@ const TRANSPORT_WORDS: Readonly<Record<TransportClaim, (names: RowNames) => stri
   "server-error": () => "Connection problem. Retrying in the background…",
 };
 
+/**
+ * The app row is a sync light, not a control (owner, 2026-10-13: "the sync row must not carry any
+ * button; it is not there to be interacted with"). The page keeps trying until it is in step, so
+ * nothing here is pressed: no Retry, no dismiss. A notice that heals by itself - a transport claim,
+ * or a reply-retired notice such as "Trying to sync with X..." - wears the row's sync colour.
+ */
 export function errorBanner(
   error: string,
   claim: TransportClaim | undefined,
   names: RowNames,
-  onRetry?: () => void,
+  selfHealing = false,
 ): TemplateResult | null {
   if (error === "") return null;
-  const transient = claim === undefined ? undefined : TRANSPORT_WORDS[claim](names);
-  const retry = transient === undefined && onRetry !== undefined
-    ? html`<button type="button" class="error-retry" @click=${() => { onRetry(); }}>Retry</button>`
-    : null;
+  const transient = claim === undefined ? (selfHealing ? error : undefined) : TRANSPORT_WORDS[claim](names);
   return html`<div class=${`error${transient === undefined ? "" : " transient"}`} role=${transient === undefined ? "alert" : "status"}>
     <span class="error-text">${transient ?? error}</span>
-    ${retry}
   </div>`;
 }
 
@@ -91,7 +92,7 @@ export function syncingRow(): TemplateResult {
  */
 export const TRANSIENT_ERROR_TIMEOUT_MS = 6000;
 
-/** How long a notice about one operation stays: long enough to read and press Retry. */
+/** How long a notice about one operation stays: long enough to read. */
 export const READER_NOTICE_TIMEOUT_MS = 10_000;
 
 /**

@@ -157,27 +157,32 @@ describe("the daemon-unavailable banner the server actually sends", () => {
 });
 
 /**
- * Owner rule: no permanent error without a retry. A reader-retired failure -
- * "Session not found" on a machine that does not have it - used to offer only
- * a cross.
+ * Owner, 2026-10-13: the app row is a sync light; it carries no button. It offered Retry from
+ * 2026-09-21 until a red "Trying to sync with k12-8506... Retry" was reported.
  */
-describe("a reader-retired banner offers a way to try again", () => {
-  it("renders Retry and calls it", () => {
-    const retries: number[] = [];
+describe("the app row carries no button", () => {
+  it("draws a reader-retired notice without any button", () => {
     const host = document.createElement("div");
-    render(errorBanner("Session not found", undefined, NAMES, () => { retries.push(1); }), host);
-    const retry = host.querySelector<HTMLButtonElement>(".error-retry");
+    render(errorBanner("Session not found", undefined, NAMES), host);
 
-    expect(retry).not.toBeNull();
-    retry?.click();
-    expect(retries).toEqual([1]);
+    expect({
+      text: host.querySelector(".error-text")?.textContent,
+      transient: host.querySelector(".error.transient") !== null,
+      role: host.querySelector(".error")?.getAttribute("role"),
+      button: host.querySelector("button"),
+    }).toEqual({ text: "Session not found", transient: false, role: "alert", button: null });
   });
 
-  it("does not add Retry to a self-healing transport claim", () => {
+  it("draws a notice that heals by itself in the sync colour, without any button", () => {
     const host = document.createElement("div");
-    render(errorBanner("remote machine request cancelled", "machine-unreachable", NAMES, () => undefined), host);
+    render(errorBanner("Trying to sync with k12-8506…", undefined, NAMES, true), host);
 
-    expect(host.querySelector(".error-retry")).toBeNull();
+    expect({
+      transient: host.querySelector(".error.transient") !== null,
+      role: host.querySelector(".error")?.getAttribute("role"),
+      text: host.querySelector(".error-text")?.textContent,
+      button: host.querySelector("button"),
+    }).toEqual({ transient: true, role: "status", text: "Trying to sync with k12-8506…", button: null });
   });
 });
 
