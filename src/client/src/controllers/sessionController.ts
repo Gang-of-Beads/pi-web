@@ -2425,6 +2425,7 @@ export class SessionController {
     // re-reading the goal directory for, and every other status update would
     // make it a poll.
     const becameIdle = isSelected && isSessionActive(state.status ?? status) && !isSessionActive(status);
+    const dialogsCurrent = isSelected && !(status.pendingDialogsRevision !== undefined && this.dialogScope.predates(status.pendingDialogsRevision, status.daemonInstanceId));
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
       ...sessionRowPatch(state, status),
@@ -2440,8 +2441,9 @@ export class SessionController {
       // cannot speak for: the snapshot is unordered against socket frames, so
       // one taken before the close can arrive after it. Re-opening a dismissed
       // dialog would record its outcome card again and cost the reader a second
-      // tap, so those ids are held back.
-      ...(isSelected ? { pendingDialogs: openDialogsAfterDismissals(status.pendingDialogs, state.settledDialogIds) } : {}),
+      // tap, so those ids are held back. A projection older than frames already
+      // applied is skipped for the same reason: it would drop a dialog opened since.
+      ...(dialogsCurrent ? { pendingDialogs: openDialogsAfterDismissals(status.pendingDialogs, state.settledDialogIds) } : {}),
       ...(messages === state.messages ? {} : { messages }),
       ...(commandLedger === state.commandLedger ? {} : { commandLedger }),
     });

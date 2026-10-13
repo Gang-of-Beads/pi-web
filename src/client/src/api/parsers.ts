@@ -608,6 +608,8 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     ...optionalContextUsage(record["contextUsage"]),
     ...optionalField("thinkingLevel", optionalString(record, "thinkingLevel")),
     ...optionalPendingDialogs(record["pendingDialogs"]),
+    ...optionalField("pendingDialogsRevision", optionalNumber(record, "pendingDialogsRevision")),
+    ...optionalField("daemonInstanceId", optionalNonEmptyString(record, "daemonInstanceId")),
     ...optionalStreamPosition(record["streamPosition"]),
     ...optionalExtensionUi(record["extensionUi"]),
     ...optionalExtensionShortcuts(record["extensionShortcuts"]),

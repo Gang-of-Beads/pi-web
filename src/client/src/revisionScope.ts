@@ -93,6 +93,17 @@ export class RevisionScope {
     this.settleAwaited();
   }
 
+  /**
+   * Whether a full read of this daemon's surface was taken before frames this scope already
+   * applied. Such a read cannot speak for the surface: a dialog close answers with the status
+   * it computed before the extension opened its next dialog, and that answer can land after the
+   * next dialog's frame.
+   */
+  predates(revision: number, daemonInstanceId?: string): boolean {
+    const sameInstance = daemonInstanceId === undefined || this.daemonId === undefined || daemonInstanceId === this.daemonId;
+    return sameInstance && revision < this.appliedRevision;
+  }
+
   /** The full read failed. A frame that waited for it is now a gap, and a frame that comes later has no read to wait for: both repair from another read. */
   readFailed(): void {
     this.reading = false;
