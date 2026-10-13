@@ -5203,7 +5203,7 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * Every machine "Trying to sync with" is about, named (owner, 2026-10-14: "都显示机器名"): the one
+   * Every machine "Trying to sync with" is about, named (owner, 2026-10-14: name every machine): the one
    * the row's claim names, and each other machine whose outbox has gone unanswered past the grace.
    */
   private unansweredMachineNames(miss: ReadMiss, now: number): string {

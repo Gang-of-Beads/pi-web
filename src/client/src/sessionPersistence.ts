@@ -37,7 +37,7 @@ export function isPendingStartSessionInfo(session: SessionInfo): boolean {
 }
 
 /**
- * A session the machine holds, written or not: archived like any other (owner, 2026-10-14: "就把它当成正常的session").
+ * A session the machine holds, written or not: archived like any other (owner, 2026-10-14: treat it as a normal session).
  * One still being created exists only in this browser, and is deleted instead.
  */
 export function isArchivableSessionInfo(session: SessionInfo | undefined, status?: SessionStatus): boolean {

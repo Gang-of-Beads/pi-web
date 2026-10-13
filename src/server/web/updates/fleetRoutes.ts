@@ -124,7 +124,7 @@ async function resolveTargets(machines: FleetMachines, requested: string[] | und
   const list = await machines.list();
   const all = list.map((machine) => ({ id: machine.id, name: machine.name }));
   if (requested === undefined) return all;
-  // Accept names as well as ids: an operator types "hxd-pi", not a uuid.
+  // Accept names as well as ids: an operator types "build-box", not a uuid.
   return all.filter((machine) => requested.includes(machine.id) || requested.includes(machine.name));
 }
 

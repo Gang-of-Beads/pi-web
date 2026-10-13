@@ -85,7 +85,7 @@ describe("shouldShowSessionSearch", () => {
 
 describe("session id search", () => {
   const session = (id: string, firstMessage: string, path: string): SessionInfo => ({
-    id, cwd: "/home/hanxiaodu", path, created: "", modified: "", messageCount: 0, firstMessage,
+    id, cwd: "/home/example", path, created: "", modified: "", messageCount: 0, firstMessage,
   });
 
   // Searching a session id prefix used to return nearly the whole list: the
@@ -94,8 +94,8 @@ describe("session id search", () => {
   it("does not match unrelated sessions from a session id prefix", () => {
     const other = session(
       "01a00f62-1111-2222-3333-444444444444",
-      "\u276f ssh hanxiaodu@100.100.1.1 Welcome to Ubuntu",
-      "/home/hanxiaodu/.pi/sessions/01a00f62.jsonl",
+      "\u276f ssh user@192.0.2.10 Welcome to Ubuntu",
+      "/home/example/.pi/sessions/01a00f62.jsonl",
     );
     expect(sessionMatchesSearch(other, "01a0136")).toBe(false);
   });
@@ -118,7 +118,7 @@ describe("session id search", () => {
 
     const noisy = session(
       "01a00616-738e-76a6-a2bf-f0656c8021ec", stackTrace,
-      "/home/hanxiaodu/.pi/agent/sessions/2026-08-15T15-42-03-696Z_01a00616.jsonl",
+      "/home/example/.pi/agent/sessions/2026-08-15T15-42-03-696Z_01a00616.jsonl",
     );
     expect(sessionMatchesSearch(noisy, "01a0136")).toBe(false);
   });
@@ -126,7 +126,7 @@ describe("session id search", () => {
   it("still matches the session whose id carries the prefix", () => {
     const target = session(
       "01a01367-aaaa-bbbb-cccc-dddddddddddd", "hi",
-      "/home/hanxiaodu/.pi/sessions/01a01367.jsonl",
+      "/home/example/.pi/sessions/01a01367.jsonl",
     );
     expect(sessionMatchesSearch(target, "01a0136")).toBe(true);
   });

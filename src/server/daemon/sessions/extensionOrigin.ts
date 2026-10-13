@@ -21,7 +21,7 @@ import { isRecord } from "../../../shared/unknownValues.js";
  * one extension own every file under it.
  *
  * The key the author's page is reached by carries the name its package gives itself for PI WEB,
- * `piWeb.title` in its package.json (owner, 2026-10-07: "显示的名字可以由插件自己定义"), else the
+ * `piWeb.title` in its package.json (owner, 2026-10-07: a plugin may define its own display name), else the
  * package's name, else the extension file's.
  */
 export interface ExtensionOrigin {

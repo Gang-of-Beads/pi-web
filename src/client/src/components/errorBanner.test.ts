@@ -10,7 +10,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-const NAMES = { page: "hxd-work-mbp", machine: "hxd-pc-ubuntu" };
+const NAMES = { page: "laptop", machine: "build-box" };
 
 function renderBanner(error: string, claim?: TransportClaim): { host: HTMLElement } {
   const host = document.createElement("div");
@@ -113,7 +113,7 @@ describe("dropped-connection failures", () => {
       expect(isTransientError(raw)).toBe(true);
       const { host } = renderBanner(raw, legacyTransportClaim(raw));
       expect(host.querySelector(".error")?.getAttribute("role")).toBe("status");
-      expect(host.querySelector(".error-text")?.textContent).toContain("Trying to reach hxd-work-mbp");
+      expect(host.querySelector(".error-text")?.textContent).toContain("Trying to reach laptop");
     }
   });
 
@@ -158,7 +158,7 @@ describe("the daemon-unavailable banner the server actually sends", () => {
 
 /**
  * Owner, 2026-10-13: the app row is a sync light; it carries no button. It offered Retry from
- * 2026-09-21 until a red "Trying to sync with k12-8506... Retry" was reported.
+ * 2026-09-21 until a red "Trying to sync with build-box... Retry" was reported.
  */
 describe("the app row carries no button", () => {
   it("draws a reader-retired notice without any button", () => {
@@ -175,14 +175,14 @@ describe("the app row carries no button", () => {
 
   it("draws a notice that heals by itself in the sync colour, without any button", () => {
     const host = document.createElement("div");
-    render(errorBanner("Trying to sync with k12-8506…", undefined, NAMES, true), host);
+    render(errorBanner("Trying to sync with build-box…", undefined, NAMES, true), host);
 
     expect({
       transient: host.querySelector(".error.transient") !== null,
       role: host.querySelector(".error")?.getAttribute("role"),
       text: host.querySelector(".error-text")?.textContent,
       button: host.querySelector("button"),
-    }).toEqual({ transient: true, role: "status", text: "Trying to sync with k12-8506…", button: null });
+    }).toEqual({ transient: true, role: "status", text: "Trying to sync with build-box…", button: null });
   });
 });
 
@@ -193,7 +193,7 @@ describe("the app row carries no button", () => {
  */
 describe("what the app row says while a read goes unanswered", () => {
   it("says why, for every miss, naming the machine and falling back to its id", () => {
-    const names = new Map([["local", "hxd-work-mbp"], ["ubuntu", "hxd-pc-ubuntu"]]);
+    const names = new Map([["local", "laptop"], ["ubuntu", "build-box"]]);
     const nameOf = (machineId: string) => names.get(machineId) ?? machineId;
     expect({
       "link-down": unansweredRowText({ kind: "link-down" }, nameOf),
@@ -201,9 +201,9 @@ describe("what the app row says while a read goes unanswered", () => {
       "server-error": unansweredRowText({ kind: "server-error", machineId: "local", reason: "Project store is locked" }, nameOf),
       "server-error, unknown machine": unansweredRowText({ kind: "server-error", machineId: "gone-1", reason: "Internal Server Error" }, nameOf),
     }).toEqual({
-      "link-down": "Trying to reach hxd-work-mbp…",
-      "machine-unanswering": "Trying to sync with hxd-pc-ubuntu…",
-      "server-error": "hxd-work-mbp: Project store is locked",
+      "link-down": "Trying to reach laptop…",
+      "machine-unanswering": "Trying to sync with build-box…",
+      "server-error": "laptop: Project store is locked",
       "server-error, unknown machine": "gone-1: Internal Server Error",
     });
   });

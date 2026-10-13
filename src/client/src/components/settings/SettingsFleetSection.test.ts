@@ -12,7 +12,7 @@ const report: PiWebFleetReport = {
   hub: { machineId: "local", name: "This machine" },
   machines: [
     { machineId: "local", name: "This machine", kind: "local", online: true, version: "1.2.3", piVersion: "0.84.2" },
-    { machineId: "remote-a", name: "hxd-pi", kind: "remote", online: false, error: "unreachable" },
+    { machineId: "remote-a", name: "pi-host", kind: "remote", online: false, error: "unreachable" },
   ],
 };
 
@@ -58,7 +58,7 @@ describe("SettingsFleetSection", () => {
       hub: { machineId: "local", name: "This machine" },
       outcomes: [
         { machineId: "local", name: "This machine", started: true },
-        { machineId: "remote-a", name: "hxd-pi", started: false, error: "restart responded 503" },
+        { machineId: "remote-a", name: "pi-host", started: false, error: "restart responded 503" },
       ],
     };
     const onRun = vi.fn(() => Promise.resolve(runResponse));
@@ -73,7 +73,7 @@ describe("SettingsFleetSection", () => {
     expect(onRun).toHaveBeenCalledWith("restart", undefined);
     const outcome = section.shadowRoot?.querySelector(".outcome");
     expect(outcome?.classList.contains("has-failures")).toBe(true);
-    expect(outcome?.textContent).toContain("Did not start · hxd-pi");
+    expect(outcome?.textContent).toContain("Did not start · pi-host");
     expect(outcome?.textContent).toContain("restart responded 503");
   });
 

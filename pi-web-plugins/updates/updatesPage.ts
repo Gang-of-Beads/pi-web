@@ -3,7 +3,7 @@ import { formatVersion, installationLabel } from "./updatesLogic.js";
 
 /**
  * The Updates page as the host draws it (owner, 2026-10-06: mockup
- * `updates.png`, "不建议直接在这里给用户命令让用户run").
+ * `updates.png`: do not hand the reader commands to run here).
  *
  * The page used to hand the reader shell commands to copy or run. It now says
  * what is installed and running, and every action is a button: the plugin

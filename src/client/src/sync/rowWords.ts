@@ -1,6 +1,6 @@
 /**
  * The app row's two sentences for a link that does not answer (owner, 2026-10-12: the same outage
- * read "Trying to sync with the server…" one moment and "Trying to sync with hxd-work-mbp…" the
+ * read "Trying to sync with the server…" one moment and "Trying to sync with build-box…" the
  * next). The page cannot reach the machine that serves it: "Trying to reach" that machine. The page
  * reaches it and the machine on screen does not answer: "Trying to sync with" that machine. A
  * machine is always named; nothing says "the server". Every producer of either sentence words it

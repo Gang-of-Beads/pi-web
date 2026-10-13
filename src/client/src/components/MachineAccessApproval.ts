@@ -9,8 +9,8 @@ import { QUIET_WINDOW_MS, retryDelayMs } from "../sync/readPhase";
 
 /**
  * The page another machine's link opens on this machine: approve or deny a page that asks to use
- * this machine from the browser (docs/design/browser-direct-machines.md; owner, 2026-10-13: "进去之后
- * 就是另外一个机器的 approval 页面，我点同意，就连上了"). Opening the link decides nothing; only a
+ * this machine from the browser (docs/design/browser-direct-machines.md; owner, 2026-10-13: the link opens
+ * the other machine's approval page, the reader approves, and it connects). Opening the link decides nothing; only a
  * tap here does, on this machine's own page. The code shown here and on the asking page is how the
  * reader tells their own request from a look-alike.
  */

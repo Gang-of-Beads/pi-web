@@ -41,10 +41,10 @@ async function machineOptions(switcher: QuickSwitcher): Promise<HTMLButtonElemen
 
 describe("the switcher's machine tabs", () => {
   it("names the browsed machine on the path and lists the others as options", async () => {
-    const switcher = await mountWithMachines([machine("local", "Local"), machine("pi", "hxd-pi")], "pi");
-    expect(machineCrumb(switcher)?.textContent.trim()).toBe("hxd-pi");
+    const switcher = await mountWithMachines([machine("local", "Local"), machine("pi", "pi-host")], "pi");
+    expect(machineCrumb(switcher)?.textContent.trim()).toBe("pi-host");
     const options = await machineOptions(switcher);
-    expect(options.map((option) => (option.querySelector(".crumb-option-label") ?? option).textContent.trim())).toEqual(["Local", "hxd-pi"]);
+    expect(options.map((option) => (option.querySelector(".crumb-option-label") ?? option).textContent.trim())).toEqual(["Local", "pi-host"]);
     expect(options.map((option) => option.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
   });
 
@@ -55,14 +55,14 @@ describe("the switcher's machine tabs", () => {
 
   it("reports the chosen machine to its host", async () => {
     const onSelectMachine = vi.fn<(machineId: string) => void>();
-    const switcher = await mountWithMachines([machine("local", "Local"), machine("pi", "hxd-pi")], "local", onSelectMachine);
+    const switcher = await mountWithMachines([machine("local", "Local"), machine("pi", "pi-host")], "local", onSelectMachine);
     const options = await machineOptions(switcher);
     options[1]?.click();
     expect(onSelectMachine).toHaveBeenCalledExactlyOnceWith("pi");
   });
 
   it("moves focus into the level it opens and back when it closes", async () => {
-    const switcher = await mountWithMachines([machine("local", "Local"), machine("pi", "hxd-pi")], "local");
+    const switcher = await mountWithMachines([machine("local", "Local"), machine("pi", "pi-host")], "local");
     const crumb = machineCrumb(switcher);
     crumb?.click();
     await switcher.updateComplete;

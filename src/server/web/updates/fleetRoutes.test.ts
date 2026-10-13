@@ -30,7 +30,7 @@ describe("GET /api/pi-web/fleet", () => {
     expect(body.hub).toEqual({ machineId: "local", name: "This machine" });
     expect(body.machines).toEqual([
       { machineId: "local", name: "This machine", kind: "local", online: true, version: "1.2.3" },
-      { machineId: "remote-a", name: "hxd-pi", kind: "remote", online: true, version: "1.2.0" },
+      { machineId: "remote-a", name: "pi-host", kind: "remote", online: true, version: "1.2.0" },
     ]);
   });
 
@@ -56,7 +56,7 @@ describe("POST /api/pi-web/fleet/run", () => {
     expect(body.hub.name).toBe("This machine");
     expect(body.outcomes).toEqual([
       { machineId: "local", name: "This machine", started: true },
-      { machineId: "remote-a", name: "hxd-pi", started: true },
+      { machineId: "remote-a", name: "pi-host", started: true },
     ]);
     expect(restart).toHaveBeenCalledTimes(1);
   });
@@ -64,10 +64,10 @@ describe("POST /api/pi-web/fleet/run", () => {
   it("targets a subset by id or by name", async () => {
     app = await buildApp();
 
-    const body = (await app.inject({ method: "POST", url: "/api/pi-web/fleet/run", payload: { operation: "update", machineIds: ["hxd-pi"] } }))
+    const body = (await app.inject({ method: "POST", url: "/api/pi-web/fleet/run", payload: { operation: "update", machineIds: ["pi-host"] } }))
       .json<PiWebFleetRunResponse>();
 
-    expect(body.outcomes).toEqual([{ machineId: "remote-a", name: "hxd-pi", started: true }]);
+    expect(body.outcomes).toEqual([{ machineId: "remote-a", name: "pi-host", started: true }]);
   });
 
   it("reports a failed target next to the ones that started", async () => {
@@ -130,7 +130,7 @@ async function buildApp(options: Options = {}): Promise<FastifyInstance> {
 function fakeMachineService(options: Options): FleetMachines {
   const machines: Machine[] = [
     { id: "local", name: "This machine", kind: "local" as const, createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" },
-    { id: "remote-a", name: "hxd-pi", kind: "remote" as const, createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" },
+    { id: "remote-a", name: "pi-host", kind: "remote" as const, createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" },
   ];
   const local = machines[0];
   if (local === undefined) throw new Error("fixture must have a local machine");

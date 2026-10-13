@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { registerSessionProxyRoutes, type SessionProxyDaemon } from "./sessionProxyRoutes";
 
 /**
- * A deleted session's pin goes with it (owner, 2026-10-01: "删掉了自动就没有了"). The web process owns
+ * A deleted session's pin goes with it (owner, 2026-10-01: once deleted, it is simply gone). The web process owns
  * the pins and sees a deletion proven only in its daemon's answer to PI WEB's own delete and cleanup.
  * A board locate answering gone is not proof: it starts from the home directory and misses a
  * project's own session directory (review of 4caabf4e), so it unpins nothing.

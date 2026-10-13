@@ -41,7 +41,7 @@ export type UnknownSource =
 
 /**
  * A partial live board with the remembered rows of exactly the sources that did not answer
- * (owner, 2026-10-07: "先显示缓存+已经加载的"). A remembered session stays when its workspace
+ * (owner, 2026-10-07: show the cache plus what has loaded). A remembered session stays when its workspace
  * did not answer, or its project's workspaces did not; a remembered pin when the pin did not. A
  * source that answered said what it holds, so none of its remembered rows is kept. The unknown
  * sources stay unknown, so the board is still partial and still read again.

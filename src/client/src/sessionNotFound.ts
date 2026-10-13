@@ -6,7 +6,7 @@ import { describeError, noticeForReader, noticeFromError, type Notice } from "./
 export const SEND_TO_MISSING_SESSION = "This session no longer exists, so your message was not sent.";
 
 /**
- * The notice of a refused send (owner, 2026-10-01: "如果是就直接报错啊在上面").
+ * The notice of a refused send (owner, 2026-10-01: if so, say so as an error up top).
  *
  * The code says the machine holds no such session: it was deleted on another device, by the pi
  * CLI, or by hand on the disk, while this page still showed it. The daemon's own words, "Session

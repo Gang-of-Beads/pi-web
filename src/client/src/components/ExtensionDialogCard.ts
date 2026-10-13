@@ -349,7 +349,7 @@ export class ExtensionDialogCard extends LitElement {
    * in through a real field, because a phone raises no keyboard for drawn lines and an input
    * method composes only into a field (the owner's Chinese answer reached a screen as "3").
    * Send types the field into the component and presses Enter; empty, it only presses Enter.
-   * There are no arrow keys (owner, 2026-10-11: "pi web 不要上下左右"). On a desktop the
+   * There are no arrow keys (owner, 2026-10-11: no arrow keys in PI WEB). On a desktop the
    * keyboard still reaches the component while the screen has focus. Scrollable and
    * focusable, because a screen can be taller than the card.
    */
@@ -394,7 +394,7 @@ export class ExtensionDialogCard extends LitElement {
   /**
    * The field types into the component as the reader types, the way a terminal delivers typing:
    * what was added goes as its characters and what was deleted as Backspace, in order, so a list
-   * that searches as you type follows the field (owner, 2026-10-11: "好难操作啊" on
+   * that searches as you type follows the field (owner, 2026-10-11: hard to use, on
    * an extension's search picker, which took the whole field only at Send). An input method's
    * composition goes when it ends.
    */

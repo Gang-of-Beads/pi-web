@@ -49,7 +49,7 @@ export interface RowInput {
   /**
    * The machine the page knows it is behind, and since when: it is fetching what it missed (owner,
    * 2026-10-14: Syncing is a known gap being filled, not a list drawn from memory). The quietest
-   * claim, and only once the fetch has taken `SYNCING_AFTER_MS` ("补数超过1秒").
+   * claim, and only once the fetch has taken `SYNCING_AFTER_MS` (catching up for more than a second).
    */
   readonly behind: { readonly machineId: string; readonly since: number } | undefined;
   /** When the page last came into view; undefined while it is hidden (`graceLeftMs`). */
@@ -105,7 +105,7 @@ export interface HeardClocks {
 }
 
 /**
- * A miss the page has since heard past is no claim (owner, 2026-10-12: "已经开始收到包了就直接不显示").
+ * A miss the page has since heard past is no claim (owner, 2026-10-12: once frames arrive again, show nothing).
  * A read still waiting on its own backoff kept "Trying to sync" up while the machine's socket was
  * already delivering; anything heard from what the miss is about after it began answers it. A
  * server's error is an answer in its own words and is not retired by other traffic.

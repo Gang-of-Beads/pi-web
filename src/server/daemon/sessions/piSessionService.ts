@@ -7742,7 +7742,7 @@ function forwardsToAgent(text: string): boolean {
 }
 
 /**
- * Archive an empty session as a normal one (owner, 2026-10-14: "就把它当成正常的session"). Pi writes a
+ * Archive an empty session as a normal one (owner, 2026-10-14: treat it as a normal session). Pi writes a
  * session's file only at its first message, so an empty one has a path and no file, and archiving
  * it kept only a record: Restore then brought back nothing. Its header and setup entries are
  * written first, after the runtime is closed so pi never writes the same file, and Restore returns

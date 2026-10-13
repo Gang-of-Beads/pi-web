@@ -125,7 +125,7 @@ describe("modelCompletionChoices", () => {
   it("ranks the account named in the query above the other copies of a model", () => {
     const accounts: SessionModel[] = [
       { provider: "anthropic-personal", id: "claude-opus-5" },
-      { provider: "anthropic-merchant", id: "claude-opus-5" },
+      { provider: "acme-gateway", id: "claude-opus-5" },
       { provider: "anthropic-work", id: "claude-opus-5" },
     ];
 

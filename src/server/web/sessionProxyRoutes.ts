@@ -22,7 +22,7 @@ export interface SessionProxyDaemon {
 
 /**
  * What the web process does when its daemon says sessions were deleted. The pins live here, so a
- * deleted session's pin goes with it (owner, 2026-10-01: "删掉了自动就没有了").
+ * deleted session's pin goes with it (owner, 2026-10-01: once deleted, it is simply gone).
  */
 export interface SessionProxyHooks {
   sessionsDeleted?: (sessionIds: readonly string[]) => Promise<void>;

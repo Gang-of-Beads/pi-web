@@ -6,7 +6,7 @@ import { customElement, property } from "lit/decorators.js";
  * in the chat title's type, so the three bars read as one row. Go to stays on the chat bar's right
  * edge, mirroring the grid key on its left (owner, 2026-10-14: each key opens the column on its
  * side), and the list opens inside this column. One bar per column: the row under the app bar
- * stays gone (96e054e1, "两层row太丑了").
+ * stays gone (96e054e1: two stacked rows looked wrong).
  */
 @customElement("app-column-bar")
 export class AppColumnBar extends LitElement {

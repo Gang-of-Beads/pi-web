@@ -43,19 +43,19 @@ describe("the model button", () => {
   // Splitting the name lets the provider prefix give way while the model id,
   // which is what names the choice, keeps its room.
   it("keeps the provider and the model in separate boxes so shrinking can be aimed", async () => {
-    const editor = await mount("anthropic-merchant", "claude-opus-5");
+    const editor = await mount("acme-gateway", "claude-opus-5");
     const button = modelButton(editor);
 
-    expect(button.querySelector(".select-model-provider")?.textContent).toBe("anthropic-merchant/");
+    expect(button.querySelector(".select-model-provider")?.textContent).toBe("acme-gateway/");
     expect(button.querySelector(".select-model-id")?.textContent).toBe("claude-opus-5");
-    expect(button.textContent).toBe("anthropic-merchant/claude-opus-5");
+    expect(button.textContent).toBe("acme-gateway/claude-opus-5");
   });
 
   // Truncation hides characters, so the whole name stays reachable on hover.
   it("carries the full name in its tooltip", async () => {
-    const editor = await mount("anthropic-merchant", "claude-opus-5");
+    const editor = await mount("acme-gateway", "claude-opus-5");
 
-    expect(modelButton(editor).title).toBe("Select model: anthropic-merchant/claude-opus-5");
+    expect(modelButton(editor).title).toBe("Select model: acme-gateway/claude-opus-5");
   });
 
   it("shows only the model when there is no provider to name", async () => {

@@ -9,7 +9,7 @@ import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry";
  * so any classification is a reading of that text. PI WEB does not keep its own patterns: it asks pi's
  * public classifiers, the ones pi's own auto-retry and compaction decide with
  * (`@earendil-works/pi-ai/utils/retry` and `/utils/overflow`), so a pi upgrade that learns a provider's
- * wording upgrades this row too (owner, 2026-10-07: "可以直接用pi的实现"). The provider's text itself is
+ * wording upgrades this row too (owner, 2026-10-07: use pi's own implementation). The provider's text itself is
  * shown whole behind Details, never parsed.
  */
 export type ModelFailure = "transient" | "overflow" | "provider";

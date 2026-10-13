@@ -34,17 +34,17 @@ describe("filterModelOptions", () => {
 
   // The same model is served by several providers, so narrowing by model and
   // provider together is the way to tell them apart. Requiring the words to sit
-  // next to each other made that fail: "claude-opus-5 anthropic-merchant" never
-  // contains "opus-5 merchant".
+  // next to each other made that fail: "claude-opus-5 acme-gateway" never
+  // contains "opus-5 gateway".
   it("matches words typed in any order, each somewhere in the row", () => {
     const options: CommandOption[] = [
       { value: "anthropic/claude-opus-5", label: "claude-opus-5", description: "anthropic" },
       { value: "github-copilot/claude-opus-5", label: "claude-opus-5", description: "github-copilot" },
-      { value: "anthropic-merchant/claude-opus-5", label: "claude-opus-5", description: "anthropic-merchant" },
+      { value: "acme-gateway/claude-opus-5", label: "claude-opus-5", description: "acme-gateway" },
     ];
 
-    expect(filterModelOptions(options, "opus-5 merchant").map((option) => option.value)).toEqual(["anthropic-merchant/claude-opus-5"]);
-    expect(filterModelOptions(options, "merchant opus").map((option) => option.value)).toEqual(["anthropic-merchant/claude-opus-5"]);
+    expect(filterModelOptions(options, "opus-5 gateway").map((option) => option.value)).toEqual(["acme-gateway/claude-opus-5"]);
+    expect(filterModelOptions(options, "gateway opus").map((option) => option.value)).toEqual(["acme-gateway/claude-opus-5"]);
     expect(filterModelOptions(options, "copilot opus-5").map((option) => option.value)).toEqual(["github-copilot/claude-opus-5"]);
     // Every word still has to land, so an absent one rules the row out.
     expect(filterModelOptions(options, "opus-5 gemini")).toEqual([]);
@@ -69,11 +69,11 @@ describe("modelCatalogView", () => {
     const providers: SessionModelCatalogEntry[] = [
       entry("anthropic", "claude-opus-5", true),
       entry("github-copilot", "claude-opus-5", true),
-      entry("anthropic-merchant", "claude-opus-5", true),
+      entry("acme-gateway", "claude-opus-5", true),
     ];
 
-    expect(modelCatalogView(providers, "opus-5 merchant").rows.map(modelCatalogEntryValue)).toEqual(["anthropic-merchant/claude-opus-5"]);
-    expect(modelCatalogView(providers, "merchant opus").rows.map(modelCatalogEntryValue)).toEqual(["anthropic-merchant/claude-opus-5"]);
+    expect(modelCatalogView(providers, "opus-5 gateway").rows.map(modelCatalogEntryValue)).toEqual(["acme-gateway/claude-opus-5"]);
+    expect(modelCatalogView(providers, "gateway opus").rows.map(modelCatalogEntryValue)).toEqual(["acme-gateway/claude-opus-5"]);
     expect(modelCatalogView(providers, "opus-5 gemini").rows).toEqual([]);
   });
 

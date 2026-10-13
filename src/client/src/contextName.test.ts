@@ -21,7 +21,7 @@ describe("focused context name", () => {
       mainView: "chat",
       selectedSession: session({ name: "fix the queue" }),
       selectedWorkspace: { label: "pi-web" },
-      selectedProject: { name: "vincent" },
+      selectedProject: { name: "atlas" },
     })).toBe("fix the queue");
   });
 
@@ -29,16 +29,16 @@ describe("focused context name", () => {
     expect(focusedContextName({
       mainView: "navigation",
       selectedWorkspace: { label: "pi-web" },
-      selectedProject: { name: "vincent" },
+      selectedProject: { name: "atlas" },
     })).toBe("pi-web");
     expect(focusedContextName({
       mainView: "navigation",
-      selectedProject: { name: "vincent" },
-    })).toBe("vincent");
+      selectedProject: { name: "atlas" },
+    })).toBe("atlas");
     expect(focusedContextName({
       mainView: "navigation",
-      selectedMachine: { name: "astra-mbp", kind: "remote" },
-    })).toBe("astra-mbp");
+      selectedMachine: { name: "studio-mac", kind: "remote" },
+    })).toBe("studio-mac");
   });
 
   it("keeps the product name when nothing is focused, and for the local machine", () => {
@@ -53,7 +53,7 @@ describe("focused context name", () => {
   it("names a workspace by its trailing path segment", () => {
     expect(focusedContextName({
       mainView: "navigation",
-      selectedWorkspace: { label: "Desktop/vincent/projects/pi-web" },
+      selectedWorkspace: { label: "Desktop/code/projects/pi-web" },
     })).toBe("pi-web");
   });
 

@@ -71,7 +71,7 @@ describe("opening a session from another machine's tab", () => {
     if (!Reflect.set(sessionsController, "canOpenAtOnce", () => true)) throw new Error("Could not replace canOpenAtOnce");
     if (!Reflect.set(app, "focusComposerAfterRender", () => Promise.resolve())) throw new Error("Could not replace focusComposerAfterRender");
 
-    await callable(app, "openSessionFromQuickSwitcher")(sessionOn("/home/hxd/project"));
+    await callable(app, "openSessionFromQuickSwitcher")(sessionOn("/home/example/project"));
 
     expect(order).toEqual(["session"]);
   });
@@ -126,7 +126,7 @@ describe("badges while browsing elsewhere", () => {
 });
 
 /**
- * Owner report from hxd-pi: tapping a listed session answered "Session not
+ * Reported from a remote machine: tapping a listed session answered "Session not
  * found". The page listed the selected machine's sessions while naming the
  * browsed machine, so the row belonged to one machine and the open ran
  * against another.
