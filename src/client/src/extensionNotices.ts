@@ -29,6 +29,29 @@ export const NOTICE_PREFIX: Readonly<Record<ExtensionNoticeLevel, string>> = {
   error: "Error: ",
 };
 
+export interface NoticeSegment { readonly kind: "text" | "link"; readonly text: string }
+
+const NOTICE_URL = /https?:\/\/[^\s<>"']+/gu;
+const URL_TRAILING_PUNCTUATION = /[.,;:!?)\]}]+$/u;
+
+/**
+ * A notice's text with its web addresses marked, so they draw as links a reader can open or copy:
+ * login flows put a long authorization URL in a notice (pi-multi-account), which had to be
+ * retyped. Sentence punctuation after an address stays text.
+ */
+export function noticeSegments(text: string): NoticeSegment[] {
+  const segments: NoticeSegment[] = [];
+  let at = 0;
+  for (const match of text.matchAll(NOTICE_URL)) {
+    const url = match[0].replace(URL_TRAILING_PUNCTUATION, "");
+    if (match.index > at) segments.push({ kind: "text", text: text.slice(at, match.index) });
+    segments.push({ kind: "link", text: url });
+    at = match.index + url.length;
+  }
+  if (at < text.length) segments.push({ kind: "text", text: text.slice(at) });
+  return segments;
+}
+
 export function withExtensionNotice(messages: ChatLine[], level: ExtensionNoticeLevel, text: string, now: number): ChatLine[] {
   if (level === "info") return withStatusLine(messages, text, now);
   const repeated = lastRepeat(messages, level, text, now);

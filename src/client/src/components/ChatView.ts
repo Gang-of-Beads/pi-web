@@ -13,7 +13,7 @@ import { repeat } from "lit/directives/repeat.js";
 import { ChatDisclosureController } from "../chatDisclosure";
 import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type ChatGroup } from "../chatGroups";
 import { groupEventKey, groupMarkerKey, groupRowKey, positionalRowKey, rowKeys } from "../rowIdentity";
-import { extensionNoticeOf, NOTICE_PREFIX, type ExtensionNoticePart } from "../extensionNotices";
+import { extensionNoticeOf, NOTICE_PREFIX, noticeSegments, type ExtensionNoticePart } from "../extensionNotices";
 import { writeClipboardText } from "../clipboard";
 import { followScrollVerdict } from "../followScrollAdoption.js";
 import { scrollDirection, viewportDecision, followsAfterScroll, isRestoring, readerCanTakeOver } from "../chatViewport/viewportDecision.js";
@@ -263,7 +263,10 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      conversation's measure, rhythm and inset (rowGroups.ts), and the cards' 1px border as a
      transparent one, so its text starts where theirs does; the line pads nothing itself. */
   .msg-notice { max-width: var(--pi-chat-measure); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-row-rhythm); border-inline: 1px solid transparent; }
-  .extension-notice { -webkit-tap-highlight-color: transparent; touch-action: manipulation; box-sizing: border-box; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; width: 100%; min-height: var(--pi-control-height-compact, 24px); margin: 0; padding: 0; border: 0; background: none; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); line-height: 1.45; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; cursor: pointer; }
+  .extension-notice { box-sizing: border-box; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; width: 100%; min-height: var(--pi-control-height-compact, 24px); margin: 0; padding: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.45; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+  .extension-notice a { color: var(--pi-accent); text-decoration: underline; text-underline-offset: 2px; }
+  .notice-toggle { position: relative; margin: 0; padding: 0; border: 0; background: none; color: var(--pi-accent); font: inherit; font-size: var(--pi-text-xs); line-height: 1.45; cursor: pointer; }
+  @media (pointer: coarse) { .notice-toggle::after { content: ""; position: absolute; inset: calc((1.45em - var(--pi-control-height-touch, 44px)) / 2) calc(-1 * var(--pi-space-4)); } }
   .extension-notice.expanded { display: block; -webkit-line-clamp: unset; }
   .extension-notice.warning { color: var(--pi-warning); }
   .extension-notice.error { color: var(--pi-danger); }
@@ -626,6 +629,8 @@ export class ChatView extends LitElement {
   @state() private newerRequested = false;
   /** Notify lines the reader opened past their three-line cut, by the moment each arrived. */
   @state() private expandedNotices: ReadonlySet<string> = new Set();
+  /** Notice lines the three-line clamp cuts, measured after each render; only they offer Show all. */
+  @state() private clampedNotices: ReadonlySet<string> = new Set();
   @property({ type: Number }) newerCount = 0;
   @property({ type: Boolean }) loadingMore = false;
   /** True while this session's transcript is being read for the first time. */
@@ -1080,6 +1085,7 @@ export class ChatView extends LitElement {
     if (chat !== undefined) this.setJumpToBottomVisible(showsJumpToBottom(chat));
     if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
     if (changed.has("zoomedImage")) this.syncImageZoomDialog();
+    this.measureClampedNotices();
   }
 
   /**
@@ -2176,12 +2182,33 @@ export class ChatView extends LitElement {
     return label;
   }
 
-  /** One notify line; a tap shows the whole of a line cut at three lines, and a second tap folds it. */
+  /**
+   * One notify line, selectable text with its addresses as links (owner, 2026-10-13: a login URL
+   * could be neither opened nor copied from the old whole-line button). A line the clamp cuts at
+   * three lines ends with Show all, and Show less folds it again.
+   */
   private renderExtensionNotice(part: ExtensionNoticePart) {
     const key = part.id;
     const expanded = this.expandedNotices.has(key);
     const count = part.count > 1 ? ` ×${String(part.count)}` : "";
-    return html`<button type="button" class=${`extension-notice ${part.level}${expanded ? " expanded" : ""}`} aria-expanded=${expanded ? "true" : "false"} title=${part.text} @click=${() => { this.toggleNotice(key); }}>${NOTICE_PREFIX[part.level]}${part.text}${count}</button>`;
+    const text = noticeSegments(part.text).map((segment) => (segment.kind === "link"
+      ? html`<a href=${segment.text} target="_blank" rel="noopener noreferrer">${segment.text}</a>`
+      : segment.text));
+    const toggle = expanded || this.clampedNotices.has(key)
+      ? html`<button type="button" class="notice-toggle" aria-expanded=${expanded ? "true" : "false"} @click=${() => { this.toggleNotice(key); }}>${expanded ? "Show less" : "Show all"}</button>`
+      : null;
+    return html`<div class=${`extension-notice ${part.level}${expanded ? " expanded" : ""}`} data-notice-id=${key}>${NOTICE_PREFIX[part.level]}${text}${count}</div>${toggle}`;
+  }
+
+  private measureClampedNotices(): void {
+    const clamped = new Set<string>();
+    for (const line of this.renderRoot.querySelectorAll<HTMLElement>(".extension-notice[data-notice-id]")) {
+      const id = line.dataset["noticeId"];
+      if (id === undefined) continue;
+      if (this.expandedNotices.has(id) ? this.clampedNotices.has(id) : line.scrollHeight > line.clientHeight + 1) clamped.add(id);
+    }
+    if (clamped.size === this.clampedNotices.size && [...clamped].every((id) => this.clampedNotices.has(id))) return;
+    this.clampedNotices = clamped;
   }
 
   private toggleNotice(key: string): void {
