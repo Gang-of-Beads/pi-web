@@ -86,8 +86,7 @@
     "changelog:status": "changeset status",
     "docker:verify:start": "./docker/pi-web-docker --dev start",
     "docker:verify:stop": "./docker/pi-web-docker --dev stop",
-    "docker:verify:status": "./docker/pi-web-docker --dev status",
-    "redeploy:host": "./scripts/redeploy-host.sh"
+    "docker:verify:status": "./docker/pi-web-docker --dev status"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",
