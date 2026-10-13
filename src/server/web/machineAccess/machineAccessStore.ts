@@ -2,6 +2,7 @@ import { randomBytes, randomInt } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { piWebDataDir } from "../../../config.js";
+import type { ApprovedMachineOrigin, MachineAccessRequestState } from "../../../shared/machineAccess.js";
 import { isRecord } from "../../../shared/unknownValues.js";
 import { isNodeErrorWithCode } from "../../shared/workspaces/pathSafety.js";
 
@@ -18,15 +19,6 @@ export function machineAccessStorePath(env: NodeJS.ProcessEnv = process.env, cwd
   return join(piWebDataDir(env, cwd), "machine-access.json");
 }
 
-export interface ApprovedOrigin {
-  readonly origin: string;
-  /** The name the requesting page gave; display only, the origin is what is trusted. */
-  readonly name: string;
-  readonly approvedAt: string;
-}
-
-export type AccessRequestState = "pending" | "approved" | "denied";
-
 export interface AccessRequest {
   readonly id: string;
   readonly origin: string;
@@ -34,7 +26,7 @@ export interface AccessRequest {
   /** Shown on both pages so the reader approves the request they just made, not a look-alike. */
   readonly code: string;
   readonly expiresAt: number;
-  readonly state: AccessRequestState;
+  readonly state: MachineAccessRequestState;
 }
 
 export type AccessRequestOutcome =
@@ -47,10 +39,10 @@ export type AccessDecision = "approve" | "deny";
 export const ACCESS_REQUEST_TTL_MS = 10 * 60_000;
 export const MAX_PENDING_ACCESS_REQUESTS = 20;
 
-const DECIDED_STATE: Readonly<Record<AccessDecision, AccessRequestState>> = { approve: "approved", deny: "denied" };
+const DECIDED_STATE: Readonly<Record<AccessDecision, MachineAccessRequestState>> = { approve: "approved", deny: "denied" };
 
 export class MachineAccessStore {
-  private approved: readonly ApprovedOrigin[] = [];
+  private approved: readonly ApprovedMachineOrigin[] = [];
   private readonly requests = new Map<string, AccessRequest>();
   private tail: Promise<unknown> = Promise.resolve();
 
@@ -70,7 +62,7 @@ export class MachineAccessStore {
     return this.approved.some((entry) => entry.origin === origin);
   }
 
-  approvedOrigins(): readonly ApprovedOrigin[] {
+  approvedOrigins(): readonly ApprovedMachineOrigin[] {
     return this.approved;
   }
 
@@ -104,7 +96,7 @@ export class MachineAccessStore {
     const decided: AccessRequest = { ...request, state: DECIDED_STATE[decision] };
     this.requests.set(id, decided);
     if (decision === "approve") {
-      const entry: ApprovedOrigin = { origin: request.origin, name: request.name, approvedAt: new Date(this.now()).toISOString() };
+      const entry: ApprovedMachineOrigin = { origin: request.origin, name: request.name, approvedAt: new Date(this.now()).toISOString() };
       await this.save((current) => [...current.filter((existing) => existing.origin !== request.origin), entry]);
     }
     return decided;
@@ -121,7 +113,7 @@ export class MachineAccessStore {
     for (const [id, request] of this.requests) if (request.expiresAt <= now) this.requests.delete(id);
   }
 
-  private async save(change: (current: readonly ApprovedOrigin[]) => readonly ApprovedOrigin[]): Promise<void> {
+  private async save(change: (current: readonly ApprovedMachineOrigin[]) => readonly ApprovedMachineOrigin[]): Promise<void> {
     const run = this.tail.then(async () => {
       const next = change(this.approved);
       await mkdir(dirname(this.filePath), { recursive: true });
@@ -135,7 +127,7 @@ export class MachineAccessStore {
   }
 }
 
-function parseAccessFile(value: unknown): ApprovedOrigin[] {
+function parseAccessFile(value: unknown): ApprovedMachineOrigin[] {
   if (!isRecord(value) || !Array.isArray(value["approved"])) throw new Error("Invalid machine access file: expected { approved: [] }");
   return value["approved"].map((entry: unknown, index) => {
     if (!isRecord(entry) || typeof entry["origin"] !== "string" || typeof entry["name"] !== "string" || typeof entry["approvedAt"] !== "string") {

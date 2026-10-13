@@ -87,6 +87,8 @@ import { PanelCollapseController, mainViewClass, panelToggleHiddenState, workspa
 import { PanelResizeController, type PanelResizeConstraints, type ResizablePanelSide } from "../appShell/panelResizeController";
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
 import { readSettingsOpen, readSettingsSection, writeSettingsOpen, writeSettingsSection, type SettingsReveal, type SettingsSection } from "../settingsRoute";
+import { clearMachineAccessRoute, readMachineAccessRequestId } from "../machineAccessRoute";
+import "./MachineAccessApproval";
 import { applyActiveShortcutPreferences } from "../shortcutPreferences";
 import { extensionShortcutActions } from "../extensionShortcutActions";
 import { createTerminalCommandRunsRuntime } from "../runtime/terminalRuntime";
@@ -683,6 +685,7 @@ export class PiWebApp extends LitElement {
   /** The last composer picker asked for; an older one's late read opens nothing (beginPickerRequest). */
   private pickerRequestSeq = 0;
   @state() private settingsOpen = readSettingsOpen();
+  @state() private machineAccessRequestId = readMachineAccessRequestId();
   @state() private reloadAfterSettings = false;
   private settingsListFramePushed = false;
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
@@ -5525,8 +5528,14 @@ export class PiWebApp extends LitElement {
         .onClose=${() => { this.goToSheetOpen = false; }}
       ></app-go-to-sheet>` : null}
       ${this.renderAppRowLayer()}
+      ${this.machineAccessRequestId === undefined ? nothing : html`<machine-access-approval .requestId=${this.machineAccessRequestId} .onDone=${this.closeMachineAccessApproval}></machine-access-approval>`}
     `;
   }
+
+  private readonly closeMachineAccessApproval = (): void => {
+    clearMachineAccessRoute();
+    this.machineAccessRequestId = undefined;
+  };
 
   /**
    * While a dialog is open the app row rides above it (owner, 2026-10-04), and every dialog

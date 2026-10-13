@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { MachineAccessRequestView } from "../../../shared/machineAccess.js";
 import { isRecord } from "../../../shared/unknownValues.js";
 import type { AccessDecision, AccessRequest, MachineAccessStore } from "./machineAccessStore.js";
 import { originAccess, serializedOrigin, type OriginAccess } from "./originAccess.js";
@@ -54,7 +55,7 @@ function allowCors(request: FastifyRequest, reply: FastifyReply, origin: string,
   if (header(request, "access-control-request-private-network") === "true") reply.header("access-control-allow-private-network", "true");
 }
 
-function publicRequest(request: AccessRequest) {
+function publicRequest(request: AccessRequest): MachineAccessRequestView {
   return { id: request.id, origin: request.origin, name: request.name, code: request.code, state: request.state, expiresAt: new Date(request.expiresAt).toISOString() };
 }
 
