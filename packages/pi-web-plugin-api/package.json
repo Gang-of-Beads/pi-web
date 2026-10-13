@@ -3,6 +3,16 @@
   "version": "0.1.0-alpha.1",
   "description": "Type declarations of the PI WEB plugin contract: the browser and server APIs a plugin is written against.",
   "license": "MIT",
+  "author": "Gang of Beads",
+  "keywords": [
+    "pi-web",
+    "pi-web-plugin",
+    "types"
+  ],
+  "homepage": "https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugin-api.md",
+  "bugs": {
+    "url": "https://github.com/Gang-of-Beads/pi-web/issues"
+  },
   "type": "module",
   "files": [
     "dist"
