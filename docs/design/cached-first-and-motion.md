@@ -12,10 +12,10 @@ is much better than waiting for the page to load completely before showing it. C
 a thinking level is the same.
 
 This sits on top of sync convergence (`sync-convergence.md`): routine syncing stays quiet, the top
-row alone says "Trying to sync with the server…" when a request goes unanswered, and every
+row alone says "Trying to sync with <machine>…" when a request goes unanswered, and every
 retained value carries the scope it belongs to.
 
-## What it costs today (measured on 8505, 2026-10-06)
+## What it cost before (measured on a dev stack, 2026-10-06)
 
 Headless Chrome, 1280 × 860, served from localhost; the 300 ms rows add 300 ms to every request in
 the page, to stand in for a phone's round trip.
@@ -32,7 +32,7 @@ list keeps its last answer in memory only (`workspaceSessionsCache.ts`, the boar
 so a reload or a cold start shows nothing until the board read lands. The board answer for those
 166 sessions is 172 KB of JSON (about 1 KB a row, 20 KB gzipped on the wire).
 
-## Measured after step 1 (8505, 2026-10-06)
+## Measured after step 1 (a dev stack, 2026-10-06)
 
 Headless Chrome, fine pointer; a real phone and a coarse pointer are not checked yet.
 
@@ -140,7 +140,7 @@ does not need protecting: losing it costs one cold load, the same as today.
 
 | Surface | Cache key | Kept |
 |---|---|---|
-| Session list (Navigate, Go to, quick switcher) | machine (+ project filter) | the board's rows, ordered, persisted per machine |
+| Session list (Navigate and the quick switcher) | machine (+ project filter) | the board's rows, ordered, persisted per machine |
 | Project and workspace lists | machine | the last listing, persisted |
 | Model picker | machine | the model list and catalog from the last read |
 | Thinking-level picker | machine + model | the levels from the last read |
@@ -162,7 +162,7 @@ does not need protecting: losing it costs one cold load, the same as today.
   forbidden) draws no remembered list at all.
 
 Built for the session board (`sync/boardMemory.ts`, `SessionBoardController`): the board a
-machine last answered, whole, keyed by machine. Navigate, Go to and the quick switcher all draw from
+machine last answered, whole, keyed by machine. Navigate and the quick switcher both draw from
 it. Announcements heard before the first read (a rename, a new session) apply to it as they do to
 the live board.
 
@@ -210,7 +210,7 @@ was. The "quiet" setting (owner, 2026-10-06):
 
 ### 1b. Wait half a second before the remembered list (owner, 2026-10-07)
 
-Ask `434f7058`, the owner's words: try loading for about 0.5 s; if the list loads in that time,
+The owner's words: try loading for about 0.5 s; if the list loads in that time,
 show the new one directly; if not, show the cache plus what has loaded, and animate the later
 update in, keeping the motion simple, fast and smooth.
 
@@ -224,13 +224,11 @@ update in, keeping the motion simple, fast and smooth.
   reshuffling while it loads. When the answer is partial (a project, workspace or pin did not
   answer), the remembered rows of exactly those sources stay (`boardFilledFromMemory`) until a
   retry answers them. A remembered row of a source that did answer is never kept.
-- **The top row says "Syncing…".** While the session list is on screen and drawn wholly from
-  memory, the app row says "Syncing…" in the row's one transient colour, the same as "Trying to
-  sync" (2026-10-13: one colour for the row by default) (owner: "直接上面 notification row 的
-  syncing 就好了吧？这样用户知道在加载中/同步中"). It is the quietest claim: a notice and "Trying
-  to sync with the server…" (nothing answered within the ack timeout) come first. A partial live
-  answer filled from memory does not say "Syncing…": the board's own retries stay silent (owner
-  Q4, 2026-09-30: the board is not an app-row cause). No mark on the rows themselves.
+- **Nothing in the top row.** A remembered list is not being behind, so the app row says nothing
+  while the list shown is drawn from memory (message-states.md, "Staying in step"; since
+  2026-10-14). From 2026-10-07 to 2026-10-14 the row said "Syncing…" then. A partial live answer
+  filled from memory says nothing either: the board's own retries stay silent (owner Q4,
+  2026-09-30: the board is not an app-row cause). No mark on the rows themselves.
 
 ## Plan
 
@@ -245,7 +243,8 @@ update in, keeping the motion simple, fast and smooth.
 - 2026-10-06: the first picker open with nothing cached waits, as today.
 - 2026-10-06: the unreachable fzf ranking for `@` completions is deleted, not revived.
 - 2026-10-07: wait 0.5 s for the live list before drawing the remembered one; fill a partial
-  answer from memory; "Syncing…" in the top row while the list shown is remembered (1b).
+  answer from memory; "Syncing…" in the top row while the list shown is remembered (1b),
+  withdrawn on 2026-10-14.
 
 ## Questions for the owner
 

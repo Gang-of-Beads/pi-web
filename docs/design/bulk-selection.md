@@ -18,7 +18,7 @@ Owner, 2026-09-30: "Long-pressing an item on any list page opens a bulk-operatio
 
 ### One state machine
 
-`selectionTransition(state, event)` is a pure classifier, with every state enumerated in tests:
+The machine is `selectionModel.ts`, a pure classifier with every state enumerated in tests. Its phases are `browsing`, `selecting` and `acting`; a destructive action asks in the app's confirm dialog while `acting`, and a declined confirm returns to `selecting`. state-diagram.md D9 is the authority for the full table.
 
 | State | Leaves on | To |
 |---|---|---|
@@ -26,9 +26,9 @@ Owner, 2026-09-30: "Long-pressing an item on any list page opens a bulk-operatio
 | `selecting(ids)` | tap a row | the same state with that row toggled |
 |  | Select all | every visible row of that group |
 |  | ✕, Escape, back, leaving the page | `browsing` |
-|  | choose an action | `confirming` if destructive, else `acting` |
-| `confirming(action, ids)` | Confirm / Cancel | `acting` / `selecting(ids)` |
-| `acting(action, ids)` | the batch answers | `browsing`, with one result line |
+|  | choose an action | `acting(action, ids)` |
+| `acting(action, ids)` | the batch answers | `browsing`; the list re-reads, and a failure shows in the app row |
+|  | a destructive action's confirm is declined | `selecting(ids)` |
 
 - A selection is kept by id across list refreshes. A row that disappears (deleted on another device, say) drops out, and the count shows it.
 - A selection stays inside **one group**: live sessions, archived sessions, projects. Actions differ between groups, so a hold in Archived selects among archived rows only.
@@ -41,7 +41,7 @@ Owner, 2026-09-30: "Long-pressing an item on any list page opens a bulk-operatio
 
 ### Actions
 
-- One table per row kind, beside `navigateRowActions`, marks which actions work on many rows. The bar offers each action that fits **at least one** selected row and applies it to those rows only, so a mixed selection offers both Pin (2) and Unpin (1) (owner, 2026-10-09, ask 9d95632d: verbs, with the count when an action fits fewer than all).
+- One table per row kind, beside `navigateRowActions`, marks which actions work on many rows. The bar offers each action that fits **at least one** selected row and applies it to those rows only, so a mixed selection offers both Pin (2) and Unpin (1) (owner, 2026-10-09: verbs, with the count when an action fits fewer than all).
 - Destructive actions confirm with the count ("Delete 5 archived sessions permanently?").
 - Each action runs as one batch request. The result line names any failures, and the list is re-read afterwards (the sync rule: never trust a local edit to match).
 
@@ -51,13 +51,13 @@ Owner, 2026-09-30: "Long-pressing an item on any list page opens a bulk-operatio
 | Archived sessions | Restore, Delete permanently |
 | Projects | Pin, Unpin, Close project |
 | Machines | none: a hold does nothing there |
-| Plugin lists (Background, Subagents, Files…) | whatever the plugin declares through the list component |
+| Plugin lists | not supported: `PluginListModel` has no bulk actions |
 
 ### Where it lives
 
-- Core: `selectionModel.ts` (the state machine), the bulk flags in the row-action tables, and one `<selection-bar>` element.
+- Core: `selectionModel.ts` (the state machine), the bulk flags in the row-action tables, and the selection header and action row in `appShell/navigateSelectionBar.ts`.
 - The Sessions page adopts it first.
-- Plugins cannot import host code, so plugin lists get the mode through the host list component (`docs/design/plugin-list-component.md`). A plugin declares its bulk actions in its list model, and the host draws the selection. That makes the list component the carrier for "any list page".
+- Plugin lists: not supported. The host list component (`plugin-list-component.md`) has no selection or bulk fields.
 
 ## Owner decisions (2026-09-30)
 
@@ -78,14 +78,14 @@ Owner, 2026-09-30: "Long-pressing an item on any list page opens a bulk-operatio
 | Context sheet › Projects | workspaces plugin | Close | Close project |
 | Context sheet › Folders | workspaces plugin | actions other plugins contribute to a folder (git's worktree actions) | a contributed action that marks itself bulk; none do today |
 | Context sheet › Machines | machines plugin | Check again, Open PI WEB, Rename…, Remove | Check again, Remove |
-| Files, Background, Subagents, Goals, Updates, Git, Terminal | plugins | none per row | none: a hold does nothing |
+| Files, Updates, Git, Terminal | plugins | none per row | none: a hold does nothing |
 
 A hold on a list without bulk actions does nothing, rather than entering a mode with nothing to do.
 
 ## Proof
 
 - The state machine: one test per state and event.
-- Live on 8505 at 393×850 with touch:
+- Live on a dev stack at 393×850 with touch:
   1. A hold selects.
   2. A tap toggles.
   3. Select all.
@@ -93,5 +93,4 @@ A hold on a list without bulk actions does nothing, rather than entering a mode 
   5. Restore two.
   6. Delete one permanently; confirm and cancel both work.
   7. ✕ exits.
-  8. A hold on a plugin row selects (once the list component exists).
 - The old build must fail each leg.

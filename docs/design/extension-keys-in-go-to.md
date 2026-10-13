@@ -1,23 +1,16 @@
 # Go to keys: declared by plugins, or brought by an extension's widget
 
-Status: approved by the owner (2026-10-07, asks `3b1b7159`, `84329bab`).
+Status: approved by the owner (2026-10-07).
 
 ## The request
 
-The owner, on why Goals and Subagents sit in Go to next to the pages an
-extension draws with `setWidget`:
-
-> 每个扩展在 goto 各有一个，你现在重名肯定是因为pi web 你兼容了不该兼容的东西，比如goals，
-> 他明明是个插件，你为什么还要把他放到 pi web的原生 go to按钮里呢？ 应该有goal插件声明需要一个按钮，
-> 然后里面才是他自己的页面啊。subagents同理。当然我理解很多插件是用setWidget（pi的插件的接口）来实现的，
-> 你看看有没有办法和我们的逻辑对应上
-
-(Each extension gets its own key in Go to. The duplicates come from PI WEB
-accommodating what it should not: Goals is a plugin, so the goals plugin should
-declare that it needs a key, and behind it is its own page; the same for
-subagents. Many extensions draw with pi's `setWidget`; find a way to map that
-onto our model.) And on the approved design: "可以按这个做，但是显示的名字可以由插件自己定义"
-(do it, and let the plugin define the name shown).
+The owner, on why Goals and Subagents sat in Go to next to the pages an
+extension draws with `setWidget` (paraphrased): each extension gets its own key
+in Go to. The duplicates come from PI WEB accommodating what it should not:
+Goals is a plugin, so the goals plugin should declare that it needs a key, and
+behind it is its own page; the same for subagents. Many extensions draw with
+pi's `setWidget`; find a way to map that onto our model. And on the approved
+design: do it, and let the plugin define the name shown.
 
 Earlier rulings this keeps: nothing an extension draws goes in the
 conversation or around the composer (2026-10-06: it hides the view and blurs
@@ -86,7 +79,7 @@ reason.
 - Only a page on screen that fronts the surface takes an extension's widgets:
   with the plugin's page missing here (its browser module failed, or it was
   disabled before the daemon restarted), the extension keeps its own key
-  (review 74d6b4bb).
+  (found in review).
 - Clearing a key that held nothing leaves nothing: pi-background-tasks clears
   its widget at every turn and never sets one, and brings no key.
 
@@ -104,7 +97,7 @@ name. pi's own manifest has no display name.
 2. Section 2 and 3: the daemon keeps attributed widgets; Go to adds a key per
    unfronted extension; the host draws its page.
 
-Measured on 8505 (2026-10-07) with the extensions this machine runs plus a
+Measured on a dev stack (2026-10-07) with the extensions that machine ran plus a
 probe extension in the project's `.pi/extensions` that draws from a helper
 file and a timer: pi-goal's widget came back as pi-goal-x fronting `goals`
 (no key; Goals stands for it), pi-subagents' as fronting `subagents`,

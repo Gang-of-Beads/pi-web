@@ -8,7 +8,7 @@ B46 and the switcher-rank item; extends D8 in `state-diagram.md`.
 Today: on a chat or plugin page the key opens Navigate. On Navigate it is drawn
 pressed; it closes Navigate only when the reader came from a page and the list
 shows everything, and otherwise "shows everything", which on the machine-wide
-list is a no-op (measured on 8505).
+list is a no-op (measured on a dev stack).
 
 The key becomes a two-place toggle between Navigate and the page the reader came
 from:
@@ -55,7 +55,7 @@ Terminal and Tasks have no workspace to act on.
 ## 4. Sections in every session list (B43)
 
 Every list of sessions (Navigate's Sessions, a project's sessions, the quick
-switcher, Go to) is built from the same sections, each foldable, with its fold
+switcher) is built from the same sections, each foldable, with its fold
 state remembered per list:
 
 1. **Pinned**
@@ -112,7 +112,7 @@ workspace:
 |---|---|---|
 | no project | **Add a project** | opens the Add project dialog; after it is added, a new session starts in its main checkout |
 | projects, and a most recently used one | **New session in `<project>`** | starts a session in that project's main checkout and opens it |
-| projects, none used yet | **New session…** | opens the Projects list to choose one; choosing starts the session there |
+| projects, none used yet | **New session…** | opens a sheet listing the machine's projects, last used first, with a new project first; choosing starts the session there |
 
 A small "Choose another project" link sits under the second form.
 

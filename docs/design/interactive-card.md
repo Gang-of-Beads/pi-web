@@ -4,7 +4,7 @@ Owner, 2026-10-12: "it does not have to be question / ask user; can it be one ge
 
 ## What changes
 
-Today an extension declares `ctx.ui.custom(factory, { web: { kind: "questions", questions } })`. Core draws a card of questions (options, single or multiple, an optional typed answer) and resolves `custom()` with the answers. The card, its types and its routes are named after one extension (`AskUserCard`, `AskUserQuestion`, `askUserSubmissionFromBody`).
+Before 2026-10-12, an extension declared `ctx.ui.custom(factory, { web: { kind: "questions", questions } })`. Core drew a card of questions (options, single or multiple, an optional typed answer) and resolved `custom()` with the answers. The card, its types and its routes were named after one extension (`AskUserCard`, `AskUserQuestion`, `askUserSubmissionFromBody`).
 
 After the change an extension declares a **card**: a title and a list of fields. Core draws the fields, collects what the reader enters, and resolves `custom()` with the values keyed by field id. Core knows field types, not extensions.
 
@@ -64,7 +64,7 @@ The card shows one answerable field at a time, as the questions card did, so the
 | `AskUserSubmission { answers: [{ id, values, otherText }] }` | `{ values: { [id]: { selected, other } } }` |
 | `AskUserCard`, `askDrafts`, `AskUser*` types, `askUserSubmissionFromBody` | `InteractiveCard`, `cardDrafts`, `Card*` types, `cardSubmissionFromBody` |
 
-Core keeps no `questions` kind and no `AskUser` name. The two extensions that declare questions are our forks and change in the same wave:
+Core keeps no `questions` kind and no `AskUser` name. The two extensions that declared questions were forks maintained alongside PI WEB and changed in the same wave:
 
 - Gang-of-Beads/pi-ask-user: its question tool declares a card of choice fields.
 - Gang-of-Beads/pi-goal: its questionnaire and confirmation declare a card (a confirmation becomes a `confirm` field).
@@ -78,10 +78,6 @@ An extension still declaring `questions` gets the terminal screen, like any decl
 - `src/client/src/components/InteractiveCard.ts`: draws the fields (one renderer per type, a `Record` keyed by the type) and keeps the reader's draft per field.
 - The dialog route, the drafts store and the transcript's answered row read the card's values, not answers.
 
-## Cost and order
+## Status
 
-1. This document, for the owner.
-2. Core: types, daemon reading and validation, card, drafts, answered row. Session daemon restart.
-3. The two forks declare a card, and each fork's own tests are updated and run (owner, 2026-10-12: "change the matching plugins and test them"); pushed only when the owner says so, then nix picks them up.
-4. 8505 on a phone (393x850): a single choice submits on tap; several fields with Submit; input, multiline, confirm; a refused declaration draws the terminal screen; closing unanswered resolves `undefined`.
-5. bob, verify, commits; the owner accepts on 8505 before any push.
+Built 2026-10-12: the core types, the daemon's reading and validation, the card, its drafts and the answered row (a session daemon restart), and the two forks' card declarations with their own tests. Checked live on a phone layout (393x850): a single choice submits on tap; several fields with Submit; input, multiline, confirm; a refused declaration draws the terminal screen; closing unanswered resolves `undefined`.

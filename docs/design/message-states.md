@@ -68,10 +68,10 @@ stateDiagram-v2
 The device holds the record in its durable outbox (survives reloads and
 restarts of the browser) and sends it until the machine answers.
 
-- **Order.** One session's outbox on one device is sent strictly in order: the
-  next record is not sent until the one before it is answered (accepted,
-  cancelled or withdrawn). Without this, a retry of message 1 could arrive after
-  message 2 and the machine would queue them reversed.
+- **Order.** One session's outbox on one device goes as ordered batches, numbered
+  for this device (see "Order: one operation log per device"). Without the
+  numbers, a retry of message 1 could arrive after message 2 and the machine
+  would queue them reversed.
 - **Retry schedule.** At once; then 1 s, doubling to 30 s; reset to "at once"
   whenever the link comes back (socket open, `online`, page load, session open).
   No age limit: a message written offline yesterday is delivered when this
@@ -143,50 +143,36 @@ so it has not been sent to the agent yet.
 ## The queue list
 
 Everything that has not reached the agent is in the queue list, which is where
-the reader controls it (owner: "用户如果不想发则应该在message queue里面选择撤回"):
+the reader controls it (owner: a reader who no longer wants to send a message
+takes it back from the message queue):
 this device's `sending` and `takingBack` records first in their written
 order, then the machine's `queued` records by `seq`. Each has Take back. A
 message leaves the list the moment the device learns it reached the agent
 (`handed`, `committed`, `consumed`), was withdrawn, or was cancelled; it does
 not wait for any other answer.
 
-## One merge rule for every update
+## How racing updates are applied
 
 A record's state can be reported by several sources that race: the answer to
-the send, the answer to a take-back, socket frames, and the reconciliation read
-after a reconnect. They are applied by one rule, so the order they arrive in
-does not matter:
+the batch, socket frames, and the catch-up read after a reconnect.
 
-- The machine stamps every transition of a record with a revision `rev`
-  (1, 2, 3, … per record, persisted with the inbox and the ledger). Every frame
-  and every answer carries `(state, rev)`.
-- The device keeps the highest `rev` it has applied, and applies an update only
-  if its `rev` is higher. A stale frame, a late answer or a replayed read is
-  dropped.
-- Device-only states (`sending`, `takingBack`) are rev 0: any machine report
-  wins over them.
-- `handed -> queued` (pi returned it unread) is an ordinary later revision, so
-  it applies even though it looks like a step back.
+The 2026-10-04 design ordered them by a per-record revision `rev` stamped by
+the machine. That was not built; the operation log below replaced it. What is
+built:
 
-This is the pattern of an idempotent outbox with a monotonic version per record
-(a last-writer-wins register ordered by the machine's revision). The state
-machine above stays the single place that says which transitions exist; the
-merge rule only decides whether an update is new.
+- Frames reach the page in the session stream's `seq` order, with gap repair,
+  so a frame is never applied before one the machine published earlier.
+- Each batch answer reports where the machine stands (`appliedThrough` for this
+  device, and the stream head), and each `operation.applied` frame carries
+  `appliedThrough` too. Whichever arrives first settles the record; the other
+  finds nothing left to do, because a record leaves the outbox once the machine
+  has applied it.
+- Device-only states (`sending`, `takingBack`) give way to any machine report.
 
-**A take-back that turns out too late**, under this rule:
-
-1. The reader presses Take back on a queued message. The device records the
-   request (`takingBack`, rev unchanged) and sends `withdraw(id)`.
-2. A frame arrives first: `(handed, rev 3)`. It is newer, so it applies: the
-   message leaves the queue list at once and appears in the conversation as
-   handed. The pending take-back is now moot.
-3. The take-back's answer arrives later: `(handed, rev 3)` or
-   `(committed, rev 4)`. It applies or is dropped by `rev` like anything else;
-   because the device had requested a take-back for this record, it also shows
-   the notice "Already with the agent; it could not be taken back." once.
-
-If the answer arrives before the frame, step 3 happens first and step 2 is
-dropped as stale. Either way the end state and the notice are the same.
+**A take-back that turns out too late:** the take-back goes in order after the
+message, and the machine answers that the agent already has it. The message
+stays where it is, and the note "Already with the agent; it could not be taken
+back." shows under it once.
 
 ## Order: one operation log per device, acknowledged both ways
 
@@ -196,7 +182,7 @@ as each was answered; a send that timed out let the next one go, and nothing on
 the machine could tell that one was missing. Order is now a protocol, not a
 habit of the device: an operation log with numbers, the way the machine already
 numbers the frames it sends (`seq` with gap replay). The owner chose the full
-protocol on 2026-10-14 ("按这个方案做"): the machine's check is real, not a
+protocol on 2026-10-14: the machine's check is real, not a
 formality, acknowledgements travel both ways, and operations go in ordered
 batches.
 
@@ -204,26 +190,27 @@ batches.
 
 - **A device is one browser profile** with a fixed id (`pi-web:device-id`), so a
   reload, or closing the page and coming back, keeps sending what was left
-  (owner, 2026-10-14: "如果有固定设备号刷新/关闭页面再回来也能继续发送了"). Every
+  (owner, 2026-10-14: with a fixed device id, a reload or closing the page and
+  coming back keeps sending). Every
   tab of the profile is the same device and writes the same outbox.
 - **Every operation is its own stored record**, never one array rewritten:
   appending writes a new key and an answer deletes its own key, so two tabs that
-  write at once never overwrite each other (owner, 2026-10-14: "既能满足多端写，又
-  能满足消息一致"). The outbox of a session is its records in the order they were
+  write at once never overwrite each other (owner, 2026-10-14: this serves both writing from
+  several tabs and message consistency). The outbox of a session is its records in the order they were
   written (write time, then a per-tab counter). No locks: it holds on plain
   `http` too.
 - **Two tabs may send the same records.** Same identity and number, so the
   machine runs it once and answers the repeat; the cost is a request.
 - **Reading is the machine's.** A page shows what the machine sends it; another
-  tab's operation appears there when the machine has it (owner: "写和读都是独立和
-  server交互").
+  tab's operation appears there when the machine has it (owner: writing and reading each talk to
+  the machine on their own).
 
 ### Operations
 
 - **Every operation the machine runs is numbered**: a message, a take-back, a
   slash command the machine runs, a `!` shell command. A command the browser
   handles itself (sign-in, settings) takes no number.
-- **Operations go in batches** (owner, 2026-10-14: "批量可以"). One request
+- **Operations go in batches** (owner, 2026-10-14: batches are fine). One request
   carries every unsent operation of one session, in order; the next batch goes
   only once the machine has answered the last. Within a request the transport
   delivers everything, in order; across requests it promises nothing - a
@@ -235,7 +222,7 @@ batches.
   Each batch also carries `ackedThrough`, the highest number this device has
   seen the machine confirm - a recorded value.
 - **A take-back of a message still in this browser's outbox is local**
-  (owner, 2026-10-14: "能不能做到本地撤回"): its words return at once, and its
+  (owner, 2026-10-14: take it back locally where possible): its words return at once, and its
   record turns, in its place, into a take-back, so the machine hears of it before
   anything written after the message. That happens only while the machine is not
   answering; on a live link a message leaves the outbox as soon as the machine
@@ -250,7 +237,7 @@ batches.
   and for a session still being created the launch it needs (project,
   workspace, startup token). The device sends every outbox, not only the open
   session's: a session left with unsent operations keeps sending in the
-  background (owner, 2026-10-14: "后台继续发"). A new session is created on the
+  background (owner, 2026-10-14: keep sending in the background). A new session is created on the
   machine when it opens; an operation written before that is answered waits for
   the creation, and makes it (idempotent by the startup token) if the open-time
   start went unanswered, and its records move to the session's id.
@@ -294,7 +281,8 @@ batches.
   the first time and runs once. A result that needs the page - a session to
   switch to, a picker, words for the composer - and that arrives while the
   reader is in another session waits until the reader returns to the session
-  (owner, 2026-10-14: "后台发送，结果等你回来再处理"). Any other result shows
+  (owner, 2026-10-14: send in the background, handle the result when the
+  reader is back). Any other result shows
   under the command's row.
 - **Machine order is acceptance order** (`seq`), across all devices; within one
   device it is that device's outbox order.
@@ -317,12 +305,14 @@ named by a fact rather than guessed.
 - **Syncing with *m*** - the page knows it is behind *m* and is fetching what it
   missed: a frame number skipped, a probe or an answer reported a head beyond
   what was applied, or *m* restarted (another epoch) and the view is read
-  again. It shows once the fetch has taken more than 1 s (owner: "补数超过1秒").
+  again. It shows once the fetch has taken more than 1 s (owner: catching up for
+  more than one second).
 - **Normal** - everything else, including a list drawn from what this browser
   remembered: not knowing is not being behind, and the first read after the page
   opens is a probe, bounded by *n* like any other.
 - **Every machine counts**, the one on screen and any the page sends to in the
-  background, and the row names each one it is about (owner: "都显示机器名").
+  background, and the row names each one it is about (owner: always show the machine's
+  name).
   Precedence: a notice the reader must act on, then Trying, then Syncing.
 - **An answer is never an outage.** A machine that answered with an error has
   stated a fact, which shows as "*m*: *reason*".
@@ -334,7 +324,8 @@ step), the missed frames (applied in order), or "read again" (Syncing). The
 machine sends a quiet stream a heartbeat carrying its head every 0.6 *x*, so a
 healthy idle link never needs a probe. Only frames on the stream restart *x*:
 an HTTP answer does not, because a stream can die while requests still work.
-Events probe at once too (owner: "流水线消息可以由事件触发"): the page coming
+Events probe at once too (owner: the stream's checks may be triggered by
+events): the page coming
 into view, the browser going online, the stream reconnecting, a session or
 machine opening, and an answer reporting a head beyond what was applied. Probes
 for one machine coalesce into one in flight.
@@ -369,14 +360,14 @@ the ledger's age limit:
 | take-back too late | the message stays, with a note under it: "Already with the agent; it could not be taken back." | none on the app row |
 
 A note about one message sits in the transcript under that message (owner,
-2026-10-14: "放在相关消息行内"), not on the app row, which says only whether the
+2026-10-14: in the row of the message it concerns), not on the app row, which says only whether the
 page is in step. It leaves after a few seconds in view or with the reader's next
 send. A note for a session the reader is not looking at waits until the session
 is opened.
 
 ## Upgrade
 
-None (owner, 2026-10-13: "不用兼容旧版本"). Outbox records an older build wrote
+None (owner, 2026-10-13: no compatibility with older versions). Outbox records an older build wrote
 have no number and are not read; a page and a machine of this version are
 updated together.
 
@@ -387,5 +378,5 @@ updated together.
    (daemon restart).
 2. Device: the outbox state machine (`sending`, `takingBack`) with ordered,
    unbounded retry; reconciliation on reconnect; Retry and Discard removed.
-3. Time from `acceptedAt`; B5's clamp removed.
+3. Time from `handedAt`; B5's clamp removed.
 4. Words, notices, and `state-diagram.md` D1 replaced by this page.

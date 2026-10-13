@@ -13,13 +13,11 @@ as small extra states. Both are pi's headless no-ops again, as in
 v2.202609.28, and the sections below that describe them are history. The
 working row, the thinking label and the tab title stand.
 
-**Restored 2026-10-07: `setStatus`, in the status bar.** Ask `1a7ec5e2`, the
-owner's words: "pi web不特意兼容任何的具体插件，能显示就显示，显示不开就omitted了，
-这个是general的设计，而且和tui是对标的" (PI WEB favours no particular plugin;
-show what fits, leave out what does not; a general design, matched to the
-terminal), and the layout (ask `90f823e2`): "左侧是token in/out然后context，
-然后显示插件的底部那行，最右边是花费" - tokens in and out, then the context, then
-the extensions' status line, and the cost at the far right. Statuses join with
+**Restored 2026-10-07: `setStatus`, in the status bar.** The owner's rule:
+PI WEB favours no particular plugin; it shows what fits and leaves out what does
+not, a general design matched to the terminal. The layout, in his words: tokens
+in and out, then the context, then the extensions' status line, and the cost at
+the far right. Statuses join with
 a space in key order, as pi's footer joins them; the numbers keep their room
 first; the statuses take what is left, cut with an ellipsis, and are left out
 when fewer than six characters would show. No line of their own, no tap to
@@ -90,9 +88,10 @@ never draws one for a session it is not showing.
   WEB's counterpart is the session footer (the line with tokens, ctx and cost):
   each key's text joins it, sorted by key as pi's footer sorts them (newlines
   and tabs flattened, as pi does); `undefined` removes that key.
-- **`setWidget(key, lines, { placement })`** - a plain text block above or below
-  the composer, keyed. The factory form renders through the same headless
-  harness as `custom` (component to lines), re-rendered when the component asks.
+- **`setWidget(key, lines, { placement })`** - drawn on the extension's Go to
+  page (extension-keys-in-go-to.md), keyed; never around the composer. The
+  factory form renders through the same headless harness as `custom` (component
+  to lines), re-rendered when the component asks.
 - **`setWorkingMessage(message)`** - replaces the activity dock's working words
   while the agent runs; no argument restores PI WEB's own words.
 - **`setWorkingVisible(false)`** - hides the dock's working row; `true` shows it.
@@ -160,8 +159,7 @@ value. That is pi's rule; PI WEB does not invent a stack pi does not have.
 
 | Surface | Limit | When it does not fit |
 |---|---|---|
-| Footer statuses | a line of their own above the session's numbers; each status at most 40 characters (ellipsis) | the line ends in an ellipsis; tapping it lists every status in full, one per line, scrolling past 40% of the viewport |
-| Widgets | each at most 6 lines (10 on desktop); all widgets together at most a third of the viewport | a longer widget shows its first lines and "Show all"; the widget area scrolls inside itself, the transcript never moves for it |
+| Footer statuses | inline in the session's numbers line, after the context and before the cost (2026-10-07) | cut with an ellipsis; left out when fewer than six characters would show |
 | Working words | one line in the activity dock | ellipsis; the full text in the dock's title |
 | Info notify line | one line in the transcript | wraps up to 3 lines, then ellipsis; the full text in its title |
 | Warning / error lines | appended | the same message again within 10 seconds becomes "×n" on the existing line instead of a new line |
@@ -192,11 +190,11 @@ using it.
   of the session's extensions clears them as it starts and again before the new
   session_start (pi's reset runs before its reload); the runtime's end clears
   them, and the browser drops them when the session's runtime is closed.
-- Statuses have a footer line of their own above the session's numbers, as
-  pi's footer gives them one: measured at 393 px, the numbers alone fill a
-  phone's line and left the statuses 26 px. Each status is cut at 40
-  characters, the line ends in an ellipsis, and a tap opens every status in
-  full, one per line. This replaces "+n" and a separate sheet.
+- Statuses sit inline in the numbers line (`StatusBar.ts`), after the context
+  and before the cost; they take the room the numbers leave, are cut with an
+  ellipsis, and are left out when fewer than six characters would show (the
+  2026-10-07 rule above). The line of their own above the numbers, built
+  2026-10-05, was withdrawn on 2026-10-06.
 - `setWorkingIndicator` frames do not animate: no frames hides the mark, and
   otherwise the first frame stands as the mark.
 - Widget factories render through the custom-screen harness at its width (56).
@@ -235,5 +233,4 @@ using it.
 3. Standing values: `setStatus`, `setWorking*`, `setHiddenThinkingLabel`,
    `setTitle`, then `setWidget` lines, then widget factories.
 4. `editor` card; `setEditorText` / `pasteToEditor`.
-5. `docs/plugins.md` / extension docs: the table above (`ctx.ui` at a glance, in `plugins.md` and
-   `plugins.html`).
+5. `docs/plugins.md` / extension docs: the table above (`ctx.ui` at a glance, in `plugins.md`).

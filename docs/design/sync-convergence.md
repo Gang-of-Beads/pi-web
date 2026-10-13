@@ -5,12 +5,12 @@ Use message sequence numbers, indices or versions to check which messages weren'
 Guarantee sync, consistency, and recovery after the network drops, instead of a lost message
 staying lost and a dead page never refreshing."
 
-## What happened (2026-09-30, 00:58–01:02, production 8504)
+## What happened (2026-09-30, 00:58–01:02, the maintainers' production instance)
 
 | Surface | What the phone showed | What the daemon had |
 |---|---|---|
 | pi web session (`01a04701`) | Last row: "CI passed on da9cb17e", hours old. Status "turn in progress · 1h 20m". | Hundreds of later entries. A fresh page load showed them all and followed live frames. |
-| playria session (`01a059ee`) | "Is it running?" (00:51:01), then only "agent running 7m 36s". | Reply text at 00:54:44 and tool calls every ~30 s from 00:52 onwards, all on disk and in `/messages`. |
+| another project's session (`01a059ee`) | "Is it running?" (00:51:01), then only "agent running 7m 36s". | Reply text at 00:54:44 and tool calls every ~30 s from 00:52 onwards, all on disk and in `/messages`. |
 | All projects list | Only the pinned session. | Not yet investigated. |
 
 Evidence:
@@ -18,8 +18,8 @@ Evidence:
 - A fresh browser page on the same build showed the correct rows, and its gap repair applied live frames (frontier 304067 → 304084 in 20 s; a new row appeared).
 - The phone re-read `/messages?limit=100` and `/stream-snapshot` at 20:58:56 (web log) and still showed rows from hours earlier.
 - Production ran web `2.202609.28` against a sessiond still on `2.202609.27`. The `.27` daemon sends frames with `seq` but no `epoch`, no join frame, and no `streamPosition` or `revision` in status. Phases 1–5 depend on all of these. The daemon was not restarted because the restart-when-idle watcher waits for all sessions to go idle, and six were busy the whole time. That contradicts the owner's ruling "updates restart everything".
-- The daemon itself has no single head. Status `messageCount` counts readable messages (16372 for playria) and `/messages` `total` counts branch messages (16392). The two disagree by definition, so no client can compare "what I have" with "what the daemon has".
-- The same phone re-read playria's git status and file tree about twice a second while its agent wrote files. That is a refresh storm and a candidate for the "frozen page".
+- The daemon itself has no single head. Status `messageCount` counts readable messages (16372 for that session) and `/messages` `total` counts branch messages (16392). The two disagree by definition, so no client can compare "what I have" with "what the daemon has".
+- The same phone re-read that project's git status and file tree about twice a second while its agent wrote files. That is a refresh storm and a candidate for the "frozen page".
 
 The exact line that kept the phone's stale rows is **not reproduced**: that needs the phone's cache. The candidate, from the code, is `refreshByDeltaReplay`:
 1. The page cites a persisted watermark `seq`.
@@ -57,7 +57,7 @@ A head is a small value that changes exactly when the resource changes:
 
 - Every status frame, every keepalive (20 s), and every HTTP read carries the heads of what it concerns.
 - One read, `GET /api/heads?keys=…`, returns the heads for every surface on screen in one small response. It works even when the socket is dead.
-- The transcript head is the only value anything compares. Status `messageCount` stays a display figure: it leaves out compaction summaries, which the transcript shows (16372 against 16392 on playria). Whether the sidebar should count them is the owner's call, not part of this change.
+- The transcript head is the only value anything compares. Status `messageCount` stays a display figure: it leaves out compaction summaries, which the transcript shows (16372 against 16392 on that session). Whether the sidebar should count them is the owner's call, not part of this change.
 
 ### 3. The browser reconciles: compare, then fetch by index
 
@@ -80,14 +80,14 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
 - **Socket watchdog.** No frame, keepalive included, for 2 × 20 s means the socket is closed and reopened. The first thing after a reconnect is a head comparison.
 - **Honest labels.**
   - After 2 s behind, a surface shows a thin "Catching up…" line.
-  - When unknown, it says so instead of showing stale rows as if they were current. (Superseded 2026-10-06: the top row says "Trying to sync with the server…" once a request has gone unanswered for the ack timeout; never "Offline"; see phase B and phase C.)
+  - When unknown, it says so instead of showing stale rows as if they were current. (Superseded 2026-10-06: the top row says "Trying to sync with *m*…" once a request has gone unanswered for the ack timeout; never "Offline"; see phase B and phase C.)
   - The status line never claims a live state that the transcript head contradicts.
 - **No refresh storms.** The watcher drops git's own churn, dependency folders and pi's runtime state, and coalesces a burst into one `workspace.changed` per window: 250 ms for git state, 2.5 s for the tree (object model §1.16). The web log showed about two a second before it.
 
 ### 5. Version skew is a state, not an accident
 
 - The daemon advertises `protocolVersion`. On a mismatch, the web process and the page show "The session service is on an older build. Restart it to finish the update". The page then falls back to polling heads and re-reading the tail. Only the fields both builds have are needed for that.
-  - Owner, 2026-10-07 (ask `37dfa387`): a daemon that needs a restart is said on the Updates page only ("restart needed · running X · installed Y", with Restart session daemon), not in the top row. The fallback for an older daemon is the quiet window's: it ignores `quiet=` and keeps 20 s keepalives, and the page checks once per keepalive gap (state-diagram D5). No `protocolVersion` is added.
+  - Owner, 2026-10-07: a daemon that needs a restart is said on the Updates page only ("restart needed · running X · installed Y", with Restart session daemon), not in the top row. The fallback for an older daemon is the quiet window's: it ignores `quiet=` and keeps 20 s keepalives, and the page checks once per keepalive gap (state-diagram D5). No `protocolVersion` is added.
   - A restart cut off a run (checked live 2026-10-07): the tool call that was running shows as interrupted, the run is recorded for the session rows, and pi supplies the missing result on the next request.
 - **The update restarts the daemon too, as the owner ruled.** The restart-when-idle watcher goes away. A daemon restart settles in-flight tool calls as interrupted (owed work, now required), so an interruption leaves an honest record.
 
@@ -96,13 +96,13 @@ One pure classifier per resource, `syncVerdict(local, remote, inFlight)`, with i
 1. **Direction approved** as written above.
 2. **The quiet window *T* is a setting**, shown on the Settings page, default 15 s. Owner: "pull only when nothing at all has arrived for 15 s". So there is **no periodic poll while visible**, which replaces the "at least every *T* seconds" line in section 3:
    - Any frame resets the page's quiet timer. A page pulls `/api/heads` only when *T* passes with nothing received, and on `visibilitychange`, `online` and `pageshow`.
-   - **The heartbeat is that frame, and it stays tiny.** The daemon sends it only on a socket that has been quiet, at an interval below *T* (the page names its *T* when it subscribes), so a healthy idle session never triggers a pull. It carries only the compact heads, a few tens of bytes. Measured today: an idle socket carries one 20-byte keepalive per 20 s. The status frames sent while streaming (284 in 45 s on playria) are the real traffic; phase A measures them and sends deltas.
+   - **The heartbeat is that frame, and it stays tiny.** The daemon sends it only on a socket that has been quiet, at an interval below *T* (the page names its *T* when it subscribes), so a healthy idle session never triggers a pull. It carries only the compact heads, a few tens of bytes. Measured today: an idle socket carries one 20-byte keepalive per 20 s. The status frames sent while streaming (284 in 45 s on that session) are the real traffic; phase A measures them and sends deltas.
    - *T* is per device (phone and desktop may want different values), stored with the browser's other preferences.
-3. **Behind label: only when stuck.** Nothing is shown while a page catches up within *T*. After *T*, still behind shows "Catching up…", and no head shows "Offline · updated HH:MM". (Refined 2026-10-06: one top-row signal, "Trying to sync with the server…", once a request has gone unanswered for the ack timeout; never "Offline"; see phase C.)
+3. **Behind label: only when stuck.** Nothing is shown while a page catches up within *T*. After *T*, still behind shows "Catching up…", and no head shows "Offline · updated HH:MM". (Refined 2026-10-06: one top-row signal, "Trying to sync with *m*…", once a request has gone unanswered for the ack timeout; never "Offline"; see phase C.)
 4. **Order: sync first**, before `ask_user`. Two user-reported bugs go ahead of phase A: Enter picking a Chinese IME candidate sends the message, and sessions missing Archive and Delete.
 5. **Restart the daemon now**, and remove the restart-when-idle watcher.
 
-   Done at 10:26 in two attempts. The first used `launchctl kickstart -k`, which restarts the definition launchd already holds. A plist names its build by store path, so the daemon came back on `.27`. The second ran `pi-web restart` from a one-shot job outside the daemon. That boots each service out and back in, and the daemon now runs `.28`. nix-config's update path already does it the second way: `pi-web restart` in the activation, or from `com.pi-web.update-restart` when hosted. Only an ad-hoc `kickstart` was wrong.
+   Done the same morning with `pi-web restart`, which boots each service out and back in, so the daemon came back on the new build. Restarting the service definition the service manager already held would have brought back the old build.
 
 ## Phase A protocol (daemon)
 
@@ -144,7 +144,7 @@ Owner: "every screen should take event-based updates at all times … when no me
 
 ### The case
 
-Owner, 2026-10-06 13:56 (phone, production 8504): the last row was his own message, nothing after
+Owner, 2026-10-06 13:56 (phone, the production instance): the last row was his own message, nothing after
 it, and the dock said "idle". On disk the agent had answered (playground session `01a10fd0`):
 his message was steered in at 09:50:19, ten tool rounds followed, and the reply was written at
 09:55:45. The daemon log for the session:
@@ -161,7 +161,7 @@ from before the page went to the background, shown as one final state. Owner: "s
 sending until the page is in step with the server, then the real state; consider every
 intermediate state."
 
-Owner, later the same day, on when to say it (answers to ask `c4825c84`):
+Owner, later the same day, on when to say it:
 
 - "Syncing…" shows only when the page knows the browser and the server disagree, or a check could
   not confirm they agree. Never for every check: on a poor network every turn would flash it.
@@ -173,12 +173,13 @@ Owner, later the same day, on when to say it (answers to ask `c4825c84`):
 This matches the 2026-09-30 decision that the catching-up word shows only when the page is stuck,
 not while it routinely checks.
 
-Owner, the same evening (answers to asks `0b1994a8` and `a1317abd`), settling where it shows:
+Owner, the same evening, settling where it shows:
 
 - The page says it is trying to sync only when it can no longer confirm it is in step: it sent
   something and no answer of any kind came back within the ack timeout. Any answer resets the
-  timer; the page keeps retrying whatever is shown. The words are "Trying to sync with the
-  server…", in the top notification row.
+  timer; the page keeps retrying whatever is shown. The words were "Trying to sync with the
+  server…", in the top notification row; since 2026-10-12 the row always names the machine
+  ("Trying to sync with *m*…", `sync/rowWords.ts`).
 - The ack timeout is its own value, not the quiet window: the quiet window probes when nothing has
   arrived for a while (active sync); the ack timeout is a request the page made that got no ack.
 - The timer is the page's, about its own server. A remote machine that does not answer is the
@@ -203,7 +204,7 @@ retry of a check that failed; nothing draws it.
 | `retrying` | a check failed (an error, or the 30 s request deadline); it is retried from 5 s, doubling to a minute, for as long as it takes |
 
 What the reader sees comes from elsewhere: the session's line keeps its status, and the top row says
-"Trying to sync with the server…" once a request has gone without an answer for the ack timeout
+"Trying to sync with *m*…" once a request has gone without an answer for the ack timeout
 (`api/ackWatch.ts`: any response, stated error or socket frame is an answer; an upload is not
 watched; a request the caller cancelled says nothing).
 
@@ -315,15 +316,15 @@ asked for the ablation batch first (2026-10-06); it is done.
 
 | Surface | Kept current by | Knows it is out of step when | Says today |
 |---|---|---|---|
-| Session list (Navigate, Go to, quick switcher) | one board read per machine, `session.name`/`session.created` and status frames on the machine socket, a re-read after a missed announcement, a whole re-read after 30 s when browsed | the machine socket's seq monitor sees a gap (`missedAnnouncements`); a project or workspace listing did not answer (an unknown source, retried on the shared backoff) | nothing: the rows that did answer show, the rest are read again silently (owner Q4, 2026-09-30: the board is not an app-row cause) |
-| Docked cards (ask, extension dialogs, waiting cards) | the session's status frames on both sockets; the dialog surface's revision (`RevisionScope`) resyncs on a revision gap or a malformed frame | a dialog revision gap; the transcript's check failed (they ride the same session stream) | nothing on the card |
-| Plugin panels (files, git, goals, tasks, relays, subagents, background runs) | each plugin's own reads, `workspace.changed` nudges, a few polls | a read failed; the plugin decides | the plugin's own words: "Couldn't read this workspace's files: …", "Status unavailable.", "Could not load workspace tasks.", "Could not scan workspace relays." (some with a Retry button) |
+| Session list (Navigate, quick switcher) | one board read per machine, `session.name`/`session.created` and status frames on the machine socket, a re-read after a missed announcement, a whole re-read after 30 s when browsed | the machine socket's seq monitor sees a gap (`missedAnnouncements`); a project or workspace listing did not answer (an unknown source, retried on the shared backoff) | nothing: the rows that did answer show, the rest are read again silently (owner Q4, 2026-09-30: the board is not an app-row cause) |
+| Docked cards (extension dialogs, interactive cards, waiting cards) | the session's status frames on both sockets; the dialog surface's revision (`RevisionScope`) resyncs on a revision gap or a malformed frame | a dialog revision gap; the transcript's check failed (they ride the same session stream) | nothing on the card |
+| Plugin panels (files, git, tasks, and installed plugins' pages) | each plugin's own reads, `workspace.changed` nudges, a few polls | a read failed; the plugin decides | the plugin's own words: "Couldn't read this workspace's files: …", "Status unavailable.", "Could not load workspace tasks." (some with a Retry button) |
 | Composer, a message that could not send | the outbox, retried when the network returns | the browser is offline | "You are offline - this message sends itself when the connection is back." |
 | App row | the machine and session sockets, every read's outcome | a link is down, a machine does not answer, a server error | "Reconnecting…", "X is unavailable; reconnecting…", the server's own reason |
 
-### Decisions (owner, 2026-10-06, asks `0b1994a8` and `a1317abd`)
+### Decisions (owner, 2026-10-06)
 
-- **One signal for the link, in the top row.** "Trying to sync with the server…" shows only when a
+- **One signal for the link, in the top row.** "Trying to sync with *m*…" shows only when a
   request the page sent has had no answer of any kind for the ack timeout; any answer resets it;
   the page keeps retrying underneath. No surface draws its own sync word: the list, the docked
   cards and the panels keep what they last knew and read again on their own. (Supersedes the
@@ -350,8 +351,9 @@ asked for the ablation batch first (2026-10-06); it is done.
 - Step 1 (this commit): the top row's words and the ack watch (`api/ackWatch.ts`, fed by every
   JSON request, `fetchWithDeadline` and every socket frame); the dock's "Syncing…" removed and the
   transcript's sync value reduced to the checks and their retry.
-- Next: the panel state through the plugin API; the git panel's automatic retry; the queued
-  "sending" row in place of the offline line; Machines-only "offline"; the replayed-append rule.
+- Then built: the panel state through the plugin API (`ui.readFailure`); the git panel's
+  automatic retry with no Retry button; the queued "sending" row in place of the offline line
+  (message-states.md); Machines-only "offline"; the replayed-append rule.
 
 ## What this keeps and what it retires
 
@@ -362,12 +364,12 @@ asked for the ablation batch first (2026-10-06); it is done.
 
 | Phase | Scope |
 |---|---|
-| A | Daemon: transcript head `{epoch, length, leafId}` on status, keepalive and every read; `GET /messages?after=`; `GET /api/heads`; one message counter; `protocolVersion`. |
+| A | Daemon: transcript head `{epoch, length, leafId}` on status, keepalive and every read; `GET /messages?after=`; `GET /api/heads` (not built; see Phase A item 5); one message counter; `protocolVersion` (not added, 2026-10-07). |
 | B | Browser: `syncVerdict` and its effect layer, rows keyed by entry id, cache as a seed, the watchdog, honest labels. |
 | C | Session list, asks and dialogs, and plugin panels on the same heads. Refresh coalescing. |
 | D | Skew banner and fallback. The update restarts the daemon. In-flight tool calls are settled on restart. |
 
-Each phase is accepted only when **fault-injection probes on 8505** show convergence within *T* without a reload, and show the old build failing:
+Each phase is accepted only when **fault-injection probes on a dev stack** show convergence within *T* without a reload, and show the old build failing:
 1. drop frames at the proxy;
 2. freeze the socket without closing it;
 3. restart the daemon mid-turn;

@@ -1,6 +1,6 @@
 # Pro native: the app's own look, themes as departures from it
 
-## Decisions (owner, round 31)
+## Decisions (owner)
 
 1. **The native UI is the pro style.** Without a theme extension the app
    renders the flat mono TUI look - this is not a toggle, it is the default
@@ -17,10 +17,13 @@
    colours so every box-shadow in the app goes flat without touching the
    component rules that consume them. The pill token keeps rounding dots.
 4. **The 44px coarse touch floor stands.** Pro changes face and corners,
-   not the reach contract; the touch probe still passes with recorded
-   exemptions only.
+   not the reach contract.
 5. **No key-hint UI yet** - the custom-shortcut panel already exists; hint
    bar, cheat sheet and modal navigation stay future work.
+6. **Pro and Pro Light are the native pair** (added later). `core:pro-light`
+   (`nativeLightTheme.ts`) is the light member; Auto follows the system
+   between the two, and Actions → Select theme offers both beside any plugin
+   themes.
 
 ## Mechanics
 

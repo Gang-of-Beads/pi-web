@@ -1,6 +1,6 @@
 # PI WEB object model
 
-Status: revised design, 2026-09-30, with the owner's decisions of the same day (§7). Applies every "accept" of the object-model review (its triage is in git history, commit `b7b8bc9f`). Builds on `docs/design/state-diagram.md` (rules 1–7, D1–D8, B1–B49, with B48 under D5), `docs/design/sync-convergence.md` (heads, B28 board read, keepalive head) and `docs/design/state-sync-redesign.md` (one FIFO, facts not copies).
+Status: revised design, 2026-09-30, with the owner's decisions of the same day (§7). Applies every "accept" of the object-model review (its triage is in git history, commit `b7b8bc9f`). Builds on `docs/design/state-diagram.md` (rules 1–7, D1–D8, B1–B49, with B48 under D5), `docs/design/sync-convergence.md` (heads, B28 board read, keepalive head) and the state synchronisation redesign of 2026-09-29 (one FIFO, facts not copies; in git history, replaced by `message-states.md` for messages).
 
 ## Summary
 
@@ -12,10 +12,10 @@ Status: revised design, 2026-09-30, with the owner's decisions of the same day (
 6. Web→daemon forwards use deadline constants and `AbortSignal.timeout`. A reader's deadline never cancels shared daemon work.
 7. Phases: **P1** resource and row on projects, machines and workspaces → **P2** session open off the chain (typed not-found, passive tail page) → **P3** daemon tail (measure, startup instrumentation, scan single-flight, watcher filter, then deadlines) → **P4** board read, daemon heads, batched boot read → **P5** router, web publish, plugins, delete `normalizeTransientError` → **P6** transcript tail seed → **P7** boot weight and drafts. `RequestScheduler` is re-measured after P4.
 
-Evidence sources (the inventories and reviews of design run `7b4fe5b7`, kept as subagent artifacts, not in the repository; triage in commit `b7b8bc9f`), cited as:
-- **[C]** client inventory (`inventory-client.md`); paths relative to `src/client/src/`.
-- **[S]** server inventory (`inventory-server.md`).
-- **[N]** network inventory (`inventory-network.md`); **[M]** measured, **[E]** estimated.
+Evidence sources (inventories and reviews written while designing; they were working files and are not in the repository; triage in commit `b7b8bc9f`), cited as:
+- **[C]** the client inventory; paths relative to `src/client/src/`.
+- **[S]** the server inventory.
+- **[N]** the network inventory; **[M]** measured, **[E]** estimated.
 
 Anything that does not exist today is marked **new**. Where the inventories lack evidence, the text says so.
 
@@ -42,7 +42,7 @@ any  ──► fact : typed refusal (401, 403, {code:"session-not-found"}, archi
 
 - `ReadPhase = "syncing" | "live" | "reconnecting"`. There is no `failed`.
 - A **fact** is separate from the phase: `ReadFact = none | signed-out | gone(deleted|archived|project-removed) | forbidden`. A fact ends retrying for that key and is rendered as itself.
-- A server that answers with an error (a 5xx on a live link) is not a network problem, and the row says so (owner, Q9). The row cause is `server-error(machineId, reason)` and shows the error's reason itself, for example "*hxd-work-mbp*: <reason>". It never says "Reconnecting". The read keeps retrying on the same schedule, with no Retry button, and it is not a `ReadFact`.
+- A server that answers with an error (a 5xx on a live link) is not a network problem, and the row says so (owner, Q9). The row cause is `server-error(machineId, reason)` and shows the error's reason itself, for example "*m*: <reason>". It never says "Reconnecting". The read keeps retrying on the same schedule, with no Retry button, and it is not a `ReadFact`.
 - `value` is either `{ known: true, key, head?, data, source }` or `{ known: false, key }`. Old-key values never render (I1).
 - `T` is the existing quiet window setting (default 15 s), reused as the retry cap. There is no separate setting.
 
@@ -171,9 +171,9 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
   - `messagesPassive` (the plugin transcript port) paged every file entry, abandoned branches included; it now migrates the parsed entries in memory with the SDK's own `migrateSessionEntries` and pages the branch.
   - The tail reads a file only when its header says the current version (`isCurrentVersionFile`): the runtime rewrites an older file in place when it opens it, so a read beside that open could see it half written. An open runtime is found with `activeForRef` (its cwd, and the start of its id), like every other runtime read.
   - A status read that fails keeps the transcript, sets `statusReadFailed` and raises the app notice with the server's reason; any status for the selected session clears the flag.
-  - **Measured on 8505**, daemon-cold, 17.8 MB, phone. First transcript row at 2.68 / 3.12 / 4.42 s before, always after the status; 2.03 / 2.08 / 2.11 s after, always before the status. The tail answers in 0.107 s alone and 0.69 s beside the cold open.
+  - **Measured on a dev stack**, daemon-cold, 17.8 MB, phone. First transcript row at 2.68 / 3.12 / 4.42 s before, always after the status; 2.03 / 2.08 / 2.11 s after, always before the status. The tail answers in 0.107 s alone and 0.69 s beside the cold open.
   - **The budget (≤1.5 s) is not met yet.** The route restore waits about 1.1 s for the browser plugin modules, whose asset route asks the busy daemon for its plugin runtime on every request. That is the next slice.
-- **Read (P2)**: the first tail page comes from `messagesPassive`, which reads the file, returns `head` and never creates a runtime. The runtime opens in parallel for `status`. Transcript and status each become `live` independently; there is no `Promise.all(messages, status, streamSnapshot)` gate and no serial `streamSync`→`status` (`sessionController.ts:1688-1750` [C §3a.3]). Today: p99 10.7 s on 8504; 1.55 s TTFB daemon-cold on 17.8 MB [N §2].
+- **Read (P2)**: the first tail page comes from `messagesPassive`, which reads the file, returns `head` and never creates a runtime. The runtime opens in parallel for `status`. Transcript and status each become `live` independently; there is no `Promise.all(messages, status, streamSnapshot)` gate and no serial `streamSync`→`status` (`sessionController.ts:1688-1750` [C §3a.3]). Today: p99 10.7 s on production; 1.55 s TTFB daemon-cold on 17.8 MB [N §2].
 - **Cache**: memory LRU 12, span cap 400 (`chatTranscriptStore.ts:26,33`), looked up synchronously first. Today there is also localStorage `pi-web:chat-history:v2:` (TTL 7 d, ≤512 KB/entry, sync parse, `chatHistoryCache.ts:1,10,22,115-135`). **New (P6)**: an IndexedDB tail seed (last N rows + head, written together, writes debounced during streaming) replaces the localStorage path. It is never replayed from a persisted watermark.
 - **Retention**: a same-key memory seed renders in the select frame. An IndexedDB seed takes one async hop; the previous key's pixels stay until the next key's seed or read resolves, and they are not actionable meanwhile (I1). Seed → read is executed by D4 `bottomAnchorAction`.
 - **Presentation** (owner, Q3 of the ask): with nothing known and the first read in flight, the transcript shows "Loading this session…", the one visible syncing text. It never shows "Start the conversation" before a read answered (`ChatView.ts:1810-1818`). While reconnecting it shows no text, and the app row speaks.
@@ -198,28 +198,25 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 - **Backpressure**: the hub terminates a socket with >1 MiB buffered and logs nothing (`sessionEventHub.ts:334-348`); the bridge queues without a cap while CONNECTING (`webSocketBridge.ts:14-31`) [S §4.6]. **New**: one logged counter per drop reason.
 - **Presentation**: `dead` or backoff produces the row cause `link-down`.
 
-### 1.10 Message (D1)
+### 1.10 Message
+
+Replaced by `message-states.md` (2026-10-13). The device owns `sending` and `takingBack`; the machine owns `queued`, `handed`, `committed`, `consumed`, `withdrawn` and `cancelled`. A message never fails for good.
 
 - **Key**: `(machineId, sessionId, clientMessageId)`; committed rows by `entryId`.
-- **States**: D1 in full. The browser owns `sending|unverifiable|notSent`; the daemon owns the rest.
-- **Owner**: client `pendingOutbox.ts` (`advancePendingPrompt`, `:64`) + `sessionController.ts:2224-2296`; daemon `OwnedPromptQueue`, `operationLedger.ts` (`:141`).
-- **Head**: the inbox `seq`.
-- **Events**: `prompt.accepted|withdrawn|refused` today; `prompt.handed|returned|committed|consumed` **new** per D1 (whether these have landed is not established).
-- **Read**: `POST /sessions/:id/operations` (lost-answer probe, `sessionRoutes.ts:155`).
-- **Routing**: a `HubRouter` handler calls the D1 reducer directly; the outbox is not a resource.
+- **Owner**: client `pendingOutbox.ts` and `outboxEngine.ts`; daemon `OwnedPromptQueue`, `operationLedger.ts`, `operationBatch.ts`.
+- **Events**: the `prompt.*` frames and `operation.applied` on the session stream.
 
 ### 1.11 Outbox
 
-- **Key**: `sessionKey` = machine + session (`pendingOutbox.ts:57-59`).
-- **Props**: `PendingPrompt {clientMessageId,text,attachments,delivery,at}`; stored in localStorage, durable.
-- **While reconnecting**: sends are enqueued (owner decision 2). Only `notSent` from this device younger than 10 min is resent automatically (D1). `VERIFY_AFTER_MS` (`sessionController.ts:2224-2235`).
+- **Key**: device + machine + session: every operation is its own stored record (`pendingOutbox.ts`), numbered for this device (`operationLog.ts`, device id `pi-web:device-id`).
+- **Sending**: each session's unanswered operations go as one ordered batch, numbered from where the machine last said this device stands (`appliedThrough`); a batch nobody answered is sent again, with no age limit (message-states.md, "Order").
 - **Other actions while reconnecting** (owner, Q4): they fire now under the mutation deadline and the control shows as pending. They are never queued for replay. With no answer, a notice says the outcome is unknown, and the operations ledger probe re-checks it. That notice is a definite claim, so it takes the row as in §2.3.
 
 ### 1.12 Docked card (D2)
 
-- **Key**: `(machineId, sessionId, askId|dialogId)`.
+- **Key**: `(machineId, sessionId, dialogId)`.
 - **States**: D2 `open|answered|cancelled|refused`, with typed cancel causes.
-- **Owner**: daemon `PendingAskStore` (`pendingAskStore.ts:84`), `PendingExtensionDialogStore` (`:83`); client card store via `RevisionScope` (`sessionController.ts:216-223`). A router handler calls the card store.
+- **Owner**: daemon `PendingExtensionDialogStore` (`pendingExtensionDialogStore.ts`; PI WEB's own ask store was deleted with `ask_user` on 2026-10-11); client card store via `RevisionScope` (`sessionController.ts`).
 - **Head**: `dialogRevisionBySession` (`piSessionService.ts:1439`), namespaced by `daemonInstanceId`.
 - **Retention**: a missed revision triggers a resync (`sessionController.ts:223`).
 
@@ -237,20 +234,19 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 
 - **Key**: projects global (`projectPins.ts:12`); sessions per machine (`sessionPins.ts:18,45`); server `shared/storage/sessionPinStore.ts`, route `web/sessionPinRoutes.ts`.
 - **Head/events**: since P5 slice a, `pins.changed` on the machine's realtime socket: the web pin route nudges its daemon (`shared/sessiondClient/changeNudge.ts`, daemon `realtime/changeNudgeRoutes.ts`). The pins head for the quiet window *T* comes with the heads work (B28).
-- **Read**: `GET /api/session-pins`. Before P5 slice a, re-read on render when older than 2 s → 30/min on 8504 [N §3, §4]. Since: once per machine, then on `pins.changed`, on that machine's socket reopening, and on tab resume; a render never reads. A remote machine's pins go through the gateway (`FEDERATED_HTTP_ROUTES`, P5 slice b; before, they had never been readable there). **Still to do**: the batched boot read and the pins head (B28).
-- **Pins outlive projects (B49, owner Q10/Q11).** A pin names a session; it is global per machine and does not depend on which projects are open. A project exists to create new sessions in its directory and to open its own session list, nothing more. So the global PINNED group is resolved by the daemon from the pinned ids (the board read carries the pinned sessions whatever projects are open), and tapping a pinned session opens it without reopening its project. Closing a project says nothing about its pins. Until B49 slice a the row vanished silently, because PINNED was built from the open projects' lists (verified on 8505). **Shipped (B49 slice a):** the board answer (P4 slice a) carries `pinned`: each pinned id that no answered listing holds is located on the daemon (`/sessions/:id/locate`, a store-wide scan the scanner memoises) within the board's budget, and answered as the session, `gone` (the typed not-found code) or `unknown`. The page lists the found ones in PINNED beside the open projects' pinned rows (`SessionBoard.pinnedElsewhere`) and in the quick switcher, and its row menu acts on them on their own machine. A gone pin is not drawn; what it should say is the owner's (asked). An unknown pin keeps the board partial (`UnknownSource` `pin`), so it is located again (`completeSessionBoard`, the daemon's machine-wide locate) rather than left out silently. Tapping one opens the session; its project stays closed. The place is typed (`locateSessionWorkspace` → `found | outside | unknown`): a session outside every open project leaves the project and workspace selection empty, so neither the page nor the URL goes on naming the project the reader was in, and the URL names the session alone. A route naming a session with no project opens it through the named-target machinery (`openSessionAlone`, D8), so a reload lands on it, or says it is gone. A machine without the board route, or a pin store that cannot be read, gives no `pinned`, and PINNED is the open projects' pinned rows as before.
+- **Read**: `GET /api/session-pins`. Before P5 slice a, re-read on render when older than 2 s → 30/min on production [N §3, §4]. Since: once per machine, then on `pins.changed`, on that machine's socket reopening, and on tab resume; a render never reads. A remote machine's pins go through the gateway (`FEDERATED_HTTP_ROUTES`, P5 slice b; before, they had never been readable there). **Still to do**: the batched boot read and the pins head (B28).
+- **Pins outlive projects (B49, owner Q10/Q11).** A pin names a session; it is global per machine and does not depend on which projects are open. A project exists to create new sessions in its directory and to open its own session list, nothing more. So the global PINNED group is resolved by the daemon from the pinned ids (the board read carries the pinned sessions whatever projects are open), and tapping a pinned session opens it without reopening its project. Closing a project says nothing about its pins. Until B49 slice a the row vanished silently, because PINNED was built from the open projects' lists (verified on a dev stack). **Shipped (B49 slice a):** the board answer (P4 slice a) carries `pinned`: each pinned id that no answered listing holds is located on the daemon (`/sessions/:id/locate`, a store-wide scan the scanner memoises) within the board's budget, and answered as the session, `gone` (the typed not-found code) or `unknown`. The page lists the found ones in PINNED beside the open projects' pinned rows (`SessionBoard.pinnedElsewhere`) and in the quick switcher, and its row menu acts on them on their own machine. A gone pin is not drawn; what it should say is the owner's (asked). An unknown pin keeps the board partial (`UnknownSource` `pin`), so it is located again (`completeSessionBoard`, the daemon's machine-wide locate) rather than left out silently. Tapping one opens the session; its project stays closed. The place is typed (`locateSessionWorkspace` → `found | outside | unknown`): a session outside every open project leaves the project and workspace selection empty, so neither the page nor the URL goes on naming the project the reader was in, and the URL names the session alone. A route naming a session with no project opens it through the named-target machinery (`openSessionAlone`, D8), so a reload lands on it, or says it is gone. A machine without the board route, or a pin store that cannot be read, gives no `pinned`, and PINNED is the open projects' pinned rows as before.
 - **Two kinds of pin** (owner, 2026-09-30, asked after Q11: "should global pins and project pins be separate?", answered "two pins"):
   - **Global pin**: machine-wide. It is listed in the global board's PINNED, whatever projects are open. It is today's pin, stored in `session-pins.json`.
   - **Project pin**: kept at the top of its own project's session list. **New**. It is stored per machine and per project, next to the global pins, so every device sees it.
   - The row menu offers "Pin globally" and "Pin in this project" as two separate toggles, and a session may carry both.
   - **Built (B49 slice b, 2026-10-08):** `session-pins.json` keeps `projectPins: { <projectId>: [ids] }` beside `pinnedSessionIds` (the old shape when no project has a pin); every answer of `/session-pins` carries `projectPins`, so a page tells a machine that keeps project pins from an older one and offers "Pin in this project" only on the first. POST `{ sessionId, pinned, projectId }` sets a project pin. A deleted session leaves every pin. The Navigate row menu reads "Pin globally" and, with a project in scope, "Pin in this project"; the quick switcher keeps the global toggle. 
-  - **Owner, 2026-10-08 (ask `9dcf07fa`): "global is the global pin, project is the project pin; the menu chooses where to pin."** The machine-wide board lists global pins under PINNED; a project lists only its own pins there, and a global pin sits in a project's list like any other session (`navigateModel.shownPinned`). A machine that keeps no project pins has only the global pin, in a project too.
+  - **Owner, 2026-10-08: "global is the global pin, project is the project pin; the menu chooses where to pin."** The machine-wide board lists global pins under PINNED; a project lists only its own pins there, and a global pin sits in a project's list like any other session (`navigateModel.shownPinned`). A machine that keeps no project pins has only the global pin, in a project too.
   - **Pinned projects live on the machine too (R11 slice 3, 2026-10-09).** They were kept in each browser, so the phone and the desktop disagreed about which projects stood first and in what order. `session-pins.json` keeps `pinnedProjectIds` (in the reader's order, left out when empty) beside the session pins; `POST /session-pins` takes `{ pinnedProject, pinned }`, `{ pinnedProjectOrder }` and `{ adoptProjects }`, and every answer carries `pinnedProjectIds`. A page adopts its browser's old list once per machine and mirrors the answer back into the browser; a machine that answers without the field keeps the pins in the browser, as before.
 
-### 1.15 Background runs, subagent runs, interrupted runs
+### 1.15 Background work and interrupted runs
 
-- **Background tasks**: keyed by the selected chat; `BackgroundTasksRead` (`backgroundTaskRows.ts:13`), cleared after a frame (`PiWebApp.ts:754-761`). Read `GET /sessions/:id/background-tasks`. **New**: the `backgroundWork` count on status is the head.
-- **Subagent runs**: key `sessionFile`; before P3b `setInterval(runs.tick, 3000)` from render, forever. Since P3b the poll runs only while the panel or its badge is drawn and the session works, with a read on each edge (state-diagram D5, "The subagents run list"; `subagents/runsPolling.ts`); `runs.list` 1,747 calls, p90 2 s [N §4]. **New**: a resource plus the generic `plugin.changed`; no `runs.changed` special case.
+- **Background work**: the count on a session's status is core's working subsessions plus every active plugin's `backgroundWork` answer (`server-plugin-api.ts`). The runs themselves (background tasks, subagent runs) are read by the plugins that own them, which now live in their own repositories.
 - **Interrupted runs**: `GET /sessions/interrupted` is read-and-clear (`sessionRoutes.ts:118`). Its spec declares `effect: "read-and-clear"`: there is no client retry of a spent record; a lost answer is re-asked only through the ledger probe. It is included in the batched boot read with the same effect.
 
 ### 1.16 Plugin (D6) and plugin panel
@@ -264,10 +260,10 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
   - Every open panel keeps a head and verifies it every *T* (4 reads a minute per open panel), which covers workspaces without a watcher.
   - A repo test forbids `setInterval` in first-party plugin browser code; voice is on the allowlist.
   - Third-party plugins: a deprecation warning for one release, then removal. This is an engineering call; the API cannot enforce it in the browser.
-- **Watcher (P3), after the owner's requested research** (run 8f558e71; VS Code's git extension, GitLens, lazygit, GitHub Desktop, JetBrains):
+- **Watcher (P3), after the owner's requested research** (run; VS Code's git extension, GitLens, lazygit, GitHub Desktop, JetBrains):
   - **Cause.** The watcher is a recursive `fs.watch` on the whole workspace with no filter (`workspaceWatcher.ts:39`). It publishes `workspace.changed` at most once per 250 ms burst (`:44`, `:92-99`). Every `.git/objects` write, every `index.lock`, `node_modules`, and the `.pi/tasks/*.output` logs that background tasks append continuously therefore become one git status plus one tree read up to 4 times a second, which is the storm [N §4].
   - Our own `git status` already runs with `--no-optional-locks` (`git/server-plugin.ts:195-201`), so our reads do not rewrite the index.
-  - **What the mature tools do.** Shipped in the watcher change (`workspaceChangeFilter.ts`, probe `probe-watch-noise.mjs`):
+  - **What the mature tools do.** Shipped in the watcher change (`workspaceChangeFilter.ts`, probe):
     - **A `.git` whitelist:** `HEAD`, `index`, `packed-refs`, `config`, `shallow`, `refs/**`, `*_HEAD`, `MERGE_*`, `rebase-*/**`, `sequencer/**`, `info/exclude` (the GitLens set). A terminal commit shows through `index` and `refs/**`, which is why `.git` is not ignored wholesale. A linked worktree's state under `.git/worktrees/` is not news for the main workspace.
     - **Always dropped:** `*.lock`, `objects/**`, `logs/**` and every other `.git` file; `node_modules` at any depth; the git directory of a nested clone; `.watchman-cookie-*`; `fsmonitor--daemon/`; pi's runtime logs (`.pi/tasks/`, `.pi/delegate/`).
     - **The working tree is news, build output included** (`dist/`, `.next/`, `target/`). The tree and git panels show it, and a busy build publishes at most once per 2.5 s window. Checking `.gitignore` would cost a git spawn per event; add it only if a measurement shows build output on the budget.
@@ -283,9 +279,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 
 ### 1.17 Goal (D7)
 
-- **Key**: `(machineId, projectId, goalId)`; focus `goalId → sessionId`.
-- **States**: D7. Reads use `ReadPhase`; "unreadable" is a fact (B27), never "no goals".
-- **Today**: `readKey(workspacePath, sessionCwd)`, one slot, `failed` terminal (`goals/pi-web-plugin.ts:56,68-90`). **New**: `host.resource` + `plugin.changed`.
+The Goals plugin is now the separate pi-web-goals package; its reads are its own. The rule it follows is D7's: "unreadable" is a fact (B27), never "no goals".
 
 ### 1.18 Navigation intent (D8)
 
@@ -303,7 +297,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 
 | Object | Key today | Defect | Change |
 |---|---|---|---|
-| Prompt / ask drafts | sessionId only (`promptDraftStorage.ts:1-4`, `askDrafts.ts:16-20`) | no machine in the key | **new** key `machine:session[:ask]`. Lazy adoption: when X opens on M and a legacy key X exists, it is adopted as `M:X`. Drafts are never dropped (engineering call, not asked) |
+| Prompt and card drafts | sessionId only (`promptDraftStorage.ts`; the ask drafts of the time) | no machine in the key | built: keyed machine + session (+ dialog for a card, `cardDrafts.ts`); see server-drafts.md. Lazy adoption: when X opens on M and a legacy key X exists, it is adopted as `M:X`. Drafts are never dropped (engineering call, not asked) |
 | Route/selection memories | per machine+project, sessionStorage | — | unchanged |
 | UI preferences | per module localStorage | — | adds *T* |
 | Quick switcher | own loading/error, 30 s staleness (`PiWebApp.ts:452-454,531-539,2866-2908`) | fourth copy of the list read | reads the board resource (P4) |
@@ -374,6 +368,8 @@ interface ScopedResource<K, V, E> {
 
 ### 2.2 Client: `HubRouter` (a static handler table)
 
+Not built. Frames still reach their owners through the controllers' own handlers; `GET /api/heads` does not exist.
+
 ```ts
 type Handler<F> = (frame: F, scope: SocketScope) => void;
 const handlers = { /* one entry per frame type */ } satisfies { [T in SessionUiEvent["type"]]: Handler<Extract<SessionUiEvent, { type: T }>> };
@@ -433,6 +429,8 @@ A remote's health whose read failed is `unknown`, and the ladder names the machi
 
 ### 2.4 Client: `PersistentSeed` (transcript tail only, P6)
 
+Not built: the transcript cache is still the `localStorage` one (`chatHistoryCache.ts`).
+
 - IndexedDB store keyed by `(machine, session)`: tail rows + head + savedAt, written together, debounced during streaming, evicted by LRU under a total budget (proposed 20 MB; not a per-entry drop, `chatHistoryCache.ts:126-135`).
 - Lookup order: memory LRU (sync) first, then IndexedDB (one async hop). A seed never sets `live`.
 - Board and projects seeds are not built until a measurement shows a need.
@@ -461,7 +459,7 @@ The case for it (peak 22–24 concurrent, 13–26 queued [N §1]) is mostly fan-
 
 ## 3. Module map
 
-Dependency direction: component → controller → `sync/*` → `api/http.ts`. Plugins → `src/plugin-api.ts` → `sync/*`. A plugin never uses `fetch` or `setInterval` for shown data. `bob.config.json` `writePaths` gains `src/client/src/sync/` in P1.
+Dependency direction: component → controller → `sync/*` → `api/http.ts`. Plugins → `src/plugin-api.ts` → `sync/*`. A plugin never uses `fetch` or `setInterval` for shown data.
 
 ### 3.1 Client (`src/client/src/`)
 
@@ -508,12 +506,12 @@ Dependency direction: component → controller → `sync/*` → `api/http.ts`. P
 
 ## 4. Network plan
 
-### 4.1 Today's critical paths [N §2, measured on 8505]
+### 4.1 Today's critical paths [N §2, measured on a dev stack]
 
 - **Boot**: 96–97 requests, 1.02 MB, ~40 `/api`, peak 22–24 concurrent on HTTP/1.1, ~57 unbundled plugin modules (≈700 KB), 8 duplicate reads [N §1].
 - **Open session (daemon-cold, 17.8 MB)**: projects → 6× workspaces → 7× `sessions?cwd=` (~1.3 s TTFB) → status/messages/stream-snapshot/background-tasks (0.8–1.8 s, one shared cold open) → first row at 3.45 s (5.95 s on run #1). Warm: first row at 0.84 s; a warm reload sends the same 110 requests.
 - **Idle**: 0 HTTP/min, ~0.4 KB/min [N §3].
-- **Daemon startup**: the 8505 daemon started listening 31.4 s after its plugins activated, with nothing logged in between (12:07:53 → 12:08:25Z).
+- **Daemon startup**: the dev stack's daemon started listening 31.4 s after its plugins activated, with nothing logged in between (12:07:53 → 12:08:25Z).
 
 ### 4.2 Target critical paths
 
@@ -525,21 +523,23 @@ Dependency direction: component → controller → `sync/*` → `api/http.ts`. P
 | Budget | Today | Target | Phase |
 |---|---|---|---|
 | requests at boot | 96–97 | ≤25 | P7 (bundling) |
-| `/api` at boot, background included | ~40; **24** on 2026-10-01, **22** on 2026-10-09 (`probe-budgets.mjs` guards it as a ceiling): 6 shell facts (`pi-web/status` twice: core and the updates plugin), 8 machine facts, 1 plugin, 5 workspace, 4 session open | ≤8, through composite reads (P7 slices b-d); under HTTP/2 each saves at most one round trip, so they wait behind work the reader feels | P4, P7 |
+| `/api` at boot, background included | ~40; **24** on 2026-10-01, **22** on 2026-10-09 (a probe, since removed, guarded it as a ceiling): 6 shell facts (`pi-web/status` twice: core and the updates plugin), 8 machine facts, 1 plugin, 5 workspace, 4 session open | ≤8, through composite reads (P7 slices b-d); under HTTP/2 each saves at most one round trip, so they wait behind work the reader feels | P4, P7 |
 | max `/api` concurrency | 13–15 | measure after P4 | 2.7 |
 | idle bytes/min, panels closed | ~0.4 KB | ≤1 KB | — |
 | idle, git/files panel open | ≤245 req/min; 40–47/min after the watcher fix (the subagents run list every 3 s, and the pins re-read on each render it caused); **files 0/min, git 14–16/min, subagents 1/min** after P3b (git status 7, pins 7–8); **git 7/min** (git status only, no pins read) on 2026-10-09 | ≤8/min, plus head checks at 4/min | P3, P5 |
 | pins reads/min | 30; 7 with the git panel open after P3b (re-read on each render older than 2 s) | ≤1 | P5 |
-| first transcript row, warm | 0.84 s; **0.33–0.38 s** after P2c + P3a; **225 ms** on 2026-10-01, **322 ms** on 2026-10-09 at load 9.5 on 14 cores (`probe-budgets.mjs`) | ≤400 ms | P6 |
-| first transcript row, cold 17.8 MB | 3.5–6.0 s; **1.11–1.34 s** after P2c + P3a (phone, daemon-cold, `probe-open-latency.mjs`); **1.27–1.74 s** on 2026-10-01, three restarts in a row: only the first, right after a rebuild with the OS file cache cold, misses; **533 ms** on 2026-10-09 (row before the status at 1618 ms) | ≤1.5 s | P2, P3 |
+| first transcript row, warm | 0.84 s; **0.33–0.38 s** after P2c + P3a; **225 ms** on 2026-10-01, **322 ms** on 2026-10-09 at load 9.5 on 14 cores | ≤400 ms | P6 |
+| first transcript row, cold 17.8 MB | 3.5–6.0 s; **1.11–1.34 s** after P2c + P3a (phone, daemon-cold); **1.27–1.74 s** on 2026-10-01, three restarts in a row: only the first, right after a rebuild with the OS file cache cold, misses; **533 ms** on 2026-10-09 (row before the status at 1618 ms) | ≤1.5 s | P2, P3 |
 | session read's wait on lists | 0.55–1.5 s | 0 (with `cwd`) | P2 |
 | board read p99 | 23 s (list) | ≤1 s | P3, P4 |
 | time to the reconnecting row | 10.5–29 s | deadline + grace (7 s small / 12 s large) | P1, P3 |
 | daemon listen after plugin activation | 31.4 s | measured, then the slowest phase fixed | P3 |
-| first row on a deep link at a 100 ms round trip (`probe-boot-latency.mjs`) | 2.29–2.41 s; **1.36–1.49 s** after P7a (all 15 plugins), both over HTTP/1.1; **1.07–1.33 s over HTTP/2**, which production speaks (§4.7) | ≤0.8 s with a remembered place (waits on the owner); place-before-plugins dropped (owner: everything at once) | P6, P7 |
-| browser plugin modules at boot (`probe-boot-latency.mjs`) | 55–70 files, imported up to ten levels deep (1.34 s of round trips at 100 ms); **one file per plugin** after P7a, asked for within 1 ms | one level | P7 |
+| first row on a deep link at a 100 ms round trip | 2.29–2.41 s; **1.36–1.49 s** after P7a (all 15 plugins), both over HTTP/1.1; **1.07–1.33 s over HTTP/2**, which production speaks (§4.7) | ≤0.8 s with a remembered place (waits on the owner); place-before-plugins dropped (owner: everything at once) | P6, P7 |
+| browser plugin modules at boot | 55–70 files, imported up to ten levels deep (1.34 s of round trips at 100 ms); **one file per plugin** after P7a, asked for within 1 ms | one level | P7 |
 
 ### 4.4 B28 board read and heads
+
+Partly built: the board read is `GET /api/session-board`, composed by the web process (§1.5, P4 slice a). The daemon-side board, its head and `GET /api/heads` are not built.
 
 - `GET /api/sessions/board` → `{ head, projects: [{id, revision, workspaces: [{id, revision, state: listed|unknown, sessions: [SessionInfo & {lastActivityAt}]}]}] }`. It replaces 1 + P + W fan-out and the quick switcher's copy. It is computed from one single-flight scan, with no flush; it keeps an **idempotent** unread reconcile and the archive-notification clear (the owner of both after `list` stops writing). Payload measured on the real store (65 dirs, 2,038 files) before P4 ships.
 - The daemon keepalive carries daemon heads only: `board`, `unread`, `machineStatus`, `stream`. Projects and workspaces ride `machine.status`. Pins and machines heads arrive in P5 with the web nudge.
@@ -565,37 +565,35 @@ Fix, in phase order (P3 unless noted):
 7. Cold open beyond the tail page depends on the SDK `SessionManager.open` cost; measure it before designing.
 
 **Daemon startup outliers (measured 2026-10-01).**
-- **Numbers.** 112 starts of 8504, from the daemon's first log line to listening: p50 1.7 s, p90 6.9 s, worst 42.6 s; 13 starts took over 5 s. The process start adds about 1 s before the first log line. 8505 starts in 1.1 s at p50.
+- **Numbers.** 112 starts of the production daemon, from its first log line to listening: p50 1.7 s, p90 6.9 s, worst 42.6 s; 13 starts took over 5 s. The process start adds about 1 s before the first log line. A dev stack starts in 1.1 s at p50.
 - **Where the time goes.** In a 38.8 s start, 38.7 s is one call: `bootstrapAndFreezeGlobalExtensionProviders` loading the global pi extensions before the daemon listens.
-- **A cold transpile cache explains 5 s, not 40 s.** Measured with `/tmp/bootstrap-timing.mts`: 1.3 s warm, 6.6 s with the jiti cache moved aside.
-- **The likely cause of the 30–40 s starts is the account-store lock.** The pi-multi-account extension reads the account store while it loads. Until today each read took pi-accounts' exclusive cross-process lock, with about 40 s of retries, and every pi process on the machine (the other daemon, the TUI, background agents) reads it on every turn. The worst starts sit at that budget.
-  - The extension's lock-free reads (`ddba988`, `f9c4821`) remove the wait once a daemon loads them.
-  - Not reproduced: holding the lock would fail the 8504 daemon's live requests, because that daemon still runs the old extension. Confirm with the next starts after 8504 restarts.
+- **A cold transpile cache explains 5 s, not 40 s.** Measured with a timing script: 1.3 s warm, 6.6 s with the jiti cache moved aside.
+- **The likely cause of the 30–40 s starts is a lock taken by an extension.** A third-party pi extension read a shared store while it loaded, under an exclusive cross-process lock with about 40 s of retries, and every pi process on the machine read it on every turn. The worst starts sit at that budget. The extension has since stopped taking the lock for reads. Not reproduced.
 - **What remains:** an npm install of a package in `settings.json` that is missing, or whose installed version no longer matches its range, still runs before listening. Making the daemon listen before its extension bootstrap is a separate design (sessions must not load before the provider baseline is frozen).
 
 ---
 
 ### 4.7 The boot on a slow link (P6 slice b onward, P7)
 
-**Measured** on 8505, phone 393x850. A warm reload of a deep link to the small seed session, with Chrome emulating the round-trip latency and the bandwidth unthrottled (`/tmp/boot-chain-latency.mjs`, then `probe-boot-latency.mjs`):
+**Measured** on a dev stack, phone 393x850. A warm reload of a deep link to the small seed session, with Chrome emulating the round-trip latency and the bandwidth unthrottled:
 
 | Added latency | First row | Projects read sent | Workspaces read sent | Sessions read sent |
 |---|---|---|---|---|
-| 0 ms (8505 local) | 232 ms | 52 ms | 166 ms | 214 ms |
+| 0 ms (local) | 232 ms | 52 ms | 166 ms | 214 ms |
 | 50 ms | 1,638 ms | 366 ms | 1,502 ms | 1,571 ms |
-| 100 ms (a tailnet; the Mac reading 8504) | 2,290 ms | 570 ms | 2,016 ms | 2,138 ms |
+| 100 ms (a private network; a laptop reading production) | 2,290 ms | 570 ms | 2,016 ms | 2,138 ms |
 
 The gap between the projects read and the workspaces read is not a read. `restoreRouteFor` awaits `loadPluginsForSelectedMachine()` before it selects anything, so that the route's `tool` and `view` can be resolved against plugin-registered panels.
 
 The built-in browser plugins shipped as about 70 module files. Eight entries imported only their own files, so the build left them unbundled, and their imports went up to ten levels deep. At 100 ms each level is one round trip, on the same six HTTP/1.1 connections as the app's own reads. The timeline:
 
 - the plugin entries at 368 ms;
-- their imports at 601, 762, 898, 1,074, 1,217, 1,388, 1,526, 1,658 and 1,817 ms (`relays/vendor/marked.esm.js`);
+- their imports at 601, 762, 898, 1,074, 1,217, 1,388, 1,526, 1,658 and 1,817 ms (the since-removed Relays plugin's vendored `marked`);
 - the route restore at 1,956 ms.
 
 The request count matters less than this: 24 `/api` reads cost about one round trip each on six connections, while the plugin waterfall costs ten in a row.
 
-**Correction (2026-10-01): production speaks HTTP/2.** 8504 is published through `tailscale serve https:8504`, and the phone negotiates HTTP/2 (`curl` reports `2 200`; forcing `--http1.1` gives 1.1). The table above and the P7 slice a numbers were measured over plain HTTP to `127.0.0.1`, where Chrome is held to six HTTP/1.1 connections, so every boot request queued in waves. HTTP/2 multiplexes them on one connection, so production never had that queue. Measured again through a local HTTP/2 TLS front for 8505 (`/tmp/h2-proxy.mjs`), same deep link, after P7 slice a:
+**Correction (2026-10-01): production speaks HTTP/2.** The production instance is published through a TLS reverse proxy, and the phone negotiates HTTP/2 (`curl` reports `2 200`; forcing `--http1.1` gives 1.1). The table above and the P7 slice a numbers were measured over plain HTTP to `127.0.0.1`, where Chrome is held to six HTTP/1.1 connections, so every boot request queued in waves. HTTP/2 multiplexes them on one connection, so production never had that queue. Measured again through a local HTTP/2 TLS front for the dev stack, same deep link, after P7 slice a:
 
 | Added latency | First row (HTTP/2) | First row (HTTP/1.1, same build) | Projects read sent | Workspaces read sent | Sessions read sent |
 |---|---|---|---|---|---|
@@ -604,7 +602,7 @@ The request count matters less than this: 24 `/api` reads cost about one round t
 | 100 ms | 1,071–1,326 ms | 2.0–2.1 s | 488–631 ms | 706–913 ms | 830–1,090 ms |
 | 150 ms | 1,651 ms | | 849 ms | 1,129 ms | 1,352 ms |
 
-What a reader on the tailnet waits for is serial depth, not request count: the document, the app bundle, the boot reads with the plugin manifest (about 400–500 ms at 100 ms), the plugin modules and the projects read (one round trip), then the workspaces read and the sessions read, two round trips that only confirm the place before the session is selected. A warm reload draws its first row from the cached transcript the moment the session is selected, so those last two round trips are the largest piece left. The boot probes measure through an HTTP/2 front from now on; an HTTP/1.1 number is not a production number.
+What a reader on a slow link waits for is serial depth, not request count: the document, the app bundle, the boot reads with the plugin manifest (about 400–500 ms at 100 ms), the plugin modules and the projects read (one round trip), then the workspaces read and the sessions read, two round trips that only confirm the place before the session is selected. A warm reload draws its first row from the cached transcript the moment the session is selected, so those last two round trips are the largest piece left. The boot probes measure through an HTTP/2 front from now on; an HTTP/1.1 number is not a production number.
 
 **The slices, ordered by what a reader on a slow link feels:**
 
@@ -616,14 +614,14 @@ What a reader on the tailnet waits for is serial depth, not request count: the d
    - **What is left:** the 15 entries and about 13 `/api` reads, all issued around 300–400 ms, queue on HTTP/1.1's six connections to one host. The plugins finish around 930 ms (the updates plugin's activation read). The workspaces → sessions → row chain then costs about three more round trips. Slices 2 and 3 address both.
    - Guard: `browserEntryResolvable.test.ts` fails when a shipped entry statically imports anything.
 2. **The place before the plugins** (P6 slice b). **Dropped** (owner, 2026-10-01: everything at once). A session's text does not show before the plugins that draw parts of it, so the route restore keeps waiting for them. Under HTTP/2 the plugins cost about one round trip after the manifest, which the projects read shares.
-3. **A remembered folder seeds the open** (P6 slice c, browser only; replaces "`cwd` in links"). **Dropped** (owner, 2026-10-01, ask `a4535a88`: wait). A reload selects nothing until the machine has confirmed the workspace and the session, as today; the about 0.4 s at a 100 ms round trip is the accepted price.
+3. **A remembered folder seeds the open** (P6 slice c, browser only; replaces "`cwd` in links"). **Dropped** (owner, 2026-10-01: wait). A reload selects nothing until the machine has confirmed the workspace and the session, as today; the about 0.4 s at a 100 ms round trip is the accepted price.
    - The page remembers each session's folder, keyed by machine and session.
    - A deep link or reload asks for the transcript tail at once, in parallel with the route chain.
    - The chain's typed place (`found | outside | unknown`) wins over the seed when they disagree. An early read for a session that turns out gone shows nothing until the chain says gone.
    - With everything at once, the seed does not show the session before the plugins. It lets the session be selected as soon as the plugins and the projects read are in, instead of two round trips later (about 250 ms at 100 ms, measured under HTTP/2).
 4. **Fewer `/api` reads at boot** (P7 slices b–d). These are measured again after 1–3, since each is worth one round trip or less once the waterfall and the chain are gone:
    - one shell-facts answer (config, version, self-update status, roster), with a fallback for an older web process;
-   - `pi-web/status` given to plugins as a host fact instead of read again by the updates plugin. **Shipped (P7 slice c, browser only).** `PiWebStatusController.read(machineId)` is the one read: it joins a read on its way and reuses an answer for 30 s. Plugins get it as `PluginActivationContext.readPiWebStatus`, which reads the status of the registration's own machine. An older host leaves it absent, so the plugin reads `api/pi-web/status` itself there. The web process already caches this status for 60 s, so reuse adds at most 30 s of age to an answer the server already accepts. "Check for updates" still asks the machine too, and its answer is what the next reader gets, even when an older read lands after it (review `19347e5e`).
+   - `pi-web/status` given to plugins as a host fact instead of read again by the updates plugin. **Shipped (P7 slice c, browser only).** `PiWebStatusController.read(machineId)` is the one read: it joins a read on its way and reuses an answer for 30 s. Plugins get it as `PluginActivationContext.readPiWebStatus`, which reads the status of the registration's own machine. An older host leaves it absent, so the plugin reads `api/pi-web/status` itself there. The web process already caches this status for 60 s, so reuse adds at most 30 s of age to an answer the server already accepts. "Check for updates" still asks the machine too, and its answer is what the next reader gets, even when an older read lands after it (found in review).
    - the opened session's status, thinking levels and background tasks in one read;
    - the socket's open delivering its snapshot (unread, statuses, interrupted) as its first frame.
 
@@ -650,10 +648,12 @@ What a reader on the tailnet waits for is serial depth, not request count: the d
 
 ## 6. Migration plan
 
-Each phase ships green, is probed on 8505 (393×850 coarse pointer where it matters on a phone), and carries a patch changeset.
+Each phase ships green, is checked on a dev stack (393×850 coarse pointer where it matters on a phone), and carries a patch changeset.
+
+Status (2026-10-14): **P1** built (slices 1–6). **P2** built (slices a–c). **P3** partly built: the scan single-flight, the watcher filter and the quieter plugin reads are in; unread without flush, the event-loop delay metric and the per-class deadlines are not. **P4** partly built: the board read through the web process (slice a) is in; the daemon board, heads and the batched boot read are not. **P5** partly built: `pins.changed` with the web nudge, pins through the gateway and the git poll gated on visibility are in, and `normalizeTransientError` is gone; `HubRouter`, `host.resource`, `plugin.changed` and `machines.changed` are not built. **P6** not built (slices b and c were dropped). **P7** partly built: one file per plugin (slice a) and the shared status read (slice c) are in.
 
 **P1: ReadPhase + ScopedResource on projects, machines and workspaces; the row contract.**
-- Scope: `sync/readPhase.ts`, `sync/scopedResource.ts` (keyed entries, `readVerdict`, buffer, ref-counted flights, `wake` as a heads compare), `sync/connectionSummary.ts`; `api/inFlight.ts` join mode; `projectController.ts`, `machineController.ts`, `workspaceController.ts`; `locateAndApplySessionWorkspace` moved in, writing through the resources; `errorBanner.ts`, `bannerHold.ts`, `AppNavigatePage.ts`, `ProjectList.ts`, `WorkspaceList.ts`; `bob.config.json` `writePaths` += `src/client/src/sync/`.
+- Scope: `sync/readPhase.ts`, `sync/scopedResource.ts` (keyed entries, `readVerdict`, buffer, ref-counted flights, `wake` as a heads compare), `sync/connectionSummary.ts`; `api/inFlight.ts` join mode; `projectController.ts`, `machineController.ts`, `workspaceController.ts`; `locateAndApplySessionWorkspace` moved in, writing through the resources; `errorBanner.ts`, `bannerHold.ts`, `AppNavigatePage.ts`, `ProjectList.ts`, `WorkspaceList.ts`.
 - The row is portalled above the dialog layer, with the Q1 precedence behind one constant.
 - Deletes: `ProjectsLoadState`, `MachinesLoadState`, `isLoadingWorkspaces`, `isLoadingMachines`, "Couldn't read the projects…", the Retry button, the "Loading projects/workspaces…" titles (Q2), the `normalizeTransientError` doc comment block (`errorBanner.ts:69-75`) and `isTransientError`'s classification-seam role (`notice.ts`), plus read producers of `error`.
 - Proof: phase × fact, three-writer and `RowState` unit tests; the grep test on read surfaces; a phone probe that aborts the first projects read (converges without input, no empty text, row mounts = 1); the Settings-open probe.
@@ -701,7 +701,7 @@ Each phase ships green, is probed on 8505 (393×850 coarse pointer where it matt
 - **Q3, the first transcript read**: "Loading this session…" (§1.7).
 - **Q4, an unanswered source**: only the machine in use shows in the row; other machines and single sources retry silently (§1.5, §2.3).
 - **Q5, other actions**: fire now, pending, never replayed; an unknown outcome is said (§1.11).
-- **Q6, the git watcher**: researched first, as asked (run 8f558e71); the design follows VS Code and GitLens: a `.git` whitelist, tree exclusions, 250 ms and 2.5 s windows, visibility gating, and our own operations merged (§1.16).
+- **Q6, the git watcher**: researched first, as asked (run); the design follows VS Code and GitLens: a `.git` whitelist, tree exclusions, 250 ms and 2.5 s windows, visibility gating, and our own operations merged (§1.16).
 - **Q7, board order**: live, held while touching or scrolling (§1.5).
 - **Q8, archived or deleted by link**: read-only with Restore, or the reason and a way back (§1.18).
 - **Q9, server errors**: the row shows the error reason, not reconnecting (§0, §2.3).
@@ -714,7 +714,7 @@ Each phase ships green, is probed on 8505 (393×850 coarse pointer where it matt
 
 - Whether sync-convergence Phase A (`head` on `/messages`, `/sessions/heads`) and the new D1 frames have landed is not established.
 - Plugin timers while hidden, the hub event list for projects/workspaces, and tasks `configCache` retention were not traced [C residual].
-- The 8504 build during the log window is unknown, so the git/tree storm may predate 89ac8308 [N residual]. It reproduced once on 8505.
-- The server lane's H9 (termination at >1 MiB turning stalls into resyncs) rests on code only.
+- The production build during the log window is unknown, so the git/tree storm may predate 89ac8308 [N residual]. It reproduced once on a dev stack.
+- The server inventory's H9 (termination at >1 MiB turning stalls into resyncs) rests on code only.
 - Server H8: 195 of 621 slow requests had a fast daemon handler; web re-encoding versus browser queueing is not separated [S §5.8, §6].
 - The daemon's 31.4 s startup gap has no phase breakdown yet (P3 step 1).

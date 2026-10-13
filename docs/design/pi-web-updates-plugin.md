@@ -1,9 +1,10 @@
 # The PI WEB Updates plugin
 
-Status: approved for PI WEB itself, nix included (owner, 2026-10-04: "先只做
-PI WEB 本身的更新（含 nix），pi 和扩展以后再说"). The pi CLI and extension
-rows, and keeping pi-updater quiet inside PI WEB, wait. Supersedes the B18 line in
-`state-diagram.md` D6 ("pi-updater retired in nix-config").
+Status: approved for PI WEB itself, nix included (owner, 2026-10-04: PI WEB's
+own updates first, nix included; pi and extensions later). Built: the PI WEB
+rows, nix detection, the update command, and pi-updater kept quiet inside PI WEB
+(`src/server/daemon/piVersionChecks.ts`). Not built: the pi CLI and extension
+rows. Supersedes the B18 line in `state-diagram.md` D6.
 
 ## Why
 
@@ -11,7 +12,7 @@ The owner's ruling (2026-10-04): pi-updater stays as it is, for pi's terminal.
 PI WEB gets its own update plugin, fitted to PI WEB, that knows how each thing
 was installed and updates it that way.
 
-What happens today when pi-updater runs inside PI WEB (traced on 8505,
+What happened when pi-updater ran inside PI WEB (traced on a dev stack,
 2026-10-04 11:19):
 
 1. It offers "Update now" because PI WEB now runs `ctx.ui.custom` factories,
@@ -51,15 +52,14 @@ covers the first four; nix is new):
 | `pi-package` | listed in the active agent profile's packages | `pi update <source>` (exists) | native services or `pi-web restart` |
 | `npm-global` | package root under `npm root -g` | `npm install -g @gang-of-beads/pi-web` (exists) | `pi-web restart` or native services |
 | `nix` (new) | package root under `/nix/store` | see below | native services (launchd / systemd units the nix module installs) |
-| `git` (today `local`) | a git checkout with an upstream | `git pull --ff-only && pnpm install && pnpm run build` (exists) | native services |
+| `git` | a git checkout | no button: the reader pulls and restarts (owner, 2026-10-14: the git-checkout self-update was removed) | native services |
 | `unknown` | none of the above | no button; the offer says which version is out and that this install's manager updates it | none |
 
 **Nix**, in order:
 
-1. **A configured command** wins: `PI_WEB_UPDATE_COMMAND` (the owner's
-   nix-config already sets it to `scripts/pi-web-update.sh --force <flake-id>`,
-   which re-pins the flake input to the latest release, switches home-manager,
-   restarts the services and pushes the pin), or the config key
+1. **A configured command** wins: `PI_WEB_UPDATE_COMMAND` (a deployment sets
+   it, for example to a script that re-pins its flake input to the latest
+   release, switches the configuration and restarts the services), or the config key
    `updateCommand`, saved per machine in **Settings → General → Updates**
    (2026-10-07), which wins over the environment variable.
 2. **An imperative profile**: `nix profile list --json` has an element whose
@@ -87,8 +87,8 @@ still type `/update` in a PI WEB session; it then fails as it does today
 
 ## Surfaces
 
-The page (owner, 2026-10-06, `updates.png`): the reader is never handed a command to copy
-or run ("不建议直接在这里给用户命令让用户run"). Each action is a button that starts the command
+The page (owner, 2026-10-06, from a mockup): the reader is never handed a command to copy
+or run. Each action is a button that starts the command
 as a terminal run the reader can follow; the command text itself stays off the page. The
 page has two groups drawn by the host list (`plugin-list-component.md`):
 
@@ -98,10 +98,9 @@ page has two groups drawn by the host list (`plugin-list-component.md`):
 - **Services**: Web / UI and Session daemon, each with the version it runs and whether a
   restart is needed. Buttons: Restart web, Restart session daemon, each asking first.
 
-A nix install shows "nix" as Installed from. With a deployment update command (`PI_WEB_UPDATE_COMMAND`,
-which the owner's nix-config sets on the services) the detail says Update runs it; without one it says
-the install is managed by its nix configuration. The link to a Settings field for the command waits for
-that field: it does not exist yet (step 1 below).
+A nix install shows "nix" as Installed from. With an update command (`PI_WEB_UPDATE_COMMAND` set by
+the deployment, or `updateCommand` saved in Settings → General → Updates) the detail says Update runs
+it; without one it says the install is managed by its nix configuration.
 
 Built 2026-10-07: a package under `/nix/store` is reported as `{ kind: "unknown", manager: "nix" }`
 rather than a new kind, because older browsers' status parsers reject an unknown kind and would drop
@@ -126,4 +125,4 @@ kind, the same command the self-update route runs.
 2. Settings -> Updates page with the three sections and Check now.
 3. pi and extension updates through command runs.
 4. Quiet pi-updater in the daemon (daemon restart).
-5. Docs: `docs/install.html` "Updating", `docs/plugins.md` for the plugin.
+5. Docs: `docs/install.md` "Updating", `docs/plugins.md` for the plugin.

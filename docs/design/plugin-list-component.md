@@ -1,10 +1,9 @@
 # One list component for plugin pages
 
-Status: approved 2026-10-06 (ask `cf0b6d6f`, mockups `rows.png`, `updates.png`,
-`terminal.png`). The decisions are recorded under "Decided"; the open questions at the end
+Status: approved 2026-10-06 (from mockups of the rows, the Updates page and the terminal keys). The decisions are recorded under "Decided"; the open questions at the end
 are kept for the record of what was asked.
 
-Owner, on the Background and Subagents pages: "这些页面都是插件自己写的吧？列表页可以给个统一的格式或者组件库之类的".
+Owner, on the Background and Subagents pages: these pages are each plugin's own; list pages could have one shared format or component library.
 
 ## What exists today
 
@@ -18,7 +17,7 @@ drift:
 |---|---|
 | subagents | bare spans with unstyled classes: agent, status, detail and task run together |
 | background-runs | its own `.task` rows and colours, written last round instead of reusing anything |
-| relays, goals, updates, info, git | each its own row classes and spacing |
+| goals, updates, info, git (and relays, since removed) | each its own row classes and spacing |
 | workspaces, machines, projects | navigation lists on `listStyles`, with pins, badges and menus |
 
 Shared CSS cannot fix this, because the drift is in the markup.
@@ -69,6 +68,12 @@ when a bundled plugin declares its own row classes or row CSS in a list surface.
 
 ## Adoption
 
+As built: the status pages in this repository (updates, info, git's lists) draw through the model.
+Background runs, Subagents and Goals now live in their own plugin repositories, which may adopt it.
+The Relays plugin was removed.
+
+The plan as approved:
+
 1. Status lists: background-runs and subagents. They have the same shape and are the two
    the owner is looking at.
 2. goals, updates, relays, info, and git's lists.
@@ -80,7 +85,7 @@ when a bundled plugin declares its own row classes or row CSS in a list surface.
 | Question | Answer |
 |---|---|
 | Row style | **Grouped list**: rows inside one rounded group per section, a hairline between rows, the section title above the group. Not one card per row. |
-| Which pages | **Status pages**: background-runs, subagents, goals, updates, relays, info, git's lists. Navigation lists (projects, workspaces, machines) stay on `listStyles`. |
+| Which pages | **Status pages**: updates, info, git's lists (at the time also background-runs, subagents, goals and relays). Navigation lists (projects, workspaces, machines) stay on `listStyles`. |
 | Empty page | **A centered dashed box** carrying the plugin's words for "none"; the same box carries "reading" and "could not read". |
 | Updates page | **As mocked**: a PI WEB group (version, latest, installed from, the action buttons) and a Services group (web and session daemon with their running versions and restart buttons). No command text on the page. |
 | Nix install, no update command saved | Say "managed by your nix configuration" and link to the Settings field where the command is saved. No command text. |

@@ -1,6 +1,6 @@
 # pi's insertion points in PI WEB
 
-Status: audit and plan, 2026-10-09. Owner, 2026-10-09: "PI WEB is generic and adapts to no particular plugin. Plugins have their scenarios; PI WEB provides a set of generic insertion points, the same philosophy as pi. pi already implements many insertion points; PI WEB's insertion points are a superset of pi's, including web UI ones that give users more on the web."
+Status: built 2026-10-09/10 (slices 1–8 below). Owner, 2026-10-09: "PI WEB is generic and adapts to no particular plugin. Plugins have their scenarios; PI WEB provides a set of generic insertion points, the same philosophy as pi. pi already implements many insertion points; PI WEB's insertion points are a superset of pi's, including web UI ones that give users more on the web."
 
 ## The rule
 
@@ -22,27 +22,28 @@ Rechecked against pi 1.1.0 (2026-10-10): its extension API adds `durationMs` and
 
 ### Drawing
 
-| pi insertion point | pi draws | PI WEB today | Plan |
-|---|---|---|---|
-| `registerMessageRenderer(customType)` | the extension's component for its custom message; else the content as markdown | a plugin's `messageRenderers` by tag; else "Nothing on this machine renders <tag>", **content not shown** | slice 1: extension renderer to lines, else the content |
-| `registerEntryRenderer(customType)` | the extension's component for a `custom` entry; entries without one are not shown | **every custom entry dropped** (only PI WEB's own types projected) | slice 1: entries with an extension renderer become rows drawn to lines; plugins may claim them too |
-| `registerToolRenderer`, `ToolDefinition.renderCall`/`renderResult`/`renderShell` | the extension's drawing of a tool call and its result | **ignored**: every tool drawn by PI WEB's generic tool card | slice 2: the extension's call/result drawing in the tool card |
-| `registerMarkdownTransformer` | user and assistant markdown transformed before drawing | **ignored** | slice 3: applied on the daemon to the projection |
-| `registerShortcut` | a key in the terminal runs the handler | **ignored**: no way to run it | slice 4: each shortcut is an action in the Actions palette, and its key where the browser lets a page have it |
-| `ctx.ui.select`/`confirm`/`input`/`editor`/`custom`/`notify` | dialogs, screens, notifications | **supported** (dialog cards, custom screens drawn to lines, notifications) | none |
-| `ctx.ui.setStatus` | the footer line | **supported** (session footer) | none |
-| `ctx.ui.setWidget` | above or below the editor | **supported** (the extension's Go to page, owner 2026-10-07) | none |
-| `ctx.ui.setFooter`/`setHeader` | replaces the footer/header with a component | **no-op** | slice 5: drawn to lines on the same Go to page as the extension's widgets (the widget rule) |
-| `ctx.ui.setWorkingMessage`/`Visible`/`Indicator`, `setHiddenThinkingLabel`, `setTitle` | working row, thinking label, terminal title | **supported** | none |
-| `ctx.ui.setEditorText`/`pasteToEditor`/`getEditorText` | the editor's text | **supported** (composer) | none |
-| `ctx.ui.addAutocompleteProvider` | completions in the editor | **no-op** | slice 6: the composer's completions ask the daemon's providers |
-| `ctx.ui.setToolsExpanded`/`getToolsExpanded` | expands all tool output | **no-op** | slice 7: the session's tool fold |
-| `ctx.ui.setEditorComponent`/`getEditorComponent`, `onTerminalInput` | replaces the terminal editor; raw key input | **no-op** | later, needs its own design: the composer is a browser editor, and raw terminal keys have no counterpart |
-| `ctx.ui.theme`/`getTheme`/`getAllThemes`/`setTheme` | the terminal palette | plain-text theme; `setTheme` fails | none: PI WEB's themes are its own; `setTheme` should answer that it does not apply rather than fail (slice 7) |
+| pi insertion point | pi draws | PI WEB draws |
+|---|---|---|
+| `registerMessageRenderer(customType)` | the extension's component for its custom message; else the content as markdown | a plugin's `messageRenderers` for the tag; else the extension's renderer drawn to lines; else the content as markdown (slice 1) |
+| `registerEntryRenderer(customType)` | the extension's component for a `custom` entry; entries without one are not shown | an entry with an extension renderer is a row drawn to lines; a plugin may claim it (slice 1) |
+| `registerToolRenderer`, `ToolDefinition.renderCall`/`renderResult`/`renderShell` | the extension's drawing of a tool call and its result | the extension's call and result drawing inside PI WEB's tool card (slice 2); `renderShell: "self"` is not carried over |
+| `registerMarkdownTransformer` | user and assistant markdown transformed before drawing | applied by the daemon to each finished text, drawn as `displayText` (slice 3) |
+| `registerShortcut` | a key in the terminal runs the handler | an action in the Actions palette, bound to its key where the browser lets a page have it (slice 4) |
+| `ctx.ui.select`/`confirm`/`input`/`editor`/`custom`/`notify` | dialogs, screens, notifications | dialog cards, interactive cards, custom screens drawn to lines, notifications |
+| `ctx.ui.setStatus` | the footer line | the session footer's numbers line |
+| `ctx.ui.setWidget` | above or below the editor | the extension's Go to page (owner 2026-10-07) |
+| `ctx.ui.setFooter`/`setHeader` | replaces the footer/header with a component | drawn to lines on the extension's Go to page, with its widgets (slice 5) |
+| `ctx.ui.setWorkingMessage`/`Visible`/`Indicator`, `setHiddenThinkingLabel`, `setTitle` | working row, thinking label, terminal title | the activity dock's working row, the thinking label, the tab title |
+| `ctx.ui.setEditorText`/`pasteToEditor`/`getEditorText` | the editor's text | the composer |
+| `ctx.ui.addAutocompleteProvider` | completions in the editor | the composer's completions ask the daemon's providers (slice 6) |
+| `ctx.ui.setToolsExpanded`/`getToolsExpanded` | expands all tool output | the session's tool fold (slice 7) |
+| `onTerminalInput` | raw key input | Esc only (slice 8) |
+| `ctx.ui.setEditorComponent`/`getEditorComponent` | replaces the terminal editor | no-op: the composer is a browser editor |
+| `ctx.ui.theme`/`getTheme`/`getAllThemes`/`setTheme` | the terminal palette | PI WEB's own themes; `setTheme` answers `{ success: false }` with the reason (slice 7) |
 
 ## Slices
 
-Each slice: state-diagram entries for new rows or frames in the same commit, a bob review, and 8505 live checks with a real extension that uses the insertion point, old build against new.
+Each slice: state-diagram entries for new rows or frames in the same commit, a review, and live checks on a dev stack with a real extension that uses the insertion point, old build against new.
 
 1. **Message and entry renderers.** Built 2026-10-09. Known limit: a session read without its runtime (D5: reading a closed session never opens it) has no renderers, so rows read then show the default until the page reads the session again after it runs; drawing at `entry_appended` time and keeping the lines would lift it, if it matters in use. The daemon's projection asks the session's extension runner (`getMessageRenderer`, `getEntryRenderer`) and, when one exists, renders the component at the transcript width and ships the lines with the row (`drawn: string[]`, collapsed as pi first shows them; the expanded drawing joins slice 7), re-rendered when the transcript is read, never stored in the session file. A `custom` entry is projected only when an extension registered a renderer for its type, as in pi. The page draws, in order: a plugin's renderer for the tag, the drawn lines, the content as markdown, and only then "Nothing on this machine renders <tag>". The plugin API's message renderers also receive entry rows (`kind: "message" | "entry"`), so a plugin can draw either natively.
 2. **Tool renderers.** Built 2026-10-09. The same lines for a tool call's arguments and result, in the generic tool card, when an extension draws the tool: `resolveToolRenderers` over the extension tool's own `renderCall`/`renderResult` (a built-in tool is not an extension tool, so only a resolver draws it). Live frames carry them, and the daemon keeps a call's arguments from its start to its end because pi's end event does not repeat them. Not carried over: `renderShell: "self"` (PI WEB keeps its card chrome), renderer `state` shared between a row's call and result (each drawing starts fresh), and `invalidate` (a renderer cannot ask for a redraw).
@@ -69,12 +70,12 @@ Each slice: state-diagram entries for new rows or frames in the same commit, a b
    - The session's tool cards open their output while it holds, as an error's card does, and fold back when it is cleared.
    - What the extensions draw from then on (tool call and result lines, custom rows) gets `expanded` as pi gives it. Rows the page has already read keep the drawing they were read with until the page reads them again; the card's own fold follows at once.
    - `setTheme` answers `{ success: false }` with the reason: PI WEB draws with its own themes, chosen in its Settings. pi's headless default said only "UI not available". `getAllThemes` and `getTheme` keep pi's headless answers (none).
-8. **Terminal input: Esc only.** Built 2026-10-10. pi gives every `onTerminalInput` listener each key before its editor, in the order they were added: one that consumes stops the key, one that answers `data` passes that on. The extensions on this machine listen for Esc (pi-subagents cancels a `/subagent` run, pi-goal aborts an audit or pauses a goal, panels close) and for a few hotkeys of their own. A page cannot wait for the daemon before deciding what a key does, so the owner chose (2026-10-10) to pass Esc only:
+8. **Terminal input: Esc only.** Built 2026-10-10. pi gives every `onTerminalInput` listener each key before its editor, in the order they were added: one that consumes stops the key, one that answers `data` passes that on. The extensions checked listen for Esc (pi-subagents cancels a `/subagent` run, pi-goal aborts an audit or pauses a goal, panels close) and for a few hotkeys of their own. A page cannot wait for the daemon before deciding what a key does, so the owner chose (2026-10-10) to pass Esc only:
    - The session's standing extension UI keeps the listeners and says `terminalInput: true` while one listens; they end with the session's extensions.
    - Esc pressed in the chat view (the transcript, the composer, or nothing focused) that nothing on the page used (no open modal, no completion list, no row) goes to `POST /sessions/:id/terminal-input { key: "escape" }`, which runs the listeners as pi-tui does with pi's byte for Esc and answers whether one consumed it. Unlike pi, a listener that throws is skipped. Only a running runtime has listeners; asking never starts one.
    - Not carried over: other keys, and a listener consuming a key before the page uses it (the page has used it, or not, by the time the daemon answers).
-   - `setEditorComponent` stays a no-op: no extension on this machine sets one, and the composer is a browser editor.
+   - `setEditorComponent` stays a no-op: no extension checked sets one, and the composer is a browser editor.
 
 ## Web insertion points on top
 
-- **What became of a row (2026-10-10).** A plugin's message renderer gets `followingRows`: the custom rows after its own in the transcript as loaded (`tag`, `kind`, `payload`), beside `followingUserTexts`. A card can then tell what became of what it shows from the extension's own records instead of from what the reader typed. First user: the Subagents plugin's supervisor card reads pi-subagents' own `subagent_supervisor_reply` entry (journaled when a reply reaches the child, matched by request id) as delivered, and the reader's own reply message to the session only as asked, waiting for the agent to relay it. Before, the reader's message alone marked the card answered before anything was delivered, and a reply written in the composer and relayed by the agent left the card offering a second one.
+- **What became of a row (2026-10-10).** A plugin's message renderer gets `followingRows`: the custom rows after its own in the transcript as loaded (`tag`, `kind`, `payload`), beside `followingUserTexts`. A card can then tell what became of what it shows from the extension's own records instead of from what the reader typed. First user: the Subagents plugin's supervisor card (that plugin is now the separate pi-web-subagents package) reads pi-subagents' own `subagent_supervisor_reply` entry (journaled when a reply reaches the child, matched by request id) as delivered, and the reader's own reply message to the session only as asked, waiting for the agent to relay it. Before, the reader's message alone marked the card answered before anything was delivered, and a reply written in the composer and relayed by the agent left the card offering a second one.

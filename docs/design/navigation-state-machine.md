@@ -111,7 +111,7 @@ stateDiagram-v2
 
 | Gap | Where | Status |
 | --- | --- | --- |
-| Three surfaces still answer "where am I": the context sheet, the quick-access menu and the navigation panel's accordion | `PiWebApp.contextSheetOpen`, `quickSwitcherOpen`, `AppNavigationPanel` | Being retired by `AppNavigatePage`; until they are gone the place layer has three entries where the machine says one |
+| Two surfaces besides `AppNavigatePage` still answer "where am I": the context sheet and the quick switcher (the navigation panel's accordion is gone) | `PiWebApp.contextSheetOpen`, `quickSwitcherOpen` | They remain beside `AppNavigatePage`; until they are retired the place layer has more than one entry where the machine says one |
 | A session opened from a remote machine's pins changes machine and place at once | `navigateModel` pinned rows | Allowed by design, but the machine level must show the move, otherwise the path lies about where the session came from |
 | The tool places are addressable but Go to is the only way between them | `AppGoToSheet` | Acceptable: the Go to key is on the chat bar in every layout (on the wide layout it opens the list inside the page column), so no tool is a dead end |
 | Boot with an unreachable machine | route restore | Must land on Navigate with the machine level showing the failure, never on an empty Chat |
@@ -122,5 +122,5 @@ stateDiagram-v2
 2. Show the transition into it and the transition out of it, both reachable
    with one control from the place the reader was on.
 3. Keep at most one layer open, and keep the back gesture bound to it.
-4. Land a probe that walks in and back out again, failing loudly if either
-   direction disappears.
+4. Check in a real browser that the reader can walk in and back out again,
+   and fail the check loudly if either direction disappears.

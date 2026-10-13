@@ -1,11 +1,11 @@
 # List layout: one or two tiles per row
 
-Status: built. Owner rulings 2026-10-06 (asks `22390e91`, `cb9e31f7`): the choice lives in Settings →
+Status: built. Owner rulings 2026-10-06: the choice lives in Settings →
 Appearance; the three lists switch together; it is kept in PI WEB's config, one value per layout
 (phone, desktop); the options are one or two per row; the default is today's; plugin lists are left
 out for now ("keep it simple").
 
-## Today, measured on 8505
+## Before, measured on a dev stack
 
 The Navigate page's list (Sessions, Machines, Projects; one body for all three) is a grid that fits
 the width: tiles of at least 140 px at 430 px wide or narrower, at least 240 px above that.
@@ -18,9 +18,7 @@ the width: tiles of at least 140 px at 430 px wide or narrower, at least 240 px 
 | Desktop sidebar, 1440×900 | 340 px | 1 | 324 px |
 | Desktop Navigate overlay (keyboard shortcut), 1440 px | 1440 px | 5 | 280 px |
 
-Screens: `/tmp/surfaces/list-two-per-row-phone.png` (today), `list-one-per-row-phone.png` (mock),
-`list-two-desktop-sidebar.png` (mock: titles cut after about eight characters at 160 px),
-`list-desktop-overlay.png`.
+The mockups (not kept) showed titles cut after about eight characters at 160 px in a two-per-row desktop sidebar.
 
 Plugin lists: the workspaces plugin draws the Projects and Workspaces sections of the context sheet
 (`navSections`, already told `display.tiles`); `machineSections` is not drawn anywhere today.

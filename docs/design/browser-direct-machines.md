@@ -1,10 +1,14 @@
 # Browser-direct machines
 
-Owner, 2026-10-13: connections to other machines go out from the browser, not from the server
-("改成浏览器直连"). This page is the design to correct on paper before code. Decisions still open
-are marked **Owner decides**.
+Owner, 2026-10-13: connections to other machines go out from the browser, not from the server.
+This page was the design corrected on paper before code.
 
-## Today: the server you opened is a gateway
+Status: built 2026-10-13 with decisions 1b, 2a, 3a and 4 below (`src/server/web/machineAccess/`,
+`src/client/src/directMachineUrl.ts`, `fleetFanOut.ts`, `pi-web-plugins/machines/browser/MachineDialog.ts`).
+The "This server" path below is still the one a machine takes when it is set to connect from the
+server. Part 2 (token authentication) is not designed.
+
+## Before: the server you opened was a gateway
 
 - The browser talks to one origin, the PI WEB it opened. Every machine-scoped call is an
   application path `api/machines/<id>/…` (built in `src/client/src/api/clients.ts`, `urls.ts`,
@@ -58,19 +62,19 @@ machine, and keeps the machine list.
   `$PI_WEB_DATA_DIR/machine-access.json`, beside `machines.json` (the user config file can be
   read-only, as on nix-managed hosts). Each entry records the origin, the name the requesting page
   gave, and when it was approved. Settings on that machine lists them with Remove.
-- **Access is requested and approved (owner, 2026-10-13: "用申请，然后那边 approve").** A pairing
+- **Access is requested and approved (owner, 2026-10-13: request, then the other side approves).** A pairing
   in the manner of a device code:
   1. "Add machine" on the page you opened (origin *A*) sends `POST B/api/machine-access/requests`
      from the browser. This is the one endpoint *B* answers for any origin; it can only leave a
      request. *B* takes the origin from the browser-set `Origin` header (a page cannot forge it) and
      answers a request id and a short pairing code.
   2. The page shows the code and a link to *B*'s own approval page for that request (owner,
-     2026-10-13: "生成一个带 device code 的连接，进去之后就是另外一个机器的 approval 页面"). The link
-     carries the request id; opening it does nothing by itself.
+     2026-10-13: a link carrying a device code that opens the other machine's approval page). The
+     link carries the request id; opening it does nothing by itself.
   3. *B*'s approval page names the requesting origin and the name it gave, shows the code, and
      offers Approve and Deny. The reader approves when the code matches the one on the requesting
-     page, so a look-alike request from another site is not approved by mistake. Approval is a call on
-     *B* that only *B*'s own page or an already approved origin can make. There is no pending list in
+     page, so a look-alike request from another site is not approved by mistake. Approval is a call only
+     *B*'s own page can make; an approved page from another origin is refused (403). There is no pending list in
      Settings: a request lives as long as its link, ten minutes.
   4. The requesting page polls `GET B/api/machine-access/requests/<id>` (also any origin; the id is
      unguessable) and finishes adding the machine once approved.
@@ -104,8 +108,8 @@ machine, and keeps the machine list.
 
 ### Requirements on the network
 
-- A page opened over https can only call https machines (mixed content). With Tailscale this is
-  `tailscale serve` on each machine, as 8504 already does.
+- A page opened over https can only call https machines (mixed content), so each machine is served
+  over https, for example behind a TLS reverse proxy.
 - A machine must run a PI WEB version with the cross-origin support above.
 
 ## Decisions
@@ -145,23 +149,22 @@ authenticating reverse proxy in front of the machine.
 A machine behind an authenticating proxy (`token` or `headers` today) cannot be reached by plain
 `<img>`, preview or download URLs from the browser, because those requests cannot carry a header.
 With 1a such a machine needs the proxy to accept a token in the query string or a cookie; with 1b it
-stays on "this server". The owner's machines use Tailscale without a header gate, so this only
-affects other deployments.
+stays on "this server". It affects only deployments that put such a gate in front of a machine.
 
-## Slices (after the decisions)
+## Slices (built 2026-10-13)
 
 1. Machine side: the access store, the request/approve API, CORS on `api/` and `pi-web-plugins/`
    for approved origins, the refusal of unapproved cross-site writes, the approval page, and the
    Settings list of approved origins.
-   Daemon untouched; web process restart only. Docs: `docs/machines.html`.
+   Daemon untouched; web process restart only. Docs: `docs/machines.md`.
 2. Browser: the machine resolver and every machine-scoped URL through it; sockets; plugin loading.
 3. Browser: reachability producer, health and runtime read directly.
 4. Machines dialog: base URL probe from the browser on Add; the "Connect from" choice if 1b.
 5. Fleet fan-out per decision 3.
 6. Gateway forwarding: removed (1a) or kept as the "this server" path (1b).
 
-Each slice: review lanes, then live on the k12 8505 stack with a second PI WEB on another host over
-Tailscale https, phone 393x850, including a machine this browser cannot reach.
+Each slice was reviewed, then checked live on a dev stack with a second PI WEB on another host over
+https, on a phone layout at 393x850, including a machine this browser cannot reach.
 
 ## Not changing
 

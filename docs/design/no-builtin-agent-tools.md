@@ -28,7 +28,7 @@ Owner, 2026-09-30, on sub-sessions filling the session list: "If spawn sub sessi
    - The parent's model and thinking level are read from the parent session, as the tools read them.
    - Project-scope checks are unchanged.
    - The `spawnSessions` and `subsessions` config keys are retired. They are still accepted, so existing files load, but ignored. Their Settings toggles are removed.
-   - Existing tracked children keep their links. The Subagents tab keeps listing them.
+   - Existing tracked children keep their links. `GET /sessions/:id/subsessions` lists them, and so does the pi-web-subagents plugin when it is installed.
 2. **`ask_user` becomes an extension.**
    - It is an inline pi extension (`askUserExtension` in `askUserTool.ts`, named `pi-web-ask-user`) that registers `ask_user` with the same parameters, prompt text and ending of the run. It is not under `extensions/`: PI WEB is itself a pi package whose `pi.extensions` names that directory, so anything there loads for everyone who installs PI WEB into pi.
    - Built (2026-10-09) as an inline extension rather than the planned file posting to a new `POST /sessions/:id/asks` route: the extension runs inside the daemon that owns the ask store, so it opens the ask directly, and a file would first have had to find the daemon's socket. The daemon's ask store, the Questions card, and the follow-up message carrying the answers are unchanged.
@@ -48,10 +48,10 @@ Owner, 2026-09-30, on sub-sessions filling the session list: "If spawn sub sessi
 
 ## 2026-10-11: `ask_user` is deleted
 
-Owner, 2026-10-11: "就是pi web首先不应该有ask user这个工具" and "pi web核心里不能自带给agent的功能…宗旨就是pi web里面和直接用纯净的pi tui一样啊，其他的都应该用插件/扩展来实现" (PI WEB should not have an ask_user tool; core must not ship agent features of its own, using PI WEB should be the same as using pure pi TUI, and everything else is a plugin or extension). Step 2 had only turned it off, and its card, ask store, routes and answer delivery stayed in core.
+Owner, 2026-10-11 (paraphrased): PI WEB should not have an ask_user tool; core must not ship agent features of its own; using PI WEB should be the same as using pure pi TUI, and everything else is a plugin or extension. Step 2 had only turned it off, and its card, ask store, routes and answer delivery stayed in core.
 
 - Deleted: the inline extension and its tool, the `askUser` config key and `PI_WEB_ASK_USER`, the Settings section that held the toggle (Session daemon, which had nothing else), the daemon's ask store and its two routes, the `pendingAsk`/`pendingAsks`/`queuedAnswers` status fields and the `ask.opened`/`ask.closed` frames, and the answers-as-a-message delivery (B26 for answers).
 - A config file that still sets `askUser` loads; the key has no effect, and the next save drops it.
 - A question tool is a pi extension the user installs (pi-ask-user, for example). Its questions arrive as extension dialogs.
-- Kept for now: the Questions card, which draws a screen an extension declares as `questions` (pi-goal's questionnaire), and the declaration's validation. The card moves out of core into a plugin next.
+- The Questions card, which drew a screen an extension declared as `questions`, was kept for one more day; on 2026-10-12 it was replaced by the core interactive card (interactive-card.md).
 - Old transcripts keep their records: an `ask_user` call reads as an ordinary tool row, and its answers message (`pi-web.ask.answers`) as an ordinary custom message, as pi's terminal shows them.
