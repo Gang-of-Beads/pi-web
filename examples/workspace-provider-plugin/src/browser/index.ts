@@ -22,18 +22,20 @@ const plugin: PiWebPlugin = {
           id: "workspace.example-provider",
           title: "Example Provider",
           visible: ({ workspace }) => workspace.provider?.pluginId === pluginId,
+          toolbar: (context) => html`
+            <button
+              type="button"
+              ?disabled=${context.backend === undefined}
+              @click=${() => { void refreshSummary(context); }}
+            >Request backend summary</button>
+          `,
           render: (context) => {
             const marker = stringMetadata(context.workspace.provider?.metadata, "marker") ?? "unknown";
             const summary = summaries.get(workspaceKey(context)) ?? "Request a summary from the owning server plugin.";
             return html`
-              <section class="toolbar"><strong>Example workspace provider</strong></section>
               <section class="viewer">
                 <p>This workspace is owned by <code>${pluginId}</code>.</p>
                 <p class="muted">Claim marker: <code>${marker}</code></p>
-                <button
-                  ?disabled=${context.backend === undefined}
-                  @click=${() => { void refreshSummary(context); }}
-                >Request backend summary</button>
                 <p aria-live="polite">${summary}</p>
               </section>
             `;
