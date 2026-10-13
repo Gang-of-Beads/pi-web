@@ -45,15 +45,27 @@ export function directMachineUrl(path: string, machines: DirectMachines): string
   const match = MACHINE_PATH.exec(path);
   const encodedId = match?.[1];
   if (encodedId === undefined) return undefined;
-  const baseUrl = machines.get(decodeURIComponent(encodedId));
+  const baseUrl = machines.get(decodedOrRaw(encodedId));
   if (baseUrl === undefined) return undefined;
   const rest = match?.[2] ?? "";
   return new URL(ROUTE_TARGET[routeOf(rest)](rest), baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
 }
 
+/** A malformed escape in an id is not a direct machine; the resolver must not throw for it. */
+function decodedOrRaw(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 let current: DirectMachines = new Map();
 
-/** The page's direct machines, set by the shell whenever its machine list changes. */
+/**
+ * The page's direct machines: set from the roster as it arrives (`MachineController.applyRoster`,
+ * before anything reads a machine) and on every machine-list change (`PiWebApp.setState`).
+ */
 export function setDirectMachines(machines: DirectMachines): void {
   current = machines;
 }

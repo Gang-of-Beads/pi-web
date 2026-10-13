@@ -2,13 +2,19 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
+export type ConnectFrom = "browser" | "server";
+
+export function isConnectFrom(value: unknown): value is ConnectFrom {
+  return value === "browser" || value === "server";
+}
+
 export interface StoredMachine {
   id: string;
   name: string;
   kind: "remote";
   baseUrl: string;
   /** Absent means through this server: every entry from before browser-direct machines. */
-  connectFrom?: "browser" | "server";
+  connectFrom?: ConnectFrom;
   token?: string;
   headers?: Record<string, string>;
   createdAt: string;
@@ -44,7 +50,7 @@ export class MachineStore {
     return (await this.read()).machines;
   }
 
-  async add(input: { name: string; baseUrl: string; connectFrom?: "browser" | "server"; token?: string; headers?: Record<string, string> }): Promise<StoredMachine> {
+  async add(input: { name: string; baseUrl: string; connectFrom?: ConnectFrom; token?: string; headers?: Record<string, string> }): Promise<StoredMachine> {
     const data = await this.read();
     const now = new Date().toISOString();
     const machine: StoredMachine = {
@@ -148,7 +154,7 @@ function parseStoredMachine(value: unknown): StoredMachine {
   const token = optionalString(value["token"], "token");
   const headers = optionalStringRecord(value["headers"], "headers");
   const connectFrom = value["connectFrom"];
-  if (connectFrom !== undefined && connectFrom !== "browser" && connectFrom !== "server") throw new Error("Invalid machine connectFrom");
+  if (connectFrom !== undefined && !isConnectFrom(connectFrom)) throw new Error("Invalid machine connectFrom");
   return { id, name, kind, baseUrl, createdAt, updatedAt, ...(connectFrom === undefined ? {} : { connectFrom }), ...(token === undefined ? {} : { token }), ...(headers === undefined ? {} : { headers }) };
 }
 

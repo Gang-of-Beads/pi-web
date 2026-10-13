@@ -3,7 +3,7 @@ import { parsePiWebRuntimeResponse } from "@gang-of-beads/pi-web/server-plugin-a
 import { DEFAULT_REMOTE_HEALTH_TIMEOUT_MS, type MachineClient } from "@gang-of-beads/pi-web/server-plugin-api";
 import { hostname } from "node:os";
 import { RemoteMachineClient, validateConfiguredMachineHeaders } from "./machineClient.js";
-import { MachineStore, type StoredMachine } from "./machineStore.js";
+import { isConnectFrom, MachineStore, type ConnectFrom, type StoredMachine } from "./machineStore.js";
 
 export interface CreateMachineInput {
   name?: string;
@@ -92,10 +92,10 @@ export class MachineService {
     if (input.baseUrl !== undefined) patch.baseUrl = validateBaseUrl(input.baseUrl);
     if (input.token !== undefined) patch.token = input.token;
     if (input.headers !== undefined) patch.headers = validateHeaders(input.headers);
-    if (input.connectFrom !== undefined) {
+    if (input.connectFrom !== undefined || input.token !== undefined || input.headers !== undefined) {
       const current = (await this.store.list()).find((machine) => machine.id === id);
-      const connectFrom = validateConnection(input.connectFrom, { ...current, ...patch });
-      if (connectFrom !== undefined) patch.connectFrom = connectFrom;
+      const connectFrom = validateConnection(input.connectFrom ?? current?.connectFrom, { ...current, ...patch });
+      if (input.connectFrom !== undefined && connectFrom !== undefined) patch.connectFrom = connectFrom;
     }
     const stored = await this.store.update(id, patch);
     if (stored !== undefined) {
@@ -257,9 +257,9 @@ function validateBaseUrl(value: string | undefined): string {
  * front of the machine; a browser cannot add them to images, previews, downloads or sockets, so such a
  * machine is reached through this server (browser-direct-machines.md, "Gated machines").
  */
-function validateConnection(value: string | undefined, secrets: { token?: string; headers?: Record<string, string> }): "browser" | "server" | undefined {
+function validateConnection(value: string | undefined, secrets: { token?: string; headers?: Record<string, string> }): ConnectFrom | undefined {
   if (value === undefined) return undefined;
-  if (value !== "browser" && value !== "server") throw new MachineValidationError("connectFrom must be browser or server");
+  if (!isConnectFrom(value)) throw new MachineValidationError("connectFrom must be browser or server");
   const gated = (secrets.token !== undefined && secrets.token !== "") || Object.keys(secrets.headers ?? {}).length > 0;
   if (value === "browser" && gated) throw new MachineValidationError("A machine with a token or headers is reached through this server");
   return value;
