@@ -17,9 +17,6 @@
 #   scripts/stack-8505.sh up [--skip-build]   build, restart, wait for HTTP 200
 #   scripts/stack-8505.sh down                stop this stack only
 #   scripts/stack-8505.sh status              PIDs and health, no changes
-#   scripts/stack-8505.sh seed                write the attribution fixtures
-#   scripts/stack-8505.sh check               run the attribution live check
-#   scripts/stack-8505.sh clean-seed          delete the seed directories
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,7 +39,7 @@ CONFIG_ENV="${PI_WEB_8505_CONFIG:+PI_WEB_CONFIG=$PI_WEB_8505_CONFIG }"
 AGENT_ENV="${PI_WEB_8505_AGENT_DIR:+PI_CODING_AGENT_DIR=$PI_WEB_8505_AGENT_DIR }"
 
 usage() {
-  sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "${BASH_SOURCE[0]}"
 }
 
 # Linux procps has no `ps -E`; /proc holds the same two lists, NUL-separated.
@@ -314,9 +311,6 @@ case "${1:-up}" in
   up) command_up "${2:-}" ;;
   down) stop_stack ;;
   status) command_status ;;
-  seed) node "$REPO_ROOT/scripts/seed-8505-subagent-attribution.mjs" ;;
-  clean-seed) node "$REPO_ROOT/scripts/seed-8505-subagent-attribution.mjs" --clean ;;
-  check) node "$REPO_ROOT/scripts/verify-8505-attribution.mjs" ;;
   -h | --help | help) usage ;;
   *)
     echo "unknown command: $1" >&2
