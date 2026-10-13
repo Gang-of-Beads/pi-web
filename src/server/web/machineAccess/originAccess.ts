@@ -5,11 +5,11 @@
  * decides. The `Host` header is deliberately not consulted: a reverse proxy that rewrites it (nginx's
  * default) would make this machine's own page look foreign.
  *
- * - `not-a-browser`: no `Origin` and no `Sec-Fetch-Site` - another machine's server, curl.
+ * - `not-a-browser`: no `Origin` and no recognised `Sec-Fetch-Site` - another machine's server, curl.
  * - `own-page`: a page this machine served.
  * - `approved`: another machine's page whose origin this machine approved.
- * - `unapproved`: any other cross-site page.
- * - `unverified`: an `Origin` without `Sec-Fetch-Site` (an old browser); it keeps today's behaviour.
+ * - `unapproved`: a foreign (`same-site` or `cross-site`) request whose origin is missing or not approved.
+ * - `unverified`: an `Origin` without a recognised `Sec-Fetch-Site` (an old browser); it keeps today's behaviour.
  */
 export type OriginAccess = "not-a-browser" | "own-page" | "approved" | "unapproved" | "unverified";
 

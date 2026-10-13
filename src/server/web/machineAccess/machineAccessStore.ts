@@ -97,7 +97,12 @@ export class MachineAccessStore {
     this.requests.set(id, decided);
     if (decision === "approve") {
       const entry: ApprovedMachineOrigin = { origin: request.origin, name: request.name, approvedAt: new Date(this.now()).toISOString() };
-      await this.save((current) => [...current.filter((existing) => existing.origin !== request.origin), entry]);
+      try {
+        await this.save((current) => [...current.filter((existing) => existing.origin !== request.origin), entry]);
+      } catch (error) {
+        this.requests.set(id, request);
+        throw error;
+      }
     }
     return decided;
   }

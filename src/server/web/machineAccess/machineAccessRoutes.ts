@@ -11,7 +11,8 @@ import { originAccess, serializedOrigin, type OriginAccess } from "./originAcces
  * it the answer, and an unapproved cross-site page may not write (today any page could send a
  * body-less POST and only its answer was hidden). Two endpoints answer any page, because asking is
  * how a page becomes approved: leaving a request and reading its state. Deciding is for this
- * machine's own page, on the approval page its link opens.
+ * machine's own page, on the approval page its link opens; an approved page from another machine may
+ * not decide.
  */
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -100,6 +101,7 @@ export function registerMachineAccess(app: FastifyInstance, store: MachineAccess
   app.post<{ Params: { id: string; decision: string } }>(`${REQUESTS_PATH}/:id/:decision`, async (request, reply) => {
     const decision = request.params.decision;
     if (!isDecision(decision)) return reply.code(404).send({ error: "Expected approve or deny." });
+    if (accessOf(request, store) === "approved") return reply.code(403).send({ error: "Only this machine's own page may decide requests for access." });
     const decided = await store.decide(request.params.id, decision);
     if (decided === undefined) return reply.code(404).send({ error: "No such request for access; it may have expired." });
     return publicRequest(decided);

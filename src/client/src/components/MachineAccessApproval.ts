@@ -50,7 +50,7 @@ export class MachineAccessApproval extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    // Surface backed up: the expiry countdown, which nothing else ticks while the request is open.
+    // Surface backed up: the expiry countdown, which nothing else ticks.
     this.ticker = window.setInterval(() => { this.now = Date.now(); }, COUNTDOWN_TICK_MS);
     void this.read();
   }
