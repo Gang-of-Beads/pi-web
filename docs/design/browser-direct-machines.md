@@ -82,9 +82,22 @@ machine, and keeps the machine list.
   through "this server", which needs no approval.
 - **Older machines** without the allowlist API cannot be reached from the browser; they stay on
   "this server" (decision 1b).
-- **WebSocket upgrades check `Origin`** against the page's own origin plus the same list. This also
-  closes a gap that exists today: a WebSocket has no same-origin protection, and nothing checks
-  `Origin` now.
+- **Who is asking is the browser's word, not the Host header's.** HTTP requests are classified by
+  `Sec-Fetch-Site`, which the browser sets from the page's origin and which no proxy rewrites:
+  `same-origin` is the machine's own page; `cross-site` or `same-site` with an approved `Origin` is
+  an approved page; any other cross-site request is unapproved. A request without the header and
+  without `Origin` is not a browser (the "this server" path, curl) and is not affected. A request
+  with `Origin` but without `Sec-Fetch-Site` (an old browser) keeps today's behaviour. Comparing
+  `Origin` with `Host` was rejected: a reverse proxy that rewrites `Host` (nginx's default) would make
+  the machine's own page look foreign. Measured in Chromium, 2026-10-13.
+- **Unapproved cross-site writes are refused (403).** Today any web page can send a body-less POST
+  ("stop the session") to PI WEB with `mode: "no-cors"`; the browser sends it, PI WEB acts, and only
+  the answer is hidden. The approve endpoint would have the same hole, so the rule is global: a
+  request that is not GET, HEAD or OPTIONS from an unapproved cross-site page is refused.
+- **WebSockets: no origin check yet.** Browsers send no `Sec-Fetch-Site` on a WebSocket handshake
+  (measured), so the only signal is `Origin` against `Host`, the comparison rejected above.
+  Browser-direct needs no change here (every upgrade is accepted today). Closing the gap that a
+  cross-site page can open a socket is a follow-up for the owner, with the proxy risk stated.
 - **Plugin assets** under `pi-web-plugins/` answer CORS for the same origins, since ES modules from
   another origin need it.
 - The session daemon is untouched: it is still reached only by its own web process.
@@ -138,8 +151,8 @@ affects other deployments.
 ## Slices (after the decisions)
 
 1. Machine side: the access store, the request/approve API, CORS on `api/` and `pi-web-plugins/`
-   for approved origins, the WebSocket `Origin` check, the approval page, and the Settings list of
-   approved origins.
+   for approved origins, the refusal of unapproved cross-site writes, the approval page, and the
+   Settings list of approved origins.
    Daemon untouched; web process restart only. Docs: `docs/machines.html`.
 2. Browser: the machine resolver and every machine-scoped URL through it; sockets; plugin loading.
 3. Browser: reachability producer, health and runtime read directly.
