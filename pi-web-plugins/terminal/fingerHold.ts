@@ -4,7 +4,8 @@
  * instead of a double-click or a mouse drag. The hold matches the host's own (`longPress.ts`,
  * 500 ms, 10 px of drift), which a plugin cannot import. A mouse press never counts: a mouse has the
  * double-click and the drag. A second finger is a pinch, not a hold. Each surface owns one hold, so
- * the tab's and the text's never answer each other's press.
+ * the tab's and the text's never answer each other's press. A third use only asks `release()`
+ * whether a press was a tap: a tap on the selected text returns to the live terminal.
  */
 const HOLD_MS = 500;
 const HOLD_DRIFT_PX = 10;

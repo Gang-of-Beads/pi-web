@@ -22,9 +22,10 @@ export type TerminalOperation = "list" | "connect" | "start" | "close" | "rename
  * - `reconcile`: read the shell list again to learn whether the write happened; never resend it.
  * - `retry-write`: an idempotent write: remember it, read again after the delay, and resend it while
  *   the list says it has not happened.
- * - `show-refusal`: the server's words, which the reader can act on (another name, another try).
+ * - `show-server-words`: what a server that answered said - a refusal or an error - which the reader
+ *   can act on (another name, another try).
  */
-export type TerminalRecovery = "retry-read" | "reconcile" | "retry-write" | "show-refusal";
+export type TerminalRecovery = "retry-read" | "reconcile" | "retry-write" | "show-server-words";
 
 /**
  * Reads follow the host's rule: only a stated refusal is shown. A start is never resent: a lost answer
@@ -33,16 +34,16 @@ export type TerminalRecovery = "retry-read" | "reconcile" | "retry-write" | "sho
  * already gone or finished, which the list shows; nothing for the reader to act on.
  */
 const RECOVERY: Readonly<Record<TerminalOperation, Readonly<Record<TerminalFailure, TerminalRecovery>>>> = {
-  list: { unanswered: "retry-read", "answered-error": "retry-read", refused: "show-refusal" },
-  connect: { unanswered: "retry-read", "answered-error": "retry-read", refused: "show-refusal" },
-  start: { unanswered: "reconcile", "answered-error": "show-refusal", refused: "show-refusal" },
+  list: { unanswered: "retry-read", "answered-error": "retry-read", refused: "show-server-words" },
+  connect: { unanswered: "retry-read", "answered-error": "retry-read", refused: "show-server-words" },
+  start: { unanswered: "reconcile", "answered-error": "show-server-words", refused: "show-server-words" },
   close: { unanswered: "retry-write", "answered-error": "reconcile", refused: "reconcile" },
-  rename: { unanswered: "retry-write", "answered-error": "show-refusal", refused: "show-refusal" },
-  continue: { unanswered: "reconcile", "answered-error": "show-refusal", refused: "show-refusal" },
+  rename: { unanswered: "retry-write", "answered-error": "show-server-words", refused: "show-server-words" },
+  continue: { unanswered: "reconcile", "answered-error": "show-server-words", refused: "show-server-words" },
   "cancel-run": { unanswered: "reconcile", "answered-error": "reconcile", refused: "reconcile" },
 };
 
-export function terminalFailureOf(failure: PluginReadFailure): TerminalFailure {
+function terminalFailureOf(failure: PluginReadFailure): TerminalFailure {
   if (failure.kind === "final") return "refused";
   return failure.reason === undefined ? "unanswered" : "answered-error";
 }

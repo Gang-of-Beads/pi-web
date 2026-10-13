@@ -81,6 +81,7 @@ export class TerminalPanel extends LitElement {
   private focusTabNameInput = false;
   private readonly tabHold = new FingerHold<string>((terminalId) => { this.editTerminalName(terminalId); });
   private readonly contentHold = new FingerHold<ScreenPoint>((point) => { this.selectWordAt(point); });
+  /** Detects only a finger tap on the selection overlay (release() before the hold fires) to return to the live terminal; the hold itself does nothing and, as with FingerHold, a mouse press is ignored. */
   private readonly selectionTap = new FingerHold<undefined>(() => undefined);
 
   private terminal: Terminal | undefined;
@@ -268,12 +269,12 @@ export class TerminalPanel extends LitElement {
         remember?.();
         this.scheduleRetry(delayMs);
       },
-      "show-refusal": () => { this.refusal = terminalFailureWords(failure) ?? describeTerminalError(error); },
+      "show-server-words": () => { this.refusal = terminalFailureWords(failure) ?? describeTerminalError(error); },
     };
     executors[terminalRecovery(operation, failure)]();
   }
 
-  /** Reads again after the host's backoff (1, 2, 4, 8 s, then every 15 s) and says "Reconnecting…" meanwhile. */
+  /** Reads again after the delay the host's `readFailure` gives and says "Reconnecting…" meanwhile. */
   private scheduleRetry(delayMs: number | undefined): void {
     this.reconnecting = true;
     if (this.retryTimer !== undefined) return;
