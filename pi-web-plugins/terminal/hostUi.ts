@@ -1,4 +1,4 @@
-import type { PluginHostUi } from "@gang-of-beads/pi-web/plugin-api";
+import type { PluginHostUi, PluginReadFailure } from "@gang-of-beads/pi-web/plugin-api";
 
 /**
  * The host utilities this plugin was activated with.
@@ -23,21 +23,27 @@ export function adoptTerminalHostStyles(root: ShadowRoot): void {
   hostUi.adoptSheets?.(root, [hostUi.surfaceStyles, hostUi.workspacePanelStyles, ...(hostUi.actionMenuStyles === undefined ? [] : [hostUi.actionMenuStyles])]);
 }
 
-/** Where the host stands a ⋯ menu for its trigger; undefined when the host draws no ⋯ menu, so the tab goes without one. */
+/** Where the host stands its action menu for a trigger; undefined when the host draws none, so a tab's right-click opens nothing. */
 export function hostActionMenuPlacement(): ((trigger: HTMLElement) => string) | undefined {
   return hostUi?.actionMenuStyles === undefined ? undefined : hostUi.placeActionMenu;
-}
-
-export function copyTerminalText(text: string): Promise<boolean> {
-  return hostUi === undefined ? Promise.resolve(false) : hostUi.copyText(text);
 }
 
 export function describeTerminalError(error: unknown): string {
   return hostUi === undefined ? String(error) : hostUi.describeError(error);
 }
 
-export function coarseOrMobileQuery(): string | undefined {
-  return hostUi?.breakpoints.coarseOrMobile;
+/** How long an older host without `readFailure` waits between quiet retries: the quiet window of B48. */
+const OLDER_HOST_RETRY_MS = 15_000;
+
+/** The host's B48 answer for a failed request (`attempt` counts misses in a row from 0); an older host gets a quiet retry. */
+export function terminalReadFailure(error: unknown, attempt: number): PluginReadFailure {
+  return hostUi?.readFailure?.(error, attempt) ?? { kind: "retry", delayMs: OLDER_HOST_RETRY_MS };
+}
+
+/** The host's touch-or-narrow layout, where the extra keys and the keyboard button show. */
+export function touchLayoutMedia(): MediaQueryList | undefined {
+  const query = hostUi?.breakpoints.coarseOrMobile;
+  return query === undefined || typeof window === "undefined" || !("matchMedia" in window) ? undefined : window.matchMedia(query);
 }
 
 /** The shell's close mark, so the terminal panel draws the same × as the

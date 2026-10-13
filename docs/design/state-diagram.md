@@ -575,6 +575,7 @@ stateDiagram-v2
 | a session's transcript and status | the failure panel with `transcriptFailed` / `statusReadFailed` | `sessionController.ts:506`, `ChatView.ts:1831`, `PiWebApp.ts:4165` |
 | opening a session (D8) | "Couldn't open · retry" | `navigationIntent.ts` `OPENING_WORDS.failed` |
 | files | "Couldn't read this workspace's files: …" | `files/explorer.ts:89`, `filesPanelElement.ts:134` |
+| the terminal page (owner screenshot, 2026-10-13: "The server did not answer within 30s." in red) | `describeTerminalError` in red for every failure: listing shells and command runs, the shell's socket, and start, close, rename, continue and cancel | `terminal/TerminalPanel.ts`; now `terminalRecovery.ts` through the host's `ui.readFailure` |
 | git status and diff (missed in the first count; owner, 2026-10-13) | a red alert with the transport's words on every missed 8 s poll, and "Status unavailable." | `git/browser/git-panel.ts` status and diff reads; now `applyReadFailure` through the host's `ui.readFailure` |
 | goals | "Goal records could not …" | `goals/pi-web-plugin.ts:79`, `goalsSectionElement.ts:90` |
 | background runs | "This machine could not read the background runs." | `PiWebApp.ts:920`, `backgroundTaskRows.ts:90` |
@@ -585,6 +586,18 @@ stateDiagram-v2
 | the global banner | "Lost connection…", "A request timed out…", "Connection problem…" | `errorBanner.ts:95-125` |
 
 **The status of a sent message speaks through the row (P1 slice 6).** A row whose bytes left unconfirmed (it says "Sending…") is asked about on a clock, by asking the daemon's ledger. When an ask gets no answer, that is an unanswered read like any other. It is scoped to the machine and the session, counted from the first ask that got none, and folded into the app's one row with the projects, machines and named-target misses. So it waits out the same grace and shows the same words: "Reconnecting…", "*m* is unavailable; reconnecting…", or a server's own reason. It never shows Retry, and it leaves when an ask gets through, when a later send to the same session is answered (the link to its machine is up), or when the reader leaves the session: leaving ends the episode, so coming back never shows a claim counted from before, which would skip the grace. Nothing about it is written into `state.error`, and nothing compares display text. The message's own row keeps saying "Sending…" meanwhile. A send nobody answered starts the claim itself, and no longer raises the transport error as a notice: that notice was a second producer of the same words, hidden until now under the first. Still decided by text, though already in the row's style and without Retry: the machine-down notices and the transport rewrites in `errorBanner.ts` (the session daemon, a dropped fetch, a remote machine). They become typed misses with B16.
+
+**The terminal page** (owner, 2026-10-13: "we keep trying; never show the user an error they cannot fix"). The host says what a failure means (`ui.readFailure`); `terminalRecovery.ts` says, in one table over the request and that answer, what the panel does:
+
+| request | no answer | a server error, in its words | a stated refusal |
+|---|---|---|---|
+| listing shells and command runs; the shell's socket | keep what is shown, "Reconnecting…", read again with the host's backoff | the same | its words |
+| start | read the list to learn whether it started; never sent twice | its words | its words |
+| close, rename | read the list; resend while it shows the shell open or the old name (both are idempotent) | close: read the list; rename: its words | close: read the list; rename: its words |
+| continue | read the list | its words | its words |
+| cancel a command run | read the list | read the list | read the list |
+
+A dropped socket to a shell that still runs reconnects when the list answers; the screen is reset and the daemon replays it. The tab becoming visible, the browser going online and the socket opening read at once. "Reconnecting…" goes when the list answered and no close, rename or socket is still waiting. An answer for another folder than the one shown is dropped, and the auto-started shell is decided only by an answer.
 
 Done so far: projects on a machine (P1 slice 1); workspaces, and placing a session opened from another project (P1 slice 2); the machines roster, and a deep link to a remote machine, which keeps retrying with the shared backoff while it is still the reader's intent (P1 slice 3); the row names why a read is unanswered (P1 slice 4); the session board across the machine (P1 slice 5); a missing session is a typed fact, `gone`, not an error text (P2 slice a).
 
@@ -781,16 +794,19 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     [*] --> showing
-    showing --> editing: double-click, a held finger (500 ms, 10 px), F2, or Rename… in the tab's ⋯ menu
+    showing --> editing: double-click, a held finger (500 ms, 10 px), F2, or Rename… in the tab's right-click menu
     editing --> showing: Escape (nothing sent)
     editing --> showing: Enter or leaving the field with an empty or unchanged name (nothing sent)
     editing --> saving: Enter or leaving the field with a new name
     saving --> showing: the daemon answers; the tab shows the name it answered with
     saving --> showing: the daemon refuses (empty, over 80 characters, the shell gone, a route an older daemon lacks); the old name stays and the panel says why
+    saving --> resending: no answer; the panel says Reconnecting… and reads the shell list again
+    resending --> showing: the list shows the new name, or no such shell
+    resending --> saving: the list still shows the old name; the rename is sent again (it is idempotent)
 ```
 
 - **The daemon keeps the name** (`POST /terminals/:id/rename`, federated for a remote machine). Every page that lists the shell reads it. No frame announces it: a page already showing the shell's tabs on another device shows the new name when it next lists them, as it does for a shell opened or closed there. A daemon restart ends its shells, names included.
-- **The ⋯ menu is the host's** (`PluginHostUi.actionMenuStyles` and `placeActionMenu`): its subject line names the shell, then Rename… and Close. A host that offers no menu leaves the ⋯ off; the double-click and the hold still rename.
+- **The right-click menu is the host's** (`PluginHostUi.actionMenuStyles` and `placeActionMenu`): its subject line names the shell, then Rename… and Close. A tab is its name and one × cell (owner, 2026-10-13: the ⋯ is gone; it only repeated × and the rename gestures). A finger's long-press opens the name field and only keeps the browser's own menu away. A host that offers no menu leaves the browser's; the double-click, F2 and the hold still rename.
 
 ## D8. Where the reader is (navigation)
 

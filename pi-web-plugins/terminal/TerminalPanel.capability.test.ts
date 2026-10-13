@@ -55,23 +55,23 @@ describe("the terminal panel works through the capability it was given", () => {
     expect(listCommandRuns).toHaveBeenCalled();
   });
 
-  it("reports a connection it could not open rather than looking empty", async () => {
+  it("says it is reconnecting when a connection cannot be opened, rather than looking empty or showing an error (B48)", async () => {
     const panel = await mount(sessions({ connect: () => { throw new Error("socket refused"); } }));
 
     await vi.waitFor(() => {
-      if (!(panel.shadowRoot?.textContent ?? "").includes("socket refused")) throw new Error("no failure reported yet");
+      if (!(panel.shadowRoot?.textContent ?? "").includes("Reconnecting…")) throw new Error("no reconnecting status yet");
     });
 
-    expect(panel.shadowRoot?.textContent).toContain("socket refused");
+    expect(panel.shadowRoot?.textContent).not.toContain("socket refused");
   });
 
-  it("reports a refused listing instead of showing an empty terminal list as truth", async () => {
-    const panel = await mount(sessions({ list: () => Promise.reject(new Error("daemon refused")) }));
+  it("says it is reconnecting when the listing gets no answer, instead of showing an empty terminal list as truth (B48)", async () => {
+    const panel = await mount(sessions({ list: () => Promise.reject(new Error("The server did not answer within 30s.")) }));
 
     await vi.waitFor(() => {
-      if (!(panel.shadowRoot?.textContent ?? "").includes("daemon refused")) throw new Error("no failure reported yet");
+      if (!(panel.shadowRoot?.textContent ?? "").includes("Reconnecting…")) throw new Error("no reconnecting status yet");
     });
 
-    expect(panel.shadowRoot?.textContent).toContain("daemon refused");
+    expect(panel.shadowRoot?.querySelector(".error")).toBeNull();
   });
 });

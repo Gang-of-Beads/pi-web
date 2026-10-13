@@ -40,7 +40,7 @@ describe("TerminalPanel expanded geometry", () => {
 
   it("limits the expansion control to the desktop media rule", () => {
     const sheet = terminalStyleText();
-    expect(sheet).toContain(".copy-mode-toggle, .soft-keys-toggle, terminal-soft-keys { display: none; }");
+    expect(sheet).toContain(".keyboard-toggle, terminal-soft-keys { display: none; }");
     expect(sheet).toMatch(/@media \(pointer: coarse\), \(max-width: 760px\)[\s\S]*?\.terminal-tabs > button \{ height: var\(--pi-control-height-touch\); \}/u);
   });
 });
