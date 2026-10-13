@@ -184,7 +184,7 @@ export function sessionLookupId(session: string | SessionRef): string {
 }
 
 /** Open a new session and send its first message: a draft is created on the machine only then. */
-export function launchNewSession(controller: Pick<SessionController, "startSession" | "startDraft">): Promise<void> {
+export function launchNewSession(controller: Pick<SessionController, "startSession" | "untilStarted">): Promise<void> {
   controller.startSession();
-  return controller.startDraft();
+  return controller.untilStarted();
 }

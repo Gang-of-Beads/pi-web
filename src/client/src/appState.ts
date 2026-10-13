@@ -190,9 +190,6 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
     sessions: [],
     // The workspace is being left; the next list is not loaded, not empty.
     sessionsLoad: "unloaded",
-    // Goals belong to the workspace being left, so they must not linger over
-    // the next one while its own records load. The key goes with them: an
-    // unkeyed list would be retained by nothing and owned by no one.
     commandLedger: [],
     startingSessionCount: 0,
     treeDialog: undefined,

@@ -3156,6 +3156,7 @@ export class PiWebApp extends LitElement {
       .onOpenSession=${(session: SessionInfo, machineId: string) => { void this.openSessionFromQuickSwitcher(session, machineId); }}
       .opening=${this.navigation.view()}
       .onCreateSession=${(projectId: string | undefined) => { this.startNewSession(projectId); }}
+      .newSessionTargetName=${(projectId: string | undefined) => (projectId === undefined ? undefined : this.newSessionTarget(projectId)?.name)}
       .onContinueFrom=${(session: SessionInfo, machineId: string) => { void this.continueInNewSession(session, machineId); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { void this.addProjectOnShownMachine(); } : undefined}
       .onAddMachine=${this.hasAddMachineEntry() ? () => { this.openMachineDialog(); } : undefined}
@@ -4720,7 +4721,7 @@ export class PiWebApp extends LitElement {
 
   private async openModelDialog() {
     const stillWanted = this.beginPickerRequest();
-    await this.sessions.startDraft();
+    await this.sessions.untilStarted();
     const [models, catalog] = await Promise.all([this.sessions.listModels(), this.sessions.listModelCatalog()]);
     if (!stillWanted()) return;
     const selectedValue = this.currentModelValue();
@@ -4893,7 +4894,7 @@ export class PiWebApp extends LitElement {
 
   private async openThinkingDialog() {
     const stillWanted = this.beginPickerRequest();
-    await this.sessions.startDraft();
+    await this.sessions.untilStarted();
     const levels = await this.sessions.listThinkingLevels();
     if (!stillWanted()) return;
     const current = this.state.status?.thinkingLevel ?? "off";

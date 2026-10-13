@@ -1,4 +1,5 @@
 import { projectRowClass } from "../../projectFolder";
+import { isPendingStartSessionInfo } from "../../sessionPersistence";
 import type { ListTilesPerRow } from "../../../../shared/apiTypes";
 import type { NavigateListScope } from "../../goToScope";
 import { LitElement, css, html, nothing, unsafeCSS, type PropertyValues } from "lit";
@@ -136,6 +137,11 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) opening: PendingNavigation | undefined = undefined;
   /** New session, with the project the list is narrowed to; undefined lists all projects, and the app asks which. */
   @property({ attribute: false }) onCreateSession?: (projectId: string | undefined) => void;
+  /**
+   * The project New session would start in for a narrowing, named by the app that decides it, so
+   * the button and the tap agree; undefined when the app would ask.
+   */
+  @property({ attribute: false }) newSessionTargetName?: (projectId: string | undefined) => string | undefined;
   /** Continue a session in a new one; absent where that cannot be offered. */
   @property({ attribute: false }) onContinueFrom?: (session: SessionInfo, machineId: string) => void;
   @property({ attribute: false }) onAddProject?: () => void;
@@ -546,11 +552,11 @@ export class AppNavigatePage extends LitElement {
           ${this.renderKindTab("sessions", "Sessions", renderChatIcon())}
         </nav>
         ${showsSessions ? this.renderScopeSwitch(listed.projects, sessionProjectId) : nothing}
-        ${this.renderListHeader(showsSessions, listed.projects)}
+        ${this.renderListHeader(showsSessions)}
     `;
   }
 
-  private renderListHeader(showsSessions: boolean, projects: readonly { id: string; name: string }[]) {
+  private renderListHeader(showsSessions: boolean) {
     return html`
         ${showsSessions ? html`
           <div class="search-row">
@@ -570,7 +576,7 @@ export class AppNavigatePage extends LitElement {
           ${this.renderTagSuggestions()}
         ` : nothing}
         <div class="actions">
-          ${showsSessions ? this.renderCreateSession(projects) : this.renderAddChoice()}
+          ${showsSessions ? this.renderCreateSession() : this.renderAddChoice()}
           ${this.renderSelectKey()}
         </div>
     `;
@@ -712,7 +718,7 @@ export class AppNavigatePage extends LitElement {
   }
 
   private sessionFacts(row: NavigateSessionRow): NavigateRowFacts {
-    return { pinned: row.pins.global, archived: row.session.archived === true, archivable: this.canArchiveSessions && !("clientPendingStart" in row.session), unread: this.input?.unreadSessionIds?.has(row.session.id) === true };
+    return { pinned: row.pins.global, archived: row.session.archived === true, archivable: this.canArchiveSessions && !isPendingStartSessionInfo(row.session), unread: this.input?.unreadSessionIds?.has(row.session.id) === true };
   }
 
   /** While selecting, a row of the selected group leads with its mark instead of its icon. */
@@ -896,8 +902,8 @@ export class AppNavigatePage extends LitElement {
    * menu offers an empty session or picking one to continue; while picking, the button itself says so
    * and a tap on it leaves. A machine that cannot continue sessions gets the plain button.
    */
-  private renderCreateSession(projects: readonly { id: string; name: string }[]) {
-    const button = CREATE_BUTTON[this.rowTap](this.pathProjectId === undefined ? undefined : projects.find((project) => project.id === this.pathProjectId)?.name);
+  private renderCreateSession() {
+    const button = CREATE_BUTTON[this.rowTap](this.newSessionTargetName?.(this.pathProjectId));
     const menu = this.onContinueFrom !== undefined && this.rowTap === "open";
     return html`
       <button
@@ -986,7 +992,7 @@ export class AppNavigatePage extends LitElement {
         <span class="row-title"><span class="row-icon" data-kind="session">${this.rowIcon(group, id, renderChatIcon())}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>
         ${this.opening?.key === key && this.opening.phase !== "going" ? html`<span class="row-path">${renderOpeningWords(this.opening, key)}</span>` : row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
       </button>
-    `, { pinned: row.pins.global, projectPinned: row.pins.project, archived: row.session.archived === true, archivable: this.canArchiveSessions && !("clientPendingStart" in row.session) }, group, selected);
+    `, { pinned: row.pins.global, projectPinned: row.pins.project, archived: row.session.archived === true, archivable: this.canArchiveSessions && !isPendingStartSessionInfo(row.session) }, group, selected);
   }
 
   /**

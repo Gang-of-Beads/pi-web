@@ -4175,9 +4175,9 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * A device's slash command, in its turn. Only its admission holds the session's arrival chain:
-   * the command itself runs outside it, because a runtime command forwards a prompt that takes its
-   * own turn on the chain. A resend is answered with what the command answered the first time.
+   * A command the page runs itself (the tree button), unnumbered and answered with its result.
+   * Only its admission holds the session's arrival chain: the command runs outside it, because a
+   * runtime command forwards a prompt that takes its own turn on the chain.
    */
   async runCommand(ref: PiSessionRef, text: string): Promise<ClientCommandResult> {
     const admitted = await this.admitCommand(ref, text, undefined, undefined);

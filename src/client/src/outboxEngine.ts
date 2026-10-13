@@ -27,8 +27,8 @@ export interface OutboxEffects {
 
 export interface OutboxEngineDeps extends OutboxEffects {
   apply(scope: OperationScope, batch: OperationBatch): Promise<OperationBatchAnswer>;
-  /** Start the session a draft stands for and move its outbox to the session's id; false when the scope is not a draft. Throws when the start went unanswered. */
-  launchDraft(scope: OperationScope): Promise<boolean>;
+  /** Create the session a scope still being created stands for and move its outbox to the session's id; false for a session the machine has. Throws when the start went unanswered. */
+  startPending(scope: OperationScope): Promise<boolean>;
   /** Ready a record to travel - a message whose files go to the workspace is rewritten with their paths - and return it; the engine stores it. */
   prepare(record: PendingPrompt): Promise<PendingPrompt>;
   /** Something about the outboxes changed that the page shows: which sessions are sending, which machines are unanswered. */
@@ -40,7 +40,7 @@ interface OutboxRun {
   state: DriverState;
   delay: number;
   timer: ReturnType<typeof setTimeout> | undefined;
-  /** When the batch now unanswered was first sent; undefined once anything was heard for this outbox. */
+  /** When the requests now unanswered began - the creation, the files, the batch; undefined once anything was heard for this outbox. */
   unansweredSince: number | undefined;
   /** Why it is unanswered, as the app row words it: the machine not answering until a failure says more. */
   miss: ReadMiss;
@@ -194,13 +194,15 @@ export class OutboxEngine {
       return;
     }
     const run = this.runOf(sessionKey);
-    if (run.unansweredSince === undefined) {
+    const claimedNow = run.unansweredSince === undefined;
+    if (claimedNow) {
       run.unansweredSince = this.now();
       run.machineId = head.scope.machineId;
       run.miss = { kind: "machine-unanswering", machineId: head.scope.machineId };
     }
+    const unclaim = (): void => { if (claimedNow) run.unansweredSince = undefined; };
     try {
-      if (await this.deps.launchDraft(head.scope)) {
+      if (await this.deps.startPending(head.scope)) {
         this.heard(sessionKey);
         this.drive(sessionKey, "drained");
         this.kickAll();
@@ -208,6 +210,7 @@ export class OutboxEngine {
       }
       const batch = await this.batchOf(sessionKey, records);
       if (batch === undefined) {
+        unclaim();
         this.drive(sessionKey, "answered");
         return;
       }
@@ -217,6 +220,7 @@ export class OutboxEngine {
       this.settle(sessionKey, batch.records, answer);
       this.drive(sessionKey, "answered");
     } catch (error) {
+      if (error instanceof OutboxStorageError) unclaim();
       this.drive(sessionKey, this.afterFailure(sessionKey, head, error));
     }
     this.deps.changed();
@@ -293,10 +297,13 @@ export class OutboxEngine {
   }
 }
 
-/** Storage refused to record a batch's numbers; the batch is not sent and waits like one unanswered. */
+/**
+ * Storage refused to record a batch's numbers: the batch is not sent and waits like one
+ * unanswered. Nothing went to the machine, so it claims no machine on the row.
+ */
 class OutboxStorageError extends Error {
   constructor() {
-    super("This browser's storage is full; the message waits until there is room.");
+    super("This browser could not store the batch's numbers (its storage is full or unavailable).");
     this.name = "OutboxStorageError";
   }
 }

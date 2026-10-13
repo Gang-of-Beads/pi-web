@@ -12,7 +12,7 @@ import { newClientMessageId } from "./messageDelivery";
  */
 
 const DEVICE_KEY = "pi-web:device-id";
-const LOG_PREFIX = "pi-web:acked-through:";
+const ACKED_PREFIX = "pi-web:acked-through:";
 
 /** Minted once per browser profile; every tab of the profile is this device. */
 export function deviceId(storage = browserLocalStorage()): string {
@@ -25,7 +25,7 @@ export function deviceId(storage = browserLocalStorage()): string {
 
 /** The highest number the machine has confirmed for this device on this session. */
 export function ackedThrough(sessionKey: string, storage = browserLocalStorage()): number {
-  const held = Number(storage?.getItem(`${LOG_PREFIX}${sessionKey}`) ?? "0");
+  const held = Number(storage?.getItem(`${ACKED_PREFIX}${sessionKey}`) ?? "0");
   return Number.isSafeInteger(held) && held >= 0 ? held : 0;
 }
 
@@ -33,22 +33,22 @@ export function ackedThrough(sessionKey: string, storage = browserLocalStorage()
 export function confirmThrough(sessionKey: string, appliedThrough: number, storage = browserLocalStorage()): void {
   if (appliedThrough <= ackedThrough(sessionKey, storage)) return;
   try {
-    storage?.setItem(`${LOG_PREFIX}${sessionKey}`, String(appliedThrough));
+    storage?.setItem(`${ACKED_PREFIX}${sessionKey}`, String(appliedThrough));
   } catch {
     return;
   }
 }
 
 /** A deleted session's standing goes with it. */
-export function forgetOperationLog(sessionKey: string, storage = browserLocalStorage()): void {
-  storage?.removeItem(`${LOG_PREFIX}${sessionKey}`);
+export function forgetAckedThrough(sessionKey: string, storage = browserLocalStorage()): void {
+  storage?.removeItem(`${ACKED_PREFIX}${sessionKey}`);
 }
 
 /** A draft's standing goes with its outbox to the session's own id. */
-export function moveOperationLog(fromSessionKey: string, toSessionKey: string, storage = browserLocalStorage()): void {
+export function moveAckedThrough(fromSessionKey: string, toSessionKey: string, storage = browserLocalStorage()): void {
   if (fromSessionKey === toSessionKey) return;
-  const raw = storage?.getItem(`${LOG_PREFIX}${fromSessionKey}`);
+  const raw = storage?.getItem(`${ACKED_PREFIX}${fromSessionKey}`);
   if (raw === undefined || raw === null) return;
-  storage?.setItem(`${LOG_PREFIX}${toSessionKey}`, raw);
-  storage?.removeItem(`${LOG_PREFIX}${fromSessionKey}`);
+  storage?.setItem(`${ACKED_PREFIX}${toSessionKey}`, raw);
+  storage?.removeItem(`${ACKED_PREFIX}${fromSessionKey}`);
 }

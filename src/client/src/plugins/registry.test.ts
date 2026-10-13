@@ -324,7 +324,7 @@ describe("PluginRegistry", () => {
     expect(calls).toEqual(["deleteWorkspace"]);
   });
 
-  it("offers archive only for persisted sessions and delete only for transient new sessions", () => {
+  it("offers archive for every session the machine holds and delete only for transient new sessions", () => {
     const registry = new PluginRegistry();
     registry.register({ id: "core", plugin: corePlugin });
 
@@ -337,11 +337,11 @@ describe("PluginRegistry", () => {
     expect(unknownActions.find((action) => action.id === "core:session.delete")?.enabled).toBe(false);
 
     const transientActions = registry.getActions(createContext({ selectedSession: testSession({ persisted: false }) }).context);
-    expect(transientActions.find((action) => action.id === "core:session.archive")?.enabled).toBe(false);
+    expect(transientActions.find((action) => action.id === "core:session.archive")?.enabled).toBe(true);
     expect(transientActions.find((action) => action.id === "core:session.delete")?.enabled).toBe(true);
 
     const cachedActions = registry.getActions(createContext({ selectedSession: markCachedNewSessionInfo(testSession()) }).context);
-    expect(cachedActions.find((action) => action.id === "core:session.archive")?.enabled).toBe(false);
+    expect(cachedActions.find((action) => action.id === "core:session.archive")?.enabled).toBe(true);
     expect(cachedActions.find((action) => action.id === "core:session.delete")?.enabled).toBe(true);
 
     const archivedActions = registry.getActions(createContext({ selectedSession: { ...testSession({ persisted: true }), archived: true, archivedAt: "2026-05-20T00:00:00.000Z" } }).context);
@@ -358,7 +358,7 @@ describe("PluginRegistry", () => {
     expect(statusPersisted.find((action) => action.id === "core:session.delete")?.enabled).toBe(false);
 
     const statusTransient = registry.getActions(createContext({ selectedSession: testSession({ persisted: true }), status: testStatus({ persisted: false }) }).context);
-    expect(statusTransient.find((action) => action.id === "core:session.archive")?.enabled).toBe(false);
+    expect(statusTransient.find((action) => action.id === "core:session.archive")?.enabled).toBe(true);
     expect(statusTransient.find((action) => action.id === "core:session.delete")?.enabled).toBe(true);
   });
 

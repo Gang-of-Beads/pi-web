@@ -184,11 +184,7 @@ interface PendingSessionStart {
   machineId: string;
   session: ClientPendingStartSessionInfo;
   discarded: boolean;
-  /**
-   * The create request, once the first message asked for it (owner, 2026-10-13: a new session is
-   * created by its first message). Until then the session is a draft: nothing exists on the
-   * machine, nothing is listed, and leaving it leaves nothing behind.
-   */
+  /** The create request, sent when the session opens (owner, 2026-10-14). */
   launched?: Promise<void>;
   /**
    * The real session id, learned from the daemon's `session.startup` events
@@ -250,16 +246,16 @@ interface ReturnScope {
   readonly sessionId: string;
 }
 
-/** How many operations a draft holds for its session to start. */
-function waitingInDraft(pending: Pick<PendingSessionStart, "machineId" | "tempId">): number {
+/** How many operations wait in a new session's outbox for it to be created. */
+function waitingToStart(pending: Pick<PendingSessionStart, "machineId" | "tempId">): number {
   return loadPendingPrompts(machineSessionKey(pending.machineId, pending.tempId)).length;
 }
 
 /** How long the frames an answer names may take to arrive on the stream before the page fetches them. */
 const STREAM_HEAD_GRACE_MS = 1500;
 
-/** A draft session's id until its first operation starts it on the machine. */
-const DRAFT_SESSION_PREFIX = "pending-session-";
+/** A new session's id in this browser until the machine has created it. */
+const PENDING_SESSION_PREFIX = "pending-session-";
 
 /** What an ask of the daemon's ledger came back with: an answer (or nothing left to ask about), or no answer and why. */
 type LedgerAsk = { readonly kind: "answered" } | { readonly kind: "unreachable"; readonly miss: ReadMiss };
@@ -441,7 +437,7 @@ export class SessionController {
 
   /**
    * Open a new, empty session in the selected workspace and create it on the machine at once
-   * (owner, 2026-10-14: a draft had no model, thinking level or commands to offer; an empty
+   * (owner, 2026-10-14: a session left uncreated had no model, thinking level or commands to offer; an empty
    * session left behind is listed "not started" and archived like any other). It reads
    * "Creating…" until the machine answers; what the reader writes meanwhile waits in the outbox.
    */
@@ -463,17 +459,17 @@ export class SessionController {
   }
 
   /** Wait until the new session on screen exists, for a choice that needs it (its model or thinking level). */
-  async startDraft(): Promise<void> {
+  async untilStarted(): Promise<void> {
     const session = this.getState().selectedSession;
     const pending = session === undefined ? undefined : this.pendingSessionStarts.get(session.id);
     if (pending !== undefined) await this.launchPendingStart(pending);
   }
 
-  /** Ask the machine for the session a draft stands for: its row is listed, and it reads "Creating…" until the machine answers. */
+  /** Ask the machine to create a new session: its row is listed, and it reads "Creating…" until the machine answers. */
   private launchPendingStart(pending: PendingSessionStart): Promise<void> {
     if (pending.launched !== undefined) return pending.launched;
     const state = this.getState();
-    const activity = creatingPendingSessionActivity(pending.tempId, waitingInDraft(pending));
+    const activity = creatingPendingSessionActivity(pending.tempId, waitingToStart(pending));
     this.setState({
       sessions: [pending.session, ...state.sessions.filter((candidate) => candidate.id !== pending.tempId)],
       sessionActivities: { ...state.sessionActivities, [pending.tempId]: activity },
@@ -747,7 +743,7 @@ export class SessionController {
 
   /**
    * A command run from the page itself rather than the composer (the tree button): sent at once
-   * and unnumbered, because its answer drives the page directly. A draft has nothing to run it on.
+   * and unnumbered, because its answer drives the page directly. A session still being created has nothing to run it on.
    */
   async runCommand(text: string) {
     const session = this.getState().selectedSession;
@@ -791,7 +787,7 @@ export class SessionController {
       this.noteStreamHead(scope, answer.standing.head);
       return answer;
     },
-    launchDraft: (scope) => this.launchDraft(scope),
+    startPending: (scope) => this.startPending(scope),
     prepare: (record) => this.prepareOperation(record),
     applied: (sessionKey, record, outcome) => { this.operationApplied[record.kind](sessionKey, record, outcome); },
     refused: (sessionKey, record, reason) => { this.operationRefused[record.kind](sessionKey, record, reason); },
@@ -886,11 +882,12 @@ export class SessionController {
   }
 
   /**
-   * A draft's first batch starts its session, idempotently by the draft's id, and moves the outbox
-   * to the session's own id. Throws while the session has not started, so the batch waits.
+   * An operation written while its session is being created waits for the creation, and makes it,
+   * idempotently by the startup token, if the open-time request went unanswered; the outbox then
+   * moves to the session's own id. Throws while the session has not started, so the batch waits.
    */
-  private async launchDraft(scope: OperationScope): Promise<boolean> {
-    if (!scope.sessionId.startsWith(DRAFT_SESSION_PREFIX)) return false;
+  private async startPending(scope: OperationScope): Promise<boolean> {
+    if (!scope.sessionId.startsWith(PENDING_SESSION_PREFIX)) return false;
     const draftKey = machineSessionKey(scope.machineId, scope.sessionId);
     const pending = this.pendingSessionStarts.get(scope.sessionId);
     if (pending === undefined) {
@@ -2210,7 +2207,7 @@ export class SessionController {
   }
 
   private createPendingSessionStart(workspace: Workspace, machineId: string): PendingSessionStart {
-    const tempId = `${DRAFT_SESSION_PREFIX}${String(++this.pendingSessionStartSeq)}-${Date.now().toString(36)}`;
+    const tempId = `${PENDING_SESSION_PREFIX}${String(++this.pendingSessionStartSeq)}-${Date.now().toString(36)}`;
     const now = new Date().toISOString();
     const session: ClientPendingStartSessionInfo = {
       id: tempId,
@@ -2238,7 +2235,7 @@ export class SessionController {
     this.clearPendingUpdates();
     const state = this.getState();
     const pendingStart = this.pendingSessionStarts.get(session.id);
-    const activity = options?.activity ?? state.sessionActivities[session.id] ?? (pendingStart?.launched !== undefined ? creatingPendingSessionActivity(session.id, waitingInDraft(pendingStart)) : undefined);
+    const activity = options?.activity ?? state.sessionActivities[session.id] ?? (pendingStart?.launched !== undefined ? creatingPendingSessionActivity(session.id, waitingToStart(pendingStart)) : undefined);
     this.setState({
       ...(options?.sessions === undefined ? {} : { sessions: options.sessions }),
       selectedSession: session,
@@ -2325,7 +2322,7 @@ export class SessionController {
     }
     const state = this.getState();
     const message = describeError(error);
-    const activity = failedPendingSessionActivity(tempId, message, waitingInDraft(pending));
+    const activity = failedPendingSessionActivity(tempId, message, waitingToStart(pending));
     const hasPendingRow = state.sessions.some((session) => session.id === tempId);
     this.setState({
       sessions: hasPendingRow ? state.sessions : [pending.session, ...state.sessions],
@@ -3152,7 +3149,7 @@ export class SessionController {
     // restore this row's own generic wording rather than clearing the text of a
     // creation request that has not returned yet.
     this.queueActivityUpdate(event.activity.phase === "idle"
-      ? creatingPendingSessionActivity(pending.tempId, waitingInDraft(pending))
+      ? creatingPendingSessionActivity(pending.tempId, waitingToStart(pending))
       : pendingStartActivity(event.activity, pending.tempId));
   }
 

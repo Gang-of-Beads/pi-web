@@ -22,12 +22,17 @@ export function isPersistedSessionInfo(session: SessionInfo | undefined, status?
   return session !== undefined && session.archived !== true && sessionPersistenceState(session, status) === "persisted";
 }
 
+/** A new session this browser asked for that the machine has not created yet: it exists only here. */
+export function isPendingStartSessionInfo(session: SessionInfo): boolean {
+  return Reflect.get(session, "clientPendingStart") === true;
+}
+
 /**
  * A session the machine holds, written or not: archived like any other (owner, 2026-10-14: "就把它当成正常的session").
  * One still being created exists only in this browser, and is deleted instead.
  */
 export function isArchivableSessionInfo(session: SessionInfo | undefined, status?: SessionStatus): boolean {
-  if (session === undefined || session.archived === true || "clientPendingStart" in session) return false;
+  if (session === undefined || session.archived === true || isPendingStartSessionInfo(session)) return false;
   return sessionPersistenceState(session, status) !== "unknown";
 }
 

@@ -88,7 +88,7 @@ function beginPendingStart(harness: PendingStartHarness): { start: Promise<void>
   const tempId = harness.state.current.selectedSession?.id;
   if (tempId === undefined) throw new Error("Expected a pending-start row to be selected");
   if (!tempId.startsWith("pending-session-")) throw new Error("Expected a pending-start row to be selected");
-  return { start: harness.controller.startDraft(), tempId };
+  return { start: harness.controller.untilStarted(), tempId };
 }
 
 function reportBackendSessionId(harness: PendingStartHarness, tempId: string): void {

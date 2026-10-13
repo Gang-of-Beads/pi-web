@@ -296,7 +296,7 @@ function row(session: SessionInfo, machineId: string, input: NavigateInput): Nav
 /**
  * A session pi has not written yet: nobody has spoken in it, and it lives only in its daemon until
  * the first message, so a daemon restart drops it (owner, 2026-10-13: list it, marked). The mark
- * leads the line the row shows, because the subtitle below is not drawn on a session row.
+ * leads the path line the row shows (`sessionPath`), because a session row does not draw its subtitle (`sessionDetail`).
  */
 const NOT_STARTED_MARK = "not started";
 

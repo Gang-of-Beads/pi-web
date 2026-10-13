@@ -39,7 +39,7 @@ export interface SequencedOperation {
 }
 
 /** Where the operation falls against the next number expected: behind it, at it, or past it. */
-export type Place = "behind" | "next" | "past";
+type Place = "behind" | "next" | "past";
 
 const PLACE_BY_SIGN: Readonly<Record<string, Place>> = { "-1": "behind", "0": "next", "1": "past" };
 

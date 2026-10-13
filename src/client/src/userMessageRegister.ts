@@ -33,7 +33,7 @@ export interface UserMessageRow {
 }
 
 interface RegisterInput {
-  /** Settled transcript lines, in transcript order. */
+  /** Transcript lines in order, this browser's bubbles not yet settled among them. */
   transcript: readonly ChatLine[];
   /** What the daemon reports as queued, with whatever identity survived. */
   queued: readonly QueuedSessionMessage[];

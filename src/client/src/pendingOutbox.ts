@@ -1,7 +1,7 @@
 import { browserLocalStorage } from "./browserLocalStorage";
 import type { PromptAttachment } from "./api";
 import type { PromptAttachmentDelivery } from "../../shared/apiTypes";
-import { forgetOperationLog, moveOperationLog } from "./operationLog";
+import { forgetAckedThrough, moveAckedThrough } from "./operationLog";
 
 /**
  * The outbox: this browser's operations on a session that the machine has not answered yet, in
@@ -173,7 +173,7 @@ export function savesFilesFirst(record: PendingPrompt): boolean {
  */
 export function discardOutbox(sessionKey: string, storage = browserLocalStorage()): void {
   if (storage === undefined) return;
-  forgetOperationLog(sessionKey, storage);
+  forgetAckedThrough(sessionKey, storage);
   const keys = [...keysWithPrefix(`${OUTBOX_PREFIX}${sessionKey}${ORDER_MARK}`, storage), ...keysWithPrefix(`${RESERVE_PREFIX}${sessionKey}${ORDER_MARK}`, storage)];
   for (const key of keys) storage.removeItem(key);
   announce(sessionKey);
@@ -313,7 +313,7 @@ export function requeueLostMessage(sessionKey: string, clientMessageId: string, 
  */
 export function moveOutbox(fromSessionKey: string, toSessionKey: string, toSessionId: string, storage = browserLocalStorage()): void {
   if (fromSessionKey === toSessionKey || storage === undefined) return;
-  moveOperationLog(fromSessionKey, toSessionKey, storage);
+  moveAckedThrough(fromSessionKey, toSessionKey, storage);
   for (const key of keysWithPrefix(`${RESERVE_PREFIX}${fromSessionKey}${ORDER_MARK}`, storage)) {
     const reserved = readReserve(key, storage);
     if (reserved === undefined) continue;
