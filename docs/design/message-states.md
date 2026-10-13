@@ -247,11 +247,13 @@ batches.
   machine already answered is taken back by the machine, after everything
   written before the take-back, and its words return once the machine confirms.
 - **An operation carries the scope it belongs to**: machine, session and cwd,
-  and for a draft session the launch it needs (project, workspace, startup
-  token). The device sends every outbox, not only the open session's: a session
-  left with unsent operations keeps sending in the background (owner,
-  2026-10-14: "后台继续发"). A draft's first operation launches its session
-  (idempotent by the startup token) and its records move to the session's id.
+  and for a session still being created the launch it needs (project,
+  workspace, startup token). The device sends every outbox, not only the open
+  session's: a session left with unsent operations keeps sending in the
+  background (owner, 2026-10-14: "后台继续发"). A new session is created on the
+  machine when it opens; an operation written before that is answered waits for
+  the creation, and makes it (idempotent by the startup token) if the open-time
+  start went unanswered, and its records move to the session's id.
 
 ### The machine
 

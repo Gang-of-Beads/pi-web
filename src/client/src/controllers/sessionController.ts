@@ -39,7 +39,7 @@ import { activitiesAfterStatuses, activityOutlivesStatus, statusActivityToAdopt 
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, parseSessionSocketEvent, revisionedFrameType, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
-import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
+import { isArchivableSessionInfo, isPersistedSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { transcriptLoadingAfter } from "../transcriptLoadingOwnership";
 import { sendRefusedForGood } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
@@ -416,7 +416,6 @@ export class SessionController {
   }
 
   clearActiveSession() {
-    this.forgetDrafts();
     clearTimeout(this.selectionReadTimer);
     this.targets.drop();
     this.selectionSeq += 1;
@@ -441,8 +440,10 @@ export class SessionController {
   }
 
   /**
-   * Open a new, empty session in the selected workspace as a draft: nothing is created on the
-   * machine until its first message (`launchPendingStart`).
+   * Open a new, empty session in the selected workspace and create it on the machine at once
+   * (owner, 2026-10-14: a draft had no model, thinking level or commands to offer; an empty
+   * session left behind is listed "not started" and archived like any other). It reads
+   * "Creating…" until the machine answers; what the reader writes meanwhile waits in the outbox.
    */
   startSession(): void {
     const workspace = this.getState().selectedWorkspace;
@@ -456,15 +457,12 @@ export class SessionController {
     }
     const machineId = selectedMachineId(this.getState());
     const pending = this.createPendingSessionStart(workspace, machineId);
-    this.forgetDrafts(pending.tempId);
     this.pendingSessionStarts.set(pending.tempId, pending);
     this.selectClientPendingStartSession(pending.session);
+    void this.launchPendingStart(pending);
   }
 
-  /**
-   * Create the draft session on screen now, for a choice that needs a real session (its model or
-   * thinking level), and wait until it exists. A session already created is left as it is.
-   */
+  /** Wait until the new session on screen exists, for a choice that needs it (its model or thinking level). */
   async startDraft(): Promise<void> {
     const session = this.getState().selectedSession;
     const pending = session === undefined ? undefined : this.pendingSessionStarts.get(session.id);
@@ -490,20 +488,6 @@ export class SessionController {
       }
     })();
     return pending.launched;
-  }
-
-  /** Leaving a draft leaves nothing: it was never created, and it is forgotten with its words in the composer. */
-  private forgetDrafts(keepId?: string): void {
-    const dropped: string[] = [];
-    for (const [tempId, pending] of this.pendingSessionStarts) {
-      if (pending.launched !== undefined || tempId === keepId) continue;
-      this.pendingSessionStarts.delete(tempId);
-      dropped.push(tempId);
-    }
-    if (dropped.length === 0) return;
-    const state = this.getState();
-    const gone = new Set(dropped);
-    if (state.sessions.some((session) => gone.has(session.id))) this.setState({ sessions: state.sessions.filter((session) => !gone.has(session.id)) });
   }
 
   preferredSession(cwd: string, sessions: SessionInfo[]): SessionInfo | undefined {
@@ -550,7 +534,6 @@ export class SessionController {
       this.setState(noticePatch(noticeForReader("This session's folder no longer exists, so it cannot be opened.")));
       return;
     }
-    this.forgetDrafts(session.id);
     if (isClientPendingStartSessionInfo(session)) {
       this.selectClientPendingStartSession(session, options);
       return;
@@ -1291,13 +1274,15 @@ export class SessionController {
   async archiveSession(session = this.getState().selectedSession) {
     if (!session) return;
     const status = this.statusForSession(session);
-    if (isTransientNewSessionInfo(session, status)) {
+    if (isClientPendingStartSessionInfo(session)) {
       await this.deleteCachedNewSession(session);
       return;
     }
     if (!isArchivableSessionInfo(session, status)) return;
     try {
-      await this.api.archive(session, selectedMachineId(this.getState()));
+      const machineId = selectedMachineId(this.getState());
+      await this.api.archive(session, machineId);
+      forgetCachedNewSession(session.id, machineId);
       const state = this.getState();
       const sessions = markSessionArchived(state.sessions, session.id, new Date().toISOString());
       const selectionChange = selectionAfterArchivingSession(sessions, state.selectedSession?.id, session.id);
@@ -1319,6 +1304,7 @@ export class SessionController {
     try {
       const machineId = selectedMachineId(this.getState());
       const { succeededIds: archivedIds, failures, generatedAt } = await this.archiveSessionBatch(candidates, machineId);
+      for (const id of archivedIds) forgetCachedNewSession(id, machineId);
       if (archivedIds.length > 0) {
         const state = this.getState();
         const nextSessions = markSessionsArchived(state.sessions, archivedIds, generatedAt ?? new Date().toISOString());
@@ -1632,7 +1618,7 @@ export class SessionController {
   }
 
   async reloadSession(session = this.getState().selectedSession) {
-    if (session === undefined || !isArchivableSessionInfo(session, this.statusForSession(session))) return;
+    if (session === undefined || !isPersistedSessionInfo(session, this.statusForSession(session))) return;
     const machineId = selectedMachineId(this.getState());
     try {
       await this.api.reloadSession(session, machineId);

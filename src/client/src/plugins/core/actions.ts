@@ -1,6 +1,6 @@
 import { isSessionActive } from "../../../../shared/activity";
 import type { AppState } from "../../appState";
-import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../../sessionPersistence";
+import { isArchivableSessionInfo, isPersistedSessionInfo, isTransientNewSessionInfo } from "../../sessionPersistence";
 import { canDeleteWorkspace, isWorkspaceDeletionPending } from "../../workspaceDeletion";
 import type { PluginAction } from "../types";
 
@@ -174,6 +174,6 @@ function hasTransientNewSession(context: { state: AppState }): boolean {
 }
 
 function hasReloadableSession(context: { state: AppState }): boolean {
-  if (!isArchivableSessionInfo(context.state.selectedSession, context.state.status)) return false;
+  if (!isPersistedSessionInfo(context.state.selectedSession, context.state.status)) return false;
   return !isSessionActive(context.state.status, context.state.activity);
 }

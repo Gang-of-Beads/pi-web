@@ -1852,7 +1852,7 @@ export class ChatView extends LitElement {
     }
     return html`
       <div class="empty-session" role="status">
-        <p>${this.startsIn === undefined ? "This session is empty. Send a message to start it." : `New session in ${this.startsIn.project} on ${this.startsIn.machine}. It is created when you send the first message.`}</p>
+        <p>${this.startsIn === undefined ? "This session is empty. Send a message to start it." : `New session in ${this.startsIn.project} on ${this.startsIn.machine}. Send a message to start it.`}</p>
         ${this.onFocusComposer === undefined
           ? null
           : html`<button type="button" @click=${() => { this.onFocusComposer?.(); }}>Write the first message</button>`}

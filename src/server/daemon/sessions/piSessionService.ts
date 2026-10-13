@@ -2,8 +2,8 @@ import { existsSync, statSync } from "node:fs";
 import { sessionActivityLabel } from "./sessionActivityLabel.js";
 import { EMPTY_HOST_CONTRIBUTIONS, type HostContributions } from "./hostContributions.js";
 import { takeUnfiledWarnings } from "./warningFiling.js";
-import { join } from "node:path";
-import { readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
@@ -4421,6 +4421,7 @@ export class PiSessionService implements SessionRouteService {
       async () => {
         const archiveInput = await this.archiveInputForSession(session);
         await this.closeActive(session.sessionId, { kind: "clear", reason: "archive" });
+        await writeIfUnwritten(session);
         await this.archiveStore.archive(archiveInput);
         await this.forgetUnreadSessions([archiveInput]);
       },
@@ -4494,6 +4495,7 @@ export class PiSessionService implements SessionRouteService {
         for (const item of readyPlanItems) {
           try {
             await this.closeActive(item.input.sessionId, { kind: "clear", reason: "archive" });
+            if (item.active !== undefined) await writeIfUnwritten(item.active.runtime.session);
             readyInputs.push(item.input);
           } catch (error: unknown) {
             failures.push({ sessionId: item.input.sessionId, error: errorMessage(error) });
@@ -7738,4 +7740,19 @@ function loadedExtensionFiles(session: PiAgentSession): LoadedExtensionFile[] {
 function forwardsToAgent(text: string): boolean {
   const name = text.trim().replace(/^\//u, "").split(/\s+/u)[0] ?? "";
   return !isBuiltinCommand(name);
+}
+
+/**
+ * Archive an empty session as a normal one (owner, 2026-10-14: "就把它当成正常的session"). Pi writes a
+ * session's file only at its first message, so an empty one has a path and no file, and archiving
+ * it kept only a record: Restore then brought back nothing. Its header and setup entries are
+ * written first, after the runtime is closed so pi never writes the same file, and Restore returns
+ * the empty session.
+ */
+async function writeIfUnwritten(session: PiAgentSession): Promise<void> {
+  const file = session.sessionFile;
+  const header = session.sessionManager.getHeader?.();
+  if (file === undefined || file === "" || header === undefined || header === null || existsSync(file)) return;
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, [header, ...(session.sessionManager.getEntries?.() ?? session.sessionManager.getBranch())].map((entry) => `${JSON.stringify(entry)}\n`).join(""), { flag: "wx" });
 }

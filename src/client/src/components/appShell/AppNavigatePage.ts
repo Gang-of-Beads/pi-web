@@ -712,7 +712,7 @@ export class AppNavigatePage extends LitElement {
   }
 
   private sessionFacts(row: NavigateSessionRow): NavigateRowFacts {
-    return { pinned: row.pins.global, archived: row.session.archived === true, archivable: this.canArchiveSessions && row.session.persisted !== false, unread: this.input?.unreadSessionIds?.has(row.session.id) === true };
+    return { pinned: row.pins.global, archived: row.session.archived === true, archivable: this.canArchiveSessions && !("clientPendingStart" in row.session), unread: this.input?.unreadSessionIds?.has(row.session.id) === true };
   }
 
   /** While selecting, a row of the selected group leads with its mark instead of its icon. */
@@ -986,7 +986,7 @@ export class AppNavigatePage extends LitElement {
         <span class="row-title"><span class="row-icon" data-kind="session">${this.rowIcon(group, id, renderChatIcon())}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>
         ${this.opening?.key === key && this.opening.phase !== "going" ? html`<span class="row-path">${renderOpeningWords(this.opening, key)}</span>` : row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
       </button>
-    `, { pinned: row.pins.global, projectPinned: row.pins.project, archived: row.session.archived === true, archivable: this.canArchiveSessions && row.session.persisted !== false }, group, selected);
+    `, { pinned: row.pins.global, projectPinned: row.pins.project, archived: row.session.archived === true, archivable: this.canArchiveSessions && !("clientPendingStart" in row.session) }, group, selected);
   }
 
   /**
