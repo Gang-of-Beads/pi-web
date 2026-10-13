@@ -687,6 +687,8 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onLoadNewer?: () => void;
   /** Puts the cursor in the composer, for the empty session's way forward. */
   @property({ attribute: false }) onFocusComposer?: () => void;
+  /** Where a session not yet started will start, said in its empty state; undefined once it has started. */
+  @property({ attribute: false }) startsIn: { readonly project: string; readonly machine: string } | undefined;
   /** Seams a message renderer may act through; see `MessageRendererViewModel`. */
   @property({ attribute: false }) onInsertIntoComposer?: (text: string) => void;
   @property({ attribute: false }) onSendMessage?: (text: string) => void | Promise<void>;
@@ -1850,7 +1852,7 @@ export class ChatView extends LitElement {
     }
     return html`
       <div class="empty-session" role="status">
-        <p>This session is empty. Send a message to start it.</p>
+        <p>${this.startsIn === undefined ? "This session is empty. Send a message to start it." : `New session in ${this.startsIn.project} on ${this.startsIn.machine}. It is created when you send the first message.`}</p>
         ${this.onFocusComposer === undefined
           ? null
           : html`<button type="button" @click=${() => { this.onFocusComposer?.(); }}>Write the first message</button>`}

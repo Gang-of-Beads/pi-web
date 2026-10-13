@@ -38,10 +38,15 @@ type SessionRowTap = "open" | "continue";
 /** The New session menu shares the one open-menu slot with the row menus. */
 const NEW_SESSION_MENU = "new-session";
 
-/** The New session button in each tap mode: it starts a session or opens its menu, or, while picking, names the mode and leaves it. */
-const CREATE_BUTTON: Readonly<Record<SessionRowTap, { label: string; picking: boolean }>> = {
-  open: { label: "+ New session", picking: false },
-  continue: { label: "✕ Continue from…", picking: true },
+/**
+ * The New session button in each tap mode: it starts a session or opens its menu, or, while picking,
+ * names the mode and leaves it. Before it is pressed it says where the session starts: the project
+ * the list is narrowed to, or, listing all projects, that it asks (owner, 2026-10-14: the reader
+ * must always know which project a new session goes to).
+ */
+const CREATE_BUTTON: Readonly<Record<SessionRowTap, (project: string | undefined) => { label: string; place: string | undefined; picking: boolean }>> = {
+  open: (project) => (project === undefined ? { label: "+ New session…", place: "Choose a project", picking: false } : { label: "+ New session", place: `in ${project}`, picking: false }),
+  continue: () => ({ label: "✕ Continue from…", place: undefined, picking: true }),
 };
 
 /**
@@ -129,7 +134,8 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onOpenSession?: (session: SessionInfo, machineId: string) => void;
   /** The session the reader tapped and is waiting for; its row answers the tap (D8). */
   @property({ attribute: false }) opening: PendingNavigation | undefined = undefined;
-  @property({ attribute: false }) onCreateSession?: () => void;
+  /** New session, with the project the list is narrowed to; undefined lists all projects, and the app asks which. */
+  @property({ attribute: false }) onCreateSession?: (projectId: string | undefined) => void;
   /** Continue a session in a new one; absent where that cannot be offered. */
   @property({ attribute: false }) onContinueFrom?: (session: SessionInfo, machineId: string) => void;
   @property({ attribute: false }) onAddProject?: () => void;
@@ -540,11 +546,11 @@ export class AppNavigatePage extends LitElement {
           ${this.renderKindTab("sessions", "Sessions", renderChatIcon())}
         </nav>
         ${showsSessions ? this.renderScopeSwitch(listed.projects, sessionProjectId) : nothing}
-        ${this.renderListHeader(showsSessions)}
+        ${this.renderListHeader(showsSessions, listed.projects)}
     `;
   }
 
-  private renderListHeader(showsSessions: boolean) {
+  private renderListHeader(showsSessions: boolean, projects: readonly { id: string; name: string }[]) {
     return html`
         ${showsSessions ? html`
           <div class="search-row">
@@ -564,7 +570,7 @@ export class AppNavigatePage extends LitElement {
           ${this.renderTagSuggestions()}
         ` : nothing}
         <div class="actions">
-          ${showsSessions ? this.renderCreateSession() : this.renderAddChoice()}
+          ${showsSessions ? this.renderCreateSession(projects) : this.renderAddChoice()}
           ${this.renderSelectKey()}
         </div>
     `;
@@ -890,8 +896,8 @@ export class AppNavigatePage extends LitElement {
    * menu offers an empty session or picking one to continue; while picking, the button itself says so
    * and a tap on it leaves. A machine that cannot continue sessions gets the plain button.
    */
-  private renderCreateSession() {
-    const button = CREATE_BUTTON[this.rowTap];
+  private renderCreateSession(projects: readonly { id: string; name: string }[]) {
+    const button = CREATE_BUTTON[this.rowTap](this.pathProjectId === undefined ? undefined : projects.find((project) => project.id === this.pathProjectId)?.name);
     const menu = this.onContinueFrom !== undefined && this.rowTap === "open";
     return html`
       <button
@@ -901,11 +907,11 @@ export class AppNavigatePage extends LitElement {
         aria-haspopup=${menu ? "menu" : nothing}
         aria-expanded=${menu ? (this.openMenuRowId === NEW_SESSION_MENU ? "true" : "false") : nothing}
         @click=${(event: MouseEvent) => { CREATE_TAPS[this.rowTap](this, event.currentTarget); }}
-      >${button.label}</button>
+      ><span class="create-label">${button.label}</span>${button.place === undefined ? nothing : html`<span class="create-place">${button.place}</span>`}</button>
       ${this.openMenuRowId === NEW_SESSION_MENU ? html`
         <div class="menu-scrim" @click=${() => { this.openMenuRowId = undefined; }}></div>
         <div class="action-menu-panel" role="menu" aria-label="New session" style=${this.menuStyle}>
-          <button type="button" role="menuitem" @click=${() => { this.openMenuRowId = undefined; this.onCreateSession?.(); }}>Empty session</button>
+          <button type="button" role="menuitem" @click=${() => { this.openMenuRowId = undefined; this.onCreateSession?.(this.pathProjectId); }}>Empty session</button>
           <button type="button" role="menuitem" title="Start a new session that carries an existing session's whole history" @click=${() => { this.openMenuRowId = undefined; this.rowTap = "continue"; }}>Continue from…</button>
         </div>
       ` : nothing}
@@ -915,10 +921,15 @@ export class AppNavigatePage extends LitElement {
   /** New session's tap: start one at once where nothing can be continued, otherwise open its menu. */
   tapNewSession(target: EventTarget | null): void {
     if (this.onContinueFrom === undefined) {
-      this.onCreateSession?.();
+      this.onCreateSession?.(this.pathProjectId);
       return;
     }
     this.toggleRowMenu(NEW_SESSION_MENU, target);
+  }
+
+  /** The project the session list is narrowed to; undefined while it lists all projects. */
+  get listedProjectId(): string | undefined {
+    return this.pathProjectId;
   }
 
   /** Leave picking without continuing anything. */
@@ -1121,6 +1132,9 @@ export class AppNavigatePage extends LitElement {
     .actions { flex: 0 0 auto; display: flex; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
     .create { box-sizing: border-box; flex: 1 1 0; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-selection-bg); color: var(--pi-text-bright); font: inherit; cursor: pointer; }
     .create[aria-pressed="true"] { border-color: var(--pi-accent); }
+    .create { display: grid; align-content: center; gap: var(--pi-space-1); padding: var(--pi-space-3) var(--pi-space-4); }
+    .create-label, .create-place { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .create-place { color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     /* Two entries to a line: the owner reads this list as a board of places,
        and one tall row per screen line wasted half the width. */
     /* The quick-access board's shape, which the owner asked this page to

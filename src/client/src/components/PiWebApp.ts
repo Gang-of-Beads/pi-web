@@ -1,4 +1,5 @@
 import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
+import { isTransientNewSessionInfo } from "../sessionPersistence";
 import { uiIconStyle, renderChatIcon, renderCommandIcon, renderGearIcon, renderListIcon, renderPluginIcon } from "./uiIcons.js";
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
@@ -263,7 +264,6 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
 const EMPTY_ID_SET: ReadonlySet<string> = new Set();
 
 /** What New session on the Navigate page does: start in the open project, or ask for one on the machine on screen. */
-type NewSessionPlace = "here" | "choose-project";
 
 /** What the page shows of one machine's pins, from that machine's answer. */
 function machinePinView(machineId: string, answered: MachinePins): { machineId: string; ids: ReadonlySet<string>; projects?: ReadonlyMap<string, ReadonlySet<string>>; pinnedProjects?: ReadonlySet<string> } {
@@ -2710,21 +2710,35 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * Where New session on the Navigate page starts (owner, 2026-10-09 on 8504: after switching
-   * machine, a new session was created on the machine left behind; "after choosing a machine it
-   * should show that machine's things"). A session starts in the open project of the selected
-   * machine. A page browsing another machine, or one with no project open, has none to start in:
-   * New session lists the projects of the machine on screen, and choosing one moves to that machine
-   * and starts the session there (R18), as New session from an empty chat already did.
+   * The project a new session starts in, or undefined when the reader is asked (owner, 2026-10-14:
+   * the reader must always know which project a new session goes to; New session under All
+   * projects started in the project selected before, unseen). Every entry asks this one place, and
+   * each names its answer before it is pressed. A list narrowed to a project starts there. A list
+   * of all projects, a page browsing another machine (2026-10-09 on 8504: the session was created
+   * on the machine left behind), or no project open has none: the reader chooses (R18).
    */
-  private newSessionPlace(): NewSessionPlace {
-    return this.quickSwitcherBrowsingElsewhere() || !this.canStartSession() ? "choose-project" : "here";
+  private newSessionTarget(listedProjectId = this.listedProjectId()): Project | undefined {
+    if (this.quickSwitcherBrowsingElsewhere() || listedProjectId === undefined) return undefined;
+    return this.state.projects.find((project) => project.id === listedProjectId);
   }
 
-  private readonly newSessionFrom: Readonly<Record<NewSessionPlace, () => void>> = {
-    here: () => { this.closeNavigate(); void this.asReaderListChange(() => this.startSessionAndOpenChat()); },
-    "choose-project": () => { this.chooseProjectForNewSession(); },
-  };
+  /** The project the sessions on screen are narrowed to: the shown list's, or, with none shown, the open project's. */
+  private listedProjectId(): string | undefined {
+    const page = this.shownNavigatePage();
+    if (page !== undefined) return page.listedProjectId;
+    return this.canStartSession() ? this.state.selectedProject?.id : undefined;
+  }
+
+  /** New session from any entry: in the target project, or the picker when there is none. */
+  private startNewSession(listedProjectId?: string): void {
+    const target = this.newSessionTarget(...(listedProjectId === undefined ? [] : [listedProjectId]));
+    if (target === undefined) {
+      this.chooseProjectForNewSession();
+      return;
+    }
+    this.closeNavigate();
+    void this.asReaderListChange(() => this.startSessionInProject(target));
+  }
 
   /**
    * Add project on the Navigate page adds to the machine on screen: a browsed machine is moved to
@@ -3139,7 +3153,7 @@ export class PiWebApp extends LitElement {
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
       .onOpenSession=${(session: SessionInfo, machineId: string) => { void this.openSessionFromQuickSwitcher(session, machineId); }}
       .opening=${this.navigation.view()}
-      .onCreateSession=${() => { this.newSessionFrom[this.newSessionPlace()](); }}
+      .onCreateSession=${(projectId: string | undefined) => { if (projectId === undefined) this.chooseProjectForNewSession(); else this.startNewSession(projectId); }}
       .onContinueFrom=${(session: SessionInfo, machineId: string) => { void this.continueInNewSession(session, machineId); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { void this.addProjectOnShownMachine(); } : undefined}
       .onAddMachine=${this.hasAddMachineEntry() ? () => { this.openMachineDialog(); } : undefined}
@@ -3892,6 +3906,14 @@ export class PiWebApp extends LitElement {
     await this.startSessionAndOpenChat();
   }
 
+  /** Where the open session will start, while it has not: its project and machine, said in its title and its empty state. */
+  private startsIn(): { project: string; machine: string } | undefined {
+    const session = this.state.selectedSession;
+    if (!isTransientNewSessionInfo(session, this.state.status)) return undefined;
+    const project = this.state.selectedProject?.name;
+    return project === undefined ? undefined : { project, machine: this.machineName(selectedMachineId(this.state)) };
+  }
+
   /** Ask which project a new session starts in: the machine's projects, or a new one. */
   private chooseProjectForNewSession(): void {
     this.newSessionSheetOpen = true;
@@ -3905,6 +3927,7 @@ export class PiWebApp extends LitElement {
     };
     return html`<new-session-project-sheet
       .projects=${this.state.projects}
+      .lastUsedId=${this.recentProject()?.id}
       ?canAddProject=${this.hasAddProjectEntry()}
       .onChoose=${(project: Project) => { close(); void this.startSessionInProject(project); }}
       .onAddProject=${() => { close(); this.openProjectDialog({ startSessionAfter: true }); }}
@@ -4157,12 +4180,10 @@ export class PiWebApp extends LitElement {
       {
         id: "app.sessions.new",
         title: "New session",
-        description: "Start a session in the selected project",
+        description: "Start a session in the project the list shows, or choose one",
         shortcut: "mod+shift+n",
         group: "Sessions",
-        enabled: this.canStartSession(),
-        ...(this.canStartSession() ? {} : { disabledReason: "Select a project first" }),
-        run: () => { void this.startSessionAndOpenChat(); },
+        run: () => { this.startNewSession(); },
       },
       {
         id: "app.sessions.cleanup",
@@ -5054,7 +5075,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .messageNotes=${this.selectedSessionNotes(state)} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .status=${state.status} .activity=${state.activity}
+      <chat-view .startsIn=${this.startsIn()} .messageNotes=${this.selectedSessionNotes(state)} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .status=${state.status} .activity=${state.activity}
         .onDialogKey=${this.handleDialogKey}
         .onDialogLine=${this.handleDialogLine}
         .onDialogWidth=${this.handleDialogWidth}
@@ -5283,6 +5304,7 @@ export class PiWebApp extends LitElement {
       <app-context-bar
         .session=${this.state.selectedSession}
         .activeSurface=${this.activeSurfaceLabel()}
+        .startsIn=${this.startsIn()?.project ?? ""}
         .onOpenGoTo=${() => { this.toggleGoToSheet(); }}
         .onRenameRequest=${(session: SessionInfo) => { this.renameFromBar = { session, machineId: selectedMachineId(this.state) }; }}
         ?panelOpen=${this.shellPanelOpen()}
@@ -5466,8 +5488,9 @@ export class PiWebApp extends LitElement {
           .browseMachineId=${selectedMachineId(state)}
           .browsingElsewhere=${this.quickSwitcherBrowsingElsewhere()}
           .onSelectMachine=${(machineId: string) => { this.switchToMachine(machineId); }}
-          .canStartSession=${!this.quickSwitcherBrowsingElsewhere() && this.canStartSession()}
-          .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}
+          .canStartSession=${!this.quickSwitcherBrowsingElsewhere()}
+          .newSessionIn=${this.newSessionTarget()?.name}
+          .onCreateSession=${() => { this.startNewSession(); }}
           .onOpenSession=${(session: SessionInfo) => { void this.openSessionFromQuickSwitcher(session); }}
           .opening=${this.navigation.view()}
           .rowsMachineId=${this.rowsMachineId()}

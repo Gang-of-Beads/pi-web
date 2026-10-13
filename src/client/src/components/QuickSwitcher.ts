@@ -7,7 +7,7 @@ import type { BoardAnswer } from "../sync/sessionBoard";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, Project, SessionInfo, Workspace } from "../api";
-import { quickSwitcherFilterSessions, quickSwitcherModel, quickSwitcherProjectName, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, type QuickSwitcherFilter, type QuickSwitcherGroup } from "../quickSwitcher";
+import { quickSwitcherFilterSessions, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, type QuickSwitcherFilter, type QuickSwitcherGroup } from "../quickSwitcher";
 import { LongPressTracker } from "../longPress";
 import { renderSessionRowIndicator, sessionRowIndicator } from "./sessionRowIndicator";
 import type { SessionStateBadgeKind } from "./activityBadge";
@@ -81,6 +81,8 @@ export class QuickSwitcher extends LitElement {
   /** Four-state session badge per session, computed upstream. */
   @property({ attribute: false }) sessionStates: ReadonlyMap<string, SessionStateBadgeKind> = new Map();
   @property({ type: Boolean }) canStartSession = false;
+  /** The project New session starts in; undefined when it asks which. */
+  @property({ attribute: false }) newSessionIn: string | undefined;
   @property({ attribute: false }) onCreateSession?: () => void;
   @property({ attribute: false }) onOpenSession?: (session: SessionInfo) => void;
   /** The session the reader tapped and is waiting for, and the machine these rows live on (D8). */
@@ -285,17 +287,16 @@ export class QuickSwitcher extends LitElement {
   }
 
   private renderCreateRow() {
-    const workspace = this.selectedWorkspace;
     const subtitle = this.browsingElsewhere
       ? "Open a session on this machine first"
-      : workspace === undefined
-        ? "Select a project first"
-        : `In ${quickSwitcherProjectName(workspace, this.projects) ?? workspace.path}`;
+      : this.newSessionIn === undefined
+        ? "Choose a project"
+        : `In ${this.newSessionIn}`;
     return html`
       <button
         class="row create-row"
         ?disabled=${!this.canStartSession}
-        title=${this.canStartSession ? "Start a new session" : "Select a project to start a session"}
+        title=${this.canStartSession ? "Start a new session" : "Open a session on this machine first"}
         @click=${() => { this.createSession(); }}
       >
         <span class="row-title">+ New session</span>

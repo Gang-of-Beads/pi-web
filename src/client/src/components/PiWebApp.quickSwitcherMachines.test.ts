@@ -121,7 +121,7 @@ describe("badges while browsing elsewhere", () => {
     expect(source).toContain("quickSwitcherBrowsingElsewhere() ? EMPTY_STATE_MAP");
     expect(source).toContain("quickSwitcherBrowsingElsewhere() ? undefined : state.selectedSession");
     expect(source).toContain("quickSwitcherBrowsingElsewhere() ? [] : state.projects");
-    expect(source).toContain("!this.quickSwitcherBrowsingElsewhere() && this.canStartSession()");
+    expect(source).toContain(".canStartSession=${!this.quickSwitcherBrowsingElsewhere()}");
   });
 });
 

@@ -26,18 +26,6 @@ describe("quick-switcher", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("disables creation and explains why when no workspace is selected", async () => {
-    const onCreateSession = vi.fn<() => void>();
-    const switcher = await mount({ sessions: [], canStartSession: false, onCreateSession });
-
-    const row = createRow(switcher);
-    expect(row.disabled).toBe(true);
-    expect(row.textContent).toContain("Select a project first");
-
-    row.click();
-    expect(onCreateSession).not.toHaveBeenCalled();
-  });
-
   it("opens a session straight from the flat list", async () => {
     const onOpenSession = vi.fn<(session: SessionInfo) => void>();
     const target = session("b", { name: "mobile layout" });

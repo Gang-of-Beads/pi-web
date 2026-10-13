@@ -11,6 +11,8 @@ export class AppContextBar extends LitElement {
   @property({ attribute: false }) session?: SessionInfo;
   /** The tool surface the reader is on ("Files", "Terminal", …), empty on the chat. */
   @property({ type: String }) activeSurface = "";
+  /** The project a session not yet started will start in, named beside its title; empty once it has started. */
+  @property({ type: String }) startsIn = "";
   /** Whether the collapsible panel is currently presented. */
   @property({ type: Boolean }) panelOpen = false;
   /** What the leading control opens: the side panel, or the session menu the
@@ -80,7 +82,7 @@ export class AppContextBar extends LitElement {
               @pointerup=${() => { this.titleHold.cancel(); }}
               @pointercancel=${() => { this.titleHold.cancel(); }}
               @contextmenu=${(event: Event) => { if (this.onRenameRequest !== undefined) event.preventDefault(); }}
-            ><span class="session-title-text">${this.activeSurface === "" ? sessionLabel(this.session) : `${this.activeSurface} · ${sessionLabel(this.session)}`}</span></span>`
+            ><span class="session-title-text">${this.titleText(this.session)}</span></span>`
           : html`<button
               type="button"
               class="session-title"
@@ -92,7 +94,7 @@ export class AppContextBar extends LitElement {
               @pointerup=${() => { this.titleHold.cancel(); }}
               @pointercancel=${() => { this.titleHold.cancel(); }}
               @contextmenu=${(event: Event) => { if (this.onRenameRequest !== undefined) event.preventDefault(); }}
-            ><span class="session-title-text">${this.activeSurface === "" ? sessionLabel(this.session) : `${this.activeSurface} · ${sessionLabel(this.session)}`}</span></button>`}
+            ><span class="session-title-text">${this.titleText(this.session)}</span></button>`}
         ${this.panelToggleHidden ? null : html`
         <button
           type="button"
@@ -110,6 +112,11 @@ export class AppContextBar extends LitElement {
         `}
       </nav>
     `;
+  }
+
+  /** The session's name, after the surface it is seen through and before the project it will start in. */
+  private titleText(session: SessionInfo): string {
+    return [this.activeSurface, sessionLabel(session), this.startsIn].filter((part) => part !== "").join(" · ");
   }
 
   static override styles = css`
