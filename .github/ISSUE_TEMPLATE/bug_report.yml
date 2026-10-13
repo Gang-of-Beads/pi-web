@@ -1,0 +1,81 @@
+name: Bug report
+description: Something in PI WEB does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For a security problem, do not file an issue: follow SECURITY.md instead.
+        Redact paths, host names and tokens you do not want to publish.
+  - type: input
+    id: version
+    attributes:
+      label: PI WEB version
+      description: Run `pi-web version`, or read it on the Updates page.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      options:
+        - npm global (`npm install -g`)
+        - Pi package (`pi install`)
+        - Nix
+        - Docker
+        - Git checkout
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS, browser and device
+      placeholder: e.g. Ubuntu 24.04 server, Safari on iPhone
+    validations:
+      required: true
+  - type: dropdown
+    id: machines
+    attributes:
+      label: Machines
+      options:
+        - One machine
+        - A gateway with remote machines
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Screenshots help, especially for layout problems.
+    validations:
+      required: true
+  - type: dropdown
+    id: restart
+    attributes:
+      label: Does restarting the session daemon change it?
+      options:
+        - Not tried
+        - "Yes, it goes away"
+        - "No, it stays"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The service logs are in `~/.pi-web/logs` (or `$PI_WEB_DATA_DIR/logs`); `pi-web logs` shows them.
+      render: text

@@ -6,7 +6,7 @@ A gitignored `AGENTS.local.md` next to this file may extend these notes with one
 
 ## Process model
 
-PI WEB runs as two processes. The session daemon (`src/server/sessiond.ts`; `pnpm run start:sessiond`, or `pnpm run dev:sessiond`) owns the running pi sessions and is long-lived: it does not autoreload. The web/API process (`pnpm run dev:web`) and the Vite UI (`pnpm run dev:client`) autoreload in development. Browser disconnects and web/API restarts must not stop active pi sessions.
+PI WEB runs as two processes. The session daemon (`src/server/sessiond.ts`) owns the running pi sessions and is long-lived; run it with `pnpm run start:sessiond`, which does not autoreload (`pnpm run dev:sessiond` reloads on every change and so stops its sessions). The web/API process (`pnpm run dev:web`) and the Vite UI (`pnpm run dev:client`) autoreload in development. Browser disconnects and web/API restarts must not stop active pi sessions.
 
 If a change affects `src/server/sessiond.ts`, session runtime ownership, the session daemon protocol, or any code path only the session daemon loads, say that the session daemon needs a manual restart. Restart order and the startup ownership claim are documented in [docs/install.md](docs/install.md).
 

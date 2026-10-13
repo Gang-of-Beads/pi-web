@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose a change to what PI WEB does.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem before the solution: the maintainers decide user-visible behavior, and a clear problem leaves room to find the right design together.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: surface
+    attributes:
+      label: Where it happens
+      description: Which page or control, and what it acts on (a machine, a project, a workspace, a session).
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Including whether a plugin could do it instead of PI WEB itself.

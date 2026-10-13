@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Gang-of-Beads/pi-web/security/advisories/new
+    about: Report vulnerabilities privately; see SECURITY.md.
+  - name: Installation and troubleshooting
+    url: https://github.com/Gang-of-Beads/pi-web/blob/main/docs/faq.md
+    about: Common install and runtime problems, and how to fix them.
