@@ -1,10 +1,12 @@
 name: CI
 
-# Tests run locally before a change is merged to main, and in CI only on a
-# release tag (publish.yml runs the full verify on Linux and Windows before
-# publishing; owner, 2026-10-03). Neither a merge to main nor a pull request
-# runs this workflow; it stays available to run by hand.
+# Every pull request and every push to main runs the full verify (typecheck,
+# lint, Knip and the Vitest suite) on each Node line the package supports:
+# 22 is the `engines` floor's major, 24 is what the release jobs use.
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -12,16 +14,16 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
-    name: ${{ matrix.lane }} (Linux)
+    name: Verify (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        lane: [tests, checks-and-build]
+        node: [22, 24]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -32,20 +34,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test
-        if: matrix.lane == 'tests'
-        run: pnpm test
-
-      - name: Static checks
-        if: matrix.lane == 'checks-and-build'
-        run: pnpm run verify:static
-
-      - name: Build
-        if: matrix.lane == 'checks-and-build'
-        run: pnpm run build
+      - name: Verify
+        run: pnpm run verify

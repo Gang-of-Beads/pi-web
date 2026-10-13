@@ -1,9 +1,9 @@
 # Tag-driven release: pushing a v* tag is the whole ritual. One workflow does
 # all of it on purpose, in order: verify, build, smoke-test, attach an
-# installable tarball to a GitHub Release, publish the SAME tarball to npm,
-# and deploy stable docs when this repository owns the credentials.
+# installable tarball to a GitHub Release, and publish the SAME tarball to npm.
 #
-# Merging to main never releases anything; ci.yml gates every branch instead.
+# Merging to main never releases anything; ci.yml verifies pull requests and
+# main, and this workflow verifies again on Linux and Windows before release.
 # The npm trusted-publisher relationship is bound to this workflow's path
 # (.github/workflows/publish.yml), so keep the filename stable across edits.
 name: Release (tag push)
@@ -143,7 +143,7 @@ jobs:
       # Two routes, one of which is temporary. Trusted publishing can only be
       # configured for a package that already exists, so the first release of a
       # renamed package cannot use it; when NPM_TOKEN is present this publishes
-      # with that token instead, exactly as this fork's own first release did.
+      # with that token instead, as the first release of @gang-of-beads/pi-web did.
       # Delete the secret once the trusted publisher is configured and the OIDC
       # route takes over on its own - it is the one that carries provenance.
       - name: Publish to npm
@@ -168,7 +168,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v20
@@ -193,7 +193,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v20
@@ -212,26 +212,3 @@ jobs:
 
       - name: Build Nix package
         run: nix build .#pi-web --no-link
-
-  deploy-docs:
-    name: Deploy stable docs
-    # Stable docs only move on real tag releases; skipped on manual
-    # workflow_dispatch runs and in repositories without the credentials. A red
-    # docs job whose only failure is a site this repository does not publish
-    # trains everyone to ignore release failures.
-    if: github.event_name == 'push' && vars.CLOUDFLARE_ACCOUNT_ID != ''
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      # Tag push events check out the published tag, so docs match the npm release.
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Deploy stable docs worker
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          # Keep in sync with docs-dev.yml so both sites deploy with the same wrangler.
-          wranglerVersion: "4.119.0"
-          command: deploy --config docs/wrangler.jsonc
