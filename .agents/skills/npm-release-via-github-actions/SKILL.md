@@ -5,7 +5,7 @@ description: Use this skill whenever the user asks for a new npm version, npm re
 
 # Publish npm packages via GitHub Actions
 
-The user explicitly does **not** want local npm publishing. For release requests, route publishing through the repository's GitHub Actions workflow, triggered by pushing a `v*` git tag. Pushing the tag builds, creates the GitHub Release, publishes to npm, and deploys stable docs in one workflow.
+This project does **not** publish to npm from a local machine. For release requests, route publishing through the repository's GitHub Actions workflow, triggered by pushing a `v*` git tag. Pushing the tag verifies, builds, creates the GitHub Release and publishes to npm in one workflow. The human-readable version of this process is `docs/releasing.md`; keep the two consistent.
 
 This project also uses Changesets for changelog generation. Release prep should consume `.changeset/*.md` fragments into `CHANGELOG.md` before the GitHub Release is created.
 

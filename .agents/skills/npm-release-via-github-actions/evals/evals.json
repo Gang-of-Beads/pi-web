@@ -4,13 +4,13 @@
     {
       "id": 1,
       "prompt": "Please make a new npm release for this package. Use the next patch version.",
-      "expected_output": "The assistant should inspect package.json, pending Changesets, and the GitHub Actions publish workflow; normalize non-breaking Changesets to patch; compute the pi-web CalVer target as MAJOR.YYYYMM.PATCH using the release date and next patch for that major/month; run changeset version; enforce the computed version if needed; avoid local npm publish; run verification; commit/push; create a GitHub Release using changelog notes; monitor the publish workflow; and verify npm.",
+      "expected_output": "The assistant should inspect package.json, pending Changesets, and the GitHub Actions publish workflow; normalize non-breaking Changesets to patch; compute the pi-web CalVer target as MAJOR.YYYYMM.PATCH using the release date and next patch for that major/month; run changeset version; enforce the computed version if needed; avoid local npm publish; run verification; commit/push; push the v<version> tag that triggers publish.yml; monitor the publish workflow; and verify npm.",
       "files": []
     },
     {
       "id": 2,
       "prompt": "bump npm to 1.202605.4 and publish it",
-      "expected_output": "The assistant should use the clearly requested exact version, avoid local npm publish, generate/update CHANGELOG.md through Changesets, enforce the requested version with --no-git-tag-version only if needed, push a release commit, create a GitHub Release that triggers publish.yml, and report action/npm status.",
+      "expected_output": "The assistant should use the clearly requested exact version, avoid local npm publish, generate/update CHANGELOG.md through Changesets, enforce the requested version with pnpm pkg set version=<version> only if needed, push a release commit, push the v<version> tag that triggers publish.yml, and report action/npm status.",
       "files": []
     },
     {
@@ -22,7 +22,7 @@
     {
       "id": 4,
       "prompt": "make a new release; I added a non-breaking feature changeset that says minor",
-      "expected_output": "The assistant should not ask whether to use a patch bump or date change. It should treat non-breaking pi-web changesets as patch, compute MAJOR.YYYYMM.PATCH from the release date, run release prep, and enforce the computed CalVer version before creating the GitHub Release.",
+      "expected_output": "The assistant should not ask whether to use a patch bump or date change. It should treat non-breaking pi-web changesets as patch, compute MAJOR.YYYYMM.PATCH from the release date, run release prep, and enforce the computed CalVer version before pushing the release tag.",
       "files": []
     },
     {

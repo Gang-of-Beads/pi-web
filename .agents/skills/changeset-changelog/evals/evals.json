@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "We fixed the session reconnect bug. Please prepare the changelog entry and commit message.",
-      "expected_output": "The assistant should create or propose a .changeset/*.md patch fragment with user-facing wording and a Conventional Commit style fix message, without editing CHANGELOG.md directly.",
+      "expected_output": "The assistant should create or propose a .changeset/*.md patch fragment with user-facing wording and a plain-English, present-tense commit subject that says what changed, without editing CHANGELOG.md directly.",
       "files": []
     },
     {

@@ -5,7 +5,7 @@ description: "Repository-specific testing guide. Use for any test work: planning
 
 # Testing guide
 
-**Do not write new unit tests (owner, 2026-10-03).** The existing Vitest suite runs locally before a change is merged to main (`pnpm run verify`; the pre-push hook runs it for a push to main) and in CI only on a release tag. Keep it green when a change breaks an existing test: fix the code, or update or delete the test that pinned old behavior. There are no committed Playwright probe scripts or e2e suite; verify live in a browser on the 8505 stack instead. The rest of this guide applies to maintaining the existing suite.
+**Maintainer agents do not write new unit tests unless asked (maintainer rule, 2026-10-03).** This is an internal working rule for the maintainers' own agents; outside contributors may, and should, add tests with their change (see CONTRIBUTING.md). The Vitest suite runs in `pnpm run verify`, locally (the pre-push hook runs it for a push to main) and in CI on every pull request, every push to main and every release tag. Keep it green when a change breaks an existing test: fix the code, or update or delete the test that pinned old behavior. There are no committed Playwright probe scripts or e2e suite; verify live in a real browser instead, for example on the isolated dev stack `scripts/stack-8505.sh` starts. The rest of this guide applies to the suite and to any test a change adds.
 
 Use this skill for test-specific decisions in this repository. The goal is useful regression coverage without letting test helpers, mocks, or component harnesses become a second application that is harder to maintain than the code under test.
 
@@ -29,7 +29,7 @@ Prefer this order unless the behavior requires a higher layer:
 2. **Controller/runtime adapter tests** for state orchestration, endpoint selection, cancellation, timers, and injected collaborators.
 3. **Route/API contract tests** for HTTP status mapping, path/query/body parsing, proxy allowlists, and compatibility contracts.
 4. **Component-boundary tests** for UI event wiring and rendered state. Prefer real DOM/custom-element interaction via the per-file happy-dom harness (see Lit component tests).
-5. **Broad verification** (`npm run verify`) when a change is cross-cutting, changes shared helpers/types, or before final merge review.
+5. **Broad verification** (`pnpm run verify`) when a change is cross-cutting, changes shared helpers/types, or before final merge review.
 
 Do not jump to a broad UI or integration test just because it feels more realistic if a lower layer proves the same behavior with less noise and less flake risk.
 
@@ -103,9 +103,9 @@ Existing extraction tests are acceptable as-is. Convert them to a pure seam or t
 
 Run the narrowest meaningful check first:
 
-- Changed test file: `npm test -- --run <test-file>`.
-- Source or exported type changes: also run `npm run typecheck`.
-- Non-trivial test helper, component, or lint-sensitive changes: run `npx eslint <changed-file>` or `npm run lint` when broader lint coverage is needed.
-- Before a change is merged to main: `pnpm run verify` (the pre-push hook runs it for a push to main).
+- Changed test file: `pnpm exec vitest run <test-file>`.
+- Source or exported type changes: also run `pnpm run typecheck`.
+- Non-trivial test helper, component, or lint-sensitive changes: run `pnpm exec eslint <changed-file>` or `pnpm run lint` when broader lint coverage is needed.
+- Before a change is merged to main: `pnpm run verify` (the pre-push hook runs it for a push to main, and CI runs it on the pull request).
 
 Record exact commands and results when working under relay/audit workflows or when handing work to another agent.

@@ -1,6 +1,6 @@
 ---
 name: changeset-changelog
-description: Use this skill whenever the user asks about changelogs, Changesets, release notes, conventional commits, commit messages for release notes, or making user-visible project changes that should appear in a future npm/GitHub release. Trigger when preparing commits or PRs that include features, fixes, docs users rely on, package behavior changes, CLI changes, install changes, or release process changes. This skill keeps CHANGELOG.md generated at release time instead of manually edited during development.
+description: Use this skill whenever the user asks about changelogs, Changesets, release notes, commit messages for release notes, or making user-visible project changes that should appear in a future npm/GitHub release. Trigger when preparing commits or PRs that include features, fixes, docs users rely on, package behavior changes, CLI changes, install changes, or release process changes. This skill keeps CHANGELOG.md generated at release time instead of manually edited during development.
 ---
 
 # Changeset changelog workflow
@@ -11,8 +11,8 @@ This project uses Changesets so release notes are collected as small per-change 
 
 - For user-visible changes, add a `.changeset/*.md` fragment.
 - Do not manually edit `CHANGELOG.md` during normal feature/fix work. Let `changeset version` generate or update it during release prep.
-- Use Conventional Commit style for commit messages when committing, but do not rely on commit messages as the only changelog source.
-- Write release notes for users, not as raw implementation logs.
+- Write the commit subject in plain English, present tense, saying what changed; the body says why (see AGENTS.md "Git etiquette"). Commit messages are not a changelog source.
+- Write release notes for users, not as raw implementation logs. Never name a maintainer, a private host, or an internal test stack.
 
 ## When a changeset is needed
 
@@ -36,7 +36,7 @@ When in doubt, ask briefly or create a patch changeset with a clear note.
 Prefer the CLI when interaction is practical:
 
 ```bash
-npm run changeset
+pnpm run changeset
 ```
 
 For non-interactive agent work, create a file manually under `.changeset/` with a unique kebab-case name:
@@ -79,7 +79,7 @@ Preserve active Pi sessions when the web/API development service restarts.
 ```
 
 ```md
-Add a project-local release workflow skill that publishes npm packages through GitHub Actions instead of local publishing.
+Keep the composer's draft when the session daemon restarts mid-send.
 ```
 
 Poor examples:
@@ -92,14 +92,9 @@ Changed sessionCommandService.ts.
 Fix stuff.
 ```
 
-## Conventional Commit guidance
+## Commit messages
 
-When asked to commit, use Conventional Commit style:
-
-- `feat: add persistent session reconnect handling`
-- `fix: preserve queued commands across API restarts`
-- `docs: document systemd user services`
-- `chore(release): v1.202605.4`
+Commit subjects are plain English in the present tense and say what changed, for example `Preserve queued commands across web restarts`; the body says why and cites the issue or report that motivated it. Release-prep commits are the one fixed form: `chore(release): v<version>`.
 
 Keep commits and changesets aligned, but remember their audiences differ:
 
@@ -111,7 +106,7 @@ Keep commits and changesets aligned, but remember their audiences differ:
 During release prep, use the `npm-release-via-github-actions` skill. It should run:
 
 ```bash
-npm run release:version
+pnpm run release:version
 ```
 
-That consumes `.changeset/*.md`, updates `package.json` / lockfile versions, and generates or updates `CHANGELOG.md`. Publishing still happens only through GitHub Actions after a GitHub Release is published.
+That consumes `.changeset/*.md`, updates `package.json`, and generates or updates `CHANGELOG.md`; the release skill then resyncs the lockfile. Publishing happens only in GitHub Actions, when the `v<version>` tag is pushed (see docs/releasing.md).

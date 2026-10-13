@@ -45,16 +45,22 @@ A feature belongs in the README only when it materially changes the top-level pr
 | Content | Canonical destination |
 | --- | --- |
 | Product overview and shortest successful start | `README.md` |
-| Website landing-page summaries and navigation | `docs/index.html` |
-| Requirements, installation modes, PATH setup, service managers, WSL, and manual operation | `docs/install.html` |
-| Troubleshooting, diagnostics, known failure modes, and edge cases | `docs/faq.html` |
-| Configuration keys, files, precedence, defaults, and reload behavior | `docs/config.md` and `docs/config.html` |
-| Remote access and deployment model | `docs/remote-first.html` |
-| Machine federation and selected-machine behavior | `docs/machines.html` |
-| Plugin and Pi package behavior | `docs/plugins.md` and `docs/plugins.html` |
+| Requirements, installation modes, PATH setup, service managers, WSL, and manual operation | `docs/install.md` |
+| Troubleshooting, diagnostics, known failure modes, and edge cases | `docs/faq.md` |
+| Configuration keys, files, precedence, defaults, and reload behavior | `docs/config.md` |
+| Remote access and deployment model | `docs/remote-first.md` |
+| Machine federation and selected-machine behavior | `docs/machines.md` |
+| Installing, enabling and configuring plugins (users and operators) | `docs/plugins.md` |
+| How pi extensions behave under PI WEB | `docs/pi-extensions.md` |
+| Writing a plugin, step by step | `docs/plugin-authoring.md` |
+| The complete plugin API reference | `docs/plugin-api.md` |
+| Normative plugin rules (MUST/SHOULD) | `docs/plugin-conventions.md` |
+| Security model and vulnerability reporting | `SECURITY.md` |
+| Contributor workflow: setup, checks, changesets, pull requests | `CONTRIBUTING.md` |
+| Release process for maintainers | `docs/releasing.md` |
 | Internal invariants that maintainers need while changing code | Focused code comments, `AGENTS.md`, or a dedicated developer document |
 
-When a topic has both Markdown and HTML representations, inspect the local convention and keep user-visible claims synchronized. Do not copy large passages into multiple surfaces merely for convenience.
+Markdown is the only documentation format; there is no generated documentation site. Link between pages with relative paths (`docs/config.md#updates`, `../README.md`) so links work when the files are read on GitHub.
 
 ## Placement decision
 
@@ -88,6 +94,7 @@ If the content needs multiple sentences of caveats, explains how an internal mec
 - Avoid promises broader than the tested platform and compatibility contract.
 - Keep examples copyable and make destructive or security-sensitive effects explicit.
 - Link to one canonical source instead of maintaining subtly different versions of the same guidance.
+- Write in English. Do not name a maintainer, a private machine or host, a home directory, or an internal model or provider; use neutral examples such as `build-box` or `/home/example`.
 
 ## Release notes and checks
 
@@ -106,5 +113,5 @@ Run the narrowest checks that cover the edited documentation. At minimum:
 - Does each detailed explanation have one canonical home under `docs/`?
 - Did the change avoid copying release notes or implementation design into the README?
 - Are links sufficient for readers who need more detail?
-- Are paired or related documentation surfaces consistent?
+- Do all relative links resolve to existing files and headings?
 - Are user-visible commands and claims supported by current behavior?
