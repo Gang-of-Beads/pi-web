@@ -21,8 +21,12 @@ export interface ExpectedCommit {
   clientMessageId: string;
   text: string;
   imageCount: number;
-  /** The time the committed copy is stamped with, so taking the message never rewrites it (B5). */
-  sentAt?: string;
+  /**
+   * When the daemon handed the message to the agent: the time the committed copy is stamped with
+   * and every device shows (docs/design/message-states.md, "Time"). Until then the message is in
+   * the queue, where it can still be taken back, so it has not been sent to the agent yet.
+   */
+  handedAt: string;
 }
 
 const MAX_PENDING_PER_SESSION = 50;

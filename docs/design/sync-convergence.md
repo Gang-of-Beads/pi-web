@@ -306,7 +306,9 @@ asked for the ablation batch first (2026-10-06); it is done.
 2. A surface says it is syncing only when it knows it is out of step (an announcement it missed, a
    source that did not answer) or a check failed, and it keeps trying until it is in step.
 3. Never "offline", never a final "failed" for something the page retries. A warning stays only when
-   the reader can act on it: a Retry button, a setting to change, a permission to grant.
+   the reader can act on it: a setting to change, a permission to grant. Retry is never one of those
+   actions: the page retries by itself, so a Retry button only asks the reader to do the page's job
+   (owner, 2026-10-13: the sync row is a status light, with no button at all).
 4. The state belongs to the data, not to the card or panel that shows it.
 
 ### What each surface does today

@@ -71,7 +71,7 @@ export interface LedgerLimits {
 
 export const DEFAULT_LEDGER_LIMITS: LedgerLimits = {
   capacity: 10_000,
-  retentionMs: 24 * 60 * 60 * 1000,
+  retentionMs: 30 * 24 * 60 * 60 * 1000,
   pendingStaleMs: 10 * 60 * 1000,
 };
 

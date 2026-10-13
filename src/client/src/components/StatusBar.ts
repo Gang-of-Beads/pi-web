@@ -22,9 +22,6 @@ const statusBarStyles = css`${unsafeCSS(uiIconStyle)}
   .cost { flex: 0 0 auto; }
   .context.filling { color: var(--pi-warning); }
   .context.full { color: var(--pi-danger); }
-  /* The bar draws a control now, so it owes the touch contract every other
-     control-bearing component signs. */
-  .status-retry { -webkit-tap-highlight-color: transparent; touch-action: manipulation; box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height-compact, 24px); padding: 0 var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-text); font: inherit; cursor: pointer; }
 `;
 
 @customElement("status-bar")
@@ -32,16 +29,12 @@ export class StatusBar extends LitElement {
   @property({ attribute: false }) status?: SessionStatus;
   /** Why the last read produced nothing, when it failed rather than not happening. */
   @property({ attribute: false }) failure?: string;
-  @property({ attribute: false }) onRetry?: () => void;
   override render() {
     const status = this.status;
     const line = sessionStatusLine({ hasStatus: status !== undefined, failure: this.failure });
     if (line.kind === "unread") return html`<div class="bar muted">${line.text}</div>`;
     if (line.kind === "unavailable") {
-      return html`<div class="bar muted">
-        <span title=${this.failure ?? ""}>${line.text}</span>
-        ${this.onRetry === undefined ? null : html`<button type="button" class="status-retry" @click=${() => { this.onRetry?.(); }}>Retry</button>`}
-      </div>`;
+      return html`<div class="bar muted"><span title=${this.failure ?? ""}>${line.text}</span></div>`;
     }
     if (status === undefined) return html`<div class="bar muted">${"No session status yet"}</div>`;
     const context = status.contextUsage;

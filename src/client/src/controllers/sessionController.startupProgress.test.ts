@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isSessionActive } from "../../../shared/activity";
 import { initialAppState } from "../appState";
 import { SessionController } from "./sessionController";
-import { defaultApi, deferred, emptyPage, FakeSocket, oldSession, runPendingAnimationFrames, sessionLookupId, status, workspace, type AppState, type SessionActivity, type SessionInfo } from "./sessionController.testSupport";
+import { defaultApi, launchNewSession, deferred, emptyPage, FakeSocket, oldSession, runPendingAnimationFrames, sessionLookupId, status, workspace, type AppState, type SessionActivity, type SessionInfo } from "./sessionController.testSupport";
 
 function startupActivity(patch: Partial<SessionActivity> = {}): SessionActivity {
   return {
@@ -57,7 +57,7 @@ describe("SessionController session startup progress", () => {
     const state = { current: { ...initialAppState(), selectedWorkspace: workspace, sessions: [] } };
     const { controller, startRequest } = pendingStartController(state);
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const temporaryId = state.current.selectedSession?.id;
     if (temporaryId === undefined) throw new Error("Expected temporary session id");
 
@@ -82,7 +82,7 @@ describe("SessionController session startup progress", () => {
     const state = { current: { ...initialAppState(), selectedWorkspace: workspace, sessions: [] } };
     const { controller, startRequest } = pendingStartController(state);
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const temporaryId = state.current.selectedSession?.id;
     if (temporaryId === undefined) throw new Error("Expected temporary session id");
     const beforeStartupProgress = isSessionActive(state.current.status, state.current.activity);
@@ -104,7 +104,7 @@ describe("SessionController session startup progress", () => {
     const state = { current: { ...initialAppState(), selectedWorkspace: workspace, sessions: [] } };
     const { controller, startRequest } = pendingStartController(state);
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const temporaryId = state.current.selectedSession?.id;
     if (temporaryId === undefined) throw new Error("Expected temporary session id");
     controller.applyGlobalEvent({ type: "session.startup", startupToken: temporaryId, activity: startupActivity() });
@@ -119,23 +119,6 @@ describe("SessionController session startup progress", () => {
       label: "Creating session",
       detail: "Waiting for the backend session to be ready",
     });
-
-    startRequest.resolve({ ...oldSession, id: "backend-session", path: "/tmp/backend-session.jsonl" });
-    await start;
-  });
-
-  it("restores the queued-message wording when a pending row has sends waiting", async () => {
-    const state = { current: { ...initialAppState(), selectedWorkspace: workspace, sessions: [] } };
-    const { controller, startRequest } = pendingStartController(state);
-
-    const start = controller.startSession();
-    await controller.send("queued while starting");
-    const temporaryId = state.current.selectedSession?.id;
-    if (temporaryId === undefined) throw new Error("Expected temporary session id");
-    controller.applyGlobalEvent({ type: "session.startup", startupToken: temporaryId, activity: idleStartupActivity() });
-    runPendingAnimationFrames();
-
-    expect(state.current.activity?.detail).toBe("1 queued message will send when the backend session is ready");
 
     startRequest.resolve({ ...oldSession, id: "backend-session", path: "/tmp/backend-session.jsonl" });
     await start;
@@ -188,7 +171,7 @@ describe("SessionController session startup progress", () => {
     const state = { current: { ...initialAppState(), selectedWorkspace: workspace, sessions: [existing] } };
     const { controller, startRequest } = pendingStartController(state);
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const temporaryId = state.current.selectedSession?.id;
     if (temporaryId === undefined) throw new Error("Expected temporary session id");
 
@@ -212,7 +195,7 @@ describe("SessionController session startup progress", () => {
     const state = { current: { ...initialAppState(), selectedWorkspace: workspace, sessions: [] } };
     const { controller, startRequest } = pendingStartController(state);
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const temporaryId = state.current.selectedSession?.id;
     if (temporaryId === undefined) throw new Error("Expected temporary session id");
 
@@ -236,9 +219,9 @@ describe("SessionController session startup progress", () => {
     const state = { current: { ...initialAppState(), selectedWorkspace: workspace, sessions: [] } };
     const { controller, startRequest } = pendingStartController(state);
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const firstId = state.current.selectedSession?.id;
-    const secondStart = controller.startSession();
+    const secondStart = launchNewSession(controller);
     const secondId = state.current.selectedSession?.id;
     if (firstId === undefined || secondId === undefined || firstId === secondId) throw new Error("Expected two distinct temporary session ids");
 
@@ -258,7 +241,7 @@ describe("SessionController session startup progress", () => {
     const state = { current: { ...initialAppState(), selectedWorkspace: workspace, sessions: [] } };
     const { controller, startRequest, startCalls } = pendingStartController(state);
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const temporaryId = state.current.selectedSession?.id;
 
     expect(startCalls).toEqual([{ cwd: workspace.path, machineId: "local", startupToken: temporaryId }]);

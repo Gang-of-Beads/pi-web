@@ -23,6 +23,21 @@ interface ProjectTrustState {
   error?: string;
 }
 
+/** Why the folder search shows no rows: this page cannot search, or the search did not answer and is being made again. */
+type SuggestionsFailure = "unavailable" | "searchingAgain";
+
+const SUGGESTIONS_FAILURE_WORDS: Readonly<Record<SuggestionsFailure, string>> = {
+  unavailable: "Folder suggestions are not available here.",
+  searchingAgain: "Searching again…",
+};
+
+class SuggestionsUnavailableError extends Error {
+  constructor() {
+    super("Folder suggestions are not available here");
+    this.name = "SuggestionsUnavailableError";
+  }
+}
+
 export class ProjectDialog extends LitElement {
   protected override createRenderRoot(): HTMLElement | DocumentFragment {
     const root = super.createRenderRoot();
@@ -44,8 +59,14 @@ export class ProjectDialog extends LitElement {
   @state() private suggestions: FileSuggestion[] = [];
   /** The path the rendered suggestions were searched for. */
   @state() private suggestionsQuery: string | undefined = undefined;
-  /** The search for the current path failed; never read as an empty answer. */
-  @state() private suggestionsFailed = false;
+  /**
+   * How the search for the current path stands when it did not answer: never read as an empty
+   * answer. A search nobody answered is searched again by itself (B48: no "try again" for the
+   * reader); one this page cannot make at all says so.
+   */
+  @state() private suggestionsFailure: SuggestionsFailure | undefined = undefined;
+  private suggestionsAttempt = 0;
+  private suggestionsRetry: ReturnType<typeof setTimeout> | undefined;
   @state() private selected = 0;
   @state() private loading = false;
   @state() private trust: ProjectTrustState | undefined;
@@ -71,6 +92,7 @@ export class ProjectDialog extends LitElement {
     this.cancelPendingSuggestions();
     this.cancelPendingTrust();
     this.abortSuggestions();
+    clearTimeout(this.suggestionsRetry);
     super.disconnectedCallback();
   }
 
@@ -119,28 +141,40 @@ export class ProjectDialog extends LitElement {
 
   private async loadSuggestions() {
     this.abortSuggestions();
+    clearTimeout(this.suggestionsRetry);
     const requestId = ++this.suggestionRequestId;
     const query = this.path;
     const abort = new AbortController();
     this.suggestionsAbort = abort;
     this.loading = true;
     try {
-      if (this.projectDirectories === undefined) throw new Error("Folder suggestions are not available here");
+      if (this.projectDirectories === undefined) throw new SuggestionsUnavailableError();
       const suggestions = await this.projectDirectories(query, abort.signal);
       if (requestId !== this.suggestionRequestId) return;
       this.suggestions = suggestions;
       this.suggestionsQuery = query;
-      this.suggestionsFailed = false;
+      this.suggestionsFailure = undefined;
+      this.suggestionsAttempt = 0;
       this.selected = Math.min(this.selected, Math.max(0, suggestions.length - 1));
-    } catch {
+    } catch (error) {
       if (requestId !== this.suggestionRequestId) return;
       this.suggestions = [];
       this.suggestionsQuery = query;
-      this.suggestionsFailed = true;
+      this.suggestionsFailure = error instanceof SuggestionsUnavailableError ? "unavailable" : "searchingAgain";
+      this.afterSuggestionsFailure[this.suggestionsFailure]();
     } finally {
       if (requestId === this.suggestionRequestId) this.loading = false;
     }
   }
+
+  private readonly afterSuggestionsFailure: Readonly<Record<SuggestionsFailure, () => void>> = {
+    unavailable: () => undefined,
+    searchingAgain: () => {
+      const delay = Math.min(1_000 * 2 ** this.suggestionsAttempt, 15_000);
+      this.suggestionsAttempt += 1;
+      this.suggestionsRetry = setTimeout(() => { void this.loadSuggestions(); }, delay);
+    },
+  };
 
   /** The rows on screen: only those searched for the path now in the input. */
   private get displayedSuggestions(): FileSuggestion[] {
@@ -307,8 +341,8 @@ export class ProjectDialog extends LitElement {
                 ${suggestion.path}
               </button>
             `)}
-            ${!this.loading && this.suggestionsFailed && this.suggestionsQuery === this.path ? html`<div class="hint">Search failed - try again</div>` : null}
-            ${!this.loading && !this.suggestionsFailed && this.suggestionsQuery === this.path && this.displayedSuggestions.length === 0 ? html`<div class="hint">No matching folders found. Enter a full path to create it.</div>` : null}
+            ${!this.loading && this.suggestionsFailure !== undefined && this.suggestionsQuery === this.path ? html`<div class="hint">${SUGGESTIONS_FAILURE_WORDS[this.suggestionsFailure]}</div>` : null}
+            ${!this.loading && this.suggestionsFailure === undefined && this.suggestionsQuery === this.path && this.displayedSuggestions.length === 0 ? html`<div class="hint">No matching folders found. Enter a full path to create it.</div>` : null}
           </div>
           <label class="check">
             <input type="checkbox" .checked=${this.createMissing} @change=${(event: InputEvent) => { this.onCreateMissingChange(event); }} />

@@ -1,7 +1,7 @@
 import { drawnLines } from "./drawnLines";
 import { isRecord } from "../../shared/unknownValues";
 import { recordedDurationMs } from "../../shared/toolDuration";
-import { deliverySettled } from "./messageDelivery";
+import { deliveryTaken } from "./messageDelivery";
 import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview, ToolResultImageRef } from "./components/shared";
 import { MODEL_FAILURE_SENTENCE, modelFailure } from "./modelFailure";
 
@@ -25,7 +25,7 @@ export function unansweredTail(messages: ChatLine[]): number {
     const line = messages[index - 1];
     if (line?.role !== "user") break;
     const state = line.meta?.delivery?.state;
-    const unsettledDelivery = state !== undefined && !deliverySettled(state);
+    const unsettledDelivery = state !== undefined && !deliveryTaken(state);
     // The sender's own echo has no delivery record yet; it is just as
     // unanswered as a queued send with one.
     if (line.meta?.echo !== true && !unsettledDelivery) break;

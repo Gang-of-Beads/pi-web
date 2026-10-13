@@ -84,11 +84,11 @@ function pendingStartController(state: { current: AppState }, api: Partial<typeo
 }
 
 function beginPendingStart(harness: PendingStartHarness): { start: Promise<void>; tempId: string } {
-  const start = harness.controller.startSession();
+  harness.controller.startSession();
   const tempId = harness.state.current.selectedSession?.id;
   if (tempId === undefined) throw new Error("Expected a pending-start row to be selected");
   if (!tempId.startsWith("pending-session-")) throw new Error("Expected a pending-start row to be selected");
-  return { start, tempId };
+  return { start: harness.controller.startDraft(), tempId };
 }
 
 function reportBackendSessionId(harness: PendingStartHarness, tempId: string): void {

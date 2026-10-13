@@ -60,7 +60,7 @@ export class SettingsPackagesPanel extends LitElement {
 
   private renderPanelContent(packages: PiPackageInfo[], target: SettingsMachineTarget, targetLabel: string): TemplateResult | null {
     if (this.packagesResponse === undefined) {
-      return html`<div class="loading-card">${this.loading ? `Loading Pi packages from ${targetLabel}…` : `Pi package list unavailable for ${targetLabel}. Use Reload to try again.`}</div>`;
+      return html`<div class="loading-card">${this.loading ? `Loading Pi packages from ${targetLabel}…` : `Pi package list not loaded yet for ${targetLabel} · trying again…`}</div>`;
     }
     return html`
       ${this.renderInstallForm(targetLabel)}

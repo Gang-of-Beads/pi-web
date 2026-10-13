@@ -1,5 +1,5 @@
 import type { OperationOutcome } from "./operationDecision.js";
-import { READMITTED, SETTLEABLE, type AcceptanceFace } from "./operationLedger.js";
+import { READMITTED, SETTLEABLE, TOMBSTONED_FROM, type AcceptanceFace } from "./operationLedger.js";
 
 /**
  * The same acceptance rules as the durable ledger, held in memory: for a daemon started
@@ -31,6 +31,13 @@ export function createInMemoryAcceptanceLedger(): AcceptanceFace {
       const existing = session?.get(clientMessageId);
       if (session === undefined || existing === undefined || !SETTLEABLE[existing]) return;
       session.set(clientMessageId, outcome);
+    },
+    tombstone(sessionId, clientMessageId) {
+      const session = bySession(sessionId);
+      const existing = session.get(clientMessageId);
+      if (existing !== undefined && !TOMBSTONED_FROM[existing]) return existing === "withdrawn";
+      session.set(clientMessageId, "withdrawn");
+      return true;
     },
     outcomesFor(sessionId, operationIds) {
       const answer: Record<string, OperationOutcome> = {};

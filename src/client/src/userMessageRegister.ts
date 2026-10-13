@@ -1,4 +1,4 @@
-import type { ChatLine } from "./components/shared.js";
+import type { ChatLine, MessageDeliveryState } from "./components/shared.js";
 import type { QueuedSessionMessage } from "./api.js";
 
 /**
@@ -63,15 +63,18 @@ function identityOf(line: ChatLine, fallbackIndex: number): string {
  * Exported so the outbox can settle against it: a caller re-deriving the three
  * carriers would drift from `identityOf` the first time a fourth one appears.
  */
+/**
+ * Which row states the daemon produced, so they count as its word on a message. "sending" and
+ * "takingBack" are this browser's own until the machine answers; counting one as delivered
+ * retired the outbox record of a message the daemon never saw.
+ */
+const DAEMON_STATE: Readonly<Record<MessageDeliveryState, boolean>> = { sending: false, takingBack: false, received: true, queued: true, delivered: true };
+
 export function deliveredClientMessageIds(lines: readonly ChatLine[]): Set<string> {
   const ids = new Set<string>();
   for (const [index, line] of lines.entries()) {
-    // Only a state the daemon produced counts. "sending" is the browser's own
-    // optimism, and "unverifiable" is what the *client* writes after a failed
-    // send - counting either as delivered retired the outbox row for an offline
-    // message the daemon never saw.
     const state = line.meta?.delivery?.state;
-    if (state !== undefined && state !== "queued" && state !== "received" && state !== "delivered") continue;
+    if (state !== undefined && !DAEMON_STATE[state]) continue;
     const identity = identityOf(line, index);
     if (!identity.startsWith("transcript:")) ids.add(identity);
   }

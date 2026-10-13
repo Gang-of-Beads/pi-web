@@ -31,7 +31,7 @@ export function placeUserRows(rows: readonly UserMessageRow[]): { settled: ChatL
 type OrderKey = readonly [queuePosition: number, sentAt: number];
 
 /** Whether a message in this state is still waiting for the agent: only a message it took is not. */
-const WAITING: Readonly<Record<MessageDeliveryState, boolean>> = { queued: true, received: true, sending: true, unverifiable: true, failed: true, delivered: false };
+const WAITING: Readonly<Record<MessageDeliveryState, boolean>> = { queued: true, received: true, sending: true, takingBack: true, delivered: false };
 
 function waiting(line: ChatLine): boolean {
   const state = line.meta?.delivery?.state;

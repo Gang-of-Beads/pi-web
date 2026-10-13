@@ -71,12 +71,6 @@ describe("which messages carry a delivery marker", () => {
    * other message the agent has taken - including the ones from before the
    * reload.
    */
-  it("marks a message whose outcome is still open", () => {
-    expect(chatDeliveryMarkerVisible({ state: "queued", kind: "steer", clientMessageId: "m1" })).toBe(true);
-    expect(chatDeliveryMarkerVisible({ state: "sending", clientMessageId: "m1" })).toBe(true);
-    expect(chatDeliveryMarkerVisible({ state: "failed", clientMessageId: "m1" })).toBe(true);
-    expect(chatDeliveryMarkerVisible({ state: "received", clientMessageId: "m1" })).toBe(true);
-  });
 
   it("says nothing once the agent has taken the message", () => {
     expect(chatDeliveryMarkerVisible({ state: "delivered", clientMessageId: "m1" })).toBe(false);

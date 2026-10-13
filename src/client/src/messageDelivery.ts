@@ -1,6 +1,6 @@
 import type { PromptAttachment, QueuedSessionMessage } from "./api";
 import type { ChatLine, ChatPart, MessageDeliveryState } from "./components/shared";
-import type { DeliveryFailureCause } from "./deliveryWords";
+import { deliveryWordKey, deliveryWords } from "./deliveryWords";
 
 /**
  * Delivery marks for messages this browser sent.
@@ -11,11 +11,14 @@ import type { DeliveryFailureCause } from "./deliveryWords";
  * saying whether the server had it. The message carries a correlation id now,
  * so every stage is a state on the bubble itself:
  *
- *   sending   the request is in flight, nothing is confirmed
- *   received  the server accepted it (single mark)
- *   queued    the agent is busy and will take it as a steer/follow-up
- *   delivered the agent has taken it into the turn (double mark)
- *   failed    the request never reached the server; the text is recoverable
+ *   sending    on its way: sent and resent until the machine answers
+ *   takingBack the reader asked for it back; the machine has not answered yet
+ *   received   the machine accepted it (single mark)
+ *   queued     the agent is busy and will take it as a steer/follow-up
+ *   delivered  the agent has taken it into the turn (double mark)
+ *
+ * Nothing fails: a message refused for good or taken back leaves the transcript, and its words
+ * go back to the composer (docs/design/message-states.md).
  *
  * Every function here is pure so the state machine can be tested without a
  * session, a socket, or a server.
@@ -68,14 +71,9 @@ export function deliveryTaken(state: MessageDeliveryState): boolean {
   return state === "delivered";
 }
 
-/** The agent has taken it, or it never arrived: nothing more will happen. */
-export function deliverySettled(state: MessageDeliveryState): boolean {
-  return state === "delivered" || state === "failed";
-}
-
 /** Sent, or waiting to be: the agent has not taken it yet. */
 export function deliveryWaiting(state: MessageDeliveryState): boolean {
-  return !deliverySettled(state);
+  return !deliveryTaken(state);
 }
 
 /** The time a tracked bubble shows, which is the time its message is sent with. */
@@ -115,96 +113,57 @@ export function markDelivery(
   return next;
 }
 
-/**
- * Mark a row failed and record why, so it reads "Not sent" or "Not received" (deliveryWords.ts).
- * A row that stays where it is keeps its words: `markDelivery` decides whether a failure may land,
- * and a later fact that overturns it rebuilds the delivery without a cause.
- */
-export function markDeliveryFailed(messages: ChatLine[], clientMessageId: string, cause: DeliveryFailureCause): ChatLine[] {
-  const marked = markDelivery(messages, clientMessageId, "failed");
-  const index = findDeliveryLineIndex(marked, clientMessageId);
-  const line = marked[index];
-  const delivery = line?.meta?.delivery;
-  if (line === undefined || delivery?.state !== "failed" || delivery.cause === cause) return marked;
-  const next = [...marked];
-  next[index] = { ...line, meta: { ...line.meta, delivery: { ...delivery, cause } } };
-  return next;
-}
-
 /** A queued message can change lane (follow-up promoted to steer) without changing state. */
 function kindChanged(current: "steer" | "followUp" | undefined, next: "steer" | "followUp" | undefined, currentState: MessageDeliveryState, nextState: MessageDeliveryState): boolean {
   return next !== undefined && next !== current && currentState === "queued" && nextState === "queued";
 }
 
 /**
- * Unverifiable sits beside sending, not below failed: the message may be
- * anywhere between "never left" and "already running", so a real answer from
- * the server - received, queued, delivered - must still be able to overtake it.
+ * Which moves a row's delivery makes, from each state to each state. Any answer from the machine -
+ * received, queued, delivered - overtakes a message on its way. A message on its way or queued can
+ * start being taken back; while it is, only the agent taking it (delivered) overtakes it, since the
+ * take-back's own answer settles it either way.
+ * Nothing moves back here; the two steps back a row takes (a lost message on its way again, a
+ * take-back too late) are named moves of their own (`restartDelivery`, `endTakingBack`).
  */
-const DELIVERY_ORDER: Record<MessageDeliveryState, number> = { failed: -1, unverifiable: 0, sending: 0, received: 1, queued: 2, delivered: 3 };
-
-/**
- * What a failed row still moves to: a server fact about the same message - the daemon has it,
- * its queue holds it, the transcript holds it. A failure is often an inference (no ledger row by
- * the last ask, a link that dropped); a later fact about the same identity proves it wrong, and
- * one message keeps one identity for its whole life, retries included. Deliberate retries go
- * through `restartDelivery`, which takes the row back to sending.
- */
-const OUTRANKS_A_FAILURE: Readonly<Record<MessageDeliveryState, boolean>> = {
-  received: true,
-  queued: true,
-  delivered: true,
-  sending: false,
-  unverifiable: false,
-  failed: false,
+const ADVANCES: Readonly<Record<MessageDeliveryState, Readonly<Record<MessageDeliveryState, boolean>>>> = {
+  sending: { sending: false, takingBack: true, received: true, queued: true, delivered: true },
+  takingBack: { sending: false, takingBack: false, received: false, queued: false, delivered: true },
+  received: { sending: false, takingBack: false, received: false, queued: true, delivered: true },
+  queued: { sending: false, takingBack: true, received: false, queued: false, delivered: true },
+  delivered: { sending: false, takingBack: false, received: false, queued: false, delivered: false },
 };
 
 function advancesDelivery(current: MessageDeliveryState, next: MessageDeliveryState): boolean {
-  if (current === next) return false;
-  // A failure can interrupt any earlier state; nothing overturns "delivered".
-  if (next === "failed") return current !== "delivered";
-  // An answer that arrives late closes an unverifiable row; that is the whole
-  // point of keeping it open rather than calling it failed.
-  if (current === "unverifiable") return next !== "sending";
-  if (next === "unverifiable") return current === "sending";
-  if (current === "failed") return OUTRANKS_A_FAILURE[next];
-  return DELIVERY_ORDER[next] > DELIVERY_ORDER[current];
+  return ADVANCES[current][next];
 }
 
 /**
- * Send a failed bubble back to in-flight for a deliberate retry.
- *
- * `markDelivery` never leaves "failed", because a late success event must not
- * resurrect a message the user was told to retry. A retry is not a late event:
- * the outbox is acting on the message again, so the bubble goes through
- * sending/received itself rather than being jumped to a result.
+ * A message the machine lost before the agent read it (a restart) is on its way again: its row
+ * goes back to sending while the outbox resends it.
  */
-/**
- * Which rows a deliberate retry sends back to "sending". A failed send and one whose answer
- * never came are both replayed from the outbox under their identity, and both must show the
- * attempt: a row left reading "No answer yet" while its retry is in flight still offered
- * Discard for a request that could land a moment later.
- */
-const RESTARTABLE: Record<MessageDeliveryState, boolean> = {
-  failed: true,
-  unverifiable: true,
-  sending: false,
-  received: false,
-  queued: false,
-  delivered: false,
-};
-
 export function restartDelivery(messages: readonly ChatLine[], clientMessageId: string): ChatLine[] {
+  return setDeliveryState(messages, clientMessageId, RESTARTS, "sending");
+}
+
+/** Which rows a lost message restarts: any the agent has not taken. */
+const RESTARTS: Readonly<Record<MessageDeliveryState, boolean>> = { sending: false, takingBack: true, received: true, queued: true, delivered: false };
+
+/** Which rows a too-late answer settles: only one still being taken back; a frame may have moved it on already. */
+const ENDS_TAKING_BACK: Readonly<Record<MessageDeliveryState, boolean>> = { sending: false, takingBack: true, received: false, queued: false, delivered: false };
+
+/** A take-back the machine answered "too late": the message is with the machine, and stays. */
+export function endTakingBack(messages: readonly ChatLine[], clientMessageId: string): ChatLine[] {
+  return setDeliveryState(messages, clientMessageId, ENDS_TAKING_BACK, "received");
+}
+
+function setDeliveryState(messages: readonly ChatLine[], clientMessageId: string, applies: Readonly<Record<MessageDeliveryState, boolean>>, state: MessageDeliveryState): ChatLine[] {
   const index = findDeliveryLineIndex(messages, clientMessageId);
-  if (index === -1) return [...messages];
   const line = messages[index];
   const current = line?.meta?.delivery;
-  if (line === undefined || current === undefined || !RESTARTABLE[current.state]) return [...messages];
+  if (line === undefined || current === undefined || !applies[current.state]) return [...messages];
   const next = [...messages];
-  next[index] = {
-    ...line,
-    meta: { ...line.meta, delivery: { clientMessageId, state: "sending", ...(current.kind === undefined ? {} : { kind: current.kind }) } },
-  };
+  next[index] = { ...line, meta: { ...line.meta, delivery: { ...current, state } } };
   return next;
 }
 
@@ -216,8 +175,7 @@ export function restartDelivery(messages: readonly ChatLine[], clientMessageId: 
  */
 const PROVEN_BY_SERVER: Readonly<Record<MessageDeliveryState, boolean>> = {
   sending: false,
-  failed: false,
-  unverifiable: false,
+  takingBack: false,
   received: true,
   queued: true,
   delivered: true,
@@ -240,55 +198,11 @@ export function removeDeliveryLine(messages: readonly ChatLine[], clientMessageI
   return [...messages.slice(0, index), ...messages.slice(index + 1)];
 }
 
-/**
- * Which delivery states the reader may throw away from the row itself.
- *
- * One message has one row (docs/design/one-message-one-row.md), so the row carries every
- * action its state allows. Only a settled failure can be discarded here, and discarding
- * hands the words back to the composer: a send still in flight lands regardless of a local
- * delete, so offering Discard there would claim an outcome the request can overturn a
- * moment later. A message the daemon holds is recalled instead, and one the transcript
- * holds is history.
- */
-const DISCARD_LABELS: Record<MessageDeliveryState, string | undefined> = {
-  failed: "Discard: take this unsent message back into the composer",
-  unverifiable: "Discard: stop tracking this here and take the text back - it may already have arrived",
-  sending: undefined,
-  received: undefined,
-  queued: undefined,
-  delivered: undefined,
-};
-
-export interface DiscardAction {
-  readonly clientMessageId: string;
-  readonly label: string;
-}
-
-export function discardAction(line: Pick<ChatLine, "meta">): DiscardAction | undefined {
+/** The identity a row's Take back acts on, when its state offers one. */
+export function takeBackTarget(line: Pick<ChatLine, "meta">): string | undefined {
   const delivery = line.meta?.delivery;
-  const label = delivery === undefined ? undefined : DISCARD_LABELS[delivery.state];
-  if (delivery === undefined || label === undefined) return undefined;
-  return { clientMessageId: delivery.clientMessageId, label };
-}
-
-/**
- * Which states offer Retry on the row: a send whose answer never came and one the daemon
- * says it never received. The outbox keeps both under their identity, so a replay is
- * deduplicated rather than doubled.
- */
-const RETRYABLE: Record<MessageDeliveryState, boolean> = {
-  unverifiable: true,
-  sending: false,
-  failed: true,
-  received: false,
-  queued: false,
-  delivered: false,
-};
-
-export function retryableDeliveryId(line: Pick<ChatLine, "meta">): string | undefined {
-  const delivery = line.meta?.delivery;
-  if (delivery === undefined || !RETRYABLE[delivery.state]) return undefined;
-  return delivery.clientMessageId;
+  const key = delivery === undefined ? undefined : deliveryWordKey(delivery.state);
+  return key !== undefined && deliveryWords(key).takeBack ? delivery?.clientMessageId : undefined;
 }
 
 /** Identities that already have a row in this transcript, so no other surface draws them. */

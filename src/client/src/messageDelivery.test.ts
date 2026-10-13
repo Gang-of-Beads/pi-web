@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyQueueToDelivery, deliveryProvenByServer, deliverySettled, deliveryTaken, deliveryWaiting, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, markDeliveryFailed, newClientMessageId, optimisticUserLine, removeDeliveryLine, withdrawDeliveryLine, restartDelivery } from "./messageDelivery";
+import { applyQueueToDelivery, deliveryProvenByServer, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, withdrawDeliveryLine } from "./messageDelivery";
 import type { ChatLine, MessageDeliveryState } from "./components/shared";
 
 const ID = "cm-1";
@@ -47,41 +47,9 @@ describe("markDelivery", () => {
     expect(markDelivery(messages, "other-id", "delivered")).toBe(messages);
   });
 
-  it("reports a failed send, and lets a later server fact about the same message overturn it", () => {
-    const failed = markDelivery([tracked("sending")], ID, "failed");
-    expect(failed[0]?.meta?.delivery?.state).toBe("failed");
-    expect(markDelivery(failed, ID, "received")[0]?.meta?.delivery?.state).toBe("received");
-  });
-
-  it("does not move a failed row back to sending or unverifiable except through a retry", () => {
-    const failed = [tracked("failed")];
-    expect({ sending: markDelivery(failed, ID, "sending"), unverifiable: markDelivery(failed, ID, "unverifiable") }).toEqual({ sending: failed, unverifiable: failed });
-  });
-
   it("records the lane a queued message is waiting in", () => {
     const queued = markDelivery([tracked("received")], ID, "queued", "steer");
     expect(queued[0]?.meta?.delivery).toEqual({ clientMessageId: ID, state: "queued", kind: "steer" });
-  });
-});
-
-describe("restartDelivery", () => {
-  it("sends a failed bubble back to in-flight for a deliberate retry", () => {
-    const restarted = restartDelivery([tracked("failed")], ID);
-    expect(restarted[0]?.meta?.delivery?.state).toBe("sending");
-  });
-
-  // The retry is a fresh attempt, so it must survive the same way the first
-  // send did: a bubble already in flight is left alone, and an unknown id
-  // changes nothing.
-  it("only restarts a message that failed or never got an answer", () => {
-    expect(restartDelivery([tracked("sending")], ID)[0]?.meta?.delivery?.state).toBe("sending");
-    expect(restartDelivery([tracked("received")], ID)[0]?.meta?.delivery?.state).toBe("received");
-    expect(restartDelivery([tracked("failed")], "other-id")[0]?.meta?.delivery?.state).toBe("failed");
-  });
-
-  it("shows a retry of an unanswered send as in flight, so the row stops offering Discard", () => {
-    const line: ChatLine = { role: "user", parts: [{ type: "text", text: "hello" }], meta: { delivery: { clientMessageId: ID, state: "unverifiable" } } };
-    expect(restartDelivery([line], ID)[0]?.meta?.delivery?.state).toBe("sending");
   });
 });
 
@@ -141,9 +109,6 @@ describe("withdrawDeliveryLine on recall and Stop", () => {
 });
 
 describe("removeDeliveryLine on a local refusal", () => {
-  it.each(["sending", "failed", "unverifiable"] as const)("removes a %s row no server fact has proved", (state) => {
-    expect(removeDeliveryLine([tracked(state), assistant()], ID)).toEqual([assistant()]);
-  });
 
   it.each(["received", "queued", "delivered"] as const)("keeps a %s row a server fact proved", (state) => {
     expect(removeDeliveryLine([tracked(state), assistant()], ID)).toEqual([tracked(state), assistant()]);
@@ -175,10 +140,6 @@ describe("carryDeliveryForward", () => {
   it("leaves an untracked message untouched", () => {
     const finalized: ChatLine = { role: "user", parts: [{ type: "text", text: "hello" }] };
     expect(carryDeliveryForward({ role: "user", parts: [] }, finalized)).toBe(finalized);
-  });
-
-  it("calls a message delivered once the transcript holds it, whatever was inferred before", () => {
-    expect(carryDeliveryForward(tracked("failed"), { role: "user", parts: [] }).meta?.delivery?.state).toBe("delivered");
   });
 });
 
@@ -237,41 +198,6 @@ describe("the bubble the browser draws for what you just sent", () => {
   });
 });
 
-describe("the stages of a delivery", () => {
-  /**
-   * The states were compared as string literals at twenty-two call sites, each
-   * restating what "settled" or "still waiting" means. One of them disagreed
-   * with the others and drew a queued message twice.
-   */
-  it("knows which states are settled", () => {
-    expect(deliverySettled("delivered")).toBe(true);
-    expect(deliverySettled("failed")).toBe(true);
-    expect(deliverySettled("queued")).toBe(false);
-    expect(deliverySettled("sending")).toBe(false);
-    expect(deliverySettled("received")).toBe(false);
-  });
-
-  it("knows which states are still waiting on the agent", () => {
-    expect(deliveryWaiting("queued")).toBe(true);
-    expect(deliveryWaiting("sending")).toBe(true);
-    expect(deliveryWaiting("received")).toBe(true);
-    expect(deliveryWaiting("delivered")).toBe(false);
-    expect(deliveryWaiting("failed")).toBe(false);
-  });
-});
-
-describe("a failure is settled but not silent", () => {
-  /**
-   * Claiming treats a failure as settled - nothing more will happen to it - and
-   * that is not the same as having nothing to say. Reusing one predicate for
-   * both hid the "Not sent" mark, which is the one mark that has to be seen.
-   */
-  it("is settled, and still not taken", () => {
-    expect(deliverySettled("failed")).toBe(true);
-    expect(deliveryTaken("failed")).toBe(false);
-  });
-});
-
 describe("queue reconciliation against runtime state", () => {
   const queuedRow: ChatLine = { role: "user", parts: [{ type: "text", text: "steer me" }], meta: { delivery: { clientMessageId: "c-q", state: "queued" } } };
 
@@ -288,18 +214,5 @@ describe("queue reconciliation against runtime state", () => {
   it("keeps a row the queue still holds", () => {
     const out = applyQueueToDelivery([queuedRow], [{ kind: "steer", text: "steer me", clientMessageId: "c-q" }], true);
     expect(out[0]?.meta?.delivery?.state).toBe("queued");
-  });
-});
-
-describe("a failure that says why", () => {
-  it("records the cause, and loses it when a later server fact overturns the failure", () => {
-    const sent: ChatLine = { role: "user", parts: [{ type: "text", text: "hi" }], meta: { delivery: { clientMessageId: "cm-1", state: "sending" } } };
-    const failed = markDeliveryFailed([sent], "cm-1", "not-sent");
-    const overturned = markDelivery(failed, "cm-1", "received");
-
-    expect({ failed: failed[0]?.meta?.delivery, overturned: overturned[0]?.meta?.delivery }).toEqual({
-      failed: { clientMessageId: "cm-1", state: "failed", cause: "not-sent" },
-      overturned: { clientMessageId: "cm-1", state: "received" },
-    });
   });
 });

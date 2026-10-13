@@ -102,6 +102,7 @@ import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
+import { createSequenceCursors, parseSequencedOperation, type SequenceCursors } from "./sequenceCursors.js";
 import type { OperationOutcome } from "./operationDecision.js";
 import { HANDOFF_RUN_STATE, HANDOFF_WAKE_EVENTS, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffVerdict, type RunState } from "./promptHandoff.js";
 import { SETTLEABLE, createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
@@ -1418,6 +1419,7 @@ export class PiSessionService implements SessionRouteService {
    * which turned the browser's correct retry into a second run of the prompt.
    */
   private readonly acceptanceLedger: AcceptanceFace;
+  private readonly sequences: SequenceCursors;
   private readonly committedExpectations = new CommittedPromptExpectations();
   private readonly ownedQueue: OwnedPromptQueue;
   private readonly inboxDataDir: string | undefined;
@@ -1543,6 +1545,7 @@ export class PiSessionService implements SessionRouteService {
       : createDurableAcceptanceLedger(deps.operationLedgerDir);
     this.ownedQueue = new OwnedPromptQueue(deps.operationLedgerDir === undefined ? memoryInboxLocation : dataDirInboxLocation(deps.operationLedgerDir));
     this.inboxDataDir = deps.operationLedgerDir;
+    this.sequences = createSequenceCursors(deps.operationLedgerDir);
     this.hostContributions = deps.hostContributions ?? EMPTY_HOST_CONTRIBUTIONS;
     this.pluginBackgroundWork = deps.pluginBackgroundWork ?? (() => Promise.resolve(0));
     this.archiveStore = deps.archiveStore ?? new SessionArchiveStore();
@@ -3182,8 +3185,20 @@ export class PiSessionService implements SessionRouteService {
    * are accepted in the order they reached the daemon even when the first carries a photo that
    * takes longer to decode.
    */
-  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown }): Promise<void> {
-    return this.inArrivalOrder(ref.id, () => this.acceptPrompt(ref, text, streamingBehavior, attachments, options));
+  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown; sequence?: unknown }): Promise<void> {
+    return this.inArrivalOrder(ref.id, async () => {
+      this.admitSequence(ref.id, options?.sequence);
+      await this.acceptPrompt(ref, text, streamingBehavior, attachments, options);
+    });
+  }
+
+  /**
+   * Admit a device's numbered operation in its turn, or refuse it while an earlier one is missing
+   * (docs/design/message-states.md, "Order"). An operation without a number is an older page's.
+   */
+  private admitSequence(sessionId: string, value: unknown): void {
+    const operation = parseSequencedOperation(value);
+    if (operation !== undefined) this.sequences.admit(sessionId, operation);
   }
 
   private inArrivalOrder<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
@@ -3216,6 +3231,11 @@ export class PiSessionService implements SessionRouteService {
     if (clientMessageId !== undefined && this.acceptanceLedger.has(sessionId, clientMessageId)) {
       const outcome = this.acceptanceLedger.outcomesFor(sessionId, [clientMessageId])[clientMessageId];
       this.events.publish(sessionId, { type: outcome === undefined ? "prompt.accepted" : REPEAT_ANSWER_FRAME[outcome], clientMessageId });
+      this.publishStatus(session);
+      return;
+    }
+    if (clientMessageId !== undefined && committedClientMessageIds(session.sessionManager.getBranch()).has(clientMessageId)) {
+      this.events.publish(sessionId, { type: "prompt.accepted", clientMessageId });
       this.publishStatus(session);
       return;
     }
@@ -3343,7 +3363,7 @@ export class PiSessionService implements SessionRouteService {
     if (!this.servesSessionId(session)) return false;
     const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
     const { clientMessageId } = entry;
-    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text: entry.text, imageCount: images.length, ...(entry.sentAt === undefined ? {} : { sentAt: entry.sentAt }) });
+    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text: entry.text, imageCount: images.length, handedAt: new Date().toISOString() });
     const growthAtCall = this.laneGrowth.get(sessionId) ?? 0;
     try {
       await session.steer(entry.text, images);
@@ -3458,7 +3478,7 @@ export class PiSessionService implements SessionRouteService {
     if (!this.servesSessionId(session) || this.liveRunState(session) !== HANDOFF_RUN_STATE[behavior ?? "direct"]) return "transient";
     const isCommand = this.isExtensionCommand(session, text);
     if (isCommand) this.settleHanded(sessionId, entryKey(entry));
-    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text, imageCount: images.length, ...(entry.sentAt === undefined ? {} : { sentAt: entry.sentAt }) });
+    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text, imageCount: images.length, handedAt: new Date().toISOString() });
     if (behavior === "steer") this.publishActivity(session, "steering queued", "active");
     let committed = false;
     let landed: HandoffLanding | undefined;
@@ -3854,7 +3874,7 @@ export class PiSessionService implements SessionRouteService {
     const commit = this.committedExpectations.claim(session.sessionId, shape);
     if (commit === undefined) return;
     message["clientMessageId"] = commit.clientMessageId;
-    if (commit.sentAt !== undefined) message["timestamp"] = Date.parse(commit.sentAt);
+    message["timestamp"] = Date.parse(commit.handedAt);
   }
 
   /**
@@ -4476,7 +4496,19 @@ export class PiSessionService implements SessionRouteService {
    * texts are therefore indistinguishable; taking the first keeps the visible
    * order stable and the caller re-renders from the returned status either way.
    */
-  async recallQueuedMessage(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }> {
+  recallQueuedMessage(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }, sequence?: unknown): Promise<{ recalled: boolean; status: ClientSessionStatus }> {
+    return this.inArrivalOrder(ref.id, () => {
+      this.admitSequence(ref.id, sequence);
+      return this.recallNow(ref, target);
+    });
+  }
+
+  /**
+   * A take-back of an identity the daemon holds no live row for - never seen, or lost to a
+   * restart - writes a tombstone and counts as taken back: a send of it still on the wire is
+   * answered withdrawn and never runs.
+   */
+  private async recallNow(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
 
@@ -4493,8 +4525,9 @@ export class PiSessionService implements SessionRouteService {
     // or be dropped by the replay's own writes. Everything else that touches
     // session entries is serialized the same way.
     const recalled = await this.withQueueLock(session, () => this.recallFromRuntime(session, target));
-    const removed = recalled.removed;
-    if (removed) this.withdraw(session.sessionId, recalled.clientMessageId);
+    const removed = recalled.removed || (target.clientMessageId !== undefined && this.acceptanceLedger.tombstone(session.sessionId, target.clientMessageId));
+    if (recalled.removed) this.withdraw(session.sessionId, recalled.clientMessageId);
+    else if (removed) this.withdraw(session.sessionId, target.clientMessageId);
     this.settleConsumedSteers(session);
     this.publishStatus(session);
     this.pumpInbox(session);

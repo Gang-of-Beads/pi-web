@@ -43,7 +43,7 @@ import { attachmentZoomStyles, toolExecutionDisplayStatus } from "./shared";
 import type { FollowingCustomRow, QualifiedActivityNoteContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution, QualifiedToolRendererContribution } from "../plugins/types";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback, ExtensionDialogLineCallback, ExtensionDialogWidthCallback } from "./ExtensionDialogCard";
-import { deliveryTaken, discardAction, retryableDeliveryId } from "../messageDelivery";
+import { deliveryTaken, takeBackTarget } from "../messageDelivery";
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { placeUserRows } from "../userRowPlacement";
 import { stepStatusText, stepWaitingText } from "../sessionStepWords";
@@ -542,7 +542,7 @@ const NO_MARK: DeliveryPresentation = { glyph: "double", text: "", label: "", to
 
 /** The bubble's words for a delivery, from the one table every surface reads. */
 export function chatDeliveryPresentation(delivery: MessageDelivery, queuePosition?: number): DeliveryPresentation {
-  const key = deliveryWordKey(delivery.state, delivery.cause);
+  const key = deliveryWordKey(delivery.state);
   if (key === undefined) return NO_MARK;
   const words = deliveryWords(key);
   const place = key === "queued" && queuePosition !== undefined ? ` · ${String(queuePosition)}` : "";
@@ -588,8 +588,13 @@ export function chatMessageGroupLabel(defaultOpen: boolean): string {
   return defaultOpen ? "live events" : "events";
 }
 
+/**
+ * A message's time is when the agent got it (docs/design/message-states.md, "Time"): one still on
+ * its way or queued shows no clock, and the committed copy carries the handoff time.
+ */
 export function chatMessageMetadataLabel(message: ChatLine): string {
-  const timestamp = message.meta?.timestamp;
+  const delivery = message.meta?.delivery;
+  const timestamp = delivery !== undefined && !deliveryTaken(delivery.state) ? undefined : message.meta?.timestamp;
   const time = timestamp === undefined ? undefined : formatMessageTimestamp(timestamp);
   const model = chatMessageModelLabel(message);
   const parts = [time, model, message.meta?.thinkingLevel].filter((part): part is string => part !== undefined && part !== "");
@@ -666,13 +671,12 @@ export class ChatView extends LitElement {
    * the only remaining copy of what was sent.
    */
   @property({ attribute: false }) onResendMessage?: (prompt: RecoveredPrompt) => void | Promise<void>;
-  /** Throw away a send nobody confirmed, from its own row. */
-  @property({ attribute: false }) onDiscardMessage?: (clientMessageId: string) => void;
-  /** Replay this one message from the outbox under its own identity. */
-  @property({ attribute: false }) onRetryMessage?: (clientMessageId: string) => void;
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
-  /** Take one queued message back into the composer, leaving the rest queued. */
-  @property({ attribute: false }) onRecallQueuedMessage?: (message: QueuedSessionMessage) => void;
+  /**
+   * Take one message that has not reached the agent back - on its way or queued, from this device
+   * or another; its words come back to the composer once the machine confirms.
+   */
+  @property({ attribute: false }) onTakeBack?: (clientMessageId: string, queued: QueuedSessionMessage | undefined) => void;
   @property({ attribute: false }) onLoadMore?: () => void;
   /** Loads the live tail when the span is trimmed at the bottom. */
   @property({ attribute: false }) onLoadNewer?: () => void;
@@ -2079,42 +2083,35 @@ export class ChatView extends LitElement {
     return this.queueEntryFor(line) !== undefined || line.meta?.delivery?.state === "queued";
   }
 
-  /** The queued bubble's own recall action; see renderQueuedMessages. */
-  private renderQueuedBubbleRecall(line: ChatLine) {
-    if (this.onRecallQueuedMessage === undefined) return null;
+  /**
+   * One Take back for every message that has not reached the agent, the same key whether it is
+   * still on its way or already queued (docs/design/message-states.md). A queued row with no
+   * identity of its own (an older sender's) has none: it could only be named by its text.
+   */
+  private renderTakeBack(line: ChatLine) {
+    if (this.onTakeBack === undefined) return null;
+    const clientMessageId = takeBackTarget(line);
+    if (clientMessageId === undefined || clientMessageId.startsWith("queued:")) return null;
     const queued = this.queueEntryFor(line);
-    if (queued === undefined) return null;
-    return html`<button type="button" class="msg-action" data-action="recall" title="Recall: take this message back and put it in the composer" aria-label="Recall this queued message into the composer" @click=${() => { this.onRecallQueuedMessage?.(queued); }}>
+    return html`<button type="button" class="msg-action" data-action="take-back" title="Take back: return this message to the composer" aria-label="Take this message back into the composer" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onTakeBack?.(clientMessageId, queued); }}>
       ${renderRecallIcon()}
     </button>`;
   }
 
   /**
-   * A row's keys. A queued row's only take-back is Recall, drawn once the daemon's queue lists the
-   * message: "Edit and send again" copies a message still waiting to go, so taking it up there sent it
-   * twice (B36, audit P2-5). Until the queue lists it the row has no take-back, never the copy.
+   * A row's keys. A message that has not reached the agent offers Take back, never "Edit and send
+   * again": that copies a message still waiting to go, so taking it up there sent it twice (B36,
+   * audit P2-5).
    */
   private renderMessageActions(message: ChatLine, key: string) {
-    const pendingDecision = retryableDeliveryId(message) !== undefined || discardAction(message) !== undefined;
-    const resendable = this.onResendMessage !== undefined && isResendableLine(message) && !pendingDecision && !this.isQueuedLine(message);
-    const recall = this.renderQueuedBubbleRecall(message);
-    const discard = this.onDiscardMessage === undefined ? undefined : discardAction(message);
-    const retryId = this.onRetryMessage === undefined ? undefined : retryableDeliveryId(message);
-    if (!this.isCopyableMessage(message) && !resendable && recall === null && discard === undefined && retryId === undefined) return null;
+    const state = message.meta?.delivery?.state;
+    const resendable = this.onResendMessage !== undefined && isResendableLine(message) && (state === undefined || deliveryTaken(state)) && !this.isQueuedLine(message);
+    const takeBack = this.renderTakeBack(message);
+    if (!this.isCopyableMessage(message) && !resendable && takeBack === null) return null;
     const copied = this.copiedMessageKey === key;
     return html`
       <div class="msg-actions" aria-label="Message actions">
-        ${recall}
-        ${retryId === undefined
-          ? null
-          : html`<button type="button" class="msg-action" data-action="retry" title="Retry: send this message again" aria-label="Retry sending this message" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onRetryMessage?.(retryId); }}>
-              ${renderResendIcon()}
-            </button>`}
-        ${discard === undefined
-          ? null
-          : html`<button type="button" class="msg-action" data-action="discard" title=${discard.label} aria-label=${discard.label} @click=${(event: MouseEvent) => { event.stopPropagation(); this.onDiscardMessage?.(discard.clientMessageId); }}>
-              ${renderCrossIcon()}
-            </button>`}
+        ${takeBack}
         ${resendable
           ? html`<button type="button" class="msg-action" title="Edit and send again" aria-label="Put this message back in the composer to send again" @click=${(event: MouseEvent) => { this.resendMessage(message, event); }}>
               ${renderResendIcon()}

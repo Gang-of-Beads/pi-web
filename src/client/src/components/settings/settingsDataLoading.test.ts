@@ -47,7 +47,7 @@ describe("settings data loading helpers", () => {
 
     expect(result.config).toBe(configResponse);
     expect(result.plugins).toBeUndefined();
-    expect(result.error).toBe("Failed to load settings: PI WEB plugins: plugin scan failed");
+    expect(result.error).toBe("Failed to load settings: PI WEB plugins: plugin scan failed · trying again…");
   });
 
   it("loads Pi packages for the selected target with package-scoped errors", async () => {
@@ -64,6 +64,6 @@ describe("settings data loading helpers", () => {
     expect(requestedTargets).toEqual(["remote-a", "remote-a"]);
     expect(success).toEqual({ packagesResponse, error: "" });
     expect(failure.packagesResponse).toBeUndefined();
-    expect(failure.error).toBe("Failed to load Pi packages from Lab Mac (remote machine): Could not reach Lab Mac for Pi package management. Check the machine connection and try again.");
+    expect(failure.error).toBe("Failed to load Pi packages from Lab Mac (remote machine): Could not reach Lab Mac · trying again…");
   });
 });

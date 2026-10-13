@@ -72,12 +72,16 @@ interface GitWorkspaceUiState {
   history: GitHistoryResponse | undefined;
   historyLoading: boolean;
   historyError: string | undefined;
+  /** Unanswered history reads in a row, so the next wait is longer (B48). */
+  historyAttempt: number;
   historyRequestSequence: number;
   historyRequest: Promise<void> | undefined;
   selectedCommitId: string | undefined;
   selectedCommitDiff: GitCommitDiffView | undefined;
   commitDiffLoading: boolean;
   commitDiffError: string | undefined;
+  /** Unanswered commit-diff reads in a row, so the next wait is longer (B48). */
+  commitDiffAttempt: number;
   commitDiffRequestSequence: number;
   collapsedCommitDiffPaths: Set<string>;
   workspacePanelFullscreen: boolean;
@@ -106,6 +110,8 @@ interface GitReviewDiffState {
   error: string | undefined;
   collapsed: boolean;
   requestSequence: number;
+  /** Unanswered reads of this diff in a row, so the next wait is longer (B48). */
+  attempt: number;
 }
 
 interface GitReviewQueueEntry {
@@ -281,12 +287,6 @@ export class GitUiController {
     return this.loadHistory(state, context, undefined);
   }
 
-  retryHistory(context: WorkspacePanelContext): void {
-    const state = this.stateFor(context);
-    if (state.historyRequest !== undefined) return;
-    if (state.history === undefined) void this.refreshHistory(context);
-    else void this.loadHistory(state, context, state.history.nextCursor);
-  }
 
   loadMoreHistory(context: WorkspacePanelContext): void {
     const state = this.stateFor(context);
@@ -320,15 +320,6 @@ export class GitUiController {
     this.requestRender(state);
   }
 
-  retryCommitDiff(context: WorkspacePanelContext): void {
-    const state = this.stateFor(context);
-    if (state.selectedCommitId !== undefined && !state.commitDiffLoading) {
-      state.commitDiffError = undefined;
-      state.commitDiffLoading = true;
-      this.requestRender(state);
-      void this.refreshCommitDiff(state, context, state.selectedCommitId);
-    }
-  }
 
   selectDiff(context: WorkspacePanelContext, path: string): void {
     const state = this.stateFor(context);
@@ -387,14 +378,6 @@ export class GitUiController {
     this.requestRender(state);
   }
 
-  retryReviewDiff(context: WorkspacePanelContext, path: string): void {
-    const state = this.stateFor(context);
-    const review = this.reviewDiffState(state, path);
-    review.status = "unrequested";
-    review.error = undefined;
-    this.enqueueReviewDiff(state, context, path, 100);
-    this.requestRender(state);
-  }
 
   setView(context: WorkspacePanelContext, view: GitFileView): void {
     if (this.view === view) return;
@@ -466,12 +449,14 @@ export class GitUiController {
       history: undefined,
       historyLoading: false,
       historyError: undefined,
+      historyAttempt: 0,
       historyRequestSequence: 0,
       historyRequest: undefined,
       selectedCommitId: undefined,
       selectedCommitDiff: undefined,
       commitDiffLoading: false,
       commitDiffError: undefined,
+      commitDiffAttempt: 0,
       commitDiffRequestSequence: 0,
       collapsedCommitDiffPaths: new Set(),
       workspacePanelFullscreen: false,
@@ -595,6 +580,7 @@ export class GitUiController {
       .then(parseGitHistoryResponse)
       .then((page) => {
         if (!state.retained || state.historyRequestSequence !== sequence) return;
+        state.historyAttempt = 0;
         state.history = cursor === undefined
           ? page
           : { ...page, commits: [...(state.history?.commits ?? []), ...page.commits] };
@@ -605,7 +591,11 @@ export class GitUiController {
         }
       })
       .catch((error: unknown) => {
-        if (state.retained && state.historyRequestSequence === sequence) state.historyError = errorMessage(error);
+        if (!state.retained || state.historyRequestSequence !== sequence) return;
+        state.historyError = readAgainOrSay(error, state.historyAttempt, () => {
+          if (state.retained && state.historyRequestSequence === sequence && state.historyRequest === undefined) void this.loadHistory(state, context, cursor);
+        });
+        state.historyAttempt += 1;
       })
       .finally(() => {
         if (state.historyRequest !== request) return;
@@ -625,12 +615,16 @@ export class GitUiController {
       if (!state.retained || state.commitDiffRequestSequence !== sequence || state.selectedCommitId !== id) return;
       state.selectedCommitDiff = { response, files: undefined };
       state.commitDiffError = undefined;
+      state.commitDiffAttempt = 0;
     } catch (error) {
       if (!state.retained || state.commitDiffRequestSequence !== sequence || state.selectedCommitId !== id) return;
-      state.commitDiffError = errorMessage(error);
+      state.commitDiffError = readAgainOrSay(error, state.commitDiffAttempt, () => {
+        if (state.retained && state.commitDiffRequestSequence === sequence && state.selectedCommitId === id) void this.refreshCommitDiff(state, context, id);
+      });
+      state.commitDiffAttempt += 1;
     } finally {
       if (state.retained && state.commitDiffRequestSequence === sequence && state.selectedCommitId === id) {
-        state.commitDiffLoading = false;
+        state.commitDiffLoading = state.selectedCommitDiff === undefined && state.commitDiffError === undefined;
         this.requestRender(state);
       }
     }
@@ -646,6 +640,7 @@ export class GitUiController {
       error: undefined,
       collapsed: false,
       requestSequence: 0,
+      attempt: 0,
     };
     state.reviewDiffs.set(path, created);
     return created;
@@ -685,10 +680,16 @@ export class GitUiController {
         review.selectedDiff = createDiffView(selectedDiff, review.selectedDiff);
         review.selectedStagedDiff = createDiffView(selectedStagedDiff, review.selectedStagedDiff);
         review.status = "loaded";
+        review.attempt = 0;
       }).catch((error: unknown) => {
         if (!state.retained || review.requestSequence !== sequence) return;
-        review.error = errorMessage(error);
-        review.status = "error";
+        review.error = readAgainOrSay(error, review.attempt, () => {
+          if (!state.retained || review.requestSequence !== sequence) return;
+          review.status = "unrequested";
+          this.enqueueReviewDiff(state, context, entry.path, 100);
+        });
+        review.attempt += 1;
+        review.status = REVIEW_STATUS_AFTER_FAILURE[review.error === undefined ? "readingAgain" : "refused"];
       }).finally(() => {
         state.reviewActiveRequests = Math.max(0, state.reviewActiveRequests - 1);
         this.requestRender(state);
@@ -926,17 +927,17 @@ function renderFileList(
 function renderHistoryList(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext, state: GitWorkspaceUiState) {
   const history = state.history;
   if (history === undefined) {
-    if (state.historyLoading) return html`<p class="git-muted">Loading history…</p>`;
+    if (state.historyLoading || state.historyError === undefined) return html`<p class="git-muted">Loading history…</p>`;
     return html`
       <p class="git-muted">History unavailable.</p>
-      ${state.historyError === undefined ? null : html`<div class="git-error" role="alert">${state.historyError}<button type="button" @click=${() => { controller.retryHistory(context); }}>Retry</button></div>`}
+      <div class="git-error" role="alert">${state.historyError}</div>
     `;
   }
   if (history.unborn) return html`<p class="git-muted">This repository has no commits yet.</p>`;
   return html`
     ${history.commits.length === 0 ? html`<p class="git-muted">No commits reachable from current HEAD.</p>` : history.commits.map((commit) => renderCommitRow(html, controller, context, state, commit))}
     ${history.truncated ? html`<p class="git-muted">History output was truncated.</p>` : null}
-    ${state.historyError === undefined ? null : html`<div class="git-error" role="alert">Could not load more history: ${state.historyError}<button type="button" @click=${() => { controller.retryHistory(context); }}>Retry</button></div>`}
+    ${state.historyError === undefined ? null : html`<div class="git-error" role="alert">Could not load more history: ${state.historyError}</div>`}
     ${history.nextCursor === undefined ? null : html`<button type="button" class="git-load-more" ?disabled=${state.historyLoading} @click=${() => { controller.loadMoreHistory(context); }}>${state.historyLoading ? "Loading more history…" : "Load more"}</button>`}
   `;
 }
@@ -1091,7 +1092,7 @@ function renderReviewDiffSection(
           <small>${stateLabel(file.index, file.workingTree)}</small>
         </div>
         ${review.collapsed ? null : review.status === "error"
-          ? html`<div class="git-error" role="alert">Diff unavailable: ${review.error}<button type="button" @click=${() => { controller.retryReviewDiff(context, file.path); }}>Retry</button></div>`
+          ? html`<div class="git-error" role="alert">Diff unavailable: ${review.error}</div>`
           : review.status !== "loaded"
             ? html`<div class="git-review-placeholder">${review.status === "loading" ? "Loading diff…" : review.status === "queued" ? "Queued…" : "Diff loads when visible."}</div>`
             : diffs.length === 0
@@ -1120,7 +1121,7 @@ function renderCommitDiffViewer(html: HtmlTemplateTag, controller: GitUiControll
   if (commit === undefined) return html`<p class="git-muted">Selected commit is no longer in this history result.</p>`;
   const metadata = renderCommitMetadata(html, commit, response?.combined === true);
   if (state.commitDiffLoading) return html`${metadata}<p class="git-muted">Loading commit diff…</p>`;
-  if (state.commitDiffError !== undefined) return html`${metadata}<div class="git-error" role="alert">Commit diff unavailable: ${state.commitDiffError}<button type="button" @click=${() => { controller.retryCommitDiff(context); }}>Retry</button></div>`;
+  if (state.commitDiffError !== undefined) return html`${metadata}<div class="git-error" role="alert">Commit diff unavailable: ${state.commitDiffError}</div>`;
   if (response === undefined || view === undefined) return html`${metadata}<p class="git-muted">Commit diff unavailable.</p>`;
   const files = view.files ??= parseUnifiedDiffFiles(response.diff);
   return html`
@@ -1427,16 +1428,29 @@ function workspaceContextKey(context: WorkspacePanelContext): string {
   return JSON.stringify([context.machine.id, context.workspace.projectId, context.workspace.id]);
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /** This page has no paired Git backend: a stated condition the reader fixes by updating, not a missing answer. */
 class GitBackendUnavailableError extends Error {
   constructor() {
     super("Git workspace backend is unavailable. Update and restart PI WEB on this machine, then reload the browser.");
     this.name = "GitBackendUnavailableError";
   }
+}
+
+/** What a diff read that failed shows while it waits: reading again, or the refusal the server stated. */
+const REVIEW_STATUS_AFTER_FAILURE: Readonly<Record<"readingAgain" | "refused", GitReviewDiffStatus>> = { readingAgain: "loading", refused: "error" };
+
+/**
+ * A one-off read that failed (B48): no answer is read again by itself, after the host's wait for
+ * this attempt, and shows nothing the reader cannot act on; a refusal the server stated is
+ * returned as the words to show. An older host without `readFailure` waits one poll interval.
+ */
+function readAgainOrSay(error: unknown, attempt: number, again: () => void): string | undefined {
+  const failure = error instanceof GitBackendUnavailableError
+    ? { kind: "final" as const, words: error.message }
+    : gitHostUi()?.readFailure?.(error, attempt) ?? { kind: "retry" as const, delayMs: GIT_POLL_INTERVAL_MS };
+  if (failure.kind === "final") return failure.words;
+  setTimeout(again, failure.delayMs);
+  return undefined;
 }
 
 /**

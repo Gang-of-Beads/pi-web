@@ -1,11 +1,6 @@
 import type { ChatLine } from "./components/shared";
 import { carryDeliveryForward, deliveryWaiting } from "./messageDelivery";
 
-/** A row a rebuild must not lose: one still waiting, and one that failed and still offers Retry. */
-function carriedAcrossRebuild(state: Parameters<typeof deliveryWaiting>[0]): boolean {
-  return state === "failed" || deliveryWaiting(state);
-}
-
 /**
  * What a rebuilt transcript holds of one waiting message, found by its identity in every form
  * a rebuild can carry it: the row itself, the daemon's echo of its acceptance, or the committed
@@ -51,7 +46,7 @@ export function carryUnsettledForward(previous: readonly ChatLine[], rebuilt: Ch
   const carried: ChatLine[] = [];
   for (const line of previous) {
     const delivery = line.meta?.delivery;
-    if (delivery === undefined || !carriedAcrossRebuild(delivery.state)) continue;
+    if (delivery === undefined || !deliveryWaiting(delivery.state)) continue;
     const copy = rebuiltCopyOf(next, delivery.clientMessageId);
     if (copy.kind === "tracked") continue;
     if (copy.kind === "absent") {

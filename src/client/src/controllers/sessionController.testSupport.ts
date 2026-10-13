@@ -2,7 +2,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import type { MessagePage, SessionInfo, SessionRef, SessionStatus, Workspace } from "../api";
 import { machineSessionKey } from "../machineKeys";
 import type { SessionUiEvent } from "../sessionSocket";
-import type { SessionEventSocket, SessionSocketHandlers } from "./sessionController";
+import type { SessionController, SessionEventSocket, SessionSocketHandlers } from "./sessionController";
 
 import { api } from "../api";
 
@@ -181,4 +181,10 @@ export function sessionKey(sessionId: string): string {
 
 export function sessionLookupId(session: string | SessionRef): string {
   return typeof session === "string" ? session : session.id;
+}
+
+/** Open a new session and send its first message: a draft is created on the machine only then. */
+export function launchNewSession(controller: Pick<SessionController, "startSession" | "startDraft">): Promise<void> {
+  controller.startSession();
+  return controller.startDraft();
 }

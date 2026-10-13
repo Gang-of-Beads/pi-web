@@ -1,4 +1,5 @@
 import { SESSION_NOT_FOUND_CODE } from "../../../shared/apiTypes.js";
+import { SequenceGapError } from "./sequenceCursors.js";
 
 /**
  * A session the daemon does not have, as one typed answer (object model §1.6,
@@ -20,7 +21,7 @@ export class SessionNotFoundError extends Error {
 
 export interface SessionErrorReply {
   readonly status: number;
-  readonly body: { readonly error: string; readonly code?: typeof SESSION_NOT_FOUND_CODE };
+  readonly body: { readonly error: string; readonly code?: typeof SESSION_NOT_FOUND_CODE | "sequence-gap"; readonly appliedThrough?: number };
 }
 
 /**
@@ -31,6 +32,7 @@ export interface SessionErrorReply {
  */
 export function sessionErrorReply(error: unknown, otherwise: 400 | 500 | 503): SessionErrorReply {
   if (error instanceof SessionNotFoundError) return { status: 404, body: { error: error.message, code: error.code } };
+  if (error instanceof SequenceGapError) return { status: 409, body: { error: error.message, code: "sequence-gap", appliedThrough: error.appliedThrough } };
   return { status: otherwise, body: { error: errorText(error) } };
 }
 

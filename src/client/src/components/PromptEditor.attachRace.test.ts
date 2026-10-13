@@ -71,19 +71,6 @@ describe("sending while a file is still being read", () => {
    * send is in flight hands the restore to session B otherwise, writing
    * session A's draft into B's store.
    */
-  it("restores a failed send only into the session it was sent from", async () => {
-    const editor = await mount();
-    editor.onSend = () => {
-      editor.sessionId = "s2";
-      return Promise.resolve(false);
-    };
-
-    await callRestore(editor, "look at this", [{ name: "shot.png", kind: "image", dataUrl: "data:image/png;base64,AAA" }]);
-    await editor.updateComplete;
-
-    expect(attachmentsOf(editor)).toHaveLength(0);
-    expect(Reflect.get(editor, "draft")).toBe("");
-  });
 
   it("gives a session its attached image back when the reader returns to it", async () => {
     const editor = await mount("hold-return");
@@ -119,16 +106,6 @@ describe("sending while a file is still being read", () => {
     const second = await mount("hold-remount");
 
     expect(attachmentsOf(second)).toHaveLength(1);
-  });
-
-  it("restores a failed send when the session is unchanged", async () => {
-    const editor = await mount();
-    editor.onSend = () => Promise.resolve(false);
-
-    await callRestore(editor, "try again", undefined);
-    await editor.updateComplete;
-
-    expect(Reflect.get(editor, "draft")).toBe("try again");
   });
 });
 
@@ -172,7 +149,3 @@ function attachmentsOf(editor: PromptEditor): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-async function callRestore(editor: PromptEditor, text: string, attachments: unknown): Promise<void> {
-  const result = call(editor, "deliverAndRestoreOnFailure", [text, undefined, attachments, undefined, { text, attachments: [] }]);
-  await (result instanceof Promise ? result : Promise.resolve());
-}

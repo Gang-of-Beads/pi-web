@@ -137,12 +137,18 @@ class PiWebTasksPanel extends HTMLElement {
   private dispatchTaskById(context: WorkspacePanelContext, taskId: string | null): Promise<void> {
     if (!this.isCurrentContext(context)) return Promise.resolve();
     const task = taskFromConfigState(this.configs.get(cacheKeyForContext(context)), taskId);
-    if (task === undefined) {
-      this.status = { kind: "error", message: "That task is no longer available. Click Refresh, then try again." };
-      this.render();
-      return Promise.resolve();
-    }
+    if (task === undefined) return this.refreshAfterMissingTask(context, taskId);
     return this.dispatchTask(context, task);
+  }
+
+  /** A task id not found in the cached list: re-read the file, and say the task is gone only if the loaded file still lacks it. */
+  private async refreshAfterMissingTask(context: WorkspacePanelContext, taskId: string | null): Promise<void> {
+    await this.refreshConfig(context);
+    if (!this.isCurrentContext(context)) return;
+    const state = this.configs.get(cacheKeyForContext(context));
+    if (state?.kind !== "loaded" || taskFromConfigState(state, taskId) !== undefined) return;
+    this.status = { kind: "info", message: `That task is no longer in ${TASKS_CONFIG_PATH}; the list was read again.` };
+    this.render();
   }
 
   private isCurrentContext(context: WorkspacePanelContext): boolean {
@@ -189,7 +195,7 @@ class PiWebTasksPanel extends HTMLElement {
 
   private async dispatchTask(context: WorkspacePanelContext, task: WorkspaceTask): Promise<void> {
     if (this.runningTaskId !== undefined) {
-      this.status = { kind: "info", message: "Another task is already starting. Wait for it to finish dispatching, then try again." };
+      this.status = { kind: "info", message: "Another task is still starting; tasks start one at a time." };
       this.render();
       return;
     }

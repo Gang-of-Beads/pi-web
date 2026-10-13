@@ -3,7 +3,7 @@ import type { Project, SessionInfo } from "../api";
 import { HttpError } from "../api/http";
 import { initialAppState } from "../appState";
 import { SessionController } from "./sessionController";
-import { defaultApi, emptyPage, FakeSocket, oldSession, sessionLookupId, status, workspace, type AppState } from "./sessionController.testSupport";
+import { defaultApi, launchNewSession, emptyPage, FakeSocket, oldSession, sessionLookupId, status, workspace, type AppState } from "./sessionController.testSupport";
 import { WorkspaceController } from "./workspaceController";
 
 const project: Project = { id: workspace.projectId, name: "repo", path: workspace.path, createdAt: "now" };
@@ -63,7 +63,7 @@ describe("a link that names a session (P2 slice b, B31)", () => {
       await workspaces.selectWorkspace(workspace, { sessionId: "linked-late", updateUrl: false });
       await settle();
 
-      void sessions.startSession();
+      void launchNewSession(sessions);
       await settle();
       const started = state().selectedSession?.id;
       await vi.advanceTimersByTimeAsync(20_000);

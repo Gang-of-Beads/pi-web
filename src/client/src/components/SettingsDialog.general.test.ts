@@ -187,7 +187,7 @@ describe("settings-dialog general settings machine targeting", () => {
 
     await callDialogPromise(dialog, "loadAccessConfigForTarget");
 
-    expect(getDialogProperty(dialog, "accessError")).toBe("Failed to load file access/upload config from Lab Mac (remote machine): Could not reach Lab Mac for selected-machine settings. Check the machine connection and try again.");
+    expect(getDialogProperty(dialog, "accessError")).toBe("Failed to load file access/upload config from Lab Mac (remote machine): Could not reach Lab Mac · trying again…");
     expect(getDialogProperty(dialog, "accessLoading")).toBe(false);
   });
 });

@@ -56,53 +56,41 @@ describe("the committed copy carries its sender's id", () => {
 });
 
 /**
- * pi stamps a user message when the daemon hands it over, and that stamp replaced the time the
- * sender saw: three messages sent at 12:23:49, :50 and :51 all became 12:24:04 when a turn took
- * them (audit 5d672be6 P2-3, B5). The committed copy and the acceptance echo keep the send time.
+ * A message's time is when the agent got it (docs/design/message-states.md, "Time"): the daemon
+ * stamps the committed copy with the moment it handed the message over, whatever pi wrote. The
+ * acceptance echo keeps the send time; a waiting row shows no clock.
  */
-describe("the committed copy keeps its sender's send time (B5)", () => {
+describe("the committed copy carries the time the agent got it", () => {
   function echoedMessages(hub: CapturingSessionEventHub): unknown[] {
     return hub.sessionEvents
       .filter(({ event }) => Reflect.get(event, "type") === "message.append")
       .map(({ event }): unknown => Reflect.get(event, "message"));
   }
 
-  it("stamps the send time on the echo and on the committed copy, over pi's handoff time", async () => {
+  it("stamps the send time on the echo and the handoff time on the committed copy, over pi's own", async () => {
     const { hub, fake, service } = idleService("sent-at");
     const sentAt = new Date(Date.now() - 15_000).toISOString();
+    const before = Date.now();
     await service.prompt(sessionRef("sent-at"), "hello there", undefined, undefined, { clientMessageId: "c-sent", sentAt });
     await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(1); });
 
-    fake.emit({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "hello there" }], timestamp: Date.now() } });
+    const handedBy = Date.now();
+    fake.emit({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "hello there" }], timestamp: handedBy + 60_000 } });
 
     const [echo] = echoedMessages(hub);
     const [committed] = publishedMessageEnds(hub);
     const echoTime: unknown = Reflect.get(echo ?? {}, "timestamp");
     const committedTime: unknown = Reflect.get(committed ?? {}, "timestamp");
-    expect({ echo: echoTime, committed: committedTime }).toEqual({ echo: Date.parse(sentAt), committed: Date.parse(sentAt) });
+    expect({ echo: echoTime, handedInWindow: typeof committedTime === "number" && committedTime >= before && committedTime <= handedBy }).toEqual({ echo: Date.parse(sentAt), handedInWindow: true });
     await service.dispose();
   });
 
-  it("never stamps a time after the daemon accepted the message", async () => {
-    const { hub, fake, service } = idleService("sent-ahead");
-    const before = Date.now();
-    await service.prompt(sessionRef("sent-ahead"), "hello there", undefined, undefined, { clientMessageId: "c-ahead", sentAt: new Date(before + 120_000).toISOString() });
-    const after = Date.now();
-    await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(1); });
-
-    fake.emit({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "hello there" }], timestamp: after + 5_000 } });
-
-    const stamped: unknown = Reflect.get(publishedMessageEnds(hub)[0] ?? {}, "timestamp");
-    expect(typeof stamped === "number" && stamped >= before && stamped <= after).toBe(true);
-    await service.dispose();
-  });
-
-  it("stamps the acceptance time when the sender gave none", async () => {
+  it("stamps the handoff time when the sender gave none", async () => {
     const { hub, fake, service } = idleService("sent-none");
     const before = Date.now();
     await service.prompt(sessionRef("sent-none"), "hello there", undefined, undefined, { clientMessageId: "c-none" });
-    const after = Date.now();
     await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(1); });
+    const after = Date.now();
 
     fake.emit({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "hello there" }], timestamp: after + 5_000 } });
 

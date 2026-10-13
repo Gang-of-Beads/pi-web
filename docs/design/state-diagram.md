@@ -28,6 +28,11 @@ This is the map. Code follows it; it does not follow code.
 
 ## D1. A message (one record per `clientMessageId`)
 
+**Replaced (2026-10-13) by [message-states.md](message-states.md)**, which is what is built: a
+message is on its way until the machine answers, sent in order from this device's numbered
+operation log, and never fails; Retry, Discard, `notSent`, `unverifiable` and the 10-minute
+resend window are gone. What follows is the earlier design, kept for its history and reasons.
+
 ```mermaid
 stateDiagram-v2
     [*] --> sending: reader presses Send (includes a send made before the session backend exists)

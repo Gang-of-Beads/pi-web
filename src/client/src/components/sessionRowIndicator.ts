@@ -19,12 +19,11 @@ import { renderOpeningStateMark } from "./openingMark";
  *   1         asking      amber  (--pi-warning)    dot — the same hue as the "Waiting for your answer" chip
  *   2         running     blue   (--pi-accent)     three pulsing dots (working or sending)
  *   3         opening     muted  (--pi-dim)        spinner (session being opened/reloaded/forked; startup activity)
- *   4         failed-send red    (--pi-danger)     a send that did not land (predates the opening row)
- *   5         unread      purple (--pi-purple)     filled dot
- *   6         error       red    (--pi-danger)     dot
- *   7         background  purple (--pi-purple)     hollow ring
- *   8         idle        gray   (--pi-dim)        dot
- *   9         (none)      —                        nothing
+ *   4         unread      purple (--pi-purple)     filled dot
+ *   5         error       red    (--pi-danger)     dot
+ *   6         background  purple (--pi-purple)     hollow ring
+ *   7         idle        gray   (--pi-dim)        dot
+ *   8         (none)      —                        nothing
  *
  * opening ranks below running because status work flags win over a startup
  * frame, and above unread because the session is not yet usable.
@@ -36,7 +35,7 @@ import { renderOpeningStateMark } from "./openingMark";
  * the error phase persists after the reader has seen it, so it is not evidence
  * of anything unseen, while unread is exactly that.
  */
-export type SessionRowIndicatorKind = "asking" | "running" | "opening" | "failed-send" | "unread" | "error" | "background" | "idle";
+export type SessionRowIndicatorKind = "asking" | "running" | "opening" | "unread" | "error" | "background" | "idle";
 
 export interface SessionRowIndicator {
   readonly kind: SessionRowIndicatorKind;
@@ -45,8 +44,6 @@ export interface SessionRowIndicator {
 }
 
 const UNREAD_LABEL = "Unread session activity";
-/** What a row says when a send in that session came back failed. */
-export const FAILED_SEND_LABEL = "A message failed to send";
 
 /**
  * Resolve the single indicator a session row shows, or undefined when the row
@@ -55,13 +52,11 @@ export const FAILED_SEND_LABEL = "A message failed to send";
 export function sessionRowIndicator(
   stateKind: SessionStateBadgeKind | "sending" | undefined,
   unread: boolean,
-  failedSend = false,
 ): SessionRowIndicator | undefined {
   if (stateKind === "asking") return { kind: "asking", label: SESSION_STATE_LABELS.asking };
   if (stateKind === "working") return { kind: "running", label: SESSION_STATE_LABELS.working };
   if (stateKind === "sending") return { kind: "running", label: "Sending message" };
   if (stateKind === "opening") return { kind: "opening", label: SESSION_STATE_LABELS.opening };
-  if (failedSend) return { kind: "failed-send", label: FAILED_SEND_LABEL };
   if (unread) return { kind: "unread", label: UNREAD_LABEL };
   if (stateKind === "error") return { kind: "error", label: SESSION_STATE_LABELS.error };
   if (stateKind === "background") return { kind: "background", label: SESSION_STATE_LABELS.background };

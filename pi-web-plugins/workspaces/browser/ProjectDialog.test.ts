@@ -175,20 +175,20 @@ describe("folder list freshness", () => {
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
 
     await vi.waitFor(() => {
-      expect(dialog.shadowRoot?.textContent).toContain("Search failed");
+      expect(dialog.shadowRoot?.textContent).toContain("Searching again…");
     });
 
     expect(dialog.shadowRoot?.textContent).not.toContain("No matching folders found");
   });
 
-  it("keeps the failure reading as a failure after the search is retried and fails again", async () => {
+  it("keeps saying it searches again after the search is made again and fails again", async () => {
     const { dialog, projectDirectories } = await mountDialog();
     projectDirectories.mockRejectedValue(new Error("scan exploded"));
     const input = pathInput(dialog);
     input.value = "/work/broken";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
     await vi.waitFor(() => {
-      expect(dialog.shadowRoot?.textContent).toContain("Search failed");
+      expect(dialog.shadowRoot?.textContent).toContain("Searching again…");
     });
 
     input.value = "/work/broken2";
@@ -196,7 +196,7 @@ describe("folder list freshness", () => {
     input.value = "/work/broken";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
     await vi.waitFor(() => {
-      expect(dialog.shadowRoot?.textContent).toContain("Search failed");
+      expect(dialog.shadowRoot?.textContent).toContain("Searching again…");
     });
 
     expect(dialog.shadowRoot?.textContent).not.toContain("No matching folders found");

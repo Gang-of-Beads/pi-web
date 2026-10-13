@@ -1,6 +1,7 @@
 # Message states: a message is never lost and never fails for good
 
-Status: approved by the owner (2026-10-04), with the details below (time,
+Status: implemented 2026-10-13 (device and daemon), with the operation log the
+owner asked for that day (see Order). Approved by the owner (2026-10-04), with the details below (time,
 the queue list, a failed take-back, and the state-merging rule). Revises D1 in
 `state-diagram.md`.
 
@@ -187,23 +188,48 @@ merge rule only decides whether an update is new.
 If the answer arrives before the frame, step 3 happens first and step 2 is
 dropped as stale. Either way the end state and the notice are the same.
 
-## Order
+## Order: one operation log per device
 
-- **Machine order is acceptance order** (`seq`), across all devices.
+Owner, 2026-10-13: a later message was "Queued" while an earlier one from the
+same phone read "Not received". The device kept its sends in order only as long
+as each was answered; a send that timed out let the next one go, and nothing on
+the machine could tell that one was missing. Order is now a protocol, not a
+habit of the device: an operation log with numbers, the way the machine already
+numbers the frames it sends (`seq` with gap replay).
+
+- **Every operation is numbered.** A device (one id per browser profile,
+  `pi-web:device-id`) numbers what it asks one session to do - a message, a
+  take-back - 1, 2, 3, when it is written. A take-back is an operation like a
+  message and takes its place in the log after everything written before it.
+- **The outbox is the log of unanswered operations.** It is sent strictly from
+  the head: the head is sent, and sent again with the same identity and number,
+  until the machine answers; nothing behind it goes first. Everything below the
+  head is done, so each request carries `ackedThrough = seq - 1`.
+- **The machine applies one device's operations in number order.** Per session
+  and device it keeps the highest number applied (`sequence-cursors.json`
+  beside the ledger). An operation numbered at most that is a repeat and is
+  answered from the ledger by its identity, never run again; the next number is
+  applied; a number past the next is refused (409, `sequence-gap`) because an
+  earlier one has not arrived. The cursor is the higher of the file and the
+  request's `ackedThrough`, so a lost file costs nothing.
+- **A message and a take-back must carry their number**; the machine refuses
+  either without one (400). There is no unnumbered path.
+- **Machine order is acceptance order** (`seq`), across all devices; within one
+  device it is that device's log order.
 - **The transcript tail** (unchanged shape): committed rows at their entries;
   then the pending block: `queued` and `handed` by `seq`, then this device's
   `sending` and `takingBack` rows in the order they were written.
 
 ## Staying in step
 
-The device reconciles its outbox with the machine whenever the link comes back
-and when a session opens:
-
-1. It asks the machine about every `sending` and `takingBack` id
-   (`outcomesFor`).
-2. An id the machine knows adopts the machine's state at once.
-3. An id the machine has no row for stays as it is and is resent (`sending`) or
-   re-asked (`takingBack`).
+The outbox resends its head itself, so a `sending` or `takingBack` row needs no
+question of its own: the resend is the question, and the machine answers it
+from the ledger by identity. When the link comes back and when a session
+opens, the device asks the ledger about rows the machine took but the
+transcript has not settled (`received`, `queued`; `outcomesFor`): a
+withdrawal or consumption removes the row; a refusal cancels it; `unknown` (a
+restart lost it before the agent read it) puts the message back in the outbox
+as a new operation under its own identity.
 
 The machine answers "already have it" from two sources, so idempotency outlives
 the ledger's age limit:
@@ -240,10 +266,9 @@ device could run again. This window is the only one left.
 
 ## Upgrade
 
-Outbox records written by an older version as "not sent" or "unverifiable"
-become `sending`, appear in the queue list with Take back, and are delivered on
-the first load after the upgrade (owner: no age limit; the queue list is where a
-reader stops a message).
+None (owner, 2026-10-13: "不用兼容旧版本"). Outbox records an older build wrote
+have no number and are not read; a page and a machine of this version are
+updated together.
 
 ## Order of work
 

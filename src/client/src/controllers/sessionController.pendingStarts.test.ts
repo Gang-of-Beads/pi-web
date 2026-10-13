@@ -3,7 +3,7 @@ import { initialAppState } from "../appState";
 import { isCachedNewSessionInfo, loadCachedNewSessions } from "../cachedNewSessions";
 import { loadDraft, saveDraft } from "../promptDraftStorage";
 import { SessionController } from "./sessionController";
-import { defaultApi, deferred, emptyPage, FakeSocket, MemoryStorage, oldSession, sessionKey, sessionLookupId, status, workspace, type AppState, type SessionInfo } from "./sessionController.testSupport";
+import { defaultApi, launchNewSession, deferred, emptyPage, FakeSocket, MemoryStorage, oldSession, sessionKey, sessionLookupId, status, workspace, type AppState, type SessionInfo } from "./sessionController.testSupport";
 
 describe("SessionController pending starts", () => {
   it("does not carry the previous session's failed reads into the session being started", () => {
@@ -16,7 +16,7 @@ describe("SessionController pending starts", () => {
       { api: { ...defaultApi, startSession: () => new Promise<SessionInfo>(() => undefined) }, socket: new FakeSocket() },
     );
 
-    void controller.startSession();
+    void launchNewSession(controller);
 
     expect({ status: state.statusReadFailed, transcript: state.transcriptFailed }).toEqual({ status: undefined, transcript: undefined });
   });
@@ -41,7 +41,7 @@ describe("SessionController pending starts", () => {
       { api, socket: new FakeSocket() },
     );
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const temporarySession = state.selectedSession;
 
     expect(temporarySession?.id).toMatch(/^pending-session-/);
@@ -88,7 +88,7 @@ describe("SessionController pending starts", () => {
       { api, socket },
     );
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const temporaryId = state.selectedSession?.id;
 
     expect(state.sessions.map((session) => session.id)).toEqual([temporaryId]);
@@ -119,7 +119,7 @@ describe("SessionController pending starts", () => {
       { api, socket: new FakeSocket() },
     );
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const temporaryId = state.selectedSession?.id;
     controller.applyGlobalEvent({ type: "session.created", session: started });
     controller.applyGlobalEvent({ type: "session.created", session: otherClientSession });
@@ -155,7 +155,7 @@ describe("SessionController pending starts", () => {
       { api, socket: new FakeSocket() },
     );
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const temporaryId = state.selectedSession?.id;
     await controller.refreshCurrentWorkspaceSessions();
 
@@ -188,9 +188,9 @@ describe("SessionController pending starts", () => {
       { api, socket: new FakeSocket() },
     );
 
-    const firstStart = controller.startSession();
+    const firstStart = launchNewSession(controller);
     const firstTemporaryId = state.selectedSession?.id;
-    const secondStart = controller.startSession();
+    const secondStart = launchNewSession(controller);
     const secondTemporaryId = state.selectedSession?.id;
 
     expect(startResolvers).toHaveLength(2);
@@ -233,7 +233,7 @@ describe("SessionController pending starts", () => {
       { api, socket: new FakeSocket() },
     );
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const temporaryId = state.selectedSession?.id;
     if (temporaryId === undefined) throw new Error("Expected temporary session id");
     saveDraft(sessionKey(temporaryId), "draft text");
@@ -261,7 +261,7 @@ describe("SessionController pending starts", () => {
       { api, socket: new FakeSocket() },
     );
 
-    await controller.startSession();
+    await launchNewSession(controller);
     const temporaryId = state.selectedSession?.id;
 
     expect(temporaryId).toMatch(/^pending-session-/);
@@ -294,11 +294,11 @@ describe("SessionController pending starts", () => {
       { api, socket: new FakeSocket() },
     );
 
-    const start = controller.startSession();
+    const start = launchNewSession(controller);
     const temporaryId = state.selectedSession?.id;
     if (temporaryId === undefined) throw new Error("Expected temporary session id");
-    await controller.send("queued before discard");
-    expect(state.clientQueuedSessionMessages[temporaryId]).toEqual([{ kind: "followUp", text: "queued before discard" }]);
+    await controller.send("!echo queued before discard");
+    expect(state.clientQueuedSessionMessages[temporaryId]).toEqual([{ kind: "followUp", text: "!echo queued before discard" }]);
 
     await controller.deleteCachedNewSession(state.selectedSession);
     expect(state.sessions).toEqual([]);

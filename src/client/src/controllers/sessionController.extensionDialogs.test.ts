@@ -2,9 +2,6 @@ import { describe, expect, it } from "vitest";
 import { initialAppState } from "../appState";
 import type { ExtensionDialogCloseResponse, ExtensionDialogKind, PendingExtensionDialog } from "../api";
 import { SessionController } from "./sessionController";
-import { clearPendingPrompts, loadPendingPrompts, reserveAcceptedPrompt, savePendingPrompt } from "../pendingOutbox";
-import { machineSessionKey } from "../machineKeys";
-import { selectedMachineId } from "./types";
 import { defaultApi, deferred, EmitSocket, emptyPage, FakeSocket, oldSession, replacementSession, status, workspace, type AppState, type SessionStatus } from "./sessionController.testSupport";
 
 function dialog(dialogId: string, kind: ExtensionDialogKind = "confirm"): PendingExtensionDialog {
@@ -107,74 +104,14 @@ describe("SessionController prompt.accepted delivery transition", () => {
 });
 
 describe("SessionController prompt.refused", () => {
-  it("ends the wait of a queued row the runtime refused, so it offers what a failed send offers", async () => {
+  it("cancels a queued row the runtime refused: the row goes and the notice names the reason", async () => {
     const harness = await liveSession();
     const line = { role: "user" as const, parts: [{ type: "text" as const, text: "refused later" }], meta: { delivery: { clientMessageId: "cmid-r", state: "queued" as const } } };
     harness.state().messages = [line];
 
     harness.socket.emit({ type: "prompt.refused", clientMessageId: "cmid-r", message: "No model configured" });
 
-    expect(harness.state().messages.map((message) => message.meta?.delivery?.state)).toEqual(["failed"]);
-  });
-
-  it("puts a message the daemon took and the runtime refused back in the outbox, so Retry has its words", async () => {
-    const harness = await liveSession();
-    const key = machineSessionKey(selectedMachineId(harness.state()), harness.state().selectedSession?.id ?? "");
-    savePendingPrompt(key, { text: "refused after acceptance", clientMessageId: "cmid-p2", at: new Date().toISOString() });
-    harness.state().messages = [{ role: "user", parts: [{ type: "text", text: "refused after acceptance" }], meta: { delivery: { clientMessageId: "cmid-p2", state: "sending" } } }];
-
-    harness.socket.emit({ type: "prompt.accepted", clientMessageId: "cmid-p2" });
-    const afterAcceptance = loadPendingPrompts(key).length;
-    harness.socket.emit({ type: "prompt.refused", clientMessageId: "cmid-p2", message: "No model configured" });
-    const record = loadPendingPrompts(key)[0];
-    clearPendingPrompts(key);
-
-    expect({ afterAcceptance, record: { text: record?.text, state: record?.state, failure: record?.failure }, row: harness.state().messages[0]?.meta?.delivery })
-      .toEqual({ afterAcceptance: 0, record: { text: "refused after acceptance", state: "failed", failure: "not-sent" }, row: { clientMessageId: "cmid-p2", state: "failed", cause: "not-sent" } });
-  });
-
-  it("keeps a refusal that landed before its send's own answer: the row stays Not sent and Retry keeps its words", async () => {
-    const socket = new EmitSocket();
-    const post = deferred<{ accepted: true }>();
-    let state = selectedState({ selectedSession: undefined });
-    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api: { ...selectableApi(status(oldSession.id)), prompt: () => post.promise }, socket });
-    await controller.selectSession(oldSession, { updateUrl: false });
-    const key = machineSessionKey(selectedMachineId(state), oldSession.id);
-    savePendingPrompt(key, { text: "refused before its answer", clientMessageId: "cmid-late", at: new Date().toISOString() });
-
-    const sending = controller.send("refused before its answer", "followUp", undefined, "inline", { clientMessageId: "cmid-late" });
-    socket.emit({ type: "prompt.accepted", clientMessageId: "cmid-late" });
-    socket.emit({ type: "prompt.refused", clientMessageId: "cmid-late", message: "No model configured" });
-    post.resolve({ accepted: true });
-    await sending;
-    reserveAcceptedPrompt(key, "cmid-late");
-    const record = loadPendingPrompts(key)[0];
-    clearPendingPrompts(key);
-
-    expect({ row: state.messages.find((line) => line.meta?.delivery?.clientMessageId === "cmid-late")?.meta?.delivery?.state, record: [record?.state, record?.refused] })
-      .toEqual({ row: "failed", record: ["failed", true] });
-  });
-
-  it("keeps nothing aside for a message the agent took before its send's own answer came, its acceptance frame missed", async () => {
-    const socket = new EmitSocket();
-    const post = deferred<{ accepted: true }>();
-    let state = selectedState({ selectedSession: undefined });
-    const controller = new SessionController(() => state, (patch) => { state = { ...state, ...patch }; }, () => undefined, undefined, { api: { ...selectableApi(status(oldSession.id)), prompt: () => post.promise }, socket });
-    await controller.selectSession(oldSession, { updateUrl: false });
-    const key = machineSessionKey(selectedMachineId(state), oldSession.id);
-    savePendingPrompt(key, { text: "taken at once", clientMessageId: "cmid-taken", at: new Date().toISOString() });
-
-    const sending = controller.send("taken at once", "followUp", undefined, "inline", { clientMessageId: "cmid-taken" });
-    const write: unknown = Reflect.get(controller, "setState");
-    if (typeof write !== "function") throw new Error("setState is not reachable");
-    Reflect.apply(write, controller, [{ messages: state.messages.map((line) => (line.meta?.delivery?.clientMessageId === "cmid-taken" ? { ...line, meta: { ...line.meta, delivery: { clientMessageId: "cmid-taken", state: "delivered" as const } } } : line)) }]);
-    post.resolve({ accepted: true });
-    await sending;
-    reserveAcceptedPrompt(key, "cmid-taken");
-    const reserved = localStorage.getItem(`pi-web:accepted-prompt:${key}`) ?? "";
-    clearPendingPrompts(key);
-
-    expect({ reserved: reserved.includes("cmid-taken"), outbox: loadPendingPrompts(key).length }).toEqual({ reserved: false, outbox: 0 });
+    expect({ rows: harness.state().messages.length, notice: harness.state().error }).toEqual({ rows: 0, notice: "Your message to this session was not sent: No model configured" });
   });
 
   it("leaves a row the transcript already claimed as read", async () => {

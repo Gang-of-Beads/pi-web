@@ -40,6 +40,7 @@ import { quietWindowMs, registerSessionRoutes } from "./sessionRoutes.js";
 import { SessionNotFoundError } from "./sessionErrors.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 
+const SEQUENCE = { deviceId: "device-test-1", seq: 1, ackedThrough: 0 };
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 
 let app: FastifyInstance;
@@ -687,7 +688,7 @@ describe("session routes", () => {
   });
 
   it("rejects prompt payloads that omit text without opening a session", async () => {
-    const response = await app.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: "/repo", body: "Build the thing" } });
+    const response = await app.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: "/repo", body: "Build the thing", sequence: SEQUENCE } });
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: "Prompt text is required" });
@@ -703,7 +704,7 @@ describe("session routes", () => {
 
     try {
       const statusResponse = await routeApp.inject({ method: "GET", url: "/sessions/session-1/status" });
-      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { text: "hello" } });
+      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { text: "hello", sequence: SEQUENCE } });
       const bulkResponse = await routeApp.inject({ method: "POST", url: "/sessions/bulk/archive", payload: { sessions: [{ id: "session-1" }] } });
 
       expect(statusResponse.statusCode).toBe(400);
@@ -889,7 +890,7 @@ describe("session routes", () => {
 
     const attachments = [{ kind: "image", mimeType: "image/png", data: "QUJD", name: "shot.png" }];
     try {
-      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: "/repo", text: "look", attachments } });
+      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: "/repo", text: "look", attachments, sequence: SEQUENCE } });
       expect(promptResponse.statusCode).toBe(200);
       expect(routeService.calls.at(-1)).toEqual({ lookup: { id: "session-1", cwd: resolve("/repo") }, text: "look", attachments });
 
@@ -909,8 +910,8 @@ describe("session routes", () => {
     registerSessionRoutes(routeApp, routeService, new SessionEventHub());
 
     try {
-      const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: "/repo", text: "hello", clientMessageId: "c-1", sentAt: "2026-10-02T12:23:49.000Z" } });
-      expect({ status: response.statusCode, options: routeService.promptOptions }).toEqual({ status: 200, options: [{ clientMessageId: "c-1", sentAt: "2026-10-02T12:23:49.000Z" }] });
+      const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: "/repo", text: "hello", clientMessageId: "c-1", sentAt: "2026-10-02T12:23:49.000Z", sequence: SEQUENCE } });
+      expect({ status: response.statusCode, options: routeService.promptOptions }).toEqual({ status: 200, options: [{ clientMessageId: "c-1", sentAt: "2026-10-02T12:23:49.000Z", sequence: SEQUENCE }] });
     } finally {
       await routeService.dispose();
       await routeApp.close();
@@ -929,7 +930,7 @@ describe("session routes", () => {
       // absolute path (drive-qualified on Windows).
       const requestCwd = resolve("/repo");
       const statusResponse = await routeApp.inject({ method: "GET", url: `/sessions/session-1/status?cwd=${encodeURIComponent(requestCwd)}` });
-      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: requestCwd, text: "hello" } });
+      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: requestCwd, text: "hello", sequence: SEQUENCE } });
 
       expect(statusResponse.statusCode).toBe(200);
       expect(promptResponse.statusCode).toBe(200);

@@ -54,11 +54,4 @@ describe("oneRowPerIdentity", () => {
     const out = oneRowPerIdentity([tracked, reply, twin]);
     expect(out.map((line) => line.role)).toEqual(["user", "assistant"]);
   });
-
-  it("never upgrades a failed delivery", () => {
-    const failed = user("lost", { delivery: { clientMessageId: "c-6", state: "failed" } });
-    const twin = user("lost", { clientMessageId: "c-6" });
-    const out = oneRowPerIdentity([failed, twin]);
-    expect(out[0]?.meta?.delivery?.state).toBe("failed");
-  });
 });

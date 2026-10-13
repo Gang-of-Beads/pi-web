@@ -46,7 +46,7 @@ describe("settings-plugins-panel layout", () => {
 
     const rendered = flattenTemplateContent(panel.render());
 
-    expect(rendered).toContain("PI WEB plugin list unavailable for Lab Mac (remote machine). Use Reload to try again.");
+    expect(rendered).toContain("PI WEB plugin list not loaded yet for Lab Mac (remote machine) · trying again…");
     expect(rendered).not.toContain("No PI WEB browser plugins discovered");
     expect(rendered).not.toContain("Trusted code warning");
   });
@@ -60,7 +60,7 @@ describe("settings-plugins-panel layout", () => {
 
     const rendered = flattenTemplateContent(panel.render());
 
-    expect(rendered).toContain("PI WEB plugin list unavailable");
+    expect(rendered).toContain("PI WEB plugin list not loaded yet");
     expect(rendered).toContain("Offline recovery on local (local gateway)");
     expect(rendered).toContain("pi-web plugins safe-start show");
     expect(rendered).toContain("pi-web plugins safe-start set none --restart");
@@ -89,7 +89,7 @@ describe("settings-plugins-panel layout", () => {
     const rendered = flattenTemplateContent(panel.render());
 
     expect(rendered).toContain("No PI WEB plugins are discovered or active on Lab Mac (remote machine).");
-    expect(rendered).not.toContain("PI WEB plugin list unavailable");
+    expect(rendered).not.toContain("PI WEB plugin list not loaded yet");
     expect(rendered).not.toContain("Trusted code warning");
   });
 
@@ -217,11 +217,11 @@ describe("settings-plugins-panel layout", () => {
     const rendered = flattenTemplateContent(panel.render());
 
     expectTextOrder(rendered, [
-      "Configuration is unavailable. Reload to try again before changing plugin enablement.",
+      "Configuration is not loaded yet; PI WEB keeps trying. Plugins can be switched once it loads.",
       "Trusted code warning:",
       "remote-disabled",
     ]);
-    expect(countOccurrences(rendered, "Configuration is unavailable. Reload to try again before changing plugin enablement.")).toBe(1);
+    expect(countOccurrences(rendered, "Configuration is not loaded yet; PI WEB keeps trying. Plugins can be switched once it loads.")).toBe(1);
     expect(templateValues(renderPluginTemplate(panel, pluginInfo("remote-disabled", false))).map(boundValue).filter(isBoolean)).toEqual([false, true]);
   });
 });

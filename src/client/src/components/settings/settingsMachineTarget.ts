@@ -44,6 +44,21 @@ export function pluginLifecycleUnavailableMessage(target: SettingsMachineTarget)
   return `Plugin lifecycle diagnostics are not available on ${target.name}. Update and restart PI WEB on that machine before loading server-backed plugins.`;
 }
 
+/**
+ * A settings read that did not answer, in words for a read PI WEB makes again by itself (B48): no
+ * instruction to retry, since the reader has nothing to do.
+ */
+export function settingsReadFailureWords(message: string, target: SettingsMachineTarget): string {
+  const normalized = message.trim();
+  const remote = target.kind === "remote" ? REMOTE_READ_WORDS[normalized] : undefined;
+  return remote === undefined ? normalized : remote(target.name);
+}
+
+const REMOTE_READ_WORDS: Readonly<Record<string, (name: string) => string>> = {
+  "Remote machine timeout": (name) => `${name} did not answer in time`,
+  "Remote machine unavailable": (name) => `Could not reach ${name}`,
+};
+
 export function friendlySelectedMachineSettingsErrorMessage(message: string, target: SettingsMachineTarget): string {
   const normalized = message.trim();
   if (target.kind !== "remote") return normalized;

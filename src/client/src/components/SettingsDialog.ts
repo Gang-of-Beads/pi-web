@@ -21,11 +21,14 @@ import "./settings/SettingsShortcutsPanel";
 import { friendlyPiPackageErrorMessage, piPackageMutationFollowUpMessage, shouldRefreshGatewayPluginsAfterPiPackageMutation, type PiPackageOperationState } from "./settings/piPackageSettings";
 import { loadGatewaySettingsData, loadPiPackagesData } from "./settings/settingsDataLoading";
 import { mergeSelectedMachineAccessConfig } from "./settings/settingsMachineAccessConfig";
-import { friendlySelectedMachineSettingsErrorMessage, isSelectedMachineSettingsUnsupported, pluginLifecycleSupport, selectedMachineSettingsSupportKey, settingsMachineTarget, settingsMachineTargetLabel, type PluginLifecycleSupport, type SettingsMachineTarget } from "./settings/settingsMachineTarget";
+import { friendlySelectedMachineSettingsErrorMessage, isSelectedMachineSettingsUnsupported, settingsReadFailureWords, pluginLifecycleSupport, selectedMachineSettingsSupportKey, settingsMachineTarget, settingsMachineTargetLabel, type PluginLifecycleSupport, type SettingsMachineTarget } from "./settings/settingsMachineTarget";
 import { mergeSelectedMachinePluginConfig, pluginEnabledConfigPatch } from "./settings/settingsPluginConfig";
 import { describeError } from "../notice";
 import { COARSE_OR_MOBILE_MEDIA_QUERY } from "../breakpoints";
 import { interactiveSurfaceStyles } from "./shared";
+
+/** The reads the dialog makes, each read again by itself when it does not answer. */
+type SettingsRead = "config" | "access" | "plugins" | "packages";
 
 @customElement("settings-dialog")
 export class SettingsDialog extends LitElement {
@@ -95,6 +98,8 @@ export class SettingsDialog extends LitElement {
   private pluginLoadRequestSeq = 0;
   private packageLoadRequestSeq = 0;
   private packageMutationSeq = 0;
+  private readonly readAttempts = new Map<SettingsRead, number>();
+  private readonly readAgainTimers = new Map<SettingsRead, ReturnType<typeof setTimeout>>();
 
   private readonly handlePhoneQueryChange = (event: MediaQueryListEvent): void => {
     this.phoneLayout = event.matches;
@@ -115,6 +120,8 @@ export class SettingsDialog extends LitElement {
     this.phoneQuery?.removeEventListener("change", this.handlePhoneQueryChange);
     if (this.savedMessageTimer !== undefined) window.clearTimeout(this.savedMessageTimer);
     this.savedMessageTimer = undefined;
+    for (const timer of this.readAgainTimers.values()) clearTimeout(timer);
+    this.readAgainTimers.clear();
     super.disconnectedCallback();
   }
 
@@ -427,6 +434,7 @@ export class SettingsDialog extends LitElement {
       if (result.config !== undefined) this.configResponse = result.config;
       if (result.plugins !== undefined) this.pluginsResponse = result.plugins;
       this.error = result.error;
+      this.afterRead("config", result.error === "" ? "answered" : "unanswered", () => this.loadConfig());
     } finally {
       if (this.isCurrentLoad(requestSeq)) this.loading = false;
     }
@@ -440,9 +448,11 @@ export class SettingsDialog extends LitElement {
       const response = await configApi.config(target.id);
       if (!this.isCurrentAccessLoad(requestSeq, target)) return;
       this.accessConfigResponse = response;
+      this.afterRead("access", "answered", () => this.loadAccessConfigForTarget(target));
     } catch (error) {
       if (this.isCurrentAccessLoad(requestSeq, target)) {
-        this.accessError = `Failed to load file access/upload config from ${settingsMachineTargetLabel(target)}: ${friendlySelectedMachineSettingsErrorMessage(describeError(error), target)}`;
+        this.accessError = `Failed to load file access/upload config from ${settingsMachineTargetLabel(target)}: ${settingsReadFailureWords(describeError(error), target)} · trying again…`;
+        this.afterRead("access", "unanswered", () => this.loadAccessConfigForTarget(target));
       }
     } finally {
       if (this.isCurrentAccessLoad(requestSeq, target)) this.accessLoading = false;
@@ -462,9 +472,11 @@ export class SettingsDialog extends LitElement {
           this.selectedPluginConfigResponse = config;
           this.selectedPluginsResponse = undefined;
           this.pluginError = lifecycleSupport.message ?? `Plugin lifecycle diagnostics are not available on ${settingsMachineTargetLabel(target)}.`;
+          this.afterRead("plugins", "answered", () => this.loadPluginsForTarget(target));
         } catch (error) {
           if (!this.isCurrentPluginLoad(requestSeq, target)) return;
-          this.pluginError = `Failed to load PI WEB plugin config from ${settingsMachineTargetLabel(target)}: ${friendlySelectedMachineSettingsErrorMessage(describeError(error), target)}; ${lifecycleSupport.message ?? "plugin lifecycle diagnostics are unsupported"}`;
+          this.pluginError = `Failed to load PI WEB plugin config from ${settingsMachineTargetLabel(target)}: ${settingsReadFailureWords(describeError(error), target)}; ${lifecycleSupport.message ?? "plugin lifecycle diagnostics are unsupported"} · trying again…`;
+          this.afterRead("plugins", "unanswered", () => this.loadPluginsForTarget(target));
         }
         return;
       }
@@ -474,12 +486,13 @@ export class SettingsDialog extends LitElement {
 
       const errors: string[] = [];
       if (config.status === "fulfilled") this.selectedPluginConfigResponse = config.value;
-      else errors.push(`config: ${friendlySelectedMachineSettingsErrorMessage(describeError(config.reason), target)}`);
+      else errors.push(`config: ${settingsReadFailureWords(describeError(config.reason), target)}`);
 
       if (plugins.status === "fulfilled") this.selectedPluginsResponse = plugins.value;
-      else errors.push(`PI WEB plugins: ${friendlySelectedMachineSettingsErrorMessage(describeError(plugins.reason), target)}`);
+      else errors.push(`PI WEB plugins: ${settingsReadFailureWords(describeError(plugins.reason), target)}`);
 
-      this.pluginError = errors.length === 0 ? "" : `Failed to load PI WEB plugin settings from ${settingsMachineTargetLabel(target)}: ${errors.join("; ")}`;
+      this.pluginError = errors.length === 0 ? "" : `Failed to load PI WEB plugin settings from ${settingsMachineTargetLabel(target)}: ${errors.join("; ")} · trying again…`;
+      this.afterRead("plugins", errors.length === 0 ? "answered" : "unanswered", () => this.loadPluginsForTarget(target));
     } finally {
       if (this.isCurrentPluginLoad(requestSeq, target)) this.pluginLoading = false;
     }
@@ -496,10 +509,30 @@ export class SettingsDialog extends LitElement {
 
       this.packagesResponse = result.packagesResponse;
       this.packageError = result.error;
+      this.afterRead("packages", result.error === "" ? "answered" : "unanswered", () => this.loadPackagesForTarget(target));
     } finally {
       if (this.isCurrentPackageLoad(requestSeq, target)) this.packageLoading = false;
     }
   }
+
+  /**
+   * A settings read that did not answer is read again by itself, sooner first and then no longer
+   * than 15 s apart, while the dialog is open (B48: the reader is never told to press Reload).
+   */
+  private afterRead(read: SettingsRead, outcome: "answered" | "unanswered", again: () => Promise<void>): void {
+    clearTimeout(this.readAgainTimers.get(read));
+    this.readAgainTimers.delete(read);
+    this.readAfter[outcome](read, again);
+  }
+
+  private readonly readAfter: Readonly<Record<"answered" | "unanswered", (read: SettingsRead, again: () => Promise<void>) => void>> = {
+    answered: (read) => { this.readAttempts.delete(read); },
+    unanswered: (read, again) => {
+      const attempt = this.readAttempts.get(read) ?? 0;
+      this.readAttempts.set(read, attempt + 1);
+      this.readAgainTimers.set(read, setTimeout(() => { if (this.isConnected) void again(); }, Math.min(1_000 * 2 ** attempt, 15_000)));
+    },
+  };
 
   private async togglePlugin(pluginId: string, enabled: boolean): Promise<void> {
     if (this.saving) return;

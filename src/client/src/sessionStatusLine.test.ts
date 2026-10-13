@@ -9,11 +9,6 @@ describe("the status bar's line", () => {
   it("separates 'not read yet' from 'could not be read'", () => {
     expect(sessionStatusLine({ hasStatus: false })).toMatchObject({ kind: "unread" });
     expect(sessionStatusLine({ hasStatus: false, failure: "" })).toMatchObject({ kind: "unread" });
-    expect(sessionStatusLine({ hasStatus: false, failure: "Session not found" })).toMatchObject({ kind: "unavailable", retry: true });
-  });
-
-  it("never leaves a failed read without a way to ask again", () => {
-    const line = sessionStatusLine({ hasStatus: false, failure: "boom" });
-    expect(line.kind === "unavailable" && line.retry).toBe(true);
+    expect(sessionStatusLine({ hasStatus: false, failure: "Session not found" })).toMatchObject({ kind: "unavailable" });
   });
 });

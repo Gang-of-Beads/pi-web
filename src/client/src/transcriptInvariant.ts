@@ -11,7 +11,7 @@ function userRowKey(line: ChatLine): string | undefined {
 function mergeDuplicate(kept: ChatLine, duplicate: ChatLine): ChatLine {
   const delivery = kept.meta?.delivery ?? duplicate.meta?.delivery;
   const committed = kept.meta?.echo !== true || duplicate.meta?.echo !== true;
-  const settledDelivery = delivery === undefined || !committed || delivery.state === "failed"
+  const settledDelivery = delivery === undefined || !committed
     ? delivery
     : { ...delivery, state: "delivered" as const };
   const base = kept.meta?.echo === true && duplicate.meta?.echo !== true ? duplicate : kept;

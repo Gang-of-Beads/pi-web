@@ -15,6 +15,7 @@ import { STATUS_DELTA_QUERY } from "../../../shared/statusChanges.js";
 import { errorText, sessionErrorReply, type SessionErrorReply } from "./sessionErrors.js";
 import { delegationRequestFromBody, spawnCwdFromBody, subsessionReadQuery, type SubsessionTranscriptQuery } from "./delegationRequests.js";
 import { isRecord } from "../../../shared/unknownValues.js";
+import { parseSequencedOperation } from "./sequenceCursors.js";
 import type { ExtensionTerminalKey } from "../../../shared/apiTypes.js";
 
 const TERMINAL_KEYS: Readonly<Record<ExtensionTerminalKey, true>> = { escape: true };
@@ -475,7 +476,8 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
   app.post<{ Params: { sessionId: string }; Body: PromptRequestBody | undefined }>(`${prefix}/sessions/:sessionId/prompt`, async (request, reply) => {
     try {
       const body = optionalRecord(request.body);
-      await sessions.prompt(sessionRefFromBody(request.params.sessionId, body), body["text"], body["streamingBehavior"], body["attachments"], { clientMessageId: body["clientMessageId"], sentAt: body["sentAt"] });
+      if (parseSequencedOperation(body["sequence"]) === undefined) throw new SequenceMissingError();
+      await sessions.prompt(sessionRefFromBody(request.params.sessionId, body), body["text"], body["streamingBehavior"], body["attachments"], { clientMessageId: body["clientMessageId"], sentAt: body["sentAt"], sequence: body["sequence"] });
       return { accepted: true };
     } catch (error) {
       return sendError(reply, sessionErrorReply(error, 400));
@@ -492,17 +494,19 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
       const body = optionalRecord(request.body);
       const ref = sessionRefFromBody(request.params.sessionId, body);
       const text = body["text"];
-      if (typeof text !== "string" || text === "") return await sessions.clearQueue(ref);
+      const named = body["clientMessageId"];
+      if ((typeof text !== "string" || text === "") && (typeof named !== "string" || named === "")) return await sessions.clearQueue(ref);
+      if (parseSequencedOperation(body["sequence"]) === undefined) throw new SequenceMissingError();
       const kind = body["kind"];
       const clientMessageId = body["clientMessageId"];
       // The response says whether anything was taken back, because the agent
       // can read the message between the click and this request; a client that
       // assumed success would delete a bubble the conversation already has.
       const { recalled, status } = await sessions.recallQueuedMessage(ref, {
-        text,
+        text: typeof text === "string" ? text : "",
         ...(kind === "steer" || kind === "followUp" ? { kind } : {}),
         ...(typeof clientMessageId === "string" && clientMessageId !== "" ? { clientMessageId } : {}),
-      });
+      }, body["sequence"]);
       return { ...status, recalled };
     } catch (error) {
       return sendError(reply, sessionErrorReply(error, 400));
@@ -987,6 +991,14 @@ export function quietWindowMs(value: string | undefined): number | undefined {
   if (value === undefined || !/^\d{1,3}$/.test(value)) return undefined;
   const seconds = Number(value);
   return seconds >= 1 && seconds <= 600 ? seconds * 1000 : undefined;
+}
+
+/** A message or take-back that does not say where it stands in its device's log cannot be ordered against that device's other operations. */
+class SequenceMissingError extends Error {
+  constructor() {
+    super("A message or take-back must carry its device's operation number.");
+    this.name = "SequenceMissingError";
+  }
 }
 
 function sendError(reply: FastifyReply, answer: SessionErrorReply): FastifyReply {

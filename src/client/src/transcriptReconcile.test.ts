@@ -72,35 +72,6 @@ describe("a waiting message the rebuild already holds in another form", () => {
   });
 });
 
-describe("a committed message with the same words as a refused one", () => {
-  const failed = (clientMessageId: string): ChatLine => ({ ...optimisticUserLine("continue", clientMessageId), meta: { ...optimisticUserLine("continue", clientMessageId).meta, delivery: { clientMessageId, state: "failed" } } });
-
-  it("leaves the refused message failed when the committed copy carries no id: they are two messages", () => {
-    const clientMessageId = newClientMessageId();
-
-    const next = applyTranscriptEvent([failed(clientMessageId)], { type: "message.end", message: { role: "user", content: "continue", timestamp: 900 } }) ?? [];
-
-    expect(next.map((line) => line.meta?.delivery?.state ?? "transcript")).toEqual(["failed", "transcript"]);
-  });
-
-  it("lets the committed copy stamped with the refused message's own id overturn the failure", () => {
-    const clientMessageId = newClientMessageId();
-
-    const next = applyTranscriptEvent([failed(clientMessageId)], { type: "message.end", message: { role: "user", content: "continue", timestamp: 900, clientMessageId } }) ?? [];
-
-    expect(next.map((line) => line.meta?.delivery?.state ?? "transcript")).toEqual(["delivered"]);
-  });
-});
-
-describe("a failed send across a rebuild", () => {
-  it("keeps its bubble and its Retry when the rebuild has no copy of it", () => {
-    const clientMessageId = newClientMessageId();
-    const failedRow: ChatLine = { ...optimisticUserLine("try again later", clientMessageId), meta: { ...optimisticUserLine("try again later", clientMessageId).meta, delivery: { clientMessageId, state: "failed" } } };
-
-    expect(carryUnsettledForward([failedRow], []).map((line) => line.meta?.delivery?.state)).toEqual(["failed"]);
-  });
-});
-
 describe("noticing a confirmation the pushes may have dropped", () => {
   it("sees a waiting card and stops seeing it once settled", () => {
     const pending = optimisticUserLine("ship it", newClientMessageId());

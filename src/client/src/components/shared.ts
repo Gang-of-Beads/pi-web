@@ -110,11 +110,13 @@ export type ChatPart =
   | { type: "empty" };
 
 /**
- * Delivery state of a message this browser sent, in the order it advances.
- * Only messages sent from this browser carry one: history loaded from the
- * server is delivered by definition and stays unmarked.
+ * Delivery state of a message this browser sent (docs/design/message-states.md). `sending` and
+ * `takingBack` are this device's until the machine answers; the rest are the machine's. A
+ * message never fails: it is on its way until the machine takes it, or it leaves the transcript
+ * (taken back, or cancelled by a refusal) and its words go back to the composer. Only messages
+ * sent from this browser carry one: history loaded from the server is delivered by definition.
  */
-export type MessageDeliveryState = "sending" | "received" | "queued" | "delivered" | "failed" | "unverifiable";
+export type MessageDeliveryState = "sending" | "takingBack" | "received" | "queued" | "delivered";
 
 export interface MessageDelivery {
   /** Correlation id minted by this browser and echoed back by the server. */
@@ -122,8 +124,6 @@ export interface MessageDelivery {
   state: MessageDeliveryState;
   /** How the agent will take the message when it is still queued. */
   kind?: "steer" | "followUp";
-  /** Why a failed message failed; see deliveryWords.ts. Only a failed delivery carries one. */
-  cause?: "not-sent" | "not-received";
 }
 
 export interface ChatLine {

@@ -44,6 +44,9 @@ export class WorkspaceFileViewer extends LitElement {
    */
   private selectionToken = 0;
   private failedPreviewToken: number | undefined;
+  /** Preview loads that failed for this selection, so the next attempt waits longer (B48: no Retry key). */
+  private previewAttempts = 0;
+  private previewRetry: ReturnType<typeof setTimeout> | undefined;
   private readonly restoreModeFromHistory = (): void => {
     this.mode = this.modeStore?.adopt();
     // The restored entry owns the address-bar value. Forget the prior entry's
@@ -78,6 +81,7 @@ export class WorkspaceFileViewer extends LitElement {
   override disconnectedCallback(): void {
     window.removeEventListener("popstate", this.restoreModeFromHistory);
     document.removeEventListener("selectionchange", this.onDocumentSelectionChange);
+    clearTimeout(this.previewRetry);
     super.disconnectedCallback();
   }
 
@@ -90,6 +94,8 @@ export class WorkspaceFileViewer extends LitElement {
     // The mode deliberately survives a new selection; only failure state, which
     // belongs to the bytes that failed, is per selection.
     this.failedPreviewToken = undefined;
+    this.previewAttempts = 0;
+    clearTimeout(this.previewRetry);
   }
 
   /**
@@ -221,7 +227,7 @@ export class WorkspaceFileViewer extends LitElement {
 
   private renderImagePreview(file: FileContentResponse, token: number): TemplateResult {
     if (file.size > this.limits.inlinePreviewBytes) return this.renderPreviewTooLarge(file, "image");
-    if (this.failedPreviewToken === token) return this.renderPreviewFailure(file, token);
+    if (this.failedPreviewToken === token) return this.renderPreviewFailure(file);
     const src = this.previewUrl(file.path, { modifiedAt: file.modifiedAt });
     return html`
       <div class="image-preview">
@@ -245,7 +251,7 @@ export class WorkspaceFileViewer extends LitElement {
    */
   private renderMediaPreview(file: FileContentResponse, kind: "audio" | "video", token: number): TemplateResult {
     if (file.size > this.previewByteLimitForKind(kind)) return this.renderPreviewTooLarge(file, kind);
-    if (this.failedPreviewToken === token) return this.renderPreviewFailure(file, token);
+    if (this.failedPreviewToken === token) return this.renderPreviewFailure(file);
     const src = this.previewUrl(file.path, { modifiedAt: file.modifiedAt });
     const onError = () => { this.recordPreviewFailure(token); };
     // `preload="metadata"` keeps the first paint cheap on a long clip: the
@@ -266,7 +272,7 @@ export class WorkspaceFileViewer extends LitElement {
 
   private renderFramePreview(file: FileContentResponse, kind: "html" | "pdf", token: number): TemplateResult {
     if (file.size > this.limits.inlinePreviewBytes) return this.renderPreviewTooLarge(file, kind);
-    if (this.failedPreviewToken === token) return this.renderPreviewFailure(file, token);
+    if (this.failedPreviewToken === token) return this.renderPreviewFailure(file);
     const src = this.previewUrl(file.path, { modifiedAt: file.modifiedAt });
 
     return html`
@@ -283,12 +289,11 @@ export class WorkspaceFileViewer extends LitElement {
     `;
   }
 
-  private renderPreviewFailure(file: FileContentResponse, token: number): TemplateResult {
+  private renderPreviewFailure(file: FileContentResponse): TemplateResult {
     return html`
       <div class="preview-state" role="alert">
-        <strong>Preview failed for ${file.path}.</strong>
+        <strong>The preview of ${file.path} did not load · trying again…</strong>
         <span>Open it in a new window or use Download above.</span>
-        <button type="button" @click=${() => { this.retryPreview(token); }}>Retry preview</button>
       </div>
     `;
   }
@@ -337,6 +342,10 @@ export class WorkspaceFileViewer extends LitElement {
     if (token !== this.selectionToken || this.showsRawSource()) return;
     this.failedPreviewToken = token;
     this.requestUpdate();
+    const delay = Math.min(1_000 * 2 ** this.previewAttempts, 15_000);
+    this.previewAttempts += 1;
+    clearTimeout(this.previewRetry);
+    this.previewRetry = setTimeout(() => { if (this.isConnected) this.retryPreview(token); }, delay);
   }
 
   private retryPreview(token: number): void {

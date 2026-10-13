@@ -91,7 +91,6 @@ function readerOnTheSessionsPage(options: { cached: boolean; read: Promise<void>
     return Promise.resolve();
   });
   replace(app, "focusComposerAfterRender", () => Promise.resolve());
-  replace(app, "quickSwitcherBrowseMachineId", "local");
   return { app, previous, selected, reads, moves };
 }
 
@@ -255,20 +254,6 @@ describe("the history entry a tap adds", () => {
     expect(writes).toEqual([{ machine: "remote-b", session: undefined, view: "navigation", replace: false, newEntry: false }]);
   });
 
-  it("writes once after the workspace pick, whether or not the pick wrote, naming the machine it moved to", async () => {
-    const app = createApp();
-    const project = { id: "p", name: "p", path: "/p", createdAt: "" };
-    call(app, "setState", { machines: [local, remote], selectedMachine: local, projects: [project], mainView: "navigation" });
-    replace(app, "quickSwitcherBrowseMachineId", "remote-b");
-    const { writes, machineOptions } = recordingWrites(app);
-    const picked: string[] = [];
-    replace(member(app, "workspaces"), "selectProject", (chosen: { id: string }) => { picked.push(chosen.id); return Promise.resolve(true); });
-
-    await call(app, "openWorkspaceFromQuickSwitcher", { id: "w", projectId: "p", path: "/p", label: "w", isMain: true, effectiveConfig: {} });
-
-    expect({ machineOptions, picked, writes }).toEqual({ machineOptions: [{ updateUrl: false }], picked: ["p"], writes: [{ machine: "remote-b", session: undefined, view: "navigation", replace: false, newEntry: false }] });
-  });
-
   /** Review 1c0cb377: an overtaken open went on to pick, and wrote the in-between place. */
   it.each<[string, number, unknown[]]>([
     ["picks nothing once the reader moved on while it was moving, and names only the machine", 0, [{ machine: "remote-b", session: undefined, view: "navigation", replace: false, newEntry: false }]],
@@ -277,7 +262,7 @@ describe("the history entry a tap adds", () => {
     const app = createApp();
     const project = { id: "p", name: "p", path: "/p", createdAt: "" };
     call(app, "setState", { machines: [local, remote], selectedMachine: local, projects: [project], mainView: "navigation" });
-    replace(app, "quickSwitcherBrowseMachineId", "remote-b");
+    replace(app, "quickSwitcherMachineId", "remote-b");
     replace(app, "routeRestoreDepth", restoring);
     const { writes } = recordingWrites(app);
     replace(member(app, "machines"), "selectMachine", (machine: Machine) => {
@@ -297,7 +282,7 @@ describe("the history entry a tap adds", () => {
     const app = createApp();
     const project = { id: "p", name: "p", path: "/p", createdAt: "" };
     call(app, "setState", { machines: [local, remote], selectedMachine: local, projects: [project], mainView: "navigation" });
-    replace(app, "quickSwitcherBrowseMachineId", "remote-b");
+    replace(app, "quickSwitcherMachineId", "remote-b");
     const { writes } = recordingWrites(app);
     replace(member(app, "workspaces"), "selectProject", () => {
       call(member(app, "navigation"), "begin", { key: "remote-b:other", label: "other" });
@@ -308,25 +293,13 @@ describe("the history entry a tap adds", () => {
 
     expect(writes).toEqual([]);
   });
-
-  it("names the machine it moved to when the workspace's project cannot be found there", async () => {
-    const app = createApp();
-    call(app, "setState", { machines: [local, remote], selectedMachine: local, projects: [], mainView: "navigation" });
-    replace(app, "quickSwitcherBrowseMachineId", "remote-b");
-    const { writes } = recordingWrites(app);
-    replace(app, "locateRouteProject", () => Promise.resolve(undefined));
-
-    await call(app, "openWorkspaceFromQuickSwitcher", { id: "w", projectId: "p", path: "/p", label: "w", isMain: true, effectiveConfig: {} });
-
-    expect(writes).toEqual([{ machine: "remote-b", session: undefined, view: "navigation", replace: false, newEntry: false }]);
-  });
 });
 
 /** A machine switch restores the view remembered for that machine, after the machine answers. */
 /** Review run c336e7e7: the paths the first version left able to move the page late. */
 describe("what supersedes an open still loading", () => {
   it.each<[string, (app: PiWebApp) => unknown]>([
-    ["browsing another machine's tab", (app) => call(app, "browseQuickSwitcherMachine", "remote-b")],
+    ["choosing another machine", (app) => call(app, "switchToMachine", "remote-b")],
     ["starting a new session from the desktop list, the chat already showing", (app) => { call(app, "setState", { mainView: "chat" }); replace(member(app, "sessions"), "startSession", () => Promise.resolve()); return call(app, "startSessionAndOpenChat"); }],
     ["choosing a project", (app) => { call(app, "setState", { projects: [{ id: "p", name: "p", path: "/p" }] }); replace(member(app, "workspaces"), "selectProject", () => Promise.resolve()); return call(app, "navigateChoose", "project", "p"); }],
   ])("%s", async (_name, act) => {
@@ -356,7 +329,6 @@ describe("what supersedes an open still loading", () => {
   it("opens on the machine the row was read from, whatever tab is showing when it lands", async () => {
     const read = deferred();
     const { app, reads, moves, selected } = readerOnTheSessionsPage({ cached: false, read: read.promise });
-    replace(app, "quickSwitcherBrowseMachineId", "local");
 
     void call(app, "openSessionFromQuickSwitcher", sessionNamed("target"), "remote-b");
     await flush();

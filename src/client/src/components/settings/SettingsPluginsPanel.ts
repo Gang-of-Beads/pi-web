@@ -49,7 +49,7 @@ export class SettingsPluginsPanel extends LitElement {
     const notices: SettingsNotice[] = [];
     if (this.error !== "") notices.push({ type: "error", content: this.error });
     if (this.shouldShowConfigUnavailableNotice(showTrustedCodeWarning)) {
-      notices.push({ type: "availability", content: "Configuration is unavailable. Reload to try again before changing plugin enablement." });
+      notices.push({ type: "availability", content: "Configuration is not loaded yet; PI WEB keeps trying. Plugins can be switched once it loads." });
     }
     if (this.savedMessage !== "") notices.push({ type: "success", content: this.savedNotice() });
     if (this.reloadOnClose) notices.push({ type: "info", content: "Browser plugin changes apply when you close Settings: the page reloads then." });
@@ -123,7 +123,7 @@ export class SettingsPluginsPanel extends LitElement {
   private renderPanelContent(plugins: SettingsPluginRow[], hasPluginResponse: boolean): TemplateResult {
     if (!hasPluginResponse && plugins.length === 0) {
       return html`
-        <div class="loading-card">${this.loading ? "Loading PI WEB plugins…" : `PI WEB plugin list unavailable for ${this.targetLabel}. Use Reload to try again.`}</div>
+        <div class="loading-card">${this.loading ? "Loading PI WEB plugins…" : `PI WEB plugin list not loaded yet for ${this.targetLabel} · trying again…`}</div>
         ${this.renderRecoveryCommands()}
       `;
     }

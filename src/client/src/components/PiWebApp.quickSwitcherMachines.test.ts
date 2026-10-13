@@ -51,31 +51,6 @@ function applyState(app: PiWebApp, patch: Record<string, unknown>): void {
 }
 
 describe("opening a session from another machine's tab", () => {
-  it("moves to that machine before selecting the session", async () => {
-    const app = createApp();
-    const local = machine("local");
-    const remote = machine("remote-b");
-    applyState(app, { machines: [local, remote], selectedMachine: local });
-
-    const order: string[] = [];
-    const machinesController: unknown = Reflect.get(app, "machines");
-    if (typeof machinesController !== "object" || machinesController === null) throw new Error("MachineController was unavailable");
-    if (!Reflect.set(machinesController, "selectMachine", (target: Machine) => { order.push(`machine:${target.id}`); return Promise.resolve(); })) {
-      throw new Error("Could not replace selectMachine");
-    }
-    const sessionsController: unknown = Reflect.get(app, "sessions");
-    if (typeof sessionsController !== "object" || sessionsController === null) throw new Error("SessionController was unavailable");
-    if (!Reflect.set(sessionsController, "selectSession", () => { order.push("session"); return Promise.resolve(); })) {
-      throw new Error("Could not replace selectSession");
-    }
-    if (!Reflect.set(sessionsController, "canOpenAtOnce", () => true)) throw new Error("Could not replace canOpenAtOnce");
-    if (!Reflect.set(app, "focusComposerAfterRender", () => Promise.resolve())) throw new Error("Could not replace focusComposerAfterRender");
-
-    if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "remote-b")) throw new Error("Could not set the browse machine");
-    await callable(app, "openSessionFromQuickSwitcher")(sessionOn("/home/hxd/project"));
-
-    expect(order).toEqual(["machine:remote-b", "session"]);
-  });
 
   it("selects directly when the session lives on the current machine", async () => {
     const app = createApp();
@@ -96,7 +71,6 @@ describe("opening a session from another machine's tab", () => {
     if (!Reflect.set(sessionsController, "canOpenAtOnce", () => true)) throw new Error("Could not replace canOpenAtOnce");
     if (!Reflect.set(app, "focusComposerAfterRender", () => Promise.resolve())) throw new Error("Could not replace focusComposerAfterRender");
 
-    if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "local")) throw new Error("Could not set the browse machine");
     await callable(app, "openSessionFromQuickSwitcher")(sessionOn("/home/hxd/project"));
 
     expect(order).toEqual(["session"]);
@@ -104,19 +78,7 @@ describe("opening a session from another machine's tab", () => {
 });
 
 /** Review finding: the previous machine's rows must not sit under a new tab. */
-describe("browsing another machine's tab", () => {
-  it("clears the previous machine's rows the moment the tab changes", () => {
-    const app = createApp();
-    applyState(app, { machines: [machine("local"), machine("remote-b")], selectedMachine: machine("local") });
-    if (!Reflect.set(app, "quickSwitcherSessions", [sessionOn("/somewhere")])) throw new Error("Could not seed sessions");
-    if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "local")) throw new Error("Could not set browse machine");
-    if (!Reflect.set(app, "loadQuickSwitcherData", () => Promise.resolve())) throw new Error("Could not stub the load");
-    const browse: unknown = Reflect.get(app, "browseQuickSwitcherMachine");
-    if (typeof browse !== "function") throw new Error("browseQuickSwitcherMachine unavailable");
-    Reflect.apply(browse, app, ["remote-b"]);
-    expect(Reflect.get(app, "quickSwitcherSessions")).toEqual([]);
-    expect(Reflect.get(app, "quickSwitcherWorkspaces")).toEqual([]);
-  });
+describe("rows read for another machine", () => {
 
   it("clears rows loaded for another machine when the loader runs after a machine switch", () => {
     // The qwen presence lane's P1: switch machines from the header, reopen the
@@ -128,7 +90,6 @@ describe("browsing another machine's tab", () => {
     applyState(app, { machines: [machine("machine-a"), machine("machine-b")], selectedMachine: machine("machine-b") });
     if (!Reflect.set(app, "quickSwitcherSessions", [sessionOn("/from-a")])) throw new Error("Could not seed sessions");
     if (!Reflect.set(app, "quickSwitcherMachineId", "machine-a")) throw new Error("Could not set rows machine");
-    if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "machine-b")) throw new Error("Could not set browse machine");
     const load: unknown = Reflect.get(app, "loadQuickSwitcherData");
     if (typeof load !== "function") throw new Error("loadQuickSwitcherData unavailable");
     const loading: unknown = Reflect.apply(load, app, []);
@@ -143,7 +104,6 @@ describe("browsing another machine's tab", () => {
     const selected: string[] = [];
     Reflect.set(app, "machines", { selectMachine: (target: Machine) => { selected.push(target.id); applyState(app, { selectedMachine: target }); return Promise.resolve(); } });
     if (!Reflect.set(app, "quickSwitcherMachineId", "machine-a")) throw new Error("Could not set rows machine");
-    if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "machine-b")) throw new Error("Could not set browse machine");
     const move: unknown = Reflect.get(app, "moveToBrowsedMachine");
     if (typeof move !== "function") throw new Error("moveToBrowsedMachine unavailable");
     const moved: unknown = await Promise.resolve(Reflect.apply(move, app, []));
@@ -171,29 +131,6 @@ describe("badges while browsing elsewhere", () => {
  * browsed machine, so the row belonged to one machine and the open ran
  * against another.
  */
-describe("rows while browsing another machine", () => {
-  it("lists only sessions fetched for the browsed machine", () => {
-    const app = createApp();
-    applyState(app, {
-      machines: [machine("local"), machine("remote-b")],
-      selectedMachine: machine("local"),
-      sessions: [sessionOn("/on-local")],
-    });
-    const remote = { ...sessionOn("/on-remote"), id: "remote-session" };
-    if (!Reflect.set(app, "quickSwitcherSessions", [remote])) throw new Error("Could not seed browsed rows");
-    if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "remote-b")) throw new Error("Could not set browse machine");
-
-    const build: unknown = Reflect.get(app, "navigateInput");
-    if (typeof build !== "function") throw new Error("navigateInput was unavailable");
-    const input: unknown = Reflect.apply(build, app, []);
-    if (typeof input !== "object" || input === null) throw new Error("navigateInput returned nothing");
-    const listed: unknown = Reflect.get(input, "sessions");
-    if (!Array.isArray(listed)) throw new Error("sessions missing");
-
-    expect(listed.map((entry: { id: string }) => entry.id)).toEqual(["remote-session"]);
-  });
-});
-
 /**
  * B14 review 6bf7aee1: the state map was built from the board alone, so a session the Go to page
  * listed from the stepped-into project, or a pinned one whose project is closed, wore no mark while
@@ -220,15 +157,6 @@ describe("the session states the Go to page draws", () => {
     if (!Reflect.set(app, "quickSwitcherPinnedElsewhere", [pinned])) throw new Error("Could not seed pinned rows");
 
     expect(statesOf(app)).toEqual({ opened: "working", pinned: "idle" });
-  });
-
-  it("are none while another machine is browsed, as in the switcher", () => {
-    const app = createApp();
-    applyState(app, { machines: [machine("local"), machine("remote-b")], selectedMachine: machine("local"), sessions: [], sessionStatuses: { "s-1": { ...busy, sessionId: "s-1" } } });
-    if (!Reflect.set(app, "quickSwitcherSessions", [sessionOn("/on-remote")])) throw new Error("Could not seed browsed rows");
-    if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "remote-b")) throw new Error("Could not set browse machine");
-
-    expect(statesOf(app)).toEqual({});
   });
 });
 

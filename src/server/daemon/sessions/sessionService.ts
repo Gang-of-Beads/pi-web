@@ -80,7 +80,7 @@ export interface SessionRouteService {
   dismissAllNotifications(ref: SessionRouteRef, request: Omit<SessionNotificationDismissAllRequest, "cwd">): SessionNotificationDismissResponse | Promise<SessionNotificationDismissResponse>;
   clearQueue(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   /** Remove one queued message, leaving the rest of the queue in order. */
-  recallQueuedMessage(ref: SessionRouteRef, target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }>;
+  recallQueuedMessage(ref: SessionRouteRef, target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string }, sequence?: unknown): Promise<{ recalled: boolean; status: ClientSessionStatus }>;
   /** Deliver a keypress to an open extension screen; false when none is open. */
   sendCustomScreenKey(ref: SessionRouteRef, dialogId: string, key: string): Promise<boolean>;
   /** Move an open drawn screen's cursor to a tapped line, matched by its text, and select it. */
@@ -102,7 +102,7 @@ export interface SessionRouteService {
   setThinkingLevel(ref: SessionRouteRef, level: string): Promise<ClientSessionStatus>;
   cycleThinkingLevel(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   commands(ref: SessionRouteRef): Promise<ClientCommand[]>;
-  prompt(ref: SessionRouteRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown }): Promise<void>;
+  prompt(ref: SessionRouteRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown; sequence?: unknown }): Promise<void>;
   saveAttachments(ref: SessionRouteRef, attachments: unknown, folder?: string): Promise<SavedPromptAttachment[]>;
   cleanupPreview(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupPreviewResponse>;
   cleanup(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupExecuteResponse>;

@@ -248,23 +248,6 @@ describe("PiWebApp remote route restore when the health read itself fails", () =
 });
 
 /** Review 6088e664: Retry on the banner re-read the roster and moved a reader on a remote machine to the local one. */
-describe("PiWebApp banner Retry", () => {
-  it("re-reads the roster for the machine the reader is on", async () => {
-    const app = createApp();
-    const remote = { id: "remote-1", name: "Remote one", kind: "remote" };
-    unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { machines: [remote], selectedMachine: remote });
-    const asked: unknown[] = [];
-    const machines: unknown = Reflect.get(app, "machines");
-    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "loadMachines", (machineId: unknown) => { asked.push(machineId); return Promise.resolve(); })) {
-      throw new Error("Could not replace machines.loadMachines");
-    }
-
-    await unknownFunction(Reflect.get(app, "retryAfterError"), "PiWebApp.retryAfterError").call(app);
-
-    expect(asked).toEqual(["remote-1"]);
-  });
-});
-
 /** A health read the web process answered, written to the state as the real read writes it. */
 function answeredHealth(app: PiWebApp, health: { machineId: string; ok: boolean; checkedAt: string; status: string; error?: string }): Promise<typeof health> {
   unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { machineStatuses: { [health.machineId]: health } });

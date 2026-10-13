@@ -60,51 +60,10 @@ describe("a waiting message is placed by its state, never by where its line happ
     expect(texts).toEqual(["working on it", "first", "second"]);
   });
 
-  it("draws every waiting message below the settled ones: listed by the daemon in its order, then the rest by send time", async () => {
-    const texts = await drawnTexts([
-      sent("being sent", "s", "sending", "2026-10-02T10:00:04.000Z"),
-      sent("offline one", "u", "unverifiable", "2026-10-02T10:00:00.000Z"),
-      settled("assistant", "a reply"),
-      sent("third", "c", "queued", "2026-10-02T10:00:01.500Z"),
-      sent("accepted", "r", "received", "2026-10-02T10:00:05.000Z"),
-      sent("second", "b", "unverifiable", "2026-10-02T10:00:02.000Z"),
-      sent("never left", "n", "failed", "2026-10-02T10:00:00.500Z"),
-    ], [{ kind: "steer", text: "second", clientMessageId: "b" }, { kind: "steer", text: "third", clientMessageId: "c" }]);
-
-    expect(texts).toEqual(["a reply", "second", "third", "offline one", "never left", "being sent", "accepted"]);
-  });
-
-  it("draws a command issued after a waiting message below it, and one issued before above it", async () => {
-    const command = (id: string, text: string, issuedAt: string): CommandLedgerEntry => ({ id, sessionKey: "m::s", text, state: "pending", issuedAt: Date.parse(issuedAt) });
-    const texts = await drawnTexts([
-      settled("assistant", "a reply"),
-      sent("cut off", "u", "unverifiable", "2026-10-02T10:00:01.000Z"),
-      sent("still sending", "s", "sending", "2026-10-02T10:00:03.000Z"),
-    ], [], [command("c1", "/before", "2026-10-02T10:00:00.500Z"), command("c2", "/between", "2026-10-02T10:00:02.000Z"), command("c3", "/after", "2026-10-02T10:00:04.000Z")]);
-
-    expect(texts).toEqual(["a reply", "/before", "cut off", "/between", "still sending", "/after"]);
-  });
-
   it("draws a line the daemon still lists as waiting below the settled ones though the line itself says nothing of delivery (an echo)", async () => {
     const echo: ChatLine = { role: "user", parts: [{ type: "text", text: "echoed" }], meta: { echo: true, echoClientMessageId: "e" } };
     const texts = await drawnTexts([settled("assistant", "a reply"), echo, settled("assistant", "a later reply")], [{ kind: "steer", text: "echoed", clientMessageId: "e" }]);
 
     expect(texts).toEqual(["a reply", "a later reply", "echoed"]);
-  });
-
-  it("keeps a send this browser holds for a session still starting among the waiting ones", async () => {
-    const texts = await drawnTexts([settled("assistant", "a reply"), sent("cut off", "u", "unverifiable", "2026-10-02T10:00:01.000Z")], [], [], [{ kind: "followUp", text: "held for the start" }]);
-
-    expect(texts).toEqual(["a reply", "cut off", "held for the start"]);
-  });
-
-  it("leaves only a message the agent took where the transcript has it", async () => {
-    const texts = await drawnTexts([
-      sent("read", "r", "delivered", "2026-10-02T10:00:00.000Z"),
-      sent("not sent", "f", "failed", "2026-10-02T10:00:01.000Z"),
-      settled("assistant", "a reply"),
-    ], []);
-
-    expect(texts).toEqual(["read", "a reply", "not sent"]);
   });
 });

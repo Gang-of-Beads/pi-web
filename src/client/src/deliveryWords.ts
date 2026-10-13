@@ -1,67 +1,39 @@
 import type { MessageDeliveryState } from "./components/shared";
 
 /**
- * The words for a sent message's state, in one table every surface reads.
- *
- * The bubble, the composer tray and the command bubble each kept their own wording, so one
- * message read "No answer yet" on its bubble and "Unsent" in the tray, and a confirmation
- * that was not a queue read "Queued". The owner fixed the words (2026-09-29 and 2026-09-30):
- * Sending… / Received / Queued / Not sent / Not received, and no "Read" - once the agent takes
- * a message it is an ordinary input message and carries no mark. A message whose bytes left and
- * that the server has not confirmed yet still reads "Sending…": it read "Receiving…", which read
- * as receiving a reply (owner, 2026-10-12). Its label says it is sent and being checked, and it
- * keeps Retry and Discard.
+ * The words for a sent message's state, in one table every surface reads
+ * (docs/design/message-states.md, "Words"). A message on its way reads "Sending…" for as long as
+ * it takes; nothing reads "Not sent" or "Not received" and nothing offers Retry or Discard. The
+ * one thing a reader does to a message that has not reached the agent is take it back.
  */
-
-/**
- * Why a message failed. `not-sent`: it never became part of the conversation - the bytes never
- * left, or the runtime refused it. `not-received`: the daemon has no record of it.
- */
-export type DeliveryFailureCause = "not-sent" | "not-received";
-
-export type DeliveryWordKey = "sending" | "unverifiable" | "received" | "queued" | DeliveryFailureCause;
+export type DeliveryWordKey = "sending" | "takingBack" | "received" | "queued";
 
 export interface DeliveryWords {
-  readonly glyph: "pending" | "failed" | "single" | "double";
+  readonly glyph: "pending" | "single";
   readonly text: string;
   readonly label: string;
-  readonly tone: "pending" | "received" | "delivered" | "failed";
-  /** Whether the reader may send it again under the same identity. */
-  readonly retry: boolean;
-  /** Whether the reader may take it back; only once nothing can still land it. */
-  readonly discard: boolean;
+  readonly tone: "pending" | "received";
+  /** Whether the reader may take it back from here. */
+  readonly takeBack: boolean;
 }
 
 const WORDS: Readonly<Record<DeliveryWordKey, DeliveryWords>> = {
-  sending: { glyph: "pending", text: "Sending…", label: "Sending…", tone: "pending", retry: false, discard: false },
-  unverifiable: {
-    glyph: "pending",
-    text: "Sending…",
-    label: "Sending… - sent, and the server has not confirmed it yet; still checking",
-    tone: "pending",
-    retry: true,
-    discard: true,
-  },
-  received: { glyph: "single", text: "Received", label: "Received - the server has this message", tone: "received", retry: false, discard: false },
-  queued: { glyph: "single", text: "Queued", label: "Queued - the server holds this message and the agent takes it next", tone: "received", retry: false, discard: false },
-  "not-sent": { glyph: "failed", text: "Not sent", label: "Not sent - this message did not reach the conversation", tone: "failed", retry: true, discard: true },
-  "not-received": { glyph: "failed", text: "Not received", label: "Not received - the server has no record of this message", tone: "failed", retry: true, discard: true },
+  sending: { glyph: "pending", text: "Sending…", label: "Sending… - on its way to the machine; it keeps trying until the machine has it", tone: "pending", takeBack: true },
+  takingBack: { glyph: "pending", text: "Taking back…", label: "Taking back… - waiting for the machine to confirm", tone: "pending", takeBack: false },
+  received: { glyph: "single", text: "Received", label: "Received - the machine has this message", tone: "received", takeBack: false },
+  queued: { glyph: "single", text: "Queued", label: "Queued - the machine holds this message and the agent takes it next", tone: "received", takeBack: true },
 };
 
-const KEY_FOR_STATE: Readonly<Record<Exclude<MessageDeliveryState, "failed">, DeliveryWordKey | undefined>> = {
+const KEY_FOR_STATE: Readonly<Record<MessageDeliveryState, DeliveryWordKey | undefined>> = {
   sending: "sending",
-  unverifiable: "unverifiable",
+  takingBack: "takingBack",
   received: "received",
   queued: "queued",
   delivered: undefined,
 };
 
-/**
- * The key for one state. A failure without a recorded cause reads "Not received": that is what
- * the daemon's own verdicts said before causes were recorded. A delivered message has no words.
- */
-export function deliveryWordKey(state: MessageDeliveryState, cause?: DeliveryFailureCause): DeliveryWordKey | undefined {
-  if (state === "failed") return cause ?? "not-received";
+/** The key for one state; a delivered message has no words. */
+export function deliveryWordKey(state: MessageDeliveryState): DeliveryWordKey | undefined {
   return KEY_FOR_STATE[state];
 }
 

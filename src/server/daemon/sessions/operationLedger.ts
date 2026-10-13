@@ -153,6 +153,12 @@ export interface AcceptanceFace {
   record(sessionId: string, clientMessageId: string): void;
   settle(sessionId: string, clientMessageId: string, outcome: SettledOutcome): void;
   /**
+   * Take back an identity the daemon holds no live row for: one it never saw, or one a restart
+   * lost. The row reads withdrawn from now on, so a send of it still on the wire is answered
+   * withdrawn and never runs. Returns whether the identity is withdrawn.
+   */
+  tombstone(sessionId: string, clientMessageId: string): boolean;
+  /**
    * What the daemon can say about identities a client could not settle. An
    * identity it has never seen is absent from the answer rather than reported
    * as anything: "we have no row" and "it failed" are different facts.
@@ -176,6 +182,16 @@ export const READMITTED: Record<OperationOutcome, boolean> = {
   withdrawn: false,
   failed: true,
   unknown: true,
+};
+
+/** Which rows a take-back turns into a tombstone: only those no live process is holding. */
+export const TOMBSTONED_FROM: Record<OperationOutcome, boolean> = {
+  pending: false,
+  unknown: true,
+  succeeded: false,
+  consumed: false,
+  failed: false,
+  withdrawn: false,
 };
 
 /** Which recorded outcomes a later fact may still settle. A settled row never moves back. */
@@ -211,6 +227,13 @@ export function createDurableAcceptanceLedger(dataDir: string): AcceptanceFace {
       const existing = ledger.rowFor(sessionId, clientMessageId);
       if (existing === undefined || !SETTLEABLE[existing.outcome]) return;
       ledger.settle(sessionId, clientMessageId, outcome);
+    },
+    tombstone(sessionId, clientMessageId) {
+      const existing = ledger.rowFor(sessionId, clientMessageId);
+      if (existing === undefined) ledger.begin(sessionId, clientMessageId, "prompt");
+      else if (!TOMBSTONED_FROM[existing.outcome]) return existing.outcome === "withdrawn";
+      ledger.settle(sessionId, clientMessageId, "withdrawn");
+      return true;
     },
     outcomesFor(sessionId, operationIds) {
       const answer: Record<string, OperationOutcome> = {};

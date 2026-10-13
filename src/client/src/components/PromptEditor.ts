@@ -5,7 +5,7 @@ import { keyBelongsToInputMethod } from "./keyboardEventTarget";
 
 type ComposerEditorModule = typeof composerEditor;
 import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues } from "lit";
-import { pendingPromptActions, trayState } from "../pendingPromptActions";
+import { deliveryWords } from "../deliveryWords";
 import { joinTakenBack } from "../composerTakeBack";
 import { settleOutbox } from "../outboxSettlement";
 import { SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
@@ -20,10 +20,9 @@ import { machineSessionKey } from "../machineKeys";
 import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
-import { advancePendingPrompt, isNetworkFailure, linkReportedOffline, loadPendingPrompts, markUnansweredPrompt, NetworkSendError, replaysRecord, reserveAcceptedPrompt, forgetPendingPrompt, savePendingPrompt, OUTBOX_CHANGED_EVENT, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
-import { outgoingStopped } from "../outgoingMessages";
-import { classifySubmission, handleOutcome, transportFactsFor } from "../messageLifecycle";
-import { isRequestTimeout } from "../api/requestDeadline";
+import { appendMessage, appendTakeBack, forgetPendingPrompt, loadPendingPrompts, OUTBOX_CHANGED_EVENT, reserveAcceptedPrompt, retireMessage, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
+import { sequenceFor, type SequencedOperation } from "../operationLog";
+import { attemptEvent, delayAfter, driverMove, type AttemptOutcome, type DriverEffect, type DriverEvent, type DriverState } from "../outboxDriver";
 import { newClientMessageId } from "../messageDelivery";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
@@ -281,6 +280,10 @@ export class PromptEditor extends LitElement {
   @property({ attribute: false }) onExpand?: () => void;
 
   @property({ attribute: false }) onSend?: (text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery?: PromptAttachmentDelivery, replay?: SendReplay) => Promise<boolean | undefined> | boolean | undefined;
+  /** Take one message back, as an operation of this device's log; resolves whether the machine took it back, throws when nobody answered. */
+  @property({ attribute: false }) onTakeBackOperation?: (scope: SendScope, target: { clientMessageId: string; text: string; kind?: "steer" | "followUp" }, sequence: SequencedOperation) => Promise<boolean>;
+  /** A message was written to the outbox: its row shows at once, whatever is still ahead of it. */
+  @property({ attribute: false }) onOutgoingWritten?: (scope: SendScope, message: PendingPrompt) => void;
   @property({ attribute: false }) onStop?: () => void;
   @property({ attribute: false }) composerContributions: readonly QualifiedComposerContribution[] = [];
   @property({ attribute: false }) onPluginNotice?: (message: string, severity: "info" | "warning" | "error") => void;
@@ -380,8 +383,8 @@ export class PromptEditor extends LitElement {
   override firstUpdated(): void {
     this.createEditor();
     this.pendingPrompts = this.pendingPromptsForSession();
-    window.addEventListener("online", this.flushPendingPrompts);
-    if (this.pendingPrompts.length > 0) this.flushPendingPrompts();
+    window.addEventListener("online", this.kickOutbox);
+    if (this.pendingPrompts.length > 0) this.kickOutbox();
   }
 
   private readonly onOutboxChanged = (event: Event) => {
@@ -390,6 +393,7 @@ export class PromptEditor extends LitElement {
     const changed: unknown = event instanceof CustomEvent ? event.detail : undefined;
     if (changed !== undefined && changed !== key) return;
     this.pendingPrompts = this.pendingPromptsForSession();
+    if (this.pendingPrompts.length > 0) this.driveOutbox("kick");
   };
 
   override connectedCallback(): void {
@@ -408,7 +412,7 @@ export class PromptEditor extends LitElement {
       // The strip must carry the scope it belongs to: rows loaded for the
       // previous session may not render - or act - against this one.
       this.pendingPrompts = this.pendingPromptsForSession();
-      if (this.isConnected) this.flushPendingPrompts();
+      if (this.isConnected) this.kickOutbox();
     }
     this.syncAttachmentZoomDialog();
   }
@@ -416,7 +420,8 @@ export class PromptEditor extends LitElement {
   override disconnectedCallback(): void {
     const key = draftStorageKey(this.machineId, this.sessionId);
     if (key !== undefined) holdComposerAttachments(key, this.attachments);
-    window.removeEventListener("online", this.flushPendingPrompts);
+    window.removeEventListener("online", this.kickOutbox);
+    this.driveOutbox("drained");
     window.removeEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
     if (this.pendingRevealTimer !== undefined) {
       clearTimeout(this.pendingRevealTimer);
@@ -584,11 +589,9 @@ export class PromptEditor extends LitElement {
   }
 
   private pendingRevealTimer: ReturnType<typeof setTimeout> | undefined;
-  /** The sends this composer is still waiting on, by client message id. */
-  private readonly outboxInFlight = new Set<string>();
-  private sendOrder: Promise<void> = Promise.resolve();
-  private sendsWaiting = 0;
-  private replayQueued = false;
+  private driver: DriverState = "idle";
+  private resendDelay = 0;
+  private resendTimer: ReturnType<typeof setTimeout> | undefined;
 
   /**
    * Whether storage holds anything for this session.
@@ -621,10 +624,7 @@ export class PromptEditor extends LitElement {
     const ids = stored.map((prompt) => prompt.clientMessageId).filter((id): id is string => typeof id === "string" && id !== "");
     const settlement = settleOutbox(ids, (id) => delivered.has(id));
     if (settlement.drop.length === 0) return;
-    for (const id of settlement.drop) {
-      forgetPendingPrompt(key, id);
-      this.outboxInFlight.delete(id);
-    }
+    for (const id of settlement.drop) forgetPendingPrompt(key, id);
     this.pendingPrompts = this.pendingPromptsForSession();
   }
 
@@ -634,40 +634,30 @@ export class PromptEditor extends LitElement {
 
   private renderPendingPrompts() {
     const now = Date.now();
-    const lingering = this.pendingPrompts.filter((prompt) => !(now - Date.parse(prompt.at) <= 4000) && !this.rowedMessageIds.has(prompt.clientMessageId ?? ""));
+    const messages = this.pendingPrompts.filter((prompt) => prompt.takeBackOf === undefined);
+    const lingering = messages.filter((prompt) => !(now - Date.parse(prompt.at) <= 4000) && !this.rowedMessageIds.has(prompt.clientMessageId));
     if (lingering.length === 0) {
-      const rowless = this.pendingPrompts.some((prompt) => !this.rowedMessageIds.has(prompt.clientMessageId ?? ""));
+      const rowless = messages.some((prompt) => !this.rowedMessageIds.has(prompt.clientMessageId));
       if (rowless && this.pendingRevealTimer === undefined) {
         this.pendingRevealTimer = setTimeout(() => { this.pendingRevealTimer = undefined; this.requestUpdate(); }, 4200);
       }
       return null;
     }
     return html`
-      <div class="pending-prompts" role="status" aria-label="Messages not delivered">
+      <div class="pending-prompts" role="status" aria-label="Messages on their way">
         ${lingering.map((prompt) => {
-          // Per message, not the composer's global flag: an in-flight row and a
-          // failed one sit side by side and must not borrow each other's state.
-          const actions = pendingPromptActions(trayState(prompt, this.outboxInFlight.has(prompt.clientMessageId ?? "")));
+          const takingBack = this.pendingPrompts.some((entry) => entry.takeBackOf === prompt.clientMessageId);
+          const words = deliveryWords(takingBack ? "takingBack" : "sending");
           return html`
             <div class="pending-prompt">
               <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>
-              <span class="pending-prompt-state">${actions.label}</span>
-              ${actions.retry ? html`<button type="button" @click=${() => { this.retryOutbox(prompt.clientMessageId ?? ""); }}>Retry</button>` : nothing}
-              ${actions.discard ? html`<button type="button" class="pending-prompt-discard" @click=${() => { this.discardPendingPrompt(prompt); }}>Discard</button>` : nothing}
+              <span class="pending-prompt-state">${words.text}</span>
+              ${words.takeBack ? html`<button type="button" @click=${() => { this.takeBackMessage(prompt); }}>Take back</button>` : nothing}
             </div>
           `;
         })}
       </div>
     `;
-  }
-
-  private discardPendingPrompt(prompt: PendingPrompt): void {
-    const key = machineSessionKey(this.machineId, this.sessionId ?? "");
-    if (key === "" || prompt.clientMessageId === undefined) return;
-    forgetPendingPrompt(key, prompt.clientMessageId);
-    this.outboxInFlight.delete(prompt.clientMessageId);
-    this.pendingPrompts = this.pendingPromptsForSession();
-    this.takeBack({ text: prompt.text, attachments: prompt.attachments ?? [] });
   }
 
   private renderAttachments() {
@@ -1235,138 +1225,134 @@ export class PromptEditor extends LitElement {
     return true;
   }
 
-  /**
-   * The records waiting on the reader. A record the daemon holds stays on file until the agent
-   * takes it, so a refusal can still make it retryable, but it is not the tray's to show.
-   */
+  /** This session's outbox: its messages and take-backs the machine has not answered, in order. */
   private pendingPromptsForSession(): PendingPrompt[] {
-    const key = machineSessionKey(this.machineId, this.sessionId ?? "");
-    return key === "" ? [] : loadPendingPrompts(key).filter((prompt) => outgoingStopped(prompt.state));
+    const key = this.outboxKey();
+    return key === "" ? [] : loadPendingPrompts(key);
   }
 
-  private flushInFlight = false;
-
   /**
-   * Re-send stored prompts one at a time, deleting exactly the accepted ids.
-   * Reviewers proved the previous clear-and-replay wiped anything written to
-   * the store while the flush awaited the network - a concurrent send, or a
-   * Discard, which the replay then resurrected. Per-id deletion cannot touch
-   * entries this loop never handled, and a membership re-check before each
-   * send honors a Discard that happened mid-flight. Acceptance uses the same
-   * contract as the direct path: only an explicit false is a refusal.
+   * Take a message back (docs/design/message-states.md). A message still waiting behind the head of
+   * the outbox has never been sent - only the head ever is - so it is withdrawn here, words back at
+   * once. Any other is asked of the machine as the next operation of this session's log, after
+   * everything sent before it; its words come back once the machine confirms.
    */
-  /**
-   * Replay one message from the outbox under its own identity, as its row's Retry asks.
-   * When the replay cannot start - offline, another replay still running, or the message no
-   * longer held - the reader is told which, instead of pressing a button that does nothing.
-   */
-  retryOutbox(clientMessageId: string): void {
+  takeBackMessage(message: { clientMessageId: string; text: string; attachments?: PromptAttachment[]; kind?: "steer" | "followUp" }): TakeBackPath {
     const key = this.outboxKey();
-    const held = loadPendingPrompts(key).some((prompt) => prompt.clientMessageId === clientMessageId);
-    const blocked = retryBlocked(navigator.onLine, this.flushInFlight, held);
-    if (blocked !== undefined) {
-      this.onPluginNotice?.(RETRY_BLOCKED_NOTICE[blocked], "warning");
+    if (key === "") return "notWritten";
+    const outbox = loadPendingPrompts(key);
+    const waiting = outbox.slice(1).find((entry) => entry.clientMessageId === message.clientMessageId && entry.takeBackOf === undefined);
+    return this.takeBackPaths[waiting === undefined ? "askMachine" : "neverSent"](key, message, waiting);
+  }
+
+  private readonly takeBackPaths: Readonly<Record<"neverSent" | "askMachine", (key: string, message: { clientMessageId: string; text: string; attachments?: PromptAttachment[]; kind?: "steer" | "followUp" }, waiting: PendingPrompt | undefined) => TakeBackPath>> = {
+    neverSent: (key, message, waiting) => {
+      this.returnWords(key, message.clientMessageId, waiting ?? { seq: 0, clientMessageId: message.clientMessageId, text: message.text, at: "" });
+      this.pendingPrompts = this.pendingPromptsForSession();
+      return "withdrawnHere";
+    },
+    askMachine: (key, message) => {
+      if (!appendTakeBack(key, { clientMessageId: message.clientMessageId, text: message.text, ...(message.attachments === undefined ? {} : { attachments: message.attachments }), ...(message.kind === undefined ? {} : { behavior: message.kind }) })) return "notWritten";
+      this.pendingPrompts = this.pendingPromptsForSession();
+      this.kickOutbox();
+      return "sentToMachine";
+    },
+  };
+
+  /** The link came back, the session opened, or something was written: the driver sends the head now. */
+  private readonly kickOutbox = (): void => {
+    this.driveOutbox("kick");
+  };
+
+  /** Apply one event to the outbox driver (outboxDriver.ts) and perform the move it names. */
+  private driveOutbox(event: DriverEvent): void {
+    const move = driverMove(this.driver, event);
+    this.driver = move.to;
+    this.resendDelay = delayAfter(move.delay, this.resendDelay);
+    this.driverEffects[move.effect]();
+  }
+
+  private readonly driverEffects: Readonly<Record<DriverEffect, () => void>> = {
+    sendHead: () => { void this.sendHead(); },
+    wait: () => {
+      clearTimeout(this.resendTimer);
+      this.resendTimer = setTimeout(() => { this.driveOutbox("elapsed"); }, this.resendDelay);
+    },
+    none: () => { clearTimeout(this.resendTimer); },
+  };
+
+  /** One attempt at the head of the outbox; its outcome is the driver's next event. */
+  private async sendHead(): Promise<void> {
+    const key = this.outboxKey();
+    const head = key === "" || !this.isConnected ? undefined : loadPendingPrompts(key)[0];
+    if (head === undefined) {
+      this.driveOutbox("drained");
       return;
     }
-    this.replayOutbox(clientMessageId);
+    const outcome = await this.attempt(key, head);
+    this.pendingPrompts = this.pendingPromptsForSession();
+    this.driveOutbox(attemptEvent(outcome, key === this.outboxKey() ? "same" : "moved"));
   }
 
-  private readonly flushPendingPrompts = (): void => {
-    this.replayOutbox(undefined);
+  /** Send one operation once, as its kind sends it: answered (it leaves the outbox), unanswered, or for a session no longer open. */
+  private async attempt(key: string, operation: PendingPrompt): Promise<AttemptOutcome> {
+    const scope: SendScope = { machineId: this.machineId, sessionId: this.sessionId ?? "" };
+    try {
+      await this.operationSenders[operationKind(operation)](key, operation, scope, sequenceFor(operation.seq));
+      return "answered";
+    } catch (failure) {
+      return failure instanceof SendScopeChangedError ? "elsewhere" : "unanswered";
+    }
+  }
+
+  /** How each kind of operation is sent, and what its answer does; a send nobody answered throws. */
+  private readonly operationSenders: Readonly<Record<OperationKind, (key: string, operation: PendingPrompt, scope: SendScope, sequence: SequencedOperation) => Promise<void>>> = {
+    message: async (key, operation, scope, sequence) => {
+      const accepted = await this.onSend?.(operation.text, operation.behavior, operation.attachments, recordedDelivery(operation), { clientMessageId: operation.clientMessageId, scope, sentAt: operation.at, sequence });
+      this.messageAnswers[accepted === false ? "refused" : "accepted"](key, operation);
+    },
+    takeBack: async (key, operation, scope, sequence) => {
+      const target = operation.takeBackOf ?? operation.clientMessageId;
+      const takenBack = await this.onTakeBackOperation?.(scope, { clientMessageId: target, text: operation.text, ...(operation.behavior === undefined ? {} : { kind: operation.behavior }) }, sequence);
+      forgetPendingPrompt(key, operation.clientMessageId);
+      this.takeBackAnswers[takenBack === true ? "takenBack" : "tooLate"](key, target, operation);
+    },
+  };
+
+  /** A message the machine took leaves the outbox; one refused for good leaves with its words back in the composer. */
+  private readonly messageAnswers: Readonly<Record<"accepted" | "refused", (key: string, operation: PendingPrompt) => void>> = {
+    accepted: (key, operation) => { reserveAcceptedPrompt(key, operation.clientMessageId); },
+    refused: (key, operation) => { this.returnWords(key, operation.clientMessageId, operation); },
+  };
+
+  /** A take-back the machine confirmed returns the words; one too late leaves the message with the agent. */
+  private readonly takeBackAnswers: Readonly<Record<"takenBack" | "tooLate", (key: string, target: string, operation: PendingPrompt) => void>> = {
+    takenBack: (key, target, operation) => { this.returnWords(key, target, operation); },
+    tooLate: () => undefined,
+  };
+
+  /** A message that will not run leaves this device, and its words come back to the composer still showing its session. */
+  private returnWords(key: string, clientMessageId: string, words: PendingPrompt): void {
+    retireMessage(key, clientMessageId);
+    this.wordsBackTo[this.outboxKey() === key ? "composer" : "savedDraft"](key, words);
+  }
+
+  /**
+   * Where returned words land: the composer when it still shows their session, else that session's
+   * saved draft and held images, which its composer picks up when it opens. Words a take-back
+   * returned after the reader moved on were deleted with nowhere to go (ponytail review).
+   */
+  private readonly wordsBackTo: Readonly<Record<"composer" | "savedDraft", (key: string, words: PendingPrompt) => void>> = {
+    composer: (_key, words) => { this.takeBack({ text: words.text, attachments: words.attachments ?? [] }); },
+    savedDraft: (key, words) => {
+      saveDraft(key, joinTakenBack(loadDraft(key), words.text));
+      addToHeldComposerAttachments(key, (words.attachments ?? []).flatMap((attachment) => (attachment.kind === "image" ? [{ kind: "image" as const, name: attachment.name ?? "image", mimeType: attachment.mimeType, data: attachment.data, size: Math.floor((attachment.data.length * 3) / 4) }] : [])));
+    },
   };
 
   /**
-   * Replay the outbox as one step of the composer's send chain, so a replay and a new send can
-   * never overtake each other: kept records go before anything typed after them. A replay
-   * already queued and not yet started covers every record present when it runs, so a second
-   * one is not queued behind it.
-   */
-  private replayOutbox(only: string | undefined): void {
-    if (this.onSend === undefined) return;
-    if (only === undefined) {
-      if (this.replayQueued) return;
-      this.replayQueued = true;
-    }
-    this.enqueueSend(async () => {
-      if (only === undefined) this.replayQueued = false;
-      await this.replayRecords(only);
-    });
-  }
-
-  /**
-   * Send the records the composer's current session holds, in stored order, reading them when
-   * this step's turn comes rather than when it was queued. A record whose own send is still
-   * waiting in the chain is skipped: its own step sends it.
-   */
-  private async replayRecords(only: string | undefined): Promise<void> {
-    const send = this.onSend;
-    const key = this.outboxKey();
-    if (!navigator.onLine || !this.isConnected || send === undefined || key === "") return;
-    const scope: SendScope = { machineId: this.machineId, sessionId: this.sessionId ?? "" };
-    this.flushInFlight = true;
-    try {
-      for (const prompt of loadPendingPrompts(key).filter((entry) => replaysRecord(entry, only))) {
-        const id = prompt.clientMessageId;
-        if (id === undefined || this.outboxInFlight.has(id)) continue;
-        if (!this.stillShows(key)) return;
-        if (!loadPendingPrompts(key).some((entry) => entry.clientMessageId === id && replaysRecord(entry, only))) continue;
-        this.outboxInFlight.add(id);
-        if (only !== undefined && prompt.refused === true) {
-          const retried: PendingPrompt = { ...prompt };
-          delete retried.refused;
-          savePendingPrompt(key, retried);
-        }
-        try {
-          const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, recordedDelivery(prompt), { clientMessageId: id, scope, sentAt: prompt.at });
-          if (accepted !== false) reserveAcceptedPrompt(key, id);
-          else if (prompt.refused === true && loadPendingPrompts(key).some((entry) => entry.clientMessageId === id)) savePendingPrompt(key, prompt);
-        } catch (failure) {
-          const left = unansweredBytesLeft(failure);
-          if (left !== undefined) markUnansweredPrompt(key, id, left);
-          continue;
-        } finally {
-          this.outboxInFlight.delete(id);
-        }
-      }
-    } finally {
-      this.flushInFlight = false;
-      this.pendingPrompts = this.pendingPromptsForSession();
-    }
-  }
-
-  /** Whether this composer is still on the page and showing the session an outbox key names. */
-  private stillShows(key: string): boolean {
-    return this.isConnected && this.outboxKey() === key;
-  }
-
-  /**
-   * Run one outbound step after every earlier one from this composer; the first starts at once.
-   * The chain's tail is in place before a first step starts, so a step that queues another
-   * from inside itself queues it behind itself rather than beside it.
-   */
-  private enqueueSend(step: () => Promise<void>): void {
-    this.sendsWaiting += 1;
-    const run = async (): Promise<void> => {
-      try {
-        await step();
-      } finally {
-        this.sendsWaiting -= 1;
-      }
-    };
-    if (this.sendsWaiting > 1) {
-      this.sendOrder = this.sendOrder.then(run, run);
-      return;
-    }
-    let settled: () => void = () => undefined;
-    this.sendOrder = new Promise<void>((resolve) => { settled = resolve; });
-    void run().then(settled, settled);
-  }
-
-  /**
-   * Send the composer's contents. Sends from one composer reach the daemon in the order they
-   * were made: each is recorded in the outbox at once - durable, and shown as sending - and
-   * handed over only after the previous one settled, so two in flight cannot be reordered by
-   * the network. A send is never swallowed because another is uploading; it waits its turn.
+   * Send the composer's contents: the message is written to the outbox at once - durable, numbered,
+   * and shown as sending - and the outbox sends it after everything written before it.
    */
   private send(streamingBehavior?: "steer" | "followUp") {
     // A file still being read belongs to this message. Sending without it is
@@ -1378,107 +1364,44 @@ export class PromptEditor extends LitElement {
     const text = this.draft.trim();
     const pending = this.attachments;
     if (text === "" && pending.length === 0) return;
+    const key = this.outboxKey();
+    if (key === "") return;
     const behavior = this.canSteer || this.isCompacting ? streamingBehavior : undefined;
     const attachments = pending.length > 0 ? this.currentAttachments() : undefined;
     const delivery = this.effectiveAttachmentDelivery();
-    const key = draftStorageKey(this.machineId, this.sessionId);
-    if (key !== undefined && text !== "") rememberPromptHistory(key, text);
-    // Cleared optimistically so the composer feels immediate, but the contents
-    // are kept so a rejected send can put them back. Losing a long prompt and
-    // its images to a dropped connection is the kind of failure that makes
-    // people distrust the app.
-    const restorable = { text: this.draft, attachments: pending };
-    this.resetComposer();
-    const outgoing = this.recordOutgoing(text, behavior, attachments, delivery);
-    this.enqueueSend(() => this.deliverAndRestoreOnFailure(text, behavior, attachments, delivery, restorable, outgoing));
-  }
-
-  /** Mint the message's identity and write its outbox record, before it waits for its turn. */
-  private recordOutgoing(text: string, behavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery): OutgoingSend {
-    const outboxKey = machineSessionKey(this.machineId, this.sessionId ?? "");
-    const outboxId = newClientMessageId();
-    const sentAt = new Date().toISOString();
-    const carried = attachments === undefined || attachments.length === 0 ? undefined : attachments;
-    if (outboxKey !== "") {
-      savePendingPrompt(outboxKey, { text, ...(behavior === undefined ? {} : { behavior }), clientMessageId: outboxId, ...(carried === undefined ? {} : { attachments: carried, delivery }), at: sentAt });
-      this.pendingPrompts = this.pendingPromptsForSession();
+    if (!this.writeMessage(key, text, behavior, attachments === undefined ? undefined : { attachments, delivery })) {
+      this.onPluginNotice?.("This browser could not store the message, so it was not sent. It is still in the composer.", "error");
+      return;
     }
-    this.outboxInFlight.add(outboxId);
-    return { outboxKey, outboxId, sentAt, scope: { machineId: this.machineId, sessionId: this.sessionId ?? "" }, writtenOnPage: this.isConnected, text, behavior, attachments, delivery };
+    const historyKey = draftStorageKey(this.machineId, this.sessionId);
+    if (historyKey !== undefined && text !== "") rememberPromptHistory(historyKey, text);
+    this.resetComposer();
   }
 
   /**
-   * Hand the prompt to the controller and, if it reports failure, restore what
-   * the composer was holding.
-   *
-   * Only restores when the composer is still empty: anything typed since is the
-   * user's newer intent, and overwriting it would be a second kind of loss.
+   * Send words that did not come from the composer - a message card's own Send - the one way every
+   * message goes: written to this session's outbox, numbered, after everything written before it.
    */
-  private async deliverAndRestoreOnFailure(
-    text: string,
-    behavior: "steer" | "followUp" | undefined,
-    attachments: PromptAttachment[] | undefined,
-    delivery: PromptAttachmentDelivery,
-    restorable: { text: string; attachments: PendingAttachment[] },
-    outgoing: OutgoingSend = this.recordOutgoing(text, behavior, attachments, delivery),
-  ): Promise<void> {
-    const { outboxKey, outboxId, scope, sentAt } = outgoing;
-    const scopeKey = outboxKey;
-    const keepForItsSession = (): void => {
-      this.outboxInFlight.delete(outboxId);
-      if (outboxKey !== "") advancePendingPrompt(outboxKey, outboxId, "send-refused-network");
-      this.pendingPrompts = this.pendingPromptsForSession();
-      this.flushPendingPrompts();
-    };
-    if ((outgoing.writtenOnPage && !this.isConnected) || this.outboxKey() !== outboxKey) {
-      keepForItsSession();
-      return;
-    }
+  sendText(text: string, behavior: "steer" | "followUp"): void {
+    const key = this.outboxKey();
+    if (key === "" || text.trim() === "") return;
+    if (!this.writeMessage(key, text.trim(), behavior, undefined)) this.onPluginNotice?.("This browser could not store the message, so it was not sent.", "error");
+  }
 
-    let accepted: boolean | undefined;
-    let failure: unknown;
-    try {
-      const replay: SendReplay = { clientMessageId: outboxId, scope, sentAt };
-      accepted = await this.onSend?.(text, behavior, attachments, attachments === undefined ? undefined : delivery, replay);
-    } catch (error) {
-      accepted = false;
-      failure = error;
-    } finally {
-      this.outboxInFlight.delete(outboxId);
-    }
-    if (failure instanceof SendScopeChangedError) {
-      keepForItsSession();
-      return;
-    }
-    if (accepted !== false) {
-      if (outboxKey !== "") {
-        reserveAcceptedPrompt(outboxKey, outboxId);
-        this.pendingPrompts = this.pendingPromptsForSession();
-      }
-      return;
-    }
-    const left = unansweredBytesLeft(failure);
-    if (left !== undefined) {
-      if (outboxKey !== "") {
-        advancePendingPrompt(outboxKey, outboxId, left ? "send-timeout" : "send-refused-network");
-        this.pendingPrompts = this.pendingPromptsForSession();
-      }
-      return;
-    }
-    if (outboxKey !== "") {
-      forgetPendingPrompt(outboxKey, outboxId);
-      this.pendingPrompts = this.pendingPromptsForSession();
-    }
-    if (this.outboxKey() !== outboxKey) return;
-    const current = this.editor?.state.doc.toString() ?? this.draft;
-    if (current.trim() !== "") return;
-    // The send is async: a session switch while it runs hands the failure
-    // restore to the wrong composer, writing session A's text and images
-    // into session B's draft. The outbox bookkeeping above stays keyed to
-    // the sending session; only the visible restore is scope-guarded.
-    if (machineSessionKey(this.machineId, this.sessionId ?? "") !== scopeKey) return;
-    this.attachments = restorable.attachments;
-    this.replaceText(restorable.text);
+  /** Write one message at the end of the outbox, show its row, and kick the driver. Returns whether it was written. */
+  private writeMessage(key: string, text: string, behavior: "steer" | "followUp" | undefined, files: { attachments: PromptAttachment[]; delivery: PromptAttachmentDelivery } | undefined): boolean {
+    const written = appendMessage(key, {
+      text,
+      ...(behavior === undefined ? {} : { behavior }),
+      clientMessageId: newClientMessageId(),
+      ...(files ?? {}),
+      at: new Date().toISOString(),
+    });
+    if (written === undefined) return false;
+    this.pendingPrompts = this.pendingPromptsForSession();
+    this.onOutgoingWritten?.({ machineId: this.machineId, sessionId: this.sessionId ?? "" }, written);
+    this.kickOutbox();
+    return true;
   }
 
   private resetComposer() {
@@ -1502,19 +1425,6 @@ export class PromptEditor extends LitElement {
 // cares about (canSteer/canStop/isCompacting/sending) is passed as a separate
 // property that Lit already diffs by value. Comparing just these fields lets us
 // ignore the per-token status churn that does not change anything on screen.
-/**
- * For a send nobody answered, whether its bytes left - the fact the bubble words it by; undefined
- * for a failure that is an answer. The controller wraps the transport error in `NetworkSendError`
- * and classifies the original, so this unwraps it too: classifying the wrapper made the record
- * say "Not sent" while the bubble said it was still being checked. The first send and a replay both use it; a
- * replay used to leave its record's state as it was whatever the retry found.
- */
-function unansweredBytesLeft(failure: unknown): boolean | undefined {
-  if (!handleOutcome(classifySubmission(failure, (value) => !isNetworkFailure(value) && !isRequestTimeout(value))).keepInOutbox) return undefined;
-  const cause: unknown = failure instanceof NetworkSendError && failure.cause !== undefined ? failure.cause : failure;
-  return transportFactsFor(cause, { isTimeout: isRequestTimeout(cause), linkOffline: linkReportedOffline(cause) }).bytesHandedToTransport;
-}
-
 function sessionStatusRenderEqual(a: SessionStatus | undefined, b: SessionStatus | undefined): boolean {
   if (a === b) return true;
   if (a === undefined || b === undefined) return false;
@@ -1610,37 +1520,14 @@ export function composerPlaceholder(): HTMLElement {
   return wrap;
 }
 
-type RetryBlock = "offline" | "busy" | "gone";
+/** How a take-back went: withdrawn on this device (never sent), asked of the machine, or not written at all. */
+export type TakeBackPath = "withdrawnHere" | "sentToMachine" | "notWritten";
 
-const RETRY_BLOCKED_NOTICE: Record<RetryBlock, string> = {
-  offline: "You are offline - this message sends itself when the connection is back.",
-  busy: "Another message is being resent - retry this one when it finishes.",
-  gone: "This message is no longer held for a retry - it may already have been delivered.",
-};
+/** A message, or a take-back of one: each is sent its own way. */
+type OperationKind = "message" | "takeBack";
 
-export function retryBlocked(online: boolean, replaying: boolean, held: boolean): RetryBlock | undefined {
-  if (!online) return "offline";
-  if (replaying) return "busy";
-  return held ? undefined : "gone";
-}
-
-/** One send as it was composed, with the scope and identity its outbox record holds. */
-interface OutgoingSend {
-  outboxKey: string;
-  outboxId: string;
-  /** When the reader pressed send; the time the message keeps (B5). */
-  sentAt: string;
-  scope: SendScope;
-  /**
-   * Whether the composer was on the page when the message was written. One taken off the page
-   * since - a machine switch or a cleared selection unmounts it - no longer speaks for any
-   * session, and its props never change to say so.
-   */
-  writtenOnPage: boolean;
-  text: string;
-  behavior: "steer" | "followUp" | undefined;
-  attachments: PromptAttachment[] | undefined;
-  delivery: PromptAttachmentDelivery;
+function operationKind(operation: PendingPrompt): OperationKind {
+  return operation.takeBackOf === undefined ? "message" : "takeBack";
 }
 
 /**

@@ -81,6 +81,7 @@ import { appRowPlace, type AppRowPlace } from "../appShell/appRowPlace";
 import { BrowserResumeController } from "../appShell/browserResumeController";
 import "./appShell/ContextSwitcherSheet";
 import "./appShell/AppGoToSheet";
+import "./appShell/NewSessionProjectSheet";
 import "./SessionRenameDialog";
 import type { GoToDestination } from "./appShell/AppGoToSheet";
 import { PanelCollapseController, mainViewClass, panelToggleHiddenState, workspacePanelTakesSpace } from "../appShell/panelCollapseController";
@@ -95,7 +96,7 @@ import "./SessionCleanupDialog";
 import "./ChatView";
 import type { ChatView } from "./ChatView";
 import "./PromptEditor";
-import type { PromptEditor } from "./PromptEditor";
+import type { PromptEditor, TakeBackPath } from "./PromptEditor";
 import "./StatusBar";
 import "./CommandPicker";
 import "./ModelPicker";
@@ -317,7 +318,8 @@ const WORKSPACE_ROUTE_NAMESPACE = queryNamespace("core:workspace");
 const MIN_RESIZABLE_CHAT_WIDTH_PX = 320;
 const PANEL_EDGE_COLUMNS_WIDTH_PX = 2;
 import { deliveredClientMessageIds } from "../userMessageRegister";
-import { OUTBOX_CHANGED_EVENT, sessionsWithFailedSends } from "../pendingOutbox";
+import { heldWords, type PendingPrompt, type SendScope } from "../pendingOutbox";
+import type { SequencedOperation } from "../operationLog";
 import { rowedClientMessageIds } from "../messageDelivery";
 import { frontedPageShown } from "../frontedPage";
 import { extensionWidgetPanels } from "./ExtensionWidgetPage";
@@ -365,15 +367,10 @@ export class PiWebApp extends LitElement {
    * own record was already spent by its boot read. */
   private interruptedRunsByMachine = new Map<string, ReadonlySet<string>>();
   private interruptedRunsBootReadByMachine = new Set<string>();
-  @state() private failedSendSessionIds: ReadonlySet<string> = sessionsWithFailedSends();
   @state() private unreadSessionIds: ReadonlySet<string> = this.sessionUnread.unreadSessionIds(selectedMachineId(this.state), this.state.sessions);
   /** The open session whose row keeps its unread place until the reader leaves it (`openRowHold.ts`). */
   @state() private openRowHold: OpenRow | undefined;
   private unreadConnected = false;
-  private readonly onOutboxChanged = (): void => {
-    const next = sessionsWithFailedSends();
-    if (!sameStringSet(next, this.failedSendSessionIds)) this.failedSendSessionIds = next;
-  };
   private committedChatIdentity: string | undefined;
   private readyChatIdentity: string | undefined;
 
@@ -393,6 +390,10 @@ export class PiWebApp extends LitElement {
         if (selectedMachineId(this.state) !== machineId || this.state.selectedSession?.id !== sessionId) return;
         if (mode === "paste") this.promptEditor?.pasteText(text);
         else this.promptEditor?.replaceText(text);
+      },
+      returnToComposer: ({ machineId, sessionId }, words) => {
+        if (selectedMachineId(this.state) !== machineId || this.state.selectedSession?.id !== sessionId) return;
+        this.promptEditor?.takeBack(words);
       },
       catalogue: {
         projects: (machineId, wanted) => this.projects.answeredProjects(machineId, wanted),
@@ -507,8 +508,6 @@ export class PiWebApp extends LitElement {
   private transientPendingSince: number | undefined;
   private transientGraceTimer: number | undefined;
   private heldErrorBanner: TemplateResult | null = null;
-  /** Set when the reader dismisses the banner: the hold window must not resurrect what the reader has already acted on. */
-  private bannerDismissedByReader = false;
   private lastScheduledError = "";
   private lastScheduledMachineId: string | undefined = undefined;
   private bannerContextKey = "";
@@ -525,8 +524,8 @@ export class PiWebApp extends LitElement {
   /** Whether any modal layer is open; the app row then rides above it. */
   @state() private modalPresent = false;
   private stopModalPresence: (() => void) | undefined;
-  /** The first-boot centre asked for a new session in whichever project the reader picks next. */
-  private startSessionOnProjectChoice = false;
+  /** New session with no project open asks where it starts (`NewSessionProjectSheet`). */
+  @state() private newSessionSheetOpen = false;
   /** The first-boot centre's Add a project: the added project opens with a new session. */
   private startSessionAfterAddingProject = false;
   /** The session the rename dialog names, with the machine it lives on: a row of a browsed machine is renamed there. */
@@ -669,12 +668,6 @@ export class PiWebApp extends LitElement {
   /** Where the dashed "Drop files to attach" frame stands while files are dragged over the chat. */
   @state() private fileDropFrame: string | undefined;
   private quickSwitcherMachineId: string | undefined;
-  /**
-   * The machine whose sessions the switcher is browsing. Defaults to the
-   * machine the app is on and changes with the machine tabs; opening a
-   * session that lives elsewhere moves the app there first.
-   */
-  @state() private quickSwitcherBrowseMachineId = "";
   @state() private staleClientServerVersion: string | undefined;
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private pluginDialogs: readonly PluginDialogEntry[] = [];
@@ -1208,10 +1201,6 @@ export class PiWebApp extends LitElement {
     this.lookingSince = document.visibilityState === "visible" ? 0 : undefined;
     ackWatch.watch(() => { this.requestUpdate(); });
     this.realtime.watchPhase(() => { this.requestUpdate(); });
-    // A failed send is a fact about a session the reader may not be looking at, so the
-    // list must learn about it from the outbox rather than from a visit.
-    window.addEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
-    this.failedSendSessionIds = sessionsWithFailedSends();
     this.unreadConnected = true;
     // The navigation page is mounted, not opened: the desktop rail always is,
     // and the phone boots straight into it. Nothing called openNavigate in
@@ -1331,7 +1320,6 @@ export class PiWebApp extends LitElement {
     if (this.transientErrorTimer !== undefined) window.clearTimeout(this.transientErrorTimer);
     if (this.bannerHoldTimer !== undefined) window.clearTimeout(this.bannerHoldTimer);
     if (this.transientGraceTimer !== undefined) window.clearTimeout(this.transientGraceTimer);
-    window.removeEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
     window.removeEventListener("resize", this.onVisualViewportChange);
     window.removeEventListener("orientationchange", this.onVisualViewportChange);
     window.visualViewport?.removeEventListener("resize", this.onVisualViewportChange);
@@ -2726,10 +2714,7 @@ export class PiWebApp extends LitElement {
 
   private readonly newSessionFrom: Readonly<Record<NewSessionPlace, () => void>> = {
     here: () => { this.closeNavigate(); void this.asReaderListChange(() => this.startSessionAndOpenChat()); },
-    "choose-project": () => {
-      this.startSessionOnProjectChoice = true;
-      this.shownNavigatePage()?.showKind("project");
-    },
+    "choose-project": () => { this.chooseProjectForNewSession(); },
   };
 
   /**
@@ -3073,7 +3058,6 @@ export class PiWebApp extends LitElement {
   private navigationViewLoaded = false;
 
   private closeNavigate(): void {
-    this.startSessionOnProjectChoice = false;
     this.navigateOpen = false;
   }
 
@@ -3318,20 +3302,13 @@ export class PiWebApp extends LitElement {
   }
 
   private async navigateChoose(level: NavigateLevel, id: string): Promise<void> {
-    if (level === "machine") { this.browseQuickSwitcherMachine(id); return; }
-    const startSession = this.startSessionOnProjectChoice;
-    this.startSessionOnProjectChoice = false;
+    if (level === "machine") { this.switchToMachine(id); return; }
     this.navigation.begin();
     const machineId = this.browsedMachineId();
     const chosen = this.projectsListedOn(machineId).find((entry) => entry.id === id);
     if (chosen === undefined || !(await this.moveToMachine(machineId, { updateUrl: false }))) return;
     const project = this.state.projects.find((entry) => entry.id === id) ?? chosen;
-    if (!startSession) {
-      await this.workspaces.selectProject(project);
-      return;
-    }
-    this.closeNavigate();
-    await this.startSessionInProject(project);
+    await this.workspaces.selectProject(project);
   }
 
   /** Widening drops the level and everything under it; the page stays put. */
@@ -3348,7 +3325,6 @@ export class PiWebApp extends LitElement {
     dismissKeyboardIfRaised();
     this.openLazySurface("quick-switcher", "Session search");
     this.quickSwitcherOpen = true;
-    this.quickSwitcherBrowseMachineId = selectedMachineId(this.state);
     this.projects.browse(selectedMachineId(this.state));
     this.pushModalLayerFrame();
     // Show what is cached, then refresh behind it. The cache was previously
@@ -3413,13 +3389,12 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * Which machine the session-wide list is reading. Empty means "the machine
-   * the app is on"; resolving it in one place matters because the staleness
-   * guards below compare against it - comparing the raw field discarded every
-   * answer whenever the reader had not switched tabs.
+   * Which machine the session-wide list is reading: always the machine the app is on (owner,
+   * 2026-10-13: choosing a machine switches to it, and the lists show that machine). The staleness
+   * guards below compare against it.
    */
   private browsedMachineId(): string {
-    return this.quickSwitcherBrowseMachineId === "" ? selectedMachineId(this.state) : this.quickSwitcherBrowseMachineId;
+    return selectedMachineId(this.state);
   }
 
   /**
@@ -3460,24 +3435,19 @@ export class PiWebApp extends LitElement {
 
   /**
    * Status badges, pins and selection all describe sessions on the machine
-   * the app is on. Rendering them beside another machine's rows would attach
-   * this machine's facts to that machine's sessions, so while the tabs browse
-   * elsewhere the rows carry no badges at all - absent, not falsely present.
+   * the app is on. Just after a machine switch the rows on screen can still be
+   * the previous machine's board until the new one is read; rendering badges
+   * beside them would attach this machine's facts to that machine's sessions,
+   * so those rows carry none - absent, not falsely present.
    */
   private quickSwitcherBrowsingElsewhere(): boolean {
-    const selected = selectedMachineId(this.state);
-    const requested = this.quickSwitcherBrowseMachineId !== "" && this.quickSwitcherBrowseMachineId !== selected;
-    const shown = this.quickSwitcherMachineId !== undefined && this.quickSwitcherMachineId !== selected;
-    return requested || shown;
+    return this.quickSwitcherMachineId !== undefined && this.quickSwitcherMachineId !== selectedMachineId(this.state);
   }
 
-  private browseQuickSwitcherMachine(machineId: string): void {
-    if (this.quickSwitcherBrowseMachineId === machineId) return;
+  /** Choosing a machine switches the app to it; its lists follow (owner, 2026-10-13). */
+  private switchToMachine(machineId: string): void {
     this.navigation.begin();
-    this.quickSwitcherBrowseMachineId = machineId;
-    this.projects.browse(machineId);
-    this.mirrorSessionBoard();
-    void this.loadQuickSwitcherData();
+    void this.moveToMachine(machineId);
   }
 
   /**
@@ -3548,7 +3518,7 @@ export class PiWebApp extends LitElement {
    * heard of it - the wrong-machine read the qwen presence lane found.
    */
   private async moveToBrowsedMachine(options: { readonly updateUrl?: boolean } = {}): Promise<boolean> {
-    return this.moveToMachine(this.quickSwitcherMachineId ?? this.quickSwitcherBrowseMachineId, options);
+    return this.moveToMachine(this.quickSwitcherMachineId ?? "", options);
   }
 
   /** The machine the listed rows belong to: the one the list was read from. */
@@ -3623,21 +3593,15 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * A new session is a reader intent (D8): it supersedes an open still loading. `startSession()`
-   * stays in flight until the daemon resolves the session; the chat opens as soon as the
-   * controller has inserted the temporary row.
+   * A new session is a reader intent (D8): it supersedes an open still loading. It opens as an empty
+   * draft chat; the session is created on the machine by its first message.
    */
   private async startSessionAndOpenChat(shouldComplete: () => boolean = () => true): Promise<void> {
     const seq = this.navigation.begin();
-    const current = () => this.navigation.isCurrent(seq) && shouldComplete();
-    const start = this.sessions.startSession().catch((error: unknown) => {
-      if (current()) this.setState(errorNoticePatch(error));
-    });
-    if (current()) {
-      if (this.state.mainView !== "chat") this.showView("chat");
-      await this.focusComposerAfterRender();
-    }
-    void start;
+    this.sessions.startSession();
+    if (!this.navigation.isCurrent(seq) || !shouldComplete()) return;
+    if (this.state.mainView !== "chat") this.showView("chat");
+    await this.focusComposerAfterRender();
   }
 
   private async focusChatComposer(): Promise<void> {
@@ -3919,10 +3883,24 @@ export class PiWebApp extends LitElement {
     await this.startSessionAndOpenChat();
   }
 
-  /** The Projects list, where choosing a project starts the new session in it. */
+  /** Ask which project a new session starts in: the machine's projects, or a new one. */
   private chooseProjectForNewSession(): void {
-    this.startSessionOnProjectChoice = true;
-    this.openNavigateOn("project");
+    this.newSessionSheetOpen = true;
+  }
+
+  private renderNewSessionSheet(): TemplateResult | null {
+    if (!this.newSessionSheetOpen) return null;
+    const close = (): void => {
+      this.newSessionSheetOpen = false;
+      this.closeNavigate();
+    };
+    return html`<new-session-project-sheet
+      .projects=${this.state.projects}
+      ?canAddProject=${this.hasAddProjectEntry()}
+      .onChoose=${(project: Project) => { close(); void this.startSessionInProject(project); }}
+      .onAddProject=${() => { close(); this.openProjectDialog({ startSessionAfter: true }); }}
+      .onClose=${() => { this.newSessionSheetOpen = false; }}
+    ></new-session-project-sheet>`;
   }
 
   /** Text-safe badge for a page line; rich badges stay in list rows. */
@@ -4709,6 +4687,7 @@ export class PiWebApp extends LitElement {
 
   private async openModelDialog() {
     const stillWanted = this.beginPickerRequest();
+    await this.sessions.startDraft();
     const [models, catalog] = await Promise.all([this.sessions.listModels(), this.sessions.listModelCatalog()]);
     if (!stillWanted()) return;
     const selectedValue = this.currentModelValue();
@@ -4881,6 +4860,7 @@ export class PiWebApp extends LitElement {
 
   private async openThinkingDialog() {
     const stillWanted = this.beginPickerRequest();
+    await this.sessions.startDraft();
     const levels = await this.sessions.listThinkingLevels();
     if (!stillWanted()) return;
     const current = this.state.status?.thinkingLevel ?? "off";
@@ -4921,8 +4901,9 @@ export class PiWebApp extends LitElement {
    * disabled. A send goes like the composer's: a steer while a turn runs,
    * a follow-up otherwise; its row in the transcript carries the delivery state.
    */
-  private readonly handleRendererSend = async (text: string): Promise<void> => {
-    await this.sendPrompt(text, this.state.status?.isStreaming === true ? "steer" : "followUp");
+  private readonly handleRendererSend = (text: string): Promise<void> => {
+    this.promptEditor?.sendText(text, this.state.status?.isStreaming === true ? "steer" : "followUp");
+    return Promise.resolve();
   };
 
   private readonly handleRendererInsert = (text: string): void => {
@@ -4963,13 +4944,35 @@ export class PiWebApp extends LitElement {
     void this.sessions.clearServerQueue();
   };
 
-  private readonly handleRecallQueuedMessage = (message: QueuedSessionMessage): void => {
-    // The composer is filled only once the server confirms the message left the
-    // queue, so a recall that lost the race to the agent does not offer the
-    // text for a second send.
-    void this.sessions.recallQueuedMessage(message).then((recalled) => {
-      if (recalled) this.restoreToComposer([message]);
-    });
+  /**
+   * Take a message back: written into this device's outbox as the next operation of its session,
+   * so it reaches the machine after everything sent before it. The words come from wherever this
+   * device holds them, else from the row or the queue entry (a message sent from another device).
+   */
+  private readonly handleTakeBack = (clientMessageId: string, queued: QueuedSessionMessage | undefined): void => {
+    const session = this.state.selectedSession;
+    if (session === undefined) return;
+    const held = heldWords(machineSessionKey(selectedMachineId(this.state), session.id), clientMessageId);
+    const line = this.state.messages.find((message) => message.meta?.delivery?.clientMessageId === clientMessageId);
+    const recovered = line === undefined ? undefined : recoverPromptFromLine(line);
+    const text = held?.text ?? recovered?.text ?? queued?.text ?? "";
+    const attachments = held?.attachments ?? recovered?.attachments ?? [];
+    const kind = queued?.kind ?? line?.meta?.delivery?.kind ?? held?.behavior;
+    const path = this.promptEditor?.takeBackMessage({ clientMessageId, text, attachments, ...(kind === undefined ? {} : { kind }) }) ?? "notWritten";
+    this.afterTakeBack[path](clientMessageId);
+  };
+
+  /** What the row does after a take-back: gone at once when it never left, "Taking back…" while the machine is asked. */
+  private readonly afterTakeBack: Readonly<Record<TakeBackPath, (clientMessageId: string) => void>> = {
+    withdrawnHere: (clientMessageId) => { this.sessions.withdrawRow(clientMessageId); },
+    sentToMachine: (clientMessageId) => { this.sessions.markTakingBack(clientMessageId); },
+    notWritten: () => undefined,
+  };
+
+  private readonly handleTakeBackOperation = (scope: SendScope, target: { clientMessageId: string; text: string; kind?: "steer" | "followUp" }, sequence: SequencedOperation): Promise<boolean> => this.sessions.takeBackMessage(scope, target, sequence);
+
+  private readonly handleOutgoingWritten = (scope: SendScope, message: PendingPrompt): void => {
+    this.sessions.showOutgoing(scope, message);
   };
 
   private readonly handleAnswerDialog = (dialogId: string, value: ExtensionDialogAnswer): Promise<void> => this.sessions.answerDialog(dialogId, value);
@@ -4986,18 +4989,6 @@ export class PiWebApp extends LitElement {
    */
   private readonly handleResendMessage = (prompt: RecoveredPrompt): void => {
     this.promptEditor?.takeBack(prompt);
-  };
-
-  /**
-   * Discard takes the words back rather than destroying them: the row goes, and its text
-   * and images land in the composer the way a recalled queued message does, so a thumb
-   * that missed Retry costs a tap, not the prompt.
-   */
-  private readonly handleDiscardMessage = (clientMessageId: string): void => {
-    const line = this.state.messages.find((message) => message.meta?.delivery?.clientMessageId === clientMessageId);
-    const recovered = line === undefined ? undefined : recoverPromptFromLine(line);
-    this.sessions.discardOutgoing(clientMessageId);
-    if (recovered !== undefined) this.promptEditor?.takeBack(recovered);
   };
 
   private readonly handleSelectModel = (): void => {
@@ -5069,11 +5060,11 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .onRetryMessage=${(clientMessageId: string) => { this.promptEditor?.retryOutbox(clientMessageId); }} .onDiscardMessage=${this.handleDiscardMessage} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity}
+      <chat-view .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity}
         .onDialogKey=${this.handleDialogKey}
         .onDialogLine=${this.handleDialogLine}
         .onDialogWidth=${this.handleDialogWidth}
-        .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .cardDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .onSendMessage=${this.handleRendererSend} .onInsertIntoComposer=${this.handleRendererInsert} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} ?pluginsIncomplete=${this.pluginsIncomplete(selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .findToolRenderer=${(toolName: string) => this.plugins.findToolRenderer(toolName, selectedMachineId(state))} .machineId=${selectedMachineId(state)} .sessionCwd=${session.cwd}></chat-view>
+        .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .cardDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onClearServerQueue=${this.handleClearServerQueue} .onTakeBack=${this.handleTakeBack} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .onSendMessage=${this.handleRendererSend} .onInsertIntoComposer=${this.handleRendererInsert} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} ?pluginsIncomplete=${this.pluginsIncomplete(selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .findToolRenderer=${(toolName: string) => this.plugins.findToolRenderer(toolName, selectedMachineId(state))} .machineId=${selectedMachineId(state)} .sessionCwd=${session.cwd}></chat-view>
     `;
   }
 
@@ -5122,24 +5113,8 @@ export class PiWebApp extends LitElement {
       <status-bar
         .status=${state.status}
         .failure=${state.status === undefined ? state.transcriptFailed ?? state.statusReadFailed : undefined}
-        .onRetry=${() => { void this.retryAfterError(); }}
       ></status-bar>
     `;
-  }
-
-  /**
-   * What "Retry" means on the session status bar: read the current scope again.
-   * The bar reports a failed read of the selection, so the retry is the read
-   * the selection needs - not a generic reload that would lose the reader's
-   * place. The app row above it has no Retry (owner, 2026-10-13).
-   */
-  private async retryAfterError(): Promise<void> {
-    this.bannerDismissedByReader = true;
-    this.heldErrorBanner = null;
-    this.setState(clearErrorPatch());
-    const session = this.state.selectedSession;
-    if (session !== undefined) { await this.sessions.selectSession(session); return; }
-    await this.machines.loadMachines(selectedMachineId(this.state));
   }
 
   private appRowPlace(): AppRowPlace {
@@ -5224,20 +5199,6 @@ export class PiWebApp extends LitElement {
       this.lastScheduledError = "";
       this.lastScheduledMachineId = undefined;
       this.heldErrorBanner = null;
-    }
-    if (this.bannerDismissedByReader) {
-      // The reader acted; the hold window exists for replacement churn, not to
-      // outvote a dismissal. But a claim that arrived between the dismissal
-      // and this render is a new claim - it shows, and the one-shot stays
-      // armed until the screen is actually quiet.
-      this.bannerShownAt = undefined;
-      this.lastScheduledError = "";
-      this.lastScheduledMachineId = undefined;
-      this.heldErrorBanner = null;
-      if (error === "") {
-        this.bannerDismissedByReader = false;
-        return null;
-      }
     }
     const decision = bannerHoldDecision({ shownAt: this.bannerShownAt, now: Date.now(), next: error });
     // A transport claim earns its banner (owner's ruling): a single blip -
@@ -5460,7 +5421,7 @@ export class PiWebApp extends LitElement {
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigatePage(false) : null}</div>
           ${state.selectedSession ? html`
             ${this.renderChatView(state, state.selectedSession)}
-            ${state.selectedSession.archived === true ? this.renderArchivedComposerSlot(state.selectedSession) : html`<prompt-editor .rowedMessageIds=${rowedClientMessageIds(state.messages, [...(state.status?.queuedMessages ?? []), ...(state.clientQueuedSessionMessages[state.selectedSession.id] ?? [])])} .sessionId=${state.selectedSession.id} .cwd=${composerCwd(state)} .sessionPrompts=${this.sessionPromptsFor(state)} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${isSessionActive(state.status, state.activity)} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true}  .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .composerContributions=${this.plugins.getComposerContributions(selectedMachineId(state))} .onPluginNotice=${(message: string) => { this.setState(noticePatch(noticeForReader(message))); }}></prompt-editor>`}
+            ${state.selectedSession.archived === true ? this.renderArchivedComposerSlot(state.selectedSession) : html`<prompt-editor .rowedMessageIds=${rowedClientMessageIds(state.messages, [...(state.status?.queuedMessages ?? []), ...(state.clientQueuedSessionMessages[state.selectedSession.id] ?? [])])} .sessionId=${state.selectedSession.id} .cwd=${composerCwd(state)} .sessionPrompts=${this.sessionPromptsFor(state)} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${isSessionActive(state.status, state.activity)} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true}  .onSend=${this.handleSendPrompt} .onTakeBackOperation=${this.handleTakeBackOperation} .onOutgoingWritten=${this.handleOutgoingWritten} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .composerContributions=${this.plugins.getComposerContributions(selectedMachineId(state))} .onPluginNotice=${(message: string) => { this.setState(noticePatch(noticeForReader(message))); }}></prompt-editor>`}
             ${this.renderStatusBar(state)}
             ${this.fileDropFrame === undefined ? nothing : html`<div class="file-drop-frame" style=${this.fileDropFrame} aria-hidden="true"><span>Drop files to attach</span></div>`}
             ${state.commandDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} .title=${state.commandDialog.title} .options=${state.commandDialog.options} .onPick=${(value: string) => this.sessions.respondToCommand(state.commandDialog?.requestId ?? "", value)} .onCancel=${() => { this.sessions.cancelCommand(); }}></command-picker>` : null}
@@ -5485,15 +5446,14 @@ export class PiWebApp extends LitElement {
           .openerShortcut=${this.shortcutOf("app.sessions.quick-switch")}
           .heldOpenSessionId=${this.quickSwitcherBrowsingElsewhere() ? undefined : heldOpenSessionIn(this.openRowHold, selectedMachineId(state))}
           .sessionSections=${sessionSections(this.plugins.getSessionSections(this.rowsMachineId()))}
-          .failedSendSessionIds=${this.failedSendSessionIds}
           .interruptedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.interruptedRunsByMachine.get(selectedMachineId(state)) ?? EMPTY_ID_SET}
           .errorSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.errorSessionIds()}
           .pinnedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.pinnedSessionIds}
           .projects=${this.quickSwitcherBrowsingElsewhere() ? [] : state.projects}
           .machines=${state.machines}
-          .browseMachineId=${this.quickSwitcherBrowseMachineId}
+          .browseMachineId=${selectedMachineId(state)}
           .browsingElsewhere=${this.quickSwitcherBrowsingElsewhere()}
-          .onSelectMachine=${(machineId: string) => { this.browseQuickSwitcherMachine(machineId); }}
+          .onSelectMachine=${(machineId: string) => { this.switchToMachine(machineId); }}
           .canStartSession=${!this.quickSwitcherBrowsingElsewhere() && this.canStartSession()}
           .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}
           .onOpenSession=${(session: SessionInfo) => { void this.openSessionFromQuickSwitcher(session); }}
@@ -5516,6 +5476,7 @@ export class PiWebApp extends LitElement {
         ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .reveal=${this.settingsReveal} .onRevealed=${() => { this.settingsReveal = undefined; }} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} ?reloadOnClose=${this.reloadAfterSettings} .onPluginsChanged=${() => { if (!this.settingsMachineFollowsToggles()) this.reloadAfterSettings = true; }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .pluginLoadFailures=${this.pluginLoadFailures} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
         ${this.pluginDialogs.map((entry) => html`<div class=${PLUGIN_DIALOG_CLASS[entry.dialog.presentation ?? "overlay"]}><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
+      ${this.renderNewSessionSheet()}
       ${this.contextSheetOpen ? html`<context-switcher-sheet
         .title=${[state.selectedMachine?.name, state.selectedProject?.name].filter((part) => part !== undefined && part !== "").join(" · ") || "Projects"}
         .navSections=${this.plugins.getNavSections(selectedMachineId(state))}

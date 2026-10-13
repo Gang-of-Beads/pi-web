@@ -1,24 +1,21 @@
-import { describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { PromptEditor } from "./components/PromptEditor";
 import { capturePromptAttachments, DEFAULT_FILE_MIME_TYPE, effectivePromptAttachmentDelivery, READ_FAILURE_MESSAGE, type CapturableFile } from "./promptAttachmentCapture";
 import { templateEventHandlerAfterMarker, templateEventHandlerAfterValue } from "./templateInspection.testSupport";
+import { MemoryStorage } from "./controllers/sessionController.testSupport";
 
 function file(name: string, type: string, size = 10): CapturableFile {
   return { name, type, size };
 }
 
-/** The id the editor minted for this send; one message carries one identity. */
-function lastClientMessageId(spy: Mock<NonNullable<PromptEditor["onSend"]>>): string {
-  const id = spy.mock.calls.at(-1)?.[4]?.clientMessageId;
-  if (id === undefined || id === "") throw new Error("send carried no identity");
-  return id;
-}
-
-/** The send time the composer recorded with the message (B5). */
-function lastSentAt(spy: Mock<NonNullable<PromptEditor["onSend"]>>): string {
-  const sentAt = spy.mock.calls.at(-1)?.[4]?.sentAt;
-  if (sentAt === undefined || Number.isNaN(Date.parse(sentAt))) throw new Error("send carried no send time");
-  return sentAt;
+/** A composer for one session, with storage for its outbox, reporting each message it writes there. */
+function composerWithOutbox(): { editor: PromptEditor; written: Mock<NonNullable<PromptEditor["onOutgoingWritten"]>> } {
+  vi.stubGlobal("localStorage", new MemoryStorage());
+  const editor = new PromptEditor();
+  editor.sessionId = "session-1";
+  const written = vi.fn<NonNullable<PromptEditor["onOutgoingWritten"]>>();
+  editor.onOutgoingWritten = written;
+  return { editor, written };
 }
 
 describe("capturePromptAttachments", () => {
@@ -97,16 +94,16 @@ describe("effectivePromptAttachmentDelivery", () => {
 });
 
 describe("PromptEditor attachment wiring", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
   // TemplateResult handler extraction (via the shared escape hatch) verifies the paste/remove/send
   // event wiring here; this repo runs Vitest without a DOM environment, so a full custom-element +
   // FileReader render harness would add disproportionate setup for this narrow wiring check. Each
-  // assertion observes a component effect (the injected `onSend` callback and its captured
+  // assertion observes a component effect (the message the composer writes to its outbox, reported through `onOutgoingWritten`, and its captured
   // attachments), not Lit template internals. Rendered content/error text is covered at the pure
   // layer by the `capturePromptAttachments` tests above.
   it("captures pasted files, strips data URL prefixes, and keeps successful reads when others fail", async () => {
-    const editor = new PromptEditor();
-    const onSend = vi.fn<NonNullable<PromptEditor["onSend"]>>();
-    editor.onSend = onSend;
+    const { editor, written } = composerWithOutbox();
     setPromptEditorPrivate(editor, "draft", "inspect attachments");
     const restoreFileReader = installFileReaderStub([
       { kind: "load", result: "data:image/png;base64,UE5H" },
@@ -129,22 +126,20 @@ describe("PromptEditor attachment wiring", () => {
       const send = templateEventHandlerAfterMarker(editor.render(), "send-button");
       send(new Event("click"));
 
-      // report.pdf failed to read, so only the successfully-read image survives to onSend — proving
+      // report.pdf failed to read, so only the successfully-read image reaches the outbox — proving
       // the paste is wired to capture, the data URL prefix is stripped, and a failed read does not
       // drop the other attachment.
-      expect(onSend).toHaveBeenCalledTimes(1);
-      expect(onSend).toHaveBeenCalledWith("inspect attachments", undefined, [
+      expect(written).toHaveBeenCalledTimes(1);
+      expect(written.mock.calls[0]?.[1]).toMatchObject({ text: "inspect attachments", attachments: [
         { kind: "image", mimeType: "image/png", data: "UE5H", name: "shot.png" },
-      ], "inline", { clientMessageId: lastClientMessageId(onSend), scope: { machineId: "local", sessionId: "" }, sentAt: lastSentAt(onSend) });
+      ], delivery: "inline" });
     } finally {
       restoreFileReader();
     }
   });
 
   it("removes a pending attachment chip before sending the remaining attachments", () => {
-    const editor = new PromptEditor();
-    const onSend = vi.fn<NonNullable<PromptEditor["onSend"]>>();
-    editor.onSend = onSend;
+    const { editor, written } = composerWithOutbox();
     setPromptEditorPrivate(editor, "draft", "please review");
     setPromptEditorPrivate(editor, "attachments", [
       { id: "attachment-1", kind: "file", name: "report.pdf", mimeType: "application/pdf", data: "UkVQT1JU", size: 6 },
@@ -157,12 +152,12 @@ describe("PromptEditor attachment wiring", () => {
     const send = templateEventHandlerAfterMarker(editor.render(), "send-button");
     send(new Event("click"));
 
-    // onSend receives only the image, proving the remove handler dropped report.pdf while leaving
+    // the outbox gets only the image, proving the remove handler dropped report.pdf while leaving
     // shot.png queued (folder delivery is not forced because no generic file remains).
-    expect(onSend).toHaveBeenCalledTimes(1);
-    expect(onSend).toHaveBeenCalledWith("please review", undefined, [
+    expect(written).toHaveBeenCalledTimes(1);
+    expect(written.mock.calls[0]?.[1]).toMatchObject({ text: "please review", attachments: [
       { kind: "image", mimeType: "image/png", data: "UE5H", name: "shot.png" },
-    ], "inline", { clientMessageId: lastClientMessageId(onSend), scope: { machineId: "local", sessionId: "" }, sentAt: lastSentAt(onSend) });
+    ], delivery: "inline" });
   });
 });
 

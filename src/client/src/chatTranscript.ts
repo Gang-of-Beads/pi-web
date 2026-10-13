@@ -1,7 +1,7 @@
 import { isRecord } from "../../shared/unknownValues";
 import { recordedDurationMs } from "../../shared/toolDuration";
 import { appendText, appendThinking, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
-import { deliverySettled } from "./messageDelivery";
+import { deliveryTaken } from "./messageDelivery";
 import { resolveArrival } from "./transcriptArrival";
 import { placeByTimestamp } from "./transcriptOrder";
 import { attemptStamps, isAttemptRow, withoutAttempts, withoutRetriedAttempt } from "./retriedAttempt";
@@ -164,11 +164,7 @@ function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine, committedI
     const tracked = byText !== -1 ? byText : findTrackedUserLineIndexByContent(messages, displayEnded);
     const target = tracked === -1 ? findEchoLineIndex(messages, displayEnded) : tracked;
     const previous = target === -1 ? undefined : messages[target];
-    // A committed copy overturns a failure, but only its own: an unstamped
-    // "continue" from an extension or a forwarded command matched a refused
-    // "continue" by text and called it delivered, taking Retry away.
-    if (previous !== undefined && byId === -1 && previous.meta?.delivery?.state === "failed") return [...messages, displayEnded];
-    if (previous !== undefined && awaitedCommit(previous)) return [...messages.slice(0, target), ...messages.slice(target + 1), carryDeliveryForward(previous, displayEnded)];
+    if (previous !== undefined && isUnansweredUser(previous)) return [...messages.slice(0, target), ...messages.slice(target + 1), carryDeliveryForward(previous, displayEnded)];
     if (previous !== undefined) return [...messages.slice(0, target), carryDeliveryForward(previous, displayEnded), ...messages.slice(target + 1)];
   }
   // The half-done streaming line lives at the unanswered tail, the same place
@@ -213,21 +209,11 @@ function queuedTail(messages: ChatLine[]): number {
   return index;
 }
 
-/**
- * Whether a committed copy claiming this line is the moment pi wrote the message: a bubble still
- * waiting, an echo, or a failed send retried. pi appends that entry at the end, so the copy lands
- * there; replaced in place, a retried failure jumped back above the replies after its first try,
- * where a reload never drew it (B2 review 1b6f1553). Every other waiting line is placed by state.
- */
-function awaitedCommit(line: ChatLine): boolean {
-  return isUnansweredUser(line) || line.meta?.delivery?.state === "failed";
-}
-
 /** The sender's own echo has no delivery record yet; it is just as unanswered as a queued send with one. */
 function isUnansweredUser(line: ChatLine | undefined): boolean {
   if (line?.role !== "user") return false;
   const state = line.meta?.delivery?.state;
-  return line.meta?.echo === true || (state !== undefined && !deliverySettled(state));
+  return line.meta?.echo === true || (state !== undefined && !deliveryTaken(state));
 }
 
 function withoutToolCalls(message: ChatLine): ChatLine {

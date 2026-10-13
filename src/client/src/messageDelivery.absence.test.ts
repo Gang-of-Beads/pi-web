@@ -74,13 +74,4 @@ describe("absence from a queue snapshot", () => {
 
     expect(carried.meta?.delivery?.state).toBe("delivered");
   });
-
-  it("calls a message marked failed delivered when its committed copy arrives: the commit is the fact", () => {
-    const previous = tracked("id-a", "make them smaller", "sending");
-    const failed: ChatLine = { ...previous, meta: { delivery: { clientMessageId: "id-a", state: "failed" } } };
-
-    const carried = carryDeliveryForward(failed, { role: "user", parts: [{ type: "text", text: "make them smaller" }] });
-
-    expect(carried.meta?.delivery?.state).toBe("delivered");
-  });
 });

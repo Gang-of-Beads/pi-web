@@ -30,7 +30,7 @@ trap cleanup EXIT
 
 echo "==> Send slash command: $command_text"
 curl -fsS --max-time 15 -X POST "$api/sessions/$session_id/prompt" -H 'content-type: application/json' \
-  -d "$(python3 -c "import json,sys;print(json.dumps({'cwd': '$cwd', 'text': '$command_text'}))")" >/dev/null
+  -d "$(python3 -c "import json,sys;print(json.dumps({'cwd': '$cwd', 'text': '$command_text', 'sequence': {'deviceId': 'device-verify-script', 'seq': 1, 'ackedThrough': 0}}))")" >/dev/null
 
 echo "==> Wait for the turn to start"
 for i in $(seq 1 30); do
