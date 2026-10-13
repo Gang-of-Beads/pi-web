@@ -165,7 +165,6 @@ These Pi packages are maintained alongside PI WEB. Install one from **Settings â
 | [pi-multi-account](https://github.com/Gang-of-Beads/pi-multi-account) | Several OAuth accounts per provider, and Claude subscription billing | `git:github.com/Gang-of-Beads/pi-multi-account` |
 | [pi-updater](https://github.com/Gang-of-Beads/pi-updater) | Offers updates for pi; under PI WEB it names the session-daemon restart an update needs | `git:github.com/Gang-of-Beads/pi-updater` |
 | [pi-bash-autobg](https://github.com/Gang-of-Beads/pi-bash-autobg) | Moves a long-running bash call to the background instead of blocking the agent | `git:github.com/Gang-of-Beads/pi-bash-autobg` |
-| [pi-bob-code](https://github.com/Gang-of-Beads/pi-bob-code) | Reviews every code change with a scout, verify, fix and gate pipeline before the agent finishes; needs pi-subagents | `git:github.com/Gang-of-Beads/pi-bob-code` |
 
 ## Configuration
 
