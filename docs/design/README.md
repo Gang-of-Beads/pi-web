@@ -1,31 +1,36 @@
 # Design
 
-How PI WEB is built and why. These documents are the design of record; code cites them for the reasons behind its shape.
+Design records written during development; they cite measurements on the maintainers' instances and are not user documentation.
+
+Code cites these documents for the reasons behind its shape. Start with the contributor overview, [PI WEB architecture](../architecture.md), for how the pieces fit together.
 
 ## The authorities
 
-- [State diagram](state-diagram.md): the rules, the state machines D1–D8 and the bug index. Every new state is added here, with its reason, before code.
-- [Object model](object-model.md): every object's properties, scope key, owner, head, events, cache and retention; the one read lifecycle; the network plan and the migration phases.
+- [State diagram](state-diagram.md): the rules, the state machines D1–D12 and the bug index. Every new state is added here, with its reason, before code.
+- [Object model](object-model.md): every object's properties, scope key, owner, head, events, cache and retention; the one read lifecycle; the network plan and the migration phases with their status.
 - [Sync that converges](sync-convergence.md): heads per surface and how a page catches up.
-- [State synchronisation redesign](state-sync-redesign.md): one FIFO, facts not copies.
+- [Message states](message-states.md): a message is never lost and never fails for good; the per-device operation log.
 
 ## Current designs
 
+- [Browser-direct machines](browser-direct-machines.md): the browser connects to each machine, with access requested and approved on the remote.
 - [Long press selects: one bulk mode for every list](bulk-selection.md): selection on every list with actions, with the states it adds.
-- [Extension screens: native when declared, a parsed card otherwise](extension-screens-plugin-entry.md): how an extension's `ui.custom` screen renders.
+- [Show what is known at once, then move it into place](cached-first-and-motion.md): the remembered session board and list motion.
+- [Go to keys](extension-keys-in-go-to.md): pages declared by plugins, or brought by an extension's widget.
+- [Extension UI](extension-ui-counterpart.md): the PI WEB counterpart of pi's `ctx.ui`.
+- [Go to scopes](go-to-scopes.md): global pages and project pages.
+- [The interactive card](interactive-card.md): one generic card an extension declares instead of a terminal screen.
+- [List layout](list-layout.md): one or two tiles per row.
+- [Navigation and session lists](navigation-lists.md): the Navigate page's menus, sections and empty states.
 - [The navigation state machine](navigation-state-machine.md): places and transitions of the app shell; the state diagram's D8 indexes its bugs.
-- [pi's insertion points in PI WEB](pi-insertion-points.md): every pi extension insertion point works without a PI WEB plugin, plugins add web ones on top; the audit and the slices that close the gaps.
 - [PI WEB gives the agent no tools of its own](no-builtin-agent-tools.md): why the daemon registers no agent tools, and where delegation lives instead.
-- [One message, one row](one-message-one-row.md): how duplicate message rows are made unrepresentable.
-- [Plugin architecture: a minimal core, everything else a plugin](plugin-architecture.md): the core and plugin boundary the plugin system is built on.
-- [Plugin lifecycle hooks, and Subagents as an official plugin](plugin-lifecycle-and-subagents.md): enabling and disabling plugins live, and moving Subagents out of core.
-- [Pro native: the app's own look, themes as departures from it](pro-native-theme.md): the default look, and what a theme may change.
-- [Surfaces as plugins, and one official plugin pack](surfaces-as-plugins.md): declarative contributions and the official plugin pack.
-- [Transcript status bar, and one gutter rule](transcript-status-strip.md): where a plugin's status shows, and the transcript's margins.
-- [Wave 0: the web plugin runtime and the seams it adds](web-plugin-runtime.md): plugins that run in the web process, and the routes they mount.
+- [pi's insertion points in PI WEB](pi-insertion-points.md): every pi extension insertion point works without a PI WEB plugin; plugins add web ones on top.
+- [The PI WEB Updates plugin](pi-web-updates-plugin.md): how PI WEB updates itself, by install method.
+- [Plugin lifecycle](plugin-lifecycle.md): turning a plugin on or off live, and the boundary between core and plugins.
+- [One list component for plugin pages](plugin-list-component.md): the host-drawn list a status page uses.
+- [Pro native](pro-native-theme.md): the app's own look, and what a theme may change.
+- [Drafts](server-drafts.md): where unsent input is kept.
 
 ## Records
 
-- [reviews/](reviews/): one triage record per reviewed change or design. Every review finding has a written verdict (fixed, not fixed with a reason, or judged not true).
-- [history/](history/README.md): plans, research, audits and wave records that later designs replaced. Kept so the reasons stay readable.
-- Notes outside the design: [docs/notes](../notes/README.md).
+Superseded designs, plans, research and review triage are not kept here; they are in git history.
