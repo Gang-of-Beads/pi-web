@@ -3,11 +3,35 @@ import { property, query, state } from "lit/decorators.js";
 import type { MachineCreateInput } from "@gang-of-beads/pi-web/plugin-api";
 import { renderHostCloseIcon, adoptMachinesHostStyles } from "./hostUi";
 import { keyBelongsToInputMethod } from "./inputMethodKey";
+import { approvalUrl, PairingError, readPairing, requestAccess, type PairingRequest } from "./pairing";
+
+type ConnectFrom = "browser" | "server";
+
+/** How a pairing that did not end in approval ended, and what the dialog says. */
+type PairingEnd = "denied" | "expired";
+
+const PAIRING_END_WORDS: Readonly<Record<PairingEnd, (name: string) => string>> = {
+  denied: (name) => `${name} denied this page.`,
+  expired: () => "The request expired before it was approved.",
+};
+
+const CONNECT_FROM_HINT: Readonly<Record<ConnectFrom, (name: string) => string>> = {
+  browser: (name) => `This device talks to ${name} directly; ${name} asks you to approve this page once.`,
+  server: (name) => `This PI WEB talks to ${name} for every device that opens it.`,
+};
+
+const POLL_EVERY_TICKS = 2;
+const TICK_MS = 1000;
 
 /**
  * The add-machine form, rendered inside the shell's dialog surface. A submit
  * resolves to the reason it did not go through, or undefined when it did; the
  * opener owns closing the dialog, the way the add-project dialog does.
+ *
+ * A machine reached from this browser is paired first (pairing.ts): the dialog
+ * asks the machine for access, shows the code and a link to the machine's own
+ * approval page, and adds the machine once the reader approved it there
+ * (docs/design/browser-direct-machines.md, mockups approved 2026-10-13).
  */
 export class MachineDialog extends LitElement {
   protected override createRenderRoot(): HTMLElement | DocumentFragment {
@@ -22,7 +46,14 @@ export class MachineDialog extends LitElement {
   @state() private url = "";
   @state() private name = "";
   @state() private token = "";
+  @state() private connectFrom: ConnectFrom = "browser";
   @state() private submitting = false;
+  /** The request for access while it waits on the machine; the dialog shows its code. */
+  @state() private pairing: PairingRequest | undefined = undefined;
+  @state() private pairingEnd: PairingEnd | undefined = undefined;
+  @state() private now = Date.now();
+  private ticker: number | undefined;
+  private ticks = 0;
   /** Why the last submit did not go through, shown where the submit happened. */
   @state() private submitError: string | undefined = undefined;
   @query("input[name='name']") private nameInput?: HTMLInputElement;
@@ -43,6 +74,16 @@ export class MachineDialog extends LitElement {
     if (!(event.target instanceof HTMLInputElement)) return;
     this.nameEdited = true;
     this.name = event.target.value;
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.stopWaiting();
+  }
+
+  private chooseConnection(connectFrom: ConnectFrom): void {
+    this.connectFrom = connectFrom;
+    this.submitError = undefined;
   }
 
   private handleTokenInput(event: InputEvent): void {
@@ -71,6 +112,14 @@ export class MachineDialog extends LitElement {
   private async submit(): Promise<void> {
     const input = this.validInput();
     if (input === undefined || this.submitting) return;
+    if (this.connectFrom === "browser") {
+      await this.askForAccess(input.baseUrl, input.name);
+      return;
+    }
+    await this.add(input);
+  }
+
+  private async add(input: MachineCreateInput): Promise<void> {
     this.submitting = true;
     try {
       const failure = await this.onSubmit?.(input);
@@ -81,18 +130,89 @@ export class MachineDialog extends LitElement {
     }
   }
 
+  private async askForAccess(baseUrl: string, name: string): Promise<void> {
+    this.submitting = true;
+    this.submitError = undefined;
+    this.pairingEnd = undefined;
+    try {
+      this.pairing = await requestAccess(baseUrl, location.host);
+      this.startWaiting(baseUrl, name);
+    } catch (error) {
+      this.submitError = error instanceof PairingError ? error.message : String(error);
+    } finally {
+      if (this.isConnected) this.submitting = false;
+    }
+  }
+
+  private startWaiting(baseUrl: string, name: string): void {
+    this.stopWaiting();
+    this.ticks = 0;
+    this.now = Date.now();
+    // Surface backed up: the pairing countdown and the request's state, which the machine does not announce to this page.
+    this.ticker = window.setInterval(() => { void this.tick(baseUrl, name); }, TICK_MS);
+  }
+
+  private stopWaiting(): void {
+    if (this.ticker !== undefined) window.clearInterval(this.ticker);
+    this.ticker = undefined;
+  }
+
+  private async tick(baseUrl: string, name: string): Promise<void> {
+    this.now = Date.now();
+    const pairing = this.pairing;
+    if (pairing === undefined) return;
+    if (Date.parse(pairing.expiresAt) <= this.now) {
+      this.endPairing("expired");
+      return;
+    }
+    this.ticks += 1;
+    if (this.ticks % POLL_EVERY_TICKS !== 0) return;
+    const current = await readPairing(baseUrl, pairing.id).catch(() => pairing);
+    if (this.pairing?.id !== pairing.id) return;
+    if (current === undefined) {
+      this.endPairing("expired");
+      return;
+    }
+    this.pairing = current;
+    if (current.state === "denied") this.endPairing("denied");
+    if (current.state === "approved") {
+      this.stopWaiting();
+      await this.add({ name, baseUrl, connectFrom: "browser" });
+    }
+  }
+
+  private endPairing(end: PairingEnd): void {
+    this.stopWaiting();
+    this.pairing = undefined;
+    this.pairingEnd = end;
+  }
+
+  private backToForm(): void {
+    this.stopWaiting();
+    this.pairing = undefined;
+    this.pairingEnd = undefined;
+  }
+
   private validInput(): MachineCreateInput | undefined {
     const baseUrl = this.url.trim();
     const name = this.name.trim();
     if (baseUrl === "" || name === "" || machineBaseUrlValidationMessage(baseUrl) !== undefined) return undefined;
-    const token = this.token.trim();
-    return { name, baseUrl, ...(token === "" ? {} : { token }) };
+    const token = this.connectFrom === "server" ? this.token.trim() : "";
+    return { name, baseUrl, connectFrom: this.connectFrom, ...(token === "" ? {} : { token }) };
   }
 
   override render() {
+    if (this.pairing !== undefined) return this.renderWaiting(this.pairing);
+    if (this.pairingEnd !== undefined) return this.renderEnded(this.pairingEnd);
+    return this.renderForm();
+  }
+
+  private renderForm() {
     const hasUrl = this.url.trim() !== "";
     const urlError = hasUrl ? machineBaseUrlValidationMessage(this.url) : undefined;
     const canSubmit = this.validInput() !== undefined && !this.submitting;
+    const name = this.name.trim() === "" ? "the machine" : this.name.trim();
+    const submitWords = this.connectFrom === "browser" ? (this.submitting ? "Asking…" : "Request access") : (this.submitting ? "Adding…" : "Add machine");
     return html`
       <form @submit=${(event: SubmitEvent) => { this.handleSubmit(event); }} @keydown=${(event: KeyboardEvent) => { this.handleKeyDown(event); }}>
         <header>
@@ -112,16 +232,70 @@ export class MachineDialog extends LitElement {
               <input name="name" type="text" .value=${this.name} @input=${(event: InputEvent) => { this.handleNameInput(event); }} placeholder=${this.previousSuggestedName || "Dev Box"} autocomplete="off" />
             </label>
             <small class="hint">Suggested from the URL. Edit it to use a friendlier sidebar label.</small>
-            <label>
-              Bearer token <span class="optional">optional</span>
-              <input name="token" type="password" .value=${this.token} @input=${(event: InputEvent) => { this.handleTokenInput(event); }} placeholder="Leave blank if the remote machine does not require one" autocomplete="off" />
-            </label>
-            <small class="hint">Paste only the token value; PI WEB sends it as an Authorization: Bearer header.</small>
-          ` : html`<p class="hint intro">After you enter a URL, PI WEB will suggest a machine name and let you add an optional bearer token.</p>`}
+            <div class="connect-from">
+              <span class="label" id="connect-from-label">Connect from</span>
+              <div class="segments" role="radiogroup" aria-labelledby="connect-from-label">
+                ${(["browser", "server"] as const).map((choice) => html`<button type="button" role="radio" aria-checked=${this.connectFrom === choice ? "true" : "false"} class=${this.connectFrom === choice ? "segment chosen" : "segment"} @click=${() => { this.chooseConnection(choice); }}>${choice === "browser" ? "This browser" : "This server"}</button>`)}
+              </div>
+              <small class="hint">${CONNECT_FROM_HINT[this.connectFrom](name)}</small>
+            </div>
+            ${this.connectFrom === "server" ? html`
+              <label>
+                Bearer token <span class="optional">optional</span>
+                <input name="token" type="password" .value=${this.token} @input=${(event: InputEvent) => { this.handleTokenInput(event); }} placeholder="Leave blank if the remote machine does not require one" autocomplete="off" />
+              </label>
+              <small class="hint">Paste only the token value; PI WEB sends it as an Authorization: Bearer header.</small>
+            ` : null}
+          ` : html`<p class="hint intro">After you enter a URL, PI WEB will suggest a machine name and how to connect to it.</p>`}
         </div>
         <footer>
           <button type="button" @click=${() => { this.onCancel?.(); }}>Cancel</button>
-          <button class="primary" type="submit" ?disabled=${!canSubmit}>${this.submitting ? "Adding…" : "Add machine"}</button>
+          <button class="primary" type="submit" ?disabled=${!canSubmit}>${submitWords}</button>
+        </footer>
+      </form>
+    `;
+  }
+
+  private renderWaiting(pairing: PairingRequest) {
+    const input = this.validInput();
+    const name = input?.name ?? "the machine";
+    const secondsLeft = Math.max(0, Math.ceil((Date.parse(pairing.expiresAt) - this.now) / 1000));
+    const countdown = `${String(Math.floor(secondsLeft / 60))}:${String(secondsLeft % 60).padStart(2, "0")}`;
+    const waitingWords = pairing.state === "approved" ? (this.submitting ? "Approved · adding the machine…" : "Approved") : `Waiting for approval · expires in ${countdown}`;
+    return html`
+      <form @submit=${(event: SubmitEvent) => { event.preventDefault(); }}>
+        <header>
+          <strong>Approve on ${name}</strong>
+          <button type="button" @click=${() => { this.onCancel?.(); }} aria-label="Close">${renderHostCloseIcon()}</button>
+        </header>
+        <div class="body">
+          ${this.submitError === undefined ? null : html`<div class="dialog-error" role="alert">${this.submitError}</div>`}
+          <p class="hint intro">Open ${name} and approve this page. Check that it shows the same code.</p>
+          <p class="code" aria-label=${`Pairing code ${pairing.code.split("").join(" ")}`}>${pairing.code.slice(0, 3)} ${pairing.code.slice(3)}</p>
+          ${input === undefined ? null : html`<a class="open primary" href=${approvalUrl(input.baseUrl, pairing.id)} target="_blank" rel="noopener">Open ${name} to approve</a>`}
+          <p class="waiting" role="status"><span class="dot" aria-hidden="true"></span>${waitingWords}</p>
+        </div>
+        <footer>
+          <button type="button" @click=${() => { this.onCancel?.(); }}>Cancel</button>
+        </footer>
+      </form>
+    `;
+  }
+
+  private renderEnded(end: PairingEnd) {
+    const name = this.validInput()?.name ?? "The machine";
+    return html`
+      <form @submit=${(event: SubmitEvent) => { event.preventDefault(); }}>
+        <header>
+          <strong>Add machine</strong>
+          <button type="button" @click=${() => { this.onCancel?.(); }} aria-label="Close">${renderHostCloseIcon()}</button>
+        </header>
+        <div class="body">
+          <p class="hint intro" role="status">${PAIRING_END_WORDS[end](name)}</p>
+        </div>
+        <footer>
+          <button type="button" @click=${() => { this.onCancel?.(); }}>Cancel</button>
+          <button class="primary" type="button" @click=${() => { this.backToForm(); }}>Try again</button>
         </footer>
       </form>
     `;
@@ -142,6 +316,16 @@ export class MachineDialog extends LitElement {
     .intro { margin: var(--pi-space-2) 0 0; line-height: 1.4; }
     .optional { color: var(--pi-muted); font-weight: var(--pi-weight-regular); }
     .field-error { color: var(--pi-danger); }
+    .connect-from { display: grid; gap: var(--pi-space-3); }
+    .connect-from .label { color: var(--pi-muted); }
+    .segments { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); overflow: hidden; }
+    form .segment { border: 0; border-radius: 0; background: transparent; color: var(--pi-muted); }
+    form .segment + .segment { border-left: 1px solid var(--pi-border); }
+    form .segment.chosen { background: color-mix(in srgb, var(--pi-accent) 18%, transparent); color: var(--pi-text); box-shadow: inset 0 -2px 0 var(--pi-accent); }
+    .code { margin: var(--pi-space-4) 0; text-align: center; font: var(--pi-text-xl) var(--pi-control-monospace-font-family, ui-monospace, monospace); letter-spacing: 0.3em; color: var(--pi-text); }
+    .open { display: flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-control-height-comfort); border-radius: var(--pi-radius-md); text-decoration: none; padding: var(--pi-space-4) var(--pi-space-5); }
+    .waiting { display: flex; align-items: center; gap: var(--pi-space-3); margin: 0; color: var(--pi-muted); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pi-warning); }
     .dialog-error { border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-danger) 10%, transparent); color: var(--pi-danger); padding: var(--pi-space-5); line-height: 1.35; }
     form button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
     header button { display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort);  line-height: 1; border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0; }
@@ -150,7 +334,7 @@ export class MachineDialog extends LitElement {
     /* Coarse pointers get the comfort floor: this dialog shipped 33px footer
        buttons and a 22x30 close next to a sibling dialog that raised both. */
     @media (pointer: coarse) {
-      footer button { min-height: var(--pi-control-height-touch, 44px); }
+      footer button, form .segment, .open { min-height: var(--pi-control-height-touch, 44px); }
       header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); padding: 0; }
       input[type="text"], input[type="url"], input[type="password"], input:not([type]) { min-height: var(--pi-control-height-touch, 44px); }
     }

@@ -1,4 +1,5 @@
 import { api, type Machine, type MachineHealth, type MachineRuntime } from "../api";
+import type { MachineConnection } from "../../../shared/apiTypes";
 import { resetWorkspaceScopedState } from "../appState";
 import { clearErrorPatch, errorNoticePatch, noticePatch, type NoticeFields } from "../errorNotice";
 import { describeError, noticeForReader, noticeFromTransport } from "../notice";
@@ -253,7 +254,7 @@ export class MachineController {
     }
   }
 
-  async addMachine(input: { name: string; baseUrl: string; token?: string }): Promise<Machine | undefined> {
+  async addMachine(input: { name: string; baseUrl: string; token?: string; connectFrom?: MachineConnection }): Promise<Machine | undefined> {
     this.setState(clearErrorPatch());
     try {
       const machine = await api.addMachine(input);

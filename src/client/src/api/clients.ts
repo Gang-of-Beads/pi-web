@@ -1,5 +1,5 @@
 import { isRecord } from "../../../shared/unknownValues";
-import type { ExtensionCompletionItem, ExtensionTerminalKey, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse } from "../../../shared/apiTypes";
+import type { ExtensionCompletionItem, ExtensionTerminalKey, MachineConnection, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse } from "../../../shared/apiTypes";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
 import { apiErrorMessage, errorCode, HttpError, request, transportFailureOf } from "./http";
@@ -126,7 +126,7 @@ export const piWebApi = {
 
 export const machinesApi = {
   machines: () => request("api/machines", parseMachinesResponse),
-  addMachine: (input: { name: string; baseUrl: string; token?: string }) => request("api/machines", parseMachine, { method: "POST", body: JSON.stringify(input) }),
+  addMachine: (input: { name: string; baseUrl: string; token?: string; connectFrom?: MachineConnection }) => request("api/machines", parseMachine, { method: "POST", body: JSON.stringify(input) }),
   reorderMachines: (order: readonly string[]) => request("api/machines/order", parseMachinesResponse, { method: "POST", body: JSON.stringify({ order: [...order] }) }),
   deleteMachine: (machineId: string) => request(`api/machines/${encodeURIComponent(machineId)}`, (value) => value, { method: "DELETE" }),
   /** Rename a machine (including the local machine, which persists as an alias). */
