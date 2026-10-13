@@ -26,6 +26,7 @@ import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle
 import type { PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
 import { deliveryWordKey, deliveryWords } from "../deliveryWords";
 import { commandDeliveryPresentation, commandResultLine, type CommandLedgerEntry } from "../commandLedger";
+import type { MessageNote } from "../messageNotes";
 import { placeCommands, type CommandPlacement } from "../commandPlacement";
 import { IDENTITY_ZOOM, pinchZoom, panZoom, wheelZoom, type PinchPoint, type PinchStart, type ZoomTransform } from "../imageZoomGesture";
 import { isScrollKey, wheelReachesScroller } from "../readerScrollInput";
@@ -338,6 +339,8 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      ignore while reading and specific enough to answer "did that send?". */
   .delivery-mark { display: flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-3); margin: var(--pi-space-3) calc(-1 * var(--pi-space-1)) calc(-1 * var(--pi-space-2)) 0; color: var(--pi-dim); font: var(--pi-text-2xs) var(--pi-font-ui); line-height: inherit; }
   .delivery-mark .delivery-glyph { display: inline-flex; line-height: 1; }
+  .message-note { margin: var(--pi-space-2) 0 0; color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); text-align: right; }
+  .message-note.rowless { margin: var(--pi-space-2) var(--pi-space-4); }
   .delivery-mark.pending { color: var(--pi-muted); }
   .delivery-mark.pending .delivery-glyph { animation: pulse 1.4s ease-in-out infinite; }
   .delivery-mark.received { color: var(--pi-muted); }
@@ -660,6 +663,8 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) pendingDialogs: PendingExtensionDialog[] = [];
   /** The browser's own receipts for commands it issued in this session. */
   @property({ attribute: false }) commandLedger: CommandLedgerEntry[] = [];
+  /** Notes about this session's messages (messageNotes.ts): under the message, or where its row was. */
+  @property({ attribute: false }) messageNotes: readonly MessageNote[] = [];
   @property({ attribute: false }) onAnswerDialog?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancelDialog?: ExtensionDialogCancelCallback;
   @property({ attribute: false }) onDialogKey?: ExtensionDialogKeyCallback;
@@ -1296,6 +1301,7 @@ export class ChatView extends LitElement {
           ${this.renderNewerBoundary()}
           ${this.renderSessionActivity()}
           ${this.renderPendingMessages(commands, groups.length, pendingRows, pendingStart)}
+          ${this.renderRowlessNotes()}
           ${this.renderQueuedMessages()}
           ${this.renderWaitingForYou()}
         </div>
@@ -1564,6 +1570,19 @@ export class ChatView extends LitElement {
         <span class="delivery-text">${presentation.text}</span>
       </div>
     `;
+  }
+
+  private renderMessageNote(message: ChatLine) {
+    const id = message.meta?.delivery?.clientMessageId;
+    const note = id === undefined ? undefined : this.messageNotes.find((entry) => entry.clientMessageId === id);
+    return note === undefined ? null : html`<div class="message-note" role="status">${note.text}</div>`;
+  }
+
+  /** A note whose message has no row any more - it was not sent, its words are in the composer - sits where the row was. */
+  private renderRowlessNotes() {
+    const rowed = new Set(this.messages.flatMap((message) => message.meta?.delivery?.clientMessageId ?? []));
+    const rowless = this.messageNotes.filter((note) => !rowed.has(note.clientMessageId));
+    return rowless.map((note) => html`<div class="message-note rowless" role="status">${note.text}</div>`);
   }
 
   /** The mark for a message this browser sent. */
@@ -1986,6 +2005,7 @@ export class ChatView extends LitElement {
         ${message.parts.map((part) => this.renderPart(part, message))}
         ${this.renderFailureDetail(message)}
         ${this.renderDeliveryMark(message)}
+        ${this.renderMessageNote(message)}
       </article>
     `;
   }

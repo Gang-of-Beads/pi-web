@@ -21,9 +21,9 @@ async function composerWith(text: string, sends: unknown[][]): Promise<{ element
   const element = new PromptEditor();
   element.sessionId = "session-1";
   element.machineId = "local";
-  element.onSend = (...args: unknown[]) => {
-    sends.push(args);
-    return Promise.resolve(true);
+  element.cwd = "/repo";
+  element.onOutgoingWritten = (record) => {
+    sends.push([record]);
   };
   document.body.append(element);
   await element.updateComplete;

@@ -57,11 +57,11 @@ describe("SessionController session tree navigation", () => {
       { api, socket: new FakeSocket() },
     );
 
-    await controller.send("/tree");
+    await controller.runCommand("/tree");
     expect(state.treeDialog).toEqual(tree);
 
     controller.closeTreeDialog();
-    await controller.send("/tree");
+    await controller.runCommand("/tree");
 
     expect(state.treeDialog).toBeUndefined();
     expect(state.messages).toEqual([]);
@@ -521,7 +521,7 @@ describe("SessionController session tree navigation", () => {
       { api, socket: new FakeSocket() },
     );
 
-    const run = controller.send("/tree");
+    const run = controller.runCommand("/tree");
     state = { ...state, selectedMachine: remoteB };
     command.resolve({ type: "tree", tree });
     await run;
@@ -549,7 +549,7 @@ describe("SessionController session tree navigation", () => {
       { api, socket: new FakeSocket() },
     );
 
-    const run = controller.send("/tree");
+    const run = controller.runCommand("/tree");
     await controller.selectSession(replacementSession, { updateUrl: false });
     command.resolve({ type: "tree", tree });
     await run;

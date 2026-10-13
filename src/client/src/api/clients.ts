@@ -53,7 +53,8 @@ import {
   parseSessionNotificationInboxSnapshot,
   parseSessionStatus,
   parseSessionStatusCatalogSnapshot,
-  parseRecallQueuedMessageResult,
+  parseOperationBatchAnswer,
+  parseCommandResultState,
   parseInterruptedRunSnapshot,
   parseSessionUnreadAcknowledgeResponse,
   parseSessionUnreadCatalogSnapshot,
@@ -79,7 +80,7 @@ import {
   parseOperationOutcomes,
 } from "./parsers";
 import { messagePath } from "./urls";
-import type { SequencedOperation } from "../operationLog";
+import type { OperationBatch } from "../../../shared/apiTypes";
 
 const machinePrefix = (machineId = "local") => `api/machines/${encodeURIComponent(machineId)}`;
 
@@ -379,13 +380,11 @@ export const sessionsApi = {
   streamSync: (session: SessionRef, sinceSeq: number, machineId = "local", epoch?: string) =>
     request(`${sessionPath(session, "stream-snapshot", machineId)}${sessionQuery(session)}&sinceSeq=${String(sinceSeq)}${epoch === undefined ? "" : `&epoch=${encodeURIComponent(epoch)}`}`, parseSessionStreamSync),
   clearQueue: (session: SessionRef, machineId = "local") => request(sessionPath(session, "queue/clear", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session) }),
-  // Same route as clearQueue: a body naming a message means "take this one back", as one
-  // numbered operation of this device; an empty one still means "empty the queue".
-  recallQueuedMessage: (session: SessionRef, message: { text: string; kind: "steer" | "followUp"; clientMessageId: string }, machineId: string, sequence: SequencedOperation) =>
-    request(sessionPath(session, "queue/clear", machineId), parseRecallQueuedMessageResult, {
-      method: "POST",
-      body: sessionBody(session, { text: message.text, kind: message.kind, clientMessageId: message.clientMessageId, sequence }),
-    }),
+  /** A device's operations, as one ordered batch (docs/design/message-states.md, "Operations"). */
+  applyOperations: (session: SessionRef, batch: OperationBatch, machineId: string) =>
+    request(sessionPath(session, "operations/apply", machineId), parseOperationBatchAnswer, { method: "POST", body: sessionBody(session, { ...batch }) }),
+  commandResult: (session: SessionRef, clientMessageId: string, machineId: string) =>
+    request(`${sessionQueryPath(session, "commands/result", machineId)}&clientMessageId=${encodeURIComponent(clientMessageId)}`, parseCommandResultState),
   dismissWarning: (session: SessionRef, dismissId: string, machineId = "local") => request(sessionPath(session, "warnings/dismiss", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session, { dismissId }) }),
   answerDialog: (session: SessionRef, dialogId: string, value: ExtensionDialogAnswer, machineId = "local") => request(sessionPath(session, "dialogs/answer", machineId), parseExtensionDialogCloseResponse, { method: "POST", body: sessionBody(session, { dialogId, value }) }),
   sendDialogKey: (session: SessionRef, dialogId: string, key: string, machineId = "local") =>
@@ -404,9 +403,7 @@ export const sessionsApi = {
   setThinkingLevel: (session: SessionRef, level: string, machineId = "local") => request(sessionPath(session, "thinking-level", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session, { level }) }),
   cycleThinkingLevel: (session: SessionRef, machineId = "local") => request(sessionPath(session, "thinking-level/cycle", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session) }),
   commands: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "commands", machineId), arrayOf(parseSlashCommand)),
-  prompt: (session: SessionRef, text: string, streamingBehavior?: "steer" | "followUp", machineId = "local", attachments?: PromptAttachment[], clientMessageId?: string, sentAt?: string, sequence?: SequencedOperation) => request(sessionPath(session, "prompt", machineId), parseAccepted, { method: "POST", body: sessionBody(session, { text, ...(streamingBehavior === undefined ? {} : { streamingBehavior }), ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}), ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(sentAt === undefined ? {} : { sentAt }), ...(sequence === undefined ? {} : { sequence }) }) }),
   saveAttachments: (session: SessionRef, attachments: PromptAttachment[], machineId = "local", folder?: string) => request(sessionPath(session, "attachments", machineId), parseSavedAttachments, { method: "POST", body: sessionBody(session, { attachments, ...(folder === undefined ? {} : { folder }) }) }),
-  shell: (session: SessionRef, text: string, machineId = "local") => request(sessionPath(session, "shell", machineId), parseAccepted, { method: "POST", body: sessionBody(session, { text }) }),
   runCommand: (session: SessionRef, text: string, machineId = "local") => request(sessionPath(session, "commands/run", machineId), parseCommandResult, { method: "POST", body: sessionBody(session, { text }) }),
   respondToCommand: (session: SessionRef, requestId: string, value: string, machineId = "local") => request(sessionPath(session, "commands/respond", machineId), parseCommandResult, { method: "POST", body: sessionBody(session, { requestId, value }) }),
   navigateTree: (session: SessionRef, navigation: SessionTreeNavigateRequest, machineId = "local") => request(sessionPath(session, "tree/navigate", machineId), parseSessionTreeNavigateResult, {

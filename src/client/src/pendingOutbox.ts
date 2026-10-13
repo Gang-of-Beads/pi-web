@@ -1,133 +1,166 @@
 import { browserLocalStorage } from "./browserLocalStorage";
 import type { PromptAttachment } from "./api";
 import type { PromptAttachmentDelivery } from "../../shared/apiTypes";
-import { NetworkError } from "./api/requestDeadline";
-import { claimSequence, moveOperationLog, type SequencedOperation } from "./operationLog";
+import { moveOperationLog } from "./operationLog";
 
 /**
- * The outbox: this device's operations on a session that the machine has not answered yet, in
- * the order they were written (docs/design/message-states.md). A message and a take-back are
- * both operations; each carries its number in the session's operation log (operationLog.ts),
- * is sent again with the same identity and number until the machine answers, and holds every
- * later operation behind it. A message never fails: it leaves when the machine answers it -
- * accepted, taken back, or refused for good (then cancelled, words back in the composer). Only a
- * write to this browser's storage can fail, and the writers say so to their callers.
+ * The outbox: this browser's operations on a session that the machine has not answered yet, in
+ * the order they were written (docs/design/message-states.md, "Devices" and "Operations").
  *
- * Storage mirrors the prompt-draft conventions (localStorage, per session).
+ * Every operation is its own stored record, never one array rewritten: appending writes a new key
+ * and an answer deletes its own key, so two tabs writing at once never overwrite each other. A
+ * session's outbox is its records sorted by key, which begins with the write time. Each record
+ * carries the scope it belongs to - machine, session, cwd - so it is sent wherever the reader is.
+ *
+ * A message never fails: it leaves when the machine answers it - accepted, taken back, or refused
+ * for good (then cancelled, words back in the composer). Only a write to this browser's storage
+ * can fail, and the writers say so to their callers.
  */
 
-const outboxPrefix = "pi-web:pending-prompt:";
+const OUTBOX_PREFIX = "pi-web:outbox:";
+const RESERVE_PREFIX = "pi-web:accepted:";
+const ORDER_MARK = "#";
 
-export interface PendingPrompt {
-  /** This operation's number in its session's log; fixed for its whole life. */
-  seq: number;
-  /** A take-back of the message with this identity, rather than a message. */
-  takeBackOf?: string;
-  text: string;
-  behavior?: "steer" | "followUp";
-  /** The message's identity; a take-back's own identity is derived from its target's. */
-  clientMessageId: string;
-  /** What was attached, so a resend carries the same files. */
-  attachments?: PromptAttachment[];
-  /** How the attachments travel, decided when the message was composed. */
-  delivery?: PromptAttachmentDelivery;
-  at: string;
+export type OperationKind = "message" | "takeBack" | "command" | "shell";
+
+/** The machine, session and folder an operation was written for. */
+export interface OperationScope {
+  machineId: string;
+  sessionId: string;
+  cwd: string;
 }
 
-function outboxKey(sessionKey: string): string {
-  return `${outboxPrefix}${sessionKey}`;
+export interface PendingPrompt {
+  kind: OperationKind;
+  /** The operation's identity, the same through every resend. */
+  clientMessageId: string;
+  scope: OperationScope;
+  text: string;
+  behavior?: "steer" | "followUp";
+  /** A take-back's message. */
+  takeBackOf?: string;
+  /** A take-back whose words already went back to the composer: the message was withdrawn on this browser. */
+  wordsReturned?: true;
+  attachments?: PromptAttachment[];
+  delivery?: PromptAttachmentDelivery;
+  at: string;
+  /** Its number in the last batch that carried it. */
+  seq?: number;
+  /** Where it sorts in its outbox; part of its storage key. */
+  order: string;
+}
+
+const KINDS: ReadonlySet<string> = new Set<OperationKind>(["message", "takeBack", "command", "shell"]);
+
+function isScope(value: unknown): value is OperationScope {
+  return typeof value === "object" && value !== null && typeof Reflect.get(value, "machineId") === "string" && typeof Reflect.get(value, "sessionId") === "string" && typeof Reflect.get(value, "cwd") === "string";
 }
 
 function isPendingPrompt(value: unknown): value is PendingPrompt {
   if (value === null || typeof value !== "object") return false;
-  return typeof Reflect.get(value, "text") === "string" && typeof Reflect.get(value, "seq") === "number" && typeof Reflect.get(value, "clientMessageId") === "string";
+  const kind: unknown = Reflect.get(value, "kind");
+  return typeof kind === "string" && KINDS.has(kind) && typeof Reflect.get(value, "text") === "string" && typeof Reflect.get(value, "clientMessageId") === "string" && typeof Reflect.get(value, "order") === "string" && isScope(Reflect.get(value, "scope"));
 }
 
-/** Whether a send failed on the link rather than with an answer. */
-export function isNetworkFailure(error: unknown): boolean {
-  if (error instanceof NetworkSendError || error instanceof NetworkError) return true;
-  if (error instanceof Error && /ECONNREFUSED|ENOTFOUND|socket hang up|network.*down/i.test(error.message)) return true;
-  return false;
-}
-
-/** The machine and session a message was composed for. */
-export interface SendScope {
-  machineId: string;
-  sessionId: string;
-}
-
-/** What a send hands the controller besides its content: its identity, scope and number. */
-export interface SendReplay {
-  clientMessageId?: string;
-  scope?: SendScope;
-  sentAt?: string;
-  sequence?: SequencedOperation;
-}
-
-/**
- * The selection moved away from the scope a send was composed for before the send could go. The
- * operation keeps its place in its own session's outbox and goes when that session is open.
- */
-export class SendScopeChangedError extends Error {
-  constructor(readonly scope: SendScope) {
-    super(`The message was written for another session (${scope.machineId}:${scope.sessionId})`);
-    this.name = "SendScopeChangedError";
-  }
-}
-
-/** A send nobody answered: the operation stays at the head of its outbox and is sent again. */
-export class NetworkSendError extends Error {
-  constructor(message: string, readonly clientMessageId: string | undefined, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "NetworkSendError";
-  }
-}
-
-/** Announced whenever the outbox for a session changes, so the composer re-reads and drains it. */
+/** Announced whenever an outbox changes in this tab; other tabs hear the storage event. */
 export const OUTBOX_CHANGED_EVENT = "pi-web.outbox-changed";
 
-function announceOutboxChange(sessionKey: string): void {
+function announce(sessionKey: string): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(OUTBOX_CHANGED_EVENT, { detail: sessionKey }));
 }
 
-export function loadPendingPrompts(sessionKey: string, storage = browserLocalStorage()): PendingPrompt[] {
+/** The session an outbox storage key belongs to, or undefined for any other key. */
+export function outboxSessionKeyOf(storageKey: string): string | undefined {
+  if (!storageKey.startsWith(OUTBOX_PREFIX)) return undefined;
+  const rest = storageKey.slice(OUTBOX_PREFIX.length);
+  const mark = rest.lastIndexOf(ORDER_MARK);
+  return mark <= 0 ? undefined : rest.slice(0, mark);
+}
+
+function keysWithPrefix(prefix: string, storage: Storage | undefined): string[] {
+  if (storage === undefined) return [];
+  const keys: string[] = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (key?.startsWith(prefix) === true) keys.push(key);
+  }
+  return keys.sort();
+}
+
+function readRecord(key: string, storage: Storage | undefined): PendingPrompt | undefined {
   try {
-    const raw = storage?.getItem(outboxKey(sessionKey));
-    if (raw === undefined || raw === null || raw === "") return [];
+    const raw = storage?.getItem(key);
+    if (raw === undefined || raw === null) return undefined;
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isPendingPrompt).sort((left, right) => left.seq - right.seq);
+    return isPendingPrompt(parsed) ? parsed : undefined;
   } catch {
-    return [];
+    return undefined;
   }
 }
 
-/** Write a session's outbox and announce it; an unchanged outbox is neither rewritten nor announced, since every announcement kicks the driver. */
-function writeOutbox(sessionKey: string, prompts: readonly PendingPrompt[], storage: Storage | undefined): boolean {
+function recordKey(sessionKey: string, record: Pick<PendingPrompt, "order">): string {
+  return `${OUTBOX_PREFIX}${sessionKey}${ORDER_MARK}${record.order}`;
+}
+
+function sessionRecords(sessionKey: string, storage: Storage | undefined): PendingPrompt[] {
+  return keysWithPrefix(`${OUTBOX_PREFIX}${sessionKey}${ORDER_MARK}`, storage).flatMap((key) => readRecord(key, storage) ?? []);
+}
+
+/** A session's outbox, in the order it was written. */
+export function loadPendingPrompts(sessionKey: string, storage = browserLocalStorage()): PendingPrompt[] {
+  return sessionRecords(sessionKey, storage);
+}
+
+/** One record of a session's outbox. */
+export function findOperation(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): PendingPrompt | undefined {
+  return sessionRecords(sessionKey, storage).find((record) => record.clientMessageId === clientMessageId);
+}
+
+/** Every session that has an outbox in this browser. */
+export function outboxSessionKeys(storage = browserLocalStorage()): string[] {
+  return [...new Set(keysWithPrefix(OUTBOX_PREFIX, storage).flatMap((key) => outboxSessionKeyOf(key) ?? []))];
+}
+
+function writeRecord(sessionKey: string, record: PendingPrompt, storage: Storage | undefined): boolean {
   if (storage === undefined) return false;
   try {
-    const before = storage.getItem(outboxKey(sessionKey));
-    if ((before ?? "") === (prompts.length === 0 ? "" : JSON.stringify(prompts))) return true;
-    if (prompts.length === 0) storage.removeItem(outboxKey(sessionKey));
-    else storage.setItem(outboxKey(sessionKey), JSON.stringify(prompts));
-    announceOutboxChange(sessionKey);
+    storage.setItem(recordKey(sessionKey, record), JSON.stringify(record));
+    announce(sessionKey);
     return true;
   } catch {
     return false;
   }
 }
 
-/** Write an operation, replacing one with the same identity. Returns whether it landed. */
-export function savePendingPrompt(sessionKey: string, prompt: PendingPrompt, storage = browserLocalStorage()): boolean {
-  const pending = loadPendingPrompts(sessionKey, storage).filter((entry) => entry.clientMessageId !== prompt.clientMessageId);
-  return writeOutbox(sessionKey, [...pending, prompt], storage);
+let orderCounter = 0;
+
+/** A key that sorts by write time, then by this tab's counter; the identity keeps two tabs apart. */
+function nextOrder(clientMessageId: string, now: number): string {
+  orderCounter += 1;
+  return `${String(now).padStart(15, "0")}.${String(orderCounter).padStart(6, "0")}.${clientMessageId}`;
 }
 
-/** Write a new message at the end of the session's log. */
-export function appendMessage(sessionKey: string, message: Omit<PendingPrompt, "seq" | "takeBackOf">, storage = browserLocalStorage()): PendingPrompt | undefined {
-  const record: PendingPrompt = { ...message, seq: claimSequence(sessionKey, storage) };
-  return savePendingPrompt(sessionKey, record, storage) ? record : undefined;
+/** Write a new operation at the end of its session's outbox. Returns the record, or undefined when storage refused it. */
+export function appendOperation(sessionKey: string, operation: Omit<PendingPrompt, "order">, storage = browserLocalStorage(), now = Date.now()): PendingPrompt | undefined {
+  const record: PendingPrompt = { ...operation, order: nextOrder(operation.clientMessageId, now) };
+  return writeRecord(sessionKey, record, storage) ? record : undefined;
+}
+
+/** Rewrite one record in place (its number, its words after attachments were saved). */
+export function updateOperation(sessionKey: string, record: PendingPrompt, storage = browserLocalStorage()): boolean {
+  return writeRecord(sessionKey, record, storage);
+}
+
+export function forgetPendingPrompt(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): void {
+  const record = sessionRecords(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId);
+  if (record === undefined || storage === undefined) return;
+  try {
+    storage.removeItem(recordKey(sessionKey, record));
+  } catch {
+    return;
+  }
+  announce(sessionKey);
 }
 
 /** The identity of the take-back of one message. */
@@ -136,30 +169,40 @@ export function takeBackId(clientMessageId: string): string {
 }
 
 /**
- * Write a take-back at the end of the session's log. It carries the message's words, so they can
- * go back to the composer when the machine confirms. A second press finds it already written.
+ * Write a take-back at the end of the session's outbox. It carries the message's words, so they
+ * can go back to the composer when the machine confirms. A second press finds it already written.
  */
-export function appendTakeBack(sessionKey: string, message: { clientMessageId: string; text: string; attachments?: PromptAttachment[]; behavior?: "steer" | "followUp" }, storage = browserLocalStorage()): boolean {
+export function appendTakeBack(sessionKey: string, message: { clientMessageId: string; text: string; scope: OperationScope; attachments?: PromptAttachment[]; behavior?: "steer" | "followUp"; wordsReturned?: true }, storage = browserLocalStorage()): boolean {
   const id = takeBackId(message.clientMessageId);
-  if (loadPendingPrompts(sessionKey, storage).some((entry) => entry.clientMessageId === id)) return true;
-  const record: PendingPrompt = {
-    seq: claimSequence(sessionKey, storage),
+  if (sessionRecords(sessionKey, storage).some((entry) => entry.clientMessageId === id)) return true;
+  return appendOperation(sessionKey, {
+    kind: "takeBack",
     takeBackOf: message.clientMessageId,
     clientMessageId: id,
+    scope: message.scope,
     text: message.text,
     ...(message.behavior === undefined ? {} : { behavior: message.behavior }),
     ...(message.attachments === undefined || message.attachments.length === 0 ? {} : { attachments: message.attachments }),
+    ...(message.wordsReturned === undefined ? {} : { wordsReturned: message.wordsReturned }),
     at: new Date().toISOString(),
-  };
-  return savePendingPrompt(sessionKey, record, storage);
+  }, storage) !== undefined;
 }
 
-export function forgetPendingPrompt(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): void {
-  const remaining = loadPendingPrompts(sessionKey, storage).filter((entry) => entry.clientMessageId !== clientMessageId);
-  writeOutbox(sessionKey, remaining, storage);
+/**
+ * Withdraw a message still in this browser's outbox (docs/design/message-states.md,
+ * "Operations"): its words go back at once, and its record turns, in its place, into a take-back.
+ * A batch that went unanswered may have reached the machine, and another tab may be sending it
+ * this instant; the take-back reaches the machine before anything written after the message, so
+ * the machine refuses the message if it never had it, recalls it if it waits, and says when the
+ * agent already has it. Undefined when the message is not in the outbox - the machine answered
+ * it, and only the machine can take it back.
+ */
+export function withdrawLocally(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): PendingPrompt | undefined {
+  const record = sessionRecords(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId && entry.kind === "message");
+  if (record === undefined) return undefined;
+  const takeBack: PendingPrompt = { kind: "takeBack", takeBackOf: record.clientMessageId, clientMessageId: takeBackId(record.clientMessageId), scope: record.scope, text: record.text, ...(record.behavior === undefined ? {} : { behavior: record.behavior }), wordsReturned: true, at: new Date().toISOString(), order: record.order };
+  return writeRecord(sessionKey, takeBack, storage) ? record : undefined;
 }
-
-const reservePrefix = "pi-web:accepted-prompt:";
 
 /** How long an accepted message's words are kept for a take-back or a refusal that may still come: as long as the daemon's ledger answers for it. */
 const RESERVE_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
@@ -168,28 +211,21 @@ interface ReservedPrompt extends PendingPrompt {
   reservedAt: string;
 }
 
-function loadReserve(sessionKey: string, storage: Storage | undefined, now: number): ReservedPrompt[] {
-  try {
-    const raw = storage?.getItem(`${reservePrefix}${sessionKey}`);
-    if (raw === undefined || raw === null || raw === "") return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((value): value is ReservedPrompt => isPendingPrompt(value) && typeof Reflect.get(value, "reservedAt") === "string")
-      .filter((entry) => now - Date.parse(entry.reservedAt) < RESERVE_KEEP_MS);
-  } catch {
-    return [];
-  }
+function reserveKey(sessionKey: string, clientMessageId: string): string {
+  return `${RESERVE_PREFIX}${sessionKey}${ORDER_MARK}${clientMessageId}`;
 }
 
-function writeReserve(sessionKey: string, reserved: readonly ReservedPrompt[], storage: Storage | undefined): boolean {
-  if (storage === undefined) return false;
-  try {
-    if (reserved.length === 0) storage.removeItem(`${reservePrefix}${sessionKey}`);
-    else storage.setItem(`${reservePrefix}${sessionKey}`, JSON.stringify(reserved));
-    return true;
-  } catch {
-    return false;
+function readReserve(key: string, storage: Storage | undefined): ReservedPrompt | undefined {
+  const record = readRecord(key, storage);
+  if (record === undefined) return undefined;
+  const reservedAt: unknown = Reflect.get(record, "reservedAt");
+  return typeof reservedAt === "string" ? { ...record, reservedAt } : undefined;
+}
+
+function sweepExpiredReserves(storage: Storage | undefined, now: number): void {
+  for (const key of keysWithPrefix(RESERVE_PREFIX, storage)) {
+    const reserved = readReserve(key, storage);
+    if (reserved === undefined || now - Date.parse(reserved.reservedAt) >= RESERVE_KEEP_MS) storage?.removeItem(key);
   }
 }
 
@@ -198,71 +234,68 @@ function writeReserve(sessionKey: string, reserved: readonly ReservedPrompt[], s
  * agent takes it, so a take-back or a runtime refusal can hand them back to the composer.
  */
 export function reserveAcceptedPrompt(sessionKey: string, clientMessageId: string, storage = browserLocalStorage(), now = Date.now()): void {
-  const record = loadPendingPrompts(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId && entry.takeBackOf === undefined);
+  const record = sessionRecords(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId && entry.kind === "message");
   sweepExpiredReserves(storage, now);
   if (record !== undefined) {
-    const reserved = loadReserve(sessionKey, storage, now).filter((entry) => entry.clientMessageId !== clientMessageId);
-    if (!writeReserve(sessionKey, [...reserved, { ...record, reservedAt: new Date(now).toISOString() }], storage)) return;
+    try {
+      storage?.setItem(reserveKey(sessionKey, clientMessageId), JSON.stringify({ ...record, reservedAt: new Date(now).toISOString() }));
+    } catch {
+      return;
+    }
   }
   forgetPendingPrompt(sessionKey, clientMessageId, storage);
 }
 
-function sweepExpiredReserves(storage: Storage | undefined, now: number): void {
-  if (storage === undefined) return;
-  const keys: string[] = [];
-  for (let index = 0; index < storage.length; index += 1) {
-    const key = storage.key(index) ?? "";
-    if (key.startsWith(reservePrefix)) keys.push(key.slice(reservePrefix.length));
-  }
-  for (const sessionKey of keys) writeReserve(sessionKey, loadReserve(sessionKey, storage, now), storage);
-}
-
-/** The words of a message this device sent, wherever they are kept. */
-export function heldWords(sessionKey: string, clientMessageId: string, storage = browserLocalStorage(), now = Date.now()): PendingPrompt | undefined {
-  return loadPendingPrompts(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId)
-    ?? loadReserve(sessionKey, storage, now).find((entry) => entry.clientMessageId === clientMessageId);
+/** The words of a message this browser sent, wherever they are kept. */
+export function heldWords(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): PendingPrompt | undefined {
+  return sessionRecords(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId)
+    ?? readReserve(reserveKey(sessionKey, clientMessageId), storage);
 }
 
 /**
- * The message is over for this device - taken, taken back, or cancelled: its record goes from
+ * The message is over for this browser - taken, taken back, or cancelled: its record goes from
  * the outbox and the reserve, and so does a take-back still waiting for it. Returns its words.
  */
-export function retireMessage(sessionKey: string, clientMessageId: string, storage = browserLocalStorage(), now = Date.now()): PendingPrompt | undefined {
-  const words = heldWords(sessionKey, clientMessageId, storage, now);
-  const remaining = loadPendingPrompts(sessionKey, storage).filter((entry) => entry.clientMessageId !== clientMessageId && entry.takeBackOf !== clientMessageId);
-  writeOutbox(sessionKey, remaining, storage);
-  const reserved = loadReserve(sessionKey, storage, now);
-  if (reserved.some((entry) => entry.clientMessageId === clientMessageId)) writeReserve(sessionKey, reserved.filter((entry) => entry.clientMessageId !== clientMessageId), storage);
+export function retireMessage(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): PendingPrompt | undefined {
+  const words = heldWords(sessionKey, clientMessageId, storage);
+  for (const record of sessionRecords(sessionKey, storage)) {
+    if (record.clientMessageId === clientMessageId || record.takeBackOf === clientMessageId) forgetPendingPrompt(sessionKey, record.clientMessageId, storage);
+  }
+  storage?.removeItem(reserveKey(sessionKey, clientMessageId));
   return words;
 }
 
 /**
  * The machine lost a message it had accepted (a restart before the agent read it). It goes back
- * into the log as a new operation under its own identity, which the machine admits again.
+ * into the outbox as a new operation under its own identity, which the machine admits again.
  */
-export function requeueLostMessage(sessionKey: string, clientMessageId: string, storage = browserLocalStorage(), now = Date.now()): boolean {
-  const reserved = loadReserve(sessionKey, storage, now);
-  const lost = reserved.find((entry) => entry.clientMessageId === clientMessageId);
+export function requeueLostMessage(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): boolean {
+  const key = reserveKey(sessionKey, clientMessageId);
+  const lost = readReserve(key, storage);
   if (lost === undefined) return false;
-  const record: PendingPrompt = { ...lost, seq: claimSequence(sessionKey, storage) };
-  Reflect.deleteProperty(record, "reservedAt");
-  if (!savePendingPrompt(sessionKey, record, storage)) return false;
-  writeReserve(sessionKey, reserved.filter((entry) => entry !== lost), storage);
+  const operation: PendingPrompt = { ...lost };
+  for (const field of ["reservedAt", "seq", "order"]) Reflect.deleteProperty(operation, field);
+  if (appendOperation(sessionKey, operation, storage) === undefined) return false;
+  storage?.removeItem(key);
   return true;
 }
 
 /**
- * Carry a session's outbox, reserve and operation log to its new identity: a session created in
- * this browser gets its daemon id when it starts.
+ * Carry a session's outbox, reserve and acknowledgements to its new identity: a draft gets its
+ * machine id when its first operation starts it. Each record's scope names the new session.
  */
-export function moveOutbox(fromSessionKey: string, toSessionKey: string, storage = browserLocalStorage(), now = Date.now()): void {
-  if (fromSessionKey === toSessionKey) return;
+export function moveOutbox(fromSessionKey: string, toSessionKey: string, toSessionId: string, storage = browserLocalStorage()): void {
+  if (fromSessionKey === toSessionKey || storage === undefined) return;
   moveOperationLog(fromSessionKey, toSessionKey, storage);
-  const reserved = loadReserve(fromSessionKey, storage, now);
-  if (reserved.length > 0 && writeReserve(toSessionKey, [...loadReserve(toSessionKey, storage, now), ...reserved], storage)) {
-    writeReserve(fromSessionKey, [], storage);
+  for (const key of keysWithPrefix(`${RESERVE_PREFIX}${fromSessionKey}${ORDER_MARK}`, storage)) {
+    const reserved = readReserve(key, storage);
+    if (reserved === undefined) continue;
+    storage.setItem(reserveKey(toSessionKey, reserved.clientMessageId), JSON.stringify({ ...reserved, scope: { ...reserved.scope, sessionId: toSessionId } }));
+    storage.removeItem(key);
   }
-  const moving = loadPendingPrompts(fromSessionKey, storage);
-  if (moving.length === 0) return;
-  if (writeOutbox(toSessionKey, [...loadPendingPrompts(toSessionKey, storage), ...moving], storage)) writeOutbox(fromSessionKey, [], storage);
+  for (const record of sessionRecords(fromSessionKey, storage)) {
+    if (!writeRecord(toSessionKey, { ...record, scope: { ...record.scope, sessionId: toSessionId } }, storage)) return;
+    storage.removeItem(recordKey(fromSessionKey, record));
+  }
+  announce(fromSessionKey);
 }

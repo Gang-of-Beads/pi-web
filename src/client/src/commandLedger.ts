@@ -69,9 +69,9 @@ let nextLedgerId = 0;
 
 export function issueCommand(
   entries: readonly CommandLedgerEntry[],
-  input: { sessionKey: string; text: string; now: number; afterRowKey?: string | undefined },
+  input: { id?: string; sessionKey: string; text: string; now: number; afterRowKey?: string | undefined },
 ): { entries: CommandLedgerEntry[]; id: string } {
-  const id = `cmd-${String(++nextLedgerId)}`;
+  const id = input.id ?? `cmd-${String(++nextLedgerId)}`;
   const entry: CommandLedgerEntry = {
     id,
     sessionKey: input.sessionKey,

@@ -76,11 +76,6 @@ export function deliveryWaiting(state: MessageDeliveryState): boolean {
   return !deliveryTaken(state);
 }
 
-/** The time a tracked bubble shows, which is the time its message is sent with. */
-export function deliveryLineSentAt(messages: readonly ChatLine[], clientMessageId: string): string | undefined {
-  return messages[findDeliveryLineIndex(messages, clientMessageId)]?.meta?.timestamp;
-}
-
 export function findDeliveryLineIndex(messages: readonly ChatLine[], clientMessageId: string): number {
   return messages.findIndex((line) => line.meta?.delivery?.clientMessageId === clientMessageId);
 }

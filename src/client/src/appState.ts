@@ -8,6 +8,8 @@ import type { TranscriptSync } from "./transcriptSync";
 import type { QualifiedContributionId } from "./plugins/ids";
 import type { ScopedSessionTarget } from "./sessionTarget";
 import type { MessageStatusUnanswered } from "./sendVerification";
+import type { ReadMiss } from "./sync/readPhase";
+import type { MessageNote } from "./messageNotes";
 
 export interface AppState {
   machines: Machine[];
@@ -45,6 +47,12 @@ export interface AppState {
   transcriptSync: TranscriptSync | undefined;
   /** Sessions with a prompt upload in flight, keyed by sessionId (client-owned). */
   sendingPrompts: Record<string, true>;
+  /** Machines this browser sent a batch to that nobody has answered yet, and since when (outboxEngine.ts). */
+  outboxUnanswered: readonly { readonly machineId: string; readonly since: number; readonly miss: ReadMiss }[];
+  /** Notes about single messages, shown under them (messageNotes.ts). */
+  messageNotes: readonly MessageNote[];
+  /** The machine the open session's stream is known to be behind, since when: a frame number skipped, or a read again after "resync". */
+  streamBehind: { readonly machineId: string; readonly since: number } | undefined;
   /** Client-side queued sends waiting for a just-created backend session, keyed by sessionId. */
   clientQueuedSessionMessages: Record<string, QueuedSessionMessage[]>;
   /**
@@ -241,6 +249,9 @@ export function initialAppState(): AppState {
     isLoadingEarlierMessages: false,
     isLoadingTranscript: false,
     sendingPrompts: {},
+    outboxUnanswered: [],
+    streamBehind: undefined,
+    messageNotes: [],
     clientQueuedSessionMessages: {},
     commandLedger: [],
     startingSessionCount: 0,

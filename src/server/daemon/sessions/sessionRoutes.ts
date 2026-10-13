@@ -15,7 +15,7 @@ import { STATUS_DELTA_QUERY } from "../../../shared/statusChanges.js";
 import { errorText, sessionErrorReply, type SessionErrorReply } from "./sessionErrors.js";
 import { delegationRequestFromBody, spawnCwdFromBody, subsessionReadQuery, type SubsessionTranscriptQuery } from "./delegationRequests.js";
 import { isRecord } from "../../../shared/unknownValues.js";
-import { parseSequencedOperation } from "./sequenceCursors.js";
+import { parseOperationBatch } from "./operationBatch.js";
 import type { ExtensionTerminalKey } from "../../../shared/apiTypes.js";
 
 const TERMINAL_KEYS: Readonly<Record<ExtensionTerminalKey, true>> = { escape: true };
@@ -50,15 +50,6 @@ interface StreamSnapshotQuery extends SessionQuery {
 interface MessageQuery extends SessionQuery {
   before?: string;
   limit?: string;
-}
-
-interface PromptRequestBody {
-  cwd?: unknown;
-  text?: unknown;
-  streamingBehavior?: unknown;
-  attachments?: unknown;
-  clientMessageId?: unknown;
-  sentAt?: unknown;
 }
 
 interface AttachmentsRequestBody {
@@ -473,41 +464,31 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
-  app.post<{ Params: { sessionId: string }; Body: PromptRequestBody | undefined }>(`${prefix}/sessions/:sessionId/prompt`, async (request, reply) => {
+  /**
+   * The one way a device's operations reach a session - messages, take-backs, commands, `!`
+   * commands: an ordered batch, applied in order and stopped at the first operation that is not
+   * applied (docs/design/message-states.md, "The machine"). The answer names each operation's
+   * result and where the device stands; a batch the machine cannot read is a 400.
+   */
+  app.post<{ Params: { sessionId: string }; Body: Record<string, unknown> | undefined }>(`${prefix}/sessions/:sessionId/operations/apply`, async (request, reply) => {
     try {
       const body = optionalRecord(request.body);
-      if (parseSequencedOperation(body["sequence"]) === undefined) throw new SequenceMissingError();
-      await sessions.prompt(sessionRefFromBody(request.params.sessionId, body), body["text"], body["streamingBehavior"], body["attachments"], { clientMessageId: body["clientMessageId"], sentAt: body["sentAt"], sequence: body["sequence"] });
-      return { accepted: true };
+      const ref = sessionRefFromBody(request.params.sessionId, body);
+      return await sessions.applyOperations(ref, parseOperationBatch(body));
     } catch (error) {
       return sendError(reply, sessionErrorReply(error, 400));
     }
   });
 
-  // One route for both "empty the queue" and "take one message back": the
-  // second is the first plus a replay, and giving it its own path would mean a
-  // second federated-route registration for what the client sees as one
-  // affordance. A body without `text` keeps the original meaning, so older
-  // clients are unaffected.
-  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; text?: unknown; kind?: unknown; clientMessageId?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/queue/clear`, async (request, reply) => {
+  app.get<{ Params: { sessionId: string }; Querystring: { clientMessageId?: string } }>(`${prefix}/sessions/:sessionId/commands/result`, async (request, reply) => {
+    const clientMessageId = request.query.clientMessageId;
+    if (clientMessageId === undefined || clientMessageId === "") return reply.code(400).send({ error: "clientMessageId is required" });
+    return await sessions.commandResult(request.params.sessionId, clientMessageId, COMMAND_RESULT_WAIT_MS);
+  });
+
+  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/queue/clear`, async (request, reply) => {
     try {
-      const body = optionalRecord(request.body);
-      const ref = sessionRefFromBody(request.params.sessionId, body);
-      const text = body["text"];
-      const named = body["clientMessageId"];
-      if ((typeof text !== "string" || text === "") && (typeof named !== "string" || named === "")) return await sessions.clearQueue(ref);
-      if (parseSequencedOperation(body["sequence"]) === undefined) throw new SequenceMissingError();
-      const kind = body["kind"];
-      const clientMessageId = body["clientMessageId"];
-      // The response says whether anything was taken back, because the agent
-      // can read the message between the click and this request; a client that
-      // assumed success would delete a bubble the conversation already has.
-      const { recalled, status } = await sessions.recallQueuedMessage(ref, {
-        text: typeof text === "string" ? text : "",
-        ...(kind === "steer" || kind === "followUp" ? { kind } : {}),
-        ...(typeof clientMessageId === "string" && clientMessageId !== "" ? { clientMessageId } : {}),
-      }, body["sequence"]);
-      return { ...status, recalled };
+      return await sessions.clearQueue(sessionRefFromBody(request.params.sessionId, optionalRecord(request.body)));
     } catch (error) {
       return sendError(reply, sessionErrorReply(error, 400));
     }
@@ -562,16 +543,6 @@ app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unkn
       if (folder !== undefined && typeof folder !== "string") throw new Error("folder field must be a string");
       const attachments = await sessions.saveAttachments(sessionRefFromBody(request.params.sessionId, body), body["attachments"], folder);
       return { attachments };
-    } catch (error) {
-      return sendError(reply, sessionErrorReply(error, 400));
-    }
-  });
-
-  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; text?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/shell`, async (request, reply) => {
-    try {
-      const body = optionalRecord(request.body);
-      await sessions.shell(sessionRefFromBody(request.params.sessionId, body), requireString(body, "text"));
-      return { accepted: true };
     } catch (error) {
       return sendError(reply, sessionErrorReply(error, 400));
     }
@@ -994,12 +965,8 @@ export function quietWindowMs(value: string | undefined): number | undefined {
 }
 
 /** A message or take-back that does not say where it stands in its device's log cannot be ordered against that device's other operations. */
-class SequenceMissingError extends Error {
-  constructor() {
-    super("A message or take-back must carry its device's operation number.");
-    this.name = "SequenceMissingError";
-  }
-}
+/** How long a read of a command's result waits for the command before answering that it still runs. */
+const COMMAND_RESULT_WAIT_MS = 20_000;
 
 function sendError(reply: FastifyReply, answer: SessionErrorReply): FastifyReply {
   return reply.code(answer.status).send(answer.body);

@@ -20,9 +20,9 @@ describe("review-repro realtime: the web proxy cannot cancel or bound a daemon r
     const app = Fastify({ logger: false });
     await app.register(fastifyWebsocket);
     registerSessionProxyRoutes(app, daemon, "/api/machines/local");
-    await app.inject({ method: "POST", url: "/api/machines/local/sessions/s1/prompt", payload: { cwd: "/repo", text: "hi" } });
+    await app.inject({ method: "POST", url: "/api/machines/local/sessions/s1/operations/apply", payload: { cwd: "/repo", text: "hi" } });
     await app.close();
-    expect(seen[0]?.path).toBe("/sessions/s1/prompt");
+    expect(seen[0]?.path).toBe("/sessions/s1/operations/apply");
     expect(seen[0]?.signal, "the proxied call needs an AbortSignal tied to the client connection and a deadline").toBeInstanceOf(AbortSignal);
   });
 

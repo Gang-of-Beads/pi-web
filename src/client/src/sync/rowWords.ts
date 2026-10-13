@@ -14,6 +14,11 @@ export function syncWords(machine: string): string {
   return `Trying to sync with ${machine}…`;
 }
 
+/** The page knows it is behind this machine and is fetching what it missed. */
+export function syncingWords(machine: string): string {
+  return `Syncing with ${machine}…`;
+}
+
 /** The machines a row sentence can name: the one serving this page, and the one a claim is about. */
 export interface RowNames {
   readonly page: string;

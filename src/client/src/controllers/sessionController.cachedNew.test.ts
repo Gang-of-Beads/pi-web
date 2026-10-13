@@ -1,38 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { HttpError } from "../api/http";
 import { initialAppState } from "../appState";
-import { isCachedNewSessionInfo, loadCachedNewSessions, markCachedNewSessionInfo, rememberCachedNewSession } from "../cachedNewSessions";
+import { loadCachedNewSessions, markCachedNewSessionInfo, rememberCachedNewSession } from "../cachedNewSessions";
 import { loadDraft, saveDraft } from "../promptDraftStorage";
 import { SessionController } from "./sessionController";
 import { defaultApi, emptyPage, FakeSocket, MemoryStorage, oldSession, replacementSession, sessionKey, sessionLookupId, status, workspace, type AppState } from "./sessionController.testSupport";
 
 describe("SessionController cached-new sessions", () => {
-  it("keeps live message count updates when a cached new session becomes persisted", async () => {
-    const cachedSession = markCachedNewSessionInfo(oldSession);
-    let resolvePrompt: (() => void) | undefined;
-    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedSession: cachedSession, sessions: [cachedSession] };
-    const api: typeof defaultApi = {
-      ...defaultApi,
-      prompt: () => new Promise<{ accepted: true }>((resolve) => { resolvePrompt = () => { resolve({ accepted: true }); }; }),
-    };
-    const controller = new SessionController(
-      () => state,
-      (patch) => { state = { ...state, ...patch }; },
-      () => undefined,
-      undefined,
-      { api, socket: new FakeSocket() },
-    );
-
-    const send = controller.send("hello");
-    controller.applyGlobalEvent({ type: "status.update", status: { ...status(oldSession.id), messageCount: 1 } });
-    controller.flushPendingUpdates();
-    resolvePrompt?.();
-    await send;
-
-    expect(state.sessions[0]?.messageCount).toBe(1);
-    expect(isCachedNewSessionInfo(state.sessions[0])).toBe(false);
-    expect(state.selectedSession?.messageCount).toBe(1);
-  });
 
   it("deletes transient server-reported new sessions and clears local state", async () => {
     const storage = new MemoryStorage();

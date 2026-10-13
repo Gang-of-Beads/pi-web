@@ -681,10 +681,10 @@ describe("buildApp remote machine proxy routes", () => {
     const request = vi.fn(() => Promise.reject(new RemoteMachineRequestError("timed out", 504)));
     appTestContext.remoteClient = fakeRemoteClient({ request });
 
-    const response = await appTestContext.app.inject({ method: "POST", url: `/api/machines/${remote.id}/sessions/s1/prompt`, payload: { text: "hello" } });
+    const response = await appTestContext.app.inject({ method: "POST", url: `/api/machines/${remote.id}/sessions/s1/operations/apply`, payload: { text: "hello" } });
 
     expect(response.statusCode).toBe(504);
     expect(response.json()).toMatchObject({ error: "Remote machine timeout", machineId: remote.id, statusCode: 504 });
-    expect(request).toHaveBeenCalledWith("POST", "/api/sessions/s1/prompt", { text: "hello" });
+    expect(request).toHaveBeenCalledWith("POST", "/api/sessions/s1/operations/apply", { text: "hello" });
   });
 });

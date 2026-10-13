@@ -7,6 +7,7 @@ type ComposerEditorModule = typeof composerEditor;
 import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues } from "lit";
 import { deliveryWords } from "../deliveryWords";
 import { joinTakenBack } from "../composerTakeBack";
+import { isShellInput } from "../inputModes";
 import { settleOutbox } from "../outboxSettlement";
 import { SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
 import { customElement, property, query, state } from "lit/decorators.js";
@@ -20,9 +21,7 @@ import { machineSessionKey } from "../machineKeys";
 import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
-import { appendMessage, appendTakeBack, forgetPendingPrompt, loadPendingPrompts, OUTBOX_CHANGED_EVENT, reserveAcceptedPrompt, retireMessage, SendScopeChangedError, type PendingPrompt, type SendReplay, type SendScope } from "../pendingOutbox";
-import { sequenceFor, type SequencedOperation } from "../operationLog";
-import { attemptEvent, delayAfter, driverMove, type AttemptOutcome, type DriverEffect, type DriverEvent, type DriverState } from "../outboxDriver";
+import { appendOperation, appendTakeBack, forgetPendingPrompt, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
 import { newClientMessageId } from "../messageDelivery";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
@@ -279,11 +278,10 @@ export class PromptEditor extends LitElement {
   /** Asked to come back, when the reader taps the collapsed composer. */
   @property({ attribute: false }) onExpand?: () => void;
 
-  @property({ attribute: false }) onSend?: (text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery?: PromptAttachmentDelivery, replay?: SendReplay) => Promise<boolean | undefined> | boolean | undefined;
-  /** Take one message back, as an operation of this device's log; resolves whether the machine took it back, throws when nobody answered. */
-  @property({ attribute: false }) onTakeBackOperation?: (scope: SendScope, target: { clientMessageId: string; text: string; kind?: "steer" | "followUp" }, sequence: SequencedOperation) => Promise<boolean>;
-  /** A message was written to the outbox: its row shows at once, whatever is still ahead of it. */
-  @property({ attribute: false }) onOutgoingWritten?: (scope: SendScope, message: PendingPrompt) => void;
+  /** A command this page handles itself (sign-in): it never reaches the outbox. Returns whether it was handled. */
+  @property({ attribute: false }) onLocalCommand?: (text: string) => boolean;
+  /** An operation was written to the outbox: its row shows at once, whatever is still ahead of it. */
+  @property({ attribute: false }) onOutgoingWritten?: (record: PendingPrompt) => void;
   @property({ attribute: false }) onStop?: () => void;
   @property({ attribute: false }) composerContributions: readonly QualifiedComposerContribution[] = [];
   @property({ attribute: false }) onPluginNotice?: (message: string, severity: "info" | "warning" | "error") => void;
@@ -380,11 +378,17 @@ export class PromptEditor extends LitElement {
 
   @state() private pendingPrompts: PendingPrompt[] = [];
 
+  /** A forgotten record of this session leaves the strip at once. */
+  forgetOutgoing(clientMessageId: string): void {
+    const key = this.outboxKey();
+    if (key === "") return;
+    forgetPendingPrompt(key, clientMessageId);
+    this.pendingPrompts = this.pendingPromptsForSession();
+  }
+
   override firstUpdated(): void {
     this.createEditor();
     this.pendingPrompts = this.pendingPromptsForSession();
-    window.addEventListener("online", this.kickOutbox);
-    if (this.pendingPrompts.length > 0) this.kickOutbox();
   }
 
   private readonly onOutboxChanged = (event: Event) => {
@@ -393,7 +397,6 @@ export class PromptEditor extends LitElement {
     const changed: unknown = event instanceof CustomEvent ? event.detail : undefined;
     if (changed !== undefined && changed !== key) return;
     this.pendingPrompts = this.pendingPromptsForSession();
-    if (this.pendingPrompts.length > 0) this.driveOutbox("kick");
   };
 
   override connectedCallback(): void {
@@ -412,7 +415,6 @@ export class PromptEditor extends LitElement {
       // The strip must carry the scope it belongs to: rows loaded for the
       // previous session may not render - or act - against this one.
       this.pendingPrompts = this.pendingPromptsForSession();
-      if (this.isConnected) this.kickOutbox();
     }
     this.syncAttachmentZoomDialog();
   }
@@ -420,8 +422,6 @@ export class PromptEditor extends LitElement {
   override disconnectedCallback(): void {
     const key = draftStorageKey(this.machineId, this.sessionId);
     if (key !== undefined) holdComposerAttachments(key, this.attachments);
-    window.removeEventListener("online", this.kickOutbox);
-    this.driveOutbox("drained");
     window.removeEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
     if (this.pendingRevealTimer !== undefined) {
       clearTimeout(this.pendingRevealTimer);
@@ -589,9 +589,6 @@ export class PromptEditor extends LitElement {
   }
 
   private pendingRevealTimer: ReturnType<typeof setTimeout> | undefined;
-  private driver: DriverState = "idle";
-  private resendDelay = 0;
-  private resendTimer: ReturnType<typeof setTimeout> | undefined;
 
   /**
    * Whether storage holds anything for this session.
@@ -634,7 +631,7 @@ export class PromptEditor extends LitElement {
 
   private renderPendingPrompts() {
     const now = Date.now();
-    const messages = this.pendingPrompts.filter((prompt) => prompt.takeBackOf === undefined);
+    const messages = this.pendingPrompts.filter((prompt) => prompt.kind === "message");
     const lingering = messages.filter((prompt) => !(now - Date.parse(prompt.at) <= 4000) && !this.rowedMessageIds.has(prompt.clientMessageId));
     if (lingering.length === 0) {
       const rowless = messages.some((prompt) => !this.rowedMessageIds.has(prompt.clientMessageId));
@@ -652,7 +649,7 @@ export class PromptEditor extends LitElement {
             <div class="pending-prompt">
               <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>
               <span class="pending-prompt-state">${words.text}</span>
-              ${words.takeBack ? html`<button type="button" @click=${() => { this.takeBackMessage(prompt); }}>Take back</button>` : nothing}
+              ${words.takeBack ? html`<button type="button" @click=${() => { this.takeBackMessage({ clientMessageId: prompt.clientMessageId, text: prompt.text, ...(prompt.attachments === undefined ? {} : { attachments: prompt.attachments }), ...(prompt.behavior === undefined ? {} : { kind: prompt.behavior }) }); }}>Take back</button>` : nothing}
             </div>
           `;
         })}
@@ -1232,127 +1229,36 @@ export class PromptEditor extends LitElement {
   }
 
   /**
-   * Take a message back (docs/design/message-states.md). A message still waiting behind the head of
-   * the outbox has never been sent - only the head ever is - so it is withdrawn here, words back at
-   * once. Any other is asked of the machine as the next operation of this session's log, after
-   * everything sent before it; its words come back once the machine confirms.
+   * Take a message back (docs/design/message-states.md, "Operations"). One still in this browser's
+   * outbox is withdrawn here, its words back at once, and the machine is told in its place; one the
+   * machine already answered is asked of the machine after everything written before it, and its
+   * words come back once the machine confirms.
    */
   takeBackMessage(message: { clientMessageId: string; text: string; attachments?: PromptAttachment[]; kind?: "steer" | "followUp" }): TakeBackPath {
     const key = this.outboxKey();
-    if (key === "") return "notWritten";
-    const outbox = loadPendingPrompts(key);
-    const waiting = outbox.slice(1).find((entry) => entry.clientMessageId === message.clientMessageId && entry.takeBackOf === undefined);
-    return this.takeBackPaths[waiting === undefined ? "askMachine" : "neverSent"](key, message, waiting);
-  }
-
-  private readonly takeBackPaths: Readonly<Record<"neverSent" | "askMachine", (key: string, message: { clientMessageId: string; text: string; attachments?: PromptAttachment[]; kind?: "steer" | "followUp" }, waiting: PendingPrompt | undefined) => TakeBackPath>> = {
-    neverSent: (key, message, waiting) => {
-      this.returnWords(key, message.clientMessageId, waiting ?? { seq: 0, clientMessageId: message.clientMessageId, text: message.text, at: "" });
+    const scope = this.scope();
+    if (key === "" || scope === undefined) return "notWritten";
+    const withdrawn = withdrawLocally(key, message.clientMessageId);
+    if (withdrawn !== undefined) {
+      this.takeBack({ text: withdrawn.text, attachments: withdrawn.attachments ?? [] });
       this.pendingPrompts = this.pendingPromptsForSession();
       return "withdrawnHere";
-    },
-    askMachine: (key, message) => {
-      if (!appendTakeBack(key, { clientMessageId: message.clientMessageId, text: message.text, ...(message.attachments === undefined ? {} : { attachments: message.attachments }), ...(message.kind === undefined ? {} : { behavior: message.kind }) })) return "notWritten";
-      this.pendingPrompts = this.pendingPromptsForSession();
-      this.kickOutbox();
-      return "sentToMachine";
-    },
-  };
-
-  /** The link came back, the session opened, or something was written: the driver sends the head now. */
-  private readonly kickOutbox = (): void => {
-    this.driveOutbox("kick");
-  };
-
-  /** Apply one event to the outbox driver (outboxDriver.ts) and perform the move it names. */
-  private driveOutbox(event: DriverEvent): void {
-    const move = driverMove(this.driver, event);
-    this.driver = move.to;
-    this.resendDelay = delayAfter(move.delay, this.resendDelay);
-    this.driverEffects[move.effect]();
-  }
-
-  private readonly driverEffects: Readonly<Record<DriverEffect, () => void>> = {
-    sendHead: () => { void this.sendHead(); },
-    wait: () => {
-      clearTimeout(this.resendTimer);
-      this.resendTimer = setTimeout(() => { this.driveOutbox("elapsed"); }, this.resendDelay);
-    },
-    none: () => { clearTimeout(this.resendTimer); },
-  };
-
-  /** One attempt at the head of the outbox; its outcome is the driver's next event. */
-  private async sendHead(): Promise<void> {
-    const key = this.outboxKey();
-    const head = key === "" || !this.isConnected ? undefined : loadPendingPrompts(key)[0];
-    if (head === undefined) {
-      this.driveOutbox("drained");
-      return;
     }
-    const outcome = await this.attempt(key, head);
+    if (!appendTakeBack(key, { clientMessageId: message.clientMessageId, text: message.text, scope, ...(message.attachments === undefined ? {} : { attachments: message.attachments }), ...(message.kind === undefined ? {} : { behavior: message.kind }) })) return "notWritten";
     this.pendingPrompts = this.pendingPromptsForSession();
-    this.driveOutbox(attemptEvent(outcome, key === this.outboxKey() ? "same" : "moved"));
+    return "sentToMachine";
   }
 
-  /** Send one operation once, as its kind sends it: answered (it leaves the outbox), unanswered, or for a session no longer open. */
-  private async attempt(key: string, operation: PendingPrompt): Promise<AttemptOutcome> {
-    const scope: SendScope = { machineId: this.machineId, sessionId: this.sessionId ?? "" };
-    try {
-      await this.operationSenders[operationKind(operation)](key, operation, scope, sequenceFor(operation.seq));
-      return "answered";
-    } catch (failure) {
-      return failure instanceof SendScopeChangedError ? "elsewhere" : "unanswered";
-    }
-  }
-
-  /** How each kind of operation is sent, and what its answer does; a send nobody answered throws. */
-  private readonly operationSenders: Readonly<Record<OperationKind, (key: string, operation: PendingPrompt, scope: SendScope, sequence: SequencedOperation) => Promise<void>>> = {
-    message: async (key, operation, scope, sequence) => {
-      const accepted = await this.onSend?.(operation.text, operation.behavior, operation.attachments, recordedDelivery(operation), { clientMessageId: operation.clientMessageId, scope, sentAt: operation.at, sequence });
-      this.messageAnswers[accepted === false ? "refused" : "accepted"](key, operation);
-    },
-    takeBack: async (key, operation, scope, sequence) => {
-      const target = operation.takeBackOf ?? operation.clientMessageId;
-      const takenBack = await this.onTakeBackOperation?.(scope, { clientMessageId: target, text: operation.text, ...(operation.behavior === undefined ? {} : { kind: operation.behavior }) }, sequence);
-      forgetPendingPrompt(key, operation.clientMessageId);
-      this.takeBackAnswers[takenBack === true ? "takenBack" : "tooLate"](key, target, operation);
-    },
-  };
-
-  /** A message the machine took leaves the outbox; one refused for good leaves with its words back in the composer. */
-  private readonly messageAnswers: Readonly<Record<"accepted" | "refused", (key: string, operation: PendingPrompt) => void>> = {
-    accepted: (key, operation) => { reserveAcceptedPrompt(key, operation.clientMessageId); },
-    refused: (key, operation) => { this.returnWords(key, operation.clientMessageId, operation); },
-  };
-
-  /** A take-back the machine confirmed returns the words; one too late leaves the message with the agent. */
-  private readonly takeBackAnswers: Readonly<Record<"takenBack" | "tooLate", (key: string, target: string, operation: PendingPrompt) => void>> = {
-    takenBack: (key, target, operation) => { this.returnWords(key, target, operation); },
-    tooLate: () => undefined,
-  };
-
-  /** A message that will not run leaves this device, and its words come back to the composer still showing its session. */
-  private returnWords(key: string, clientMessageId: string, words: PendingPrompt): void {
-    retireMessage(key, clientMessageId);
-    this.wordsBackTo[this.outboxKey() === key ? "composer" : "savedDraft"](key, words);
+  /** The session this composer writes for, with the folder its operations run in; undefined until both are known. */
+  private scope(): OperationScope | undefined {
+    if (this.sessionId === undefined || this.sessionId === "" || this.cwd === undefined || this.cwd === "") return undefined;
+    return { machineId: this.machineId, sessionId: this.sessionId, cwd: this.cwd };
   }
 
   /**
-   * Where returned words land: the composer when it still shows their session, else that session's
-   * saved draft and held images, which its composer picks up when it opens. Words a take-back
-   * returned after the reader moved on were deleted with nowhere to go (ponytail review).
-   */
-  private readonly wordsBackTo: Readonly<Record<"composer" | "savedDraft", (key: string, words: PendingPrompt) => void>> = {
-    composer: (_key, words) => { this.takeBack({ text: words.text, attachments: words.attachments ?? [] }); },
-    savedDraft: (key, words) => {
-      saveDraft(key, joinTakenBack(loadDraft(key), words.text));
-      addToHeldComposerAttachments(key, (words.attachments ?? []).flatMap((attachment) => (attachment.kind === "image" ? [{ kind: "image" as const, name: attachment.name ?? "image", mimeType: attachment.mimeType, data: attachment.data, size: Math.floor((attachment.data.length * 3) / 4) }] : [])));
-    },
-  };
-
-  /**
-   * Send the composer's contents: the message is written to the outbox at once - durable, numbered,
-   * and shown as sending - and the outbox sends it after everything written before it.
+   * Send the composer's contents: written to the outbox at once - durable, and shown as sending -
+   * and sent in the background after everything written before it (outboxEngine.ts). A command the
+   * page handles itself never reaches the outbox.
    */
   private send(streamingBehavior?: "steer" | "followUp") {
     // A file still being read belongs to this message. Sending without it is
@@ -1364,12 +1270,14 @@ export class PromptEditor extends LitElement {
     const text = this.draft.trim();
     const pending = this.attachments;
     if (text === "" && pending.length === 0) return;
-    const key = this.outboxKey();
-    if (key === "") return;
+    if (pending.length === 0 && streamingBehavior === undefined && this.onLocalCommand?.(text) === true) {
+      this.resetComposer();
+      return;
+    }
     const behavior = this.canSteer || this.isCompacting ? streamingBehavior : undefined;
     const attachments = pending.length > 0 ? this.currentAttachments() : undefined;
     const delivery = this.effectiveAttachmentDelivery();
-    if (!this.writeMessage(key, text, behavior, attachments === undefined ? undefined : { attachments, delivery })) {
+    if (!this.writeOperation(operationKindOf(text, attachments !== undefined), text, behavior, attachments === undefined ? undefined : { attachments, delivery })) {
       this.onPluginNotice?.("This browser could not store the message, so it was not sent. It is still in the composer.", "error");
       return;
     }
@@ -1380,17 +1288,21 @@ export class PromptEditor extends LitElement {
 
   /**
    * Send words that did not come from the composer - a message card's own Send - the one way every
-   * message goes: written to this session's outbox, numbered, after everything written before it.
+   * message goes: written to this session's outbox, after everything written before it.
    */
   sendText(text: string, behavior: "steer" | "followUp"): void {
-    const key = this.outboxKey();
-    if (key === "" || text.trim() === "") return;
-    if (!this.writeMessage(key, text.trim(), behavior, undefined)) this.onPluginNotice?.("This browser could not store the message, so it was not sent.", "error");
+    if (text.trim() === "") return;
+    if (!this.writeOperation("message", text.trim(), behavior, undefined)) this.onPluginNotice?.("This browser could not store the message, so it was not sent.", "error");
   }
 
-  /** Write one message at the end of the outbox, show its row, and kick the driver. Returns whether it was written. */
-  private writeMessage(key: string, text: string, behavior: "steer" | "followUp" | undefined, files: { attachments: PromptAttachment[]; delivery: PromptAttachmentDelivery } | undefined): boolean {
-    const written = appendMessage(key, {
+  /** Write one operation at the end of the outbox and show its row; the engine hears the write and sends it. Returns whether it was written. */
+  private writeOperation(kind: OperationKind, text: string, behavior: "steer" | "followUp" | undefined, files: { attachments: PromptAttachment[]; delivery: PromptAttachmentDelivery } | undefined): boolean {
+    const key = this.outboxKey();
+    const scope = this.scope();
+    if (key === "" || scope === undefined) return false;
+    const written = appendOperation(key, {
+      kind,
+      scope,
       text,
       ...(behavior === undefined ? {} : { behavior }),
       clientMessageId: newClientMessageId(),
@@ -1399,8 +1311,7 @@ export class PromptEditor extends LitElement {
     });
     if (written === undefined) return false;
     this.pendingPrompts = this.pendingPromptsForSession();
-    this.onOutgoingWritten?.({ machineId: this.machineId, sessionId: this.sessionId ?? "" }, written);
-    this.kickOutbox();
+    this.onOutgoingWritten?.(written);
     return true;
   }
 
@@ -1523,20 +1434,10 @@ export function composerPlaceholder(): HTMLElement {
 /** How a take-back went: withdrawn on this device (never sent), asked of the machine, or not written at all. */
 export type TakeBackPath = "withdrawnHere" | "sentToMachine" | "notWritten";
 
-/** A message, or a take-back of one: each is sent its own way. */
-type OperationKind = "message" | "takeBack";
 
-function operationKind(operation: PendingPrompt): OperationKind {
-  return operation.takeBackOf === undefined ? "message" : "takeBack";
-}
-
-/**
- * How a replayed record's attachments travel: the way they were composed. The live composer
- * says nothing about a record - it was emptied when the message was sent, or holds the next
- * message's files - so a record written before delivery was recorded answers from its own
- * attachments.
- */
-export function recordedDelivery(prompt: Pick<PendingPrompt, "attachments" | "delivery">): PromptAttachmentDelivery | undefined {
-  if (prompt.attachments === undefined || prompt.attachments.length === 0) return undefined;
-  return prompt.delivery ?? effectivePromptAttachmentDelivery("inline", prompt.attachments);
+/** A line of words is a message, a slash command, or a `!` shell command; anything with files is a message. */
+function operationKindOf(text: string, withFiles: boolean): OperationKind {
+  if (withFiles) return "message";
+  if (text.startsWith("/")) return "command";
+  return isShellInput(text) ? "shell" : "message";
 }

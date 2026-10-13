@@ -19,9 +19,8 @@ describe("sending while a file is still being read", () => {
   it("sends the text and the attachment as one message", async () => {
     const editor = await mount();
     const sends: { text: string; attachmentCount: number }[] = [];
-    editor.onSend = (text, _behavior, attachments) => {
-      sends.push({ text, attachmentCount: attachments?.length ?? 0 });
-      return Promise.resolve(true);
+    editor.onOutgoingWritten = (record) => {
+      sends.push({ text: record.text, attachmentCount: record.attachments?.length ?? 0 });
     };
     Reflect.set(editor, "draft", "look at this");
 
@@ -113,6 +112,7 @@ async function mount(sessionId = "s"): Promise<PromptEditor> {
   const editor = new PromptEditor();
   editor.sessionId = sessionId;
   editor.machineId = "local";
+  editor.cwd = "/repo";
   document.body.append(editor);
   await editor.updateComplete;
   return editor;

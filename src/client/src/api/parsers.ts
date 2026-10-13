@@ -9,6 +9,7 @@ import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, EXTENSION_DIALOG_EDITOR_MAX_LENGTH, EX
   EXTENSION_DIALOG_SCREEN_MAX_LINES, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type ExtensionDialogScreen, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionTranscriptTail, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type WorkspaceChangedUiEvent, type PinsChangedUiEvent, type PluginsChangedUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
 import { parseMachineStatusSnapshot, type MachineStatusSnapshot, type MachineStatusUiEvent } from "../../../shared/machineStatus";
 import type { JsonValue, PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionsRevisionResponse, SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot, WorkspaceProviderDiagnostic, WorkspaceProviderDiagnosticCode, WorkspaceProviderResolution, WorkspaceProviderResolutionStatus, WorkspaceProviderTier } from "../../../shared/apiTypes";
+import type { CommandResultState, OperationAppliedOutcome, OperationBatchAnswer, OperationResult, OperationStanding } from "../../../shared/apiTypes";
 import type { ExtensionCompletionApplied, ExtensionCompletionSuggestions, ExtensionWidgetPlacement, PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport, PiWebSelfUpdateStatus } from "../../../shared/apiTypes";
 import { parseKnownPiWebCapabilities } from "../../../shared/capabilities";
 import { parseDeprecatedAgentInputs } from "../../../shared/piWebStatusParsing";
@@ -1011,6 +1012,10 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
       return { type: "prompt.withdrawn", clientMessageId: requireString(record, "clientMessageId") };
     case "prompt.consumed":
       return { type: "prompt.consumed", clientMessageId: requireString(record, "clientMessageId") };
+    case "operation.applied": {
+      const clientMessageId = optionalString(record, "clientMessageId");
+      return { type: "operation.applied", deviceId: requireString(record, "deviceId"), seq: requireNumber(record, "seq"), appliedThrough: requireNumber(record, "appliedThrough"), outcome: parseAppliedOutcome(record["outcome"]), ...(clientMessageId === undefined ? {} : { clientMessageId }) };
+    }
     case "prompt.refused":
       return { type: "prompt.refused", clientMessageId: requireString(record, "clientMessageId"), message: requireString(record, "message") };
     case "activity.changed":
@@ -2499,13 +2504,55 @@ export function parseInterruptedRunSnapshot(value: unknown): InterruptedRunSnaps
   return { runs: parsed };
 }
 
-/**
- * A recall answers with the queue *and* whether anything was taken back: the
- * agent can read the message between the click and the request landing.
- */
-export function parseRecallQueuedMessageResult(value: unknown): { recalled: boolean; status: SessionStatus } {
-  const status = parseSessionStatus(value);
-  return { recalled: isRecord(value) && value["recalled"] === true, status };
+const APPLIED_OUTCOMES: ReadonlySet<string> = new Set<OperationAppliedOutcome>(["accepted", "takenBack", "tooLate"]);
+
+function isAppliedOutcome(value: unknown): value is OperationAppliedOutcome {
+  return typeof value === "string" && APPLIED_OUTCOMES.has(value);
+}
+
+function parseAppliedOutcome(value: unknown): OperationAppliedOutcome {
+  if (!isAppliedOutcome(value)) throw new Error("Expected an operation outcome");
+  return value;
+}
+
+function parseOperationStanding(value: unknown): OperationStanding {
+  const record = requireRecord(value);
+  const head = requireRecord(record["head"]);
+  return { appliedThrough: requireNumber(record, "appliedThrough"), head: { seq: requireNumber(head, "seq"), epoch: requireString(head, "epoch") } };
+}
+
+const RESULT_PARSERS: Readonly<Record<OperationResult["status"], (record: Record<string, unknown>, head: { seq: number; clientMessageId: string }) => OperationResult>> = {
+  applied: (record, head) => ({ ...head, status: "applied", outcome: parseAppliedOutcome(record["outcome"]) }),
+  stopped: (record, head) => ({ ...head, status: "stopped", code: record["code"] === "sequence-stale" ? "sequence-stale" : "sequence-gap", appliedThrough: requireNumber(record, "appliedThrough") }),
+  refused: (record, head) => {
+    const code = optionalString(record, "code");
+    return { ...head, status: "refused", httpStatus: requireNumber(record, "httpStatus"), error: requireString(record, "error"), ...(code === undefined ? {} : { code }) };
+  },
+  notAttempted: (_record, head) => ({ ...head, status: "notAttempted" }),
+};
+
+function isResultStatus(value: unknown): value is OperationResult["status"] {
+  return typeof value === "string" && Object.hasOwn(RESULT_PARSERS, value);
+}
+
+function parseOperationResult(value: unknown): OperationResult {
+  const record = requireRecord(value);
+  const status = record["status"];
+  if (!isResultStatus(status)) throw new Error("Expected an operation result status");
+  return RESULT_PARSERS[status](record, { seq: requireNumber(record, "seq"), clientMessageId: requireString(record, "clientMessageId") });
+}
+
+/** What the machine made of a batch: each operation's result, and where this device stands. */
+export function parseOperationBatchAnswer(value: unknown): OperationBatchAnswer {
+  const record = requireRecord(value);
+  return { results: arrayOf(parseOperationResult)(record["results"]), standing: parseOperationStanding(record["standing"]) };
+}
+
+export function parseCommandResultState(value: unknown): CommandResultState {
+  const record = requireRecord(value);
+  if (record["state"] === "done") return { state: "done", result: parseCommandResult(record["result"]) };
+  if (record["state"] === "failed") return { state: "failed", error: requireString(record, "error") };
+  return { state: "running" };
 }
 
 /**

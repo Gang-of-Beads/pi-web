@@ -2,28 +2,19 @@ import { browserLocalStorage } from "./browserLocalStorage";
 import { newClientMessageId } from "./messageDelivery";
 
 /**
- * This device's numbering of what it asks a session to do (docs/design/message-states.md,
- * "Order"). Every message and every take-back gets the next number for its session when it is
- * written, and keeps it through every resend. The machine applies one device's operations in
- * number order and refuses one whose predecessor has not arrived, so what the reader sent first
- * runs first however the network delivers the requests.
+ * This browser's standing with each session's machine (docs/design/message-states.md, "Order").
  *
- * The device sends only the head of its outbox, and everything below the head is done -
- * answered, or ended on this device (a command it ran itself). So each request says it follows
- * everything before it (`ackedThrough` is its own number less one), and a machine that lost its
- * record of this device starts from there.
+ * The browser is one device with a fixed id, so a reload, or closing the page and coming back,
+ * keeps sending what it left. The machine numbers a device's operations by where it last said the
+ * device stands: every batch is numbered from `ackedThrough`, the highest number the machine has
+ * confirmed, recorded from its answers - so a batch nobody answered is numbered the same when it
+ * is sent again, and the machine recognises what it already ran.
  */
-export interface SequencedOperation {
-  readonly deviceId: string;
-  readonly seq: number;
-  readonly ackedThrough: number;
-}
-
 
 const DEVICE_KEY = "pi-web:device-id";
 const LOG_PREFIX = "pi-web:operation-log:";
 
-/** Minted once per browser profile; tabs of one profile share it, and the outbox with it. */
+/** Minted once per browser profile; every tab of the profile is this device. */
 export function deviceId(storage = browserLocalStorage()): string {
   const held = storage?.getItem(DEVICE_KEY);
   if (held !== undefined && held !== null && held !== "") return held;
@@ -32,27 +23,23 @@ export function deviceId(storage = browserLocalStorage()): string {
   return minted;
 }
 
-function nextOf(sessionKey: string, storage: Storage | undefined): number {
-  const held = Number(storage?.getItem(`${LOG_PREFIX}${sessionKey}`) ?? "1");
-  return Number.isSafeInteger(held) && held >= 1 ? held : 1;
+/** The highest number the machine has confirmed for this device on this session. */
+export function ackedThrough(sessionKey: string, storage = browserLocalStorage()): number {
+  const held = Number(storage?.getItem(`${LOG_PREFIX}${sessionKey}`) ?? "0");
+  return Number.isSafeInteger(held) && held >= 0 ? held : 0;
 }
 
-/** The number the next operation written for this session takes. */
-export function claimSequence(sessionKey: string, storage = browserLocalStorage()): number {
-  const next = nextOf(sessionKey, storage);
-  storage?.setItem(`${LOG_PREFIX}${sessionKey}`, String(next + 1));
-  return next;
+/** Record where the machine says this device stands; it only moves forward. */
+export function confirmThrough(sessionKey: string, appliedThrough: number, storage = browserLocalStorage()): void {
+  if (appliedThrough <= ackedThrough(sessionKey, storage)) return;
+  try {
+    storage?.setItem(`${LOG_PREFIX}${sessionKey}`, String(appliedThrough));
+  } catch {
+    return;
+  }
 }
 
-/** What a request for this operation carries. */
-export function sequenceFor(seq: number, storage = browserLocalStorage()): SequencedOperation {
-  return { deviceId: deviceId(storage), seq, ackedThrough: seq - 1 };
-}
-
-/**
- * A session started on this device gets its machine id once it exists: its log goes with its
- * outbox, so the numbers its first messages took are the ones the machine sees first.
- */
+/** A draft's standing goes with its outbox to the session's own id. */
 export function moveOperationLog(fromSessionKey: string, toSessionKey: string, storage = browserLocalStorage()): void {
   if (fromSessionKey === toSessionKey) return;
   const raw = storage?.getItem(`${LOG_PREFIX}${fromSessionKey}`);

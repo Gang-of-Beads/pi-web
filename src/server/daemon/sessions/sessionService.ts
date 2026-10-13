@@ -36,7 +36,7 @@ import type {
   SessionTranscriptTail,
   SessionStreamSync,
 } from "../../shared/types.js";
-import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, ExtensionTerminalKey, QueuedSessionMessage } from "../../../shared/apiTypes.js";
+import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, ExtensionTerminalKey, CommandResultState, OperationBatch, OperationBatchAnswer, QueuedSessionMessage } from "../../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 import type { DelegationRequest, SpawnSessionResult, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionSummary } from "./delegation.js";
 
@@ -108,8 +108,12 @@ export interface SessionRouteService {
   cleanup(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupExecuteResponse>;
   archiveMany(refs: readonly SessionBulkMutationRef[]): Promise<SessionBulkArchiveResponse>;
   deleteArchivedMany(refs: readonly SessionBulkMutationRef[]): Promise<SessionBulkDeleteArchivedResponse>;
-  shell(ref: SessionRouteRef, text: string): Promise<void>;
-  runCommand(ref: SessionRouteRef, text: string): Promise<ClientCommandResult>;
+  shell(ref: SessionRouteRef, text: string, identity?: { clientMessageId?: unknown; sequence?: unknown }): Promise<void>;
+  runCommand(ref: SessionRouteRef, text: string, identity?: { clientMessageId?: unknown; sequence?: unknown }): Promise<ClientCommandResult>;
+  /** Apply a device's batch of operations in order, stopping at the first that is not applied. */
+  applyOperations(ref: SessionRouteRef, batch: OperationBatch): Promise<OperationBatchAnswer>;
+  /** A device's command's result, read by its identity, waiting up to `waitMs` for it. */
+  commandResult(sessionId: string, clientMessageId: string, waitMs: number): Promise<CommandResultState>;
   /**
    * Child sessions the agent spawned while working in this session.
    *

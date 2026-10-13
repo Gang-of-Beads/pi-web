@@ -271,12 +271,12 @@ describe("session API compatibility", () => {
   it("adds cwd context when session refs include a workspace", async () => {
     const fetchMock = stubJsonFetch({ accepted: true });
 
-    await sessionsApi.prompt({ id: "s 1", cwd: "/repo" }, "hello", undefined, "remote a");
+    await sessionsApi.saveAttachments({ id: "s 1", cwd: "/repo" }, [], "remote a").catch(() => undefined);
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchCall(fetchMock, 0);
-    expect(url).toBe("https://pi.example.test/api/machines/remote%20a/sessions/s%201/prompt");
-    expect(JSON.parse(requestBody(init))).toEqual({ cwd: "/repo", text: "hello" });
+    expect(url).toBe("https://pi.example.test/api/machines/remote%20a/sessions/s%201/attachments");
+    expect(JSON.parse(requestBody(init))).toEqual({ cwd: "/repo", attachments: [] });
   });
 
   it("clears a session queue through an encoded machine route and parses the returned status", async () => {

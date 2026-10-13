@@ -104,14 +104,14 @@ describe("SessionController prompt.accepted delivery transition", () => {
 });
 
 describe("SessionController prompt.refused", () => {
-  it("cancels a queued row the runtime refused: the row goes and the notice names the reason", async () => {
+  it("cancels a queued row the runtime refused: the row goes and a note where it was names the reason", async () => {
     const harness = await liveSession();
     const line = { role: "user" as const, parts: [{ type: "text" as const, text: "refused later" }], meta: { delivery: { clientMessageId: "cmid-r", state: "queued" as const } } };
     harness.state().messages = [line];
 
     harness.socket.emit({ type: "prompt.refused", clientMessageId: "cmid-r", message: "No model configured" });
 
-    expect({ rows: harness.state().messages.length, notice: harness.state().error }).toEqual({ rows: 0, notice: "Your message to this session was not sent: No model configured" });
+    expect({ rows: harness.state().messages.length, notes: harness.state().messageNotes.map((note) => note.text) }).toEqual({ rows: 0, notes: ["Not sent: No model configured. The words are back in the composer."] });
   });
 
   it("leaves a row the transcript already claimed as read", async () => {

@@ -4,6 +4,8 @@ import fastifyWebsocket from "@fastify/websocket";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH } from "../../../shared/apiTypes.js";
 import type {
+  OperationBatch,
+  OperationBatchAnswer,
   ExtensionDialogAnswer,
   ExtensionDialogCloseResponse,
   MessagePage,
@@ -40,7 +42,6 @@ import { quietWindowMs, registerSessionRoutes } from "./sessionRoutes.js";
 import { SessionNotFoundError } from "./sessionErrors.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 
-const SEQUENCE = { deviceId: "device-test-1", seq: 1, ackedThrough: 0 };
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 
 let app: FastifyInstance;
@@ -688,10 +689,10 @@ describe("session routes", () => {
   });
 
   it("rejects prompt payloads that omit text without opening a session", async () => {
-    const response = await app.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: "/repo", body: "Build the thing", sequence: SEQUENCE } });
+    const response = await app.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { cwd: "/repo", deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-1", body: "Build the thing" }] } });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toEqual({ error: "Prompt text is required" });
+    expect(response.json()).toEqual({ error: "Each operation needs a text string." });
     expect(sessionManager.calls).toEqual({ create: 0, list: 0, listAll: 0, open: 0 });
   });
 
@@ -704,7 +705,7 @@ describe("session routes", () => {
 
     try {
       const statusResponse = await routeApp.inject({ method: "GET", url: "/sessions/session-1/status" });
-      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { text: "hello", sequence: SEQUENCE } });
+      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-1", text: "hello" }] } });
       const bulkResponse = await routeApp.inject({ method: "POST", url: "/sessions/bulk/archive", payload: { sessions: [{ id: "session-1" }] } });
 
       expect(statusResponse.statusCode).toBe(400);
@@ -890,7 +891,7 @@ describe("session routes", () => {
 
     const attachments = [{ kind: "image", mimeType: "image/png", data: "QUJD", name: "shot.png" }];
     try {
-      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: "/repo", text: "look", attachments, sequence: SEQUENCE } });
+      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { cwd: "/repo", deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-1", text: "look", attachments }] } });
       expect(promptResponse.statusCode).toBe(200);
       expect(routeService.calls.at(-1)).toEqual({ lookup: { id: "session-1", cwd: resolve("/repo") }, text: "look", attachments });
 
@@ -910,8 +911,8 @@ describe("session routes", () => {
     registerSessionRoutes(routeApp, routeService, new SessionEventHub());
 
     try {
-      const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: "/repo", text: "hello", clientMessageId: "c-1", sentAt: "2026-10-02T12:23:49.000Z", sequence: SEQUENCE } });
-      expect({ status: response.statusCode, options: routeService.promptOptions }).toEqual({ status: 200, options: [{ clientMessageId: "c-1", sentAt: "2026-10-02T12:23:49.000Z", sequence: SEQUENCE }] });
+      const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { cwd: "/repo", deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-1", text: "hello", sentAt: "2026-10-02T12:23:49.000Z" }] } });
+      expect({ status: response.statusCode, options: routeService.promptOptions }).toEqual({ status: 200, options: [{ clientMessageId: "c-1", sentAt: "2026-10-02T12:23:49.000Z" }] });
     } finally {
       await routeService.dispose();
       await routeApp.close();
@@ -930,7 +931,7 @@ describe("session routes", () => {
       // absolute path (drive-qualified on Windows).
       const requestCwd = resolve("/repo");
       const statusResponse = await routeApp.inject({ method: "GET", url: `/sessions/session-1/status?cwd=${encodeURIComponent(requestCwd)}` });
-      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/prompt", payload: { cwd: requestCwd, text: "hello", sequence: SEQUENCE } });
+      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { cwd: requestCwd, deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-1", text: "hello" }] } });
 
       expect(statusResponse.statusCode).toBe(200);
       expect(promptResponse.statusCode).toBe(200);
@@ -1621,6 +1622,13 @@ class CapturingRouteSessionService implements SessionRouteService {
 
   shell(): never { throw unusedRouteMethod("shell"); }
   runCommand(): Promise<{ type: "done" }> { throw unusedRouteMethod("runCommand"); }
+  applyOperations(lookup: SessionRouteRef, batch: OperationBatch): Promise<OperationBatchAnswer> {
+    for (const operation of batch.operations) {
+      if (operation.kind === "message") void this.prompt(lookup, operation.text, operation.streamingBehavior, operation.attachments, { clientMessageId: operation.clientMessageId, ...(operation.sentAt === undefined ? {} : { sentAt: operation.sentAt }) });
+    }
+    return Promise.resolve({ results: batch.operations.map((operation) => ({ seq: operation.seq, clientMessageId: operation.clientMessageId, status: "applied" as const, outcome: "accepted" as const })), standing: { appliedThrough: batch.operations.length, head: { seq: 0, epoch: "test" } } });
+  }
+  commandResult(): never { throw unusedRouteMethod("commandResult"); }
   respondToCommand(): never { throw unusedRouteMethod("respondToCommand"); }
   navigateTree(lookup: SessionRouteRef, request: SessionTreeNavigateRequest): Promise<SessionTreeNavigateResult> {
     this.navigateTreeCalls.push({ lookup, request });

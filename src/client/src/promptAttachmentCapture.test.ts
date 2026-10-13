@@ -13,6 +13,7 @@ function composerWithOutbox(): { editor: PromptEditor; written: Mock<NonNullable
   vi.stubGlobal("localStorage", new MemoryStorage());
   const editor = new PromptEditor();
   editor.sessionId = "session-1";
+  editor.cwd = "/repo";
   const written = vi.fn<NonNullable<PromptEditor["onOutgoingWritten"]>>();
   editor.onOutgoingWritten = written;
   return { editor, written };
@@ -130,7 +131,7 @@ describe("PromptEditor attachment wiring", () => {
       // the paste is wired to capture, the data URL prefix is stripped, and a failed read does not
       // drop the other attachment.
       expect(written).toHaveBeenCalledTimes(1);
-      expect(written.mock.calls[0]?.[1]).toMatchObject({ text: "inspect attachments", attachments: [
+      expect(written.mock.calls[0]?.[0]).toMatchObject({ text: "inspect attachments", attachments: [
         { kind: "image", mimeType: "image/png", data: "UE5H", name: "shot.png" },
       ], delivery: "inline" });
     } finally {
@@ -155,7 +156,7 @@ describe("PromptEditor attachment wiring", () => {
     // the outbox gets only the image, proving the remove handler dropped report.pdf while leaving
     // shot.png queued (folder delivery is not forced because no generic file remains).
     expect(written).toHaveBeenCalledTimes(1);
-    expect(written.mock.calls[0]?.[1]).toMatchObject({ text: "please review", attachments: [
+    expect(written.mock.calls[0]?.[0]).toMatchObject({ text: "please review", attachments: [
       { kind: "image", mimeType: "image/png", data: "UE5H", name: "shot.png" },
     ], delivery: "inline" });
   });

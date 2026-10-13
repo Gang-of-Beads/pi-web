@@ -87,6 +87,11 @@ export class SessionGapRepair {
     return this.frontier;
   }
 
+  /** The seq space the position belongs to. */
+  get space(): string | undefined {
+    return this.epoch;
+  }
+
   /**
    * Start from a snapshot: everything at or below its seq is already reflected, and the next
    * frame is expected right after it. A frame published between the snapshot and the

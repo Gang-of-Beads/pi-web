@@ -2,7 +2,7 @@ import { html, type TemplateResult } from "lit";
 import type { RetiredBy } from "../notice.js";
 import type { TransportClaim } from "../api/transportClaim.js";
 import type { ReadMiss } from "../sync/readPhase.js";
-import { reachWords, syncWords, type RowNames } from "../sync/rowWords.js";
+import { reachWords, syncingWords, syncWords, type RowNames } from "../sync/rowWords.js";
 
 /**
  * The shared error banner. Every state in the app row is momentary (owner,
@@ -75,12 +75,11 @@ export function unansweredRow(miss: ReadMiss, nameOf: MachineName): TemplateResu
 }
 
 /**
- * The app row while a list on screen shows what this browser remembered and
- * its live answer has not landed (owner, 2026-10-07). It wears the row's one
- * transient colour, like every other sync word (owner, 2026-10-13).
+ * The app row while the page fetches what it knows it missed from a machine (owner, 2026-10-14).
+ * It wears the row's one transient colour, like every other sync word (owner, 2026-10-13).
  */
-export function syncingRow(): TemplateResult {
-  return html`<div class="error transient" role="status"><span class="error-text">Syncing…</span></div>`;
+export function syncingRow(machineName: string): TemplateResult {
+  return html`<div class="error transient" role="status"><span class="error-text">${syncingWords(machineName)}</span></div>`;
 }
 
 

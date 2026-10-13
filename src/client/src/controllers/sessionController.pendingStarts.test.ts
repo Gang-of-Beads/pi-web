@@ -275,41 +275,4 @@ describe("SessionController pending starts", () => {
     expect(state.sessions).toEqual([]);
     expect(state.selectedSession).toBeUndefined();
   });
-
-  it("stops the backend session if a discarded pending start resolves later", async () => {
-    const started: SessionInfo = { ...oldSession, id: "started-session", path: "/tmp/started-session.jsonl" };
-    const startRequest = deferred<SessionInfo>();
-    const stoppedIds: string[] = [];
-    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [] };
-    const api: typeof defaultApi = {
-      ...defaultApi,
-      startSession: () => startRequest.promise,
-      stop: (session) => { stoppedIds.push(sessionLookupId(session)); return Promise.resolve({ stopped: true }); },
-    };
-    const controller = new SessionController(
-      () => state,
-      (patch) => { state = { ...state, ...patch }; },
-      () => undefined,
-      undefined,
-      { api, socket: new FakeSocket() },
-    );
-
-    const start = launchNewSession(controller);
-    const temporaryId = state.selectedSession?.id;
-    if (temporaryId === undefined) throw new Error("Expected temporary session id");
-    await controller.send("!echo queued before discard");
-    expect(state.clientQueuedSessionMessages[temporaryId]).toEqual([{ kind: "followUp", text: "!echo queued before discard" }]);
-
-    await controller.deleteCachedNewSession(state.selectedSession);
-    expect(state.sessions).toEqual([]);
-    expect(state.selectedSession).toBeUndefined();
-    expect(state.clientQueuedSessionMessages[temporaryId]).toBeUndefined();
-
-    startRequest.resolve(started);
-    await start;
-
-    expect(stoppedIds).toEqual([started.id]);
-    expect(state.sessions).toEqual([]);
-    expect(state.selectedSession).toBeUndefined();
-  });
 });

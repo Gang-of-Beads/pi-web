@@ -1,30 +1,27 @@
 /**
- * The composer's outbox driver, as a state machine (docs/design/message-states.md, "Order").
+ * One outbox's driver, as a state machine (docs/design/message-states.md, "Operations").
  *
- * The outbox is this device's log of unanswered operations on one session. The driver sends its
- * head, and only its head: until the machine answers it, nothing behind it goes. A head nobody
- * answered is sent again after a wait that grows from 1 s to 30 s, and at once whenever something
- * says the link may be back (a new message, `online`, the session opening).
+ * The outbox is this browser's unanswered operations on one session. The driver sends them as a
+ * batch, and the next batch only once the machine has answered the last. A batch nobody answered
+ * is sent again after a wait that grows from 1 s to 30 s, and at once whenever something says the
+ * link may be back (a new operation, `online`, the page coming into view).
  *
- *   idle     nothing in flight and nothing waiting: the outbox is empty or off the page
- *   sending  the head is in flight
- *   waiting  the head went unanswered; it is sent again when the wait ends or on a kick
+ *   idle     nothing in flight and nothing waiting: the outbox is empty
+ *   sending  a batch is in flight
+ *   waiting  the batch went unanswered; it is sent again when the wait ends or on a kick
  *
  * Every state answers every event, so an event the driver does not expect in a state is a row of
- * the table, not a fall-through. Pure: the composer performs the effect each move names.
+ * the table, not a fall-through. Pure: the engine performs the effect each move names.
  */
 export type DriverState = "idle" | "sending" | "waiting";
 
 /**
  * `kick`: something was written, or the link may be back. `answered`, `unanswered`: what the
- * attempt at the head came to. `moved`: the head belongs to a session the composer no longer
- * shows, and the composer now shows another, whose head goes next. `stalled`: the head belongs to
- * a session that is not the selected one, and the composer still shows it. `elapsed`: the wait
- * ended. `drained`: there is no head - the outbox is empty, or the composer left the page.
+ * batch came to. `elapsed`: the wait ended. `drained`: the outbox is empty.
  */
-export type DriverEvent = "kick" | "answered" | "unanswered" | "moved" | "stalled" | "elapsed" | "drained";
+export type DriverEvent = "kick" | "answered" | "unanswered" | "elapsed" | "drained";
 
-/** What the composer does on a move: send the head now, wait and then resend it, or nothing. */
+/** What the engine does on a move: send a batch now, wait and then resend it, or nothing. */
 export type DriverEffect = "sendHead" | "wait" | "none";
 
 /** How the resend wait changes: back to the start, one step longer, or as it is. */
@@ -47,8 +44,6 @@ const TABLE: Readonly<Record<DriverState, Readonly<Record<DriverEvent, DriverMov
     kick: SEND_NOW,
     answered: stay("idle"),
     unanswered: stay("idle"),
-    moved: stay("idle"),
-    stalled: stay("idle"),
     elapsed: stay("idle"),
     drained: STOP,
   },
@@ -56,8 +51,6 @@ const TABLE: Readonly<Record<DriverState, Readonly<Record<DriverEvent, DriverMov
     kick: stay("sending"),
     answered: SEND_NOW,
     unanswered: BACK_OFF,
-    moved: SEND_NOW,
-    stalled: BACK_OFF,
     elapsed: stay("sending"),
     drained: STOP,
   },
@@ -65,8 +58,6 @@ const TABLE: Readonly<Record<DriverState, Readonly<Record<DriverEvent, DriverMov
     kick: SEND_NOW,
     answered: stay("waiting"),
     unanswered: stay("waiting"),
-    moved: SEND_NOW,
-    stalled: stay("waiting"),
     elapsed: RESEND,
     drained: STOP,
   },
@@ -88,20 +79,4 @@ const DELAY_AFTER: Readonly<Record<DelayChange, (previous: number) => number>> =
 /** The resend wait after a move: 1 s, doubling to 30 s, from nothing after an answer or a kick. */
 export function delayAfter(change: DelayChange, previous: number): number {
   return DELAY_AFTER[change](previous);
-}
-
-/** What one attempt at the head came to, as the driver event it raises. */
-export type AttemptOutcome = "answered" | "unanswered" | "elsewhere";
-
-/** Where the composer is after an attempt for another session: still on that session, or moved on. */
-export type ComposerPlace = "same" | "moved";
-
-const ATTEMPT_EVENT: Readonly<Record<AttemptOutcome, Readonly<Record<ComposerPlace, DriverEvent>>>> = {
-  answered: { same: "answered", moved: "answered" },
-  unanswered: { same: "unanswered", moved: "unanswered" },
-  elsewhere: { same: "stalled", moved: "moved" },
-};
-
-export function attemptEvent(outcome: AttemptOutcome, place: ComposerPlace): DriverEvent {
-  return ATTEMPT_EVENT[outcome][place];
 }

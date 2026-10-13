@@ -1627,6 +1627,59 @@ export type SessionStreamSync =
  * session is idle. The browser must show it as queued, never as done; the
  * daemon says so explicitly because the browser cannot tell from the prose.
  */
+/** What an accepted numbered operation came to, as the stream reports it. */
+export type OperationAppliedOutcome = "accepted" | "takenBack" | "tooLate";
+
+/**
+ * Where a device stands on a session, reported with every answer to a numbered operation: the
+ * highest number the machine applied for this device, and the session stream's head, so a page
+ * whose stream is behind it asks for what it missed.
+ */
+export interface OperationStanding {
+  appliedThrough: number;
+  head: { seq: number; epoch: string };
+}
+
+/**
+ * One operation of a device's batch (docs/design/message-states.md, "Operations"): numbered in
+ * the device's order on one session and named by its identity, so a resend is recognised.
+ */
+export type DeviceOperation =
+  | { kind: "message"; seq: number; clientMessageId: string; text: string; streamingBehavior?: "steer" | "followUp"; attachments?: PromptAttachment[]; sentAt?: string }
+  | { kind: "takeBack"; seq: number; clientMessageId: string; target: string; text: string; lane?: "steer" | "followUp" }
+  | { kind: "command"; seq: number; clientMessageId: string; text: string }
+  | { kind: "shell"; seq: number; clientMessageId: string; text: string };
+
+export interface OperationBatch {
+  deviceId: string;
+  /** The highest number this device has seen the machine confirm on this session. */
+  ackedThrough: number;
+  operations: DeviceOperation[];
+}
+
+/**
+ * What became of one operation of a batch. The batch stops at the first operation that is not
+ * applied: `stopped` (its number is out of step - numbered again from `appliedThrough` and sent at
+ * once) or `refused` (for good: cancelled, as a single request was); everything after it is
+ * `notAttempted`.
+ */
+export type OperationResult =
+  | { seq: number; clientMessageId: string; status: "applied"; outcome: OperationAppliedOutcome }
+  | { seq: number; clientMessageId: string; status: "stopped"; code: "sequence-gap" | "sequence-stale"; appliedThrough: number }
+  | { seq: number; clientMessageId: string; status: "refused"; httpStatus: number; error: string; code?: string }
+  | { seq: number; clientMessageId: string; status: "notAttempted" };
+
+export interface OperationBatchAnswer {
+  results: OperationResult[];
+  standing: OperationStanding;
+}
+
+/** A command's result, read by its identity once the command was accepted. */
+export type CommandResultState =
+  | { state: "done"; result: CommandResult }
+  | { state: "running" }
+  | { state: "failed"; error: string };
+
 export type CommandResult =
   | { type: "done"; message?: string; session?: SessionInfo; promptDraft?: string; deferred?: true }
   | { type: "select"; requestId: string; title: string; options: CommandOption[] }
@@ -1689,6 +1742,13 @@ type SessionUiEventBody =
   | { type: "prompt.withdrawn"; clientMessageId: string }
   | { type: "prompt.consumed"; clientMessageId: string }
   | { type: "prompt.refused"; clientMessageId: string; message: string }
+  /**
+   * A device's numbered operation was accepted (docs/design/message-states.md, "Order"): the
+   * stream's half of the acknowledgement, so a device whose HTTP answer is lost still learns it
+   * landed. `outcome` is what it came to where the stream can say: a message accepted, a take-back
+   * that took the message back or came too late; a command's answer travels only on HTTP.
+   */
+  | { type: "operation.applied"; deviceId: string; seq: number; appliedThrough: number; outcome: OperationAppliedOutcome; clientMessageId?: string }
   /** Sent by an older daemon when a background-work tool started or ended; read and ignored. */
   | { type: "activity.changed" }
   | { type: "dialog.opened"; dialog: PendingExtensionDialog; revision?: number; daemonInstanceId?: string }

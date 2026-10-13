@@ -93,7 +93,7 @@ import { canonicalizeStoredCwd, cwdPathsEqual } from "../workingDirectory.js";
 import { readSessionHeaderSummary } from "./sessionFileHeader.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
 import { PendingExtensionDialogStore, PendingExtensionDialogValidationError, type ExtensionDialogCancelReason, type PendingExtensionDialogOpenInput } from "./pendingExtensionDialogStore.js";
-import type { ExtensionNoticeLevel, PendingExtensionDialog } from "../../../shared/apiTypes.js";
+import type { CommandResultState, DeviceOperation, ExtensionNoticeLevel, OperationAppliedOutcome, OperationBatch, OperationBatchAnswer, OperationResult, OperationStanding, PendingExtensionDialog } from "../../../shared/apiTypes.js";
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../../config.js";
 import type { DelegationRequest, SpawnSessionInvocation, SpawnSessionResult, SpawnSubsessionInvocation, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionStatus, SubsessionSummary } from "./delegation.js";
@@ -102,10 +102,12 @@ import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
-import { createSequenceCursors, parseSequencedOperation, type SequenceCursors } from "./sequenceCursors.js";
+import { createSequenceCursors, parseSequencedOperation, type IdentityStanding, type SequenceCursors, type SequencedOperation, type SequenceTurn } from "./sequenceCursors.js";
+import { createCommandAnswers, type CommandAnswers } from "./commandAnswers.js";
+import { batchGoesOn, resultForError } from "./operationBatch.js";
 import type { OperationOutcome } from "./operationDecision.js";
 import { HANDOFF_RUN_STATE, HANDOFF_WAKE_EVENTS, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffVerdict, type RunState } from "./promptHandoff.js";
-import { SETTLEABLE, createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
+import { READMITTED, SETTLEABLE, createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
 import { CommandHandlerScope } from "./commandHandlerScope.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { messageSentAt } from "./messageSentAt.js";
@@ -358,6 +360,18 @@ type ResolvedSettlement = "none" | "read" | "consumed";
 const SETTLED_WHEN_RESOLVED: Readonly<Record<HandoffLanding, ResolvedSettlement>> = { lane: "none", run: "read", handled: "consumed" };
 
 type RepeatAnswerFrame = "prompt.accepted" | "prompt.withdrawn" | "prompt.consumed";
+
+/** A device's numbered operation with its turn on its session (docs/design/message-states.md, "Order"). */
+interface Numbered {
+  readonly operation: SequencedOperation;
+  readonly turn: SequenceTurn;
+}
+
+/** The identity and sequence a request for a device's operation carries. */
+interface OperationIdentity {
+  readonly clientMessageId?: unknown;
+  readonly sequence?: unknown;
+}
 
 /**
  * The frame that answers a repeat of an identity the ledger already holds: what became of it, so
@@ -1420,6 +1434,7 @@ export class PiSessionService implements SessionRouteService {
    */
   private readonly acceptanceLedger: AcceptanceFace;
   private readonly sequences: SequenceCursors;
+  private readonly commandAnswers: CommandAnswers = createCommandAnswers();
   private readonly committedExpectations = new CommittedPromptExpectations();
   private readonly ownedQueue: OwnedPromptQueue;
   private readonly inboxDataDir: string | undefined;
@@ -3187,18 +3202,111 @@ export class PiSessionService implements SessionRouteService {
    */
   prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown; sequence?: unknown }): Promise<void> {
     return this.inArrivalOrder(ref.id, async () => {
-      this.admitSequence(ref.id, options?.sequence);
-      await this.acceptPrompt(ref, text, streamingBehavior, attachments, options);
+      const numbered = this.numberedTurn(ref.id, options?.sequence);
+      await this.acceptPrompt(ref, text, streamingBehavior, attachments, options, numbered?.turn);
+      this.applied(ref.id, numbered, parseClientMessageId(options?.clientMessageId), "accepted");
     });
   }
 
   /**
-   * Admit a device's numbered operation in its turn, or refuse it while an earlier one is missing
-   * (docs/design/message-states.md, "Order"). An operation without a number is an older page's.
+   * A device's numbered operation and its turn (docs/design/message-states.md, "Order"), refused
+   * at once while an earlier one from the device has not arrived. The daemon's own prompts - a
+   * runtime command forwarded to the agent - carry no number and take no turn; every route that
+   * takes a device's operation requires one.
    */
-  private admitSequence(sessionId: string, value: unknown): void {
+  private numberedTurn(sessionId: string, value: unknown): Numbered | undefined {
     const operation = parseSequencedOperation(value);
-    if (operation !== undefined) this.sequences.admit(sessionId, operation);
+    return operation === undefined ? undefined : { operation, turn: this.sequences.turn(sessionId, operation) };
+  }
+
+  /**
+   * Record an accepted operation as applied and confirm it on the session's stream, the second
+   * path of the acknowledgement: a device whose HTTP answer is lost still learns it landed.
+   */
+  private applied(sessionId: string, numbered: Numbered | undefined, clientMessageId: string | undefined, outcome: OperationAppliedOutcome): void {
+    if (numbered === undefined) return;
+    const appliedThrough = numbered.turn.accept();
+    this.events.publish(sessionId, { type: "operation.applied", deviceId: numbered.operation.deviceId, seq: numbered.operation.seq, appliedThrough, outcome, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
+  }
+
+  /** What the machine knows of an operation numbered behind its device's cursor: settled, lost to a restart, or never seen. */
+  private identityStanding(session: PiAgentSession, clientMessageId: string | undefined): IdentityStanding {
+    if (clientMessageId === undefined) return "unseen";
+    const outcome = this.acceptanceLedger.outcomesFor(session.sessionId, [clientMessageId])[clientMessageId];
+    if (outcome !== undefined) return READMITTED[outcome] ? "lost" : "known";
+    return committedClientMessageIds(session.sessionManager.getBranch()).has(clientMessageId) ? "known" : "unseen";
+  }
+
+  /** Where a device stands on a session: reported with every answer to a batch. */
+  private standing(sessionId: string, deviceId: string): OperationStanding {
+    return { appliedThrough: this.sequences.appliedThrough(sessionId, deviceId), head: { seq: this.events.currentSeq(sessionId), epoch: this.events.currentEpoch(sessionId) } };
+  }
+
+  /**
+   * Apply a device's batch on one session, in order, stopping at the first operation that is not
+   * applied (docs/design/message-states.md, "The machine"). Each operation takes its own turn on
+   * the session's arrival chain, so another device's operations may land between two of them;
+   * one device's never land out of its order.
+   */
+  async applyOperations(ref: PiSessionRef, batch: OperationBatch): Promise<OperationBatchAnswer> {
+    const results: OperationResult[] = [];
+    for (const operation of batch.operations) {
+      const previous = results.at(-1);
+      if (previous !== undefined && !batchGoesOn(previous)) {
+        results.push({ seq: operation.seq, clientMessageId: operation.clientMessageId, status: "notAttempted" });
+        continue;
+      }
+      results.push(await this.applyOne(ref, { deviceId: batch.deviceId, seq: operation.seq, ackedThrough: batch.ackedThrough }, operation));
+    }
+    return { results, standing: this.standing(ref.id, batch.deviceId) };
+  }
+
+  private async applyOne(ref: PiSessionRef, sequence: SequencedOperation, operation: DeviceOperation): Promise<OperationResult> {
+    try {
+      const outcome = await this.operationAppliers[operation.kind](ref, sequence, operation);
+      return { seq: operation.seq, clientMessageId: operation.clientMessageId, status: "applied", outcome };
+    } catch (error) {
+      return resultForError(operation, error);
+    }
+  }
+
+  private readonly operationAppliers: Readonly<Record<DeviceOperation["kind"], (ref: PiSessionRef, sequence: SequencedOperation, operation: DeviceOperation) => Promise<OperationAppliedOutcome>>> = {
+    message: async (ref, sequence, operation) => {
+      if (operation.kind !== "message") throw new Error("Expected a message");
+      await this.prompt(ref, operation.text, operation.streamingBehavior, operation.attachments, { clientMessageId: operation.clientMessageId, ...(operation.sentAt === undefined ? {} : { sentAt: operation.sentAt }), sequence });
+      return "accepted";
+    },
+    takeBack: async (ref, sequence, operation) => {
+      if (operation.kind !== "takeBack") throw new Error("Expected a take-back");
+      const { recalled } = await this.recallQueuedMessage(ref, { text: operation.text, clientMessageId: operation.target, ...(operation.lane === undefined ? {} : { kind: operation.lane }) }, sequence);
+      return recalled ? "takenBack" : "tooLate";
+    },
+    command: async (ref, sequence, operation) => {
+      if (operation.kind !== "command") throw new Error("Expected a command");
+      await this.admitCommand(ref, operation.text, { clientMessageId: operation.clientMessageId, sequence });
+      return "accepted";
+    },
+    shell: async (ref, sequence, operation) => {
+      if (operation.kind !== "shell") throw new Error("Expected a shell command");
+      await this.shell(ref, operation.text, { clientMessageId: operation.clientMessageId, sequence });
+      return "accepted";
+    },
+  };
+
+  /**
+   * A device's command's result, read by its identity once the batch accepted it. A command still
+   * running past `waitMs` reads as running and is asked again; one this daemon no longer holds
+   * (it restarted) ran before and reads as done.
+   */
+  async commandResult(sessionId: string, clientMessageId: string, waitMs: number): Promise<CommandResultState> {
+    const run = this.commandAnswers.repeat(sessionId, clientMessageId);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const running = new Promise<CommandResultState>((resolve) => { timer = setTimeout(() => { resolve({ state: "running" }); }, waitMs); });
+    try {
+      return await Promise.race([run.then((result): CommandResultState => ({ state: "done", result }), (error: unknown): CommandResultState => ({ state: "failed", error: error instanceof Error ? error.message : String(error) })), running]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private inArrivalOrder<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
@@ -3208,7 +3316,7 @@ export class PiSessionService implements SessionRouteService {
     return next;
   }
 
-  private async acceptPrompt(ref: PiSessionRef, text: unknown, streamingBehavior: unknown, attachments: unknown, options: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown } | undefined): Promise<void> {
+  private async acceptPrompt(ref: PiSessionRef, text: unknown, streamingBehavior: unknown, attachments: unknown, options: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown } | undefined, turn?: SequenceTurn): Promise<void> {
     const promptText = requirePromptText(text);
     const clientMessageId = parseClientMessageId(options?.clientMessageId);
     // Command-forwarded prompts (e.g. /skill:*) are expanded by the agent, which
@@ -3221,6 +3329,7 @@ export class PiSessionService implements SessionRouteService {
     const images = (await attachmentsToInlineImages(parsedAttachments)).map((entry) => entry.image);
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
+    turn?.decide(() => this.identityStanding(session, clientMessageId));
     this.assertTreeNavigationInactive(session, "send a prompt");
     this.maybeGenerateSessionName(session, promptText);
     const sessionId = session.sessionId;
@@ -3975,7 +4084,24 @@ export class PiSessionService implements SessionRouteService {
     return saveAttachmentsToWorkspace(active.runtime.cwd, parsed, folder === undefined ? {} : { folder });
   }
 
-  async shell(ref: PiSessionRef, text: string): Promise<void> {
+  /** A device's `!` command, in its turn: run once, and a resend answered without running it again. */
+  shell(ref: PiSessionRef, text: string, identity?: OperationIdentity): Promise<void> {
+    return this.inArrivalOrder(ref.id, async () => {
+      const numbered = this.numberedTurn(ref.id, identity?.sequence);
+      const clientMessageId = parseClientMessageId(identity?.clientMessageId);
+      const active = await this.getActive(ref);
+      const sessionId = active.runtime.session.sessionId;
+      const verdict = numbered?.turn.decide(() => this.identityStanding(active.runtime.session, clientMessageId));
+      if (verdict !== "repeat") {
+        await this.shellNow(ref, text);
+        if (clientMessageId !== undefined) this.acceptanceLedger.record(sessionId, clientMessageId);
+        if (clientMessageId !== undefined) this.acceptanceLedger.settle(sessionId, clientMessageId, "succeeded");
+      }
+      this.applied(ref.id, numbered, clientMessageId, "accepted");
+    });
+  }
+
+  private async shellNow(ref: PiSessionRef, text: string): Promise<void> {
     await this.assertWritable(ref);
     const active = await this.getActive(ref);
     const { session } = active.runtime;
@@ -4015,7 +4141,41 @@ export class PiSessionService implements SessionRouteService {
     });
   }
 
-  async runCommand(ref: PiSessionRef, text: string): Promise<ClientCommandResult> {
+  /**
+   * A device's slash command, in its turn. Only its admission holds the session's arrival chain:
+   * the command itself runs outside it, because a runtime command forwards a prompt that takes its
+   * own turn on the chain. A resend is answered with what the command answered the first time.
+   */
+  async runCommand(ref: PiSessionRef, text: string, identity?: OperationIdentity): Promise<ClientCommandResult> {
+    const admitted = await this.admitCommand(ref, text, identity);
+    return admitted.run;
+  }
+
+  /** Admit a command in its turn and start it; the caller decides whether to wait for its result. */
+  private admitCommand(ref: PiSessionRef, text: string, identity?: OperationIdentity): Promise<{ run: Promise<ClientCommandResult> }> {
+    return this.inArrivalOrder(ref.id, async () => {
+      const numbered = this.numberedTurn(ref.id, identity?.sequence);
+      const clientMessageId = parseClientMessageId(identity?.clientMessageId);
+      const active = await this.getActive(ref);
+      const sessionId = active.runtime.session.sessionId;
+      const verdict = numbered?.turn.decide(() => this.identityStanding(active.runtime.session, clientMessageId));
+      const run = verdict === "repeat" && clientMessageId !== undefined ? this.commandAnswers.repeat(ref.id, clientMessageId) : this.startCommand(ref, sessionId, text, clientMessageId);
+      run.catch(() => undefined);
+      this.applied(ref.id, numbered, clientMessageId, "accepted");
+      return { run };
+    });
+  }
+
+  private startCommand(ref: PiSessionRef, sessionId: string, text: string, clientMessageId: string | undefined): Promise<ClientCommandResult> {
+    const run = this.runCommandNow(ref, text);
+    if (clientMessageId === undefined) return run;
+    this.acceptanceLedger.record(sessionId, clientMessageId);
+    this.commandAnswers.remember(ref.id, clientMessageId, run);
+    run.then(() => { this.acceptanceLedger.settle(sessionId, clientMessageId, "succeeded"); }, () => { this.acceptanceLedger.settle(sessionId, clientMessageId, "failed"); });
+    return run;
+  }
+
+  private async runCommandNow(ref: PiSessionRef, text: string): Promise<ClientCommandResult> {
     await this.assertWritable(ref);
     const active = await this.getActive(ref);
     this.composerFor(active.runtime.session).submitted();
@@ -4497,9 +4657,15 @@ export class PiSessionService implements SessionRouteService {
    * order stable and the caller re-renders from the returned status either way.
    */
   recallQueuedMessage(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }, sequence?: unknown): Promise<{ recalled: boolean; status: ClientSessionStatus }> {
-    return this.inArrivalOrder(ref.id, () => {
-      this.admitSequence(ref.id, sequence);
-      return this.recallNow(ref, target);
+    return this.inArrivalOrder(ref.id, async () => {
+      const numbered = this.numberedTurn(ref.id, sequence);
+      if (numbered !== undefined) {
+        const session = await this.getOrOpen(ref);
+        numbered.turn.decide(() => this.identityStanding(session, target.clientMessageId));
+      }
+      const answer = await this.recallNow(ref, target);
+      this.applied(ref.id, numbered, target.clientMessageId, answer.recalled ? "takenBack" : "tooLate");
+      return answer;
     });
   }
 

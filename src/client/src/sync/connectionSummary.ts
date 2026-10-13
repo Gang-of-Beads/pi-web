@@ -25,7 +25,7 @@ import type { Unanswered } from "./scopedResource";
  * was true for every healthy read in flight, and waiving the grace for it let
  * the row stay up while the server answered everything (review 2026-10-07).
  */
-export type RowClaim = { readonly kind: "none" } | { readonly kind: "notice" } | { readonly kind: "unanswered"; readonly miss: ReadMiss } | { readonly kind: "syncing" };
+export type RowClaim = { readonly kind: "none" } | { readonly kind: "notice" } | { readonly kind: "unanswered"; readonly miss: ReadMiss } | { readonly kind: "syncing"; readonly machineId: string };
 
 export interface RowDecision {
   readonly claim: RowClaim;
@@ -47,18 +47,20 @@ export interface RowInput {
   /** The unanswered row, if it is showing. */
   readonly shown: ShownUnanswered | undefined;
   /**
-   * A list on screen is drawn from what this browser remembered and the live answer has not
-   * landed (owner, 2026-10-07: the row says "Syncing…", so the reader knows it is loading). The
-   * quietest claim: anything else the row has to say comes first.
+   * The machine the page knows it is behind, and since when: it is fetching what it missed (owner,
+   * 2026-10-14: Syncing is a known gap being filled, not a list drawn from memory). The quietest
+   * claim, and only once the fetch has taken `SYNCING_AFTER_MS` ("补数超过1秒").
    */
-  readonly syncing: boolean;
+  readonly behind: { readonly machineId: string; readonly since: number } | undefined;
   /** When the page last came into view; undefined while it is hidden (`graceLeftMs`). */
   readonly lookingSince: number | undefined;
   readonly now: number;
 }
 
 const NONE: RowClaim = { kind: "none" };
-const SYNCING: RowClaim = { kind: "syncing" };
+
+/** How long a fetch of what the page missed runs before the row says Syncing; most land in well under it. */
+export const SYNCING_AFTER_MS = 1000;
 
 /**
  * How much of the grace a claim that began at `since` has left; zero or less means it has earned
@@ -85,8 +87,10 @@ export function rowDecision(input: RowInput): RowDecision {
   if (unanswered !== undefined && graceLeft !== undefined && earnsRow(unanswered, graceLeft, shown)) return { claim: { kind: "unanswered", miss: unanswered.miss } };
   const holdLeft = shown === undefined ? 0 : BANNER_MIN_VISIBLE_MS - (now - shown.at);
   if (shown !== undefined && holdLeft > 0) return { claim: { kind: "unanswered", miss: shown.miss }, recheckInMs: Math.min(holdLeft, graceLeft ?? holdLeft) };
-  const claim = input.syncing ? SYNCING : NONE;
-  return graceLeft === undefined ? { claim } : { claim, recheckInMs: graceLeft };
+  const behindLeft = input.behind === undefined ? undefined : SYNCING_AFTER_MS - (now - Math.max(input.behind.since, lookingSince));
+  const claim: RowClaim = input.behind !== undefined && behindLeft !== undefined && behindLeft <= 0 ? { kind: "syncing", machineId: input.behind.machineId } : NONE;
+  const recheck = [graceLeft, behindLeft].filter((left): left is number => left !== undefined && left > 0);
+  return recheck.length === 0 ? { claim } : { claim, recheckInMs: Math.min(...recheck) };
 }
 
 /** When the page last heard from what a miss is about: its own server, or the machine on screen. */

@@ -188,48 +188,154 @@ merge rule only decides whether an update is new.
 If the answer arrives before the frame, step 3 happens first and step 2 is
 dropped as stale. Either way the end state and the notice are the same.
 
-## Order: one operation log per device
+## Order: one operation log per device, acknowledged both ways
 
 Owner, 2026-10-13: a later message was "Queued" while an earlier one from the
 same phone read "Not received". The device kept its sends in order only as long
 as each was answered; a send that timed out let the next one go, and nothing on
 the machine could tell that one was missing. Order is now a protocol, not a
 habit of the device: an operation log with numbers, the way the machine already
-numbers the frames it sends (`seq` with gap replay).
+numbers the frames it sends (`seq` with gap replay). The owner chose the full
+protocol on 2026-10-14 ("按这个方案做"): the machine's check is real, not a
+formality, acknowledgements travel both ways, and operations go in ordered
+batches.
 
-- **Every operation is numbered.** A device (one id per browser profile,
-  `pi-web:device-id`) numbers what it asks one session to do - a message, a
-  take-back - 1, 2, 3, when it is written. A take-back is an operation like a
-  message and takes its place in the log after everything written before it.
-- **The outbox is the log of unanswered operations.** It is sent strictly from
-  the head: the head is sent, and sent again with the same identity and number,
-  until the machine answers; nothing behind it goes first. Everything below the
-  head is done, so each request carries `ackedThrough = seq - 1`.
-- **The machine applies one device's operations in number order.** Per session
-  and device it keeps the highest number applied (`sequence-cursors.json`
-  beside the ledger). An operation numbered at most that is a repeat and is
-  answered from the ledger by its identity, never run again; the next number is
-  applied; a number past the next is refused (409, `sequence-gap`) because an
-  earlier one has not arrived. The cursor is the higher of the file and the
-  request's `ackedThrough`, so a lost file costs nothing.
-- **A message and a take-back must carry their number**; the machine refuses
-  either without one (400). There is no unnumbered path.
+### Devices
+
+- **A device is one browser profile** with a fixed id (`pi-web:device-id`), so a
+  reload, or closing the page and coming back, keeps sending what was left
+  (owner, 2026-10-14: "如果有固定设备号刷新/关闭页面再回来也能继续发送了"). Every
+  tab of the profile is the same device and writes the same outbox.
+- **Every operation is its own stored record**, never one array rewritten:
+  appending writes a new key and an answer deletes its own key, so two tabs that
+  write at once never overwrite each other (owner, 2026-10-14: "既能满足多端写，又
+  能满足消息一致"). The outbox of a session is its records in the order they were
+  written (write time, then a per-tab counter). No locks: it holds on plain
+  `http` too.
+- **Two tabs may send the same records.** Same identity and number, so the
+  machine runs it once and answers the repeat; the cost is a request.
+- **Reading is the machine's.** A page shows what the machine sends it; another
+  tab's operation appears there when the machine has it (owner: "写和读都是独立和
+  server交互").
+
+### Operations
+
+- **Every operation the machine runs is numbered**: a message, a take-back, a
+  slash command the machine runs, a `!` shell command. A command the browser
+  handles itself (sign-in, settings) takes no number.
+- **Operations go in batches** (owner, 2026-10-14: "批量可以"). One request
+  carries every unsent operation of one session, in order; the next batch goes
+  only once the machine has answered the last. Within a request the transport
+  delivers everything, in order; across requests it promises nothing - a
+  request can vanish, an answer can vanish, and the browser may send a POST
+  twice - so a batch nobody answered is sent again whole, and the machine
+  answers what it already ran by identity without running it again.
+- **A number is taken when the operation is first sent**, from where the
+  machine last said it stands, so the numbers the machine sees have no holes.
+  Each batch also carries `ackedThrough`, the highest number this device has
+  seen the machine confirm - a recorded value.
+- **A take-back of a message still in this browser's outbox is local**
+  (owner, 2026-10-14: "能不能做到本地撤回"): its words return at once, and its
+  record turns, in its place, into a take-back, so the machine hears of it before
+  anything written after the message. That happens only while the machine is not
+  answering; on a live link a message leaves the outbox as soon as the machine
+  answers. A batch that went unanswered may still have reached the machine, and
+  another tab may be sending the message this instant, so the take-back still
+  goes: the machine refuses the message if it never had it, recalls it if it
+  waits, and says when the agent already has it - then "Already with the agent"
+  shows under it, the words being in the composer already. A message the
+  machine already answered is taken back by the machine, after everything
+  written before the take-back, and its words return once the machine confirms.
+- **An operation carries the scope it belongs to**: machine, session and cwd,
+  and for a draft session the launch it needs (project, workspace, startup
+  token). The device sends every outbox, not only the open session's: a session
+  left with unsent operations keeps sending in the background (owner,
+  2026-10-14: "后台继续发"). A draft's first operation launches its session
+  (idempotent by the startup token) and its records move to the session's id.
+
+### The machine
+
+- **Per session and device it keeps the highest number applied**
+  (`sequence-cursors.json` beside the ledger, with the time each was last
+  used; entries unused for 30 days are dropped). The cursor is the higher of
+  the file and the batch's `ackedThrough`, so a lost file costs nothing.
+- **A batch is applied in order and stops at the first operation it cannot
+  apply.** Verdicts are decided before an operation runs and recorded only once
+  it is accepted (a refused operation takes no number):
+
+  | number against the cursor | identity | verdict | the batch |
+  |---|---|---|---|
+  | next | any | `next` | run it; the cursor moves to it; go on |
+  | at or below | known to the ledger | `repeat` | its recorded answer; nothing runs twice; go on |
+  | at or below | lost to a restart | `rerun` | run it again; go on |
+  | at or below | unknown | `stale` | stop |
+  | past the next | any | `gap` | stop |
+  | refused for good (400, 404, 413) | | | stop |
+
+  The answer lists each operation's result - applied (and what it came to),
+  refused (and why), or not attempted - and where the device stands. It is the
+  device's instruction: what was applied leaves the outbox, a refused operation
+  is cancelled with its words back, and the rest are numbered again from
+  `appliedThrough` and go in the next batch at once. The machine never asks for
+  a resend on its own: it cannot know of a request that never reached it.
+- **Every answer says where the machine stands**: `appliedThrough` for this
+  device, and the session stream's head (epoch and frame number).
+- **Acknowledgement travels both ways.** As it accepts each operation the
+  machine publishes `operation.applied` (device, number, identity, outcome) on
+  the session's stream, so a device whose HTTP answer is lost learns what landed
+  without waiting to resend. In the other direction, an answer that reports a
+  stream head beyond the frames this page has applied makes the page ask for
+  what it missed.
+- **A command is acknowledged when it is accepted**, not when it finishes; its
+  result is read separately, by identity, so a slow command is never mistaken
+  for an unanswered one, and a repeated command returns the result it returned
+  the first time and runs once. A result that needs the page - a session to
+  switch to, a picker, words for the composer - and that arrives while the
+  reader is in another session waits until the reader returns to the session
+  (owner, 2026-10-14: "后台发送，结果等你回来再处理"). Any other result shows
+  under the command's row.
 - **Machine order is acceptance order** (`seq`), across all devices; within one
-  device it is that device's log order.
+  device it is that device's outbox order.
 - **The transcript tail** (unchanged shape): committed rows at their entries;
   then the pending block: `queued` and `handed` by `seq`, then this device's
   `sending` and `takingBack` rows in the order they were written.
 
 ## Staying in step
 
-The outbox resends its head itself, so a `sending` or `takingBack` row needs no
-question of its own: the resend is the question, and the machine answers it
-from the ledger by identity. When the link comes back and when a session
-opens, the device asks the ledger about rows the machine took but the
-transcript has not settled (`received`, `queued`; `outcomesFor`): a
-withdrawal or consumption removes the row; a refusal cancels it; `unknown` (a
-restart lost it before the agent read it) puts the message back in the outbox
-as a new operation under its own identity.
+Owner, 2026-10-14: there are two states besides normal, one per direction, each
+named by a fact rather than guessed.
+
+- **Trying to sync with *m*** - the page does not know whether what it sent
+  reached *m*. The oldest operation for *m* still unacknowledged was first sent
+  more than *n* ago (10 s, counting only time the page is in view; a resend does
+  not restart it), or a probe to *m* went unanswered for *n*, or a read went
+  unanswered for *n* while nothing at all came from *m* since it was sent (a
+  slow read on a live link is not an outage). When the page cannot reach the
+  machine that serves it at all, the row says "Trying to reach *p*…".
+- **Syncing with *m*** - the page knows it is behind *m* and is fetching what it
+  missed: a frame number skipped, a probe or an answer reported a head beyond
+  what was applied, or *m* restarted (another epoch) and the view is read
+  again. It shows once the fetch has taken more than 1 s (owner: "补数超过1秒").
+- **Normal** - everything else, including a list drawn from what this browser
+  remembered: not knowing is not being behind, and the first read after the page
+  opens is a probe, bounded by *n* like any other.
+- **Every machine counts**, the one on screen and any the page sends to in the
+  background, and the row names each one it is about (owner: "都显示机器名").
+  Precedence: a notice the reader must act on, then Trying, then Syncing.
+- **An answer is never an outage.** A machine that answered with an error has
+  stated a fact, which shows as "*m*: *reason*".
+
+**The probe.** When nothing has come from *m* on its stream for *x* (the quiet
+window, a setting per device, 15 s by default, distinct from *n*), the page asks
+*m* for everything after the last frame it applied. The answer is empty (in
+step), the missed frames (applied in order), or "read again" (Syncing). The
+machine sends a quiet stream a heartbeat carrying its head every 0.6 *x*, so a
+healthy idle link never needs a probe. Only frames on the stream restart *x*:
+an HTTP answer does not, because a stream can die while requests still work.
+Events probe at once too (owner: "流水线消息可以由事件触发"): the page coming
+into view, the browser going online, the stream reconnecting, a session or
+machine opening, and an answer reporting a head beyond what was applied. Probes
+for one machine coalesce into one in flight.
 
 The machine answers "already have it" from two sources, so idempotency outlives
 the ledger's age limit:
@@ -238,10 +344,6 @@ the ledger's age limit:
 - the session file: every committed user entry carries its `clientMessageId`
   (stamped at `message_start`), and the daemon indexes them when it opens the
   session.
-
-A `consumed` message (a handled command, which writes no entry) is covered by
-the ledger only, so a command older than 30 days whose answer never reached its
-device could run again. This window is the only one left.
 
 ## What goes away
 
@@ -261,8 +363,14 @@ device could run again. This window is the only one left.
 | `handed` | Received | none |
 | `committed` | (the message, with its time) | none |
 | `withdrawn` | (no row; words in the composer) | none |
-| `cancelled` | (no row; words in the composer) | "Your message to <session> was not sent: <reason>." |
-| take-back too late | the message stays | "Already with the agent; it could not be taken back." |
+| `cancelled` | a note where the row was: "Not sent: <reason>. The words are back in the composer." | none on the app row |
+| take-back too late | the message stays, with a note under it: "Already with the agent; it could not be taken back." | none on the app row |
+
+A note about one message sits in the transcript under that message (owner,
+2026-10-14: "放在相关消息行内"), not on the app row, which says only whether the
+page is in step. It leaves after a few seconds in view or with the reader's next
+send. A note for a session the reader is not looking at waits until the session
+is opened.
 
 ## Upgrade
 

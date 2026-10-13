@@ -13,7 +13,7 @@ import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
 import { MACHINE_WIDE_LOCATE_START, targetInListing, type SessionTarget, type SessionTargetScope } from "../sessionTarget";
 import { SessionTargetResolver, type SessionTargetOpenOptions } from "./sessionTargetResolver";
-import type { SessionTranscriptTail } from "../../../shared/apiTypes";
+import type { OperationAppliedOutcome, SessionTranscriptTail } from "../../../shared/apiTypes";
 import { isSessionNotFoundError, sendRefusalNotice, sendRefusalWords, sessionFailureRoute } from "../sessionNotFound";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
@@ -28,15 +28,16 @@ import { moveHeldComposerAttachments } from "../composerAttachmentHold";
 import { clearCardDraft } from "../cardDrafts";
 import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
-import { deliveryLineSentAt, deliveryProvenByServer, findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
-import { forgetPendingPrompt, isNetworkFailure, moveOutbox, NetworkSendError, requeueLostMessage, reserveAcceptedPrompt, retireMessage, SendScopeChangedError, type SendReplay, type SendScope } from "../pendingOutbox";
-import type { SequencedOperation } from "../operationLog";
+import { findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
+import { forgetPendingPrompt, loadPendingPrompts, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, updateOperation, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
+import { OutboxEngine } from "../outboxEngine";
+import { NOTE_SHOWN_MS, notesSeen, notesStillShowing } from "../messageNotes";
+import { NetworkError } from "../api/requestDeadline";
 import { claimAfterMiss, isClaimOf, provenRowStep, VERIFY_RETRY_MS, type VerificationStep } from "../sendVerification";
 import { classifyReadError, QUIET_WINDOW_MS, retryDelayMs, type ReadMiss, type ReadOutcome } from "../sync/readPhase";
 import { statusReadVerdict, type StatusPosition } from "../statusOrder";
 import { activitiesAfterStatuses, activityOutlivesStatus, statusActivityToAdopt } from "../activityAfterStatus";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
-import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, parseSessionSocketEvent, revisionedFrameType, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
@@ -44,7 +45,7 @@ import { transcriptLoadingAfter } from "../transcriptLoadingOwnership";
 import { sendRefusedForGood } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
-import type { ExtensionEditorTextMode, PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
+import type { ExtensionEditorTextMode, SessionStartupProgressEvent } from "../../../shared/apiTypes";
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, type SessionSelectionMemory, isOpenableSession } from "./sessionSelection"
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
@@ -126,7 +127,7 @@ export interface SessionControllerDependencies {
   transcripts?: ChatTranscriptStore;
   replacePromptEditorText?: (replacement: PromptEditorTextReplacement) => void | Promise<void>;
   /** A message of this device that will not run - taken back, or refused for good - hands its words back to its session's composer. */
-  returnToComposer?: (scope: SendScope, words: { text: string; attachments: PromptAttachment[] }) => void;
+  returnToComposer?: (scope: ReturnScope, words: { text: string; attachments: PromptAttachment[] }) => void;
   onSelectedSessionReady?: (selection: SelectedSessionReady) => void;
   /**
    * Called when the selected session stops working.
@@ -177,19 +178,12 @@ interface BulkSessionMutationResult {
 
 type ClientPendingStartSessionInfo = SessionInfo & { clientPendingStart: true; machineId: string };
 
-type QueuedPendingSessionSendInput =
-  | { type: "shell"; text: string }
-  | { type: "command"; text: string; ledgerId: string };
-
-type QueuedPendingSessionSend = QueuedPendingSessionSendInput & { id: string };
-
 interface PendingSessionStart {
   tempId: string;
   workspaceId: string;
   cwd: string;
   machineId: string;
   session: ClientPendingStartSessionInfo;
-  queuedSends: QueuedPendingSessionSend[];
   discarded: boolean;
   /**
    * The create request, once the first message asked for it (owner, 2026-10-13: a new session is
@@ -248,8 +242,25 @@ function isTransientRefreshError(error: unknown): boolean {
  */
 function ledgerUnreachable(error: unknown): boolean {
   if (error instanceof HttpError) return error.status === 0 || error.status >= 500;
-  return isNetworkFailure(error) || isRequestTimeout(error);
+  return error instanceof NetworkError || isRequestTimeout(error);
 }
+
+/** The scope a message's words go back to. */
+interface ReturnScope {
+  readonly machineId: string;
+  readonly sessionId: string;
+}
+
+/** How many operations a draft holds for its session to start. */
+function waitingInDraft(pending: Pick<PendingSessionStart, "machineId" | "tempId">): number {
+  return loadPendingPrompts(machineSessionKey(pending.machineId, pending.tempId)).length;
+}
+
+/** How long the frames an answer names may take to arrive on the stream before the page fetches them. */
+const STREAM_HEAD_GRACE_MS = 1500;
+
+/** A draft session's id until its first operation starts it on the machine. */
+const DRAFT_SESSION_PREFIX = "pending-session-";
 
 /** What an ask of the daemon's ledger came back with: an answer (or nothing left to ask about), or no answer and why. */
 type LedgerAsk = { readonly kind: "answered" } | { readonly kind: "unreachable"; readonly miss: ReadMiss };
@@ -330,7 +341,6 @@ export class SessionController {
   private pendingFrame: number | undefined;
   private pendingFlushTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingSessionStartSeq = 0;
-  private pendingQueuedSendSeq = 0;
   private readonly pendingSessionStarts = new Map<string, PendingSessionStart>();
   private readonly commandDialogRows = new Map<string, string>();
   private readonly suppressedCreatedSessions = new Map<string, SuppressedCreatedSession>();
@@ -420,7 +430,7 @@ export class SessionController {
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
     // finally block when the request settles.
-    this.setState({ selectedSession: undefined, transcriptSync: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
+    this.setState({ selectedSession: undefined, transcriptSync: undefined, streamBehind: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {
@@ -462,23 +472,11 @@ export class SessionController {
     if (pending !== undefined) await this.launchPendingStart(pending);
   }
 
-  /**
-   * A message written in a draft creates its session first. The message stays in the outbox: once
-   * the session exists its outbox moves to the session's own id, and the message goes there with
-   * its number, as any other. A draft whose start already failed cancels it, words back.
-   */
-  private async sendToDraft(session: ClientPendingStartSessionInfo, scope: SendScope | undefined): Promise<boolean> {
-    const pending = this.pendingSessionStarts.get(session.id);
-    if (pending === undefined) return false;
-    await this.launchPendingStart(pending);
-    throw new SendScopeChangedError(scope ?? { machineId: pending.machineId, sessionId: session.id });
-  }
-
   /** Ask the machine for the session a draft stands for: its row is listed, and it reads "Creating…" until the machine answers. */
   private launchPendingStart(pending: PendingSessionStart): Promise<void> {
     if (pending.launched !== undefined) return pending.launched;
     const state = this.getState();
-    const activity = creatingPendingSessionActivity(pending.tempId, pending.queuedSends.length);
+    const activity = creatingPendingSessionActivity(pending.tempId, waitingInDraft(pending));
     this.setState({
       sessions: [pending.session, ...state.sessions.filter((candidate) => candidate.id !== pending.tempId)],
       sessionActivities: { ...state.sessionActivities, [pending.tempId]: activity },
@@ -564,6 +562,7 @@ export class SessionController {
     this.socket.close();
     this.streamWatermark = undefined;
     this.gapRepair = undefined;
+    this.clearBehind();
     this.cancelTranscriptRetry();
     // A new selection is a new dialog surface with its own revision space; the
     // previous scope's counter must not judge it, and its freshness must not
@@ -623,6 +622,8 @@ export class SessionController {
         const history = this.transcripts.mergeHistory(transcriptKey, page);
         this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [] });
         this.locatedAfterGone = undefined;
+        this.applyHeldCommandResults(machineId, session.id);
+        this.notesOnOpen(machineId, session.id);
         this.onSelectedSessionReady?.({ machineId, session });
         this.settleSelectionUrl(seq, options?.updateUrl !== false);
         return;
@@ -642,7 +643,11 @@ export class SessionController {
           if (replay.ok) for (const frame of replay.frames) this.framesFromReplay.add(frame);
           return replay;
         },
-        resync: () => { if (this.gapRepair === repair) void this.refreshSelectedSession(session.id); },
+        resync: () => {
+          if (this.gapRepair !== repair) return;
+          this.markBehind(machineId);
+          void this.refreshSelectedSession(session.id).finally(() => { if (this.gapRepair === repair) this.clearBehind(); });
+        },
         caughtUp: () => { if (this.gapRepair === repair) this.confirmCaughtUp(repair, transcriptKey); },
       });
       this.gapRepair = repair;
@@ -662,7 +667,11 @@ export class SessionController {
           this.syncTranscript({ type: "check", key: transcriptKey });
           this.dialogScope.requestResync();
         },
-        onGap: () => { if (this.gapRepair === repair) this.catchUpFromFrontier(repair, transcriptKey); },
+        onGap: () => {
+          if (this.gapRepair !== repair) return;
+          this.markBehind(machineId);
+          this.catchUpFromFrontier(repair, transcriptKey);
+        },
       });
       await this.requestSelectedSessionRefresh({ session, machineId, selectionSeq: seq });
       if (!this.isCurrentRefreshTarget({ session, machineId, selectionSeq: seq })) return;
@@ -671,6 +680,8 @@ export class SessionController {
       for (const event of socketBuffer) this.routeLiveEvent(event);
       this.socket.setHandler((event) => { this.routeLiveEvent(event); });
       void this.askLedgerAbout(session, machineId);
+      this.applyHeldCommandResults(machineId, session.id);
+      this.notesOnOpen(machineId, session.id);
       this.onSelectedSessionReady?.({ machineId, session });
       this.settleSelectionUrl(seq, options?.updateUrl !== false);
     } catch (error) {
@@ -753,40 +764,15 @@ export class SessionController {
   }
 
   /**
-   * Send a prompt, reporting whether it was accepted.
-   *
-   * The composer clears itself optimistically, so it needs to know when a send
-   * failed: a network drop on submit used to swallow the message and every
-   * attachment with it, leaving the user to retype a long prompt and re-pick
-   * images that may no longer be at hand.
-   *
-   * A command is one line, so it runs as it was recognised: trimmed. Sent with the newlines a
-   * phone's Enter adds, the SDK read them into the command's name, missed the command and gave
-   * the text to the model (8505, 2026-10-05).
+   * A command run from the page itself rather than the composer (the tree button): sent at once
+   * and unnumbered, because its answer drives the page directly. A draft has nothing to run it on.
    */
-  async send(text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery: PromptAttachmentDelivery = "inline", replay?: SendReplay): Promise<boolean> {
+  async runCommand(text: string) {
     const session = this.getState().selectedSession;
-    const scope = replay?.scope;
-    if (scope !== undefined && (session?.id !== scope.sessionId || selectedMachineId(this.getState()) !== scope.machineId)) throw new SendScopeChangedError(scope);
-    if (!session || session.archived === true) return false;
-
-    const trimmed = text.trim();
-    const hasAttachments = attachments !== undefined && attachments.length > 0;
-    if (isClientPendingStartSessionInfo(session)) {
-      if (!hasAttachments && trimmed.startsWith("/")) { await this.runCommand(trimmed); return true; }
-      if (!hasAttachments && isShellInput(text)) {
-        this.enqueuePendingSessionSend(session, { type: "shell", text });
-        return true;
-      }
-      return await this.sendToDraft(session, replay?.scope);
-    }
-    if (!hasAttachments && trimmed.startsWith("/")) { await this.runCommand(trimmed); return true; }
-    if (!hasAttachments && isShellInput(text)) { await this.runShell(text); return true; }
-
-    // Capture the originating session/machine before any await so the request
-    // and its sending indicator stay bound to the right session even if the
-    // user navigates elsewhere mid-upload.
-    return await this.deliverPromptToSession(session, text, streamingBehavior, attachments, delivery, selectedMachineId(this.getState()), { markSending: hasAttachments, ...(replay?.clientMessageId === undefined ? {} : { replayClientMessageId: replay.clientMessageId }), ...(replay?.sentAt === undefined ? {} : { sentAt: replay.sentAt }), ...(replay?.sequence === undefined ? {} : { sequence: replay.sequence }) });
+    if (!session || session.archived === true || isClientPendingStartSessionInfo(session)) return;
+    const machineId = selectedMachineId(this.getState());
+    const ledgerId = this.issueCommandRow(machineId, session.id, text, undefined);
+    await this.deliverCommandToSession(session, text, machineId, { applyResult: true, ledgerId });
   }
 
   private markSendingPrompt(sessionId: string, sending: boolean): void {
@@ -798,37 +784,275 @@ export class SessionController {
     }
   }
 
-  async runShell(text: string) {
-    const session = this.getState().selectedSession;
-    if (!session || session.archived === true) return;
-    if (isClientPendingStartSessionInfo(session)) {
-      this.enqueuePendingSessionSend(session, { type: "shell", text });
-      return;
-    }
-    await this.deliverShellToSession(session, text, selectedMachineId(this.getState()), { optimisticLine: true });
-  }
-
-  async runCommand(text: string) {
-    const session = this.getState().selectedSession;
-    if (!session || session.archived === true) return;
-    const machineId = selectedMachineId(this.getState());
-    // The command's invisible route is what made pressed buttons read as dead:
-    // the ledger row is the receipt, created before the daemon is even asked.
+  /** A command's row in the transcript: the receipt, shown before the machine is even asked. */
+  private issueCommandRow(machineId: string, sessionId: string, text: string, id: string | undefined): string {
     const state = this.getState();
-    const waiting = (state.clientQueuedSessionMessages[session.id] ?? []).map((message, position) => queuedUserLine(message, position));
+    const onScreen = this.isSelectedSessionIdentity(sessionId, machineId);
+    const waiting = onScreen ? (state.clientQueuedSessionMessages[sessionId] ?? []).map((message, position) => queuedUserLine(message, position)) : [];
     const issued = issueCommand(state.commandLedger, {
-      sessionKey: machineSessionKey(machineId, session.id),
+      ...(id === undefined ? {} : { id }),
+      sessionKey: machineSessionKey(machineId, sessionId),
       text,
       now: Date.now(),
-      afterRowKey: lastLastingRowKey([...state.messages, ...waiting]),
+      afterRowKey: onScreen ? lastLastingRowKey([...state.messages, ...waiting]) : undefined,
     });
     this.setState({ commandLedger: issued.entries });
-    if (isClientPendingStartSessionInfo(session)) {
-      this.enqueuePendingSessionSend(session, { type: "command", text, ledgerId: issued.id });
-      this.settleLedgerRow(issued.id, { state: "accepted", resultText: "Runs once the session starts." });
+    return issued.id;
+  }
+
+  /**
+   * This browser's outboxes, sent in the background wherever the reader is (outboxEngine.ts);
+   * what each answer means for the page is decided here.
+   */
+  private readonly outbox = new OutboxEngine({
+    apply: async (scope, batch) => {
+      const answer = await this.api.applyOperations({ id: scope.sessionId, cwd: scope.cwd }, batch, scope.machineId);
+      this.noteStreamHead(scope, answer.standing.head);
+      return answer;
+    },
+    launchDraft: (scope) => this.launchDraft(scope),
+    prepare: (sessionKey, record) => this.prepareOperation(sessionKey, record),
+    applied: (sessionKey, record, outcome) => { this.operationApplied[record.kind](sessionKey, record, outcome); },
+    refused: (sessionKey, record, reason) => { this.operationRefused[record.kind](sessionKey, record, reason); },
+    changed: () => { this.outboxChanged(); },
+  });
+
+  /**
+   * A note under one message (messageNotes.ts), replacing any earlier note about it. It starts its
+   * time on screen now when its session is open, else when the reader opens it.
+   */
+  private noteUnder(scope: ReturnScope, clientMessageId: string, text: string): void {
+    const sessionKey = machineSessionKey(scope.machineId, scope.sessionId);
+    const shownAt = this.isSelectedSessionIdentity(scope.sessionId, scope.machineId) ? Date.now() : undefined;
+    const others = this.getState().messageNotes.filter((note) => note.clientMessageId !== clientMessageId);
+    this.setState({ messageNotes: [...others, { sessionKey, clientMessageId, text, shownAt }] });
+    if (shownAt !== undefined) this.dropNotesLater();
+  }
+
+  private dropNotesLater(): void {
+    setTimeout(() => {
+      const notes = this.getState().messageNotes;
+      const showing = notesStillShowing(notes, Date.now());
+      if (showing.length !== notes.length) this.setState({ messageNotes: showing });
+    }, NOTE_SHOWN_MS + 50);
+  }
+
+  /** The reader opened a session, or sent to it again: its notes start their time, or go. */
+  private notesOnOpen(machineId: string, sessionId: string): void {
+    const sessionKey = machineSessionKey(machineId, sessionId);
+    const notes = this.getState().messageNotes;
+    if (!notes.some((note) => note.sessionKey === sessionKey && note.shownAt === undefined)) return;
+    this.setState({ messageNotes: notesSeen(notes, sessionKey, Date.now()) });
+    this.dropNotesLater();
+  }
+
+  private clearNotes(machineId: string, sessionId: string): void {
+    const sessionKey = machineSessionKey(machineId, sessionId);
+    const notes = this.getState().messageNotes;
+    if (notes.some((note) => note.sessionKey === sessionKey)) this.setState({ messageNotes: notes.filter((note) => note.sessionKey !== sessionKey) });
+  }
+
+  /**
+   * The open session's stream is known to be behind its machine: a frame number skipped, a read
+   * again after "resync", or an answer naming a head this page has not reached (the row's
+   * "Syncing with", owner 2026-10-14).
+   */
+  private markBehind(machineId: string): void {
+    if (this.getState().streamBehind === undefined) this.setState({ streamBehind: { machineId, since: Date.now() } });
+  }
+
+  private clearBehind(): void {
+    if (this.getState().streamBehind !== undefined) this.setState({ streamBehind: undefined });
+  }
+
+  /**
+   * A batch's answer names the stream's head. The frames up to it are usually already on their
+   * way; still short of it a moment later, the page has missed something and fetches it - the
+   * answer's half of the acknowledgement, checking the stream as the stream checks the answer.
+   */
+  private noteStreamHead(scope: OperationScope, head: { seq: number; epoch: string }): void {
+    const repair = this.gapRepair;
+    if (repair === undefined || !this.onScreen(scope) || repair.space !== head.epoch) return;
+    const short = (): boolean => this.gapRepair === repair && (repair.position ?? 0) < head.seq;
+    if (!short()) return;
+    setTimeout(() => {
+      if (!short()) return;
+      this.markBehind(scope.machineId);
+      this.catchUpFromFrontier(repair, this.sessionCacheKey(scope.sessionId));
+    }, STREAM_HEAD_GRACE_MS);
+  }
+
+  startOutbox(): void {
+    this.outbox.start();
+    this.outboxChanged();
+  }
+
+  stopOutbox(): void {
+    this.outbox.stop();
+  }
+
+  /** The link may be back or the page came into view: every outbox sends now. */
+  kickOutbox(): void {
+    this.outbox.kickAll();
+  }
+
+  /** The machines with a batch nobody has answered, for the app row's "Trying to sync". */
+  private outboxChanged(): void {
+    const unanswered = this.outbox.unanswered();
+    const current = this.getState().outboxUnanswered;
+    if (unanswered.length === current.length && unanswered.every((entry, index) => entry.machineId === current[index]?.machineId && entry.since === current[index].since && entry.miss.kind === current[index].miss.kind)) return;
+    this.setState({ outboxUnanswered: unanswered });
+  }
+
+  /**
+   * A draft's first batch starts its session, idempotently by the draft's id, and moves the outbox
+   * to the session's own id. Throws while the session has not started, so the batch waits.
+   */
+  private async launchDraft(scope: OperationScope): Promise<boolean> {
+    if (!scope.sessionId.startsWith(DRAFT_SESSION_PREFIX)) return false;
+    const draftKey = machineSessionKey(scope.machineId, scope.sessionId);
+    const pending = this.pendingSessionStarts.get(scope.sessionId);
+    if (pending === undefined) {
+      const session = await this.api.startSession(scope.cwd, scope.machineId, scope.sessionId);
+      moveOutbox(draftKey, machineSessionKey(scope.machineId, session.id), session.id);
+    } else {
+      await this.launchPendingStart(pending);
+    }
+    if (loadPendingPrompts(draftKey).length > 0) throw new Error("The new session has not started yet.");
+    return true;
+  }
+
+  /** A message whose files go to the workspace travels with their paths, saved once before its first batch. */
+  private async prepareOperation(sessionKey: string, record: PendingPrompt): Promise<PendingPrompt> {
+    const attachments = record.attachments ?? [];
+    if (record.kind !== "message" || record.delivery !== "folder" || attachments.length === 0) return record;
+    const saved = await this.api.saveAttachments({ id: record.scope.sessionId, cwd: record.scope.cwd }, attachments, record.scope.machineId);
+    const references = saved.map((file) => fileCompletionInsertText(file.path, false)).join(" ");
+    const prepared: PendingPrompt = { ...record, text: record.text === "" ? references : `${record.text}\n\n${references}` };
+    Reflect.deleteProperty(prepared, "attachments");
+    Reflect.deleteProperty(prepared, "delivery");
+    updateOperation(sessionKey, prepared);
+    return prepared;
+  }
+
+  private onScreen(scope: OperationScope): boolean {
+    return this.isSelectedSessionIdentity(scope.sessionId, scope.machineId);
+  }
+
+  /** What each kind of operation's acceptance does to the page; called once per operation, whichever path confirmed it. */
+  private readonly operationApplied: Readonly<Record<OperationKind, (sessionKey: string, record: PendingPrompt, outcome: OperationAppliedOutcome) => void>> = {
+    message: (_sessionKey, record) => { this.messageAccepted(record); },
+    takeBack: (sessionKey, record, outcome) => {
+      forgetPendingPrompt(sessionKey, record.clientMessageId);
+      this.takeBackOutcomes[outcome](sessionKey, record, this.onScreen(record.scope));
+    },
+    command: (sessionKey, record) => {
+      forgetPendingPrompt(sessionKey, record.clientMessageId);
+      this.readCommandResult(record, 0);
+    },
+    shell: (sessionKey, record) => {
+      forgetPendingPrompt(sessionKey, record.clientMessageId);
+      this.dropSendingRow(record);
+    },
+  };
+
+  /** The machine took the message: its row reads received, and its words are kept aside until the agent takes it. */
+  private messageAccepted(record: PendingPrompt): void {
+    this.settleAnsweredSend({ id: record.scope.sessionId, cwd: record.scope.cwd }, record.scope.machineId, record.clientMessageId);
+    const listed = this.getState().sessions.find((candidate) => candidate.id === record.scope.sessionId);
+    if (listed !== undefined) this.markCachedNewSessionPersisted(listed);
+  }
+
+  /** A take-back's answer: the message is gone and its words come back, or the agent already has it. */
+  private readonly takeBackOutcomes: Readonly<Record<OperationAppliedOutcome, (sessionKey: string, record: PendingPrompt, onScreen: boolean) => void>> = {
+    takenBack: (sessionKey, record, onScreen) => {
+      const target = record.takeBackOf ?? "";
+      const words = retireMessage(sessionKey, target);
+      if (onScreen) this.setState({ messages: withdrawDeliveryLine(this.getState().messages, target) });
+      if (record.wordsReturned === true) return;
+      this.returnToComposer?.(record.scope, { text: words?.text ?? record.text, attachments: words?.attachments ?? record.attachments ?? [] });
+    },
+    tooLate: (_sessionKey, record, onScreen) => {
+      if (onScreen) this.setState({ messages: endTakingBack(this.getState().messages, record.takeBackOf ?? "") });
+      this.noteUnder(record.scope, record.takeBackOf ?? "", "Already with the agent; it could not be taken back.");
+    },
+    accepted: (_sessionKey, record, onScreen) => {
+      if (onScreen) this.setState({ messages: endTakingBack(this.getState().messages, record.takeBackOf ?? "") });
+    },
+  };
+
+  /** What each kind of operation refused for good does: it is cancelled, and the reader is told why. */
+  private readonly operationRefused: Readonly<Record<OperationKind, (sessionKey: string, record: PendingPrompt, reason: string) => void>> = {
+    message: (_sessionKey, record, reason) => { this.cancelMessage(record.scope, record.clientMessageId, reason); },
+    takeBack: (sessionKey, record, reason) => {
+      forgetPendingPrompt(sessionKey, record.clientMessageId);
+      if (this.onScreen(record.scope)) this.setState({ messages: endTakingBack(this.getState().messages, record.takeBackOf ?? "") });
+      this.noteUnder(record.scope, record.takeBackOf ?? "", `It could not be taken back: ${reason}`);
+    },
+    command: (sessionKey, record, reason) => {
+      forgetPendingPrompt(sessionKey, record.clientMessageId);
+      this.settleLedgerRow(record.clientMessageId, { state: "failed", resultText: reason });
+    },
+    shell: (sessionKey, record, reason) => {
+      forgetPendingPrompt(sessionKey, record.clientMessageId);
+      this.dropSendingRow(record);
+      this.noteUnder(record.scope, record.clientMessageId, `${record.text} was not run: ${reason}`);
+    },
+  };
+
+  /**
+   * A command the machine accepted is read for its result, by identity, until it answers; a read
+   * nobody answered is read again by itself. A result that needs the page, for a session the
+   * reader left, waits until the reader returns to it (owner, 2026-10-14).
+   */
+  private readCommandResult(record: PendingPrompt, attempt: number): void {
+    if (this.disposed) return;
+    const session = { id: record.scope.sessionId, cwd: record.scope.cwd };
+    void this.api.commandResult(session, record.clientMessageId, record.scope.machineId).then((answer) => {
+      if (answer.state === "running") {
+        this.readCommandResult(record, 0);
+        return;
+      }
+      if (answer.state === "failed") {
+        this.settleLedgerRow(record.clientMessageId, { state: "failed", resultText: answer.error });
+        return;
+      }
+      this.commandResultArrived(record, answer.result);
+    }, (error: unknown) => {
+      if (sendRefusedForGood(error)) {
+        this.settleLedgerRow(record.clientMessageId, { state: "failed", resultText: describeError(error) });
+        return;
+      }
+      setTimeout(() => { this.readCommandResult(record, attempt + 1); }, retryDelayMs(attempt, QUIET_WINDOW_MS));
+    });
+  }
+
+  private readonly heldCommandResults = new Map<string, { ledgerId: string; result: CommandResult }[]>();
+
+  private commandResultArrived(record: PendingPrompt, result: CommandResult): void {
+    this.settleCommandRow(record.clientMessageId, result);
+    if (this.onScreen(record.scope)) {
+      this.applyCommandResult(result);
       return;
     }
-    await this.deliverCommandToSession(session, text, machineId, { applyResult: true, ledgerId: issued.id });
+    const key = machineSessionKey(record.scope.machineId, record.scope.sessionId);
+    this.heldCommandResults.set(key, [...(this.heldCommandResults.get(key) ?? []), { ledgerId: record.clientMessageId, result }]);
+  }
+
+  private settleCommandRow(ledgerId: string, result: CommandResult): void {
+    const outcome = commandOutcomeFor(result);
+    if (outcome !== undefined) this.settleLedgerRow(ledgerId, outcome);
+    else if (result.type === "select") this.commandDialogRows.set(result.requestId, ledgerId);
+    else this.setState({ commandLedger: withdrawCommand(this.getState().commandLedger, ledgerId) });
+  }
+
+  /** The reader came back to a session: results of its commands that arrived meanwhile take effect now. */
+  private applyHeldCommandResults(machineId: string, sessionId: string): void {
+    const key = machineSessionKey(machineId, sessionId);
+    const held = this.heldCommandResults.get(key);
+    if (held === undefined) return;
+    this.heldCommandResults.delete(key);
+    for (const entry of held) this.applyCommandResult(entry.result);
   }
 
   /**
@@ -858,80 +1082,6 @@ export class SessionController {
     this.setState({ commandLedger: settleCommand(this.getState().commandLedger, id, { ...outcome, now }) });
   }
 
-  private enqueuePendingSessionSend(session: ClientPendingStartSessionInfo, input: QueuedPendingSessionSendInput): void {
-    const pending = this.pendingSessionStarts.get(session.id);
-    if (pending === undefined || pending.discarded) {
-      this.setState(noticePatch(noticeForReader("The backend session is not ready for queued sends. Copy your message before discarding this failed start.")));
-      return;
-    }
-    const queued: QueuedPendingSessionSend = { ...input, id: `pending-send-${String(++this.pendingQueuedSendSeq)}` };
-    pending.queuedSends.push(queued);
-    void this.launchPendingStart(pending);
-    const state = this.getState();
-    const current = state.clientQueuedSessionMessages[session.id] ?? [];
-    const activity = creatingPendingSessionActivity(session.id, pending.queuedSends.length);
-    this.setState({
-      clientQueuedSessionMessages: { ...state.clientQueuedSessionMessages, [session.id]: [...current, queuedSessionMessagePreview(queued)] },
-      sessionActivities: { ...state.sessionActivities, [session.id]: activity },
-      activity: state.selectedSession?.id === session.id ? activity : state.activity,
-      ...clearErrorPatch(),
-    });
-  }
-
-  private async flushQueuedPendingSends(session: SessionInfo, machineId: string, queuedSends: readonly QueuedPendingSessionSend[]): Promise<void> {
-    for (const queued of queuedSends) {
-      const delivered = await this.deliverQueuedPendingSend(session, machineId, queued);
-      if (!delivered) return;
-      this.dropNextQueuedSessionMessage(session.id);
-    }
-  }
-
-  private async deliverQueuedPendingSend(session: SessionInfo, machineId: string, queued: QueuedPendingSessionSend): Promise<boolean> {
-    if (queued.type === "shell") return this.deliverShellToSession(session, queued.text, machineId, { optimisticLine: true });
-    return this.deliverCommandToSession(session, queued.text, machineId, { applyResult: true, ledgerId: queued.ledgerId });
-  }
-
-  /**
-   * Send one message to its session. Only an answer that says it can never succeed ends it: the row
-   * goes, and the caller hands the words back. Anything else - no answer, a timeout, a 5xx, 409, 429 -
-   * leaves the row "Sending…" and throws, so the outbox sends it again under its identity and number.
-   */
-  private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean; replayClientMessageId?: string; sentAt?: string; sequence?: SequencedOperation }): Promise<boolean> {
-    const hasAttachments = attachments !== undefined && attachments.length > 0;
-    if (options.markSending) this.markSendingPrompt(session.id, true);
-    // One message carries one id for its whole life. The sender mints it before
-    // the first attempt, writes it to the outbox under that id, and hands it
-    // here, so a retry revives the bubble that reads "Not sent" instead of
-    // adding a second row beside it. An id that already has a row is a replay;
-    // one that does not is this message's first attempt and needs the row.
-    const clientMessageId = this.beginTrackedSend(session, text, attachments ?? [], options.replayClientMessageId, options.sentAt);
-    const sentAt = (clientMessageId === undefined ? undefined : deliveryLineSentAt(this.getState().messages, clientMessageId)) ?? options.sentAt ?? new Date().toISOString();
-    try {
-      if (hasAttachments && delivery === "folder") {
-        const saved = await this.api.saveAttachments(session, attachments, machineId);
-        const references = saved.map((file) => fileCompletionInsertText(file.path, false)).join(" ");
-        const body = text === "" ? references : `${text}\n\n${references}`;
-        await this.api.prompt(session, body, streamingBehavior, machineId, undefined, clientMessageId, sentAt, options.sequence);
-      } else {
-        await this.api.prompt(session, text, streamingBehavior, machineId, attachments, clientMessageId, sentAt, options.sequence);
-      }
-      if (clientMessageId !== undefined) this.settleAnsweredSend(session, machineId, clientMessageId);
-      this.markCachedNewSessionPersisted(session);
-      return true;
-    } catch (error) {
-      if (!sendRefusedForGood(error)) {
-        if (clientMessageId !== undefined) this.claimUnansweredMessageStatus(session, machineId, ledgerMiss(error));
-        throw new NetworkSendError(String(error), clientMessageId, { cause: error });
-      }
-      this.setState(noticePatch(sendRefusalNotice(error, machineId)));
-      if (clientMessageId !== undefined && deliveryProvenByServer(this.getState().messages, clientMessageId)) return true;
-      if (clientMessageId !== undefined) this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
-      return false;
-    } finally {
-      if (options.markSending) this.markSendingPrompt(session.id, false);
-    }
-  }
-
   /**
    * A send nobody answered is the first unanswered moment of its session's message status (P1
    * slice 6): the row says "Sending…" (sent, still checking) and the app's one row says reconnecting after the grace,
@@ -955,20 +1105,6 @@ export class SessionController {
     if (findDeliveryLineIndex(this.getState().messages, clientMessageId) !== -1) return clientMessageId;
     this.setState({ messages: [...this.getState().messages, optimisticUserLine(text, clientMessageId, attachments, sentAt)] });
     return clientMessageId;
-  }
-
-  private async deliverShellToSession(session: SessionInfo, text: string, machineId: string, options: { optimisticLine: boolean }): Promise<boolean> {
-    if (options.optimisticLine && this.getState().selectedSession?.id === session.id) {
-      this.setState({ messages: [...this.getState().messages, textMessage("user", text)] });
-    }
-    try {
-      await this.api.shell(session, text, machineId);
-      this.markCachedNewSessionPersisted(session);
-      return true;
-    } catch (error) {
-      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", sendRefusalWords(error))], ...noticePatch(sendRefusalNotice(error, machineId)) });
-      return false;
-    }
   }
 
   private async deliverCommandToSession(session: SessionInfo, text: string, machineId: string, options: { applyResult: boolean; ledgerId?: string }): Promise<boolean> {
@@ -998,14 +1134,6 @@ export class SessionController {
     } finally {
       this.markSendingPrompt(session.id, false);
     }
-  }
-
-  private dropNextQueuedSessionMessage(sessionId: string): void {
-    const state = this.getState();
-    const current = state.clientQueuedSessionMessages[sessionId] ?? [];
-    if (current.length === 0) return;
-    const remaining = current.slice(1);
-    this.setState({ clientQueuedSessionMessages: remaining.length === 0 ? omitKey(state.clientQueuedSessionMessages, sessionId) : { ...state.clientQueuedSessionMessages, [sessionId]: remaining } });
   }
 
   async respondToCommand(requestId: string, value: string) {
@@ -1474,7 +1602,6 @@ export class SessionController {
     const pendingStart = isClientPendingStartSessionInfo(session) ? this.pendingSessionStarts.get(session.id) : undefined;
     if (pendingStart !== undefined) {
       pendingStart.discarded = true;
-      pendingStart.queuedSends = [];
     }
     else {
       void this.api.stop(session, selectedMachineId(this.getState())).catch(() => {
@@ -1643,41 +1770,33 @@ export class SessionController {
    * the agent has the message: the row reads Received, and the reader is told. No answer is not an answer: it
    * throws, and the outbox asks again.
    */
-  async takeBackMessage(scope: SendScope, target: { clientMessageId: string; text: string; kind?: "steer" | "followUp" }, sequence: SequencedOperation): Promise<boolean> {
-    const state = this.getState();
-    const session = state.selectedSession;
-    if (session?.id !== scope.sessionId || selectedMachineId(state) !== scope.machineId) throw new SendScopeChangedError(scope);
-    const answer = await this.api.recallQueuedMessage(session, { text: target.text, kind: target.kind ?? "followUp", clientMessageId: target.clientMessageId }, scope.machineId, sequence).catch((error: unknown) => takeBackRefusal(error, target.clientMessageId));
-    const now = this.getState();
-    const onScreen = now.selectedSession?.id === scope.sessionId && selectedMachineId(now) === scope.machineId;
-    this.takeBackAnswers[answer.recalled ? "takenBack" : "tooLate"][onScreen ? "onScreen" : "elsewhere"](scope, target.clientMessageId);
-    if (onScreen && answer.status !== undefined) this.applyStatus(answer.status, "response");
-    return answer.recalled;
+  /**
+   * A message just written to this browser's outbox shows its row at once, before anything ahead
+   * of it is answered; a command shows its receipt row, and a shell command its line.
+   */
+  showOutgoing(record: PendingPrompt): void {
+    this.clearNotes(record.scope.machineId, record.scope.sessionId);
+    this.outgoingRows[record.kind](record);
   }
 
-  /** What a take-back's answer does to the row, for the session on screen; another session's row is drawn from its own state when it opens. */
-  private readonly takeBackAnswers: Readonly<Record<"takenBack" | "tooLate", Readonly<Record<"onScreen" | "elsewhere", (scope: SendScope, clientMessageId: string) => void>>>> = {
-    takenBack: {
-      onScreen: (_scope, clientMessageId) => { this.setState({ messages: withdrawDeliveryLine(this.getState().messages, clientMessageId) }); },
-      elsewhere: () => undefined,
-    },
-    tooLate: {
-      onScreen: (scope, clientMessageId) => { this.setState({ messages: endTakingBack(this.getState().messages, clientMessageId), ...noticePatch(noticeForReader("Already with the agent; it could not be taken back.", scope.machineId)) }); },
-      elsewhere: () => undefined,
-    },
+  private readonly outgoingRows: Readonly<Record<OperationKind, (record: PendingPrompt) => void>> = {
+    message: (record) => { this.showSendingRow(record); },
+    takeBack: () => undefined,
+    command: (record) => { this.issueCommandRow(record.scope.machineId, record.scope.sessionId, record.text.trim(), record.clientMessageId); },
+    shell: (record) => { this.showSendingRow(record); },
   };
 
-  /**
-   * A message just written to this device's outbox shows its row at once, before anything ahead
-   * of it is answered. A command and a shell line keep their own rows.
-   */
-  showOutgoing(scope: SendScope, message: { clientMessageId: string; text: string; attachments?: PromptAttachment[]; at: string }): void {
-    const state = this.getState();
-    const session = state.selectedSession;
-    if (session?.id !== scope.sessionId || selectedMachineId(state) !== scope.machineId) return;
-    const attachments = message.attachments ?? [];
-    if (attachments.length === 0 && (message.text.trim().startsWith("/") || isShellInput(message.text))) return;
-    this.beginTrackedSend(session, message.text, attachments, message.clientMessageId, message.at);
+  /** A "Sending…" row in the pending block, in the order it was written; a shell command's row gives way to its run once the machine starts it. */
+  private showSendingRow(record: PendingPrompt): void {
+    const session = this.getState().selectedSession;
+    if (session === undefined || !this.onScreen(record.scope)) return;
+    this.beginTrackedSend(session, record.text, record.attachments ?? [], record.clientMessageId, record.at);
+  }
+
+  private dropSendingRow(record: PendingPrompt): void {
+    if (!this.onScreen(record.scope)) return;
+    const messages = withdrawDeliveryLine(this.getState().messages, record.clientMessageId);
+    if (messages.length !== this.getState().messages.length) this.setState({ messages });
   }
 
   /** A message withdrawn on this device before it was ever sent leaves the transcript at once. */
@@ -1864,6 +1983,7 @@ export class SessionController {
    * The socket learns the position, so its next heartbeat is compared with what the page holds.
    */
   private confirmCaughtUp(repair: SessionGapRepair, key: string): void {
+    this.clearBehind();
     this.flushPendingUpdates();
     const position = repair.position;
     if (position !== undefined) this.socket.noteApplied?.(position);
@@ -2119,7 +2239,7 @@ export class SessionController {
   }
 
   private createPendingSessionStart(workspace: Workspace, machineId: string): PendingSessionStart {
-    const tempId = `pending-session-${String(++this.pendingSessionStartSeq)}-${Date.now().toString(36)}`;
+    const tempId = `${DRAFT_SESSION_PREFIX}${String(++this.pendingSessionStartSeq)}-${Date.now().toString(36)}`;
     const now = new Date().toISOString();
     const session: ClientPendingStartSessionInfo = {
       id: tempId,
@@ -2134,7 +2254,7 @@ export class SessionController {
       clientPendingStart: true,
       machineId,
     };
-    return { tempId, workspaceId: workspace.id, cwd: workspace.path, machineId, session, queuedSends: [], discarded: false };
+    return { tempId, workspaceId: workspace.id, cwd: workspace.path, machineId, session, discarded: false };
   }
 
   private selectClientPendingStartSession(session: ClientPendingStartSessionInfo, options?: { updateUrl?: boolean | undefined; activity?: SessionActivity | undefined; sessions?: SessionInfo[] | undefined }): void {
@@ -2147,7 +2267,7 @@ export class SessionController {
     this.clearPendingUpdates();
     const state = this.getState();
     const pendingStart = this.pendingSessionStarts.get(session.id);
-    const activity = options?.activity ?? state.sessionActivities[session.id] ?? (pendingStart?.launched !== undefined ? creatingPendingSessionActivity(session.id, pendingStart.queuedSends.length) : undefined);
+    const activity = options?.activity ?? state.sessionActivities[session.id] ?? (pendingStart?.launched !== undefined ? creatingPendingSessionActivity(session.id, waitingInDraft(pendingStart)) : undefined);
     this.setState({
       ...(options?.sessions === undefined ? {} : { sessions: options.sessions }),
       selectedSession: session,
@@ -2182,7 +2302,6 @@ export class SessionController {
     const pending = this.pendingSessionStarts.get(tempId);
     if (pending === undefined) return;
     this.pendingSessionStarts.delete(tempId);
-    const queuedSends = pending.queuedSends.splice(0);
     const releasedCreatedSessions = this.takeSuppressedCreatedSessionsFor(pending.cwd, pending.machineId, session.id);
     if (pending.discarded) {
       clearDraft(machineSessionKey(pending.machineId, tempId));
@@ -2197,11 +2316,10 @@ export class SessionController {
     rememberCachedNewSession(session, pending.machineId);
     moveDraft(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
     moveHeldComposerAttachments(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
-    moveOutbox(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
+    moveOutbox(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id), session.id);
     const cachedSession = markCachedNewSessionInfo(session, pending.machineId);
     if (!this.isCurrentPendingStart(pending)) {
       this.setState({ clientQueuedSessionMessages: omitKey(this.getState().clientQueuedSessionMessages, tempId) });
-      await this.flushQueuedPendingSends(cachedSession, pending.machineId, queuedSends);
       return;
     }
 
@@ -2220,7 +2338,6 @@ export class SessionController {
       this.updateUrl({ replace: true });
       await this.selectSession(cachedSession, { updateUrl: false });
     }
-    await this.flushQueuedPendingSends(cachedSession, pending.machineId, queuedSends);
   }
 
   private failPendingSessionStart(tempId: string, error: unknown): void {
@@ -2241,7 +2358,7 @@ export class SessionController {
     }
     const state = this.getState();
     const message = describeError(error);
-    const activity = failedPendingSessionActivity(tempId, message, pending.queuedSends.length);
+    const activity = failedPendingSessionActivity(tempId, message, waitingInDraft(pending));
     const hasPendingRow = state.sessions.some((session) => session.id === tempId);
     this.setState({
       sessions: hasPendingRow ? state.sessions : [pending.session, ...state.sessions],
@@ -2417,7 +2534,7 @@ export class SessionController {
       rememberCachedNewSession(replacement, machineId);
       moveDraft(fromKey, toKey);
       moveHeldComposerAttachments(fromKey, toKey);
-      moveOutbox(fromKey, toKey);
+      moveOutbox(fromKey, toKey, replacement.id);
       forgetCachedNewSession(session.id, machineId);
       // The start was in flight across a possible scope switch: a late
       // answer must not prepend machine A's session into machine B's list
@@ -2671,18 +2788,15 @@ export class SessionController {
   }
 
   /**
-   * The runtime refused a message for good after the machine took it (docs/design/message-states.md,
-   * `cancelled`): the row goes, the words go back to the composer, and a notice names the session
-   * and the reason. Nothing offers Retry; sending the words again makes a new message.
+   * A message refused for good - by the machine's answer, or by the runtime after the machine took
+   * it (docs/design/message-states.md, `cancelled`): the row goes, the words go back to the
+   * composer, and a note where the row was says why. Nothing offers Retry; sending the words again
+   * makes a new message.
    */
-  private cancelMessage(scope: SendScope, clientMessageId: string, reason: string): void {
+  private cancelMessage(scope: ReturnScope, clientMessageId: string, reason: string): void {
     const words = retireMessage(machineSessionKey(scope.machineId, scope.sessionId), clientMessageId);
-    const current = this.getState();
-    const name = current.selectedSession?.id === scope.sessionId ? current.selectedSession.name : undefined;
-    this.setState({
-      messages: withdrawDeliveryLine(current.messages, clientMessageId),
-      ...noticePatch(noticeForReader(`Your message to ${name ?? "this session"} was not sent: ${reason}`, scope.machineId)),
-    });
+    this.setState({ messages: withdrawDeliveryLine(this.getState().messages, clientMessageId) });
+    this.noteUnder(scope, clientMessageId, `Not sent: ${reason}. The words are back in the composer.`);
     if (words !== undefined) this.returnToComposer?.(scope, { text: words.text, attachments: words.attachments ?? [] });
   }
 
@@ -2936,6 +3050,12 @@ export class SessionController {
       return;
     }
     if (event.type === "activity.changed") return;
+    if (event.type === "operation.applied") {
+      const current = this.getState();
+      const selected = current.selectedSession;
+      if (selected !== undefined) this.outbox.streamApplied(machineSessionKey(selectedMachineId(current), selected.id), event);
+      return;
+    }
     if (event.type === "prompt.withdrawn" || event.type === "prompt.consumed") {
       this.dropPromptRow(event.clientMessageId);
       return;
@@ -3061,7 +3181,7 @@ export class SessionController {
     // restore this row's own generic wording rather than clearing the text of a
     // creation request that has not returned yet.
     this.queueActivityUpdate(event.activity.phase === "idle"
-      ? creatingPendingSessionActivity(pending.tempId, pending.queuedSends.length)
+      ? creatingPendingSessionActivity(pending.tempId, waitingInDraft(pending))
       : pendingStartActivity(event.activity, pending.tempId));
   }
 
@@ -3360,10 +3480,6 @@ function failedPendingSessionActivity(sessionId: string, message: string, queued
   };
 }
 
-function queuedSessionMessagePreview(queued: QueuedPendingSessionSend): QueuedSessionMessage {
-  return { kind: "followUp", text: queued.text };
-}
-
 function uniqueSessionsById(sessions: readonly SessionInfo[]): SessionInfo[] {
   const seen = new Set<string>();
   const unique: SessionInfo[] = [];
@@ -3452,15 +3568,6 @@ function parsedJson(raw: string): unknown {
   } catch {
     return undefined;
   }
-}
-
-/**
- * A take-back the machine refused for good (the session is gone, the request invalid) is an
- * answer: the message cannot be taken back. Any other failure is no answer, and the outbox asks again.
- */
-function takeBackRefusal(error: unknown, clientMessageId: string): { recalled: false; status: undefined } {
-  if (sendRefusedForGood(error)) return { recalled: false, status: undefined };
-  throw new NetworkSendError(String(error), clientMessageId, { cause: error });
 }
 
 /** The rows the daemon's ledger is asked about: ones the machine took (received, queued) that the transcript has not settled yet. */

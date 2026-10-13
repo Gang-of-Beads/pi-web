@@ -665,6 +665,8 @@ The board is not a cause for the app row: the row already speaks for the machine
 
 Plugins read through the host, so the rule reaches them as one host facility: a read the host runs for a panel reports syncing and reconnecting, and retries on the same schedule. A plugin never writes its own retry loop.
 
+**Replaced on 2026-10-14.** The app row now has two states besides normal, one per direction, defined by facts: "Trying to sync with *m*" (something sent to *m* is unacknowledged past *n*, or a probe or a read on a silent link is) and "Syncing with *m*" (the page knows it is behind *m* and the fetch has taken more than 1 s). Every machine counts and is named; a list drawn from memory is normal. The rule is `message-states.md`, "Staying in step"; the text below is the earlier design, kept for its history and its producers table.
+
 **What the reader sees** (owner, 2026-09-30; the full contract is `object-model.md` §0 and §2.3):
 - One app-level row, the existing yellow one, shows one claim at a time. A definite failure is not reconnecting, and holds the row until it is dismissed or retired.
 - Reconnecting shows only for the machine the reader is using. Another machine, or one project or workspace, that does not answer retries silently.
@@ -694,7 +696,7 @@ Plugins read through the host, so the rule reaches them as one host facility: a 
     TryingToSync --> InStep: a frame from the machine
     TryingToReach --> TryingToSync: the server answers, the machine does not
   ```
-- Syncing is never visible, except "Loading this session…" during a transcript's first read with nothing known. The tap acknowledgement (row spinner, "Opening…", the progress line) stays. "Still opening…" and the Loading titles go.
+- Syncing is never visible, except in two places: "Loading this session…" during a transcript's first read with nothing known, and "Syncing…" on the app row while the session list on screen is drawn wholly from memory (cached-first-and-motion.md, the quietest row claim). The tap acknowledgement (row spinner, "Opening…", the progress line) stays. "Still opening…" and the Loading titles go.
 - There is no Try now; the page retries by itself. Known data stays live and usable. Other actions fire now and show as pending, and are never replayed.
 - A tapped session opens unless it was deleted (the reason, and a way back) or archived (read-only, with Restore).
 
