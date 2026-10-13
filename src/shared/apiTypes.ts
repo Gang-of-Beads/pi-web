@@ -1825,12 +1825,6 @@ export interface SessionSubsessionsSnapshot {
   readonly subsessions: readonly SessionSubsessionInfo[];
 }
 
-/**
- * Whether a newer build of this checkout is available on the fork remote.
- *
- * Reported for one machine at a time; the UI only shows the update affordance
- * when the machine hosting the daemon is a git checkout with a fork remote.
- */
 /** A fleet operation runs on the machines the answering server knows. */
 export type PiWebFleetOperation = "restart" | "update";
 

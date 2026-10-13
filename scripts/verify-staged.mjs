@@ -6,9 +6,9 @@ import { pathToFileURL } from "node:url";
 /**
  * The pre-commit check: static only (typecheck, Knip, ESLint on the staged files).
  *
- * Tests do not run per commit (owner, 2026-10-03): the suite runs locally before a change is
- * merged to main (the pre-push hook runs `pnpm run verify` for a push to main), and CI runs it
- * on a release tag.
+ * Tests do not run per commit (2026-10-03): the suite runs before a change is merged to main
+ * (the pre-push hook runs `pnpm run verify` for a push to main), and CI runs it on every pull
+ * request, every push to main and every release tag.
  */
 
 const FULL_LINT_TRIGGERS = new Set([
