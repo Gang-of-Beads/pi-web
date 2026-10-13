@@ -8,6 +8,7 @@ import { syncWords } from "../sync/rowWords";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import type { ProjectController } from "./projectController";
 import { orderedById } from "../../../shared/listOrder";
+import { directMachinesOf, setDirectMachines } from "../directMachineUrl";
 
 /** The roster has one key: the web process in use serves it. */
 const ROSTER = "roster";
@@ -146,7 +147,14 @@ export class MachineController {
     this.applying = this.applyRoster(machines);
   }
 
+  /**
+   * The roster's machines reach the URL boundary before anything is read from them: choosing the
+   * initial machine reads its health before the roster is in state, and that first read of a machine
+   * this browser reaches itself went through this server (live check, 2026-10-13). The state write
+   * below keeps the boundary in step for every later change (`PiWebApp.setState`).
+   */
   private async applyRoster(machines: Machine[]): Promise<void> {
+    setDirectMachines(directMachinesOf(machines));
     const asked = this.preferredMachineId();
     const initial = await this.selectInitialMachine(machines, asked);
     if (machines !== this.mirrored) return;

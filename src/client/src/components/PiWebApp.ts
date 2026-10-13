@@ -324,6 +324,7 @@ import { deliveredClientMessageIds } from "../userMessageRegister";
 import { OUTBOX_CHANGED_EVENT, sessionsWithFailedSends } from "../pendingOutbox";
 import { rowedClientMessageIds } from "../messageDelivery";
 import { frontedPageShown } from "../frontedPage";
+import { directMachinesOf, setDirectMachines } from "../directMachineUrl";
 import { extensionWidgetPanels } from "./ExtensionWidgetPage";
 
 interface SessionCleanupDialogState {
@@ -1387,6 +1388,7 @@ export class PiWebApp extends LitElement {
     if (!patchChangesState(this.state, patch)) return;
     const previous = this.state;
     this.state = { ...this.state, ...patch };
+    if (patch.machines !== undefined) setDirectMachines(directMachinesOf(patch.machines));
     if (selectedChatIdentity(previous) !== selectedChatIdentity(this.state)) {
       this.committedChatIdentity = undefined;
       this.readyChatIdentity = undefined;

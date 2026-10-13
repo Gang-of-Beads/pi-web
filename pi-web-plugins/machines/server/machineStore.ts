@@ -7,6 +7,8 @@ export interface StoredMachine {
   name: string;
   kind: "remote";
   baseUrl: string;
+  /** Absent means through this server: every entry from before browser-direct machines. */
+  connectFrom?: "browser" | "server";
   token?: string;
   headers?: Record<string, string>;
   createdAt: string;
@@ -42,7 +44,7 @@ export class MachineStore {
     return (await this.read()).machines;
   }
 
-  async add(input: { name: string; baseUrl: string; token?: string; headers?: Record<string, string> }): Promise<StoredMachine> {
+  async add(input: { name: string; baseUrl: string; connectFrom?: "browser" | "server"; token?: string; headers?: Record<string, string> }): Promise<StoredMachine> {
     const data = await this.read();
     const now = new Date().toISOString();
     const machine: StoredMachine = {
@@ -50,6 +52,7 @@ export class MachineStore {
       name: input.name,
       kind: "remote",
       baseUrl: input.baseUrl,
+      ...(input.connectFrom === undefined ? {} : { connectFrom: input.connectFrom }),
       ...(input.token === undefined ? {} : { token: input.token }),
       ...(input.headers === undefined ? {} : { headers: input.headers }),
       createdAt: now,
@@ -83,7 +86,7 @@ export class MachineStore {
     return { alias: data.localAlias, updatedAt: undefined };
   }
 
-  async update(id: string, patch: Partial<Pick<StoredMachine, "name" | "baseUrl" | "token" | "headers">>): Promise<StoredMachine | undefined> {
+  async update(id: string, patch: Partial<Pick<StoredMachine, "name" | "baseUrl" | "connectFrom" | "token" | "headers">>): Promise<StoredMachine | undefined> {
     const data = await this.read();
     const index = data.machines.findIndex((machine) => machine.id === id);
     if (index < 0) return undefined;
@@ -144,7 +147,9 @@ function parseStoredMachine(value: unknown): StoredMachine {
   if (typeof id !== "string" || typeof name !== "string" || kind !== "remote" || typeof baseUrl !== "string" || typeof createdAt !== "string" || typeof updatedAt !== "string") throw new Error("Invalid machine");
   const token = optionalString(value["token"], "token");
   const headers = optionalStringRecord(value["headers"], "headers");
-  return { id, name, kind, baseUrl, createdAt, updatedAt, ...(token === undefined ? {} : { token }), ...(headers === undefined ? {} : { headers }) };
+  const connectFrom = value["connectFrom"];
+  if (connectFrom !== undefined && connectFrom !== "browser" && connectFrom !== "server") throw new Error("Invalid machine connectFrom");
+  return { id, name, kind, baseUrl, createdAt, updatedAt, ...(connectFrom === undefined ? {} : { connectFrom }), ...(token === undefined ? {} : { token }), ...(headers === undefined ? {} : { headers }) };
 }
 
 

@@ -222,11 +222,13 @@ function machineInput(body: ServerPluginRouteBody | undefined): CreateMachineInp
   if (body === undefined || body instanceof Uint8Array) throw new MachineValidationError("Request body must be a JSON object");
   const name = stringField(body, "name");
   const baseUrl = stringField(body, "baseUrl");
+  const connectFrom = stringField(body, "connectFrom");
   const token = stringField(body, "token");
   const headers = headersField(body);
   return {
     ...(name === undefined ? {} : { name }),
     ...(baseUrl === undefined ? {} : { baseUrl }),
+    ...(connectFrom === undefined ? {} : { connectFrom }),
     ...(token === undefined ? {} : { token }),
     ...(headers === undefined ? {} : { headers }),
   };

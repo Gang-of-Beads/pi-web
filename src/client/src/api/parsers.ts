@@ -75,6 +75,7 @@ export function parseMachine(value: unknown): Machine {
   const record = requireRecord(value);
   const kind = requireMachineKind(record, "kind");
   const baseUrl = optionalString(record, "baseUrl");
+  const connectFrom = optionalString(record, "connectFrom");
   const status = optionalMachineStatus(record, "status");
   const statusMessage = optionalString(record, "statusMessage");
   return {
@@ -82,6 +83,7 @@ export function parseMachine(value: unknown): Machine {
     name: requireString(record, "name"),
     kind,
     ...(baseUrl === undefined ? {} : { baseUrl }),
+    ...(connectFrom === "browser" || connectFrom === "server" ? { connectFrom } : {}),
     createdAt: requireString(record, "createdAt"),
     updatedAt: requireString(record, "updatedAt"),
     ...(status === undefined ? {} : { status }),
