@@ -3,7 +3,7 @@ import type { AppAction } from "../actions";
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
-import type { FileSuggestion, PluginListModel, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
+import type { FileSuggestion, PluginListModel, PluginReadFailure, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 
 export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
@@ -110,6 +110,8 @@ export interface PluginHostUi {
    *  the back gesture resolve false. */
   readonly confirm: (request: PluginConfirmRequest) => Promise<boolean>;
   readonly renderList: (model: PluginListModel) => TemplateResult;
+  /** What a failed read means (B48): retry quietly after a delay, or a stated refusal to show. */
+  readonly readFailure: (error: unknown, attempt: number) => PluginReadFailure;
   /** Namespaced query-string state the host keeps coordinated with route
    *  restoration. The namespace is the plugin's wire format for deep links. */
   readonly query: {

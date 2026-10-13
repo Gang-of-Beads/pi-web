@@ -327,6 +327,20 @@ export type SemanticSurfaceToken =
   | "--pi-surface-active";
 
 /**
+ * What a failed read means to a plugin, under the host's rule that a surface never gives up
+ * (docs/design/state-diagram.md, B48; owner, 2026-09-30 and again 2026-10-13: "we keep trying; never
+ * show the reader an error they cannot fix").
+ * - `retry`: no answer (the link, a deadline, a machine that did not answer) or a server error. Read
+ *   again after `delayMs`; keep what is known for the same key; say at most that it is reconnecting.
+ *   `reason` is a server's own words when one answered with an error, for a quiet line, never a red one.
+ * - `final`: a refusal the server stated (signed out, forbidden, gone). It ends retrying and is
+ *   shown as itself, in `words`.
+ */
+export type PluginReadFailure =
+  | { readonly kind: "retry"; readonly delayMs: number; readonly reason?: string }
+  | { readonly kind: "final"; readonly words: string };
+
+/**
  * A status page's list, drawn by the host (`PluginHostUi.renderList`).
  *
  * Every plugin used to write its own row markup, so the same "running" read in

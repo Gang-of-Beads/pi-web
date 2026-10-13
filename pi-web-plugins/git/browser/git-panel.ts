@@ -59,7 +59,10 @@ interface GitWorkspaceUiState {
   selectedDiff: GitDiffView | undefined;
   selectedStagedDiff: GitDiffView | undefined;
   diffLoading: boolean;
+  /** A refusal a status or diff read was answered with, in its own words; never a missing answer (B48). */
   error: string | undefined;
+  /** The last status or diff read got no answer; the poll is trying again. */
+  reconnecting: boolean;
   expandedDirectories: Set<string>;
   statusRequest: Promise<void> | undefined;
   /** A change was announced while a status read was on its way, which may have been answered before it. */
@@ -232,6 +235,7 @@ export class GitUiController {
         state.reviewQueue = state.reviewQueue.filter((entry) => currentPaths.has(entry.path));
         state.stale = false;
         state.error = undefined;
+        state.reconnecting = false;
         const path = state.selectedDiffPath;
         if (path === undefined) return;
         if (!status.files.some((file) => file.path === path)) this.clearSelection(state, true);
@@ -241,7 +245,7 @@ export class GitUiController {
         }
       })
       .catch((error: unknown) => {
-        if (state.retained) state.error = errorMessage(error);
+        if (state.retained) applyReadFailure(state, error);
       })
       .finally(() => {
         if (state.statusRequest !== request) return;
@@ -453,6 +457,7 @@ export class GitUiController {
       selectedStagedDiff: undefined,
       diffLoading: false,
       error: undefined,
+      reconnecting: false,
       expandedDirectories: new Set(),
       statusRequest: undefined,
       statusReadAgain: false,
@@ -706,9 +711,10 @@ export class GitUiController {
       state.selectedDiff = createDiffView(selectedDiff, state.selectedDiff);
       state.selectedStagedDiff = createDiffView(selectedStagedDiff, state.selectedStagedDiff);
       state.error = undefined;
+      state.reconnecting = false;
     } catch (error) {
       if (!state.retained || state.diffRequestSequence !== sequence || state.selectedDiffPath !== path) return;
-      state.error = errorMessage(error);
+      applyReadFailure(state, error);
     } finally {
       if (state.retained && state.diffRequestSequence === sequence && state.selectedDiffPath === path) {
         state.diffLoading = false;
@@ -773,7 +779,7 @@ function createGitPanel(
 
 function requestGitBackend(context: WorkspacePanelContext, operation: string, input: JsonValue): Promise<JsonValue> {
   if (context.backend === undefined || context.workspace.provider?.capabilities.request === false) {
-    return Promise.reject(new Error("Git workspace backend is unavailable. Update and restart PI WEB on this machine, then reload the browser."));
+    return Promise.reject(new GitBackendUnavailableError());
   }
   return context.backend.request(operation, input);
 }
@@ -909,7 +915,7 @@ function renderFileList(
   viewState: GitViewState,
 ) {
   const status = state.status;
-  if (status === undefined) return html`<p class="git-muted">${state.error === undefined ? "Loading status…" : "Status unavailable."}</p>`;
+  if (status === undefined) return html`<p class="git-muted" role="status">${state.error !== undefined ? "Status unavailable." : state.reconnecting ? "Reconnecting…" : "Loading status…"}</p>`;
   if (!status.isGitRepo) return html`<p class="git-muted">Not a git repository.</p>`;
   if (status.files.length === 0) return html`<p class="git-muted">No changes.</p>`;
   return controller.currentView() === "tree"
@@ -1423,6 +1429,27 @@ function workspaceContextKey(context: WorkspacePanelContext): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** This page has no paired Git backend: a stated condition the reader fixes by updating, not a missing answer. */
+class GitBackendUnavailableError extends Error {
+  constructor() {
+    super("Git workspace backend is unavailable. Update and restart PI WEB on this machine, then reload the browser.");
+    this.name = "GitBackendUnavailableError";
+  }
+}
+
+/**
+ * A polled read that failed (B48): no answer keeps what is shown and lets the next poll try again,
+ * with no red line the reader cannot act on; only a refusal the server stated is shown. An older
+ * host without `readFailure` gets the same quiet retry.
+ */
+function applyReadFailure(state: GitWorkspaceUiState, error: unknown): void {
+  const failure = error instanceof GitBackendUnavailableError
+    ? { kind: "final" as const, words: error.message }
+    : gitHostUi()?.readFailure?.(error, 0) ?? { kind: "retry" as const, delayMs: GIT_POLL_INTERVAL_MS };
+  state.error = failure.kind === "final" ? failure.words : undefined;
+  state.reconnecting = failure.kind === "retry";
 }
 
 const gitToolbarStyles = `

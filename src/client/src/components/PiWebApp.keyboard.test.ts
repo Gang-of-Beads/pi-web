@@ -308,6 +308,7 @@ function fakeFilesHostUi(): PluginHostUi {
   return {
     copyText: () => Promise.resolve(true),
     describeError: (error) => String(error),
+    readFailure: () => ({ kind: "retry", delayMs: 1000 }),
     surfaceStyles: [],
     listStyles: [],
     workspacePanelStyles: [],

@@ -1,5 +1,5 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { FileSuggestion, ForegroundToken, PluginListModel, LegacyThemeToken, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
+import type { FileSuggestion, ForegroundToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 
@@ -26,6 +26,7 @@ export type {
   PluginListStatus,
   PluginListTone,
   PluginListWords,
+  PluginReadFailure,
   PiWebInstallationInfo,
   PiWebInstallationKind,
   PiWebPackageManager,
@@ -192,6 +193,9 @@ export interface PluginHostUi {
   /** Draw a status page's list the way every status page draws it (grouped rows,
    *  tone colours, the empty-page box). Optional: an older host lacks it. */
   readonly renderList?: (model: PluginListModel) => TemplateResult;
+  /** What a failed read means (B48): retry quietly after a delay, or a stated refusal to show.
+   *  `attempt` counts the misses in a row from 0. Optional: an older host lacks it. */
+  readonly readFailure?: (error: unknown, attempt: number) => PluginReadFailure;
   /** Namespaced query-string state the host keeps coordinated with route
    *  restoration. The namespace is the plugin's wire format for deep links. */
   readonly query: {

@@ -1259,6 +1259,15 @@ render: (context) => ui?.renderList === undefined
 - Groups with no rows and no actions are left out. Titles wrap to two lines.
 - `ui.renderList` is optional on older hosts.
 
+### When a read fails
+
+A page never gives up on a read (the host's rule for its own surfaces): a read that got no answer is retried, what is known for the same key stays on screen, and nothing red is drawn for a failure the reader cannot fix. Pass the error and the number of misses in a row (from 0) to `ui.readFailure(error, attempt)`:
+
+- `{ kind: "retry", delayMs, reason? }`: no answer, or a server that answered with an error (`reason` is its words, for a quiet line). Read again after `delayMs` (1, 2, 4, 8 s, then every 15 s), and sooner when the page comes back into view. Say at most "Reconnecting…".
+- `{ kind: "final", words }`: a refusal the server stated, such as signed out or gone. Stop retrying and show `words`.
+
+An action the reader started (start, close, rename) is not a read: when it gets no answer, read the state again to learn whether it happened before repeating anything that is not safe to repeat. `ui.readFailure` is optional on older hosts.
+
 ## Calling paired workspace backends
 
 Workspace panel and label contexts include an optional JSON-only backend helper. It is present only for a browser entry paired with an active server backend:

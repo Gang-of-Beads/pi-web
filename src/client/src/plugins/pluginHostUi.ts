@@ -12,6 +12,7 @@ import { renderWorkspaceMarkdownHtml } from "../formatting/workspaceMarkdown";
 import { describeError } from "../notice";
 import { askConfirmation } from "../confirmDialog";
 import { renderPluginList } from "../components/pluginList/PluginList";
+import { pluginReadFailure } from "./pluginReadFailure";
 import type { PluginDialog, PluginDialogHandle, PluginHostUi } from "./types";
 
 /**
@@ -44,6 +45,7 @@ export function createPluginHostUi(dialogHost?: PluginDialogHost): PluginHostUi 
   return {
     copyText: (text) => writeClipboardText(text),
     describeError,
+    readFailure: pluginReadFailure,
     adoptSheets: (root, groups) => { adoptSheets(root, [HOST_ICON_STYLES, ...groups]); },
     surfaceStyles: interactiveSurfaceStyles,
     listStyles,

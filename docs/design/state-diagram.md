@@ -575,6 +575,7 @@ stateDiagram-v2
 | a session's transcript and status | the failure panel with `transcriptFailed` / `statusReadFailed` | `sessionController.ts:506`, `ChatView.ts:1831`, `PiWebApp.ts:4165` |
 | opening a session (D8) | "Couldn't open · retry" | `navigationIntent.ts` `OPENING_WORDS.failed` |
 | files | "Couldn't read this workspace's files: …" | `files/explorer.ts:89`, `filesPanelElement.ts:134` |
+| git status and diff (missed in the first count; owner, 2026-10-13) | a red alert with the transport's words on every missed 8 s poll, and "Status unavailable." | `git/browser/git-panel.ts` status and diff reads; now `applyReadFailure` through the host's `ui.readFailure` |
 | goals | "Goal records could not …" | `goals/pi-web-plugin.ts:79`, `goalsSectionElement.ts:90` |
 | background runs | "This machine could not read the background runs." | `PiWebApp.ts:920`, `backgroundTaskRows.ts:90` |
 | subagent runs | "This machine could not be asked for the runs." | `subagents/runsRead.ts:26` |
