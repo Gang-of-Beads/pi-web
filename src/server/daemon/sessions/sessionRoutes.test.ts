@@ -689,7 +689,7 @@ describe("session routes", () => {
   });
 
   it("rejects prompt payloads that omit text without opening a session", async () => {
-    const response = await app.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { cwd: "/repo", deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-1", body: "Build the thing" }] } });
+    const response = await app.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { cwd: "/repo", deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-message-1", body: "Build the thing" }] } });
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: "Each operation needs a text string." });
@@ -705,7 +705,7 @@ describe("session routes", () => {
 
     try {
       const statusResponse = await routeApp.inject({ method: "GET", url: "/sessions/session-1/status" });
-      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-1", text: "hello" }] } });
+      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-message-1", text: "hello" }] } });
       const bulkResponse = await routeApp.inject({ method: "POST", url: "/sessions/bulk/archive", payload: { sessions: [{ id: "session-1" }] } });
 
       expect(statusResponse.statusCode).toBe(400);
@@ -891,7 +891,7 @@ describe("session routes", () => {
 
     const attachments = [{ kind: "image", mimeType: "image/png", data: "QUJD", name: "shot.png" }];
     try {
-      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { cwd: "/repo", deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-1", text: "look", attachments }] } });
+      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { cwd: "/repo", deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-message-1", text: "look", attachments }] } });
       expect(promptResponse.statusCode).toBe(200);
       expect(routeService.calls.at(-1)).toEqual({ lookup: { id: "session-1", cwd: resolve("/repo") }, text: "look", attachments });
 
@@ -911,8 +911,8 @@ describe("session routes", () => {
     registerSessionRoutes(routeApp, routeService, new SessionEventHub());
 
     try {
-      const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { cwd: "/repo", deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-1", text: "hello", sentAt: "2026-10-02T12:23:49.000Z" }] } });
-      expect({ status: response.statusCode, options: routeService.promptOptions }).toEqual({ status: 200, options: [{ clientMessageId: "c-1", sentAt: "2026-10-02T12:23:49.000Z" }] });
+      const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { cwd: "/repo", deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-message-1", text: "hello", sentAt: "2026-10-02T12:23:49.000Z" }] } });
+      expect({ status: response.statusCode, options: routeService.promptOptions }).toEqual({ status: 200, options: [{ clientMessageId: "c-message-1", sentAt: "2026-10-02T12:23:49.000Z" }] });
     } finally {
       await routeService.dispose();
       await routeApp.close();
@@ -931,7 +931,7 @@ describe("session routes", () => {
       // absolute path (drive-qualified on Windows).
       const requestCwd = resolve("/repo");
       const statusResponse = await routeApp.inject({ method: "GET", url: `/sessions/session-1/status?cwd=${encodeURIComponent(requestCwd)}` });
-      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { cwd: requestCwd, deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-1", text: "hello" }] } });
+      const promptResponse = await routeApp.inject({ method: "POST", url: "/sessions/session-1/operations/apply", payload: { cwd: requestCwd, deviceId: "device-test-1", ackedThrough: 0, operations: [{ kind: "message", seq: 1, clientMessageId: "c-message-1", text: "hello" }] } });
 
       expect(statusResponse.statusCode).toBe(200);
       expect(promptResponse.statusCode).toBe(200);

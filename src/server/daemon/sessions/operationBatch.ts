@@ -1,4 +1,5 @@
 import type { DeviceOperation, OperationBatch, OperationResult, PromptAttachment } from "../../../shared/apiTypes.js";
+import { isWellFormedOperationId } from "./operationDecision.js";
 import { sessionErrorReply } from "./sessionErrors.js";
 
 /**
@@ -73,7 +74,7 @@ function parseOperation(value: unknown): DeviceOperation {
   const clientMessageId = body["clientMessageId"];
   const kind = body["kind"];
   if (typeof seq !== "number" || !Number.isSafeInteger(seq) || seq < 1) throw new OperationBatchError("Each operation needs a positive whole seq.");
-  if (typeof clientMessageId !== "string" || clientMessageId === "" || clientMessageId.length > 200) throw new OperationBatchError("Each operation needs a clientMessageId.");
+  if (typeof clientMessageId !== "string" || !isWellFormedOperationId(clientMessageId)) throw new OperationBatchError("Each operation needs a clientMessageId the ledger can hold: 8 to 128 letters, digits, dots, colons, dashes or underscores.");
   if (!isKind(kind)) throw new OperationBatchError("Each operation needs a kind: message, takeBack, command or shell.");
   return PARSERS[kind](body, { seq, clientMessageId });
 }
