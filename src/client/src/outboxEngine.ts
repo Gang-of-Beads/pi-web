@@ -47,9 +47,12 @@ interface OutboxRun {
   machineId: string;
   /** Batches carry one operation at a time after a batch was too large for the way to the machine. */
   oneAtATime: boolean;
+  /** When the last batch went. */
+  sentAt: number;
 }
 
 const MAX_BATCH_OPERATIONS = 32;
+const HEARD_KICK_MS = 2000;
 /** Above this many bytes of inline files a batch stops growing, so one large photo does not drag every message with it. */
 const MAX_BATCH_FILE_BYTES = 4 * 1024 * 1024;
 
@@ -88,6 +91,19 @@ export class OutboxEngine {
 
   kick(sessionKey: string): void {
     this.drive(sessionKey, "kick");
+  }
+
+  /**
+   * Something came from this machine, so the link to it works: an outbox waiting out its resend
+   * wait sends now (owner, 2026-10-14: the probe "can be triggered by events"). At most once per
+   * `HEARD_KICK_MS`, so a stream that keeps talking while one request path stays broken does not
+   * turn into a send per frame.
+   */
+  heardFrom(machineId: string): void {
+    const now = this.now();
+    for (const [sessionKey, run] of this.runs) {
+      if (run.machineId === machineId && run.state === "waiting" && now - run.sentAt >= HEARD_KICK_MS) this.drive(sessionKey, "kick");
+    }
   }
 
   /**
@@ -130,7 +146,7 @@ export class OutboxEngine {
     const existing = this.runs.get(sessionKey);
     if (existing !== undefined) return existing;
     const machineId = sessionKey.split(":")[0] ?? "local";
-    const created: OutboxRun = { state: "idle", delay: 0, timer: undefined, unansweredSince: undefined, miss: { kind: "machine-unanswering", machineId }, machineId, oneAtATime: false };
+    const created: OutboxRun = { state: "idle", delay: 0, timer: undefined, unansweredSince: undefined, miss: { kind: "machine-unanswering", machineId }, machineId, oneAtATime: false, sentAt: 0 };
     this.runs.set(sessionKey, created);
     return created;
   }
@@ -185,6 +201,7 @@ export class OutboxEngine {
       }
       const batch = await this.batchOf(sessionKey, records);
       const run = this.runOf(sessionKey);
+      run.sentAt = this.now();
       if (run.unansweredSince === undefined) {
         run.unansweredSince = this.now();
         run.machineId = head.scope.machineId;

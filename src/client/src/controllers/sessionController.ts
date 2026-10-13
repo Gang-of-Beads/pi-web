@@ -2843,7 +2843,8 @@ export class SessionController {
   private readonly retiredRecords = new Set<string>();
 
   /**
-   * A message the agent took leaves the outbox. Its record stayed on file past acceptance so a
+   * A message the agent took leaves the outbox, and so does a take-back still on its way for it:
+   * the note under the message says it came too late. Its record stayed on file past acceptance so a
    * runtime refusal could still make it retryable; once its row is delivered, or the history holds
    * its committed copy (a reader who left before the row turned delivered), nothing can refuse it.
    * Every write of the transcript passes here, and only an id not retired before reads storage.
@@ -2859,7 +2860,9 @@ export class SessionController {
       const retired = `${key}\u0000${taken}`;
       if (this.retiredRecords.has(retired)) continue;
       this.retiredRecords.add(retired);
+      const takeBack = loadPendingPrompts(key).find((record) => record.takeBackOf === taken);
       retireMessage(key, taken);
+      if (takeBack !== undefined) this.noteUnder(takeBack.scope, taken, "Already with the agent; it could not be taken back.");
     }
   }
 
@@ -3008,6 +3011,7 @@ export class SessionController {
   }
 
   private routeLiveEvent(event: SessionUiEvent): void {
+    this.outbox.heardFrom(selectedMachineId(this.getState()));
     const seq: unknown = Reflect.get(event, "seq");
     this.gapRepair?.onLiveFrame(event, typeof seq === "number" ? seq : undefined);
   }

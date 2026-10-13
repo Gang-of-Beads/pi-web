@@ -335,6 +335,15 @@ interface SessionCleanupDialogState {
   error?: string | undefined;
 }
 
+/**
+ * Why an unanswered batch is unanswered, for the row. A request that got no status reads as the
+ * link to this page's server - "Trying to reach" - only while nothing has come from that server
+ * since the batch went; once it answers anything, the batch's machine is what is not answering.
+ */
+function outboxMiss(entry: { readonly machineId: string; readonly since: number; readonly miss: ReadMiss }, heard: HeardClocks): ReadMiss {
+  return entry.miss.kind === "link-down" && heard.link > entry.since ? { kind: "machine-unanswering", machineId: entry.machineId } : entry.miss;
+}
+
 @customElement("pi-web-app")
 export class PiWebApp extends LitElement {
   @state() private state: AppState = initialAppState();
@@ -5147,7 +5156,7 @@ export class PiWebApp extends LitElement {
     const messageStatus = messageStatusUnanswered(this.state.messageStatusUnanswered, { machineId: selectedMachineId(this.state), sessionId: this.state.selectedSession?.id });
     const heard: HeardClocks = { link: ackWatch.heardAt(), machine: (machineId) => this.realtime.heardAt(machineId) };
     const sources = [this.projects.unanswered(), this.machines.unanswered(), targetUnanswered(this.namedTargetInScope()), messageStatus, this.realtime.unanswered(selectedMachineId(this.state)), ackWatch.waiting()];
-    const outbox: Unanswered[] = this.state.outboxUnanswered.map((entry) => ({ since: entry.since, miss: entry.miss }));
+    const outbox: Unanswered[] = this.state.outboxUnanswered.map((entry) => ({ since: entry.since, miss: outboxMiss(entry, heard) }));
     const unanswered = [...sources.map((source) => stillUnheard(source, heard)), ...outbox].reduce(earliestUnanswered, undefined);
     const now = Date.now();
     const decision = rowDecision({ notice: noticeShown, unanswered, shown: this.unansweredShown, behind: this.state.streamBehind, lookingSince: this.lookingSince, now });

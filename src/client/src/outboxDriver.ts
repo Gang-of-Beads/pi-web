@@ -3,7 +3,7 @@
  *
  * The outbox is this browser's unanswered operations on one session. The driver sends them as a
  * batch, and the next batch only once the machine has answered the last. A batch nobody answered
- * is sent again after a wait that grows from 1 s to 30 s, and at once whenever something says the
+ * is sent again after a wait that grows from 1 s to 15 s, and at once whenever something says the
  * link may be back (a new operation, `online`, the page coming into view).
  *
  *   idle     nothing in flight and nothing waiting: the outbox is empty
@@ -68,7 +68,8 @@ export function driverMove(state: DriverState, event: DriverEvent): DriverMove {
 }
 
 const FIRST_WAIT_MS = 1_000;
-const LONGEST_WAIT_MS = 30_000;
+/** The same longest wait as every read that went unanswered (QUIET_WINDOW_MS): a link that came back is used within it. */
+const LONGEST_WAIT_MS = 15_000;
 
 const DELAY_AFTER: Readonly<Record<DelayChange, (previous: number) => number>> = {
   reset: () => 0,
@@ -76,7 +77,7 @@ const DELAY_AFTER: Readonly<Record<DelayChange, (previous: number) => number>> =
   keep: (previous) => previous,
 };
 
-/** The resend wait after a move: 1 s, doubling to 30 s, from nothing after an answer or a kick. */
+/** The resend wait after a move: 1 s, doubling to 15 s, from nothing after an answer or a kick. */
 export function delayAfter(change: DelayChange, previous: number): number {
   return DELAY_AFTER[change](previous);
 }
