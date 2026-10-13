@@ -119,7 +119,7 @@ describe("file suggestions", () => {
   it("ranks basename matches before deeper incidental path matches", async () => {
     const deps: FileSuggestionDependencies = {
       execFile: (file, args) => {
-        if (file === "git" && args.join(" ") === "ls-files -z") return Promise.resolve({ stdout: "klingit-go/cli/cmd/dev/main.go\0MD PRojects here.md\0" });
+        if (file === "git" && args.join(" ") === "ls-files -z") return Promise.resolve({ stdout: "service/cli/cmd/dev/main.go\0MD PRojects here.md\0" });
         if (file === "git" && args.join(" ") === "ls-files --others --exclude-standard -z") return Promise.resolve({ stdout: "" });
         if (file === "rg") return Promise.resolve({ stdout: "" });
         return Promise.reject(new Error(`unexpected command: ${file} ${args.join(" ")}`));
@@ -134,7 +134,7 @@ describe("file suggestions", () => {
   it("ranks file suggestions case-insensitively", async () => {
     const deps: FileSuggestionDependencies = {
       execFile: (file, args) => {
-        if (file === "git" && args.join(" ") === "ls-files -z") return Promise.resolve({ stdout: "klingit-go/cli/cmd/dev/main.go\0MD PRojects here.md\0" });
+        if (file === "git" && args.join(" ") === "ls-files -z") return Promise.resolve({ stdout: "service/cli/cmd/dev/main.go\0MD PRojects here.md\0" });
         return Promise.reject(new Error(`unexpected command: ${file} ${args.join(" ")}`));
       },
     };

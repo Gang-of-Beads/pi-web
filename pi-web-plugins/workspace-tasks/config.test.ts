@@ -6,14 +6,14 @@ describe("workspace tasks config", () => {
     expect(parseTasksConfigText(JSON.stringify({
       version: 1,
       tasks: [
-        { id: "db.reset", title: "Reset DB", command: "go -C klingit-go run ./cli db reset" },
+        { id: "db.reset", title: "Reset DB", command: "go -C service run ./cli db reset" },
       ],
     }))).toEqual({
       ok: true,
       config: {
         version: 1,
         tasks: [
-          { id: "db.reset", title: "Reset DB", command: "go -C klingit-go run ./cli db reset", confirm: false },
+          { id: "db.reset", title: "Reset DB", command: "go -C service run ./cli db reset", confirm: false },
         ],
       },
     });
