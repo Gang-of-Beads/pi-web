@@ -59,7 +59,7 @@ interface GitWorkspaceUiState {
   selectedDiff: GitDiffView | undefined;
   selectedStagedDiff: GitDiffView | undefined;
   diffLoading: boolean;
-  /** A refusal a status or diff read was answered with, in its own words; never a missing answer (B48). */
+  /** A final failure of a status or diff read, in words the reader can act on: a refusal the server stated, or a missing Git backend; never a transient missing answer (B48). */
   error: string | undefined;
   /** The last status or diff read got no answer; the poll is trying again. */
   reconnecting: boolean;

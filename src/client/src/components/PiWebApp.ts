@@ -2706,14 +2706,6 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * Where New session on the Navigate page starts (owner, 2026-10-09 on 8504: after switching
-   * machine, a new session was created on the machine left behind; "after choosing a machine it
-   * should show that machine's things"). A session starts in the open project of the selected
-   * machine. A page browsing another machine, or one with no project open, has none to start in:
-   * New session lists the projects of the machine on screen, and choosing one moves to that machine
-   * and starts the session there (R18), as New session from an empty chat already did.
-   */
-  /**
    * The Navigate page the reader is looking at: the overlay while it is open, else the page drawn in
    * place, which is the whole screen when no session is open. Asking only the overlay made New
    * session with no project open do nothing on that screen (owner, 8505, 2026-10-13).
@@ -2722,6 +2714,14 @@ export class PiWebApp extends LitElement {
     return this.navigateOpen ? this.navigatePage : this.inPageNavigatePage;
   }
 
+  /**
+   * Where New session on the Navigate page starts (owner, 2026-10-09 on 8504: after switching
+   * machine, a new session was created on the machine left behind; "after choosing a machine it
+   * should show that machine's things"). A session starts in the open project of the selected
+   * machine. A page browsing another machine, or one with no project open, has none to start in:
+   * New session lists the projects of the machine on screen, and choosing one moves to that machine
+   * and starts the session there (R18), as New session from an empty chat already did.
+   */
   private newSessionPlace(): NewSessionPlace {
     return this.quickSwitcherBrowsingElsewhere() || !this.canStartSession() ? "choose-project" : "here";
   }
