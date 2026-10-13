@@ -17,6 +17,15 @@ export function sessionPersistenceState(session: SessionInfo | undefined, status
   return "unknown";
 }
 
+/**
+ * The sessions a status reports written to disk. A row listed before its session's first reply
+ * keeps the listing's `persisted: false` until the list is read again, and read "not started" over
+ * a running conversation (QA, 2026-10-14); the status is the later word.
+ */
+export function writtenSessionIds(statuses: Readonly<Record<string, SessionStatus>>): ReadonlySet<string> {
+  return new Set(Object.values(statuses).filter((status) => status.persisted === true).map((status) => status.sessionId));
+}
+
 /** A session the machine has written to disk: it can be reloaded from its file. */
 export function isPersistedSessionInfo(session: SessionInfo | undefined, status?: SessionStatus): boolean {
   return session !== undefined && session.archived !== true && sessionPersistenceState(session, status) === "persisted";

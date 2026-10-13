@@ -125,7 +125,7 @@ export class SettingsAppearancePanel extends LitElement {
           <span class="pro-line"></span><span class="pro-line dim"></span><span class="pro-line dimmer"></span>
         </span>
         <span class="theme-name">Pro (native)</span>
-        <span class="theme-scheme muted">Dark${themeCardSuffix({ selected, active, autoOverriding: this.followSystem })}</span>
+        <span class="theme-scheme muted">Dark${themeCardSuffix({ selected, active, autoOverriding: selected && !active && this.followSystem })}</span>
         <span class="theme-description muted">The app's own flat mono look.</span>
       </button>
     `;
@@ -148,7 +148,7 @@ export class SettingsAppearancePanel extends LitElement {
           <span class="pro-line"></span><span class="pro-line dim"></span><span class="pro-line dimmer"></span>
         </span>
         <span class="theme-name">Pro Light (native)</span>
-        <span class="theme-scheme muted">Light${themeCardSuffix({ selected, active, autoOverriding: this.followSystem })}</span>
+        <span class="theme-scheme muted">Light${themeCardSuffix({ selected, active, autoOverriding: selected && !active && this.followSystem })}</span>
         <span class="theme-description muted">The app's own look on paper.</span>
       </button>
     `;

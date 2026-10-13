@@ -122,6 +122,8 @@ export interface NavigateInput {
   manualTags?: Readonly<Record<string, readonly string[]>>;
   /** Sessions with a finished reply the reader has not seen. */
   unreadSessionIds?: ReadonlySet<string>;
+  /** Sessions a status reports written since their row was listed: they are started, whatever the listing said. */
+  writtenSessionIds?: ReadonlySet<string>;
   /** The open session, ranked as still unread while its row holds its place (`openRowHold.ts`). */
   heldOpenSessionId?: string | undefined;
   /** Sessions whose run a restart cut off. */
@@ -310,7 +312,8 @@ function sessionPath(session: SessionInfo, input: NavigateInput): string {
   const folder = input.folders.find((entry) => entry.path === session.cwd);
   const project = folder === undefined ? undefined : input.projects.find((entry) => entry.id === folder.projectId);
   const where = project?.name ?? folder?.label ?? session.cwd;
-  return session.persisted === false ? `${NOT_STARTED_MARK} · ${where}` : where;
+  const notStarted = session.persisted === false && input.writtenSessionIds?.has(session.id) !== true;
+  return notStarted ? `${NOT_STARTED_MARK} · ${where}` : where;
 }
 
 /**

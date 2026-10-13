@@ -19,7 +19,7 @@ import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { resetWorkspaceScopedState, type AppState } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
-import { carryUnsettledForward } from "../transcriptReconcile";
+import { carryUnsettledForward, withOutboxRows } from "../transcriptReconcile";
 import { machineSessionKey } from "../machineKeys";
 import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessionsCache";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
@@ -581,6 +581,7 @@ export class SessionController {
         ? { sessions: [...(cachedSessionsFor(machineId, ancestors.workspace.path) ?? [])], sessionsLoad: "loading" as const }
         : {}),
       ...cached,
+      messages: withOutboxRows(cached.messages, loadPendingPrompts(machineSessionKey(machineId, session.id))),
       isLoadingEarlierMessages: false,
       // Empty is two states. Until the read lands, the transcript is unknown,
       // not empty, and the view must not invite a first message into a

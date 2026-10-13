@@ -1,5 +1,5 @@
 import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
-import { isTransientNewSessionInfo } from "../sessionPersistence";
+import { isTransientNewSessionInfo, writtenSessionIds } from "../sessionPersistence";
 import { uiIconStyle, renderCommandIcon, renderGearIcon, renderPluginIcon } from "./uiIcons.js";
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
@@ -312,6 +312,12 @@ const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
 const THEME_AUTO_ON_VALUE = "auto:on";
 const THEME_AUTO_OFF_VALUE = "auto:off";
 const THEME_OPTION_PREFIX = "theme:";
+
+/** The app's own looks, offered in the Actions theme picker as Settings → Appearance offers them. */
+const NATIVE_THEME_CHOICES: readonly { id: QualifiedContributionId; name: string; description: string }[] = [
+  { id: CORE_PRO_THEME_ID, name: "Pro (native)", description: "dark · The app's own flat mono look." },
+  { id: CORE_PRO_LIGHT_THEME_ID, name: "Pro Light (native)", description: "light · The app's own look on paper." },
+];
 const WORKSPACE_FILES_SLOT: QualifiedContributionId = "core:workspace.files";
 const FILES_ROUTE_NAMESPACE = queryNamespace(WORKSPACE_FILES_SLOT);
 const TERMINAL_ROUTE_NAMESPACE = queryNamespace("core:workspace.terminal");
@@ -3172,6 +3178,7 @@ export class PiWebApp extends LitElement {
       pinnedSessionIds: pinnedIds,
       projectPinnedSessionIds: projectPinnedIds,
       unreadSessionIds: browsingElsewhere ? EMPTY_ID_SET : this.unreadSessionIds,
+      writtenSessionIds: browsingElsewhere ? EMPTY_ID_SET : writtenSessionIds(state.sessionStatuses),
       heldOpenSessionId: heldOpenSessionIn(this.openRowHold, machineId),
       interruptedSessionIds: browsingElsewhere ? EMPTY_ID_SET : this.interruptedRunsByMachine.get(selectedMachineId(state)) ?? EMPTY_ID_SET,
       sections: sessionSections(this.plugins.getSessionSections(machineId)),
@@ -4170,6 +4177,11 @@ export class PiWebApp extends LitElement {
     return this.plugins.invalidateWorkspacePanels(this.createWorkspacePanelContext(workspace), panelId);
   }
 
+  /** The key a search box names in its placeholder: none on the phone layout, where nobody presses it. */
+  private openerShortcutOf(actionId: string): string | undefined {
+    return this.appShell.isMobileNavigationLayout ? undefined : this.shortcutOf(actionId);
+  }
+
   /** The key the reader has bound to an action now, or undefined when it has none. */
   private shortcutOf(actionId: string): string | undefined {
     return this.getActions().find((action) => action.id === actionId)?.shortcut;
@@ -4810,7 +4822,8 @@ export class PiWebApp extends LitElement {
   private openThemeDialog() {
     const themes = this.plugins.getThemes();
     const resolution = this.resolveCurrentThemePreference(themes);
-    const selectedThemeId = resolution.selectedTheme?.id;
+    const preferred = this.themePreference.themeId;
+    const selectedThemeId = resolution.selectedTheme?.id ?? (isNativeThemeId(preferred) ? preferred : undefined);
     const autoValue = this.themePreference.auto ? THEME_AUTO_OFF_VALUE : THEME_AUTO_ON_VALUE;
     this.pushModalLayerFrame();
     this.setState({
@@ -4823,6 +4836,11 @@ export class PiWebApp extends LitElement {
             label: `Auto ${this.themePreference.auto ? "✓ on" : "off"}`,
             description: this.autoThemeDescription(resolution),
           },
+          ...NATIVE_THEME_CHOICES.map((theme) => ({
+            value: `${THEME_OPTION_PREFIX}${theme.id}`,
+            label: this.themeOptionLabel(theme, selectedThemeId),
+            description: theme.description,
+          })),
           ...themes.map((theme) => ({
             value: `${THEME_OPTION_PREFIX}${theme.id}`,
             label: this.themeOptionLabel(theme, selectedThemeId),
@@ -4867,18 +4885,13 @@ export class PiWebApp extends LitElement {
   private pickTheme(value: string) {
     this.setState({ themeDialog: undefined });
     if (value === THEME_AUTO_ON_VALUE || value === THEME_AUTO_OFF_VALUE) {
-      const selectedThemeId = this.resolveCurrentThemePreference().selectedTheme?.id;
-      if (selectedThemeId === undefined) return;
-      this.themePreference = { themeId: selectedThemeId, auto: value === THEME_AUTO_ON_VALUE };
-      this.applyPreferredTheme(true);
+      this.setFollowSystemTheme(value === THEME_AUTO_ON_VALUE);
       return;
     }
     if (!value.startsWith(THEME_OPTION_PREFIX)) return;
     const themeId = value.slice(THEME_OPTION_PREFIX.length);
-    const theme = this.plugins.getThemes().find((candidate) => candidate.id === themeId);
-    if (theme === undefined) return;
-    this.themePreference = { themeId: theme.id, auto: this.themePreference.auto };
-    this.applyPreferredTheme(true);
+    const chosen = [...NATIVE_THEME_CHOICES, ...this.plugins.getThemes()].find((candidate) => candidate.id === themeId);
+    if (chosen !== undefined) this.selectTheme(chosen.id);
   }
 
   private applyPreferredTheme(persist: boolean): void {
@@ -4925,7 +4938,7 @@ export class PiWebApp extends LitElement {
     return `On · ${resolution.selectedThemePair.name} follows the system ${this.systemPrefersLight() ? "light" : "dark"} preference.`;
   }
 
-  private themeOptionLabel(theme: QualifiedThemeContribution, selectedThemeId: QualifiedContributionId | undefined): string {
+  private themeOptionLabel(theme: Pick<QualifiedThemeContribution, "id" | "name">, selectedThemeId: QualifiedContributionId | undefined): string {
     const markers = [
       ...(theme.id === selectedThemeId ? ["selected"] : []),
       ...(theme.id === this.activeThemeId && theme.id !== selectedThemeId ? ["active"] : []),
@@ -5529,7 +5542,7 @@ export class PiWebApp extends LitElement {
           .sessionStates=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_STATE_MAP : this.sessionStateKinds()}
           .waitingSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.waitingSessionIds()}
           .unreadSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.unreadSessionIds}
-          .openerShortcut=${this.shortcutOf("app.sessions.quick-switch")}
+          .openerShortcut=${this.openerShortcutOf("app.sessions.quick-switch")}
           .heldOpenSessionId=${this.quickSwitcherBrowsingElsewhere() ? undefined : heldOpenSessionIn(this.openRowHold, selectedMachineId(state))}
           .sessionSections=${sessionSections(this.plugins.getSessionSections(this.rowsMachineId()))}
           .interruptedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.interruptedRunsByMachine.get(selectedMachineId(state)) ?? EMPTY_ID_SET}
@@ -5556,7 +5569,7 @@ export class PiWebApp extends LitElement {
           }}
           .onClose=${() => { this.navigation.cancel(); this.quickSwitcherOpen = false; }}
         ></quick-switcher>` : null}
-        ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .openerShortcut=${this.shortcutOf("core:actions.show")} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
+        ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .openerShortcut=${this.openerShortcutOf("core:actions.show")} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
         ${this.renderSessionTreeNavigator(state)}
         ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onConfirm=${(request: ConfirmRequest) => this.confirm(request)} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}

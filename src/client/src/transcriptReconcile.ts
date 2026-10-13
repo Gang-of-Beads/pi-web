@@ -1,5 +1,6 @@
 import type { ChatLine } from "./components/shared";
-import { carryDeliveryForward, deliveryWaiting } from "./messageDelivery";
+import { carryDeliveryForward, deliveryWaiting, findDeliveryLineIndex, markDelivery, optimisticUserLine } from "./messageDelivery";
+import type { PendingPrompt } from "./pendingOutbox";
 
 /**
  * What a rebuilt transcript holds of one waiting message, found by its identity in every form
@@ -65,4 +66,24 @@ export function hasWaitingDelivery(messages: readonly ChatLine[]): boolean {
     const state = line.meta?.delivery?.state;
     return state !== undefined && deliveryWaiting(state);
   });
+}
+
+/**
+ * The transcript with this browser's stored outbox drawn at its tail, in the order it was written:
+ * a message or shell command not yet in the transcript reads "Sending…", or "Taking back…" while a
+ * take-back for it waits, and one already withdrawn here is not drawn. A row is made when a record
+ * is written; after a reload the records are read back from storage, and without this they had no
+ * row until the composer's fallback drew them seconds later, while a new session read "Send a
+ * message to start it" (QA, 2026-10-14).
+ */
+export function withOutboxRows(messages: ChatLine[], records: readonly PendingPrompt[]): ChatLine[] {
+  const takeBacks = new Map(records.filter((record) => record.kind === "takeBack").map((record) => [record.takeBackOf ?? "", record]));
+  const rows = records
+    .filter((record) => (record.kind === "message" || record.kind === "shell") && takeBacks.get(record.clientMessageId)?.wordsReturned !== true)
+    .filter((record) => findDeliveryLineIndex(messages, record.clientMessageId) === -1)
+    .map((record) => {
+      const line = optimisticUserLine(record.text, record.clientMessageId, record.attachments ?? [], record.at);
+      return takeBacks.has(record.clientMessageId) ? markDelivery([line], record.clientMessageId, "takingBack")[0] ?? line : line;
+    });
+  return rows.length === 0 ? messages : carryUnsettledForward(rows, messages);
 }

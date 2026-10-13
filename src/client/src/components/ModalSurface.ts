@@ -39,7 +39,7 @@ export class ModalSurface extends LitElement {
   /** Accessible name applied as `aria-label` on the dialog section. */
   @property({ attribute: false }) label?: string;
 
-  @query("section") private section?: HTMLElement;
+  @query("section") private section?: HTMLElement | null;
 
   private modalRegistration: RenderedModalRegistration | undefined;
 
@@ -85,7 +85,7 @@ export class ModalSurface extends LitElement {
   private focusDialogContent(): void {
     const initialTarget = this.initialFocusTarget();
     if (initialTarget !== null && focusElement(initialTarget)) return;
-    if (this.section !== undefined) focusElement(this.section);
+    if (this.section instanceof HTMLElement) focusElement(this.section);
   }
 
   override render(): TemplateResult {
