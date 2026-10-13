@@ -166,8 +166,9 @@
                 Use <strong>Settings → PI WEB plugins</strong> to turn plugins on or off on the selected machine. A
                 plugin's server entry starts or stops at once in the process that runs it, and every open page loads
                 or unloads its browser module at once, with no reload. A plugin that supplies the workspace provider or the machine
-                registry, a changed <code>settings</code> object, and a new package revision of a running plugin still
-                need a session-daemon restart and say <strong>Restart required</strong>. Unsupported or
+                registry, a server-backed plugin's changed <code>settings</code> object, and a new package revision of a running plugin still
+                need a session-daemon restart and say <strong>Restart required</strong>. A browser-only plugin follows a
+                settings change saved through Settings at once. Unsupported or
                 unavailable remote settings are reported instead of silently falling back to the gateway.
               </p>
               <p>
@@ -616,7 +617,8 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@gang-of-beads/pi-web
                 <strong>Settings → PI WEB plugins</strong> compares desired package/config state with the active sessiond
                 startup snapshot on the selected machine. It reports browser-only, active, failed, incompatible,
                 disabled, not-active, unknown, conflict, stale-revision, health, safe-mode, and restart-required states.
-                Settings values remain private; diagnostics expose only revisions and fingerprints.
+                Diagnostics expose only revisions and fingerprints of settings values; the browser manifest hands each
+                plugin's own settings to its browser entry.
               </p>
               <p>
                 Package installation stays under <strong>Settings → Pi packages</strong>. Plugin enablement writes the
@@ -639,7 +641,9 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@gang-of-beads/pi-web
                 Plugins default to enabled. A browser-only change applies after a page reload. A server entry turned
                 on or off through Settings or the config API starts or stops at once; a hand edit of the file waits for
                 the next sessiond start. JSON settings are captured when a server entry starts, and replacing package
-                files never hot-reloads a running one or the active provider registry.
+                files never hot-reloads a running one or the active provider registry. A browser entry receives its
+                settings at activation; a browser-only plugin receives a change saved through Settings or the config
+                API as a <code>settings-changed</code> event, with no reload.
               </p>
             </section>
 

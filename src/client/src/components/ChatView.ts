@@ -265,8 +265,8 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg-notice { max-width: var(--pi-chat-measure); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-row-rhythm); border-inline: 1px solid transparent; }
   .extension-notice { box-sizing: border-box; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; width: 100%; min-height: var(--pi-control-height-compact, 24px); margin: 0; padding: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.45; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
   .extension-notice a { color: var(--pi-accent); text-decoration: underline; text-underline-offset: 2px; }
-  .notice-toggle { position: relative; margin: 0; padding: 0; border: 0; background: none; color: var(--pi-accent); font: inherit; font-size: var(--pi-text-xs); line-height: 1.45; cursor: pointer; }
-  @media (pointer: coarse) { .notice-toggle::after { content: ""; position: absolute; inset: calc((1.45em - var(--pi-control-height-touch, 44px)) / 2) calc(-1 * var(--pi-space-4)); } }
+  .notice-toggle { margin: 0; padding: 0; border: 0; background: none; color: var(--pi-accent); font: inherit; font-size: var(--pi-text-xs); line-height: 1.45; cursor: pointer; }
+  @media (pointer: coarse) { .notice-toggle { display: flex; align-items: center; min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); } }
   .extension-notice.expanded { display: block; -webkit-line-clamp: unset; }
   .extension-notice.warning { color: var(--pi-warning); }
   .extension-notice.error { color: var(--pi-danger); }

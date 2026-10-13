@@ -2410,9 +2410,11 @@ export class SessionController {
     });
   }
 
-  private applyStatus(status: SessionStatus) {
+  private applyStatus(incoming: SessionStatus) {
     const state = this.getState();
-    const isSelected = state.selectedSession?.id === status.sessionId;
+    const isSelected = state.selectedSession?.id === incoming.sessionId;
+    const dialogsStale = isSelected && incoming.pendingDialogsRevision !== undefined && this.dialogScope.predates(incoming.pendingDialogsRevision, incoming.daemonInstanceId);
+    const status = dialogsStale ? withOpenDialogs(incoming, state.pendingDialogs) : incoming;
     // The queue in a status update is the authority on which of this browser's
     // messages the agent still has waiting, so it drives the delivery marks on
     // the bubbles the sender is looking at.
@@ -2425,7 +2427,7 @@ export class SessionController {
     // re-reading the goal directory for, and every other status update would
     // make it a poll.
     const becameIdle = isSelected && isSessionActive(state.status ?? status) && !isSessionActive(status);
-    const dialogsCurrent = isSelected && !(status.pendingDialogsRevision !== undefined && this.dialogScope.predates(status.pendingDialogsRevision, status.daemonInstanceId));
+    const dialogsCurrent = isSelected && !dialogsStale;
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
       ...sessionRowPatch(state, status),
@@ -2451,7 +2453,7 @@ export class SessionController {
     // that surface: frames up to it are reflected here, so the gate may trust
     // its counter again. Statuses without the field say nothing about the
     // surface and must not touch the gate (older daemon fails open).
-    if (isSelected && status.pendingDialogsRevision !== undefined) this.dialogScope.markFresh(status.pendingDialogsRevision, status.daemonInstanceId);
+    if (isSelected && incoming.pendingDialogsRevision !== undefined) this.dialogScope.markFresh(incoming.pendingDialogsRevision, incoming.daemonInstanceId);
     if (becameIdle) {
       this.onSelectedSessionIdle?.();
       void this.recheckTranscript();
@@ -3349,6 +3351,18 @@ function bulkFailureMessages(failures: readonly SessionBulkFailure[]): string[] 
  * Navigate page draws the machine in use from this listing, so a status that moves the activity
  * time must move it here as well as on the board (B28); the time only ever moves later.
  */
+/**
+ * A status whose dialog projection predates frames already applied still speaks for everything
+ * else, but its dialogs must not replace the ones on screen: the "asking" marker reads them from
+ * the stored status, and a session parked on a dialog publishes no later status to correct it.
+ */
+function withOpenDialogs(status: SessionStatus, openDialogs: readonly PendingExtensionDialog[]): SessionStatus {
+  if (openDialogs.length > 0) return { ...status, pendingDialogs: [...openDialogs] };
+  const withoutDialogs = { ...status };
+  delete withoutDialogs.pendingDialogs;
+  return withoutDialogs;
+}
+
 function sessionRowPatch(state: AppState, status: SessionStatus): Pick<Partial<AppState>, "sessions" | "selectedSession"> {
   const update = (session: SessionInfo): SessionInfo => {
     const counted = status.messageCount === undefined || session.messageCount === status.messageCount ? session : { ...session, messageCount: status.messageCount };

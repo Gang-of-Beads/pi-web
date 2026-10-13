@@ -346,11 +346,11 @@ Plugin enablement is separate from package installation. Use **Settings → Pi p
 }
 ```
 
-Plugins are enabled by default. Saved through Settings or the config API, `plugins.<id>.enabled: false` turns a plugin off at once: its server entry in every process it runs in, and its browser entry on every open page. A plugin that supplies the workspace provider or the machine registry is the exception (see [Desired versus active state](#desired-versus-active-state)). Edited into the file by hand, the setting removes a browser-only entry on the next page load and stops a server entry at the next sessiond start. The optional `settings` object must be JSON-compatible and is captured for a server entry only when it starts.
+Plugins are enabled by default. Saved through Settings or the config API, `plugins.<id>.enabled: false` turns a plugin off at once: its server entry in every process it runs in, and its browser entry on every open page. A plugin that supplies the workspace provider or the machine registry is the exception (see [Desired versus active state](#desired-versus-active-state)). Edited into the file by hand, the setting removes a browser-only entry on the next page load and stops a server entry at the next sessiond start. The optional `settings` object must be JSON-compatible and is captured for a server entry only when it starts. A browser entry receives it as `settings` at activation; for a browser-only plugin, a change saved through Settings or the config API reaches every open page at once as a `settings-changed` event.
 
 ### Desired versus active state
 
-Sessiond resolves the enabled server plugins at startup and remains the workspace authority for its lifetime. A toggle saved through Settings or the config API is applied live, in the web process and in sessiond. Anything else (a settings change, replaced package files, a hand edit of the file, or a toggle of a workspace-provider or machine-registry plugin) changes **desired** state only. The existing backend can remain active until sessiond restarts; conversely, its paired browser module is withheld when active and desired revisions no longer match. A web/API restart or browser reload does not change sessiond's active provider registry.
+Sessiond resolves the enabled server plugins at startup and remains the workspace authority for its lifetime. A toggle saved through Settings or the config API is applied live, in the web process and in sessiond. Anything else (a settings change of a server-backed plugin, replaced package files, a hand edit of the file, or a toggle of a workspace-provider or machine-registry plugin) changes **desired** state only. The existing backend can remain active until sessiond restarts; conversely, its paired browser module is withheld when active and desired revisions no longer match. A web/API restart or browser reload does not change sessiond's active provider registry.
 
 Use this sequence:
 
@@ -589,7 +589,7 @@ Rules:
 - Every browser entry must declare `browserRoot`; a server-only entry must not. The root is `.` or a safe canonical package-relative directory with no empty, `.`, `..`, `.git`, or `node_modules` segment; Windows drive-qualified roots are rejected. It must resolve inside the package, and the browser module must remain inside it both logically and after symlink resolution.
 - Server entries are imported as Node ES modules. When a `serverModule` uses a `.js` path, declare `"type": "module"` in that plugin package; `.mjs` is the explicit-extension alternative.
 - `machineSpecific` is optional and must be boolean. Browser-only and server-only entries default to `false`. Dual browser/server entries default to `true` and cannot explicitly set it to `false`.
-- `plugins.<id>.settings` must be JSON-compatible for server entries; sessiond captures a private copy at startup and diagnostics expose only a fingerprint.
+- `plugins.<id>.settings` must be JSON-compatible for server entries; sessiond captures a private copy at startup and diagnostics expose only a fingerprint. The browser manifest hands the same block to the plugin's browser entry, so every page that opens PI WEB can read it.
 - A plugin id has one package owner across its browser and server capabilities. Duplicates are diagnosed and never merged or auto-renamed; later package records are skipped.
 - Legacy shortcuts such as `piWeb.plugin`, string entries in `piWeb.plugins`, `piWeb.id` fallback ids, and no-`package.json` fallbacks are not supported.
 
@@ -684,6 +684,7 @@ interface PluginActivationContext {
   readonly runtimePluginId: string;
   readonly html: HtmlTemplateTag;
   readonly svg: SvgTemplateTag;
+  readonly settings?: PluginSettings;
   readonly on?: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => () => void;
 }
 
@@ -693,7 +694,7 @@ interface PluginActivationResult {
 }
 ```
 
-`on(kind, listener)` subscribes to a host fact (`session-selected`, `session-left`, `connection-changed`, `theme-applied`, `session-activity-settled` or `settings-changed`) and returns the function that unsubscribes; it is absent on older hosts. `dispose` releases what the plugin started; see [Turning a plugin on or off](#turning-a-plugin-on-or-off) for when it runs.
+`settings` is the plugin's own `plugins.<id>.settings` block, or undefined when it has none. `on(kind, listener)` subscribes to a host fact (`session-selected`, `session-left`, `connection-changed`, `theme-applied`, `session-activity-settled` or `settings-changed`) and returns the function that unsubscribes; it is absent on older hosts. `dispose` releases what the plugin started; see [Turning a plugin on or off](#turning-a-plugin-on-or-off) for when it runs.
 
 `activate()` runs when a page loads the plugin, and again each time the plugin is turned back on while the page stays open. Keep it cheap and synchronous: define contributions there, but move expensive or async work into actions, custom elements, or explicit user interactions.
 
