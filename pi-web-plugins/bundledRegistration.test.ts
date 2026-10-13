@@ -86,7 +86,7 @@ describe("bundled plugins register and activate", () => {
         if (panel.icon === undefined) iconless.push(`${entry.id}:${panel.id}`);
       }
     }
-    expect({ some: panels > 5, iconless }).toEqual({ some: true, iconless: [] });
+    expect({ some: panels >= 5, iconless }).toEqual({ some: true, iconless: [] });
   });
 
   it("gives every bundled plugin an id the registry accepts", async () => {

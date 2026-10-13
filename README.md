@@ -159,7 +159,8 @@ These Pi packages are maintained alongside PI WEB. Install one from **Settings â
 | [pi-web-workflows](https://github.com/Gang-of-Beads/pi-web-workflows) | Draws the pi-dynamic-workflows `workflow` tool as a live progress card | `git:github.com/Gang-of-Beads/pi-web-workflows` |
 | [pi-web-background-runs](https://github.com/Gang-of-Beads/pi-web-background-runs) | A Background tab and running count for pi-background-tasks (`bg_run`) tasks | `git:github.com/Gang-of-Beads/pi-web-background-runs` |
 | [pi-web-subagents](https://github.com/Gang-of-Beads/pi-web-subagents) | A Subagents tab for pi-subagents runs, and a card to answer a child's question | `git:github.com/Gang-of-Beads/pi-web-subagents` |
-| [pi-goal](https://github.com/Gang-of-Beads/pi-goal) | Goal mode: long-running objectives with tasks, auto-continue and a completion audit; PI WEB lists the goals on a page | `git:github.com/Gang-of-Beads/pi-goal` |
+| [pi-goal](https://github.com/Gang-of-Beads/pi-goal) | Goal mode: long-running objectives with tasks, auto-continue and a completion audit; PI WEB lists the goals on a page with pi-web-goals | `git:github.com/Gang-of-Beads/pi-goal` |
+| [pi-web-goals](https://github.com/Gang-of-Beads/pi-web-goals) | A Goals tab for pi-goal: each goal's status and task progress | `git:github.com/Gang-of-Beads/pi-web-goals` |
 | [pi-ask-user](https://github.com/Gang-of-Beads/pi-ask-user) | An `ask_user` tool the agent uses to ask you a question; PI WEB draws it as a card | `git:github.com/Gang-of-Beads/pi-ask-user` |
 | [pi-multi-account](https://github.com/Gang-of-Beads/pi-multi-account) | Several OAuth accounts per provider, and Claude subscription billing | `git:github.com/Gang-of-Beads/pi-multi-account` |
 | [pi-updater](https://github.com/Gang-of-Beads/pi-updater) | Offers updates for pi; under PI WEB it names the session-daemon restart an update needs | `git:github.com/Gang-of-Beads/pi-updater` |
