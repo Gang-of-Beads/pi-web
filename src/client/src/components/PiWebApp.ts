@@ -263,8 +263,6 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
 // update banner). Nothing events it; the tab re-reads on this slow cadence.
 const EMPTY_ID_SET: ReadonlySet<string> = new Set();
 
-/** What New session on the Navigate page does: start in the open project, or ask for one on the machine on screen. */
-
 /** What the page shows of one machine's pins, from that machine's answer. */
 function machinePinView(machineId: string, answered: MachinePins): { machineId: string; ids: ReadonlySet<string>; projects?: ReadonlyMap<string, ReadonlySet<string>>; pinnedProjects?: ReadonlySet<string> } {
   return {
@@ -2722,16 +2720,20 @@ export class PiWebApp extends LitElement {
     return this.state.projects.find((project) => project.id === listedProjectId);
   }
 
-  /** The project the sessions on screen are narrowed to: the shown list's, or, with none shown, the open project's. */
+  /**
+   * The project the sessions on screen are narrowed to: the shown list's, or, with none on screen,
+   * the open project's. A list kept in the page but not drawn - the phone's while a chat is open, a
+   * collapsed desktop panel - is not on screen, and its narrowing is not what the reader sees.
+   */
   private listedProjectId(): string | undefined {
     const page = this.shownNavigatePage();
-    if (page !== undefined) return page.listedProjectId;
+    if (page !== undefined && page.getClientRects().length > 0) return page.listedProjectId;
     return this.canStartSession() ? this.state.selectedProject?.id : undefined;
   }
 
   /** New session from any entry: in the target project, or the picker when there is none. */
   private startNewSession(listedProjectId?: string): void {
-    const target = this.newSessionTarget(...(listedProjectId === undefined ? [] : [listedProjectId]));
+    const target = this.newSessionTarget(listedProjectId);
     if (target === undefined) {
       this.chooseProjectForNewSession();
       return;
@@ -3153,7 +3155,7 @@ export class PiWebApp extends LitElement {
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
       .onOpenSession=${(session: SessionInfo, machineId: string) => { void this.openSessionFromQuickSwitcher(session, machineId); }}
       .opening=${this.navigation.view()}
-      .onCreateSession=${(projectId: string | undefined) => { if (projectId === undefined) this.chooseProjectForNewSession(); else this.startNewSession(projectId); }}
+      .onCreateSession=${(projectId: string | undefined) => { this.startNewSession(projectId); }}
       .onContinueFrom=${(session: SessionInfo, machineId: string) => { void this.continueInNewSession(session, machineId); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { void this.addProjectOnShownMachine(); } : undefined}
       .onAddMachine=${this.hasAddMachineEntry() ? () => { this.openMachineDialog(); } : undefined}
@@ -3927,6 +3929,7 @@ export class PiWebApp extends LitElement {
     };
     return html`<new-session-project-sheet
       .projects=${this.state.projects}
+      .projectsLoad=${this.state.projectsLoad}
       .lastUsedId=${this.recentProject()?.id}
       ?canAddProject=${this.hasAddProjectEntry()}
       .onChoose=${(project: Project) => { close(); void this.startSessionInProject(project); }}

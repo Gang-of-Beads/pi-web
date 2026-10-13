@@ -24,6 +24,12 @@ export const BUILTIN_COMMANDS: ClientCommand[] = [
   { name: "quit", description: "Quit pi", source: "builtin" },
 ];
 
+/** A typed command split as pi reads it: the word after the slash, and the rest. */
+export function commandParts(text: string): { name: string; rest: string } {
+  const [name = "", ...args] = text.trim().replace(/^\//u, "").split(/\s+/u);
+  return { name, rest: args.join(" ").trim() };
+}
+
 export function isBuiltinCommand(name: string): boolean {
   return BUILTIN_COMMANDS.some((command) => command.name === name);
 }

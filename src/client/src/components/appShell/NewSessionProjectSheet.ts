@@ -2,6 +2,7 @@ import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import "../ModalSurface";
 import type { Project } from "../../api";
+import type { ProjectsLoadState } from "../../appState";
 import { interactiveSurfaceStyles } from "../shared";
 import { renderCrossIcon, renderProjectIcon, uiIconStyle } from "../uiIcons";
 
@@ -16,6 +17,8 @@ import { renderCrossIcon, renderProjectIcon, uiIconStyle } from "../uiIcons";
 @customElement("new-session-project-sheet")
 export class NewSessionProjectSheet extends LitElement {
   @property({ attribute: false }) projects: readonly Project[] = [];
+  /** Whether the list is the machine's answer yet: an empty list before it is not "no projects". */
+  @property({ attribute: false }) projectsLoad: ProjectsLoadState = "unloaded";
   /** The project of the newest session, drawn first and marked. */
   @property({ attribute: false }) lastUsedId: string | undefined;
   @property({ type: Boolean }) canAddProject = false;
@@ -34,7 +37,7 @@ export class NewSessionProjectSheet extends LitElement {
         </header>
         <div class="body">
           ${this.canAddProject ? html`<button type="button" class="create" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>` : nothing}
-          ${ordered.length === 0 ? html`<p class="empty">This machine has no projects yet.</p>` : html`<div class="tiles" role="list">
+          ${ordered.length === 0 ? html`<p class="empty">${this.projectsLoad === "loaded" ? "This machine has no projects yet." : "Reading this machine's projects…"}</p>` : html`<div class="tiles" role="list">
             ${ordered.map((project) => html`
               <button type="button" role="listitem" class=${project.id === this.lastUsedId ? "tile last-used" : "tile"} title=${project.path} @click=${() => { this.onChoose?.(project); }}>
                 <span class="tile-title"><span class="tile-icon">${renderProjectIcon()}</span><span class="tile-name">${project.name}</span></span>
@@ -61,6 +64,7 @@ export class NewSessionProjectSheet extends LitElement {
     .panel-key:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-reading-edge); padding-bottom: max(var(--pi-space-4), env(safe-area-inset-bottom)); overscroll-behavior: contain; }
     .create { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-selection-bg); color: var(--pi-text-bright); font: inherit; cursor: pointer; }
+    @media (pointer: coarse) { .create { min-height: var(--pi-control-height-touch); } }
     .create:focus-visible, .tile:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pi-space-3); }
     .empty { margin: 0; color: var(--pi-muted); }

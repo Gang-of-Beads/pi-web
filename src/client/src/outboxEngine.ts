@@ -4,7 +4,7 @@ import { sendRefusedForGood } from "./messageLifecycle";
 import { ackedThrough, confirmThrough, deviceId } from "./operationLog";
 import { delayAfter, driverMove, type DriverEffect, type DriverEvent, type DriverState } from "./outboxDriver";
 import { classifyReadError, type ReadMiss } from "./sync/readPhase";
-import { findOperation, loadPendingPrompts, OUTBOX_CHANGED_EVENT, outboxSessionKeyOf, outboxSessionKeys, savesFilesFirst, updateOperation, type OperationScope, type PendingPrompt } from "./pendingOutbox";
+import { findOperation, loadPendingPrompts, OUTBOX_CHANGED_EVENT, outboxSessionKeyOf, outboxSessionKeys, savesFilesFirst, updateOperation, type OperationScope, type PendingPrompt, type RewriteOutcome } from "./pendingOutbox";
 
 /**
  * Sends every outbox of this browser, wherever the reader is (docs/design/message-states.md,
@@ -227,7 +227,8 @@ export class OutboxEngine {
    * stored with its number before it goes. Only the head is prepared, so a failure to save files is
    * always the head's; a later record that saves files first ends the batch before it. The batch
    * ends, too, at a record that changed while it was read - a message withdrawn into its take-back -
-   * and is undefined when even the head did, so the next round reads it again.
+   * and is undefined when even the head did, so the next round reads it again. Storage that refuses
+   * the number fails the batch, which waits and tries again, rather than going round at once.
    */
   private async batchOf(sessionKey: string, records: readonly PendingPrompt[]): Promise<{ records: PendingPrompt[]; request: OperationBatch } | undefined> {
     const acked = ackedThrough(sessionKey);
@@ -240,7 +241,7 @@ export class OutboxEngine {
       const prepared = numbered.length === 0 ? await this.deps.prepare(record) : record;
       const seq = acked + 1 + numbered.length;
       const stamped = prepared.seq === seq ? prepared : { ...prepared, seq };
-      if (stamped !== record && !updateOperation(sessionKey, stamped)) break;
+      if (stamped !== record && REWRITE_ENDS_BATCH[updateOperation(sessionKey, stamped)]()) break;
       numbered.push(stamped);
       bytes += size;
     }
@@ -280,6 +281,7 @@ export class OutboxEngine {
       run.oneAtATime = true;
       return "answered";
     }
+    if (error instanceof OutboxStorageError) return "unanswered";
     if (!sendRefusedForGood(error)) {
       const outcome = classifyReadError(error);
       if (outcome.kind === "miss") run.miss = outcome.miss;
@@ -290,6 +292,21 @@ export class OutboxEngine {
     return "answered";
   }
 }
+
+/** Storage refused to record a batch's numbers; the batch is not sent and waits like one unanswered. */
+class OutboxStorageError extends Error {
+  constructor() {
+    super("This browser's storage is full; the message waits until there is room.");
+    this.name = "OutboxStorageError";
+  }
+}
+
+/** Whether a rewrite's outcome ends the batch before that record: only a record that became another operation does. */
+const REWRITE_ENDS_BATCH: Readonly<Record<RewriteOutcome, () => boolean>> = {
+  written: () => false,
+  changed: () => true,
+  failed: () => { throw new OutboxStorageError(); },
+};
 
 function fileBytes(record: PendingPrompt): number {
   return (record.attachments ?? []).reduce((total, attachment) => total + ("data" in attachment && typeof attachment.data === "string" ? attachment.data.length : 0), 0);

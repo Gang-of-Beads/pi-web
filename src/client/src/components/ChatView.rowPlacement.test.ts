@@ -29,13 +29,12 @@ const sent = (text: string, clientMessageId: string, state: MessageDeliveryState
 });
 const settled = (role: ChatLine["role"], text: string): ChatLine => ({ role, parts: [{ type: "text", text }] });
 
-async function drawnTexts(messages: ChatLine[], queued: readonly QueuedSessionMessage[], commandLedger: CommandLedgerEntry[] = [], clientQueued: QueuedSessionMessage[] = []): Promise<string[]> {
+async function drawnTexts(messages: ChatLine[], queued: readonly QueuedSessionMessage[], commandLedger: CommandLedgerEntry[] = []): Promise<string[]> {
   const view = new ChatView();
   view.sessionId = "s";
   view.messages = messages;
   view.status = status(queued);
   view.commandLedger = commandLedger;
-  view.clientQueuedMessages = clientQueued;
   document.body.append(view);
   await view.updateComplete;
   return [...(view.shadowRoot?.querySelectorAll("article.msg") ?? [])].map((row) => {

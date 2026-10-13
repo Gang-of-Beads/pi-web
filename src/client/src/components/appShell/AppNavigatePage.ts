@@ -1130,9 +1130,8 @@ export class AppNavigatePage extends LitElement {
     .search-row { flex: 0 0 auto; padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
     .search { box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-comfort); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-font-ui); }
     .actions { flex: 0 0 auto; display: flex; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset) 0; }
-    .create { box-sizing: border-box; flex: 1 1 0; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-selection-bg); color: var(--pi-text-bright); font: inherit; cursor: pointer; }
+    .create { box-sizing: border-box; flex: 1 1 0; display: grid; align-content: center; gap: var(--pi-space-1); min-height: var(--pi-control-height-comfort); padding: var(--pi-space-3) var(--pi-space-4); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-selection-bg); color: var(--pi-text-bright); font: inherit; cursor: pointer; }
     .create[aria-pressed="true"] { border-color: var(--pi-accent); }
-    .create { display: grid; align-content: center; gap: var(--pi-space-1); padding: var(--pi-space-3) var(--pi-space-4); }
     .create-label, .create-place { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .create-place { color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     /* Two entries to a line: the owner reads this list as a board of places,

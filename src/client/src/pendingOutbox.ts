@@ -147,15 +147,18 @@ export function appendOperation(sessionKey: string, operation: Omit<PendingPromp
   return writeRecord(sessionKey, record, storage) ? record : undefined;
 }
 
+/** What a rewrite came to: stored, refused because the record is another operation now, or refused by storage. */
+export type RewriteOutcome = "written" | "changed" | "failed";
+
 /**
  * Rewrite one record in place (its number, its words after attachments were saved), only while it
  * is still the operation that was read: a message withdrawn meanwhile turned into its take-back
  * under the same key, here or in another tab, and a copy read before must not bring it back.
  */
-export function updateOperation(sessionKey: string, record: PendingPrompt, storage = browserLocalStorage()): boolean {
+export function updateOperation(sessionKey: string, record: PendingPrompt, storage = browserLocalStorage()): RewriteOutcome {
   const stored = readRecord(recordKey(sessionKey, record), storage);
-  if (stored?.clientMessageId !== record.clientMessageId || stored.kind !== record.kind) return false;
-  return writeRecord(sessionKey, record, storage);
+  if (stored?.clientMessageId !== record.clientMessageId || stored.kind !== record.kind) return "changed";
+  return writeRecord(sessionKey, record, storage) ? "written" : "failed";
 }
 
 /** A message whose files go to the workspace: they are saved, and its words rewritten with their paths, before it travels. */

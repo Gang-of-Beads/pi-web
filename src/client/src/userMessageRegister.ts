@@ -35,8 +35,6 @@ export interface UserMessageRow {
 interface RegisterInput {
   /** Settled transcript lines, in transcript order. */
   transcript: readonly ChatLine[];
-  /** What the browser has sent and not yet seen settle. */
-  optimistic: readonly ChatLine[];
   /** What the daemon reports as queued, with whatever identity survived. */
   queued: readonly QueuedSessionMessage[];
   /** Builds a row for a queued entry the browser has no bubble for. */
@@ -99,12 +97,6 @@ export function registerUserMessages(input: RegisterInput): UserMessageRow[] {
   for (const [index, line] of input.transcript.entries()) {
     const identity = identityOf(line, index);
     rows.set(identity, { identity, line });
-  }
-
-  for (const [index, line] of input.optimistic.entries()) {
-    const identity = identityOf(line, index);
-    const existing = rows.get(identity);
-    if (existing === undefined) rows.set(identity, { identity, line });
   }
 
   for (const [position, message] of input.queued.entries()) {

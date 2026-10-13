@@ -1936,9 +1936,9 @@ export class SessionController {
 
   /**
    * A gap the socket saw, a heartbeat's head among them: the frames after the frontier are owed.
-   * Before the join seeded a frontier the join's own read is under way and answers it.
+   * Before the join seeded a frontier the join's own read is under way and answers it, and the
+   * page is not behind.
    */
-  /** Fetch what the stream skipped; before the join's read has placed the page, that read answers it, and the page is not behind. */
   private catchUpFromFrontier(repair: SessionGapRepair, key: string): void {
     const pending = repair.catchUp();
     if (pending === undefined) {

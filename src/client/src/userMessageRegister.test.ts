@@ -35,8 +35,7 @@ function queuedEntry(text: string, clientMessageId?: string, kind: "steer" | "fo
 
 function register(input: { transcript?: ChatLine[]; optimistic?: ChatLine[]; queued?: QueuedSessionMessage[] }) {
   return registerUserMessages({
-    transcript: input.transcript ?? [],
-    optimistic: input.optimistic ?? [],
+    transcript: [...(input.transcript ?? []), ...(input.optimistic ?? [])],
     queued: input.queued ?? [],
     synthesise: (message) => settled(message.clientMessageId, message.text),
   });

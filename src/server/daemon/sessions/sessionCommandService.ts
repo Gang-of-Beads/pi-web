@@ -2,7 +2,7 @@ import { isRecord } from "../../../shared/unknownValues.js";
 import crypto from "node:crypto";
 import type { SessionUiEvent } from "../../../shared/apiTypes.js";
 import type { ClientCommandResult, ClientSession, ClientSessionTreeSnapshot } from "../../shared/types.js";
-import { isBuiltinCommand } from "./builtinCommands.js";
+import { commandParts, isBuiltinCommand } from "./builtinCommands.js";
 import { sessionHasActiveWork } from "./sessionActiveWork.js";
 
 export interface CommandSession {
@@ -111,8 +111,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
   async run(sessionId: string, text: string): Promise<ClientCommandResult> {
     const active = await this.getActive(sessionId);
     const session = active.runtime.session;
-    const [name = "", ...args] = text.trim().replace(/^\//, "").split(/\s+/);
-    const rest = args.join(" ").trim();
+    const { name, rest } = commandParts(text);
 
     if (this.lifecycle.isTreeNavigationActive?.(session) === true) return treeNavigationActiveUnsupported();
 

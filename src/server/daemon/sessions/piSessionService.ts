@@ -103,7 +103,7 @@ import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
 import { createSequenceCursors, type IdentityStanding, type SequenceCursors, type SequencedOperation, type SequenceTurn } from "./sequenceCursors.js";
-import { isBuiltinCommand } from "./builtinCommands.js";
+import { commandParts, isBuiltinCommand } from "./builtinCommands.js";
 import { createCommandAnswers, type CommandAnswers } from "./commandAnswers.js";
 import { batchGoesOn, resultForError } from "./operationBatch.js";
 import type { OperationOutcome } from "./operationDecision.js";
@@ -4677,7 +4677,7 @@ export class PiSessionService implements SessionRouteService {
     return this.statusFromSession(session);
   }
 
-  /** Take one message back in its turn, unnumbered: the recall a device's take-back runs (`takeBackInTurn`). */
+  /** Take one message back in its turn, unnumbered and outside any device's order. */
   recallQueuedMessage(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }> {
     return this.inArrivalOrder(ref.id, () => this.recallNow(ref, target));
   }
@@ -7738,8 +7738,7 @@ function loadedExtensionFiles(session: PiAgentSession): LoadedExtensionFile[] {
 
 /** A command the agent expands - a skill, an extension command - goes on as a prompt of its own; a built-in runs here. */
 function forwardsToAgent(text: string): boolean {
-  const name = text.trim().replace(/^\//u, "").split(/\s+/u)[0] ?? "";
-  return !isBuiltinCommand(name);
+  return !isBuiltinCommand(commandParts(text).name);
 }
 
 /**

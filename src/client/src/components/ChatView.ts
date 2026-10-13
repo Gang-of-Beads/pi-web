@@ -656,7 +656,6 @@ export class ChatView extends LitElement {
   /** Set while the page is not known to hold the whole transcript: the dock says so instead of the status. */
   @property({ type: Boolean }) isCompacting = false;
   @property({ type: Number }) pendingMessageCount = 0;
-  @property({ attribute: false }) clientQueuedMessages: QueuedSessionMessage[] = [];
   @property({ attribute: false }) status?: SessionStatus;
   @property({ attribute: false }) activity?: SessionActivity;
   @property({ attribute: false }) cardDraftSessionId = "";
@@ -1402,7 +1401,6 @@ export class ChatView extends LitElement {
   private transcriptSplit(): { settled: ChatLine[]; pending: ChatLine[] } {
     const rows = registerUserMessages({
       transcript: this.messages,
-      optimistic: this.clientQueuedMessages.map((message, position) => queuedUserLine(message, position)),
       queued: this.status?.queuedMessages ?? [],
       synthesise: (message, position) => queuedUserLine(message, position),
     });
@@ -1885,7 +1883,6 @@ export class ChatView extends LitElement {
 
   private followingIndex: {
     messages: ChatLine[];
-    clientQueued: readonly unknown[] | undefined;
     queued: readonly unknown[] | undefined;
     rowOfPart: Map<ChatPart, number>;
     userTexts: { row: number; text: string }[];
@@ -1917,7 +1914,7 @@ export class ChatView extends LitElement {
   private followingIndexNow(): NonNullable<ChatView["followingIndex"]> {
     const known = this.followingIndex;
     const queued = this.status?.queuedMessages;
-    if (known?.messages === this.messages && sameQueue(known.clientQueued, this.clientQueuedMessages) && sameQueue(known.queued, queued)) return known;
+    if (known?.messages === this.messages && sameQueue(known.queued, queued)) return known;
     const rows = this.transcriptMessages();
     const rowOfPart = new Map<ChatPart, number>();
     const userTexts: { row: number; text: string }[] = [];
@@ -1930,7 +1927,7 @@ export class ChatView extends LitElement {
       }
       if (line.role === "user") userTexts.push({ row, text: line.parts.map((part) => (part.type === "text" ? part.text : "")).join("") });
     });
-    this.followingIndex = { messages: this.messages, clientQueued: this.clientQueuedMessages, queued, rowOfPart, userTexts, customRows };
+    this.followingIndex = { messages: this.messages, queued, rowOfPart, userTexts, customRows };
     return this.followingIndex;
   }
 
