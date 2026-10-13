@@ -32,7 +32,23 @@ export const NOTICE_PREFIX: Readonly<Record<ExtensionNoticeLevel, string>> = {
 export interface NoticeSegment { readonly kind: "text" | "link"; readonly text: string }
 
 const NOTICE_URL = /https?:\/\/[^\s<>"']+/gu;
-const URL_TRAILING_PUNCTUATION = /[.,;:!?)\]}]+$/u;
+const URL_TRAILING_PUNCTUATION = new Set([".", ",", ";", ":", "!", "?", ")", "]", "}"]);
+const OPENER_OF: Readonly<Record<string, string>> = { ")": "(", "]": "[", "}": "{" };
+
+function occurrences(text: string, character: string): number {
+  return text.split(character).length - 1;
+}
+
+/** Sentence punctuation after an address is not part of it, but a closing bracket the address opened is (`Function_(mathematics)`). */
+function withoutTrailingPunctuation(candidate: string): string {
+  let url = candidate;
+  for (let last = url.at(-1); last !== undefined && URL_TRAILING_PUNCTUATION.has(last); last = url.at(-1)) {
+    const opener = OPENER_OF[last];
+    if (opener !== undefined && occurrences(url, opener) >= occurrences(url, last)) return url;
+    url = url.slice(0, -1);
+  }
+  return url;
+}
 
 /**
  * A notice's text with its web addresses marked, so they draw as links a reader can open or copy:
@@ -43,7 +59,7 @@ export function noticeSegments(text: string): NoticeSegment[] {
   const segments: NoticeSegment[] = [];
   let at = 0;
   for (const match of text.matchAll(NOTICE_URL)) {
-    const url = match[0].replace(URL_TRAILING_PUNCTUATION, "");
+    const url = withoutTrailingPunctuation(match[0]);
     if (match.index > at) segments.push({ kind: "text", text: text.slice(at, match.index) });
     segments.push({ kind: "link", text: url });
     at = match.index + url.length;

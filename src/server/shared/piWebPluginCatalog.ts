@@ -8,7 +8,7 @@ import { loadPiWebConfig, piWebDataDir, type PiWebConfig } from "../../config.js
 import type { ProjectPluginRootResolution } from "./plugins/projectPluginVerdict.js";
 import type { PiWebPluginScope, PiWebPluginSettings } from "../../shared/apiTypes.js";
 import { isPiWebPluginId, isReservedPiWebPluginId } from "../../shared/pluginIds.js";
-import { isRecord } from "../../shared/unknownValues.js";
+import { canonicalJson, isRecord } from "../../shared/unknownValues.js";
 
 export interface ConfiguredPiPackage {
   source: string;
@@ -761,16 +761,6 @@ function applyDesiredState(plugin: PiWebPluginPackageEntry, config: PiWebConfig)
 function pluginSettingsRevision(settings: Readonly<PiWebPluginSettings>): string {
   const canonical = JSON.stringify(canonicalJson(settings));
   return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
-}
-
-function canonicalJson(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalJson);
-  if (!isRecord(value)) return value;
-  return Object.fromEntries(
-    Object.keys(value)
-      .sort()
-      .map((key) => [key, canonicalJson(value[key])]),
-  );
 }
 
 function addUnique(records: Map<string, PiWebPluginPackageEntry>, plugin: PiWebPluginPackageEntry, report: ReportDiagnostic): void {

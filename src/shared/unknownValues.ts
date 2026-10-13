@@ -13,6 +13,13 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** A JSON value with every object's keys sorted, so two values that differ only in key order serialize the same. */
+export function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalJson(value[key])]));
+}
+
 /** The message of a thrown value, or the value itself as text when it is not an Error. */
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

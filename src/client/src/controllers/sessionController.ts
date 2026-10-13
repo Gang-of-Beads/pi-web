@@ -5,7 +5,7 @@ import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand } from "../commandLedger";
 import { lastLastingRowKey } from "../rowIdentity";
 import { queuedUserLine } from "../userMessageRegister";
-import { RevisionScope } from "../revisionScope";
+import { RevisionScope, type ProjectionSource, type ProjectionVerdict } from "../revisionScope";
 import { SessionGapRepair, type GapReplayResult, type StreamFrontier } from "../sessionGapRepair";
 import { nextTranscriptSync, transcriptRetryAction, type TranscriptSyncEvent } from "../transcriptSync";
 import { describeError, noticeForReader } from "../notice";
@@ -1100,7 +1100,7 @@ export class SessionController {
   }
 
   applySessionStatus(status: SessionStatus): void {
-    this.applyStatus(status);
+    this.applyStatus(status, "response");
   }
 
   async archiveSession(session = this.getState().selectedSession) {
@@ -1503,7 +1503,7 @@ export class SessionController {
     const session = this.getState().selectedSession;
     if (!session || session.archived === true) return;
     try {
-      this.applyStatus(await this.api.setModel(session, provider, modelId, selectedMachineId(this.getState())));
+      this.applyStatus(await this.api.setModel(session, provider, modelId, selectedMachineId(this.getState())), "response");
       await this.refreshAvailableThinkingLevels();
     } catch (error) {
       this.failedFor(session, error);
@@ -1537,7 +1537,7 @@ export class SessionController {
     const session = this.getState().selectedSession;
     if (!session || session.archived === true) return;
     try {
-      this.applyStatus(await this.api.setThinkingLevel(session, level, selectedMachineId(this.getState())));
+      this.applyStatus(await this.api.setThinkingLevel(session, level, selectedMachineId(this.getState())), "response");
     } catch (error) {
       this.failedFor(session, error);
     }
@@ -1561,7 +1561,7 @@ export class SessionController {
     const selectionSeq = this.selectionSeq;
     try {
       const status = await this.api.clearQueue(session, machineId);
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(status);
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(status, "response");
     } catch (error) {
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
     }
@@ -1590,7 +1590,7 @@ export class SessionController {
       if (recalled && clientMessageId !== undefined) {
         this.setState({ messages: withdrawDeliveryLine(this.getState().messages, clientMessageId) });
       }
-      this.applyStatus(status);
+      this.applyStatus(status, "response");
       return recalled;
     } catch (error) {
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
@@ -1666,7 +1666,7 @@ export class SessionController {
       }
       // Both outcomes carry the recomputed status, so no follow-up status
       // request is needed to learn what the session's open dialogs are now.
-      this.applyStatus(response.sessionStatus);
+      this.applyStatus(response.sessionStatus, "response");
     } catch (error) {
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
     }
@@ -1695,7 +1695,7 @@ export class SessionController {
         const dialog = this.getState().pendingDialogs.find((candidate) => candidate.dialogId === outcome.dialogId);
         if (dialog !== undefined) this.settleClosedDialog(dialog);
       }
-      this.applyPendingStartStatus(pending, response.sessionStatus);
+      this.applyPendingStartStatus(pending, response.sessionStatus, "response");
     } catch (error) {
       if (selectionSeq === this.selectionSeq && this.getState().selectedSession?.id === session.id) this.setState(errorNoticePatch(error));
     }
@@ -2410,11 +2410,12 @@ export class SessionController {
     });
   }
 
-  private applyStatus(incoming: SessionStatus) {
+  private applyStatus(incoming: SessionStatus, source: ProjectionSource) {
     const state = this.getState();
     const isSelected = state.selectedSession?.id === incoming.sessionId;
-    const dialogsStale = isSelected && incoming.pendingDialogsRevision !== undefined && this.dialogScope.predates(incoming.pendingDialogsRevision, incoming.daemonInstanceId);
-    const status = dialogsStale ? withOpenDialogs(incoming, state.pendingDialogs) : incoming;
+    const dialogRevision = isSelected ? incoming.pendingDialogsRevision : undefined;
+    const dialogVerdict: ProjectionVerdict = dialogRevision === undefined ? "adopt" : this.dialogScope.projectionVerdict(dialogRevision, incoming.daemonInstanceId, source);
+    const status = dialogVerdict === "adopt" ? incoming : withOpenDialogs(incoming, state.pendingDialogs);
     // The queue in a status update is the authority on which of this browser's
     // messages the agent still has waiting, so it drives the delivery marks on
     // the bubbles the sender is looking at.
@@ -2427,7 +2428,7 @@ export class SessionController {
     // re-reading the goal directory for, and every other status update would
     // make it a poll.
     const becameIdle = isSelected && isSessionActive(state.status ?? status) && !isSessionActive(status);
-    const dialogsCurrent = isSelected && !dialogsStale;
+    const dialogsCurrent = isSelected && dialogVerdict === "adopt";
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
       ...sessionRowPatch(state, status),
@@ -2449,11 +2450,7 @@ export class SessionController {
       ...(messages === state.messages ? {} : { messages }),
       ...(commandLedger === state.commandLedger ? {} : { commandLedger }),
     });
-    // A status that carries the dialog surface's revision is a full read of
-    // that surface: frames up to it are reflected here, so the gate may trust
-    // its counter again. Statuses without the field say nothing about the
-    // surface and must not touch the gate (older daemon fails open).
-    if (isSelected && incoming.pendingDialogsRevision !== undefined) this.dialogScope.markFresh(incoming.pendingDialogsRevision, incoming.daemonInstanceId);
+    if (dialogRevision !== undefined) DIALOG_GATE_AFTER_STATUS[dialogVerdict](this.dialogScope, dialogRevision, incoming.daemonInstanceId);
     if (becameIdle) {
       this.onSelectedSessionIdle?.();
       void this.recheckTranscript();
@@ -2963,7 +2960,7 @@ export class SessionController {
     const selected = this.getState().selectedSession?.id === status.sessionId;
     const known = this.statusPosition?.sessionId === status.sessionId ? this.statusPosition : undefined;
     if (selected && position !== undefined && known !== undefined && known.epoch === position.epoch && position.seq <= known.seq) return;
-    this.applyStatus(status);
+    this.applyStatus(status, "read");
     this.frameClock += 1;
     this.statusFrameMarks.set(status.sessionId, this.frameClock);
     if (!selected) return;
@@ -2978,7 +2975,7 @@ export class SessionController {
 
   /** Apply a status read that is not stale, and remember the position it was computed at. */
   private applyStatusRead(status: SessionStatus): void {
-    this.applyStatus(status);
+    this.applyStatus(status, "read");
     if (status.streamPosition !== undefined) this.statusPosition = { sessionId: status.sessionId, ...status.streamPosition };
   }
 
@@ -3056,7 +3053,7 @@ export class SessionController {
         // readiness swap made the real session selected, and a stale replace
         // must not clobber the socket's fresher dialog state.
         if (pending.discarded || this.getState().selectedSession?.id !== pending.tempId) return;
-        this.applyStatus(status);
+        this.applyStatus(status, "read");
         const state = this.getState();
         const knownIds = new Set<string>([
           ...state.pendingDialogs.map((pendingDialog) => pendingDialog.dialogId),
@@ -3092,7 +3089,7 @@ export class SessionController {
       this.applyClosedDialog(event.dialogId);
       return;
     }
-    if (event.type === "status.update") this.applyPendingStartStatus(pending, event.status);
+    if (event.type === "status.update") this.applyPendingStartStatus(pending, event.status, "read");
   }
 
   /**
@@ -3102,8 +3099,8 @@ export class SessionController {
    * exactly as applyStatus does for a ready session. The per-session map stays
    * truthful too — the readiness swap seeds the selected status from it.
    */
-  private applyPendingStartStatus(pending: PendingSessionStart, status: SessionStatus): void {
-    this.applyStatus(status);
+  private applyPendingStartStatus(pending: PendingSessionStart, status: SessionStatus, source: ProjectionSource): void {
+    this.applyStatus(status, source);
     if (pending.discarded || this.getState().selectedSession?.id !== pending.tempId) return;
     this.setState({ pendingDialogs: status.pendingDialogs ?? [] });
   }
@@ -3351,6 +3348,18 @@ function bulkFailureMessages(failures: readonly SessionBulkFailure[]): string[] 
  * Navigate page draws the machine in use from this listing, so a status that moves the activity
  * time must move it here as well as on the board (B28); the time only ever moves later.
  */
+/**
+ * A projection that may speak for the dialog surface is a full read of it, so the gate may trust
+ * its counter again; one that cannot be ordered against this daemon instance sends the surface
+ * for the read that can. A status without the surface's revision says nothing about it and never
+ * reaches the gate (an older daemon fails open).
+ */
+const DIALOG_GATE_AFTER_STATUS: Readonly<Record<ProjectionVerdict, (scope: RevisionScope, revision: number, daemonInstanceId: string | undefined) => void>> = {
+  adopt: (scope, revision, daemonInstanceId) => { scope.markFresh(revision, daemonInstanceId); },
+  stale: (scope, revision, daemonInstanceId) => { scope.markFresh(revision, daemonInstanceId); },
+  unordered: (scope) => { scope.requestResync(); },
+};
+
 /**
  * A status whose dialog projection predates frames already applied still speaks for everything
  * else, but its dialogs must not replace the ones on screen: the "asking" marker reads them from

@@ -28,6 +28,7 @@ import { renderArchivedStrip } from "./archivedStrip";
 import { sessionWorkSettled } from "../sessionWorkSettled";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import { isSessionActive } from "../../../shared/activity";
+import { canonicalJson } from "../../../shared/unknownValues";
 import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { AuthController } from "../controllers/authController";
@@ -4296,7 +4297,7 @@ export class PiWebApp extends LitElement {
   private followPluginSettings(settingsById: ReadonlyMap<string, PluginSettings | undefined> | undefined): void {
     for (const [pluginId, settings] of settingsById ?? []) {
       if (!this.plugins.hasPlugin(pluginId)) continue;
-      if (JSON.stringify(this.plugins.pluginSettings(pluginId) ?? {}) === JSON.stringify(settings ?? {})) continue;
+      if (JSON.stringify(canonicalJson(this.plugins.pluginSettings(pluginId) ?? {})) === JSON.stringify(canonicalJson(settings ?? {}))) continue;
       this.plugins.applyPluginSettings(pluginId, settings ?? {});
     }
   }

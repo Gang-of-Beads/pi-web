@@ -18,6 +18,16 @@
 
 export type RevisionVerdict = "apply" | "ignore" | "resync" | "await";
 
+/** Where a full projection came from: a read or a live frame is current when it lands; an answer to an action can land late. */
+export type ProjectionSource = "read" | "response";
+
+/**
+ * What a full projection may do to the surface: `adopt` it; keep the surface because frames newer
+ * than it were applied (`stale`); or keep the surface and read it again because it comes from
+ * another daemon instance and cannot be ordered against this one (`unordered`).
+ */
+export type ProjectionVerdict = "adopt" | "stale" | "unordered";
+
 export interface RevisionScopeSnapshot {
   /** Last revision applied to the surface, or 0 before any. */
   readonly revision: number;
@@ -94,14 +104,16 @@ export class RevisionScope {
   }
 
   /**
-   * Whether a full read of this daemon's surface was taken before frames this scope already
-   * applied. Such a read cannot speak for the surface: a dialog close answers with the status
-   * it computed before the extension opened its next dialog, and that answer can land after the
-   * next dialog's frame.
+   * A projection taken before frames this scope already applied cannot speak for the surface: a
+   * dialog close answers with the status it computed before the extension opened its next dialog,
+   * and that answer can land after the next dialog's frame. Across daemon instances revisions do
+   * not order: a read or a frame reports the instance that is running now, but an action's answer
+   * may come from the instance a restart retired, so it must not swap the revision space back.
    */
-  predates(revision: number, daemonInstanceId?: string): boolean {
-    const sameInstance = daemonInstanceId === undefined || this.daemonId === undefined || daemonInstanceId === this.daemonId;
-    return sameInstance && revision < this.appliedRevision;
+  projectionVerdict(revision: number, daemonInstanceId: string | undefined, source: ProjectionSource): ProjectionVerdict {
+    const otherInstance = daemonInstanceId !== undefined && this.daemonId !== undefined && daemonInstanceId !== this.daemonId;
+    if (otherInstance) return source === "read" ? "adopt" : "unordered";
+    return revision < this.appliedRevision ? "stale" : "adopt";
   }
 
   /** The full read failed. A frame that waited for it is now a gap, and a frame that comes later has no read to wait for: both repair from another read. */
