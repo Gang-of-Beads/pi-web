@@ -1,7 +1,8 @@
 import { isRecord } from "../../../shared/unknownValues";
 import { resolveAppUrl } from "../appUrl";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
-import { deadlineSignal, fetchNamingLinkFailure, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
+import { deadlineSignal, fetchNamingLinkFailure, NetworkError, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
+import { directMachines, directMachineUrl } from "../directMachineUrl";
 import type { TransportClaim } from "./transportClaim";
 import { dedupeKey, shareInFlight } from "./inFlight";
 import { watchedFetch } from "./ackWatch";
@@ -10,9 +11,10 @@ import { ROUTE_MISSING_CODE, TRANSPORT_FAILURES, type TransportFailure } from ".
 /**
  * Who answered with the error, when it is known. Only PI WEB's gateway names
  * the machine it failed for in its body; a proxy in front of PI WEB answering
- * for a remote machine's URL says nothing about that machine.
+ * for a remote machine's URL says nothing about that machine. A machine this
+ * browser reaches itself has no gateway: this browser saw it not answer.
  */
-export type HttpErrorOrigin = "gateway";
+export type HttpErrorOrigin = "gateway" | "this-browser";
 
 export class HttpError extends Error {
   constructor(message: string, readonly status: number, readonly machineId?: string, readonly answeredBy?: HttpErrorOrigin, readonly code?: string, readonly transport?: TransportClaim) {
@@ -57,11 +59,27 @@ async function fetchBody(url: string, init?: RequestInit): Promise<unknown> {
     // asked for is theirs and is passed through unchanged, and so is a status
     // the server did answer with.
     if (error instanceof HttpError) throw error;
-    if (deadline.signal.aborted && init?.signal?.aborted !== true) throw new RequestTimeoutError(url, timeoutMs);
-    throw error;
+    const unanswered = deadline.signal.aborted && init?.signal?.aborted !== true ? new RequestTimeoutError(url, timeoutMs) : error;
+    throw directMachineSilence(url, init, unanswered) ?? unanswered;
   } finally {
     deadline.done();
   }
+}
+
+const READ_METHODS = new Set(["GET", "HEAD"]);
+
+/**
+ * A read that a machine this browser reaches itself did not answer: that machine is out of reach
+ * from this device, not this page's own link (browser-direct-machines.md, "Reachability"). It is
+ * worded as the gateway words a remote it cannot reach, so the app row names that machine. A write
+ * keeps its own failure, whose outcome is unknown and which the send ledger judges by its type.
+ */
+function directMachineSilence(url: string, init: RequestInit | undefined, error: unknown): HttpError | undefined {
+  if (!READ_METHODS.has((init?.method ?? "GET").toUpperCase())) return undefined;
+  if (!(error instanceof NetworkError) && !(error instanceof RequestTimeoutError)) return undefined;
+  const machineId = machineIdFromUrl(url);
+  if (machineId === undefined || directMachineUrl(url, directMachines()) === undefined) return undefined;
+  return new HttpError("This browser cannot reach the machine.", 504, machineId, "this-browser", undefined, "machine-unreachable");
 }
 
 async function readResponse(url: string, response: Response): Promise<unknown> {
