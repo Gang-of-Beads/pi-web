@@ -5,16 +5,14 @@ import { DEPLOYMENT_SERVICE_ENVIRONMENT_KEYS, deploymentServiceEnvironment } fro
 describe("deploymentServiceEnvironment", () => {
   it("carries the deployment variables a service cannot rediscover", () => {
     expect(deploymentServiceEnvironment({
-      PI_WEB_UPDATE_COMMAND: "/home/u/nix-config/scripts/pi-web-update.sh --force astra-mbp",
-      PI_WEB_UPDATE_REPO: "/home/u/src/pi-web",
+      PI_WEB_UPDATE_COMMAND: "/usr/local/bin/update-pi-web --force build-box",
     })).toEqual({
-      PI_WEB_UPDATE_COMMAND: "/home/u/nix-config/scripts/pi-web-update.sh --force astra-mbp",
-      PI_WEB_UPDATE_REPO: "/home/u/src/pi-web",
+      PI_WEB_UPDATE_COMMAND: "/usr/local/bin/update-pi-web --force build-box",
     });
   });
 
   it("omits unset and blank values so an empty assignment cannot shadow a resolvable one", () => {
-    expect(deploymentServiceEnvironment({ PI_WEB_UPDATE_COMMAND: "", PI_WEB_UPDATE_REPO: "   " })).toEqual({});
+    expect(deploymentServiceEnvironment({ PI_WEB_UPDATE_COMMAND: "   " })).toEqual({});
     expect(deploymentServiceEnvironment({})).toEqual({});
   });
 
@@ -30,7 +28,7 @@ describe("deploymentServiceEnvironment", () => {
   });
 
   it("keeps the captured set explicit", () => {
-    expect([...DEPLOYMENT_SERVICE_ENVIRONMENT_KEYS]).toEqual(["PI_WEB_UPDATE_COMMAND", "PI_WEB_UPDATE_REPO"]);
+    expect([...DEPLOYMENT_SERVICE_ENVIRONMENT_KEYS]).toEqual(["PI_WEB_UPDATE_COMMAND"]);
   });
 });
 

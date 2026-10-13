@@ -1869,14 +1869,14 @@ export interface PiWebFleetRunResponse {
   readonly outcomes: readonly PiWebFleetTargetOutcome[];
 }
 
+/**
+ * @deprecated No longer produced by PI WEB: the self-update status endpoint was removed.
+ * @public Kept only so code that imports the type keeps compiling.
+ */
 export interface PiWebSelfUpdateStatus {
-  /** False when this host has no fork checkout to update (e.g. containers). */
   readonly enabled: boolean;
-  /** Current local commit, short form. */
   readonly current: string;
-  /** Latest commit on the fork remote, short form. */
   readonly latest: string | undefined;
-  /** True when the fork remote has commits this checkout does not. */
   readonly available: boolean;
   readonly branch: string | undefined;
   readonly checkedAt: string;

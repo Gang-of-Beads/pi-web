@@ -1,4 +1,4 @@
-import type { AuthProviderOption, CommandOption, CommandResult, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
+import type { AuthProviderOption, CommandOption, CommandResult, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingExtensionDialog, PiWebStatusResponse, Project, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
 import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
 import { RetiredBy } from "./notice";
@@ -118,10 +118,6 @@ export interface AppState {
    * have, so machine switches clear the map instead of retaining it. */
   sessionStatuses: Record<string, SessionStatus>;
   sessionActivities: Record<string, SessionActivity>;
-  /** Self-update check result for this host; undefined means not checked yet. */
-  selfUpdate: PiWebSelfUpdateStatus | undefined;
-  /** True while the Update now flow is applying and the page will reconnect. */
-  selfUpdateApplying: boolean;
   workspacesByProjectId: Record<string, Workspace[]>;
   workspaceDeletionRuns: Record<string, TerminalCommandRun>;
   commandDialog: Extract<CommandResult, { type: "select" }> | undefined;
@@ -222,8 +218,6 @@ export function composerCwd(state: Pick<AppState, "selectedSession" | "selectedW
 export function initialAppState(): AppState {
   return {
     machines: [],
-    selfUpdate: undefined,
-    selfUpdateApplying: false,
     selectedMachine: undefined,
     machinesLoad: "unloaded",
     machineStatuses: {},

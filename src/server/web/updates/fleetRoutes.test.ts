@@ -120,7 +120,7 @@ async function buildApp(options: Options = {}): Promise<FastifyInstance> {
   const machines = fakeMachineService(options);
   registerFleetRoutes(instance, machines, {
     ...(options.withRestartService === false ? {} : { restart: { restartSupported: () => true, restart: options.restart ?? (() => Promise.resolve()) } }),
-    selfUpdate: { status: () => Promise.reject(new Error("unused")), apply: () => Promise.resolve() },
+    selfUpdate: { apply: () => Promise.resolve() },
   });
   await instance.ready();
   return instance;

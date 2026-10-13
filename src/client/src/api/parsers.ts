@@ -10,7 +10,7 @@ import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, EXTENSION_DIALOG_EDITOR_MAX_LENGTH, EX
 import { parseMachineStatusSnapshot, type MachineStatusSnapshot, type MachineStatusUiEvent } from "../../../shared/machineStatus";
 import type { JsonValue, MachineConnection, PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionsRevisionResponse, SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot, WorkspaceProviderDiagnostic, WorkspaceProviderDiagnosticCode, WorkspaceProviderResolution, WorkspaceProviderResolutionStatus, WorkspaceProviderTier } from "../../../shared/apiTypes";
 import type { CommandResultState, OperationAppliedOutcome, OperationBatchAnswer, OperationResult, OperationStanding } from "../../../shared/apiTypes";
-import type { ExtensionCompletionApplied, ExtensionCompletionSuggestions, ExtensionWidgetPlacement, PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport, PiWebSelfUpdateStatus } from "../../../shared/apiTypes";
+import type { ExtensionCompletionApplied, ExtensionCompletionSuggestions, ExtensionWidgetPlacement, PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport } from "../../../shared/apiTypes";
 import { parseKnownPiWebCapabilities } from "../../../shared/capabilities";
 import { parseDeprecatedAgentInputs } from "../../../shared/piWebStatusParsing";
 import { PI_WEB_PLUGIN_RECOVERY_COMMANDS, pluginDisableRecoveryCommand } from "../../../shared/pluginRecoveryCommands";
@@ -1778,19 +1778,6 @@ export function requireMachineStatusSnapshot(value: unknown): MachineStatusSnaps
   const snapshot = parseMachineStatusSnapshot(value);
   if (snapshot === undefined) throw new Error("Expected machine status snapshot");
   return snapshot;
-}
-
-/** Parse the self-update status endpoint response (tolerant of disabled hosts). */
-export function parsePiWebSelfUpdateStatus(value: unknown): PiWebSelfUpdateStatus {
-  const record = requireRecord(value);
-  const enabled = record["enabled"] === true;
-  const disabledReason = typeof record["disabledReason"] === "string" ? record["disabledReason"] : undefined;
-  const latest = typeof record["latest"] === "string" ? record["latest"] : undefined;
-  const branch = typeof record["branch"] === "string" ? record["branch"] : undefined;
-  if (!enabled) {
-    return { enabled: false, current: "", latest, available: false, branch, checkedAt: requireString(record, "checkedAt"), ...(disabledReason === undefined ? {} : { disabledReason }) };
-  }
-  return { enabled: true, current: requireString(record, "current"), latest, available: record["available"] === true, branch, checkedAt: requireString(record, "checkedAt") };
 }
 
 /**

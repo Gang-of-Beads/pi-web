@@ -19,7 +19,7 @@ import { routeMatchesUrl } from "../routeMatch";
 import { autoFocusesComposer } from "../appShell/appShellController";
 import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
-import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
+import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { ExtensionUiStanding, MachineConnection, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig, PluginSurfacePresence } from "../../../shared/apiTypes";
 import type { AppAction } from "../actions";
@@ -250,14 +250,11 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .deprecation-notice .deprecation-notice-text + .deprecation-notice-text { margin-top: var(--pi-space-2); }
 
   .self-update-banner { display: flex; align-items: center; gap: var(--pi-space-4); flex-wrap: wrap; box-sizing: border-box; margin: 0 var(--pi-space-6) var(--pi-space-5); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-lg); background: var(--pi-warning-surface); color: var(--pi-warning); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); }
-  .self-update-banner.applying { border-color: var(--pi-accent-border); background: var(--pi-surface); color: var(--pi-text); }
   /* The banner sits in the same column as the transcript controls, which are
      all 44px on a finger; a 32px row here was a second touch floor. */
   .self-update-banner button { box-sizing: border-box; min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; padding: var(--pi-space-2) var(--pi-space-5); }
   @media (pointer: coarse) { .self-update-banner button { min-height: var(--pi-control-height-touch); } }
   @media (hover: hover) { .self-update-banner button:hover { border-color: var(--pi-accent); } }
-  .self-update-banner button.skip { color: var(--pi-muted); background: transparent; }
-  .self-update-banner .state-dot { background: currentColor; }
 `;
 
 
@@ -409,7 +406,6 @@ export class PiWebApp extends LitElement {
       urlSessionId: () => readRoute().sessionId,
       onSelectedSessionReady: ({ machineId, session }) => {
         void this.commitReadyChatAfterRender(machineId, session);
-        void this.refreshSelfUpdate();
       },
       replacePromptEditorText: async ({ machineId, sessionId, text, mode }) => {
         await this.updateComplete;
@@ -1079,57 +1075,6 @@ export class PiWebApp extends LitElement {
     });
   }
 
-  /**
-   * Interactive self-update: check the fork remote (cheap, daemon-cached) and
-   * surface an "Update now / Skip" banner like the pi extension updater. The
-   * trigger is opening a session, which is when someone actually reads the
-   * page; a background timer is exactly the machinery the user asked not to
-   * have.
-   */
-  private selfUpdateCooldownUntil = 0;
-  private async refreshSelfUpdate(): Promise<void> {
-    if (Date.now() < this.selfUpdateCooldownUntil) return;
-    this.selfUpdateCooldownUntil = Date.now() + 60_000;
-    try {
-      const status = await selfUpdateApi.status();
-      this.setState({ selfUpdate: status });
-    } catch (error) {
-      // A disabled host answers with enabled:false; a hard failure just means
-      // no banner. Neither is worth an error toast on every session open.
-      console.warn("Self-update status check failed", error);
-    }
-  }
-
-  private async applySelfUpdate(): Promise<void> {
-    if (this.state.selfUpdateApplying) return;
-    this.setState({ selfUpdateApplying: true });
-    try {
-      const result = await selfUpdateApi.apply();
-      if (!result.started) {
-        this.setState({ selfUpdateApplying: false });
-        if (result.error !== undefined) {
-          this.setState(noticePatch(noticeForReader(`Update failed: ${result.error}`)));
-        }
-      }
-      // On success the page keeps saying "reconnecting…"; the socket comes
-      // back after the restart. The applying flag stays up until then.
-    } catch {
-      this.setState({ selfUpdateApplying: false });
-      this.setState(noticePatch(noticeForReader("Update request failed")));
-    }
-  }
-
-  private skipSelfUpdate(): void {
-    const latest = this.state.selfUpdate?.latest;
-    if (latest === undefined) return;
-    try {
-      window.localStorage.setItem("piWebSelfUpdateSkipped", latest);
-    } catch {
-      // Private mode: skipping just lasts this visit.
-    }
-    this.setState({ selfUpdate: undefined });
-  }
-
   /** Render the "Reload to get the new version" strip above the session view. */
   /**
    * The tab keeps running the bundle it loaded, however many times the server
@@ -1154,27 +1099,6 @@ export class PiWebApp extends LitElement {
     } catch {
       // An unreachable version endpoint says nothing about staleness.
     }
-  }
-
-  private renderSelfUpdateBanner(): TemplateResult | null {
-    const status = this.state.selfUpdate;
-    if (status === undefined || !status.enabled || !status.available) return null;
-    if (this.state.selfUpdateApplying) {
-      return html`
-        <div class="self-update-banner applying" role="status" aria-live="polite">
-          <span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>
-          <span>Updating pi-web (${status.current} → ${status.latest ?? "new"})… The page reconnects automatically after the restart.</span>
-        </div>`;
-    }
-    let skipped = false;
-    try { skipped = window.localStorage.getItem("piWebSelfUpdateSkipped") === status.latest; } catch { /* ignore */ }
-    if (skipped) return null;
-    return html`
-      <div class="self-update-banner" role="status" aria-live="polite">
-        <span>pi-web update available: ${status.current} → ${status.latest ?? "new"}</span>
-        <button type="button" @click=${() => { void this.applySelfUpdate(); }}>Update now</button>
-        <button type="button" class="skip" @click=${() => { this.skipSelfUpdate(); }}>Skip</button>
-      </div>`;
   }
 
   private syncUnreadSessionIds(): void {
@@ -1275,7 +1199,6 @@ export class PiWebApp extends LitElement {
     window.addEventListener("online", this.onBrowserOnline);
     window.addEventListener("pointerdown", this.onInteractionLivenessProbe, { passive: true, capture: true });
     void this.loadClientConfig();
-    void this.refreshSelfUpdate();
     void this.checkClientFreshness();
     void this.ensureGatewayPluginsLoaded();
     void this.loadProjectsAndRestoreRoute().finally(() => { this.schedulePiWebStatusRefresh(); });
@@ -2326,15 +2249,6 @@ export class PiWebApp extends LitElement {
     this.realtime.connect(
       (event) => { this.handleRealtimeEvent(machineId, event); },
       () => {
-        // A self-update restart is the one "reconnecting…" that ends with the
-        // socket coming back to the same page: the applying strip's exit is
-        // the reconnect itself, and the restart is exactly when the running
-        // bundle may have gone stale - the check the visibility hook cannot
-        // do, because the reader never left the tab.
-        if (this.state.selfUpdateApplying) {
-          this.setState({ selfUpdateApplying: false });
-          void this.checkClientFreshness();
-        }
         this.refreshInterruptedRuns(machineId, { adoptEmpty: false });
         if (this.openMissedSome(machineId)) {
           this.rereadAnnounced(machineId);
@@ -5549,7 +5463,6 @@ export class PiWebApp extends LitElement {
 
           ${this.renderAppRowAt("main")}
           ${this.renderStaleClientBanner()}
-          ${this.renderSelfUpdateBanner()}
           ${deprecatedAgentInputsBanner(deprecatedAgentInputsWarnings(state.machines, state.machineRuntimes))}
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigatePage(false) : null}</div>
           ${state.selectedSession ? html`
