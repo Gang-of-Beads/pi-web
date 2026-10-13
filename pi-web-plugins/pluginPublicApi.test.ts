@@ -29,6 +29,10 @@ const allowed = new Map<string, readonly string[]>([
   // Updates reads the machine's own status through the host's fetchJson: the
   // literal names that endpoint, and the host still resolves it.
   ["pi-web-plugins/updates/pi-web-plugin.ts", ["direct PI WEB API URL"]],
+  // Pairing asks another machine, at the base URL the reader typed, for this page's access: the
+  // literal names that machine's endpoint, and the request must leave from this browser, whose
+  // Origin is what the machine approves (browser-direct-machines.md).
+  ["pi-web-plugins/machines/browser/pairing.ts", ["direct PI WEB API URL"]],
 ]);
 
 describe("bundled PI WEB plugins", () => {

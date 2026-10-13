@@ -10,6 +10,20 @@ import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from 
 import type { ProjectController } from "./projectController";
 import { orderedById } from "../../../shared/listOrder";
 import { directMachinesOf, setDirectMachines } from "../directMachineUrl";
+import { machineAccessApi } from "../api/machineAccess";
+
+/**
+ * What removing a machine does to this page's access on it. A machine this browser reaches directly
+ * approved this page; removed here, it is asked to forget the page too, so the access does not
+ * outlive the machine in the list. The ask is not waited for - a machine is usually removed because
+ * it is gone, and a dead peer held the removal for the whole request deadline; one that cannot be
+ * reached keeps the approval, which its own Settings list can remove. A machine reached through this
+ * PI WEB never approved the page.
+ */
+const PAGE_ACCESS_ON_REMOVAL: Readonly<Record<MachineConnection, (machineId: string) => Promise<void>>> = {
+  browser: async (machineId) => { await machineAccessApi.forgetThisPageOn(machineId).catch(() => undefined); },
+  server: async () => { await Promise.resolve(); },
+};
 
 /** The roster has one key: the web process in use serves it. */
 const ROSTER = "roster";
@@ -277,6 +291,7 @@ export class MachineController {
     }
     try {
       const wasSelected = this.getState().selectedMachine?.id === machine.id;
+      void PAGE_ACCESS_ON_REMOVAL[machine.connectFrom ?? "server"](machine.id);
       await api.deleteMachine(machine.id);
       this.rosterChanged((listed) => listed.filter((candidate) => candidate.id !== machine.id));
       // The claim about this machine can never be disproved now - its scope

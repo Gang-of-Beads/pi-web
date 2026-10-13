@@ -55,4 +55,6 @@ export const machineAccessApi = {
   decideMachineAccess: (id: string, decision: MachineAccessDecision) => request(`${REQUESTS_PATH}/${encodeURIComponent(id)}/${decision}`, parseMachineAccessRequest, { method: "POST" }),
   approvedMachineOrigins: () => request("api/machine-access/approved", parseApprovedMachineOrigins),
   forgetApprovedMachineOrigin: (origin: string) => request(`api/machine-access/approved?${new URLSearchParams({ origin }).toString()}`, parseRemoved, { method: "DELETE" }),
+  /** Ask a machine this browser reaches directly to forget this page: the request goes to that machine itself (directMachineUrl.ts). */
+  forgetThisPageOn: (machineId: string) => request(`api/machines/${encodeURIComponent(machineId)}/machine-access/approved?${new URLSearchParams({ origin: location.origin }).toString()}`, parseRemoved, { method: "DELETE" }),
 };

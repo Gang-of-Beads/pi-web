@@ -18,18 +18,30 @@ export interface PairingRequest {
   readonly expiresAt: string;
 }
 
-/** Why asking failed, in words the reader can act on. */
+/** Why asking the machine failed; the message is shown to the reader as is. */
 export class PairingError extends Error {}
 
 const REQUESTS_PATH = "api/machine-access/requests";
 
-export async function requestAccess(baseUrl: string, name: string, request: typeof fetch = fetch): Promise<PairingRequest> {
-  const response = await reach(baseUrl, () => request(machineUrl(baseUrl, REQUESTS_PATH), { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) }));
-  if (response.status === 404) throw new PairingError(`${hostOf(baseUrl)} runs a PI WEB without browser access. Update it, or choose This server.`);
-  return parsePairing(await answered(response));
+/**
+ * What asking for access came to: a request waiting for approval, or a page the machine has already
+ * approved, which it answers with no request at all - the dialog then adds the machine straight away.
+ */
+export type AccessAnswer = { readonly kind: "waiting"; readonly request: PairingRequest } | { readonly kind: "approved" };
+
+/** `pageName` labels this page on the machine's approval page; the machine trusts only the Origin the browser sets. */
+export async function requestAccess(baseUrl: string, pageName: string, request: typeof fetch = fetch): Promise<AccessAnswer> {
+  const response = await reach(baseUrl, () => request(machineUrl(baseUrl, REQUESTS_PATH), { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: pageName }) }));
+  if (response.status === 404) throw new PairingError(`${hostOf(baseUrl)} does not answer browser access requests at this URL. Check the URL, update PI WEB there, or choose This server.`);
+  const body = await answered(response);
+  return isAlreadyApproved(body) ? { kind: "approved" } : { kind: "waiting", request: parsePairing(body) };
 }
 
-/** The request as the machine holds it now; undefined once the machine no longer knows it (expired). */
+function isAlreadyApproved(body: unknown): boolean {
+  return isRecord(body) && body["state"] === "approved" && body["id"] === undefined;
+}
+
+/** The request as the machine holds it now; undefined when the machine no longer knows it (restarted, already decided, or removed). */
 export async function readPairing(baseUrl: string, id: string, request: typeof fetch = fetch): Promise<PairingRequest | undefined> {
   const response = await reach(baseUrl, () => request(machineUrl(baseUrl, `${REQUESTS_PATH}/${encodeURIComponent(id)}`), { credentials: "omit" }));
   if (response.status === 404) return undefined;

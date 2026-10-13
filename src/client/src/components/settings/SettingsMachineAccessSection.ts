@@ -4,6 +4,7 @@ import type { ApprovedMachineOrigin } from "../../../../shared/machineAccess";
 import { machineAccessApi } from "../../api/machineAccess";
 import { interactiveSurfaceStyles } from "../shared";
 import { settingsControlStyles } from "./settingsControlStyles";
+import { QUIET_WINDOW_MS, retryDelayMs } from "../../sync/readPhase";
 
 /**
  * The other machines' pages this machine approved to use it from a browser, each with Remove
@@ -21,18 +22,30 @@ export class SettingsMachineAccessSection extends LitElement {
   @state() private readError: string | undefined;
   @state() private removing: string | undefined;
   @state() private removeError: string | undefined;
+  private readAttempt = 0;
+  private readAgainTimer: ReturnType<typeof setTimeout> | undefined;
+
+  override disconnectedCallback(): void {
+    clearTimeout(this.readAgainTimer);
+    super.disconnectedCallback();
+  }
 
   override connectedCallback(): void {
     super.connectedCallback();
     void this.read();
   }
 
+  /** Read the approved pages; a read that did not answer is read again by itself (B48: no Try again). */
   private async read(): Promise<void> {
-    this.readError = undefined;
+    clearTimeout(this.readAgainTimer);
     try {
       this.approved = await machineAccessApi.approvedMachineOrigins();
+      this.readError = undefined;
+      this.readAttempt = 0;
     } catch (error) {
       this.readError = error instanceof Error ? error.message : String(error);
+      this.readAgainTimer = setTimeout(() => { if (this.isConnected) void this.read(); }, retryDelayMs(this.readAttempt, QUIET_WINDOW_MS));
+      this.readAttempt += 1;
     }
   }
 
@@ -57,7 +70,7 @@ export class SettingsMachineAccessSection extends LitElement {
 
   private readonly bodies: Readonly<Record<SectionKind, () => TemplateResult>> = {
     reading: () => html`<p class="muted">Reading…</p>`,
-    unreadable: () => html`<p class="error">Could not read the approved pages: ${this.readError}</p><button type="button" @click=${() => { void this.read(); }}>Try again</button>`,
+    unreadable: () => html`<p class="muted" title=${this.readError ?? ""}>Reading the approved pages again…</p>`,
     empty: () => html`<p class="muted">No other PI WEB page can use this machine from a browser.</p>`,
     listed: () => html`<div class="list">${(this.approved ?? []).map((entry) => this.renderEntry(entry))}</div>`,
   };

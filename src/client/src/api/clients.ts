@@ -131,8 +131,12 @@ export const machinesApi = {
   deleteMachine: (machineId: string) => request(`api/machines/${encodeURIComponent(machineId)}`, (value) => value, { method: "DELETE" }),
   /** Rename a machine (including the local machine, which persists as an alias). */
   updateMachine: (machineId: string, input: { name?: string; baseUrl?: string; token?: string }) => request(`api/machines/${encodeURIComponent(machineId)}`, parseMachine, { method: "PATCH", body: JSON.stringify(input) }),
-  health: (machineId: string) => request(`api/machines/${encodeURIComponent(machineId)}/health`, parseMachineHealth),
-  runtime: (machineId: string, refresh = false) => request(`api/machines/${encodeURIComponent(machineId)}/runtime${refresh ? "?refresh=1" : ""}`, parseMachineRuntime, refresh ? { cache: "no-store" } : {}),
+  /**
+   * A machine this browser reaches directly answers for itself as "local" (directMachineUrl.ts), and
+   * stored under that id its health replaced this PI WEB's own; the answer is the asked machine's.
+   */
+  health: async (machineId: string) => ({ ...(await request(`api/machines/${encodeURIComponent(machineId)}/health`, parseMachineHealth)), machineId }),
+  runtime: async (machineId: string, refresh = false) => ({ ...(await request(`api/machines/${encodeURIComponent(machineId)}/runtime${refresh ? "?refresh=1" : ""}`, parseMachineRuntime, refresh ? { cache: "no-store" } : {})), machineId }),
 };
 
 function configPath(machineId?: string): string {
@@ -175,7 +179,12 @@ export const fleetApi = {
     method: "POST",
     body: JSON.stringify({ operation, ...(machineIds === undefined ? {} : { machineIds }) }),
   }),
+  /** Start an operation on one machine through its own endpoint: the machine itself when this browser reaches it directly. */
+  start: (machineId: string, operation: "restart" | "update") => request(`api/machines/${encodeURIComponent(machineId)}/${FLEET_OPERATION_PATH[operation]}`, () => undefined, { method: "POST", body: "{}" }),
 };
+
+/** Where a machine starts each fleet operation itself; both answer 202 with the work detached. */
+const FLEET_OPERATION_PATH: Readonly<Record<"restart" | "update", string>> = { restart: "pi-web/restart", update: "pi-web/update/apply" };
 
 function piPackagePath(endpoint = "", machineId?: string): string {
   const basePath = machineId === undefined ? "api/pi-packages" : `${machinePrefix(machineId)}/pi-packages`;

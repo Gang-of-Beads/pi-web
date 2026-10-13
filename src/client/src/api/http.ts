@@ -71,8 +71,9 @@ const READ_METHODS = new Set(["GET", "HEAD"]);
 /**
  * A read that a machine this browser reaches itself did not answer: that machine is out of reach
  * from this device, not this page's own link (browser-direct-machines.md, "Reachability"). It is
- * worded as the gateway words a remote it cannot reach, so the app row names that machine. A write
- * keeps its own failure, whose outcome is unknown and which the send ledger judges by its type.
+ * shaped as the gateway's machine-unreachable claim (504, machineId, transport), so the app row
+ * names that machine. A write keeps its own failure, whose outcome is unknown and which the send
+ * ledger judges by its type.
  */
 function directMachineSilence(url: string, init: RequestInit | undefined, error: unknown): HttpError | undefined {
   if (!READ_METHODS.has((init?.method ?? "GET").toUpperCase())) return undefined;

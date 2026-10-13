@@ -3,17 +3,25 @@ import { property, query, state } from "lit/decorators.js";
 import type { MachineCreateInput } from "@gang-of-beads/pi-web/plugin-api";
 import { renderHostCloseIcon, adoptMachinesHostStyles } from "./hostUi";
 import { keyBelongsToInputMethod } from "./inputMethodKey";
-import { approvalUrl, PairingError, readPairing, requestAccess, type PairingRequest } from "./pairing";
+import { approvalUrl, PairingError, readPairing, requestAccess, type PairingRequest, type PairingState } from "./pairing";
 
 type ConnectFrom = "browser" | "server";
 
-/** How a pairing that did not end in approval ended, and what the dialog says. */
-type PairingEnd = "denied" | "expired";
+/**
+ * Where a pairing stands at each poll, decided by `pairingStep` and carried out by the dialog's
+ * table: still waiting, approved (the machine is added), denied (the machine's answer, final), or
+ * gone - the machine no longer knows it, because it expired there or the machine restarted - which
+ * asks again by itself with a new code, so the reader never presses Try again (owner, 2026-10-13).
+ * Expiry is the machine's to say: decided on this device's clock, a clock ahead of the machine's
+ * made every new request look expired at once, and the dialog asked again every second.
+ */
+type PairingStep = "waiting" | "approved" | "denied" | "gone";
 
-const PAIRING_END_WORDS: Readonly<Record<PairingEnd, (name: string) => string>> = {
-  denied: (name) => `${name} denied this page.`,
-  expired: () => "The request expired before it was approved.",
-};
+const STEP_BY_STATE: Readonly<Record<PairingState, PairingStep>> = { pending: "waiting", approved: "approved", denied: "denied" };
+
+function pairingStep(current: PairingRequest | undefined): PairingStep {
+  return current === undefined ? "gone" : STEP_BY_STATE[current.state];
+}
 
 const CONNECT_FROM_HINT: Readonly<Record<ConnectFrom, (name: string) => string>> = {
   browser: (name) => `This device talks to ${name} directly; ${name} asks you to approve this page once.`,
@@ -50,7 +58,8 @@ export class MachineDialog extends LitElement {
   @state() private submitting = false;
   /** The request for access while it waits on the machine; the dialog shows its code. */
   @state() private pairing: PairingRequest | undefined = undefined;
-  @state() private pairingEnd: PairingEnd | undefined = undefined;
+  /** The machine denied this page: final, until the reader goes back to the form. */
+  @state() private pairingDenied = false;
   @state() private now = Date.now();
   private ticker: number | undefined;
   private ticks = 0;
@@ -133,9 +142,15 @@ export class MachineDialog extends LitElement {
   private async askForAccess(baseUrl: string, name: string): Promise<void> {
     this.submitting = true;
     this.submitError = undefined;
-    this.pairingEnd = undefined;
+    this.pairingDenied = false;
     try {
-      this.pairing = await requestAccess(baseUrl, location.host);
+      const answer = await requestAccess(baseUrl, location.host);
+      if (!this.isConnected) return;
+      if (answer.kind === "approved") {
+        await this.add({ name, baseUrl, connectFrom: "browser" });
+        return;
+      }
+      this.pairing = answer.request;
       this.startWaiting(baseUrl, name);
     } catch (error) {
       this.submitError = error instanceof PairingError ? error.message : String(error);
@@ -144,11 +159,11 @@ export class MachineDialog extends LitElement {
     }
   }
 
+  /** The machine never pushes pairing state to this page, so the dialog ticks the countdown locally and polls the request's state. */
   private startWaiting(baseUrl: string, name: string): void {
     this.stopWaiting();
     this.ticks = 0;
     this.now = Date.now();
-    // Surface backed up: the pairing countdown and the request's state, which the machine does not announce to this page.
     this.ticker = window.setInterval(() => { void this.tick(baseUrl, name); }, TICK_MS);
   }
 
@@ -161,36 +176,38 @@ export class MachineDialog extends LitElement {
     this.now = Date.now();
     const pairing = this.pairing;
     if (pairing === undefined) return;
-    if (Date.parse(pairing.expiresAt) <= this.now) {
-      this.endPairing("expired");
-      return;
-    }
     this.ticks += 1;
-    if (this.ticks % POLL_EVERY_TICKS !== 0) return;
-    const current = await readPairing(baseUrl, pairing.id).catch(() => pairing);
+    const polls = this.ticks % POLL_EVERY_TICKS === 0;
+    const current = polls ? await readPairing(baseUrl, pairing.id).catch(() => pairing) : pairing;
     if (this.pairing?.id !== pairing.id) return;
-    if (current === undefined) {
-      this.endPairing("expired");
-      return;
-    }
-    this.pairing = current;
-    if (current.state === "denied") this.endPairing("denied");
-    if (current.state === "approved") {
-      this.stopWaiting();
-      await this.add({ name, baseUrl, connectFrom: "browser" });
-    }
+    this.pairingSteps[pairingStep(current)]({ baseUrl, name, current });
   }
 
-  private endPairing(end: PairingEnd): void {
+  private readonly pairingSteps: Readonly<Record<PairingStep, (at: { baseUrl: string; name: string; current: PairingRequest | undefined }) => void>> = {
+    waiting: ({ current }) => { this.pairing = current; },
+    approved: ({ baseUrl, name, current }) => {
+      this.pairing = current;
+      this.stopWaiting();
+      void this.add({ name, baseUrl, connectFrom: "browser" });
+    },
+    denied: () => {
+      this.stopWaiting();
+      this.pairing = undefined;
+      this.pairingDenied = true;
+    },
+    gone: ({ baseUrl, name }) => { this.askAgain(baseUrl, name); },
+  };
+
+  /** A request that ran out is asked again by itself: the old code stays on screen until the new one replaces it. */
+  private askAgain(baseUrl: string, name: string): void {
     this.stopWaiting();
-    this.pairing = undefined;
-    this.pairingEnd = end;
+    void this.askForAccess(baseUrl, name);
   }
 
   private backToForm(): void {
     this.stopWaiting();
     this.pairing = undefined;
-    this.pairingEnd = undefined;
+    this.pairingDenied = false;
   }
 
   private validInput(): MachineCreateInput | undefined {
@@ -203,7 +220,7 @@ export class MachineDialog extends LitElement {
 
   override render() {
     if (this.pairing !== undefined) return this.renderWaiting(this.pairing);
-    if (this.pairingEnd !== undefined) return this.renderEnded(this.pairingEnd);
+    if (this.pairingDenied) return this.renderDenied();
     return this.renderForm();
   }
 
@@ -282,7 +299,7 @@ export class MachineDialog extends LitElement {
     `;
   }
 
-  private renderEnded(end: PairingEnd) {
+  private renderDenied() {
     const name = this.validInput()?.name ?? "The machine";
     return html`
       <form @submit=${(event: SubmitEvent) => { event.preventDefault(); }}>
@@ -291,11 +308,11 @@ export class MachineDialog extends LitElement {
           <button type="button" @click=${() => { this.onCancel?.(); }} aria-label="Close">${renderHostCloseIcon()}</button>
         </header>
         <div class="body">
-          <p class="hint intro" role="status">${PAIRING_END_WORDS[end](name)}</p>
+          <p class="hint intro" role="status">${name} denied this page.</p>
         </div>
         <footer>
           <button type="button" @click=${() => { this.onCancel?.(); }}>Cancel</button>
-          <button class="primary" type="button" @click=${() => { this.backToForm(); }}>Try again</button>
+          <button class="primary" type="button" @click=${() => { this.backToForm(); }}>Back</button>
         </footer>
       </form>
     `;
@@ -325,7 +342,7 @@ export class MachineDialog extends LitElement {
     .code { margin: var(--pi-space-4) 0; text-align: center; font: var(--pi-text-xl) var(--pi-control-monospace-font-family, ui-monospace, monospace); letter-spacing: 0.3em; color: var(--pi-text); }
     .open { display: flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-control-height-comfort); border-radius: var(--pi-radius-md); text-decoration: none; padding: var(--pi-space-4) var(--pi-space-5); }
     .waiting { display: flex; align-items: center; gap: var(--pi-space-3); margin: 0; color: var(--pi-muted); }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pi-warning); }
+    .dot { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: var(--pi-warning); }
     .dialog-error { border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-danger) 10%, transparent); color: var(--pi-danger); padding: var(--pi-space-5); line-height: 1.35; }
     form button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
     header button { display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort);  line-height: 1; border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0; }

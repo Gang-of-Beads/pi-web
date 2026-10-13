@@ -10,7 +10,10 @@ import type { Machine } from "../../shared/apiTypes";
  * same path is rewritten here, once, to the machine's own address, by the gateway's own rule
  * (`remoteApiPath`): `api/machines/<id>/X` is that machine's `api/X`. Two kinds of path the gateway
  * does not forward, because it answers them itself, go where the machine answers them for itself:
- * its record, health and runtime (`api/machines/local/…`), and its plugin assets (`pi-web-plugins/…`).
+ * its health and runtime (`api/machines/local/…`), and its plugin assets (`pi-web-plugins/…`). The
+ * machine's entry in the list (`api/machines/<id>` itself: read, renamed, removed) stays here: the
+ * list lives on the PI WEB this page came from (decision 2a). Sent to the machine, a removal deleted
+ * nothing from the list (8505, 2026-10-13).
  */
 
 /** Machines this page reaches from the browser: id to base URL. */
@@ -23,20 +26,25 @@ export function directMachinesOf(machines: readonly Machine[]): DirectMachines {
 
 const MACHINE_PATH = /^\/?api\/machines\/([^/?#]+)([/?#].*)?$/u;
 
-type DirectRoute = "plugin-asset" | "machine-record" | "forwarded";
+type DirectRoute = "list-entry" | "plugin-asset" | "machine-self" | "forwarded";
 
-const ROUTE_TARGET: Readonly<Record<DirectRoute, (rest: string) => string>> = {
+/** Where each kind of path goes on the machine; undefined keeps it on this PI WEB. */
+const ROUTE_TARGET: Readonly<Record<DirectRoute, (rest: string) => string | undefined>> = {
+  "list-entry": () => undefined,
   "plugin-asset": (rest) => rest.slice(1),
-  "machine-record": (rest) => `api/machines/local${rest}`,
-  forwarded: (rest) => `api${rest.startsWith("/") ? rest : `/${rest}`}`,
+  "machine-self": (rest) => `api/machines/local${rest}`,
+  forwarded: (rest) => `api${rest}`,
 };
 
-/** The paths the gateway answers for a machine instead of forwarding them (`localMachineRegistry.ts`). */
-const MACHINE_RECORD_PATH = /^(?:[?#].*)?$|^\/(?:health|runtime)(?:[?#].*)?$/u;
+/** The kinds of path by their shape, first match first; anything else the gateway would forward. */
+const ROUTE_BY_SHAPE: readonly (readonly [RegExp, DirectRoute])[] = [
+  [/^(?:[?#].*)?$/u, "list-entry"],
+  [/^\/pi-web-plugins\//u, "plugin-asset"],
+  [/^\/(?:health|runtime)(?:[?#].*)?$/u, "machine-self"],
+];
 
 function routeOf(rest: string): DirectRoute {
-  if (rest.startsWith("/pi-web-plugins/")) return "plugin-asset";
-  return MACHINE_RECORD_PATH.test(rest) ? "machine-record" : "forwarded";
+  return ROUTE_BY_SHAPE.find(([shape]) => shape.test(rest))?.[1] ?? "forwarded";
 }
 
 /** The machine's own URL for an application path, or undefined when the path is not for a direct machine. */
@@ -48,7 +56,8 @@ export function directMachineUrl(path: string, machines: DirectMachines): string
   const baseUrl = machines.get(decodedOrRaw(encodedId));
   if (baseUrl === undefined) return undefined;
   const rest = match?.[2] ?? "";
-  return new URL(ROUTE_TARGET[routeOf(rest)](rest), baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
+  const target = ROUTE_TARGET[routeOf(rest)](rest);
+  return target === undefined ? undefined : new URL(target, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
 }
 
 /** A malformed escape in an id is not a direct machine; the resolver must not throw for it. */

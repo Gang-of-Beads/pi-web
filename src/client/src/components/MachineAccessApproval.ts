@@ -5,6 +5,7 @@ import { HttpError } from "../api/http";
 import { machineAccessApi, type MachineAccessDecision } from "../api/machineAccess";
 import { interactiveSurfaceStyles } from "./shared";
 import { settingsControlStyles } from "./settings/settingsControlStyles";
+import { QUIET_WINDOW_MS, retryDelayMs } from "../sync/readPhase";
 
 /**
  * The page another machine's link opens on this machine: approve or deny a page that asks to use
@@ -47,6 +48,8 @@ export class MachineAccessApproval extends LitElement {
   @state() private decisionError: string | undefined;
   @state() private now = Date.now();
   private ticker: number | undefined;
+  private readAttempt = 0;
+  private readAgainTimer: ReturnType<typeof setTimeout> | undefined;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -57,17 +60,26 @@ export class MachineAccessApproval extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    clearTimeout(this.readAgainTimer);
     if (this.ticker !== undefined) clearInterval(this.ticker);
     this.ticker = undefined;
   }
 
+  /** Read the request; any failed read other than a 404 is read again by itself with backoff (B48: no Try again). A 404 is the machine's answer: the request is gone. */
   private async read(): Promise<void> {
-    this.readError = undefined;
+    clearTimeout(this.readAgainTimer);
     try {
       this.request = await machineAccessApi.machineAccessRequest(this.requestId);
+      this.readError = undefined;
+      this.readAttempt = 0;
     } catch (error) {
-      if (error instanceof HttpError && error.status === 404) this.gone = true;
-      else this.readError = error instanceof Error ? error.message : String(error);
+      if (error instanceof HttpError && error.status === 404) {
+        this.gone = true;
+        return;
+      }
+      this.readError = error instanceof Error ? error.message : String(error);
+      this.readAgainTimer = setTimeout(() => { if (this.isConnected && !this.gone) void this.read(); }, retryDelayMs(this.readAttempt, QUIET_WINDOW_MS));
+      this.readAttempt += 1;
     }
   }
 
@@ -99,9 +111,9 @@ export class MachineAccessApproval extends LitElement {
       <div class="actions"><button type="button" @click=${() => this.onDone?.()}>Close</button></div>
     `,
     unreadable: () => html`
-      <h1 id="approval-title">Could not read the request</h1>
-      <p class="warn">${this.readError}</p>
-      <div class="actions"><button type="button" @click=${() => this.onDone?.()}>Close</button><button type="button" class="primary" @click=${() => { void this.read(); }}>Try again</button></div>
+      <h1 id="approval-title">Allow a page to use this machine?</h1>
+      <p class="hint" title=${this.readError ?? ""}>Reading the request again…</p>
+      <div class="actions"><button type="button" @click=${() => this.onDone?.()}>Close</button></div>
     `,
   };
 
