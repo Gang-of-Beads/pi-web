@@ -345,6 +345,7 @@ export class PiWebApp extends LitElement {
   private prunedSessionsSignature = "";
   @query("prompt-editor") private promptEditor?: PromptEditor;
   @query(".navigate-overlay app-navigate-page") private navigatePage?: AppNavigatePage;
+  @query("#navigation-panel app-navigate-page, .mobile-navigation-panel app-navigate-page") private inPageNavigatePage?: AppNavigatePage;
   @query("#navigation-panel") private navigationPanelFrame?: HTMLElement;
   @query("#workspace-panel") private workspacePanelFrame?: HTMLElement;
 
@@ -2712,6 +2713,15 @@ export class PiWebApp extends LitElement {
    * New session lists the projects of the machine on screen, and choosing one moves to that machine
    * and starts the session there (R18), as New session from an empty chat already did.
    */
+  /**
+   * The Navigate page the reader is looking at: the overlay while it is open, else the page drawn in
+   * place, which is the whole screen when no session is open. Asking only the overlay made New
+   * session with no project open do nothing on that screen (owner, 8505, 2026-10-13).
+   */
+  private shownNavigatePage(): AppNavigatePage | undefined {
+    return this.navigateOpen ? this.navigatePage : this.inPageNavigatePage;
+  }
+
   private newSessionPlace(): NewSessionPlace {
     return this.quickSwitcherBrowsingElsewhere() || !this.canStartSession() ? "choose-project" : "here";
   }
@@ -2720,7 +2730,7 @@ export class PiWebApp extends LitElement {
     here: () => { this.closeNavigate(); void this.asReaderListChange(() => this.startSessionAndOpenChat()); },
     "choose-project": () => {
       this.startSessionOnProjectChoice = true;
-      this.navigatePage?.showKind("project");
+      this.shownNavigatePage()?.showKind("project");
     },
   };
 
