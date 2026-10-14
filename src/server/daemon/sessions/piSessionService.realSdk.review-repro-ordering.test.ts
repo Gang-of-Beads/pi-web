@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryCredentialStore, createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { ModelRuntime, SessionManager, SettingsManager, createAgentSession } from "@earendil-works/pi-coding-agent";
 import { PiSessionService, type PiSessionRuntime } from "./piSessionService.js";
+import { refusalKind } from "./promptHandoff.js";
 import { CapturingSessionEventHub, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
 
 /**
@@ -64,29 +65,32 @@ async function photo() {
 
 /**
  * Pinned SDK behaviour the daemon's inbox works around: the SDK refuses a second prompt handed
- * to a session whose first run has not passed preflight, and a refused concurrent prompt clears
- * `isStreaming` mid-run. These stay `it.fails` on purpose - they fail as long as the SDK behaves
- * this way, and an upgrade that changes it turns them red so the workaround gets re-examined.
+ * to a session whose first run has not passed preflight, with a message the inbox reads as a
+ * transient refusal, and that refusal clears `isStreaming` mid-run. Each test asserts what the
+ * SDK does today, so an upgrade that changes it, or breaks this harness, turns it red and the
+ * workaround gets re-examined. They were `it.fails` before, which passed on any failure,
+ * a broken harness included (owner, 2026-10-14).
  */
 describe("SDK behaviour the daemon works around", () => {
-  it.fails("S1: two prompts handed to an idle session with no delivery kind are both consumed", async () => {
+  it("S1: a second prompt handed to an idle session before the first passes preflight is refused as transient", async () => {
     const { session, consumed } = await realSession(200);
     const outcomes: string[] = [];
-    const first = session.prompt("A first").then(() => outcomes.push("A ok"), (error: unknown) => outcomes.push(`A refused: ${String(error)}`));
+    let refusal: unknown;
+    const first = session.prompt("A first").then(() => outcomes.push("A ok"), () => outcomes.push("A refused"));
     await Promise.resolve();
-    const second = session.prompt("B second").then(() => outcomes.push("B ok"), (error: unknown) => outcomes.push(`B refused: ${String(error)}`));
+    const second = session.prompt("B second").then(() => outcomes.push("B ok"), (error: unknown) => { refusal = error; outcomes.push("B refused"); });
     await Promise.all([first, second]);
-    expect({ consumed, outcomes }).toEqual({ consumed: ["A first", "B second"], outcomes: ["A ok", "B ok"] });
+    expect({ consumed, outcomes, refusal: refusalKind(String(refusal)) }).toEqual({ consumed: ["A first"], outcomes: ["B refused", "A ok"], refusal: "transient" });
   });
 
-  it.fails("S2: isStreaming stays true while a run streams, even after a refused concurrent prompt", async () => {
+  it("S2: a refused concurrent prompt clears isStreaming while the first run still streams", async () => {
     const { session } = await realSession(200);
     const first = session.prompt("A first");
     await Promise.resolve();
     await session.prompt("B second").catch(() => undefined);
     const midRun = { isStreaming: session.isStreaming };
     await first;
-    expect(midRun).toEqual({ isStreaming: true });
+    expect(midRun).toEqual({ isStreaming: false });
   });
 });
 
