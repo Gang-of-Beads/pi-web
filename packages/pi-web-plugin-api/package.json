@@ -1,6 +1,6 @@
 {
   "name": "@gang-of-beads/pi-web-plugin-api",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Lightweight PI WEB browser and server plugin contracts, with TypeScript declarations and public runtime helpers.",
   "license": "MIT",
   "author": "Gang of Beads",

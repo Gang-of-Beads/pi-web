@@ -1,5 +1,5 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { FileSuggestion, ForegroundToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection } from "./shared/pluginApiTypes.js";
+import type { FileSuggestion, ForegroundToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 
@@ -969,7 +969,7 @@ export interface WorkspaceLabelContribution {
 }
 
 export type ThemeColorScheme = "dark" | "light";
-export type ThemeTokens = Record<LegacyThemeToken, string> & Partial<Record<SemanticSurfaceToken | ForegroundToken, string>>;
+export type ThemeTokens = Record<LegacyThemeToken, string> & Partial<Record<SemanticSurfaceToken | ForegroundToken | ShapeTypographyToken, string>>;
 
 export interface ThemeContribution {
   id: LocalContributionId;
