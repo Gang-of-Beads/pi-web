@@ -1,5 +1,13 @@
 # @gang-of-beads/pi-web
 
+## 2.202610.6
+
+### Patch Changes
+
+- 3915eb8: Machines on the Navigate page have the same ⋯ menu as sessions and projects: switch to the machine, rename it, or remove it (any machine but this one), with the confirmation Settings → Machines shows. Before, a machine could only be renamed or removed in Settings.
+- cd9de8c: Remove the "pi-web update available" banner and the git-checkout self-update behind it, which only worked for one maintainer's setup. A machine updates from the Updates page or through a configured update command; a git checkout updates by pulling and restarting. Installed services no longer record `PI_WEB_UPDATE_REPO`.
+- The documentation is Markdown in the repository and the npm package: installation, FAQ, remote access, machines and configuration, the plugin docs split into pages for users, pi extension authors, plugin authors (a guide, an API reference and the conventions a plugin follows), and an architecture overview, with CONTRIBUTING and SECURITY guides. The HTML docs site is gone, and the docs no longer claim a plugin toggle needs a reload or restart when it applies at once.
+
 ## 2.202610.5
 
 ### Patch Changes
