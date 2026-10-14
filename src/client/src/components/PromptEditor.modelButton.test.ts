@@ -48,7 +48,7 @@ describe("the model button", () => {
 
     expect(button.querySelector(".select-model-provider")?.textContent).toBe("acme-gateway/");
     expect(button.querySelector(".select-model-id")?.textContent).toBe("claude-opus-5");
-    expect(button.textContent).toBe("acme-gateway/claude-opus-5");
+    expect(button.querySelector(".select-model-visible-label")?.textContent).toBe("acme-gateway/claude-opus-5");
   });
 
   // Truncation hides characters, so the whole name stays reachable on hover.

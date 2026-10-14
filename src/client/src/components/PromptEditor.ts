@@ -2,9 +2,10 @@ import type { EditorView } from "@codemirror/view";
 import { renderCrossIcon, renderUpIcon, uiIconStyle } from "./uiIcons.js";
 import * as composerEditor from "./composerEditorSetup";
 import { keyBelongsToInputMethod } from "./keyboardEventTarget";
+import { ComposerModelLabelController, minimumReadableProviderPrefix } from "./composerModelLabelController";
 
 type ComposerEditorModule = typeof composerEditor;
-import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues } from "lit";
+import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues, type TemplateResult } from "lit";
 import { deliveryWords } from "../deliveryWords";
 import { joinTakenBack } from "../composerTakeBack";
 import { isShellInput } from "../inputModes";
@@ -90,10 +91,17 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .compact-status { display: flex; min-width: 0; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); flex: 1 1 0; }
   .compact-status > button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .select-model { max-width: min(42vw, 320px); min-height: var(--pi-control-height-comfort); display: inline-flex; align-items: center; box-sizing: border-box; }
-  .select-model-label { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; overflow: hidden; }
-  /* Separate boxes so the provider gives way first and the model id survives. */
-  .select-model-provider { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .select-model-id { flex: 0 0 auto; white-space: nowrap; }
+  .select-model-label { position: relative; flex: 1 1 auto; min-width: 0; display: inline-grid; grid-template-columns: minmax(0, 1fr); align-items: center; overflow: hidden; }
+  .select-model-natural, .select-model-visible-label { grid-area: 1 / 1; min-width: 0; }
+  .select-model-natural, .select-model-minimum-label, .select-model-visible-label { display: inline-flex; align-items: center; white-space: nowrap; }
+  .select-model-natural { visibility: hidden; justify-self: start; width: max-content; }
+  .select-model-minimum-label { position: absolute; top: 0; left: 0; width: max-content; visibility: hidden; }
+  .select-model-visible-label { overflow: hidden; }
+  .select-model-provider { flex: 0 0 auto; display: inline-flex; white-space: nowrap; }
+  .select-model-provider-name { flex: 0 0 auto; white-space: nowrap; }
+  .select-model-separator, .select-model-id { flex: 0 0 auto; white-space: nowrap; }
+  .select-model-label:not([data-mode="provider"]) .select-model-visible-label .select-model-provider { display: none; }
+  .select-model-label:not([data-mode="provider"]) .select-model-visible-label .select-model-id { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .icon-button { position: relative; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); box-sizing: border-box; padding: 0; }
   .icon-button .prompt-action-icon, .icon-button .prompt-thinking-gauge { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .icon-button .prompt-action-icon-filled { fill: currentColor; stroke: none; }
@@ -247,6 +255,10 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
 
   `;
 
+function renderModelLabelText(provider: string, model: string): TemplateResult {
+  return html`${provider === "" ? nothing : html`<span class="select-model-provider"><span class="select-model-provider-name">${provider}</span><span class="select-model-separator">/</span></span>`}<span class="select-model-id">${model}</span>`;
+}
+
 type PendingAttachment = CapturedAttachment & { id: string };
 
 @customElement("prompt-editor")
@@ -291,6 +303,7 @@ export class PromptEditor extends LitElement {
   @query(".markdown-editor") private editorHost?: HTMLDivElement;
   @query(".attachment-input") private attachmentInput?: HTMLInputElement;
   @query("dialog.attachment-zoom") private attachmentZoomDialog?: HTMLDialogElement;
+  private readonly modelLabel = new ComposerModelLabelController(this, () => this.renderRoot.querySelector<HTMLElement>(".select-model-label"));
   // `draft` is the live document text but is intentionally NOT reactive: it
   // changes on every keystroke and the visible text is owned by CodeMirror, not
   // by Lit's render. Re-rendering the surrounding template on each keystroke is
@@ -580,10 +593,12 @@ export class PromptEditor extends LitElement {
     const status = this.status;
     if (status === undefined) return null;
     const model = status.model?.id ?? "no model";
-    const provider = status.model?.provider !== undefined && status.model.provider !== "" ? `${status.model.provider}/` : "";
+    const provider = status.model?.provider ?? "";
+    const prefix = provider === "" ? "" : `${provider}/`;
+    const minimumProvider = minimumReadableProviderPrefix(provider);
     return html`
       <div class="compact-status" aria-label="Session status">
-        <button class="select-model" title=${`Select model: ${provider}${model}`} @click=${() => this.onSelectModel?.()}><span class="select-model-label">${provider === "" ? null : html`<span class="select-model-provider">${provider}</span>`}<span class="select-model-id">${model}</span></span></button>
+        <button class="select-model" title=${`Select model: ${prefix}${model}`} aria-label=${`${prefix}${model}`} @click=${() => this.onSelectModel?.()}><span class="select-model-label" data-mode=${this.modelLabel.mode}><span class="select-model-natural" aria-hidden="true">${renderModelLabelText(provider, model)}</span><span class="select-model-minimum-label" aria-hidden="true">${minimumProvider === "" ? nothing : renderModelLabelText(minimumProvider, model)}</span><span class="select-model-visible-label">${renderModelLabelText(this.modelLabel.providerCaption(provider, model), model)}</span></span></button>
         <button class="select-thinking icon-button" title=${`Thinking level: ${thinkingLevelLabel(status.thinkingLevel)}`} aria-label=${`Thinking level: ${thinkingLevelLabel(status.thinkingLevel)}`} @click=${() => this.onSelectThinking?.()}>${renderThinkingGauge(thinkingGauge(status.thinkingLevel, this.availableThinkingLevels))}</button>
       </div>
     `;
