@@ -20,9 +20,18 @@ PI WEB runs coding agents, terminals and file operations on the machine it is in
 - **File access.** The file explorer and absolute `@` path completions reach a workspace and the roots listed in `pathAccess.allowedPaths`; agents and terminals run with the full rights of the service user.
 - **Plugins and pi extensions are trusted code.** Browser plugins run as page code with the page's access. Server plugins run inside the session daemon or the web process. pi extensions run inside the session daemon. Install only plugins and packages you trust.
 
+## Known limitations
+
+These follow from the model above and are documented rather than defended against today:
+
+- **WebSocket upgrades are not origin-checked.** Browsers send no `Sec-Fetch-Site` on a WebSocket handshake, so a page from another site that the browser lets reach PI WEB can open its session and terminal sockets. Keep PI WEB off networks such pages can reach, as for any unauthenticated service.
+- **The `Host` header is not checked.** The origin gate trusts the browser's `Sec-Fetch-Site` rather than `Host` (a reverse proxy may rewrite `Host`), so a DNS-rebinding page that gets the browser to treat PI WEB as its own origin passes as the machine's own page.
+- **Old browsers** that send `Origin` without `Sec-Fetch-Site` are not classified and keep the behaviour PI WEB had before the gate.
+- **Development mode listens on every interface.** `pnpm run dev` and `pi-web install --dev` serve the UI and its `/api` proxy on `0.0.0.0:8505`; run them only on a network you trust.
+
 ## In scope
 
-- Bypassing the browser origin gate or the approval flow.
+- Bypassing the browser origin gate or the approval flow, beyond the known limitations above.
 - Reading or writing files outside a workspace and `pathAccess.allowedPaths` through PI WEB's own file routes.
 - Leaking a remote machine's token or headers to a browser or to another machine.
 - Anything that lets a web page or another machine act on a PI WEB instance it could not otherwise reach.

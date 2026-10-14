@@ -10,8 +10,8 @@ if [ -n "$dirty" ]; then
   exit 1
 fi
 
-# Tests run locally before a change reaches main, and in CI only on a release
-# tag (owner, 2026-10-03). A push to main therefore runs the full verify here.
+# The full verify runs here before a push to main, as it does in CI for pull
+# requests and pushes to main, so main is never pushed red.
 pushes_main=false
 while read -r _local_ref _local_sha remote_ref _remote_sha; do
   if [ "$remote_ref" = "refs/heads/main" ]; then pushes_main=true; fi

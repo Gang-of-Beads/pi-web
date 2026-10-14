@@ -8,9 +8,9 @@ afterEach(() => {
   localStorage.clear();
 });
 
-async function mountDialog(sessionName: string): Promise<SessionRenameDialog> {
+async function mountDialog(currentName: string): Promise<SessionRenameDialog> {
   const dialog = new SessionRenameDialog();
-  dialog.sessionName = sessionName;
+  dialog.currentName = currentName;
   document.body.append(dialog);
   await dialog.updateComplete;
   return dialog;

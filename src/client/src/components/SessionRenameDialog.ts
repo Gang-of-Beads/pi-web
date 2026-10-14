@@ -24,7 +24,7 @@ const RENAME_WORDS: Readonly<Record<RenameSubject, { readonly title: string; rea
  */
 @customElement("session-rename-dialog")
 export class SessionRenameDialog extends LitElement {
-  @property({ attribute: false }) sessionName = "";
+  @property({ attribute: false }) currentName = "";
   @property({ attribute: false }) subject: RenameSubject = "session";
   @property({ attribute: false }) onSubmit?: (name: string) => void | Promise<void>;
   @property({ attribute: false }) onCancel?: () => void;
@@ -52,7 +52,7 @@ export class SessionRenameDialog extends LitElement {
   `, barKeyStyles];
 
   protected override willUpdate(changed: PropertyValues<this>): void {
-    if (changed.has("sessionName")) this.draft = this.sessionName;
+    if (changed.has("currentName")) this.draft = this.currentName;
   }
 
   protected override firstUpdated(): void {
@@ -71,7 +71,7 @@ export class SessionRenameDialog extends LitElement {
 
   private async submit(): Promise<void> {
     const next = this.draft.trim();
-    if (next === "" || next === this.sessionName || this.submitting) return;
+    if (next === "" || next === this.currentName || this.submitting) return;
     this.submitting = true;
     try {
       await this.onSubmit?.(next);
@@ -82,7 +82,7 @@ export class SessionRenameDialog extends LitElement {
 
   override render(): TemplateResult {
     const trimmed = this.draft.trim();
-    const canSubmit = trimmed !== "" && trimmed !== this.sessionName && !this.submitting;
+    const canSubmit = trimmed !== "" && trimmed !== this.currentName && !this.submitting;
     const words = RENAME_WORDS[this.subject];
     return html`
       <modal-surface

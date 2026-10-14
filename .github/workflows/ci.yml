@@ -1,7 +1,7 @@
 name: CI
 
 # Every pull request and every push to main runs the full verify (typecheck,
-# lint, Knip and the Vitest suite) on each Node line the package supports:
+# lint, Knip and the Vitest suite) and the production build on each Node line the package supports:
 # 22 is the `engines` floor's major, 24 is what the release jobs use.
 on:
   pull_request:
@@ -42,3 +42,6 @@ jobs:
 
       - name: Verify
         run: pnpm run verify
+
+      - name: Build
+        run: pnpm run build

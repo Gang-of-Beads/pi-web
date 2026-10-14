@@ -54,8 +54,8 @@ If a run fails for a transient reason, re-run its failed jobs. To re-run the who
 
 `.github/workflows/publish-plugin-api.yml` verifies, builds the declarations, checks that the tag matches the package version, publishes under the `alpha` dist-tag, and then attaches the tarball to a GitHub Release.
 
-The declarations a plugin compiles against are pinned by `test-fixtures/plugin-api-baseline/`. A change to the public plugin API must refresh that baseline in the same commit (`node scripts/refresh-plugin-api-baseline.mjs`); otherwise the release smoke test fails.
+The declarations a plugin compiles against are pinned by `test-fixtures/plugin-api-baseline/`. A change to the public plugin API must refresh that baseline in the same commit (`node scripts/refresh-plugin-api-baseline.mjs`); otherwise `pnpm run verify` and the release smoke test fails.
 
 ## Plugins in their own repositories
 
-The plugins and pi packages the project maintains outside this repository (listed in the README) are released from their own repositories, by their own tags; each repository's README says how.
+The plugins and pi packages the project maintains outside this repository (listed in [docs/plugins.md](plugins.md#packages)) are released from their own repositories, by their own tags; each repository's README says how.

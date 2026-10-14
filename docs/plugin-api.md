@@ -31,7 +31,7 @@ The declarations ship in the PI WEB npm package. Depend on it as a development d
 { "devDependencies": { "@gang-of-beads/pi-web": "^2.202610.5" } }
 ```
 
-`@gang-of-beads/pi-web` depends on `node-pty`, a native module a plugin does not need. Install with scripts disabled (`npm install --ignore-scripts`, or `ignore-scripts=true` in the plugin's `.npmrc`).
+`@gang-of-beads/pi-web` depends on `node-pty`, a native module a plugin does not need. Install with scripts disabled (`npm install --ignore-scripts`, or `ignore-scripts=true` in the plugin's `.npmrc`). A types-only package, `@gang-of-beads/pi-web-plugin-api`, is prepared in this repository (`packages/pi-web-plugin-api`) but not published yet; until it is, depend on `@gang-of-beads/pi-web` as above, as the reference plugins do.
 
 | Entrypoint | For | Runtime values it exports |
 |---|---|---|
@@ -220,7 +220,7 @@ interface PluginAction {
 
 - `enabled` is evaluated when the palette asks for actions. A disabled action with a `disabledReason` stays visible with that explanation.
 - `run` receives the [runtime context](#runtime-context).
-- `shortcut` is a default. The reader can rebind or clear it in **Settings → Shortcuts**, where their key wins. A shortcut must start with Ctrl/⌘ (`mod`) or Alt; plain keys are refused so typing is never captured. Sequences are allowed, such as `mod+g p`. Avoid keys PI WEB uses (`mod+shift+p` opens the action palette). A keybinding needs an action: there are no standalone plugin key handlers.
+- `shortcut` is a default. The reader can rebind or clear it in **Settings → Keyboard**, where their key wins. A shortcut must start with Ctrl/⌘ (`mod`) or Alt; plain keys are refused so typing is never captured. Sequences are allowed, such as `mod+g p`. Avoid keys PI WEB uses (`mod+shift+p` opens the action palette). A keybinding needs an action: there are no standalone plugin key handlers.
 - `shortcutAliases` lists former qualified action ids whose saved shortcut preference should still apply to this action.
 - **Host-internal, unstable:** PI WEB runs the active action with local id `add-project` from its Add project buttons, and the one with id `add-machine` from Add machine; the bundled Workspaces and Machines plugins contribute them.
 

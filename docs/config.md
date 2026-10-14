@@ -42,7 +42,7 @@ Process restarts depend on the key:
 - `uploads.defaultFolder`: applies to newly opened Files upload dialogs and new direct drag/drop batches after config/workspace refresh.
 - `logging`: the web/API process and the session daemon re-read it within a minute; no restart.
 - `updateCommand`: the Updates page uses it from its next status check; no restart.
-- `plugins`: a browser-only change saved in **Settings → PI WEB plugins** applies when Settings closes: the page reloads itself. A change made in the config file by hand applies after a browser-tab reload. Any enablement, settings, package-source, or package-revision change affecting a `serverModule` requires a manual session-daemon restart, then a browser reload for its paired UI.
+- `plugins`: a toggle saved in **Settings → PI WEB plugins** applies at once, without a restart or reload, except for the cases [Turn plugins on and off](plugins.md#turn-plugins-on-and-off) lists (a workspace-provider or machine-registry plugin, a changed server `settings` object, a new package revision, and hand edits of this file, which wait for the next page load or session-daemon start).
 - `serverPlugins.safeStart`: persistent offline recovery state applied before server-plugin discovery/import on the next sessiond start; use the `pi-web plugins safe-start ...` CLI rather than hand-editing it.
 - Pi package install/remove/update: not a PI WEB config key; after a mutation, type `/reload` in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. For a PI WEB package with `serverModule`, manually [restart the session daemon](install.md#restart-the-session-daemon), then reload the browser. If a global Pi extension adds or removes a model provider, or changes a provider's connection settings, the same manual sessiond restart is required; `/reload` cannot change either startup snapshot. A known Pi model provider refreshing only its own model list is applied without a restart. See [Pi extension provider baseline](#pi-extension-provider-baseline).
 - `shortcuts`: saved settings apply in the browser after config refresh/save.
@@ -158,7 +158,7 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | Extension dialog auto-cancel timeout | `extensionDialogsTimeoutMs` | — | Global/session daemon | Not supported locally | Restart session daemon on that machine |
 | Session environment facts | `environmentFacts` | `PI_WEB_ENVIRONMENT_FACTS` | Global/session daemon | Not supported locally | Restart session daemon on that machine |
 | Load pi's built-in extensions (codemode, tool search, MCP), on by default; their tools stay off until pi's `defaultTools` turns them on | `piBuiltInExtensions` | — | Global/session daemon | Not supported locally | Restart session daemon on that machine |
-| PI WEB plugin desired enablement/settings | `plugins.<id>.enabled`, `plugins.<id>.settings` | — | Global + sessiond startup snapshot for server entries | Not core local config; plugins may read their own project files | Browser-only: reload tab. Server-backed: manually restart sessiond, then reload tab |
+| PI WEB plugin desired enablement/settings | `plugins.<id>.enabled`, `plugins.<id>.settings` | — | Global + sessiond startup snapshot for server entries | Not core local config; plugins may read their own project files | A Settings toggle applies at once, with the exceptions in [Turn plugins on and off](plugins.md#turn-plugins-on-and-off) |
 | Server-plugin safe start | `serverPlugins.safeStart` | — | Global/offline recovery | Not supported locally; manage with `pi-web plugins safe-start ...` | Applied before discovery/import on next sessiond start |
 | Keyboard shortcuts | `shortcuts.<actionId>` | — | Global | Not supported locally | Applies after settings save/config refresh |
 | Project config version | `version` | — | Project | Project-local only; must be `1` when present | Next project-config read |
@@ -427,11 +427,11 @@ The `plugins` key controls desired enablement and JSON settings for PI WEB brows
 }
 ```
 
-Plugins are enabled by default. `plugins.<id>.enabled: false` hides a browser-only entry on the next page load. For a server-backed entry, desired disablement takes effect on the next sessiond start; its paired browser entry continues to follow the still-active backend until that restart. Server settings are copied into sessiond's startup snapshot, and diagnostics expose only a fingerprint, never the values.
+Plugins are enabled by default. `plugins.<id>.enabled: false` turns one off; a toggle saved in Settings applies at once, with the exceptions in [Turn plugins on and off](plugins.md#turn-plugins-on-and-off). Server settings are copied into sessiond's startup snapshot, and diagnostics expose only a fingerprint, never the values.
 
 #### Desired versus active plugin state
 
-Sessiond is the single workspace authority and resolves one immutable server-plugin/provider snapshot when it starts. Saving `plugins` config or replacing package files changes **desired** state but does not hot-reload, unload, or replace active server code. The old provider and its paired browser entry can remain active until a restart after desired disablement. A paired browser entry is withheld when desired source, scope, settings fingerprint, browser revision, or server revision differs from the active snapshot, or when active health/lifecycle compatibility is unsuitable.
+Sessiond is the single workspace authority. A Settings toggle activates or stops a plugin's server half in the running daemon and tells open pages, so most changes apply live. What cannot change in a running daemon waits for its next start and shows as **Restart required**: a plugin that supplies a workspace provider or the machine registry, a changed server `settings` object, a new package revision, and hand edits of the config file. A paired browser entry is withheld while its desired source, scope, settings fingerprint or revision differs from the active one, or while the active plugin is unhealthy or incompatible.
 
 **Settings → PI WEB plugins** shows desired and active state separately, including active, failed, incompatible, disabled, not-active/missing, unknown, conflict, stale-revision, health, safe-mode, and restart-required state. Desired config remains editable when sessiond is unavailable as long as the selected machine's config endpoint works, but PI WEB reports active state as unavailable rather than constructing a second workspace authority.
 
@@ -443,8 +443,7 @@ Apply changes in this order:
 
 1. Install or update the package on the target machine.
 2. Save desired enablement/settings.
-3. For a browser-only plugin, close Settings: the page reloads itself to load or unload it. After editing the config file by hand, reload the browser tab.
-4. For a server-backed plugin, manually restart the target session daemon, wait for it, then reload the browser tab.
+3. Most toggles apply at once. If the plugin's card says **Restart required**, restart the target session daemon, wait for it, then reload the browser tab. After editing the config file by hand, reload the tab, and restart the daemon for a plugin with a server half.
 
 > **Manual restart warning:** see [Restart the session daemon](install.md#restart-the-session-daemon) for the command on each install. Restarting sessiond may interrupt active sessions and runtime ownership. A browser reload, web/UI autoreload, restarting only web/API, and Pi's `/reload` do not activate server-plugin state.
 

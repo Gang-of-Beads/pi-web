@@ -175,14 +175,14 @@ describe("the app row carries no button", () => {
 
   it("draws a notice that heals by itself in the sync colour, without any button", () => {
     const host = document.createElement("div");
-    render(errorBanner("Trying to sync with build-box…", undefined, NAMES, true), host);
+    render(errorBanner("Trying to sync with edge-node…", undefined, NAMES, true), host);
 
     expect({
       transient: host.querySelector(".error.transient") !== null,
       role: host.querySelector(".error")?.getAttribute("role"),
       text: host.querySelector(".error-text")?.textContent,
       button: host.querySelector("button"),
-    }).toEqual({ transient: true, role: "status", text: "Trying to sync with build-box…", button: null });
+    }).toEqual({ transient: true, role: "status", text: "Trying to sync with edge-node…", button: null });
   });
 });
 

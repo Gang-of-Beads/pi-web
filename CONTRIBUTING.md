@@ -11,7 +11,8 @@ Open an issue before working on anything larger than a small fix. User-visible b
 - Node.js 22.19.0 or newer (`engines` in `package.json`)
 - pnpm 12.8.1 (`packageManager` in `package.json`)
 - git
-- Pi Coding Agent `>=0.84.0`, configured for your user, to run sessions
+- Pi Coding Agent 1.1.0 or newer, configured for your user, to run sessions
+- A C/C++ toolchain and Python 3 for the node-pty build during `pnpm install` (`nix develop` provides them)
 
 ## Setup
 
@@ -29,9 +30,9 @@ Installing runs the `prepare` script, which points git at the repository's hooks
 pnpm run dev
 ```
 
-This starts the session daemon, the web/API process and the Vite UI. Open `http://localhost:8505`; the UI proxies `/api` to the web/API port from your PI WEB config (8504 by default). To run the pieces separately, use `pnpm run dev:sessiond`, `pnpm run dev:web` and `pnpm run dev:client`.
+This starts the session daemon, the web/API process and the Vite UI. The UI listens on every interface (`0.0.0.0:8505`) and has no authentication, so do this only on a network you trust. Open `http://localhost:8505`; the UI proxies `/api` to the web/API port from your PI WEB config (8504 by default). To run the pieces separately, use `pnpm run dev:sessiond`, `pnpm run dev:web` and `pnpm run dev:client`.
 
-If you already run PI WEB on this machine, keep the development copy apart from it: set `PI_WEB_DATA_DIR` to another directory for every process you start, and `PI_WEB_PORT` to another port for the web/API process and the UI (the UI itself always listens on 8505). `scripts/stack-8505.sh up` builds and runs an isolated stack on port 8505 with its own data dir and never touches processes it did not start.
+If you already run PI WEB on this machine, keep the development copy apart from it: set `PI_WEB_DATA_DIR` to another directory for every process you start, and `PI_WEB_PORT` to another port for the web/API process and the UI (the UI itself always listens on 8505). `scripts/stack-8505.sh up` builds and runs an isolated stack on port 8505 with its own data dir and never touches processes it did not start; it needs bash, tmux, lsof and curl, takes the same port as `pnpm run dev` (run one or the other), and keeps its config and pi agent directory apart from yours when you set `PI_WEB_8505_CONFIG` and `PI_WEB_8505_AGENT_DIR`. Run one test file with `pnpm exec vitest run path/to/file.test.ts`.
 
 `pnpm run dev:sessiond` restarts the session daemon whenever a file it loads changes, which stops the sessions it runs. To keep sessions alive while you edit, run `pnpm run start:sessiond` instead, which does not reload, and restart it by hand after a change to `src/server/sessiond.ts`, to anything under `src/server/daemon/` or `src/server/shared/`, or to the daemon protocol. The web/API process and the UI reload on their own.
 
@@ -93,7 +94,7 @@ A maintainer reviews every pull request before it merges.
 
 ## Plugins
 
-Plugins outside the bundled set live in their own repositories; the README lists the ones the project maintains. Start with [docs/plugins.md](docs/plugins.md) for how plugins are installed and enabled, and [docs/plugin-authoring.md](docs/plugin-authoring.md) to write one.
+Plugins outside the bundled set live in their own repositories; [docs/plugins.md](docs/plugins.md#packages) lists the ones the project maintains. Start with [docs/plugins.md](docs/plugins.md) for how plugins are installed and enabled, and [docs/plugin-authoring.md](docs/plugin-authoring.md) to write one.
 
 ## Maintainer tooling
 

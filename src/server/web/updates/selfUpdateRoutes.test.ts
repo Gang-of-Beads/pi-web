@@ -11,7 +11,7 @@ vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
   const fakeChild = {
     unref: () => undefined,
-    once: (_event: string, callback: () => void) => { callback(); },
+    once: (event: string, callback: () => void) => { if (event === "spawn") callback(); },
   };
   return { ...actual, spawn: vi.fn(() => fakeChild) };
 });

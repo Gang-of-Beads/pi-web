@@ -249,12 +249,12 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .deprecation-notice .deprecation-notice-text { margin: 0; overflow-wrap: anywhere; }
   .deprecation-notice .deprecation-notice-text + .deprecation-notice-text { margin-top: var(--pi-space-2); }
 
-  .self-update-banner { display: flex; align-items: center; gap: var(--pi-space-4); flex-wrap: wrap; box-sizing: border-box; margin: 0 var(--pi-space-6) var(--pi-space-5); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-lg); background: var(--pi-warning-surface); color: var(--pi-warning); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); }
+  .reload-banner { display: flex; align-items: center; gap: var(--pi-space-4); flex-wrap: wrap; box-sizing: border-box; margin: 0 var(--pi-space-6) var(--pi-space-5); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-lg); background: var(--pi-warning-surface); color: var(--pi-warning); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); }
   /* The banner sits in the same column as the transcript controls, which are
      all 44px on a finger; a 32px row here was a second touch floor. */
-  .self-update-banner button { box-sizing: border-box; min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; padding: var(--pi-space-2) var(--pi-space-5); }
-  @media (pointer: coarse) { .self-update-banner button { min-height: var(--pi-control-height-touch); } }
-  @media (hover: hover) { .self-update-banner button:hover { border-color: var(--pi-accent); } }
+  .reload-banner button { box-sizing: border-box; min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; padding: var(--pi-space-2) var(--pi-space-5); }
+  @media (pointer: coarse) { .reload-banner button { min-height: var(--pi-control-height-touch); } }
+  @media (hover: hover) { .reload-banner button:hover { border-color: var(--pi-accent); } }
 `;
 
 
@@ -1075,9 +1075,8 @@ export class PiWebApp extends LitElement {
     });
   }
 
-  /** Render the "Reload to get the new version" strip above the session view. */
   /**
-   * The tab keeps running the bundle it loaded, however many times the server
+   * The "Reload to get the new version" strip above the session view. The tab keeps running the bundle it loaded, however many times the server
    * underneath is upgraded; every client-side fix shipped in between is
    * invisible here, and gets reported as still broken. The server states its
    * version; a mismatch is an offer to reload - the reader's move, never an
@@ -1086,7 +1085,7 @@ export class PiWebApp extends LitElement {
   private renderStaleClientBanner(): TemplateResult | null {
     if (this.staleClientServerVersion === undefined) return null;
     return html`
-      <div class="self-update-banner" role="status" aria-live="polite">
+      <div class="reload-banner" role="status" aria-live="polite">
         <span>The server was updated to ${this.staleClientServerVersion}; this page is running ${__PI_WEB_CLIENT_VERSION__}.</span>
         <button type="button" @click=${() => { window.location.reload(); }}>Reload</button>
       </div>`;
@@ -3200,21 +3199,22 @@ export class PiWebApp extends LitElement {
       ?? this.quickSwitcherPinnedElsewhere.find((entry) => entry.id === id);
   }
 
+  /** A machine row's own actions; Open is the shared one. */
+  private readonly machineRowActions: Partial<Record<NavigateRowActionId, (machine: Machine) => void | Promise<void>>> = {
+    rename: (machine) => { this.renamingMachine = machine; },
+    "remove-machine": (machine) => this.removeMachine(machine),
+  };
+
   /**
    * The row menu names an action; the shell performs it against the row's own
    * scope. A row acts on the thing it names, never on the current selection.
    */
-  /** A machine row's own actions; Open is the shared one. */
-  private readonly machineRowActions: Partial<Record<NavigateRowActionId, (machine: Machine) => void>> = {
-    rename: (machine) => { this.renamingMachine = machine; },
-    "remove-machine": (machine) => { void this.removeMachine(machine); },
-  };
 
   private async runNavigateRowAction(kind: NavigateRowKind, id: string, action: NavigateRowActionId): Promise<void> {
     const machineAction = kind === "machine" ? this.machineRowActions[action] : undefined;
     if (machineAction !== undefined) {
       const machine = this.state.machines.find((entry) => entry.id === id);
-      if (machine !== undefined) machineAction(machine);
+      if (machine !== undefined) await machineAction(machine);
       return;
     }
     if (action === "open") {
@@ -5532,12 +5532,12 @@ export class PiWebApp extends LitElement {
       ></context-switcher-sheet>` : null}
       ${this.renamingMachine === undefined ? null : html`<session-rename-dialog
         .subject=${"machine"}
-        .sessionName=${this.renamingMachine.name}
+        .currentName=${this.renamingMachine.name}
         .onSubmit=${async (name: string) => { const machine = this.renamingMachine; this.renamingMachine = undefined; if (machine !== undefined) await this.renameMachine(machine, name); }}
         .onCancel=${() => { this.renamingMachine = undefined; }}
       ></session-rename-dialog>`}
       ${this.renameFromBar === undefined ? null : html`<session-rename-dialog
-        .sessionName=${this.renameFromBar.session.name ?? ""}
+        .currentName=${this.renameFromBar.session.name ?? ""}
         .onSubmit=${(name: string) => { const target = this.renameFromBar; this.renameFromBar = undefined; if (target !== undefined) void this.renameListedSession(target.session, target.machineId, name); }}
         .onCancel=${() => { this.renameFromBar = undefined; }}
       ></session-rename-dialog>`}

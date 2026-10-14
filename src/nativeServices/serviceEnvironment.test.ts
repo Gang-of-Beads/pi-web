@@ -12,6 +12,7 @@ describe("deploymentServiceEnvironment", () => {
   });
 
   it("omits unset and blank values so an empty assignment cannot shadow a resolvable one", () => {
+    expect(deploymentServiceEnvironment({ PI_WEB_UPDATE_COMMAND: "" })).toEqual({});
     expect(deploymentServiceEnvironment({ PI_WEB_UPDATE_COMMAND: "   " })).toEqual({});
     expect(deploymentServiceEnvironment({})).toEqual({});
   });

@@ -8,9 +8,15 @@ import { loadPiWebConfig } from "../../../config.js";
  *
  * Only the installer or the reader knows how a machine updates (a nix flake, an
  * installer script, a custom pipeline), so this route runs the configured
- * `updateCommand` and nothing else. A machine without one answers with a clear
- * refusal; a git checkout updates by pulling and restarting. Applying restarts
- * the web process and the session daemon, so the command runs detached.
+ * `updateCommand` and nothing else, and a machine without one answers with a
+ * clear refusal (a git checkout is updated by whoever runs it: pull and restart,
+ * docs/install.md). Applying restarts the web process and the session daemon, so
+ * the command runs detached: through systemd-run on Linux, since the update
+ * restarts this very process, and as a detached bash child on macOS, which has
+ * no systemd-run and whose update command performs the service cutover itself.
+ * It runs under `bash -lc` so its own PATH expectations hold (a home-manager
+ * switch needs the nix profile on PATH). A command that cannot even be started
+ * is refused, so the caller never reports an update that never ran.
  */
 
 export interface SelfUpdateService {
@@ -32,12 +38,6 @@ export function createSelfUpdateService(logger: { warn: (obj: unknown, msg: stri
     async apply() {
       const command = updateCommand();
       if (command === undefined) throw new Error("no update command configured (set updateCommand in Settings)");
-      // bash -lc so the command's own PATH expectations hold (home-manager
-      // switch needs the nix profile on PATH). On Linux the command runs
-      // detached via systemd-run: the update restarts this very process.
-      // On macOS there is no systemd-run, so fall back to a plain detached
-      // bash child, which survives the web process being recycled (the
-      // update command itself performs the service cutover).
       const detachViaSystemd = process.platform !== "darwin";
       const runner = detachViaSystemd
         ? spawn("systemd-run", ["--user", "--collect", "--unit=pi-web-self-update", "--", "/bin/bash", "-lc", command], {
@@ -46,8 +46,11 @@ export function createSelfUpdateService(logger: { warn: (obj: unknown, msg: stri
           })
         : spawn("/bin/bash", ["-lc", command], { detached: true, stdio: "ignore" });
       runner.unref();
-      await new Promise<void>((resolve) => {
-        runner.once("error", (error) => { logger?.warn({ err: error }, `${detachViaSystemd ? "systemd-run" : "bash"} failed to start command self-update`); resolve(); });
+      await new Promise<void>((resolve, reject) => {
+        runner.once("error", (error) => {
+          logger?.warn({ err: error }, `${detachViaSystemd ? "systemd-run" : "bash"} failed to start command self-update`);
+          reject(new Error(`the update command could not be started: ${error.message}`));
+        });
         runner.once("spawn", () => { resolve(); });
       });
     },

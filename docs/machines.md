@@ -101,7 +101,7 @@ A subscription flow's loopback redirect address (`http://localhost:<port>/…`) 
 
 The selected machine's session daemon decides its workspaces and active plugins; nothing is rediscovered on the PI WEB you opened. The page loads the machine's browser plugins from that machine (directly for **This browser**, forwarded for **This server**), and plugin requests go back to the same machine, project and workspace.
 
-**Settings → PI WEB plugins** edits the selected machine's desired plugin state and compares it with what that machine's session daemon is running. A browser-only change needs a page reload. A change to a plugin's server entry needs a restart of that machine's session daemon, then a page reload; restarting only a web/API server does not activate it.
+**Settings → PI WEB plugins** edits the selected machine's desired plugin state and compares it with what that machine's session daemon is running. A toggle applies at once on that machine, with the exceptions in [Turn plugins on and off](plugins.md#turn-plugins-on-and-off); a change that waits for a restart needs that machine's session daemon restarted, which restarting only a web/API server does not do.
 
 Run the same PI WEB version on every machine: mixed versions are not supported for plugins. Upgrade the machines together, restart their web/API servers and session daemons, then reload the page. When a machine's plugins are incompatible or unavailable, PI WEB says so instead of running this PI WEB's plugin code in their place.
 

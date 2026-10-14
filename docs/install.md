@@ -158,7 +158,7 @@ On WSL distributions with systemd enabled, `pi-web install` can work.
 
 - `--host` (default `127.0.0.1`) and `--port` (default `8504`) apply only when the install creates the config file. Once it exists, edit `host` and `port` in the config file or in **Settings → General** instead.
 - `--config PATH` uses another global config file (default `$XDG_CONFIG_HOME/pi-web/config.json`, or `~/.config/pi-web/config.json`) and records it in the services as `PI_WEB_CONFIG`.
-- `--dev`, run from a PI WEB checkout, installs the development services instead: a session daemon that runs from the checkout without reloading, and one service for the web/API server and the Vite UI, which reload when the code changes. The UI is then at <http://127.0.0.1:8505>.
+- `--dev`, run from a PI WEB checkout, installs the development services instead: a session daemon that runs from the checkout without reloading, and one service for the web/API server and the Vite UI, which reload when the code changes. The UI is then at <http://127.0.0.1:8505>; it listens on every interface (`0.0.0.0`) without authentication, so use `--dev` only on a network you trust.
 
 ### What `pi-web install` writes
 
