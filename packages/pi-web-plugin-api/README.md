@@ -28,7 +28,7 @@ Bundle runtime imports into each plugin half: PI WEB loads plugin modules as the
 
 ## Compatibility
 
-`0.1.0-alpha.1` contains the declarations shipped by PI WEB `2.202610.6`. Browser plugins declare `apiVersion: 2`; server plugins declare `apiVersion: 1`. The existing `@gang-of-beads/pi-web/plugin-api` and `@gang-of-beads/pi-web/server-plugin-api` entry points remain available.
+`0.1.0-alpha.2` contains the declarations shipped by PI WEB `2.202610.11`, with the shape and typography tokens (`--pi-font-*`, `--pi-radius-*`) accepted in `ThemeTokens`. Browser plugins declare `apiVersion: 2`; server plugins declare `apiVersion: 1`. The existing `@gang-of-beads/pi-web/plugin-api` and `@gang-of-beads/pi-web/server-plugin-api` entry points remain available.
 
 This is an alpha release. Host-internal members marked unstable are not a supported third-party contract.
 
