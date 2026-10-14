@@ -5,10 +5,11 @@ import { extname, join, resolve, sep } from "node:path";
 import type { Plugin } from "vite";
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
-import { effectivePiWebConfig } from "./src/config";
+import { effectivePiWebConfig, piWebTlsConfig } from "./src/config";
 
 const { config } = effectivePiWebConfig();
 const apiPort = config.port ?? 8504;
+const apiOrigin = `${piWebTlsConfig() === undefined ? "http" : "https"}://localhost:${String(apiPort)}`;
 const docsRoot = resolve("docs");
 const docsPrefix = "/site";
 
@@ -123,8 +124,8 @@ export default defineConfig({
     strictPort: true,
     ...(config.allowedHosts === undefined ? {} : { allowedHosts: config.allowedHosts }),
     proxy: {
-      "/api": { target: `http://localhost:${String(apiPort)}`, ws: true },
-      "/pi-web-plugins": { target: `http://localhost:${String(apiPort)}` },
+      "/api": { target: apiOrigin, ws: true, secure: false },
+      "/pi-web-plugins": { target: apiOrigin, secure: false },
     },
   },
 });

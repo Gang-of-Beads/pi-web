@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Agent, fetch as undiciFetch } from "undici";
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliPath = join(packageRoot, "dist", "cli.js");
@@ -68,15 +69,38 @@ function parseFlags(args: string[]): ParsedFlags {
  * that owns it, so this is that machine's server - which the report names, so a
  * fan-out is never mistaken for one started from a different browser's hub.
  */
-function piWebBaseUrl(): string {
+function advertisedBaseUrl(): string | undefined {
   const advertised = process.env["PI_WEB_BASE_URL"];
-  if (advertised !== undefined && advertised !== "") return advertised.replace(/\/$/, "");
+  return advertised !== undefined && advertised !== "" ? advertised.replace(/\/$/, "") : undefined;
+}
+
+function loopbackPort(): string {
   const port = process.env["PI_WEB_PORT"];
-  return `http://127.0.0.1:${port !== undefined && port !== "" ? port : "8504"}`;
+  return port !== undefined && port !== "" ? port : "8504";
+}
+
+let loopbackTls: Agent | undefined;
+
+/**
+ * A request to this machine's server. Without an advertised URL it is the loopback port, in plain
+ * HTTP unless the server serves HTTPS (`tls` in its config), which refuses plain HTTP at the
+ * connection. Then the request is repeated over HTTPS without verifying the certificate: it
+ * names the machine as browsers reach it, not 127.0.0.1, and the request never leaves the machine.
+ */
+async function serverFetch(path: string, request: { method: string; headers: Record<string, string>; body?: string }): Promise<{ ok: boolean; status: number; json(): Promise<unknown> }> {
+  const advertised = advertisedBaseUrl();
+  if (advertised !== undefined) return await fetch(`${advertised}${path}`, request);
+  try {
+    return await fetch(`http://127.0.0.1:${loopbackPort()}${path}`, request);
+  } catch {
+    const dispatcher = loopbackTls ?? new Agent({ connect: { rejectUnauthorized: false } });
+    loopbackTls = dispatcher;
+    return await undiciFetch(`https://127.0.0.1:${loopbackPort()}${path}`, { ...request, dispatcher });
+  }
 }
 
 async function fleetRequest(path: string, init?: { method: string; body: unknown }): Promise<unknown> {
-  const response = await fetch(`${piWebBaseUrl()}${path}`, {
+  const response = await serverFetch(path, {
     method: init?.method ?? "GET",
     headers: { accept: "application/json", ...(init === undefined ? {} : { "content-type": "application/json" }) },
     ...(init === undefined ? {} : { body: JSON.stringify(init.body) }),

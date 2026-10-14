@@ -80,7 +80,7 @@ services:
       - "${PI_WEB_BIND_ADDR:-127.0.0.1}:${PI_WEB_PORT:-8504}:8504"
     volumes: *pi-web-volumes
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8504/api/pi-web/runtime >/dev/null"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8504/api/pi-web/runtime >/dev/null || curl -fsSk https://127.0.0.1:8504/api/pi-web/runtime >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 12

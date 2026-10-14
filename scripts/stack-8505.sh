@@ -258,8 +258,15 @@ assert_started_identity() {
   done
 }
 
+# A web/API with tls configured refuses plain HTTP at the connection (000); it is then asked over
+# HTTPS on the same port, without verifying a certificate that names the machine, not 127.0.0.1.
 http_status() {
-  curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$1" 2>/dev/null || echo 000
+  local code
+  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$1" 2>/dev/null)" || code=000
+  if [ "$code" = "000" ]; then
+    code="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 5 "https://${1#http://}" 2>/dev/null)" || code=000
+  fi
+  echo "$code"
 }
 
 wait_until_ready() {

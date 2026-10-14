@@ -84,6 +84,8 @@ export interface AppDependencies {
   logger?: FastifyServerOptions["logger"];
   /** Maximum accepted HTTP request body size in bytes. */
   bodyLimit?: number;
+  /** The server Fastify listens on; the HTTPS server when `tls` is configured, else Fastify's own HTTP server. */
+  serverFactory?: FastifyServerOptions["serverFactory"];
 }
 
 interface LocalProjectRouteOptions {
@@ -228,7 +230,12 @@ async function withProfileDependency<T>(reply: FastifyReply, operation: () => Pr
 }
 
 export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: deps.logger ?? true, logController: new LogController({ disableRequestLogging: true }), ...(deps.bodyLimit === undefined ? {} : { bodyLimit: deps.bodyLimit }) });
+  const app = Fastify({
+    logger: deps.logger ?? true,
+    logController: new LogController({ disableRequestLogging: true }),
+    ...(deps.bodyLimit === undefined ? {} : { bodyLimit: deps.bodyLimit }),
+    ...(deps.serverFactory === undefined ? {} : { serverFactory: deps.serverFactory }),
+  });
   // Vite proxies development API requests here, while production and machine-scoped
   // API requests already terminate here, so this is the shared browser HTTP edge.
   await app.register(fastifyCompress, {

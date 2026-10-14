@@ -13,6 +13,12 @@ export class PiWebConfigError extends Error {
   override name = "PiWebConfigError";
 }
 
+/** The certificate chain and private key, as PEM files, that the web/API serves HTTPS with. */
+export interface PiWebTlsConfig {
+  certFile: string;
+  keyFile: string;
+}
+
 export type PiWebConfig = PiWebConfigValues;
 
 export interface LoadedPiWebConfig {
@@ -219,7 +225,8 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
  * The keys a save rewrites from the parsed config; every other key in the file is kept as it was.
  * `respectProjectTrust` and `askUser` (PI WEB no longer has a built-in question tool) are retired: a load
  * ignores them and a save drops them. `extensionDialogsTimeoutMs` is not here: it has no editor,
- * so a save keeps the value the file holds, and one a request carries is not written.
+ * so a save keeps the value the file holds, and one a request carries is not written. `tls` is not
+ * a parsed key at all (see `piWebTlsConfig`), so a save keeps it as the file holds it.
  */
 const SAVED_CONFIG_KEYS: ReadonlySet<string> = new Set([
   "host", "port", "allowedHosts", "shortcuts", "plugins", "pathAccess", "uploads", "maxUploadBytes",
@@ -310,6 +317,49 @@ export function parsePiWebConfig(value: Record<string, unknown>, path: string, a
     ...(value["agent"] !== undefined ? { agent: parseAgentConfig(value["agent"], path, agentPathHost) } : {}),
     ...(value["updateCommand"] !== undefined ? { updateCommand: parseUpdateCommand(value["updateCommand"], path) } : {}),
   };
+}
+
+/**
+ * The certificate and key the web/API serves HTTPS with, or none for plain HTTP.
+ *
+ * Only the web/API and the commands that reach it read this; it is not part of `PiWebConfig`, so
+ * a mistake in it cannot stop the session daemon, and the browser never receives it. It has no
+ * Settings editor (owner, 2026-10-14). `PI_WEB_TLS_CERT` and `PI_WEB_TLS_KEY` each win over the
+ * file's value. A pair with one half missing is refused rather than served as plain HTTP: whoever
+ * configured HTTPS must not get a plaintext listener in its place.
+ */
+export function piWebTlsConfig(options: LoadOptions = {}): PiWebTlsConfig | undefined {
+  const env = options.env ?? process.env;
+  const path = piWebConfigPath(env, options.cwd ?? process.cwd());
+  const fromFile = readExistingConfigObject(path)["tls"];
+  return effectiveTlsConfig(env, fromFile === undefined ? undefined : parseTlsConfig(fromFile, path));
+}
+
+function effectiveTlsConfig(env: NodeJS.ProcessEnv, fromFile: PiWebTlsConfig | undefined): PiWebTlsConfig | undefined {
+  const certFile = envTlsPath(env, "PI_WEB_TLS_CERT") ?? fromFile?.certFile;
+  const keyFile = envTlsPath(env, "PI_WEB_TLS_KEY") ?? fromFile?.keyFile;
+  if (certFile === undefined && keyFile === undefined) return undefined;
+  if (certFile === undefined || keyFile === undefined) {
+    throw new PiWebConfigError("PI WEB HTTPS needs both a certificate and a key: set tls.certFile and tls.keyFile in the config file, or PI_WEB_TLS_CERT and PI_WEB_TLS_KEY.");
+  }
+  return { certFile: expandHomePath(certFile, env), keyFile: expandHomePath(keyFile, env) };
+}
+
+function envTlsPath(env: NodeJS.ProcessEnv, key: string): string | undefined {
+  const value = env[key];
+  return value === undefined || value === "" ? undefined : parseTlsPath(value, key, "environment");
+}
+
+function parseTlsConfig(value: unknown, path: string): PiWebTlsConfig {
+  if (!isRecord(value)) throw new PiWebConfigError(`PI WEB config tls must be an object with certFile and keyFile: ${path}`);
+  return { certFile: parseTlsPath(value["certFile"], "tls.certFile", path), keyFile: parseTlsPath(value["keyFile"], "tls.keyFile", path) };
+}
+
+/** A service's working directory is not the reader's, so a relative certificate path would name a file nobody chose. */
+function parseTlsPath(value: unknown, key: string, path: string): string {
+  if (typeof value !== "string" || value === "") throw new PiWebConfigError(`PI WEB config ${key} must be a non-empty file path: ${path}`);
+  if (!isAbsolute(value) && !isHomePath(value, "current")) throw new PiWebConfigError(`PI WEB config ${key} must be an absolute or ~/ path: ${path}`);
+  return value;
 }
 
 function parseUpdateCommand(value: unknown, path: string): string {

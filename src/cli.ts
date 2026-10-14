@@ -6,7 +6,9 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultPiWebConfigPath, defaultPiWebDataDir, examplePiWebConfig } from "./config.js";
+import { defaultPiWebConfigPath, defaultPiWebDataDir, examplePiWebConfig, piWebTlsConfig } from "./config.js";
+import { readTlsCredentials } from "./server/shared/tlsCredentials.js";
+import { errorMessage as describeError } from "./shared/unknownValues.js";
 import { piWebDockerCommand, type PiWebDockerMode } from "./docker/piWebDockerCommandPlan.js";
 import { ownEnvironmentValue } from "./environment.js";
 import { runPluginRecoveryCli, type SessionDaemonRestartPlan } from "./pluginRecoveryCli.js";
@@ -747,7 +749,7 @@ async function install(args: string[]): Promise<void> {
   if (options.mode === "dev") {
     console.log("Open: http://127.0.0.1:8505");
   } else {
-    console.log(`Open: http://${options.host === "0.0.0.0" ? "127.0.0.1" : options.host}:${options.port}`);
+    printInstalledOpenUrl(options.host, options.port, configPath);
   }
 
   if (backend.kind === "systemd") {
@@ -1345,7 +1347,61 @@ async function doctor(context: ReadinessDoctorCommandContext): Promise<void> {
     console.log(`\n${manualRunAdvice()}`);
   }
 
-  if (doctorExitCode(generalReadinessOk, nativeServicePlanOk, nodePtyNativeModuleOk && nodePtySpawnHelperOk, runningComponentsOk) !== 0) process.exitCode = 1;
+  const httpsCertificateOk = printHttpsCertificateCheck(versionReportOptions.configEnv);
+
+  if (doctorExitCode(generalReadinessOk, nativeServicePlanOk, nodePtyNativeModuleOk && nodePtySpawnHelperOk, runningComponentsOk) !== 0 || !httpsCertificateOk) process.exitCode = 1;
+}
+
+/**
+ * Where the installed web/API answers. The services do not receive this shell's PI_WEB_TLS_*
+ * variables, so only the config file decides the scheme; an HTTPS certificate names the hosts
+ * a browser accepts, which `--host` (a bind address) usually is not.
+ */
+function printInstalledOpenUrl(host: string, port: string, configPath: string): void {
+  const address = host === "0.0.0.0" ? "127.0.0.1" : host;
+  let tls;
+  try {
+    tls = piWebTlsConfig({ env: { ...process.env, PI_WEB_CONFIG: configPath, PI_WEB_TLS_CERT: "", PI_WEB_TLS_KEY: "" } });
+  } catch (error) {
+    console.log(`HTTPS config: ${describeError(error)}`);
+    return;
+  }
+  if (tls === undefined) {
+    console.log(`Open: http://${address}:${port}`);
+    return;
+  }
+  console.log(`Open: https://<a name the certificate covers>:${port}`);
+  try {
+    console.log(`  Certificate names: ${readTlsCredentials(tls).names}`);
+  } catch (error) {
+    console.log(`  ${describeError(error)}`);
+  }
+}
+
+/** The HTTPS certificate the web/API would start with: one it cannot use, or a TLS config it cannot read, keeps the web/API from starting at all. */
+function printHttpsCertificateCheck(configEnv: NodeJS.ProcessEnv | undefined): boolean {
+  console.log("\nHTTPS:");
+  let tls;
+  try {
+    tls = piWebTlsConfig({ env: configEnv ?? process.env });
+  } catch (error) {
+    console.log(`✗ ${describeError(error)}`);
+    console.log("  The web/API does not start until the TLS config is fixed.");
+    return false;
+  }
+  if (tls === undefined) {
+    console.log("- not configured; the web/API serves plain HTTP");
+    return true;
+  }
+  try {
+    const credentials = readTlsCredentials(tls);
+    console.log(`✓ certificate ${tls.certFile} for ${credentials.names}, valid until ${credentials.validTo}`);
+    return true;
+  } catch (error) {
+    console.log(`✗ ${describeError(error)}`);
+    console.log("  The web/API does not start until the certificate and key can be used.");
+    return false;
+  }
 }
 
 function printNodePtyNativeModuleCheck(): boolean {

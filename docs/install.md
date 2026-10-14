@@ -148,7 +148,7 @@ On WSL distributions with systemd enabled, `pi-web install` can work.
 | `pi-web start` / `stop` / `restart` | Start, stop or restart the installed services |
 | `pi-web status` | Show the state of each installed service |
 | `pi-web logs` | Follow the service logs: `journalctl --user` on Linux; `~/.pi-web/logs/sessiond.log` and `web.log` on macOS |
-| `pi-web doctor` | Check the login-shell environment, the service plan, the `node-pty` native module and the installed and running versions |
+| `pi-web doctor` | Check the login-shell environment, the service plan, the `node-pty` native module, the installed and running versions, and the [HTTPS certificate](#serve-https-directly) when one is configured |
 | `pi-web version` | Compare the installed package version with the versions the running services report |
 | `pi-web --version` | Print the installed package version |
 | `pi-web plugins disable <plugin-id>` | Disable a PI WEB plugin offline; see [Offline disable and safe start](config.md#offline-disable-and-safe-start) |
@@ -226,6 +226,36 @@ HTTPS matters beyond encryption: browsers allow the microphone for dictation and
 - Keep PI WEB on `127.0.0.1`. Tailscale itself listens on the tailnet address for the served port, so binding PI WEB to `0.0.0.0` or the tailnet address on the same port fails at startup with `EADDRINUSE`.
 - Use `tailscale serve`, not `tailscale funnel`: Funnel publishes to the public internet.
 - Anyone on your tailnet who can reach the port can use PI WEB as you. Use Tailscale access controls to limit who can reach the machine on a shared tailnet.
+
+### Serve HTTPS directly
+
+When you already have a certificate for the machine's name and do not run Tailscale Serve or another reverse proxy, PI WEB can serve HTTPS itself. Provide the certificate chain and its private key as PEM files in the global config:
+
+```json
+{
+  "host": "100.101.102.103",
+  "tls": {
+    "certFile": "~/.config/pi-web/tls/cert.pem",
+    "keyFile": "~/.config/pi-web/tls/key.pem"
+  }
+}
+```
+
+or set `PI_WEB_TLS_CERT` and `PI_WEB_TLS_KEY`, then restart the web/API. WebSockets switch to `wss://` with it; the session daemon is unaffected. With Tailscale, for example:
+
+```bash
+mkdir -p ~/.config/pi-web/tls
+tailscale cert --cert-file ~/.config/pi-web/tls/cert.pem --key-file ~/.config/pi-web/tls/key.pem <machine>.<tailnet>.ts.net
+```
+
+On Linux, `tailscale cert` may need `sudo`, or `sudo tailscale set --operator=$USER` once, and the files must then be readable by your user.
+
+- PI WEB does not issue or renew certificates. Run your renewal (here, the same `tailscale cert` command) on a schedule; PI WEB checks the files every 10 minutes and swaps in a renewed certificate without a restart. A renewal it cannot use is logged, and the running certificate stays.
+- If the files cannot be read, the key does not match the certificate, or the certificate has expired, the web/API refuses to start and logs which file is wrong; it never falls back to plain HTTP. `pi-web doctor` checks the same files.
+- Browsers check the certificate against the name in the address bar, so open PI WEB by the name the certificate was issued for, and bind `host` to an address that name reaches. Keep the key readable only by you (`chmod 600`).
+- Do not combine this with `tailscale serve` on the same port: both would listen there.
+- Switching an address from `http://` to `https://` is a new origin to the browser. Drafts and unsent messages the browser keeps for the old address do not carry over, so send or copy them first, and a machine you reach with **This browser** asks to approve the new address again.
+- In the development setup (`pi-web install --dev`), the UI on port 8505 stays plain HTTP on loopback and reaches the HTTPS web/API on its own.
 
 For a quick one-off connection without a VPN, an SSH tunnel works too:
 

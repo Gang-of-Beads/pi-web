@@ -31,11 +31,12 @@ defaults → global config file → environment overrides
 
 Supported project-local settings are then applied for that project's workspaces. For upload defaults, `<project>/.pi-web/config.json` overrides the global value.
 
-Environment overrides include `PI_WEB_HOST`, `PI_WEB_PORT` / `PORT`, `PI_WEB_ALLOWED_HOSTS`, `PI_WEB_MAX_UPLOAD_BYTES`, `PI_CODING_AGENT_DIR`, `PI_CODING_AGENT_SESSION_DIR`, and `PI_WEB_ENVIRONMENT_FACTS`.
+Environment overrides include `PI_WEB_HOST`, `PI_WEB_PORT` / `PORT`, `PI_WEB_TLS_CERT` / `PI_WEB_TLS_KEY`, `PI_WEB_ALLOWED_HOSTS`, `PI_WEB_MAX_UPLOAD_BYTES`, `PI_CODING_AGENT_DIR`, `PI_CODING_AGENT_SESSION_DIR`, and `PI_WEB_ENVIRONMENT_FACTS`.
 
 Process restarts depend on the key:
 
 - `host` / `port`: restart the gateway web/API service or process.
+- `tls`: turning HTTPS on or off, or pointing it at other files, needs a web/API restart. A renewed certificate written to the same files is picked up within 10 minutes without a restart.
 - `maxUploadBytes`: restart both the web/API process and the session daemon on that machine.
 - `extensionDialogsTimeoutMs` / `environmentFacts` / `piBuiltInExtensions`: restart the session daemon on that machine.
 - `pathAccess`: applies on the next request; existing file views may need a browser refresh.
@@ -148,6 +149,7 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | **Config-file keys** |  |  |  |  |  |
 | Web/API bind host | `host` | `PI_WEB_HOST` | Global | Not supported locally | Restart web/API |
 | Web/API port | `port` | `PI_WEB_PORT`, `PORT` | Global | Not supported locally | Restart web/API |
+| HTTPS certificate chain and private key, PEM files at absolute or `~/` paths; both or neither ([Serve HTTPS directly](install.md#serve-https-directly)) | `tls.certFile`, `tls.keyFile` | `PI_WEB_TLS_CERT`, `PI_WEB_TLS_KEY` | Global | Not supported locally | Restart web/API; a renewed certificate in the same files within 10 minutes |
 | Dev-server allowed hosts: `true` or an array of hostnames (env: `true` or a comma-separated list); used only by the Vite dev server (`pnpm run dev:client`), not by `pi-web-server` | `allowedHosts` | `PI_WEB_ALLOWED_HOSTS` | Global | Not supported locally | Restart dev web/UI |
 | External filesystem roots | `pathAccess.allowedPaths` | — | Global + project | **Merges**: global roots first, then project roots; duplicates removed | Next file request; refresh existing views if needed |
 | Manual file upload default folder | `uploads.defaultFolder` | — | Global + project | **Overrides**: project value wins for workspaces in that project; otherwise global/default applies | New Upload dialogs and direct drag/drop batches after config/workspace refresh |

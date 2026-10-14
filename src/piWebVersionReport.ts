@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { effectivePiWebConfig } from "./config.js";
+import { Agent, fetch as undiciFetch } from "undici";
+import { effectivePiWebConfig, piWebTlsConfig } from "./config.js";
 import { SessionDaemonClient } from "./server/shared/sessiondClient/sessionDaemonClient.js";
 import type { PiWebComponentStatus, PiWebInstallationInfo, PiWebVersionResponse } from "./shared/apiTypes.js";
 import { parsePiWebComponentStatus, parsePiWebVersionResponse } from "./shared/piWebStatusParsing.js";
@@ -69,7 +70,7 @@ export async function probeRunningComponentReady(
   }
   const endpoint = webVersionEndpoint(options.configEnv);
   if (endpoint.endpoint === undefined) return false;
-  const fetchImplementation = options.fetch ?? globalThis.fetch;
+  const fetchImplementation = options.fetch ?? defaultVersionFetch(endpoint.endpoint);
   try {
     await fetchPiWebVersionResponse(endpoint.endpoint, fetchImplementation);
     return true;
@@ -124,10 +125,12 @@ function parsePackageInfo(value: unknown, path: string): PackageInfo | undefined
 
 function webVersionEndpoint(configEnv: NodeJS.ProcessEnv | undefined): { endpoint?: string; error?: string } {
   try {
-    const { config } = effectivePiWebConfig(configEnv === undefined ? {} : { env: configEnv });
+    const options = configEnv === undefined ? {} : { env: configEnv };
+    const { config } = effectivePiWebConfig(options);
     const host = httpClientHost(config.host);
     const port = config.port ?? 8504;
-    return { endpoint: `http://${urlHost(host)}:${String(port)}${PI_WEB_VERSION_ENDPOINT_PATH}` };
+    const scheme = piWebTlsConfig(options) === undefined ? "http" : "https";
+    return { endpoint: `${scheme}://${urlHost(host)}:${String(port)}${PI_WEB_VERSION_ENDPOINT_PATH}` };
   } catch (error) {
     return { error: `could not read PI WEB config: ${errorMessage(error)}` };
   }
@@ -149,9 +152,26 @@ function statusEndpointFor(versionEndpoint: string): string {
   return `${versionEndpoint.slice(0, -PI_WEB_VERSION_ENDPOINT_PATH.length)}${PI_WEB_STATUS_ENDPOINT_PATH}`;
 }
 
+type VersionFetch = (url: string, init: { headers: Record<string, string>; signal: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+
+let loopbackTlsAgent: Agent | undefined;
+
+/**
+ * The fetch that reads this machine's own web/API. Over HTTPS it does not verify the certificate:
+ * the probe dials the configured listen address, which the certificate does not name (it names
+ * the machine as browsers reach it, a tailnet name say), and the certificate may come from a
+ * private CA. The probe sends nothing and reads only the version answer.
+ */
+function defaultVersionFetch(endpoint: string): VersionFetch {
+  if (!endpoint.startsWith("https:")) return globalThis.fetch;
+  const dispatcher = loopbackTlsAgent ?? new Agent({ connect: { rejectUnauthorized: false } });
+  loopbackTlsAgent = dispatcher;
+  return (url, init) => undiciFetch(url, { ...init, dispatcher });
+}
+
 async function fetchPiWebVersionResponse(
   endpoint: string,
-  fetchImplementation: typeof globalThis.fetch,
+  fetchImplementation: VersionFetch,
 ): Promise<PiWebVersionResponse> {
   const response = await fetchImplementation(endpoint, {
     headers: { accept: "application/json" },
@@ -168,7 +188,7 @@ async function collectRunningVersionInfo(options: PiWebVersionReportOptions): Pr
   const endpoint = options.webEndpointError === undefined
     ? webVersionEndpoint(options.configEnv)
     : { error: options.webEndpointError };
-  const fetchImplementation = options.fetch ?? globalThis.fetch;
+  const fetchImplementation = options.fetch ?? defaultVersionFetch(endpoint.endpoint ?? "");
   if (endpoint.endpoint !== undefined) {
     try {
       const status = await fetchPiWebVersionResponse(endpoint.endpoint, fetchImplementation);
