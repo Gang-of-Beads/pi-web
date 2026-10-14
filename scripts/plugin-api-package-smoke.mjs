@@ -19,8 +19,8 @@ const expectedPackageDeclarationPaths = [
   "plugin-api.d.ts",
   "server-plugin-api.d.ts",
 ].sort();
-const firstBrowserPluginApiV2Version = "1.202608.1";
-const workspaceProviderExamplePiWebRange = `^${firstBrowserPluginApiV2Version}`;
+/** The declarations the workspace-provider example builds against; it uses the panel toolbar, which 2.x hosts draw. */
+const workspaceProviderExamplePiWebRange = "^2.202610.5";
 const pluginConsumerCompilerModes = [
   {
     name: "NodeNext",

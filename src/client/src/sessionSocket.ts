@@ -247,7 +247,7 @@ export class SessionSocket extends ReconnectingSocket {
     };
     const statusFrames = new StatusFrameDecoder();
     socket.onmessage = (message) => void this.handleMessage(message.data, socket, session, statusFrames);
-    socket.onerror = () => { socket.close(); };
+    socket.onerror = () => { socket.onerror = null; socket.close(); };
     socket.onclose = () => {
       if (this.socket !== socket) return;
       this.socket = undefined;
@@ -405,7 +405,7 @@ export class RealtimeSocket extends ReconnectingSocket {
     };
     const statusFrames = new StatusFrameDecoder();
     socket.onmessage = (message) => void this.handleMessage(message.data, socket, statusFrames);
-    socket.onerror = () => { socket.close(); };
+    socket.onerror = () => { socket.onerror = null; socket.close(); };
     socket.onclose = () => {
       if (this.socket !== socket) return;
       this.socket = undefined;
