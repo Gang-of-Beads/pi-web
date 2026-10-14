@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { request as httpsRequest } from "node:https";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Agent, fetch as undiciFetch } from "undici";
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliPath = join(packageRoot, "dist", "cli.js");
@@ -79,24 +79,54 @@ function loopbackPort(): string {
   return port !== undefined && port !== "" ? port : "8504";
 }
 
-let loopbackTls: Agent | undefined;
+interface ServerRequest {
+  method: string;
+  headers: Record<string, string>;
+  body?: string;
+}
+
+interface ServerAnswer {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+}
 
 /**
  * A request to this machine's server. Without an advertised URL it is the loopback port, in plain
  * HTTP unless the server serves HTTPS (`tls` in its config), which refuses plain HTTP at the
  * connection. Then the request is repeated over HTTPS without verifying the certificate: it
  * names the machine as browsers reach it, not 127.0.0.1, and the request never leaves the machine.
+ *
+ * This file imports Node built-ins only. Home Manager links it into `~/.pi/agent/extensions`,
+ * where PI WEB's own dependencies do not resolve: an `undici` import there kept the whole
+ * extension from loading on every Nix machine in 2.202610.10 (owner, 2026-10-14).
  */
-async function serverFetch(path: string, request: { method: string; headers: Record<string, string>; body?: string }): Promise<{ ok: boolean; status: number; json(): Promise<unknown> }> {
+async function serverFetch(path: string, request: ServerRequest): Promise<ServerAnswer> {
   const advertised = advertisedBaseUrl();
   if (advertised !== undefined) return await fetch(`${advertised}${path}`, request);
   try {
     return await fetch(`http://127.0.0.1:${loopbackPort()}${path}`, request);
   } catch {
-    const dispatcher = loopbackTls ?? new Agent({ connect: { rejectUnauthorized: false } });
-    loopbackTls = dispatcher;
-    return await undiciFetch(`https://127.0.0.1:${loopbackPort()}${path}`, { ...request, dispatcher });
+    return await loopbackHttps(path, request);
   }
+}
+
+function loopbackHttps(path: string, request: ServerRequest): Promise<ServerAnswer> {
+  return new Promise((resolve, reject) => {
+    const outgoing = httpsRequest({ host: "127.0.0.1", port: Number(loopbackPort()), path, method: request.method, headers: request.headers, rejectUnauthorized: false }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => { chunks.push(chunk); });
+      response.on("error", reject);
+      response.on("end", () => {
+        const status = response.statusCode ?? 0;
+        const body = Buffer.concat(chunks).toString("utf8");
+        resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve().then((): unknown => JSON.parse(body)) });
+      });
+    });
+    outgoing.on("error", reject);
+    if (request.body !== undefined) outgoing.write(request.body);
+    outgoing.end();
+  });
 }
 
 async function fleetRequest(path: string, init?: { method: string; body: unknown }): Promise<unknown> {
