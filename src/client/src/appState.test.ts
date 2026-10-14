@@ -8,19 +8,15 @@ const workspace: Workspace = { id: "ws-1", projectId: "p1", path: "/repo", label
 describe("the composer's working directory", () => {
   const session = { ...oldSession, cwd: "/repo/session-dir" };
 
-  it("prefers the selected workspace path", () => {
+  /** A session opened in a subdirectory of the selected workspace is found by its own directory, not the workspace's. */
+  it("names the session's own directory, even inside a selected workspace", () => {
     const state = { ...initialAppState(), selectedSession: session, selectedWorkspace: workspace };
-    expect(composerCwd(state)).toBe("/repo");
+    expect(composerCwd(state)).toBe("/repo/session-dir");
   });
 
-  /**
-   * Slash commands are looked up per directory and the lookup is guarded on a
-   * non-empty cwd. A session selected before its workspace listing landed used
-   * to hand the composer nothing, so typing "/" silently offered no commands.
-   */
-  it("falls back to the session's own directory when no workspace is resolved", () => {
-    const state = { ...initialAppState(), selectedSession: session };
-    expect(composerCwd(state)).toBe("/repo/session-dir");
+  it("falls back to the selected workspace while the session has no directory", () => {
+    const state = { ...initialAppState(), selectedSession: { ...session, cwd: "" }, selectedWorkspace: workspace };
+    expect(composerCwd(state)).toBe("/repo");
   });
 
   it("has nothing to offer when neither is known", () => {

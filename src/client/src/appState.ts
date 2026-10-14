@@ -199,20 +199,21 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
 }
 
 /**
- * The directory the composer resolves slash commands against.
+ * The directory every session request from the composer names: its messages, slash commands,
+ * models and extension completions.
  *
- * The selected workspace is the refinement; the session being composed into
- * is the source of truth. Reading only the workspace handed the editor an
- * empty cwd whenever the workspace had not resolved yet — a session opened
- * before its workspace listing landed, a route restored session-first — and
- * the command lookup is guarded on a non-empty cwd, so typing "/" quietly
- * offered nothing while the rest of the composer kept working.
+ * The session's own directory is the scope; the selected workspace only stands in while the
+ * session has none yet. Preferring the workspace sent a session recorded in a subdirectory of the
+ * workspace (a project rooted at the home folder listing a session opened in a repository under
+ * it) with the workspace's path, where the machine could not find it: every message came back
+ * "Not sent: Session not found" until a reload happened to select the session's own workspace
+ * (owner, 2026-10-14).
  */
 export function composerCwd(state: Pick<AppState, "selectedSession" | "selectedWorkspace">): string | undefined {
-  const workspacePath = state.selectedWorkspace?.path;
-  if (workspacePath !== undefined && workspacePath !== "") return workspacePath;
   const sessionCwd = state.selectedSession?.cwd;
-  return sessionCwd === undefined || sessionCwd === "" ? undefined : sessionCwd;
+  if (sessionCwd !== undefined && sessionCwd !== "") return sessionCwd;
+  const workspacePath = state.selectedWorkspace?.path;
+  return workspacePath === undefined || workspacePath === "" ? undefined : workspacePath;
 }
 
 export function initialAppState(): AppState {
