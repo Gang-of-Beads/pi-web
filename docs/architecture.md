@@ -24,7 +24,7 @@ The daemon is reached only by its own web process. `pnpm run dev` runs all three
 | `src/server/shared/` | both: project store, plugin catalog and runtime, the daemon client (`shared/sessiondClient/`) |
 | `src/shared/` | server and client: wire types (`apiTypes.ts`), the federated route allowlist (`federatedRoutes.ts`), the interactive card types |
 | `src/client/src/` | the browser |
-| `pi-web-plugins/` | the plugins bundled with PI WEB (files, git, info, machines, mermaid, terminal, updates, voice, workspaces, workspace-tasks) |
+| `pi-web-plugins/` | the plugins bundled with PI WEB (files, git, info, machines, mermaid, terminal, updates, voice, workspaces) |
 | `packages/pi-web-plugin-api/` | lightweight plugin declarations and public runtime helpers, without the host application |
 | `examples/workspace-provider-plugin/` | an example plugin |
 

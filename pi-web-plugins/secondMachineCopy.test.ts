@@ -53,7 +53,7 @@ describe("a second machine's copy of a plugin loads beside the first (B51)", () 
   const modules = [...new Set([...browserModules(), ...elementModules()])];
 
   it("finds the bundled plugins' browser modules and the files that define their elements", () => {
-    expect({ entries: browserModules().length >= 10, elements: elementModules().length >= 12 }).toEqual({ entries: true, elements: true });
+    expect({ entries: browserModules().length >= 9, elements: elementModules().length >= 11 }).toEqual({ entries: true, elements: true });
   });
 
   it.each(modules.map((module) => [module.slice(pluginsRoot.length + 1)]))("imports %s twice", async (relative) => {
