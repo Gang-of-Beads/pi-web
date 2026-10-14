@@ -182,7 +182,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   aside app-navigate-page { flex: 1 1 auto; min-height: 0; }
   /* Over the session, not instead of it: the page covers the screen while it
      is open and the close returns to the conversation underneath. */
-  .navigate-overlay { position: fixed; inset: var(--pi-app-viewport-offset-top, 0px) 0 0 0; z-index: var(--pi-layer-overlay); background: var(--pi-bg); }
+  .navigate-overlay { position: fixed; top: var(--pi-app-viewport-offset-top, 0px); right: 0; left: 0; height: var(--pi-app-visible-height, calc(100dvh - var(--pi-app-keyboard-inset))); box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--pi-app-safe-area-bottom) env(safe-area-inset-left); z-index: var(--pi-layer-overlay); background: var(--pi-bg); }
   header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
   .header-actions { display: flex; align-items: center; gap: var(--pi-space-4); }
   main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
