@@ -22,7 +22,7 @@ Changes to the web/API/UI side only need the web process to restart, which the d
 
 Keep new modules in the directory matching the process that imports them. A `web/` module must never import from `daemon/` (or vice versa); if both sides need it, it belongs in `shared/` (`src/server/processOwnership.test.ts` checks this). Don't reintroduce process-ambiguous modules at the root.
 
-The other trees: `src/client/` is the browser app, `src/shared/` holds the types and parsers the server and the browser share, `src/nativeServices/` installs and drives the systemd and launchd services, `pi-web-plugins/` holds the bundled plugins, and `packages/pi-web-plugin-api/` is the types-only plugin API package.
+The other trees: `src/client/` is the browser app, `src/shared/` holds the types and parsers the server and the browser share, `src/nativeServices/` installs and drives the systemd and launchd services, `pi-web-plugins/` holds the bundled plugins, and `packages/pi-web-plugin-api/` is the lightweight plugin API package (declarations and public runtime helpers).
 
 ## Documentation boundaries
 

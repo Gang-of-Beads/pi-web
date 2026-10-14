@@ -1,7 +1,7 @@
 {
   "name": "@gang-of-beads/pi-web-plugin-api",
   "version": "0.1.0-alpha.1",
-  "description": "Type declarations of the PI WEB plugin contract: the browser and server APIs a plugin is written against.",
+  "description": "Lightweight PI WEB browser and server plugin contracts, with TypeScript declarations and public runtime helpers.",
   "license": "MIT",
   "author": "Gang of Beads",
   "keywords": [
@@ -15,7 +15,9 @@
   },
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "exports": {
     "./plugin-api": {
@@ -29,10 +31,19 @@
       "default": "./dist/server-plugin-api.js"
     }
   },
+  "typesVersions": {
+    "*": {
+      "plugin-api": ["dist/plugin-api.d.ts"],
+      "server-plugin-api": ["dist/server-plugin-api.d.ts"]
+    }
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Gang-of-Beads/pi-web.git",
     "directory": "packages/pi-web-plugin-api"
+  },
+  "dependencies": {
+    "@types/ws": "^8.18.1"
   },
   "peerDependencies": {
     "lit": "^3.0.0"

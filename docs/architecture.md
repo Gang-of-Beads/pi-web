@@ -25,7 +25,7 @@ The daemon is reached only by its own web process. `pnpm run dev` runs all three
 | `src/shared/` | server and client: wire types (`apiTypes.ts`), the federated route allowlist (`federatedRoutes.ts`), the interactive card types |
 | `src/client/src/` | the browser |
 | `pi-web-plugins/` | the plugins bundled with PI WEB (files, git, info, machines, mermaid, terminal, updates, voice, workspaces, workspace-tasks) |
-| `packages/pi-web-plugin-api/` | the type package plugin authors build against |
+| `packages/pi-web-plugin-api/` | lightweight plugin declarations and public runtime helpers, without the host application |
 | `examples/workspace-provider-plugin/` | an example plugin |
 
 A `web/` module never imports from `daemon/`, or the reverse; code both need lives in `shared/`. `src/server/processOwnership.test.ts` enforces it.

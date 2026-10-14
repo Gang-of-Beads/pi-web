@@ -47,12 +47,18 @@ If a run fails for a transient reason, re-run its failed jobs. To re-run the who
 
 ## The plugin API package
 
-`@gang-of-beads/pi-web-plugin-api` (`packages/pi-web-plugin-api/`) carries the type declarations of the plugin contract. It is released separately:
+`@gang-of-beads/pi-web-plugin-api` (`packages/pi-web-plugin-api/`) carries the plugin contract's declarations and public runtime helpers, without the host application or its native dependencies. Its alpha releases are separate from PI WEB releases:
 
-1. Set the new version in `packages/pi-web-plugin-api/package.json` and commit it to `main`.
-2. Push a tag named `plugin-api-v<version>`, matching that version exactly.
+1. Set the new version in `packages/pi-web-plugin-api/package.json`, update the package README's host compatibility line, verify the changes and commit them to `main`.
+2. Push a tag named `plugin-api-v<version>`, matching that version exactly. Do not use a core `v*` tag.
 
-`.github/workflows/publish-plugin-api.yml` verifies, builds the declarations, checks that the tag matches the package version, publishes under the `alpha` dist-tag, and then attaches the tarball to a GitHub Release.
+`.github/workflows/publish-plugin-api.yml` verifies, builds and packs the API package, then installs that tarball into an isolated consumer outside the checkout. It compiles browser and server consumers separately and checks runtime imports without the host or `node-pty`.
+
+For the first publication, configure a temporary, stage-only token as the GitHub Actions secret `NPM_PLUGIN_API_STAGE_TOKEN`, not the core workflow's `NPM_TOKEN`. CI stages the tarball under the `alpha` dist-tag; a maintainer approves it on npmjs.com with 2FA. CI waits up to 30 minutes for public registry visibility, checks that the registry's tarball matches its artifact and only then creates a GitHub prerelease. A pending stage is not a completed publication.
+
+If the wait times out, approve the stage first and rerun the failed job. An already-staged version is not staged again, and an already-published version is not republished. After the first publication, configure npm trusted publishing for `Gang-of-Beads/pi-web`, workflow `publish-plugin-api.yml`, with permission to run `npm publish` (`--allow-publish` when using the npm trust CLI), then delete the temporary secret and revoke its token. A stage-only trusted publisher cannot run this workflow's no-secret route. Subsequent publications use OIDC with provenance when the secret is absent.
+
+A manual workflow dispatch on a branch runs the checks and smoke test without publishing. A dispatch on the matching plugin-api tag may publish.
 
 The declarations a plugin compiles against are pinned by `test-fixtures/plugin-api-baseline/`. A change to the public plugin API must refresh that baseline in the same commit (`node scripts/refresh-plugin-api-baseline.mjs`); otherwise `pnpm run verify` and the release smoke test fails.
 

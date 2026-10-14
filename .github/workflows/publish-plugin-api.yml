@@ -27,6 +27,9 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
 
+      - name: Update npm
+        run: npm install -g npm@^11.15.0
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -51,39 +54,74 @@ jobs:
           fi
 
       - name: Pack
-        if: startsWith(github.ref, 'refs/tags/')
         working-directory: packages/pi-web-plugin-api
         run: |
           rm -rf pack-out && mkdir pack-out
           pnpm pack --silent --pack-destination pack-out >/dev/null
 
-      # The first release of a package cannot use trusted publishing; with
-      # NPM_TOKEN present this bootstraps with the token, and once the trusted
-      # publisher is configured on npm the OIDC route takes over on its own.
+      - name: Smoke-test standalone package
+        run: node scripts/smoke-plugin-api-package.mjs packages/pi-web-plugin-api/pack-out/*.tgz "$RUNNER_TEMP"
+
       - name: Publish to npm
         if: startsWith(github.ref, 'refs/tags/')
         working-directory: packages/pi-web-plugin-api
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_PLUGIN_API_STAGE_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_PLUGIN_API_STAGE_TOKEN }}
         run: |
           pkg="$(node -p "require('./package.json').name")"
           ver="$(node -p "require('./package.json').version")"
           if npm view "$pkg@$ver" version >/dev/null 2>&1; then
             echo "$pkg@$ver is already on npm; skipping publish (rerun of a released tag)"
           elif [ -n "$NPM_TOKEN" ]; then
-            echo "publishing $pkg@$ver with the bootstrap token (no provenance)"
-            pnpm publish "./pack-out/"*.tgz --access public --tag alpha --no-git-checks
+            npm stage list --json > "$RUNNER_TEMP/plugin-api-stages.json"
+            stage_id="$(node -e 'const stages = require(process.argv[1]); const stage = stages.find(item => item.packageName === process.argv[2] && item.version === process.argv[3]); process.stdout.write(stage?.id ?? "");' "$RUNNER_TEMP/plugin-api-stages.json" "$pkg" "$ver")"
+            if [ -n "$stage_id" ]; then
+              echo "$pkg@$ver is already staged ($stage_id); approve it on npmjs.com with 2FA"
+            else
+              echo "staging $pkg@$ver; a maintainer approves it on npmjs.com with 2FA"
+              npm stage publish "./pack-out/"*.tgz --access public --tag alpha
+            fi
           else
-            pnpm publish "./pack-out/"*.tgz --access public --provenance --tag alpha --no-git-checks
+            npm publish "./pack-out/"*.tgz --access public --provenance --tag alpha
           fi
 
-      # The release is created only after publish succeeded, so a release page
-      # never advertises a tarball the registry does not have. Rerunning a
-      # partially released tag re-updates the release instead of duplicating it.
+      - name: Wait for registry publication
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: packages/pi-web-plugin-api
+        run: |
+          pkg="$(node -p "require('./package.json').name")"
+          ver="$(node -p "require('./package.json').version")"
+          for _ in $(seq 1 180); do
+            if [ "$(npm view "$pkg@$ver" version 2>/dev/null)" = "$ver" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Registry publication not confirmed within 30 minutes; approve the staged package and rerun this job."
+          exit 1
+
+      - name: Verify registry tarball matches release artifact
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: packages/pi-web-plugin-api
+        run: |
+          pkg="$(node -p "require('./package.json').name")"
+          ver="$(node -p "require('./package.json').version")"
+          local_sha="$(node -e 'const fs = require("node:fs"); const crypto = require("node:crypto"); console.log(crypto.createHash("sha1").update(fs.readFileSync(process.argv[1])).digest("hex"));' pack-out/*.tgz)"
+          registry_sha="$(npm view "$pkg@$ver" dist.shasum)"
+          if [ "$local_sha" != "$registry_sha" ]; then
+            echo "Registry tarball differs from the artifact; refusing to attach it to a release."
+            exit 1
+          fi
+
       - name: Attach tarball to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: packages/pi-web-plugin-api/pack-out/*.tgz
-          generate_release_notes: true
+          prerelease: true
+          body: |
+            Lightweight PI WEB browser and server plugin contracts, with public runtime helpers and server type dependencies, without the host application or node-pty.
+
+            Install: `npm install --save-dev @gang-of-beads/pi-web-plugin-api@alpha`
+            See the [versioned package README](https://github.com/Gang-of-Beads/pi-web/blob/${{ github.sha }}/packages/pi-web-plugin-api/README.md) for host compatibility and the [API reference](https://github.com/Gang-of-Beads/pi-web/blob/${{ github.sha }}/docs/plugin-api.md) for the contract and unstable internal members.
