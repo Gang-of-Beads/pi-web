@@ -1,5 +1,11 @@
 # @gang-of-beads/pi-web
 
+## 2.202610.9
+
+### Patch Changes
+
+- 100f71f: Updates stays in Go to after switching machines. Switching cleared the machine's PI WEB status without asking for the new one, so Updates disappeared until the next check about 15 minutes later; a failed status read is now asked again after 15 seconds instead of 15 minutes.
+
 ## 2.202610.8
 
 ### Patch Changes
