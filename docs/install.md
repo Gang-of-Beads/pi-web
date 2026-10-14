@@ -210,7 +210,24 @@ Processes spawned inside PI WEB inherit the daemon's `PI_WEB_*` values and `PI_W
 
 ## Remote access
 
-PI WEB listens on `127.0.0.1:8504` by default. For a remote server, the safest option is an SSH tunnel:
+PI WEB listens on `127.0.0.1:8504` by default. To use it from your phone, tablet or another computer, we recommend [Tailscale Serve](https://tailscale.com/kb/1312/serve): PI WEB keeps listening on loopback, and Tailscale publishes it over HTTPS to the devices on your tailnet only.
+
+On the machine running PI WEB, with Tailscale installed and MagicDNS and HTTPS certificates enabled for your tailnet:
+
+```bash
+tailscale serve --bg --https=8504 http://127.0.0.1:8504
+tailscale serve status
+```
+
+Then open `https://<machine>.<tailnet>.ts.net:8504` on any device signed in to the tailnet. The setting persists across reboots; `tailscale serve --https=8504 off` removes it.
+
+HTTPS matters beyond encryption: browsers allow the microphone for dictation and clipboard access only on a secure page, and a page opened over HTTPS can reach other [machines](machines.md#https) only at HTTPS URLs. Serving every machine this way covers all of these.
+
+- Keep PI WEB on `127.0.0.1`. Tailscale itself listens on the tailnet address for the served port, so binding PI WEB to `0.0.0.0` or the tailnet address on the same port fails at startup with `EADDRINUSE`.
+- Use `tailscale serve`, not `tailscale funnel`: Funnel publishes to the public internet.
+- Anyone on your tailnet who can reach the port can use PI WEB as you. Use Tailscale access controls to limit who can reach the machine on a shared tailnet.
+
+For a quick one-off connection without a VPN, an SSH tunnel works too:
 
 ```bash
 ssh -L 8504:127.0.0.1:8504 user@your-server
@@ -223,7 +240,7 @@ To use several PI WEB machines from one page, see [Machines](machines.md).
 
 ### Install on iPhone or iPad
 
-Open PI WEB in Safari, choose **Share → Add to Home Screen**, then **Add**. The installed app opens in standalone mode. For remote access, use an HTTPS reverse proxy on a trusted VPN or private network.
+Open PI WEB in Safari, choose **Share → Add to Home Screen**, then **Add**. The installed app opens in standalone mode. For remote access, serve PI WEB with [Tailscale Serve](#remote-access) or another HTTPS reverse proxy on a trusted VPN or private network.
 
 The installed app is a control surface for the sessions on the server, so it needs a live connection. It does not cache the application for offline use.
 

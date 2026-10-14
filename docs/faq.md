@@ -92,11 +92,12 @@ PI_WEB_PORT=8504 pi-web-server
 - Check `pi-web status`.
 - Check the logs with `pi-web logs`.
 - Make sure port `8504` is not already in use.
-- On a remote server, use an SSH tunnel: `ssh -L 8504:127.0.0.1:8504 user@server`.
+- On a remote server, publish it on your tailnet with Tailscale Serve, or use an SSH tunnel: `ssh -L 8504:127.0.0.1:8504 user@server`. See [Remote access](install.md#remote-access).
+- With Tailscale Serve, keep PI WEB on `127.0.0.1`: binding `0.0.0.0` or the tailnet address on the served port fails with `EADDRINUSE`.
 
 ## Can I expose PI WEB to the public internet?
 
-No. PI WEB has no login of its own and assumes trusted users and trusted server paths. Bind it only to an interface that is already private and controlled: the server's VPN address, a private LAN address, or localhost behind an SSH tunnel.
+No. PI WEB has no login of its own and assumes trusted users and trusted server paths. Keep it on localhost and publish it to your tailnet with [Tailscale Serve](install.md#remote-access), or bind it only to an interface that is already private and controlled: the server's VPN address, a private LAN address, or localhost behind an SSH tunnel.
 
 When you connect over a VPN, `127.0.0.1` means your own device, not the server, so the server must listen on its VPN or private address or sit behind a tunnel or proxy. Avoid `0.0.0.0` unless a firewall, VPN or reverse proxy strictly limits who can reach the port. See [SECURITY.md](../SECURITY.md) for the threat model.
 

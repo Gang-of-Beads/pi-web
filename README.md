@@ -47,7 +47,7 @@ pi-web install
 pi-web doctor
 ```
 
-Then open <http://127.0.0.1:8504>.
+Then open <http://127.0.0.1:8504>. To use it from your phone or another device, publish it on your tailnet with Tailscale Serve: see [Remote access](docs/install.md#remote-access).
 
 Nix, Home Manager, Docker, installing through Pi, WSL and manual runs: see the [installation guide](docs/install.md).
 
