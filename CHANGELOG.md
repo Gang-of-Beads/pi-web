@@ -1,5 +1,12 @@
 # @gang-of-beads/pi-web
 
+## 2.202610.10
+
+### Patch Changes
+
+- ab67728: PI WEB can serve HTTPS itself. Set `tls.certFile` and `tls.keyFile` in the global config (or `PI_WEB_TLS_CERT` and `PI_WEB_TLS_KEY`) to a certificate and key you provide, such as one from `tailscale cert`; WebSockets follow as `wss://`. A certificate that cannot be used keeps the web/API from starting instead of falling back to plain HTTP, a renewed certificate in the same files is picked up within 10 minutes without a restart, and `pi-web doctor` checks it.
+- 1df5e27: The install guide now recommends Tailscale Serve for opening PI WEB from a phone or another device: PI WEB stays on loopback and Tailscale publishes it over HTTPS to the tailnet, which the microphone, clipboard and HTTPS machines need. The README links to it from the quick start.
+
 ## 2.202610.9
 
 ### Patch Changes
